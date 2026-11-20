@@ -20,7 +20,7 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { Matrix } from './Matrix.tsx';
 
-import { tokenColor } from '../../.storybook/tokens.ts';
+import { tokenColor, tokenPx } from '../../.storybook/tokens.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The whole-project environment matrix. On mount it reads the project catalogue
@@ -376,7 +376,7 @@ function alphaOf(css: string): number {
 // opaque behind every scrolled environment column, for the header, a group
 // row and an ordinary key row; and for the group row specifically, which has
 // no cells of its own to protect, the label itself (chevron, folder name,
-// count, problem badge, "+ Key") stays over the left edge instead of
+// count, problem badge) stays over the left edge instead of
 // scrolling away with the rest of the row. The tinted right border marks a
 // KEY row's own edge, and only at the phone breakpoint: the header and group
 // rows still carry the full-width key column there, not an edge to mark.
@@ -404,6 +404,17 @@ const expectStickyKeyColumn = async (root: HTMLElement) => {
   for (const cell of [headerCell, groupCell, keyCell, groupLabel]) {
     await expect(Math.abs(cell.getBoundingClientRect().left - scrollerLeft)).toBeLessThanOrEqual(1);
   }
+  // The label's "+ Key" holds the visible right end: still wholly inside the
+  // scroller after the scroll, clear of the folder name's toggle.
+  const add = groupLabel.querySelector<HTMLElement>('.matrix__add-key');
+  const toggle = groupLabel.querySelector<HTMLElement>('.matrix__group-toggle');
+  if (add === null || toggle === null) throw new Error('group add-key button missing');
+  const addBox = add.getBoundingClientRect();
+  await expect(addBox.right).toBeLessThanOrEqual(scrollerLeft + scroller.clientWidth);
+  await expect(addBox.left).toBeGreaterThanOrEqual(toggle.getBoundingClientRect().right);
+  // The bar overruns its pinned cell to the visible width, so it is opaque too:
+  // rows scrolling up under the stuck group row must not show through it.
+  await expect(alphaOf(getComputedStyle(groupLabel).backgroundColor)).toBe(1);
   scroller.scrollLeft = 0;
 };
 
@@ -528,7 +539,7 @@ export const EmptyFolderSuggestion: Story = {
 
 // The sticky key column at a laptop width (760px, still the desktop layout):
 // three environments leave it less than its full 236px, so it compacts to its
-// 160px floor and a long name ellipsises, while the row title and the link's
+// 188px floor and a long name ellipsises, while the row title and the link's
 // accessible name keep the full name. The environment columns give up their
 // spare width (the filler goes to 0) and the table scrolls in its own well.
 export const CompactKeyColumn: Story = {
@@ -540,19 +551,40 @@ export const CompactKeyColumn: Story = {
     const keyCell = link.closest('th');
     const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
     if (keyCell === null || heading === null) throw new Error('key column missing');
-    await expect(Math.abs(heading.getBoundingClientRect().width - 160)).toBeLessThanOrEqual(1);
-    await expect(Math.abs(keyCell.getBoundingClientRect().width - 160)).toBeLessThanOrEqual(1);
+    // The floor: Key label and envs picker (164px with the start padding), then the handle.
+    const floor = 164 + tokenPx('--hit-min');
+    await expect(Math.abs(heading.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1);
+    await expect(Math.abs(keyCell.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1);
     await expect(getComputedStyle(link).textOverflow).toBe('ellipsis');
     await expect(link.scrollWidth).toBeGreaterThan(link.clientWidth);
     await expect(keyCell).toHaveAttribute('title', name);
-    // The envs picker still fits beside "Key" at the floor.
-    await expect(heading.querySelector('.matrix__environment-picker')).not.toBeNull();
+    // The envs picker still fits beside "Key" at the floor, clear of the resize handle.
+    const picker = heading.querySelector('.matrix__environment-picker');
+    const handle = heading.querySelector('.matrix__resizer');
+    if (picker === null || handle === null) throw new Error('envs picker or resize handle missing');
+    await expect(picker.getBoundingClientRect().right).toBeLessThanOrEqual(handle.getBoundingClientRect().left + 0.5);
+    // A click on the handle fits the column to its names (WCAG 2.5.7's
+    // single-pointer widen), capped to the well; a second click restores the floor.
+    const nameRoom = link.clientWidth;
+    await userEvent.click(handle);
+    await waitFor(() => expect(link.clientWidth).toBeGreaterThan(nameRoom + 100));
+    await userEvent.click(handle);
+    await waitFor(() => expect(Math.abs(heading.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1));
     // Short of room: the table scrolls, the filler has nothing left, and a
     // value ellipsises rather than widening its column.
     const { overflows, truncated, fillerWidth } = await expectColumnLayout(canvasElement);
     await expect(overflows).toBe(true);
     await expect(fillerWidth).toBeLessThanOrEqual(1);
     await expect(truncated.length).toBeGreaterThan(0);
+    // A click on that value's column handle fits the column to it; a second click restores the shrink.
+    const cut = truncated[0];
+    const column = cut?.closest('td')?.cellIndex;
+    const envHandle = column === undefined ? null : canvasElement.querySelector<HTMLElement>(`.matrix__table thead th:nth-child(${String(column + 1)}) .matrix__resizer`);
+    if (cut === undefined || envHandle === null) throw new Error('truncated value column missing');
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(cut.scrollWidth).toBeLessThanOrEqual(cut.clientWidth + 1));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(cut.scrollWidth).toBeGreaterThan(cut.clientWidth + 1));
     // Desktop still: pencils stay.
     await expect(canvasElement.querySelector('.matrix-cell__edit')).toBeVisible();
   },
@@ -631,8 +663,22 @@ export const GroupRows: Story = {
     await expect(linkedRow.querySelector('.matrix__linked-keys')).toHaveTextContent('Linked keys: stripe');
     await expect(Math.round(linkedRow.getBoundingClientRect().height)).toBe(Math.round(plainRow.getBoundingClientRect().height));
 
-    const toggle = add.closest('tr')?.querySelector<HTMLElement>('.matrix__group-toggle');
-    if (toggle == null) throw new Error('payments toggle missing');
+    // The add action sits at the row's visible right end, one compact control
+    // shorter than the row, not beside the folder name at the row's height.
+    const groupRow = add.closest('tr');
+    const groupToggle = groupRow?.querySelector<HTMLElement>('.matrix__group-toggle');
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    if (groupRow == null || groupToggle == null || scroller === null) throw new Error('payments group row missing');
+    const addBox = add.getBoundingClientRect();
+    const visibleEnd = scroller.getBoundingClientRect().left + scroller.clientWidth;
+    await expect(visibleEnd - addBox.right).toBeGreaterThan(0);
+    await expect(visibleEnd - addBox.right).toBeLessThanOrEqual(tokenPx('--space-3') + 1);
+    await expect(addBox.left).toBeGreaterThanOrEqual(groupToggle.getBoundingClientRect().right);
+    // A fine pointer, as in this story's browser; a coarse one keeps the touch floor.
+    await expect(addBox.height).toBe(tokenPx('--hit-min'));
+    await expect(addBox.height).toBeLessThan(groupRow.getBoundingClientRect().height);
+
+    const toggle = groupToggle;
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(canvas.queryByRole('button', { name: 'Add key to payments' })).toBeNull();
@@ -731,6 +777,57 @@ export const PhoneLegendStaysOnScreenMinimum: Story = {
   globals: { viewport: { value: 'phone320', isRotated: false } },
   play: async ({ canvasElement }) => {
     await expectLegendStaysOnScreen(canvasElement);
+  },
+};
+
+// A folder name longer than a phone row is cut short before the group's
+// "+ Key", which stays whole at the row's visible right end and is the topmost
+// thing under its own centre, so a tap on it never lands on the toggle. The
+// story's browser has a fine pointer, so this covers layout, not the touch size.
+const longFolder = 'accounts/billing/webhooks/production-read-replicas';
+const longFolderKeys = [...keys, key(90, 'BILLING_REPLICA_URL', longFolder, 'config')];
+export const PhoneLongFolderName: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: app([
+    ...catalogue({ keys: { body: { items: longFolderKeys, count: longFolderKeys.length, schema_revision: 12 } satisfies z.input<typeof zKeyList> } }),
+    ...allReady,
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const add = await canvas.findByRole('button', { name: /^Add key to accounts\/billing/ });
+    const row = add.closest('tr');
+    const name = row?.querySelector<HTMLElement>('.matrix__group-name');
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    if (name == null || scroller === null) throw new Error('long folder row missing');
+    // Hit-testing needs the row on screen; the group sorts below the fold.
+    add.scrollIntoView({ block: 'center' });
+    await expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    const addBox = add.getBoundingClientRect();
+    await expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(addBox.left);
+    await expect(addBox.right).toBeLessThanOrEqual(scroller.getBoundingClientRect().left + scroller.clientWidth);
+    const hit = document.elementFromPoint(addBox.left + addBox.width / 2, addBox.top + addBox.height / 2);
+    await expect(hit?.closest('.matrix__add-key')).toBe(add);
+  },
+};
+
+// Collapsed on a phone, the key list gives way first: the folder name stays
+// whole while the list beside it is cut short.
+export const PhoneCollapsedGroup: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('link', { name: 'Declaration of PAYMENT_PROVIDER' });
+    const toggle = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__group-toggle')]
+      .find((candidate) => candidate.querySelector('.matrix__group-name')?.textContent === 'payments');
+    if (toggle === undefined) throw new Error('payments group missing');
+    await userEvent.click(toggle);
+    const name = toggle.querySelector<HTMLElement>('.matrix__group-name');
+    const summary = await waitFor(() => {
+      const found = toggle.querySelector<HTMLElement>('.matrix__group-summary');
+      if (found === null) throw new Error('summary missing');
+      return found;
+    });
+    if (name === null) throw new Error('payments name missing');
+    await expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth);
+    await expect(summary.scrollWidth).toBeGreaterThan(summary.clientWidth);
   },
 };
 
@@ -859,6 +956,109 @@ export const PhoneCompactKeyColumn: Story = {
     } finally {
       window.matchMedia = realMatchMedia;
     }
+  },
+};
+
+// A phone's key column widens on demand (ColumnResizer): drag its handle,
+// tap it, or use the arrow keys. Past twice the touch target the names come
+// back and a tap on one opens the declaration directly. An environment column
+// resizes the same way, and a tap on its handle restores its default width.
+export const PhoneWidenedKeyColumn: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    const name = 'Declaration of DATABASE_READ_REPLICA_URL, secret';
+    const link = await canvas.findByRole('link', { name });
+    const table = canvasElement.querySelector<HTMLElement>('.matrix__table');
+    const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
+    const well = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    const nameSpan = link.querySelector('.matrix__key-name');
+    if (table === null || heading === null || well === null || nameSpan === null) throw new Error('matrix parts missing');
+    // A phone has a coarse pointer, this browser a fine one: take the coarse
+    // handle width (app.css, `--matrix-resizer`) the way a phone would.
+    table.style.setProperty('--matrix-resizer', 'var(--touch)');
+    const touch = tokenPx('--touch');
+    const iconOnly = async () => {
+      await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(touch + 1));
+      await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    };
+    const namesShown = () => waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    await iconOnly();
+    // The handle inside does not join the header's name.
+    await expect(heading).toHaveAccessibleName('Key');
+    const handle = canvas.getByRole('separator', { name: 'Resize Key column' });
+    // The icon-only key header is the handle, edge to edge.
+    await expect(handle.getBoundingClientRect().width).toBeCloseTo(touch, 0);
+    // Every environment header's own controls end before its handle.
+    for (const envHandle of canvas.getAllByRole('separator', { name: /^Resize (?!Key)/ })) {
+      const history = envHandle.parentElement?.querySelector('.matrix__history-link');
+      if (history !== null && history !== undefined) {
+        await expect(history.getBoundingClientRect().right).toBeLessThanOrEqual(envHandle.getBoundingClientRect().left + 0.5);
+      }
+    }
+
+    const dragBy = async (target: HTMLElement, dx: number) => {
+      const box = target.getBoundingClientRect();
+      const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+      await userEvent.pointer([
+        { keys: '[MouseLeft>]', target, coords: at },
+        { target, coords: { ...at, clientX: at.clientX + dx } },
+        { keys: '[/MouseLeft]', target },
+      ]);
+    };
+
+    // A drag far past the well stops a touch target short of its edge.
+    await dragBy(handle, 600);
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth - touch, 0));
+    await namesShown();
+    await waitFor(() => expect(handle).toHaveAttribute('aria-valuenow', String(Math.round(heading.getBoundingClientRect().width))));
+    await expect(handle).toHaveAttribute('aria-valuemax', String(well.clientWidth));
+    await expect(link).toHaveAccessibleName(name);
+    // The row's own marks return with the name.
+    const required = link.closest('.matrix__key-cell')?.querySelector('.matrix__required');
+    if (required !== null && required !== undefined) await expect(required).toBeVisible();
+
+    // Arrow keys narrow it back to icon-only.
+    handle.focus();
+    for (let step = 0; step < 24; step += 1) await userEvent.keyboard('{ArrowLeft}');
+    await iconOnly();
+
+    // A tap fits it to the names; a second tap closes it again. Enter does the same.
+    await userEvent.click(handle);
+    await namesShown();
+    await userEvent.click(handle);
+    await iconOnly();
+    handle.focus();
+    await userEvent.keyboard('{Enter}');
+    await namesShown();
+    await userEvent.keyboard('{Enter}');
+    await iconOnly();
+
+    const envHandle = canvas.getByRole('separator', { name: 'Resize development column' });
+    const envHeading = envHandle.parentElement;
+    if (envHeading === null) throw new Error('environment heading missing');
+    const before = envHeading.getBoundingClientRect().width;
+    await dragBy(envHandle, 32);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before + 32, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+    // From the default, a tap fits the column to its longest value; a second tap restores it.
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeGreaterThan(before + 32));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+    // A drag far past the well stops at the well's width.
+    await dragBy(envHandle, 2000);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+
+    // With the names shown, the first tap on a key opens it: no name preview.
+    await userEvent.click(handle);
+    await namesShown();
+    const tip = link.parentElement?.querySelector('.matrix__key-tip');
+    await userEvent.click(link);
+    await waitFor(() => expect(link).not.toBeInTheDocument());
+    await expect(tip).not.toBeVisible();
   },
 };
 

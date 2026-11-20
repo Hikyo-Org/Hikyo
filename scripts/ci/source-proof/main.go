@@ -6,7 +6,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const proofSchema = "hikyo.dev/source-validation/v1"
@@ -48,20 +51,43 @@ type proof struct {
 }
 
 type options struct {
-	Repository, Mode, Commit, Authority, Output, GitHubOutput string
-	Latest                                                    bool
+	Repository, Mode, Commit, Authority, Output, GitHubOutput, FailureClass string
+	Latest                                                                  bool
 }
+
+// readError marks a failed or unreadable GitHub answer, or authority that moved
+// mid-check, as opposed to a proof that is missing or wrong: "could not look" is
+// not "not green".
+type readError struct{ err error }
+
+func (e readError) Error() string { return e.err.Error() }
+func (e readError) Unwrap() error { return e.err }
+
+// The classes a caller may read from --failure-class. A caller that runs this
+// through "go run" cannot see the exit status, so it pre-writes lookupFailedClass
+// and only a definite verdict replaces it: a build failure or a crash before the
+// verdict leaves "could not look", never "not green".
+const (
+	lookupFailedClass = "lookup"
+	notGreenClass     = "not-green"
+)
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if err := execute(ctx, os.Args[1:], os.Stdout); err != nil {
+	if err := execute(ctx, os.Args[1:], os.Stdout, nil); err != nil {
 		fmt.Fprintln(os.Stderr, "source proof:", err)
 		os.Exit(1)
 	}
 }
 
-func execute(ctx context.Context, args []string, stdout io.Writer) error {
+// execute runs the proof. When --failure-class names a file, a failed GitHub read
+// writes lookupFailedClass to it and a definite verdict (the proof is missing or
+// wrong) writes notGreenClass; a refusal of the arguments writes nothing. Once the
+// proof has passed, a failure to write the receipt or the outputs is not a verdict
+// about the commit and is classified as a lookup failure. A nil api reads GitHub
+// through the gh CLI; tests pass their own.
+func execute(ctx context.Context, args []string, stdout io.Writer, api reader) (err error) {
 	var opt options
 	flags := flag.NewFlagSet("source-proof", flag.ContinueOnError)
 	flags.StringVar(&opt.Repository, "repository", "", "canonical OWNER/REPO")
@@ -70,25 +96,42 @@ func execute(ctx context.Context, args []string, stdout io.Writer) error {
 	flags.StringVar(&opt.Authority, "authority-commit", "", "immutable approved main definition SHA")
 	flags.StringVar(&opt.Output, "output", "", "small verified JSON receipt")
 	flags.StringVar(&opt.GitHubOutput, "github-output", "", "append validated Actions outputs")
+	flags.StringVar(&opt.FailureClass, "failure-class", "", "file that receives \"lookup\" when the failure was a failed GitHub read and \"not-green\" for a definite no")
 	flags.BoolVar(&opt.Latest, "latest", false, "select last fully validated dev ancestor")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	decided, passed := false, false
+	defer func() {
+		var read readError
+		switch {
+		case err == nil || opt.FailureClass == "":
+		case errors.As(err, &read), passed:
+			_ = os.WriteFile(opt.FailureClass, []byte(lookupFailedClass+"\n"), 0o600)
+		case decided:
+			_ = os.WriteFile(opt.FailureClass, []byte(notGreenClass+"\n"), 0o600)
+		}
+	}()
 	if flags.NArg() != 0 || !validRepository(opt.Repository) || (opt.Mode != "main" && opt.Mode != "dev") ||
 		(opt.Latest && (opt.Mode != "dev" || opt.Commit != "")) || (!opt.Latest && !shaPattern.MatchString(opt.Commit)) ||
 		(opt.Authority != "" && !shaPattern.MatchString(opt.Authority)) {
 		return errors.New("require --repository OWNER/REPO --mode main|dev and either --commit SHA or --mode dev --latest")
 	}
-	gh := os.Getenv("GH_BIN")
-	if gh == "" {
-		gh = "gh"
+	if api == nil {
+		gh := os.Getenv("GH_BIN")
+		if gh == "" {
+			gh = "gh"
+		}
+		api = githubCLI{binary: gh}
 	}
-	r := resolver{api: githubCLI{binary: gh}, requested: opt.Repository}
+	r := resolver{api: api, requested: opt.Repository}
+	decided = true
 	verified, err := r.resolve(ctx, opt)
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(verified, "", "  ")
+	passed = true
+	data, err := json.Marshal(verified, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -138,72 +181,69 @@ func (g githubCLI) read(ctx context.Context, endpoint string, target any) error 
 	if err := cmd.Run(); err != nil {
 		// Do not forward raw command output, which can contain credentials or
 		// provider-controlled terminal control sequences.
-		return fmt.Errorf("GitHub read failed for %s: %w", endpoint, err)
+		return readError{fmt.Errorf("GitHub read failed for %s: %w", endpoint, err)}
 	}
-	return decode(stdout.Bytes(), target)
+	if err := decode(stdout.Bytes(), target); err != nil {
+		return readError{err}
+	}
+	return nil
 }
 
 func decode(data []byte, target any) error {
 	if err := uniqueMembers(data); err != nil {
 		return err
 	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	if err := d.Decode(target); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(data))
+	if err := json.UnmarshalDecode(d, target); err != nil {
 		return err
 	}
-	var extra any
-	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("GitHub response contains trailing data")
 	}
 	return nil
 }
 
 func uniqueMembers(data []byte) error {
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
+	// The scanner reports duplicates itself, so the tokenizer must not stop first.
+	d := jsontext.NewDecoder(bytes.NewReader(data), jsontext.AllowDuplicateNames(true))
 	var value func() error
 	value = func() error {
-		token, err := d.Token()
+		token, err := d.ReadToken()
 		if err != nil {
 			return err
 		}
-		delim, ok := token.(json.Delim)
-		if !ok {
-			return nil
-		}
-		switch delim {
+		switch token.Kind() {
 		case '{':
 			seen := map[string]bool{}
-			for d.More() {
-				name, err := d.Token()
+			for d.PeekKind() != '}' {
+				name, err := d.ReadToken()
 				if err != nil {
 					return err
 				}
-				key, ok := name.(string)
-				if !ok || seen[key] {
+				if name.Kind() != '"' || seen[name.String()] {
 					return errors.New("duplicate or invalid JSON member")
 				}
-				seen[key] = true
+				seen[name.String()] = true
 				if err := value(); err != nil {
 					return err
 				}
 			}
 		case '[':
-			for d.More() {
+			for d.PeekKind() != ']' {
 				if err := value(); err != nil {
 					return err
 				}
 			}
 		default:
-			return errors.New("invalid JSON delimiter")
+			return nil
 		}
-		_, err = d.Token()
+		_, err = d.ReadToken()
 		return err
 	}
 	if err := value(); err != nil {
 		return err
 	}
-	if _, err := d.Token(); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return errors.New("GitHub response contains multiple JSON documents")
 	}
 	return nil

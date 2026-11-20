@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/jackc/pgx/v5"
 )
@@ -92,17 +94,16 @@ func decode(raw string, dest any) error {
 	if len(raw) > 16384 {
 		return ErrCorrupt
 	}
-	d := json.NewDecoder(bytes.NewBufferString(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(dest); err != nil {
+	d := jsontext.NewDecoder(bytes.NewBufferString(raw))
+	if err := json.UnmarshalDecode(d, dest, json.RejectUnknownMembers(true)); err != nil {
 		return fmt.Errorf("%w: JSON", ErrCorrupt)
 	}
-	if err := d.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrCorrupt
 	}
 	// Records are written canonically by this package. Reject duplicate keys,
 	// absent fields, null/default substitutions and alternate shapes on read.
-	canonical, err := json.Marshal(dest)
+	canonical, err := json.Marshal(dest, jsonwire.Stable)
 	if err != nil || string(canonical) != raw {
 		return ErrCorrupt
 	}
@@ -177,11 +178,15 @@ func (s *Session) persist(ctx context.Context, state State, insert bool) error {
 	if err := s.invalidateSingletonLeases(ctx, state); err != nil {
 		return err
 	}
-	applied, err := json.Marshal(state.Applied)
+	applied, err := json.Marshal(state.Applied, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
-	pending, err := json.Marshal(state.Pending)
+	pending, err := json.Marshal(state.Pending, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
+	floor, err := encodeFloor(state.Floor)
 	if err != nil {
 		return err
 	}
@@ -194,7 +199,7 @@ func (s *Session) persist(ctx context.Context, state State, insert bool) error {
 	if insert {
 		query = `INSERT INTO upgrade_control(singleton,format,instance_id,applied_json,migration_digest,restore_epoch,incarnation,generation,maintenance,trust_domain,floor_json,release_root_digest,schema_digest) VALUES(1,1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
 	}
-	result, err := s.conn.ExecContext(ctx, query, state.InstanceID, string(applied), string(state.MigrationDigest), state.RestoreEpoch, string(incarnation), state.Generation, maintenance, string(state.TrustDomain), encodeFloor(state.Floor), string(state.ReleaseRootDigest), string(state.SchemaDigest))
+	result, err := s.conn.ExecContext(ctx, query, state.InstanceID, string(applied), string(state.MigrationDigest), state.RestoreEpoch, string(incarnation), state.Generation, maintenance, string(state.TrustDomain), floor, string(state.ReleaseRootDigest), string(state.SchemaDigest))
 	if err != nil {
 		return err
 	}
@@ -354,11 +359,11 @@ func (s *Session) Resume(ctx context.Context, expected State) (State, error) {
 // Compare persisted representations: time.Time's process-local monotonic clock
 // and location pointer are not durable authority and disappear on JSON decode.
 func equalRecord[T State | *AttestationUse](left, right T) bool {
-	a, err := json.Marshal(left)
+	a, err := json.Marshal(left, jsonwire.Stable)
 	if err != nil {
 		return false
 	}
-	b, err := json.Marshal(right)
+	b, err := json.Marshal(right, jsonwire.Stable)
 	return err == nil && bytes.Equal(a, b)
 }
 

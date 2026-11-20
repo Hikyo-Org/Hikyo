@@ -5,7 +5,7 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -32,6 +32,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -352,7 +353,7 @@ func (w *reportingWorld) drive(steps map[string]func() any, origin string) {
 			result := step()
 			// The browser's clock follows the delivery clock, so the ages it
 			// renders are measured against the same instant the states are.
-			out, err := json.Marshal(map[string]any{"result": result, "clock_offset_ms": w.clock.offsetNow().Milliseconds()})
+			out, err := json.Marshal(map[string]any{"result": result, "clock_offset_ms": w.clock.offsetNow().Milliseconds()}, jsonwire.Stable)
 			must(t, err)
 			w.observeDenied()
 			ran[c.name] = true
@@ -611,7 +612,7 @@ func (w *reportingWorld) snapshot(name string) string {
 // replay posts a crafted report to the browser's listener under a bearer and
 // returns the status.
 func (w *reportingWorld) replay(bearer string, report apigen.DeliveryTargetReportRequest) int {
-	body, err := json.Marshal(report)
+	body, err := json.Marshal(report, jsonwire.Stable)
 	must(w.t, err)
 	url := fmt.Sprintf("%s/api/v1/orgs/%s/projects/%s/environments/%s/delivery-targets", w.browser.URL, e2eOrg, e2ePrj, e2eEnv)
 	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -922,9 +923,7 @@ func (w *reportingWorld) stepWireAudit() any {
 			into, kind = &apigen.DeliveryTargetTombstoneRequest{}, "tombstones"
 		}
 		counts[kind]++
-		dec := json.NewDecoder(bytes.NewReader(r.body))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(into); err != nil {
+		if err := json.Unmarshal(r.body, into, json.RejectUnknownMembers(true)); err != nil {
 			w.t.Errorf("a body on the wire is not the contract shape: %v: %s", err, r.body)
 		}
 		for d, category := range w.denied {

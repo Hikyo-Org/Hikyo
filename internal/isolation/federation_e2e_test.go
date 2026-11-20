@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"maps"
@@ -257,8 +257,8 @@ func (r *fedRig) bindShape(t *testing.T, name string, s oidctest.Shape, audience
 
 // pinsOf converts a fixture shape's pinned map into the discriminated pins the
 // API takes. It preserves the string/number distinction, which is the whole
-// reason the wire shape is discriminated: a GitHub `repository_id` is the number
-// 4242 and must never be satisfied by the string "4242".
+// reason the wire shape is discriminated: a number pin must never be satisfied
+// by the string a token carries (GitHub emits `repository_id` as "4242").
 func pinsOf(t *testing.T, s oidctest.Shape) []service.ClaimPin {
 	t.Helper()
 	out := make([]service.ClaimPin, 0, len(s.Pinned))
@@ -280,6 +280,11 @@ func pinsOf(t *testing.T, s oidctest.Shape) []service.ClaimPin {
 		out = append(out, pin)
 	}
 	return out
+}
+
+// pinsWithout drops the named claim from a pin list.
+func pinsWithout(pins []service.ClaimPin, claim string) []service.ClaimPin {
+	return slices.DeleteFunc(slices.Clone(pins), func(p service.ClaimPin) bool { return p.Claim == claim })
 }
 
 // hikyoAudience is the audience a workload asks its platform for. It is
@@ -752,11 +757,11 @@ func runFederationKeySourceRoundTrip(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var formatted bytes.Buffer
-	if err := json.Indent(&formatted, []byte(document), "", "  "); err != nil {
+	formatted := jsontext.Value(document)
+	if err := formatted.Indent(jsontext.WithIndent("  ")); err != nil {
 		t.Fatal(err)
 	}
-	staticSource := staticKeySource(t, formatted.String())
+	staticSource := staticKeySource(t, string(formatted))
 
 	remote, err := r.fed.CreateIssuer(t.Context(), service.LocalPrincipal(root), service.IssuerRequest{
 		Issuer: "https://remote-roundtrip.example.test", Type: domain.IssuerForgejo,
@@ -952,7 +957,7 @@ func TestFederationRequiresImmutableIdentifiers(t *testing.T) {
 	}
 	push := "push"
 	repo := "acme/service"
-	repoID := int64(4242)
+	repoID := "4242"
 
 	// event_name alone: refused. This is the exact binding the review found
 	// acceptable.
@@ -979,10 +984,21 @@ func TestFederationRequiresImmutableIdentifiers(t *testing.T) {
 		prjScope(), sa.ID, service.BindingRequest{
 			Issuer: r.idp.Issuer(), Subject: github.Subject, Audience: hikyoAudience,
 			RequiredClaims: []service.ClaimPin{
-				{Claim: "repository_id", Number: &repoID}, {Claim: "event_name", String: &push},
+				{Claim: "repository_id", String: &repoID}, {Claim: "event_name", String: &push},
 			},
 		}); !errors.Is(err, service.ErrBindingImmutableID) {
 		t.Fatalf("github binding pinning only repository_id = %v, want ErrBindingImmutableID", err)
+	}
+	// A numeric id: refused at creation, because GitHub emits it as a string and
+	// such a binding could never match a real token.
+	numericID := int64(4242)
+	if _, err := r.fed.CreateBinding(t.Context(), service.LocalPrincipal(identAdmin),
+		prjScope(), sa.ID, service.BindingRequest{
+			Issuer: r.idp.Issuer(), Subject: github.Subject, Audience: hikyoAudience,
+			RequiredClaims: append(pinsWithout(pinsOf(t, github), "repository_id"),
+				service.ClaimPin{Claim: "repository_id", Number: &numericID}),
+		}); !errors.Is(err, service.ErrBindingPinKind) {
+		t.Fatalf("github binding pinning a numeric repository_id = %v, want ErrBindingPinKind", err)
 	}
 	// Both ids plus event_name: accepted, and it authenticates.
 	if _, err := r.fed.CreateBinding(t.Context(), service.LocalPrincipal(identAdmin),
@@ -1430,25 +1446,17 @@ func TestFederationClaimTypeIsNotFolded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The binding pins `repository_id` as the STRING "4242" while the issuer
-	// emits the NUMBER 4242. A validator that folded one onto the other would
-	// accept this; the ADR's byte-exact rule says it must not, because a binding
-	// written one way must not be satisfiable by a token the other.
-	//
-	// The other two required pins are correct, so the refusal below isolates the
-	// type: a binding missing a required pin is refused at CREATION, which is a
-	// different rule tested elsewhere.
-	stringID := "4242"
-	ownerID := int64(77)
-	pushEvent := "push"
+	// The binding pins the NUMBER 1 for `run_attempt` while the token emits the
+	// STRING "1" (GitHub emits these as strings). A validator that folded one
+	// onto the other would accept this; the ADR's byte-exact rule says it must
+	// not. The claim is not a required pin, which creation restricts to strings,
+	// and every required pin is correct, so the refusal below isolates the kind.
+	attempt := int64(1)
+	shape.Claims["run_attempt"] = "1"
 	if _, err := r.fed.CreateBinding(t.Context(), service.LocalPrincipal(identAdmin),
 		prjScope(), sa.ID, service.BindingRequest{
 			Issuer: r.idp.Issuer(), Subject: shape.Subject, Audience: hikyoAudience,
-			RequiredClaims: []service.ClaimPin{
-				{Claim: "repository_id", String: &stringID},
-				{Claim: "repository_owner_id", Number: &ownerID},
-				{Claim: "event_name", String: &pushEvent},
-			},
+			RequiredClaims: append(pinsOf(t, shape), service.ClaimPin{Claim: "run_attempt", Number: &attempt}),
 		}); err != nil {
 		t.Fatalf("create binding: %v", err)
 	}
@@ -1459,7 +1467,7 @@ func TestFederationClaimTypeIsNotFolded(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := r.del.Fetch(t.Context(), token, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{}); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf(`numeric repository_id against a string pin = %v, want the uniform refusal`, err)
+		t.Fatalf(`string run_attempt against a numeric pin = %v, want the uniform refusal`, err)
 	}
 }
 
@@ -1631,12 +1639,12 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 	// because the point here is the EVENT, not the artifact class — and a
 	// federated token would additionally have to clear the restore predicate the
 	// line above just armed.
-	res, err := r.del.Fetch(t.Context(), "", scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	_, err := r.del.Fetch(t.Context(), "", scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
 	if err == nil {
 		t.Fatal("an empty artifact fetched successfully; the surface is not authenticating")
 	}
 	human := service.LocalPrincipal(identAdmin)
-	res, err = r.del.FetchAs(t.Context(), human, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	res, err := r.del.FetchAs(t.Context(), human, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
 	if err != nil {
 		t.Fatalf("identity.delivery_fetched (full): %v", err)
 	}

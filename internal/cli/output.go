@@ -1,13 +1,15 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The output grammar (api-cli-surface ADR § Output grammar).
@@ -50,9 +52,7 @@ type Table struct {
 // Render writes the table in the requested format to stdout.
 func Render(w io.Writer, format Format, t Table) error {
 	if format == FormatJSON {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(t.JSON)
+		return jsonwire.Encode(w, t.JSON, jsontext.WithIndent("  "))
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
 	if len(t.Columns) > 0 {

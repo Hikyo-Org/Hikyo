@@ -65,6 +65,8 @@ type disclosure struct {
 	// secret keys the act will open there. It is consulted only when a
 	// browser handoff is needed, so the common case costs no extra request.
 	keys func(ctx context.Context, env string) ([]string, error)
+	// protectedOnly skips the ceremony on an environment that is not protected.
+	protectedOnly bool
 	// window overrides the read-authorized reveal-window route for decisions
 	// whose own operation is authorized by publish instead.
 	window func(ctx context.Context, env string) (apigen.RevealWindow, error)
@@ -124,8 +126,14 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	// affordance must not block their purpose-bound ceremony.
 	// Emergency temporary access (#152) is likewise authorized by its own
 	// operation, not by reveal.
-	approvalDecision := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access"
-	if !window.CanReveal && !approvalDecision {
+	// A publish ceremony (declare, credential rotation) authorizes publish, not
+	// reveal, so the built-in publisher and maintainer roles must reach it.
+	// Declare owes it only on a protected environment; rotation's is unconditional.
+	if d.protectedOnly && !window.Protected {
+		return nil
+	}
+	exempt := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access" || d.purpose == "publish"
+	if !window.CanReveal && !exempt {
 		return refusal
 	}
 	// Dispatch by what the environment allows AND what the account can
@@ -154,6 +162,10 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
 		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
+			if d.purpose == "publish" {
+				return failf(ExitAuth, "a publish in %s needs a reauthentication ceremony and %s: the ceremony is the browser's, "+
+					"which this invocation cannot open; complete the publish in the browser", env, why)
+			}
 			return failf(ExitAuth, "a disclosure in %s needs a reauthentication window and %s: the ceremony is the browser's, "+
 				"which this invocation cannot open; reveal it in the browser, or raise the window with `hikyo project-settings set --env %s --reauth-window-seconds 300`", env, why, env)
 		}

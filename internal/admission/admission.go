@@ -552,6 +552,18 @@ func evictStale(bucket map[string][]time.Time, cutoff time.Time) {
 	}
 }
 
+// AccountInBackoff is AccountDelay for a caller that refuses the attempt
+// outright: it reports whether presented is in failure backoff and, when it is,
+// records the admission refusal for the request. Those refusals return before
+// any dedicated event writer, so without this they leave no security signal.
+func (l *Limiter) AccountInBackoff(ctx context.Context, presented string) bool {
+	if l.AccountDelay(presented) <= 0 {
+		return false
+	}
+	audit.NoteRefusal(ctx, audit.RefusalAdmission)
+	return true
+}
+
 // AccountDelay reports how long this attempt must wait before verification
 // begins. The bucket is keyed on a hash of the PRESENTED identifier, so an
 // unknown account gets a bucket exactly like a real one and the presence or

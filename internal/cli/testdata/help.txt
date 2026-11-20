@@ -34,7 +34,7 @@ contexts:
 
 managed configuration:
   hikyo instance-config status [-o table|json]
-  hikyo instance-config adopt [--yes] [--confirm-restored-credentials]
+  hikyo instance-config adopt [--yes]
                                                  preview or adopt effective settings
   hikyo instance-config apply --revision N --expected-generation N
       [--idempotency-key KEY] [--confirm-restored-credentials]
@@ -181,7 +181,7 @@ revisions:                                         --env selects the environment
   hikyo rotate-dek --instance-scope --yes           new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
-  hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
+  hikyo rotate-root-key --prepare|--verify|--finalize --yes  crash-safe root rotation, one phase per run
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
     --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 
@@ -294,6 +294,46 @@ dynamic secrets:
   the minted credential is shown exactly once, through the print triad (a
   controlling terminal, --output-file, or --dangerously-print); the admin
   provider credential is read like an adapter credential, never on argv.
+
+scheduled credential rotation:
+  hikyo rotation create --provider <provider> --key <password-key> --username-key <key>
+      --interval <duration> --revocation-delay <duration> --env E
+  hikyo rotation list --env E [--include-disabled] [-o table|json]
+  hikyo rotation show <rotation> --env E [-o table|json]
+  hikyo rotation pause <rotation> --env E [--expected-generation N]
+  hikyo rotation resume <rotation> --env E [--expected-generation N]
+  hikyo rotation release-hold <rotation> --env E [--expected-generation N]
+  hikyo rotation delete <rotation> --env E [--expected-generation N] [--abandon]
+  hikyo rotation run-now <rotation> --env E --confirm-destructive
+      [--expected-generation N] [--skip-overlap]
+  hikyo rotation runs <rotation> --env E [--limit N] [--after RUN] [-o table|json]
+
+  a signed-in person holding edit, publish and reveal on both keys records the
+  schedule and is kept as its authority. create, resume and run-now run the
+  publish ceremony over both keys (an unattended publish can never run one
+  itself); a protected environment or one under an approval policy is refused.
+  run-now requests a run outside the schedule: the executor starts it with the
+  same checks and authority as a scheduled run and prints its id; runs lists a
+  rotation's runs, newest first, with phase and failure code only (no
+  password or provider detail). run-now always needs --confirm-destructive, and
+  --skip-overlap revokes the superseded credential right after the publish,
+  so a consumer still on it loses access; the revoke records how many adapter
+  (sync) targets had not converged to the new revision (NOT CONVERGED
+  TARGETS), not counting machines that read the keys directly. delete
+  refuses while a run is in flight; --abandon, for a signed-in person only,
+  closes the unsettled runs instead and revokes nothing. Durations take h,
+  m, s or d, e.g. 90d. Interval 1h to 90d and revocation delay 5m to 7d, the
+  delay shorter than the interval. pause and delete do not revoke the
+  credential already delivered; it stays valid
+  until the CREDENTIAL EXPIRES time they print. delete keeps the rotation as
+  history (list --include-disabled); no credential is stored. A restore holds
+  every rotation it brings back: a held rotation starts no run and cannot be
+  resumed or run now until release-hold (a person's act with resume's access
+  and publish ceremony), and show, list and runs say so, with the time the
+  delivered credential lapses. A held rotation also refuses delete and
+  delete --abandon: release it first. release-hold changes nothing else; it
+  never drops a superseded role, but it does let the executor drop lingering
+  unpublished candidate roles; check hikyo rotation runs first.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]
@@ -426,6 +466,8 @@ instance configuration:
   hikyo instance-config provider update <name> [--kind oidc|saml] [--display-name NAME]
       [--assurance-context URI]... | [--clear-assurance-policy]
       [--allow-email-nameid BOOL] [--force-sign-requests BOOL] [--enabled BOOL]
+      [--lifecycle-profile clerk|none] [--lifecycle-secret-file <path>] [--client-secret-file <path>]
+      (OIDC takes --display-name, --enabled and the lifecycle flags; secrets come from a file or a prompt)
   hikyo instance-config provider disable <name> [--kind oidc|saml]
   hikyo instance-config provider refresh-metadata <name> [--metadata-file <xml>]
       [--confirm-fingerprint FP]... [--confirm-endpoint URL]...
@@ -465,7 +507,7 @@ access:
   hikyo access request list --env E [-o table|json]
   hikyo access request create --env E --capability C --duration 1h --reason R
   hikyo access request approve|reject|cancel|revoke <request> --env E
-  hikyo access request emergency --env E --capability C --reason R [--duration 30m]
+  hikyo access request emergency --env E --capability C --reason R [--duration D]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false
@@ -551,11 +593,15 @@ oidc federation:
   --claim /kubernetes.io/serviceaccount/uid=9f2c-… .
 
   every binding MUST pin the immutable identifiers its platform exposes:
-    github-actions  repository_id, repository_owner_id, event_name
+    github-actions  repository_id, repository_owner_id, event_name,
+                    ref_protected, runner_environment, job_workflow_ref
     kubernetes      /kubernetes.io/serviceaccount/uid
     Forgejo issuers are refused: Forgejo exposes no immutable repository id.
   pinning a name where an id exists lets a renamed-and-reused path inherit the
   binding, so there is no override.
+  these required pins are JSON strings, which is how GitHub and Kubernetes emit
+  them (repository_id is "74"): pin name=value, never name=#74 or name=?true,
+  or creation is refused. A real GitHub token shows the values to copy.
 
   Bindings are listed and revoked through "sa credential".
 scim provisioning (org scope; the identity provider's own wire is not a CLI surface):

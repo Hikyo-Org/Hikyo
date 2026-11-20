@@ -40,9 +40,9 @@ func TestQueueReassessmentAtExistingHistoryBoundaryRemainsUsable(t *testing.T) {
 	for _, role := range []string{"admission", "group"} {
 		t.Run(role, func(t *testing.T) {
 			f := newQueueFixture(t)
-			p, r, count := f.pr, f.feedbackRun, 1000
+			p, count := f.pr, 1000
 			if role == "group" {
-				r = f.groupRun
+				r := f.groupRun
 				p.Head.SHA, p.Base.Ref = r.HeadSHA, r.HeadBranch
 				f.c.expectedHead, count = r.HeadSHA, 100
 			}

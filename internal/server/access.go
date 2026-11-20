@@ -452,7 +452,7 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		unknown, held := int(health.PKI.UnknownCertificates), int(health.PKI.HeldIssuers)
 		pkiUnknown, pkiHeld = &unknown, &held
 	}
-	return apigen.GetRetentionHealth200JSONResponse{
+	out := apigen.GetRetentionHealth200JSONResponse{
 		PkiCertificatesUnknown:  pkiUnknown,
 		PkiIssuersOnHold:        pkiHeld,
 		Diagnostics:             wireDiagnostics(health.Diagnostics.Findings),
@@ -466,7 +466,15 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		AdapterTargetsPaused:    int(health.Adapters.TargetsPaused),
 		AdapterTargetsAttention: int(health.Adapters.TargetsAttention),
 		AdapterJobsQueued:       int(health.Adapters.JobsQueued),
-	}, nil
+	}
+	if health.RotationKnown {
+		r := health.Rotation
+		quarantined, unknown, refused := int(r.Quarantined), int(r.UnknownOutcome), int(r.RevokeRefused)
+		halted, held, overdue, expiring := int(r.Halted), int(r.RestoreHeld), int(r.Overdue), int(r.Expiring)
+		out.RotationRunsQuarantined, out.RotationRunsUnknownOutcome, out.RotationRunsRevokeRefused = &quarantined, &unknown, &refused
+		out.RotationHalted, out.RotationRestoreHeld, out.RotationOverdue, out.RotationCredentialsExpiring = &halted, &held, &overdue, &expiring
+	}
+	return out, nil
 }
 
 func wireDiagnostics(findings []service.DiagnosticFinding) *[]apigen.OpsDiagnosticFinding {

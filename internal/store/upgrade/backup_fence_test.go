@@ -2,12 +2,13 @@ package upgrade
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/jackc/pgx/v5"
 )
@@ -115,7 +116,7 @@ func TestBackupFenceDrainsRuntimeAndSurvivesCoordinatorRestart(t *testing.T) {
 			if prepared.Pending.Preparation != nil || prepared.Pending.Phase != Prepared || prepared.Generation != state.Generation+1 {
 				t.Fatal("proof did not convert fence to ordinary preparation")
 			}
-			raw, err := json.Marshal(prepared.Pending)
+			raw, err := json.Marshal(prepared.Pending, jsonwire.Stable)
 			if err != nil {
 				return err
 			}

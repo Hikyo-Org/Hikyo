@@ -5,8 +5,10 @@
 package boundary
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
+	"io"
 	"os/exec"
 	"slices"
 	"strings"
@@ -127,6 +129,12 @@ var protocolImportConfinements = []ImportConfinement{
 // confinement above instead of the crypto chokepoint below.
 const sshLibrary = "golang.org/x/crypto/ssh"
 
+// leafSafe is the one internal package the config and crypto leaf rules allow:
+// internal/jsonwire holds only encoding/json/v2 options and imports nothing
+// from this module (its own rule below), so it adds no upward or persistence
+// edge.
+const leafSafe = module + "/internal/jsonwire"
+
 // Forbidden direct edges match a package and its slash-separated children.
 var forbidden = []struct{ importer, imports, why string }{
 	{module + "/internal/server", module + "/internal/store", "handlers cannot reach the datastore directly"},
@@ -140,6 +148,7 @@ var forbidden = []struct{ importer, imports, why string }{
 	{module + "/cmd/", module + "/internal/store", "main wires through internal/app, not store"},
 	{module + "/internal/config", module + "/internal/", "config is a leaf package"},
 	{module + "/internal/crypto", module + "/internal/", "crypto is a leaf package: persistence arrives through its KeyStore interface"},
+	{leafSafe, module, "jsonwire is imported by leaf packages, so it imports nothing from this module"},
 }
 
 // Crypto chokepoint (encryption-model ADR CI invariant 12, placed by the
@@ -212,10 +221,12 @@ func loadPackagesIn(t *testing.T, ctx lint.BuildContext) []pkg {
 		t.Fatalf("go list under %s: %v", ctx.Name, err)
 	}
 	var pkgs []pkg
-	dec := json.NewDecoder(strings.NewReader(string(out)))
-	for dec.More() {
+	dec := jsontext.NewDecoder(strings.NewReader(string(out)))
+	for {
 		var p pkg
-		if err := dec.Decode(&p); err != nil {
+		if err := json.UnmarshalDecode(dec, &p); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
 			t.Fatalf("decode go list output: %v", err)
 		}
 		pkgs = append(pkgs, p)
@@ -481,6 +492,9 @@ func TestForbiddenEdges(t *testing.T) {
 					if imp == p.ImportPath {
 						continue
 					}
+					if imp == leafSafe && (rule.importer == module+"/internal/config" || rule.importer == module+"/internal/crypto") {
+						continue
+					}
 					if packageWithin(imp, rule.imports) {
 						t.Errorf("%s imports %s: %s", p.ImportPath, imp, rule.why)
 					}
@@ -500,6 +514,8 @@ func TestAuthnImportAllowlist(t *testing.T) {
 		authn := module + "/internal/store/authn"
 		allowedImports := map[string]bool{
 			module + "/internal/domain": true,
+			// Shared encoding/json/v2 options; see leafSafe.
+			leafSafe: true,
 			// Closed federation-key-source vocabulary shared with oidcfed. This leaf
 			// performs no fetch, service, authorization, or persistence work.
 			module + "/internal/jwkssource":      true,

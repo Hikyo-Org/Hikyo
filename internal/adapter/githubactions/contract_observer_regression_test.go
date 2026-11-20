@@ -1,7 +1,7 @@
 package githubactions
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -43,7 +43,7 @@ func TestContractObserverVariableReplacement204And404(t *testing.T) {
 				var body struct {
 					IDs []int64 `json:"selected_repository_ids"`
 				}
-				if err := json.NewDecoder(request.Body).Decode(&body); err != nil || !slices.Equal(body.IDs, []int64{11}) {
+				if err := json.UnmarshalRead(request.Body, &body); err != nil || !slices.Equal(body.IDs, []int64{11}) {
 					t.Fatalf("replacement recipients=%v error=%v", body.IDs, err)
 				}
 				return response(status, `{"message":"untrusted remote text"}`, http.Header{
@@ -91,7 +91,7 @@ func TestContractObserverCreate201ThenRecipient404(t *testing.T) {
 		methods = append(methods, request.Method)
 		if len(methods) == 1 && request.Method == http.MethodPost && request.URL.Path == "/orgs/acme/actions/variables" {
 			var body map[string]any
-			if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body["name"] != observedVariableName || body["visibility"] != "selected" || body["value"] != "private-value" || body["selected_repository_ids"] != nil {
+			if err := json.UnmarshalRead(request.Body, &body); err != nil || body["name"] != observedVariableName || body["visibility"] != "selected" || body["value"] != "private-value" || body["selected_repository_ids"] != nil {
 				t.Fatal("create request changed")
 			}
 			return response(http.StatusCreated, ""), nil

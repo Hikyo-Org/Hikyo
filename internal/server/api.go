@@ -3,7 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"
@@ -18,12 +19,14 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
+	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
 // The API transport. It owns exactly three things — moving bytes, attaching
@@ -66,6 +69,7 @@ type AuthService interface {
 	AuthMethods(ctx context.Context) ([]service.AuthMethodProvider, bool, error)
 	OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
 	OIDCCallback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
+	OIDCLifecycle(ctx context.Context, slug string, header http.Header, body []byte) error
 	ListIdentities(ctx context.Context, presented string) ([]authnIdentity, error)
 	UnlinkIdentity(ctx context.Context, presented, identityID, proof string) (service.LoginResult, error)
 	EnrolPasskeyStart(ctx context.Context, presented, password, code string) ([]byte, error)
@@ -139,7 +143,7 @@ type SAMLProviderService interface {
 // cross-request cache the permission model forbids, wearing an argument's
 // clothes.
 type OrgService interface {
-	Create(ctx context.Context, actor service.Actor, name string, active bool, metadata json.RawMessage) (org service.Org, err error)
+	Create(ctx context.Context, actor service.Actor, name string, active bool, metadata jsontext.Value) (org service.Org, err error)
 	Get(ctx context.Context, actor service.Actor, org domain.OrgID) (service.Org, error)
 	List(ctx context.Context, actor service.Actor) ([]service.Org, error)
 	ListMine(ctx context.Context, actor service.Actor) ([]service.MyOrg, error)
@@ -212,6 +216,9 @@ type API struct {
 	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete
 	// like Adapters: it resolves the session and mints/settles leases itself.
 	Dynamic *service.Dynamic
+	// CredentialRotations is scheduled credential rotation configuration
+	// (#148, slice S1). It executes nothing; the executor arrives later.
+	CredentialRotations *service.CredentialRotations
 	// SSH is the SSH user-certificate surface (#155).
 	SSH *service.SSH
 	// Transit is the managed-key surface (#156). Concrete like Dynamic: it
@@ -320,6 +327,11 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	capabilities := []apigen.ProtocolCapability{"local-password", "loopback-handoff", "device-code"}
 	for _, token := range deliverytarget.CapabilityTokens() {
 		capabilities = append(capabilities, apigen.ProtocolCapability(token))
+	}
+	// An instance must not advertise what it does not serve: the SPA implements
+	// the desktop shell protocol, so only a build that embeds it says so (D8).
+	if webui.Assets() != nil {
+		capabilities = append(capabilities, "desktop-app/1")
 	}
 	return apigen.GetMeta200JSONResponse{
 		ServerVersion:        a.Version,
@@ -762,7 +774,10 @@ func (a *API) sourceIP(r *http.Request) string {
 	if len(a.TrustedProxies) == 0 || !a.trusted(host) {
 		return host
 	}
-	forwarded := r.Header.Get("X-Forwarded-For")
+	// Separate field lines are one comma-joined list (RFC 9110 section 5.3). A
+	// proxy that appends its own line leaves the client's forged line first, so
+	// reading only the first line would let the client choose its own source.
+	forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
 	if forwarded == "" {
 		return host
 	}
@@ -815,7 +830,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 				audit.NoteRefusal(r.Context(), audit.RefusalProof)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
+				_ = jsonwire.Encode(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 				return
 			}
 			headerVal = strings.TrimSpace(value)
@@ -833,7 +848,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 			audit.NoteRefusal(r.Context(), audit.RefusalConflict)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
+			_ = jsonwire.Encode(w, errorBody(apigen.ErrorCodeUnauthenticated, ""))
 			return
 		}
 		// The cookie leg maps to the same raw artifact path; it is resolved only
@@ -927,6 +942,27 @@ func (a *API) validateAgainstContractWith(
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
+		} else if operation.ID == "oidcLifecycle" && r.Body != nil {
+			// A directory lifecycle event is read raw and bounded, and its
+			// signature is verified by the service BEFORE the body is parsed, so
+			// contract validation must not decode (and answer for) a body that
+			// has not yet proved who sent it. Path and headers are still checked.
+			raw, err := io.ReadAll(http.MaxBytesReader(rootResponseWriter(w), r.Body, service.MaxLifecycleBodyBytes))
+			if err != nil {
+				writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), "")
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			validated, err := match.ValidateWithoutBody()
+			if err != nil {
+				a.writeValidationError(w, err)
+				return
+			}
+			request := validated.Request()
+			if a.requireCurrentRuntime(w, request) {
+				next.ServeHTTP(w, request)
+			}
+			return
 		} else if r.Body != nil {
 			limit := int64(MaxRequestBytes)
 			if chromeImageUpload[operation.ID] {
@@ -991,13 +1027,13 @@ func (a *API) scimBodyIsOneValue(w http.ResponseWriter, r *http.Request) bool {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return true
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
 	var decoded any
-	if err := dec.Decode(&decoded); err != nil {
+	if err := json.UnmarshalDecode(dec, &decoded); err != nil {
 		a.writeSCIMRequestError(w, r, scimproto.ErrInvalidSyntax("The request body is not valid JSON."))
 		return false
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		a.writeSCIMRequestError(w, r,
 			scimproto.ErrInvalidSyntax("The request body carries content after the resource."))
 		return false

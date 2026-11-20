@@ -200,6 +200,9 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpServiceAccountCreate, authz.OpServiceAccountList, authz.OpServiceAccountDelete,
 		authz.OpCredentialMint, authz.OpCredentialList, authz.OpCredentialRevoke,
 		authz.OpCredentialReset, authz.OpCredentialResetInstance,
+		// incident ledger (#1039): one incident row and a bounded page of items
+		// per call; the lease listings are bounded pages
+		authz.OpIncidentOrg, authz.OpIncidentInstance, authz.OpIncidentLeasesProject, authz.OpIncidentLeasesInstance, authz.OpIncidentAdapterWork,
 		authz.OpCredentialPolicyRead, authz.OpCredentialPolicyUpdate,
 		authz.OpBindingCreate,
 		// Bounded developer delegation: authenticated API budget governs lifecycle
@@ -263,6 +266,13 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// concurrency cap; the request itself only writes a row)
 		authz.OpDynamicProviderInspect, authz.OpDynamicProviderCredentialRevoke, authz.OpDynamicProviderDelete,
 		authz.OpLeaseInspect, authz.OpLeaseRenew, authz.OpLeaseRevoke, authz.OpLeaseSettle,
+		// scheduled credential rotation configuration (#148): single-row
+		// lifecycle writes and reads with no external call or fan-out
+		authz.OpRotationCreate, authz.OpRotationInspect, authz.OpRotationPause,
+		authz.OpRotationResume, authz.OpRotationDelete, authz.OpRotationRunNow, authz.OpRotationReleaseHold, authz.OpRotationRuns,
+		// the executor's own publish transaction (#148, S2): never a request
+		// path, charged under the publish categories by PublishPlanned itself
+		authz.OpRotationRun,
 		// ssh certificates (#155): bounded reads of one environment's CAs,
 		// profiles and certificates (the KRL read is capped at its serial
 		// bound), and single-row lifecycle writes with no external call

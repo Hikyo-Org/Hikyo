@@ -5,13 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -28,7 +28,7 @@ func (r samlStartResponse) VisitSamlStartResponse(w http.ResponseWriter) error {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(r.body)
+	return jsonwire.Encode(w, r.body)
 }
 
 func (a *API) SamlStart(ctx context.Context, req apigen.SamlStartRequestObject) (apigen.SamlStartResponseObject, error) {

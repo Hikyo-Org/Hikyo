@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"bufio"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
@@ -40,7 +40,10 @@ func runRevisionDemo(t *testing.T, ios func() cli.IO, org, baseURL string, beare
 			t.Fatalf("output is not JSON: %v\n%s", err, raw)
 		}
 	}
-	type row struct{ Id, Name string }
+	type row struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	}
 
 	// It rides the org the hierarchy demo already built, where the
 	// administrator holds the admin template: minting a second org would
@@ -94,9 +97,9 @@ func runRevisionDemo(t *testing.T, ios func() cli.IO, org, baseURL string, beare
 	// The drafts are visible to their owner, with the ids a publish names.
 	var pending struct {
 		Cells []struct {
-			Name             string
+			Name             string  `json:"name"`
 			PendingVersionId *string `json:"pending_version_id"`
-		}
+		} `json:"cells"`
 	}
 	decode(run(append([]string{"values", "pending", "-o", "json"}, envScope...)...), &pending)
 	staged := map[string]string{}
@@ -111,11 +114,11 @@ func runRevisionDemo(t *testing.T, ios func() cli.IO, org, baseURL string, beare
 
 	// SELECTIVE PUBLISH: one version id, by name.
 	var published struct {
-		Published    []string
+		Published    []string `json:"published"`
 		Environments []struct {
-			Revision    int64
+			Revision    int64  `json:"revision"`
 			ChangeToken string `json:"change_token"`
-		}
+		} `json:"environments"`
 	}
 	decode(run(append(append([]string{"values", "publish"}, envScope...),
 		"--versions", logLevel, "-o", "json")...), &published)
@@ -130,11 +133,11 @@ func runRevisionDemo(t *testing.T, ios func() cli.IO, org, baseURL string, beare
 	// actually is (api-cli-surface ADR): it reads a committed snapshot, never
 	// live values.
 	var exported struct {
-		Revision int64
+		Revision int64 `json:"revision"`
 		Items    []struct {
-			Name  string
-			Value *string
-		}
+			Name  string  `json:"name"`
+			Value *string `json:"value"`
+		} `json:"items"`
 	}
 	decode(run(append(append([]string{"values", "export"}, envScope...), "--format", "json")...), &exported)
 	if exported.Revision != published.Environments[0].Revision {
@@ -179,12 +182,12 @@ func runRevisionDemo(t *testing.T, ios func() cli.IO, org, baseURL string, beare
 	// The history is lineage, and it is readable without any reveal gate.
 	var history struct {
 		Items []struct {
-			Revision    int64
+			Revision    int64 `json:"revision"`
 			ChangedKeys []struct {
-				Name   string
-				Change string
+				Name   string `json:"name"`
+				Change string `json:"change"`
 			} `json:"changed_keys"`
-		}
+		} `json:"items"`
 	}
 	decode(run(append([]string{"revision", "list", "-o", "json"}, envScope...)...), &history)
 	if len(history.Items) == 0 || history.Items[0].Revision != exported.Revision {

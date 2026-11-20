@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math/rand/v2"
 	"mime"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -383,7 +384,7 @@ func (a *API) ListPendingDrafts(ctx context.Context, req apigen.ListPendingDraft
 			Advisory: &struct {
 				OwnerId            apigen.ID `json:"owner_id"`
 				Valid              bool      `json:"valid"`
-				ValidationDeferred *bool     `json:"validation_deferred,omitempty"`
+				ValidationDeferred *bool     `json:"validation_deferred,omitzero"`
 			}{OwnerId: apigen.ID(draft.OwnerID), Valid: draft.Valid, ValidationDeferred: &draft.ValidationDeferred},
 		}
 		if draft.Revealed {
@@ -571,7 +572,7 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 			if ev.Type == service.AdvisoryEnvironmentsChanged && !s.includeTopology {
 				continue
 			}
-			payload, err := json.Marshal(wireAdvisory(ev))
+			payload, err := json.Marshal(wireAdvisory(ev), jsonwire.Stable)
 			if err != nil {
 				return err
 			}

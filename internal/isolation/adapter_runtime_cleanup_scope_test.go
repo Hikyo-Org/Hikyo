@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"reflect"
 	"testing"
 	"time"

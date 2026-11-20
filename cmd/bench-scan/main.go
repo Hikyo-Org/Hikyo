@@ -13,7 +13,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"flag"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/scanning/bench"
 	"github.com/Hikyo-Org/hikyo/internal/scanning/corpus"
@@ -45,7 +47,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	data, err := json.MarshalIndent(res, "", "  ")
+	data, err := json.Marshal(res, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "bench-scan:", err)
 		os.Exit(1)

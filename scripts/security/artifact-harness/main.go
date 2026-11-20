@@ -6,7 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const profile = "hikyo-artifact-adversarial-v1"
@@ -76,7 +79,7 @@ func main() {
 		os.Exit(2)
 	}
 	r, err := execute(o)
-	data, marshalErr := json.MarshalIndent(r, "", "  ")
+	data, marshalErr := json.Marshal(r, jsonwire.Stable, jsontext.WithIndent("  "))
 	if marshalErr == nil {
 		marshalErr = os.WriteFile(o.output, append(data, '\n'), 0600)
 	}
@@ -131,7 +134,7 @@ func emitReplay(w io.Writer, r receipt) {
 			continue
 		}
 		safe := replay{Profile: profile, Artifact: r.ArtifactSHA256, Seed: r.Seed, Steps: r.Steps, Engine: b.Engine, Case: id, Sequence: filter(b.Sequence), FailurePrefix: filter(b.FailurePrefix)}
-		if raw, err := json.Marshal(safe); err == nil {
+		if raw, err := json.Marshal(safe, jsonwire.Stable); err == nil {
 			fmt.Fprintln(w, "artifact replay:", string(raw))
 		}
 	}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"slices"
 	"strings"
@@ -43,7 +43,7 @@ func TestPutSecretValueMovesPreviousStage(t *testing.T) {
 			t.Fatalf("%s status=%d", operation, resp.StatusCode)
 		}
 		if output != nil {
-			if err := json.NewDecoder(resp.Body).Decode(output); err != nil {
+			if err := json.UnmarshalRead(resp.Body, output); err != nil {
 				t.Fatal(err)
 			}
 		}

@@ -84,6 +84,7 @@ var reencryptCovered = map[string]string{
 	"totp_credentials.seed":              "totp",
 	"recovery_codes.batch":               "recovery",
 	"oidc_providers.client_secret":       "oidc",
+	"oidc_providers.lifecycle_secret":    "oidc_lifecycle",
 	"oauth2_providers.client_secret":     "oauth2",
 	"saml_sp_keys.encrypted_private_key": "saml",
 	"remotes.credential_sealed":          "remotes",

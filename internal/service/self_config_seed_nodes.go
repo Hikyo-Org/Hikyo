@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -28,7 +29,7 @@ func selfConfigNodeSeedAAD(nodeID string) crypto.InstanceFieldAAD {
 }
 
 func encodeSelfConfigNodeSeed(owner, incarnation, nodeID string, values, ownerValues map[string]string) ([]byte, error) {
-	return json.Marshal(selfConfigNodeSeedEnvelope{Owner: owner, Incarnation: incarnation, NodeID: nodeID, Values: values, OwnerValues: ownerValues})
+	return json.Marshal(selfConfigNodeSeedEnvelope{Owner: owner, Incarnation: incarnation, NodeID: nodeID, Values: values, OwnerValues: ownerValues}, jsonwire.Stable)
 }
 
 func (s *SelfConfig) attestNodeSeed(ctx context.Context, seed selfConfigSeed) error {
@@ -173,7 +174,7 @@ func (s *SelfConfig) ownerSeedToken(owner string, values map[string]string) (str
 	raw, err := json.Marshal(struct {
 		Schema int
 		Values map[string]string
-	}{runtimeconfig.SchemaVersion, values})
+	}{runtimeconfig.SchemaVersion, values}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

@@ -1,7 +1,8 @@
 package operator
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 
@@ -58,7 +59,7 @@ func validateSecretData(t corev1.SecretType, data map[string][]byte) error {
 	}
 	switch effectiveSecretType(t) {
 	case corev1.SecretTypeDockerConfigJson:
-		var config map[string]json.RawMessage
+		var config map[string]jsontext.Value
 		if err := json.Unmarshal(data[corev1.DockerConfigJsonKey], &config); err != nil || config == nil {
 			return fmt.Errorf("Secret data key %q must contain a valid JSON object", corev1.DockerConfigJsonKey)
 		}

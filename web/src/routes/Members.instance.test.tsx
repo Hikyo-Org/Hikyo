@@ -82,6 +82,7 @@ vi.mock('../api/settings.ts', async (importActual) => {
 });
 
 vi.mock('../app/AuthProvider.tsx', () => ({
+  useInstanceOperator: () => false,
   useAuth: () => ({ identity: { principal: { id: 'usr_current' } } }),
 }));
 

@@ -4,6 +4,7 @@ package badredact
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"log"
 	"log/slog"
@@ -19,6 +20,7 @@ func Leak(kr *crypto.Keyring, ps *crypto.ProjectSealer, ev audit.Event, row stor
 	fmt.Printf("keyring: %v\n", kr)       // sensitive → fmt
 	_ = fmt.Sprintf("%#v", ps)            // sensitive → fmt
 	_, _ = json.Marshal(kr)               // sensitive → encoding/json
+	_, _ = jsonv2.Marshal(kr)             // sensitive → encoding/json/v2
 	slog.Info("audit event", "event", ev) // audit content → slog
 	log.Printf("row: %v", row)            // audit content → log
 }

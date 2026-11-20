@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 	"net/http"
@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
@@ -77,7 +78,7 @@ func newRealAWSPartialConflictFixture(t *testing.T, db *store.DB) (*realAWSDurab
 			return
 		}
 		var request map[string]string
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil || len(request) != 2 || request["VersionStage"] != "AWSCURRENT" {
+		if json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 4096), &request) != nil || len(request) != 2 || request["VersionStage"] != "AWSCURRENT" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -87,10 +88,10 @@ func newRealAWSPartialConflictFixture(t *testing.T, db *store.DB) (*realAWSDurab
 		value, visible := remote.Value(name)
 		if !owned || !visible {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"__type": "ResourceNotFoundException"})
+			_ = jsonwire.Encode(w, map[string]string{"__type": "ResourceNotFoundException"})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"SecretString": value})
+		_ = jsonwire.Encode(w, map[string]string{"SecretString": value})
 	}))
 	t.Cleanup(oracle.Close)
 	h.s.oracle = externalAWS{

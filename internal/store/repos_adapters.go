@@ -205,6 +205,7 @@ type adapterDB interface {
 	adapterStoreQueries() adapterStoreQueries
 	sshQueries() sshRuntimeQueries
 	dynamicQueries() dynamicRuntimeQueries
+	rotationRuntimeQueries() rotationRuntimeQueries
 }
 
 type sqliteAdoptDB struct{ db sqlitegen.DBTX }

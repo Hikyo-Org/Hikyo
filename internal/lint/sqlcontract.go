@@ -55,6 +55,7 @@ var approvedParameterNames = map[string]map[string]string{
 	"GetProject":                           aliases("ID", "ProjectID"),
 	"ListCredentialsBeyondCeiling":         aliases("ExpiresAt", "Ceiling"),
 	"ListOauth2ProvidersForReencrypt":      aliases("ID", "Cursor", "Limit", "PageLimit"),
+	"ListOidcLifecycleSecretsForReencrypt": aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListOidcProvidersForReencrypt":        aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListPasswordCredsForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListPendingForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),
@@ -609,7 +610,9 @@ func compatibleType(queryName, name, sqlite, postgres string) bool {
 		if (queryName == "AdapterWorkerLoadExecutionQuery" || queryName == "AdapterWorkerLoadActivationQuery") && (name == "AllowPersonalToken" || name == "VariableProtected" || name == "VariableHidden" || name == "VariableExpand") {
 			return sqlite == "int64" && postgres == "int32" // SQL CASE projections return exactly 0 or 1
 		}
-		return sqlite == "int64" && postgres == "bool"
+		// pki_issuers.restore_hold is INTEGER on both engines (int32 on postgres);
+		// rotations.restore_hold is BOOLEAN there. Same field name, two shapes.
+		return sqlite == "int64" && (postgres == "bool" || name == "RestoreHold" && postgres == "int32")
 	}
 	if isTimestampContractField(name) || timestampQueryFields[queryName][name] {
 		return (sqlite == "string" || sqlite == "sql.NullString" || sqlite == "interface{}") && postgres == "pgtype.Timestamptz"
@@ -636,8 +639,10 @@ var booleanContractFields = map[string]bool{
 	"EnrolmentRequired": true,                                                        // the sign-in enrolment gate (#760): sqlite INTEGER, postgres BOOLEAN
 	"Prepared":          true, "Suspended": true, "ConfirmRestoredCredentials": true, // runtime configuration booleans map INTEGER to BOOLEAN
 	"PayloadPresent": true, "Protected": true, "SchemaOverride": true, "Secret": true,
-	"LocalEnabled":       true, // registration_policies.local_enabled (#606): sqlite INTEGER, postgres BOOLEAN
-	"Bypassed":           true, // access_requests.bypassed (#152): sqlite INTEGER, postgres BOOLEAN
+	"LocalEnabled": true,                            // registration_policies.local_enabled (#606): sqlite INTEGER, postgres BOOLEAN
+	"Bypassed":     true,                            // access_requests.bypassed (#152): sqlite INTEGER, postgres BOOLEAN
+	"SkipOverlap":  true, "ManualSkipOverlap": true, // rotations.manual_skip_overlap (#148): sqlite INTEGER, postgres BOOLEAN
+	"RestoreHold": true, "RotationRestoreHold": true, // rotations.restore_hold (#148): sqlite INTEGER, postgres BOOLEAN
 	"AllowPersonalToken": true, "VariableProtected": true, "VariableHidden": true, "VariableExpand": true,
 }
 

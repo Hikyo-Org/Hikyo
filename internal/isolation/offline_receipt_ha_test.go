@@ -166,7 +166,7 @@ func offlineReceiptRotateWhileLocked(t *testing.T, db *store.DB, kr *crypto.Keyr
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	for {
-		waiting := false
+		var waiting bool
 		if db.Engine() == store.EnginePostgres {
 			waiting = queryInt(t, db, `SELECT COUNT(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%RetireTier3KeyAtVersion%'`) > 0
 		} else {

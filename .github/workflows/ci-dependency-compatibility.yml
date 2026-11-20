@@ -6,22 +6,23 @@ name: ci-advisory-dependencies
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    # No edited: a newer run of this workflow on the same head would hide a
+    # ci-dev-required record filed in its suite. The full merge-candidate
+    # validation still builds the retargeted result.
+    types: [opened, synchronize, reopened]
     paths: [go.mod, go.sum]
 
 permissions:
   contents: read
 
 concurrency:
-  # The latest useful PR revision replaces obsolete work. Metadata edits stay
-  # isolated so a skipped event cannot cancel a useful commit/base verdict.
-  group: dependency-compatibility-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
+  # The latest PR revision replaces obsolete work.
+  group: dependency-compatibility-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   compatibility:
-    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'dependency compatibility (Linux host)' }}
-    if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
+    name: dependency compatibility (Linux host)
     runs-on: ubuntu-latest
     # The existing full app-build job has a 20-minute budget. This graph also
     # builds the host's default-tag test archives and runs vet; it makes no

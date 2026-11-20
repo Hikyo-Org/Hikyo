@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -22,12 +23,11 @@ func decodeReportWork(raw string) (reportWork, error) {
 	if len(raw) > 512 {
 		return work, errors.New("report repair work exceeds bound")
 	}
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&work); err != nil {
+	decoder := jsontext.NewDecoder(strings.NewReader(raw))
+	if err := json.UnmarshalDecode(decoder, &work, json.RejectUnknownMembers(true)); err != nil {
 		return work, err
 	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
+	if _, err := decoder.ReadValue(); !errors.Is(err, io.EOF) {
 		return work, errors.New("report repair requires exactly one routing record")
 	}
 	if !shaPattern.MatchString(work.Head) || work.Run <= 0 || work.Attempt <= 0 {

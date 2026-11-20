@@ -3,7 +3,7 @@ package securitydeployment
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
@@ -295,7 +296,7 @@ func (e *Executor) composeRendered(ctx context.Context) ([]byte, error) {
 	if json.Unmarshal(raw, &value) != nil {
 		return nil, ErrInvalid
 	}
-	return json.Marshal(value)
+	return json.Marshal(value, jsonwire.Stable)
 }
 
 func (e *Executor) ourImage(image string) bool {
@@ -546,7 +547,7 @@ func (e *Executor) prepareCompose(ctx context.Context, target Target) (Observati
 }
 
 func (e *Executor) composeOverride(image string) ([]byte, error) {
-	return json.Marshal(map[string]any{"services": map[string]any{e.c.Compose.Service: map[string]string{"image": image}}})
+	return json.Marshal(map[string]any{"services": map[string]any{e.c.Compose.Service: map[string]string{"image": image}}}, jsonwire.Stable)
 }
 
 func (e *Executor) applyCompose(ctx context.Context, j *deploymentJournal) error {

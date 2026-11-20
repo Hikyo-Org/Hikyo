@@ -1,15 +1,16 @@
 package service
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
-func rawClaims(t *testing.T, doc string) map[string]json.RawMessage {
+func rawClaims(t *testing.T, doc string) map[string]jsontext.Value {
 	t.Helper()
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(doc), &raw); err != nil {
 		t.Fatal(err)
 	}

@@ -2,9 +2,10 @@ package upgrade
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -137,7 +138,7 @@ func (s *Session) accept(ctx context.Context, previous *State, next *State) erro
 	return err
 }
 
-func encodeFloor(f releaseidentity.SnapshotFloor) string {
-	raw, _ := json.Marshal(f)
-	return string(raw)
+func encodeFloor(f releaseidentity.SnapshotFloor) (string, error) {
+	raw, err := json.Marshal(f, jsonwire.Stable)
+	return string(raw), err
 }

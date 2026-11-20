@@ -1,13 +1,15 @@
 package securitymaintenance
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
 )
@@ -53,7 +55,7 @@ func (s *Store) publish(state Status) {
 	if s.PublicStatusFile == "" {
 		return
 	}
-	raw, err := json.MarshalIndent(state.Public(), "", "  ")
+	raw, err := json.Marshal(state.Public(), jsonwire.Stable, jsontext.WithIndent("  "))
 	if err == nil {
 		err = s.outsidePrivateState(filepath.Dir(s.PublicStatusFile))
 	}

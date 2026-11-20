@@ -712,7 +712,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	var out store.AdapterTarget
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := store.CanonTime(s.now())
-		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
+		_, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -724,7 +724,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 		// or causing a serialization retry. Recheck live authority after that
 		// wait, without consuming the already staged consent again.
 		now = store.CanonTime(s.now())
-		caller, p, err = authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -847,13 +847,12 @@ func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope d
 	if err != nil {
 		return nil, err
 	}
-	release := func() {}
 	var rateCharged bool
 	if !preparedMove {
 		if keepRemote {
 			return nil, fmt.Errorf("%w: keep_remote applies only to a destination move", domain.ErrInvalid)
 		}
-		release, err = s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
+		release, err := s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
 		if err != nil {
 			return nil, err
 		}

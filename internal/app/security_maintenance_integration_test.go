@@ -8,7 +8,7 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"

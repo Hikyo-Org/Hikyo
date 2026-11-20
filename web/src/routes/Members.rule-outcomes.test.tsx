@@ -20,6 +20,7 @@ const ruleIDs: readonly [string, string] = [
 const mocks = vi.hoisted(() => ({ refresh: vi.fn() }));
 
 vi.mock('../app/AuthProvider.tsx', () => ({
+  useInstanceOperator: () => false,
   useAuth: () => ({ identity: { principal: { id: manager } }, refreshSession: mocks.refresh }),
 }));
 vi.mock('../api/settings.ts', async (original) => ({

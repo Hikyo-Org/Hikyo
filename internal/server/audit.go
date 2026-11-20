@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -352,7 +353,7 @@ func receiptLine(r service.ExportReceipt) ([]byte, error) {
 		cause := apigen.AuditExportReceiptCause(r.Cause)
 		wire.Cause = &cause
 	}
-	b, err := json.Marshal(apigen.AuditExportReceiptLine{ExportReceipt: wire})
+	b, err := json.Marshal(apigen.AuditExportReceiptLine{ExportReceipt: wire}, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}

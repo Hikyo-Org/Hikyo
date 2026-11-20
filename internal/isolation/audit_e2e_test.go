@@ -10,7 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -430,6 +430,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		}); err != nil {
 			t.Fatalf("lower effective window: %v", err)
 		}
+
+		// Directory lifecycle events: a ban, then a delete of an account's last
+		// credential, so the three directory audit events are emitted by code.
+		runOIDCDirectoryLifecycle(t, db, auth, boot.PrincipalID)
 	})
 
 	t.Run("every_registered_type_is_actually_emitted", func(t *testing.T) {
@@ -530,6 +534,9 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// once), worker-driven renew/revoke, an ambiguous outcome, reconcile and
 		// provider deletion all traverse the real service, runtime and store.
 		runDynamicLifecycle(t, db)
+		// Scheduled credential rotation (#148, S1): create, pause, resume and
+		// delete all traverse the real service, authorizer and store.
+		runRotationAuditLifecycle(t, db)
 		// SSH user certificates (#155): CA create/rotate/retire/delete,
 		// profile configure/delete, issuance and revocation all traverse the
 		// real service and store.
@@ -635,11 +642,14 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// Member access rules: created, move-widening confirmed, revoked.
 		runRuleAuditLifecycle(t, db)
 		runEmailInvitationAuditLifecycle(t, db)
+		// Incident ledger: opened, item intent and outcome, and closed.
+		runIncidentAuditLifecycle(t, db)
 
 		recovered := runBackupLifecycle(t, db.Engine())
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())
 		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
 		personal := runPersonalAuditLifecycle(t, db.Engine())
+		rotated := runRotationExecutorAuditLifecycle(t, db.Engine())
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -649,6 +659,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, personal, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, rotated, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")

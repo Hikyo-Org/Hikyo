@@ -127,6 +127,64 @@ startup budget: `upgrade.unattended.startupFailureThreshold` defaults to 180
 five-second probes, or 15 minutes. Tune this preflight allowance for the expected
 download environment; it does not authorize incomplete backup or migration work.
 
+## Local operator commands
+
+Host-only commands (`hikyo admin`, `hikyo backup` and `hikyo restore`) run inside
+the already admitted container with the environment the server already has. Nothing
+is exported or mounted by hand: no bundle, operator key or target-manifest setting,
+and no shell in the image.
+
+```sh
+# Docker. -t is required for terminal disclosure; do not redirect it.
+docker exec -it hikyo /usr/local/bin/hikyo admin create --username admin
+# Kubernetes (singleton chart).
+kubectl --namespace hikyo exec -it deployment/hikyo-hikyo -c server -- \
+  /usr/local/bin/hikyo admin create --username admin
+```
+
+The server records the exact release it admitted, its authenticated bundle and the
+enrolled operator pin under `unattended/` in the upgrade state directory. A command
+started later reads those records back and passes the same signed-release, build,
+migration and custody gate as the server. It does not enroll, download, select or
+replace a release, take the coordinator lock, migrate, or start an updater. It
+asserts no backup evidence or legacy-writer claim and exposes no private key.
+Repeated calls leave the selected release and the state files unchanged.
+
+The command refuses, with a distinct message and no change to state, when:
+
+- the installation was never enrolled, or its first start has not finished (commands
+  never enroll; start the server on a fresh installation instead);
+- an upgrade is unfinished or recovery is required, so the journal is not `complete`;
+- the image record is missing, malformed or names another release or executable;
+- the enrolled operator pin or the database instance differs from the installed one;
+- the schema, floor or custody gate would need a migration or otherwise refuses; or
+- `HIKYO_UPGRADE_BUNDLE`, `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY`,
+  `HIKYO_UPGRADE_TARGET_MANIFEST`, `HIKYO_UPGRADE_EVIDENCE`, `HIKYO_UPGRADE_BACKUP`
+  or `HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED=true` is also set, because an unattended installation has one source for them.
+
+The Compose example sets `HIKYO_ROOT_KEY_FILE` in the container environment, and the
+chart already does, so `docker exec` and `kubectl exec` find the root key. The image
+has no shell, `cat` or `tar`, so `kubectl cp` and `docker exec cat` do not work. Move
+values this way instead:
+
+- Disclosed values (an authority, a backup identity) go to the terminal by default
+  (`-it`, and answer the prompt). `--output-file` creates an owner-only file inside the
+  container for a later command to read in place, for example `restore drill
+  --identity-file`. The image has no `rm` or shell, so that file persists. Its parent
+  directory must be owned by the runtime user: prefer a dedicated volume, never the
+  server-owned `unattended/` subdirectory, and move the value off the host and delete
+  the file outside the container. The disposable CI fixtures write to the state
+  directory root only because their cluster and volumes are discarded.
+- Input files (a drill target DSN, a backup passphrase) are mounted before the pod or
+  container starts: a Secret or ConfigMap volume on Kubernetes, a bind mount or
+  prepared volume on Docker. `docker cp` can also copy a file out of or into a Docker
+  container without a tool inside it.
+
+Manual installations (`HIKYO_UPGRADE_UNATTENDED` unset) are unchanged and keep the
+manual inputs. The earlier recipe that set `HIKYO_UPGRADE_BUNDLE` and
+`HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY` for `admin create` in an unattended container now
+exits with the refusal above; remove those variables.
+
 ## Interruption and browser behavior
 
 An already loaded browser automatically shows confirmed maintenance phases and

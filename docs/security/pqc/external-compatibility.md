@@ -59,7 +59,7 @@ a row proves. "Read" means the primary source was read for this document on
 4. **The strict profile reaches no external hop, and not every selector is
    deployable.** Each selector: the server reads `HIKYO_TLS_PROFILE`
    (`internal/config/config.go:537`) for the listener only; the CLI uses the
-   per-origin trust entry field `tls_profile` (`internal/cli/trust.go:96`); the
+   per-origin trust entry field `tls_profile` (`internal/cli/trust.go:87`); the
    operator client has a library option `WithTLSProfile` that its
    `defaultClientFactory` (`internal/operator/clientadapter.go:22`) never
    passes, so **no deployed operator can select strict** (as
@@ -128,7 +128,7 @@ below or local-only:
 the CLI and operator clients to Hikyo (I11, owned, #1127), `internal/updater`
 (unix socket), `internal/hostupgrade` and `internal/app/unattended_process.go`
 (local health probes configured by the operator), `internal/netpolicy` (library),
-`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:224` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
+`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:162` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
 local `git` with remote access disabled. Inbound listeners are I09 (#1127). The
 re-sweep with the `DefaultTransport` and `LoadDefaultConfig` terms found the SAML
 metadata proxy leg (X11), the AWS STS and ambient credential chain (X23), and
@@ -219,7 +219,7 @@ tracked work.
 | [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. | X07 |
 | [F-04](https://github.com/Hikyo-Org/Hikyo/issues/1178) | Decide whether to track OpenSSH's composite SSH signature | Decided 2026-11-04: Hikyo does not adopt `ssh-mldsa44-ed25519`, because DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or `x/crypto` adds one. | X08 |
 | [F-05](https://github.com/Hikyo-Org/Hikyo/issues/1179) | Decide WebAuthn credential parameters and recovery for ML-DSA | Decided 2026-11-04: the relying party does not offer ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes). It stays on classical credentials under E-05, with no enrollment or recovery work. Recheck on a primary authenticator statement. | X09 |
-| [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. | X10, X12 |
+| [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. Decided 2026-11-13 (#1191): federation key loading (`jwkssource.decodeJWKS`) accepts only RSA, ECDSA and Ed25519 keys (the `oidcfed` allowlist has no EdDSA, so Ed25519 loads but verifies nothing today), so enabling federation ML-DSA must widen that key-type set and the `oidcfed` signature allowlist together. | X10, X12 |
 | [F-07](https://github.com/Hikyo-Org/Hikyo/issues/1181) | Build a disposable hybrid-capable PostgreSQL fixture | Provide a disposable PostgreSQL 18 with an OpenSSL build that has a hybrid group and `ssl_groups` set, and capture the group Hikyo's client negotiates. HOLD until a server build is named | X13 |
 | [F-08](https://github.com/Hikyo-Org/Hikyo/issues/1182) | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). | X15 |
 | [F-09](https://github.com/Hikyo-Org/Hikyo/issues/1183) | Decide per-route strict selection for external hops | Decided 2026-11-04: narrowed under DEC-06. Strict stays on the listener and owned clients, with no strict claim on any external route, and no per-route selector is built; see [strict-route refusal](#strict-route-refusal) | all |

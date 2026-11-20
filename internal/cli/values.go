@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -321,10 +321,21 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		// environments, authorized per destination and all-or-nothing. The
 		// environments are named explicitly rather than taken from the target
 		// resolution, because this verb addresses several of them at once.
+		// A protected destination needs the publish ceremony bound to this key,
+		// exactly as an ordinary publish does, so the human completes it here.
 		var list apigen.ValueList
-		if err := client.Do(ctx, http.MethodPost, project+"/values/declare", apigen.DeclareValuesRequest{
-			Key: flags.positional(), EnvironmentIds: splitList(environments), Value: value,
-		}, &list); err != nil {
+		declared := disclosure{purpose: "publish", protectedOnly: true, keys: func(ctx context.Context, _ string) ([]string, error) {
+			var key apigen.Key
+			if err := client.Do(ctx, http.MethodGet, project+"/keys/"+url.PathEscape(flags.positional()), nil, &key); err != nil {
+				return nil, err
+			}
+			return []string{key.Id}, nil
+		}}
+		if err := ceremony(splitList(environments), declared, func() error {
+			return client.Do(ctx, http.MethodPost, project+"/values/declare", apigen.DeclareValuesRequest{
+				Key: flags.positional(), EnvironmentIds: splitList(environments), Value: value,
+			}, &list)
+		}); err != nil {
 			return err
 		}
 		warnFindings(ios, list.Findings)
@@ -710,7 +721,7 @@ func valueTable(list apigen.ValueList) Table {
 func diffTable(d apigen.ValueDiff) Table {
 	rows := make([][]string, 0, len(d.Items))
 	for _, row := range d.Items {
-		verdict := "unknown"
+		var verdict string
 		switch {
 		case row.Equal == nil:
 			// Both sides `set`, at least one unreadable: whether two secrets

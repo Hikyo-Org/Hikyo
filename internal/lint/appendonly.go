@@ -161,6 +161,22 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ErasePrivacyAccount":      true,
 	"CreateAccount":            true,
 	"CreateGrant":              true,
+
+	// Reversible incident containment (incident-containment ADR, O1): read by
+	// authorize() like privacy_state, so written on the resolution surface under
+	// the principal-row lock.
+	"ContainPrincipal":            true,
+	"ReleasePrincipalContainment": true,
+
+	// Incident containment ledger (incident-containment ADR, O5 option B):
+	// mutable ledger state, separate from the append-only audit tables, written
+	// on the resolution surface after the incident service proved its own
+	// chokepoint operation. No row carries a secret or a free-text field.
+	"OpenIncident":           true,
+	"CloseIncident":          true,
+	"AddIncidentItem":        true,
+	"TransitionIncidentItem": true,
+
 	// Approval-mediated temporary access (#152): the time-bound grant rows are
 	// read by authorize(), so they are written on the resolution surface after
 	// the access service proved its own chokepoint operation, under the
@@ -186,6 +202,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"DeleteSession":              true,
 	"DeleteSessionsForPrincipal": true,
 	"AdvanceGeneration":          true,
+	// The shared body of AdvanceGeneration and the containment setters: it
+	// retires the pending password-login and workspace-handoff proofs, which
+	// mint sessions without consulting the generation.
+	"retirePendingProofs": true,
 	// Factors (#54): TOTP enrolment/confirmation/removal, recovery-code batch
 	// writes, step-up session rotation, and the outstanding-authority sweep.
 	// None can hold a proof — they mutate the artifacts that decide how a
@@ -223,11 +243,12 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ClaimFederatedAuthority":         true,
 	"StampCredentialEstablish":        true,
 
-	"ConsumeOIDCTransaction":    true,
-	"CreateExternalIdentity":    true,
-	"DeleteExternalIdentity":    true,
-	"DeleteSessionsForProvider": true,
-	"CreateReauthWindow":        true,
+	"ConsumeOIDCTransaction":              true,
+	"CreateExternalIdentity":              true,
+	"DeleteExternalIdentity":              true,
+	"DeleteSessionsForPrincipalAndIssuer": true,
+	"DeleteSessionsForProvider":           true,
+	"CreateReauthWindow":                  true,
 	// The Phase-C mint guard: a no-op CAS write that locks the pinned provider
 	// row so a concurrent reconfigure serializes behind it (A4 TOCTOU). It is a
 	// proof-free write on the resolution surface for the same reason the other
@@ -425,6 +446,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// #154: a restore can resurrect certificates revoked after the backup,
 	// so the same local-host restore act holds every restored CA issuer.
 	"HoldRestoredPKIIssuers": true,
+	// #148: a restore holds every restored rotation (or, for an archive that has
+	// no hold column yet, pauses the active ones) in the same local-host restore act.
+	"HoldRestoredRotations":  true,
+	"PauseRestoredRotations": true,
 	"ReconcilePrincipal":     true,
 	// #73 section 9.1: the reconciliation commit drops restored `scim` origins
 	// and any grant row they were the last hold on, in the same act.

@@ -3,15 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
-	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -22,9 +20,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
-	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 // The local trust store (api-cli-surface ADR § Context model).
@@ -47,44 +46,17 @@ import (
 // who cannot read the secret store cannot redirect the credential, and one
 // who can read it already holds the credential.
 
-// TLSMode is the explicit HTTPS verification choice. Its zero value is only
-// for legacy entries whose JSON omits tls_mode, never an explicit JSON value.
-type TLSMode string
-
-func (m *TLSMode) UnmarshalJSON(raw []byte) error {
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return fmt.Errorf("TLS verification mode must be spki or system-ca: %w", err)
-	}
-	if value != TLSModeSPKI && value != TLSModeSystemCA {
-		return fmt.Errorf("unknown TLS verification mode %q", value)
-	}
-	*m = TLSMode(value)
-	return nil
-}
-
-// TLSProfile is the key-exchange policy name a trust entry or bundle records. As
-// with TLSMode, an explicit JSON value must be "compat" or "strict": an empty
-// string or null is refused instead of reading as the compat default, which only
-// an omitted field means.
-type TLSProfile string
-
-func (p *TLSProfile) UnmarshalJSON(raw []byte) error {
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return fmt.Errorf("TLS profile must be compat or strict: %w", err)
-	}
-	parsed, err := tlspolicy.ParseProfile(value)
-	if err != nil {
-		return err
-	}
-	*p = TLSProfile(parsed)
-	return nil
-}
+// TLSMode is the explicit HTTPS verification choice and TLSProfile the
+// key-exchange policy name; both live in internal/clienttrust so the desktop
+// shell shares them without importing this package.
+type (
+	TLSMode    = clienttrust.Mode
+	TLSProfile = clienttrust.Profile
+)
 
 const (
-	TLSModeSPKI     = "spki"
-	TLSModeSystemCA = "system-ca"
+	TLSModeSPKI     = clienttrust.ModeSPKI
+	TLSModeSystemCA = clienttrust.ModeSystemCA
 )
 
 // TrustEntry records the canonical origin and verification policy captured
@@ -261,52 +233,22 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 	return nil
 }
 
-// samePolicy reports whether two entries verify an origin identically.
 func samePolicy(a, b TrustEntry) bool {
 	return effectiveTLSMode(a) == effectiveTLSMode(b) && a.SPKIPin == b.SPKIPin && a.CLISocket == b.CLISocket && effectiveTLSProfile(a) == effectiveTLSProfile(b)
 }
 
 // effectiveTLSProfile makes an omitted profile and an explicit compat equivalent.
 func effectiveTLSProfile(entry TrustEntry) string {
-	if entry.TLSProfile == "" {
-		return string(tlspolicy.ProfileCompat)
-	}
-	return string(entry.TLSProfile)
+	return clienttrust.EffectiveProfile(entry.TLSProfile)
 }
 
 // effectiveTLSMode makes omitted legacy SPKI and explicit SPKI equivalent.
 func effectiveTLSMode(entry TrustEntry) TLSMode {
-	if strings.HasPrefix(entry.Origin, "https://") && entry.TLSMode == "" {
-		return TLSModeSPKI
-	}
-	return entry.TLSMode
+	return clienttrust.EffectiveMode(entry.Origin, entry.TLSMode)
 }
 
 func validateTLSMode(entry TrustEntry) error {
-	if entry.TLSProfile != "" {
-		if _, err := tlspolicy.ParseProfile(string(entry.TLSProfile)); err != nil {
-			return err
-		}
-		if entry.TLSProfile == TLSProfile(tlspolicy.ProfileStrict) && !strings.HasPrefix(entry.Origin, "https://") {
-			return errors.New("the strict TLS profile requires an https origin; a local CLI socket is not a TLS connection")
-		}
-	}
-	if entry.TLSMode != "" && entry.TLSMode != TLSModeSPKI && entry.TLSMode != TLSModeSystemCA {
-		return fmt.Errorf("unknown TLS verification mode %q", entry.TLSMode)
-	}
-	if !strings.HasPrefix(entry.Origin, "https://") {
-		if entry.TLSMode != "" {
-			return errors.New("TLS verification modes require HTTPS and cannot carry a local CLI socket")
-		}
-		return nil
-	}
-	if entry.CLISocket != "" {
-		return errors.New("https trust cannot carry a local CLI socket")
-	}
-	if entry.TLSMode == TLSModeSystemCA && entry.SPKIPin != "" {
-		return errors.New("system-ca trust cannot carry an SPKI pin")
-	}
-	return nil
+	return clienttrust.Policy{Origin: entry.Origin, Mode: entry.TLSMode, Profile: entry.TLSProfile, SPKIPin: entry.SPKIPin, CLISocket: entry.CLISocket}.Validate()
 }
 
 func validateCredentialTransport(entry TrustEntry) error {
@@ -414,118 +356,40 @@ func (s *TrustStore) write(entries map[string]TrustEntry) error {
 	if err := ensureTrustStateDir(s.dir); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(entries, "", "  ")
+	raw, err := json.Marshal(entries, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
 	return securefile.WriteAtomic(s.path(), append(raw, '\n'), 0o600)
 }
 
-// CanonicalOrigin reduces a URL to scheme://host[:port], rejecting anything
-// that carries a path, query or credentials — an origin with a path is not an
-// origin, and a URL with userinfo is a credential in a place credentials are
-// never allowed.
-func CanonicalOrigin(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", failf(ExitUsage, "%q is not a URL: %v", raw, err)
-	}
-	switch {
-	case u.Scheme != "https" && u.Scheme != "http":
-		return "", failf(ExitUsage, "instance URL must be http or https, got %q", u.Scheme)
-	case u.Host == "":
-		return "", failf(ExitUsage, "instance URL %q has no host", raw)
-	case u.User != nil:
-		return "", failf(ExitUsage, "instance URL must not carry credentials in the URL")
-	case u.Path != "" && u.Path != "/":
-		return "", failf(ExitUsage, "instance URL must be an origin, not a path: %q", raw)
-	case u.RawQuery != "" || u.Fragment != "":
-		return "", failf(ExitUsage, "instance URL must be a bare origin: %q", raw)
-	}
-	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host), nil
-}
+// CanonicalOrigin reduces a URL to scheme://host[:port]; see clienttrust.
+func CanonicalOrigin(raw string) (string, error) { return clienttrust.CanonicalOrigin(raw) }
 
-// SPKIFingerprint is base64(sha256(SubjectPublicKeyInfo)) — the same
-// construction as HPKP and as `openssl … -pubkey | openssl dgst -sha256`, so
-// an operator can compute the expected value without Hikyo's help.
-//
-// The public key, not the certificate: pinning the certificate would break on
-// every renewal, and an operator whose pin breaks quarterly learns to skip
-// checking it.
-func SPKIFingerprint(cert *x509.Certificate) string {
-	return tlspolicy.SPKIFingerprint(cert)
-}
+// SPKIFingerprint is base64(sha256(SubjectPublicKeyInfo)); see clienttrust.
+func SPKIFingerprint(cert *x509.Certificate) string { return clienttrust.SPKIFingerprint(cert) }
 
-// inspectTLSIdentity probes only the TLS identity, without application requests
-// or credentials. trustMode must be earned before calling: an explicit TLS-mode
-// flag for new trust, or terminal consent for an SPKI-only remote inspection.
-// Empty and unknown policies never dial. A later fingerprint confirmation is
-// still required before the SPKI result may become trusted.
 func inspectTLSIdentity(parent context.Context, origin string, timeout time.Duration, trustMode TLSMode) (string, error) {
-	if trustMode != TLSModeSPKI && trustMode != TLSModeSystemCA {
-		return "", failf(ExitRefused, "TLS identity inspection requires an explicit verification policy, got %q", trustMode)
-	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return "", err
-	}
-	if u.Scheme != "https" {
-		return "", failf(ExitRefused, "TLS identity inspection requires HTTPS")
-	}
-	// url.Hostname/Port strip the brackets an IPv6 literal carries in a URL,
-	// and net.JoinHostPort puts them back. Splitting on ":" by hand gets
-	// `https://[::1]:8443` wrong in three different places.
-	port := u.Port()
-	if port == "" {
-		port = "443"
-	}
-	ctx, cancel := context.WithTimeout(parent, timeout)
-	defer cancel()
-	rawConn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(u.Hostname(), port))
-	if err != nil {
-		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
-	}
-	config := &tls.Config{
-		ServerName: u.Hostname(),
-		MinVersion: tls.VersionTLS12,
-		// Only explicit SPKI inspection consent permits the unverified
-		// fingerprint probe. System-CA inspection always verifies normally.
-		// Neither policy sends application requests or credentials here.
-		InsecureSkipVerify: trustMode == TLSModeSPKI,
-	}
-	conn := tls.Client(rawConn, config)
-	if err := conn.HandshakeContext(ctx); err != nil {
-		_ = conn.Close()
-		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
-	}
-	defer conn.Close()
-	certs := conn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return "", failf(ExitRefused, "%s presented no certificate", origin)
-	}
-	return SPKIFingerprint(certs[0]), nil
+	return clienttrust.InspectIdentity(parent, origin, timeout, trustMode)
 }
 
-func shortPin(pin string) string {
-	if pin == "" {
-		return "none"
-	}
-	if len(pin) <= 16 {
-		return pin
-	}
-	return pin[:16] + "…"
-}
+func shortPin(pin string) string { return clienttrust.ShortPin(pin) }
 
 // Trust schemas reject unsupported fields instead of silently discarding a
 // requested verification policy or accepting a misspelled security field.
 func decodeTrustJSON(raw []byte, out any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return err
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
+	err := decodeStrictDocument(bytes.NewReader(raw), out)
+	if errors.Is(err, jsonwire.ErrTrailing) {
 		return errors.New("expected one JSON object")
 	}
-	return nil
+	// A field's own refusal reads as it did under encoding/json (v1), without
+	// v2's wrapper naming the Go type and JSON pointer.
+	var refusal trustFieldError
+	if errors.As(err, &refusal) {
+		return refusal
+	}
+	return err
 }
+
+// trustFieldError is a refusal from a trust field's own UnmarshalJSON.
+type trustFieldError = clienttrust.FieldError

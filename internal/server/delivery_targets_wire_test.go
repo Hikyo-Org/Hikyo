@@ -2,7 +2,8 @@ package server_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"slices"
@@ -14,7 +15,9 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
 // Delivery-target condition reporting (#788) at the transport: every refusal
@@ -105,9 +108,8 @@ func TestDeliveryTargetReportRefusalsMapToTheirCodes(t *testing.T) {
 			if body.Error.Code != tc.code {
 				t.Fatalf("code %q, want %q", body.Error.Code, tc.code)
 			}
-			if got := ""; body.Error.Detail != nil {
-				got = *body.Error.Detail
-				if got != tc.detail {
+			if body.Error.Detail != nil {
+				if got := *body.Error.Detail; got != tc.detail {
 					t.Fatalf("detail %q, want %q", got, tc.detail)
 				}
 			} else if tc.detail != "" {
@@ -138,7 +140,7 @@ func (e vocabularyErr) SafeDetail() string { return e.detail }
 func TestDeliveryTargetOversizeReportIsRefusedUnparsed(t *testing.T) {
 	del := newDTDelivery(nil)
 	srv := federationServer(t, stubFederation{}, del)
-	pad := json.RawMessage(`{"pad":"` + strings.Repeat("x", deliverytarget.MaxReportBytes) + `"}`)
+	pad := jsontext.Value(`{"pad":"` + strings.Repeat("x", deliverytarget.MaxReportBytes) + `"}`)
 	resp, payload := call(t, srv, http.MethodPost, deliveryTargetsPath, "hik_1_wl_abc", pad)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversize report -> %d: %s", resp.StatusCode, payload)
@@ -159,11 +161,11 @@ func TestDeliveryTargetOversizeReportIsRefusedUnparsed(t *testing.T) {
 	// Exactly at the bound the body is parsed as a report.
 	within := newDTDelivery(nil)
 	srv = federationServer(t, stubFederation{}, within)
-	raw, err := json.Marshal(wireReport())
+	raw, err := json.Marshal(wireReport(), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	padded := json.RawMessage(string(raw) + strings.Repeat(" ", deliverytarget.MaxReportBytes-len(raw)))
+	padded := jsontext.Value(string(raw) + strings.Repeat(" ", deliverytarget.MaxReportBytes-len(raw)))
 	if resp, payload := call(t, srv, http.MethodPost, deliveryTargetsPath, "hik_1_wl_abc", padded); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("report at the bound -> %d: %s", resp.StatusCode, payload)
 	}
@@ -224,6 +226,26 @@ func TestMetaAdvertisesTheDeliveryTargetReportCapability(t *testing.T) {
 	}
 	if meta.ApiRevision != api.Revision {
 		t.Fatalf("api_revision = %d, want %d", meta.ApiRevision, api.Revision)
+	}
+}
+
+// TestMetaAdvertisesDesktopAppOnlyWithTheEmbeddedSPA: the token promises the
+// SPA's shell behaviour (desktop-app ADR D8), so it appears exactly when this
+// binary embeds the SPA. Default builds (no `ui` tag) must not advertise it;
+// CI runs the same test under `-tags ui`, where it must.
+func TestMetaAdvertisesDesktopAppOnlyWithTheEmbeddedSPA(t *testing.T) {
+	srv := federationServer(t, stubFederation{}, stubDelivery{})
+	resp, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/meta", "", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("meta -> %d: %s", resp.StatusCode, payload)
+	}
+	var meta apigen.Meta
+	if err := json.Unmarshal(payload, &meta); err != nil {
+		t.Fatal(err)
+	}
+	got := slices.Contains(meta.ProtocolCapabilities, apigen.ProtocolCapability("desktop-app/1"))
+	if got != uiBuild || (webui.Assets() != nil) != uiBuild {
+		t.Fatalf("desktop-app/1 advertised = %t, SPA embedded = %t, ui build = %t: %v", got, webui.Assets() != nil, uiBuild, meta.ProtocolCapabilities)
 	}
 }
 

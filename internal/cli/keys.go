@@ -2,17 +2,16 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -395,15 +394,11 @@ func runKeyGroup(ctx context.Context, ios IO, args []string) error {
 // Trailing content is refused for the same reason: two documents where one was
 // expected means the caller's intent is not what the first one says.
 func decodeDeclaration(raw string, out *apigen.KeyDeclaration) error {
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(out); err != nil {
-		return err
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	err := decodeStrictDocument(strings.NewReader(raw), out)
+	if errors.Is(err, jsonwire.ErrTrailing) {
 		return errors.New("trailing content after the declaration document")
 	}
-	return nil
+	return err
 }
 
 // parsePresence reads the two presence flags. The spelling is deliberately one

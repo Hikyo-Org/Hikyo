@@ -1,7 +1,8 @@
 package backupreceipt
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -37,7 +39,7 @@ func fixtureAttestation() Attestation {
 
 func mustEncode(t *testing.T, value any) []byte {
 	t.Helper()
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,17 +51,17 @@ func TestClosedReceiptRequiresEveryExplicitSnapshotBinding(t *testing.T) {
 	if _, err := ParseReceipt(base); err != nil {
 		t.Fatal(err)
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal(base, &fields); err != nil {
 		t.Fatal(err)
 	}
 	for field := range fields {
 		t.Run(field, func(t *testing.T) {
-			var changed map[string]json.RawMessage
+			var changed map[string]jsontext.Value
 			if err := json.Unmarshal(base, &changed); err != nil {
 				t.Fatal(err)
 			}
-			changed[field] = json.RawMessage("null")
+			changed[field] = jsontext.Value("null")
 			if _, err := ParseReceipt(mustEncode(t, changed)); err == nil {
 				t.Fatal("null required field accepted")
 			}
@@ -69,18 +71,18 @@ func TestClosedReceiptRequiresEveryExplicitSnapshotBinding(t *testing.T) {
 			}
 		})
 	}
-	var snapshot map[string]json.RawMessage
+	var snapshot map[string]jsontext.Value
 	if err := json.Unmarshal(fields["snapshot"], &snapshot); err != nil {
 		t.Fatal(err)
 	}
 	for field := range snapshot {
 		t.Run("snapshot/"+field, func(t *testing.T) {
-			var changed map[string]json.RawMessage
+			var changed map[string]jsontext.Value
 			if err := json.Unmarshal(fields["snapshot"], &changed); err != nil {
 				t.Fatal(err)
 			}
-			changed[field] = json.RawMessage("null")
-			fieldsCopy := map[string]json.RawMessage{}
+			changed[field] = jsontext.Value("null")
+			fieldsCopy := map[string]jsontext.Value{}
 			for name, value := range fields {
 				fieldsCopy[name] = value
 			}

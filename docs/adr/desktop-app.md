@@ -2,9 +2,17 @@
 
 Status: **owner-locked on 2026-11-05; operative when
 [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
-Each amendment banner has its own [trigger](#amendments). Nothing here is implemented,
-and this ADR authorizes no implementation PR, release, `Hikyo-Org/hikyo-app`
-repository or signing identity.
+Each amendment banner has its own [trigger](#amendments). On 2026-11-19 the owner
+authorized the implementation PRs ("go ahead, build everything"):
+[#1454](https://github.com/Hikyo-Org/Hikyo/pull/1454) (client packages),
+[#1458](https://github.com/Hikyo-Org/Hikyo/pull/1458) (server and SPA app mode),
+[#1459](https://github.com/Hikyo-Org/Hikyo/pull/1459) (the shell),
+[#1462](https://github.com/Hikyo-Org/Hikyo/pull/1462) (CI definitions on `main`),
+[#1461](https://github.com/Hikyo-Org/Hikyo/pull/1461) (macOS CI) and
+[#1460](https://github.com/Hikyo-Org/Hikyo/pull/1460) (documentation). That authorization
+does not cover the release lane (plan PR 5), which is blocked until the owner creates
+the `Hikyo-Org/hikyo-app` repository and the signing identity; this ADR still
+authorizes no release, repository or signing identity.
 
 1. **Owner acceptance.** Offered the first three [decisions below](#owner-decisions) and told
    that choosing the waiver and accepting the design would lead to the banners and reopened
@@ -75,7 +83,15 @@ Sign-in and passkey ceremonies: system browser -> instance's real origin
   that number.
 - Removing a connection revokes its session on the server first. If that fails, the app
   says so plainly, because the credential stays live until it expires.
-- It then deletes the connection's data, browser storage and keychain item together.
+- Before anything is destroyed, the record is marked as being removed. If that write fails,
+  nothing has changed and the connection stays as it was. From then on the connection can't
+  be opened, signed in or restored, however a later step ends.
+- The app then closes the window, waits for its web view to be torn down, and deletes the
+  browser storage, the keychain item and finally the record. A step that fails (the window
+  doesn't close, the storage can't be wiped, the keychain item or the record can't be
+  deleted) is reported, and the connection stays in the list as an unusable record; removing
+  it again retries. The record is deleted when every step has succeeded. A removal that
+  failed before its marker was saved leaves the connection usable; tell the user to retry.
 
 ### D3. Session
 

@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -507,7 +508,7 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 			windows = append(windows, cliApprovedWindow{EnvironmentID: environmentID, CeremonyID: w.CeremonyID, FactorClass: w.FactorClass, SingleDecision: w.SingleDecision, AuthenticatedAt: w.AuthenticatedAt, WindowExpiresAt: w.WindowExpiresAt, HardExpiresAt: w.HardExpiresAt,
 				BoundKeySet: w.BoundKeySet, BoundPurpose: w.BoundPurpose, BoundOperation: w.BoundOperation, BoundEnvironmentSet: w.BoundEnvironmentSet})
 		}
-		windowJSON, err := json.Marshal(windows)
+		windowJSON, err := json.Marshal(windows, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

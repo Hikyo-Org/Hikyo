@@ -1,8 +1,11 @@
 package config
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const ManagedBootstrapSourcesKey = "HIKYO_BOOTSTRAP_SOURCES"
@@ -17,7 +20,7 @@ type ManagedSingletonTopology struct {
 // ManagedBootstrapSources selects installation-owned aliases. It cannot carry
 // a locator, path, credential or root key. Enrollment determines their custody.
 type ManagedBootstrapSources struct {
-	Topology       ManagedSingletonTopology `json:"topology,omitempty"`
+	Topology       ManagedSingletonTopology `json:"topology"`
 	Version        int                      `json:"version"`
 	DatabaseSource string                   `json:"database_source,omitempty"`
 	RootSource     string                   `json:"root_source,omitempty"`
@@ -29,7 +32,7 @@ func ParseManagedBootstrapSources(raw string) (ManagedBootstrapSources, error) {
 	if err := validateManagedJSON(raw); err != nil {
 		return ManagedBootstrapSources{}, refusal
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil || len(fields) < 2 || len(fields) > 5 {
 		return ManagedBootstrapSources{}, refusal
 	}
@@ -40,7 +43,7 @@ func ParseManagedBootstrapSources(raw string) (ManagedBootstrapSources, error) {
 				return ManagedBootstrapSources{}, refusal
 			}
 		case "topology":
-			var topologyFields map[string]json.RawMessage
+			var topologyFields map[string]jsontext.Value
 			var topology ManagedSingletonTopology
 			if json.Unmarshal(value, &topologyFields) != nil || len(topologyFields) != 2 || topologyFields["ha"] == nil || topologyFields["node_id"] == nil || json.Unmarshal(value, &topology) != nil || !ValidManagedNodeID(topology.NodeID) || (string(topologyFields["ha"]) != "true" && string(topologyFields["ha"]) != "false") {
 				return ManagedBootstrapSources{}, refusal
@@ -67,12 +70,12 @@ func (s ManagedBootstrapSources) MarshalJSON() ([]byte, error) {
 		Version        int                       `json:"version"`
 		DatabaseSource string                    `json:"database_source,omitempty"`
 		RootSource     string                    `json:"root_source,omitempty"`
-		Topology       *ManagedSingletonTopology `json:"topology,omitempty"`
+		Topology       *ManagedSingletonTopology `json:"topology,omitzero"`
 	}
 	out := sources{UpgradeSource: s.UpgradeSource, Version: s.Version, DatabaseSource: s.DatabaseSource, RootSource: s.RootSource}
 	if s.Topology.NodeID != "" {
 		topology := s.Topology
 		out.Topology = &topology
 	}
-	return json.Marshal(out)
+	return json.Marshal(out, jsonwire.Stable)
 }

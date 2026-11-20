@@ -2,12 +2,13 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/url"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Machine exports share delivery's live authority and durable pin selection.
@@ -25,7 +26,7 @@ func machineExport(ctx context.Context, client *Client, stderr io.Writer, base s
 		query.Set("projection", "config-only")
 	}
 	if len(parameters) > 0 {
-		encoded, err := json.Marshal(parameters)
+		encoded, err := json.Marshal(parameters, jsonwire.Stable)
 		if err != nil {
 			return out, err
 		}

@@ -294,6 +294,13 @@ export function Matrix({
   // into the head row above the table.
   const phone = useMediaQuery(`(max-width: ${String(BREAKPOINTS.phone)}px)`);
 
+  // Column widths the user dragged (ColumnResizer), or 'fit' after a tap: the
+  // column's content width (app.css). Widening the key column past icon-only
+  // brings the key names back on a phone.
+  const [keyWidth, setKeyWidth] = useState<number | 'fit'>();
+  const [environmentWidths, setEnvironmentWidths] = useState<ReadonlyMap<string, number | 'fit'>>(new Map());
+  const keyNamesShown = !phone || keyWidth === 'fit' || (keyWidth ?? 0) >= KEY_NAME_WIDTH;
+
   // The legend and environment-picker are native <details> popovers. Native
   // <details> only close by re-clicking their summary, so, like the prototype's
   // popovers, close them on an outside pointer-down or Escape. Opening one this
@@ -497,6 +504,15 @@ export function Matrix({
   useProjectSidebar(projectSidebarState);
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
+  );
+  // The widest key row, in characters, sizes a key column fitted by a tap (app.css,
+  // `--matrix-key-fit`): the name, then the linked-keys glyph and required label beside it.
+  const keyRowChars = useMemo(
+    () => groups.reduce((most, group) => group.keys.reduce((widest, key) => {
+      const required = requiredLabel(key, environments);
+      return Math.max(widest, key.name.length + (key.group_id === '' ? 0 : LINKED_MARK_CHARS) + (required === '' ? 0 : required.length + 1));
+    }, most), 0),
+    [groups, environments],
   );
   // Each environment's longest cell text, from the data rather than the DOM:
   // the table is virtualised, so the longest value may not be rendered. Its
@@ -1146,34 +1162,58 @@ export function Matrix({
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>
               <table
-                className="matrix__table"
+                className={phone && keyNamesShown ? 'matrix__table matrix__table--key-names' : 'matrix__table'}
                 ref={matrixTable}
                 // The key column compacts when the environments' nominal widths
                 // leave it less than its full width (app.css, .matrix__table).
-                style={{ '--env-count': visibleEnvironments.length } as CSSProperties}
+                style={{
+                  '--env-count': visibleEnvironments.length,
+                  '--key-chars': keyRowChars,
+                  // Clamped in CSS, so a rotation or narrower window re-fits it: never under
+                  // the column's floor, and always a touch target of values beside it.
+                  ...(keyWidth === undefined
+                    ? {}
+                    : { '--matrix-key': `clamp(var(--matrix-key-min), ${keyWidth === 'fit' ? 'var(--matrix-key-fit)' : `${String(keyWidth)}px`}, 100cqi - var(--touch))` }),
+                } as CSSProperties}
               >
                 <thead ref={setMatrixHead}>
                   <tr>
-                    <th scope="col">
+                    {/* Named "Key" outright, or the resize handle inside joins the name. */}
+                    <th scope="col" aria-label="Key">
                       <div className="matrix__key-heading">
                         {/* The icon stays visible once the phone breakpoint
                             hides the word (app.css): the header must never
                             go blank. Desktop keeps both, same as a key row's
-                            own icon-then-name order; the accessible name is
-                            still "Key" either way. */}
+                            own icon-then-name order, and so does a phone key
+                            column widened to show names; the accessible name
+                            is still "Key" either way. */}
                         <Glyph name="key" />
-                        <span className="visually-hidden-phone">Key</span>
+                        <span className={keyNamesShown ? undefined : 'visually-hidden'}>Key</span>
                         {phone ? null : environmentPicker}
                       </div>
+                      <ColumnResizer
+                        label="Key"
+                        onResize={setKeyWidth}
+                        // A tap fits the column to its names (showing them on a phone, even after a narrowing
+                        // to icon-only); a second restores the default.
+                        onTap={() => setKeyWidth(keyWidth === undefined || !keyNamesShown ? 'fit' : undefined)}
+                      />
                     </th>
                     {visibleEnvironments.map((environment) => {
+                      const width = environmentWidths.get(environment.id);
                       const revision = revisionsByEnvironment.get(environment.id);
                       const degraded = degradedByEnvironment.get(environment.id);
                       return (
                         <th
                           scope="col"
                           key={environment.id}
-                          style={{ '--chars': longestByEnvironment.get(environment.id)?.length ?? 0 } as CSSProperties}
+                          className={width === 'fit' ? 'matrix__column--fit' : undefined}
+                          style={{
+                            '--chars': longestByEnvironment.get(environment.id)?.length ?? 0,
+                            // min-width too: an overflowing table otherwise shrinks it back toward the header.
+                            width: width === 'fit' ? undefined : width,
+                            minWidth: width === 'fit' ? undefined : width,
+                          } as CSSProperties}
                         >
                           <span>{environment.name}</span>
                           {/* DESIGN.md: the protected state is named in text, in
@@ -1213,6 +1253,20 @@ export function Matrix({
                               <span className="btn__label">{`rev ${String(revision)} · history`}</span>
                             </Link>
                           )}
+                          <ColumnResizer
+                            label={environment.name}
+                            onResize={(width) => {
+                              setEnvironmentWidths((current) => new Map(current).set(environment.id, width));
+                            }}
+                            // A tap fits the column to its longest value; a second restores the default.
+                            onTap={() => {
+                              setEnvironmentWidths((current) => {
+                                const next = new Map(current);
+                                if (!next.delete(environment.id)) next.set(environment.id, 'fit');
+                                return next;
+                              });
+                            }}
+                          />
                         </th>
                       );
                     })}
@@ -1269,7 +1323,7 @@ export function Matrix({
                                 }
                               >
                                 <Glyph name="chevron-down" className="matrix__group-chevron" />
-                                <span>{group.name}</span>
+                                <span className="matrix__group-name">{group.name}</span>
                                 <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
                                   <Badge tone="danger">
@@ -1283,13 +1337,14 @@ export function Matrix({
                                 ) : null}
                               </button>
                               {/* env-matrix 31: declare a key straight into this
-                                  group. Hidden while collapsed to match the
-                                  prototype, you open a group, then add to it. */}
+                                  group, from the row's visible right end. Hidden
+                                  while collapsed to match the prototype, you
+                                  open a group, then add to it. */}
                               {collapsed || declarationsLocked ? null : (
                                 <Button
                                   type="button"
                                   variant="quiet"
-                                  className="matrix__add-key"
+                                  className="btn--compact matrix__add-key"
                                   aria-label={`Add key to ${group.name}`}
                                   onClick={() => {
                                     setCreateError(null);
@@ -1329,7 +1384,7 @@ export function Matrix({
                           <MatrixKeyLink
                             keyRecord={key}
                             to={keyDetailLink(key.id)}
-                            phone={phone}
+                            iconOnly={!keyNamesShown}
                             onOpen={(anchor) => {
                               keyDetailOpener.current = anchor;
                             }}
@@ -1685,17 +1740,18 @@ function useMediaQuery(query: string): boolean {
  * link's accessible name is unchanged, and `event.detail` is 0 for a
  * keyboard-triggered click, so Enter always activates it directly.
  *
- * Above the phone breakpoint the popover never opens and a click navigates.
+ * With the name shown (above the phone breakpoint, or a key column widened
+ * past icon-only) the popover never opens and a click navigates.
  */
 function MatrixKeyLink({
   keyRecord,
   to,
-  phone,
+  iconOnly,
   onOpen,
 }: {
   keyRecord: MatrixKey;
   to: string;
-  phone: boolean;
+  iconOnly: boolean;
   onOpen: (anchor: HTMLAnchorElement) => void;
 }) {
   const link = useRef<HTMLAnchorElement>(null);
@@ -1729,7 +1785,7 @@ function MatrixKeyLink({
     }, { signal });
   };
   const previewOnHover = () => {
-    if (phone && window.matchMedia('(hover: hover)').matches) openTip();
+    if (iconOnly && window.matchMedia('(hover: hover)').matches) openTip();
   };
 
   return (
@@ -1748,7 +1804,7 @@ function MatrixKeyLink({
         }}
         onBlur={closeTip}
         onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-          if (phone && event.detail > 0 && !tipOpen()) {
+          if (iconOnly && event.detail > 0 && !tipOpen()) {
             event.preventDefault();
             openTip();
             return;
@@ -1762,12 +1818,101 @@ function MatrixKeyLink({
         ) : (
           <><Glyph name="config" className="matrix__key-glyph--config" /> </>
         )}
-        <span className="matrix__key-name visually-hidden-phone">{keyRecord.name}</span>
+        <span className={iconOnly ? 'matrix__key-name visually-hidden' : 'matrix__key-name'}>{keyRecord.name}</span>
       </Link>
       <span ref={tip} popover="manual" className="matrix__key-tip" aria-hidden="true">
         {keyRecord.name}
       </span>
     </>
+  );
+}
+
+/** The linked-keys glyph and its gap in a key row, in mono characters (`--matrix-icon` plus a gap). */
+const LINKED_MARK_CHARS = 3;
+/** A phone key column at least this wide shows key names: twice `--touch` (44px, tokens.css), the icon-only width. */
+const KEY_NAME_WIDTH = 88;
+/** Pointer travel under this many pixels is a tap on the handle, not a drag (a finger wobbles more). */
+const TAP_SLOP = { touch: 10, other: 4 };
+/** One arrow-key press on a focused handle, in pixels. */
+const KEY_STEP = 16;
+
+/**
+ * A column's resize handle on its header cell's trailing edge: drag it
+ * (mouse, pen or touch), or focus it and press the arrow keys; a tap or Enter
+ * is the column's `onTap`, the single-pointer way to widen it (WCAG 2.5.7). Matrix-only (DESIGN.md, Column resize).
+ * Its range is 0 to the matrix well's width, the most a column can usefully take.
+ * Reports the header cell's new width or the tap; the matrix decides how
+ * either applies to its column.
+ */
+function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (width: number) => void; onTap: () => void }) {
+  const handle = useRef<HTMLSpanElement>(null);
+  const drag = useRef<{ x: number; width: number; slop: number; moved: boolean } | null>(null);
+  const [now, setNow] = useState(0);
+  const [max, setMax] = useState(0);
+  const cellWidth = () => handle.current?.parentElement?.getBoundingClientRect().width ?? 0;
+  // Every reported width stays in the separator's range, 0 to the well's width.
+  const resize = (width: number) => {
+    onResize(Math.max(0, Math.min(width, handle.current?.closest('.matrix__scroll')?.clientWidth ?? width)));
+  };
+  // The separator's value is the column's rendered width, whatever set it.
+  useEffect(() => {
+    const cell = handle.current?.parentElement;
+    if (cell === null || cell === undefined) return;
+    const well = cell.closest('.matrix__scroll');
+    const observer = new ResizeObserver(() => {
+      setNow(Math.round(cell.getBoundingClientRect().width));
+      setMax(well?.clientWidth ?? 0);
+    });
+    observer.observe(cell);
+    if (well !== null) observer.observe(well);
+    return () => observer.disconnect();
+  }, []);
+  const end = () => {
+    drag.current = null;
+  };
+  return (
+    <span
+      ref={handle}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label} column`}
+      aria-valuenow={now}
+      aria-valuemin={0}
+      aria-valuemax={Math.max(now, max)}
+      tabIndex={0}
+      className="matrix__resizer"
+      onPointerDown={(event: PointerEvent<HTMLSpanElement>) => {
+        if (!event.isPrimary || event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { x: event.clientX, width: cellWidth(), slop: event.pointerType === 'touch' ? TAP_SLOP.touch : TAP_SLOP.other, moved: false };
+      }}
+      onPointerMove={(event: PointerEvent<HTMLSpanElement>) => {
+        const start = drag.current;
+        if (start === null) return;
+        const dx = event.clientX - start.x;
+        if (!start.moved && Math.abs(dx) < start.slop) return;
+        start.moved = true;
+        resize(start.width + dx);
+      }}
+      onPointerUp={() => {
+        if (drag.current?.moved === false) onTap();
+        end();
+      }}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onTap();
+          return;
+        }
+        const step = event.key === 'ArrowRight' ? KEY_STEP : event.key === 'ArrowLeft' ? -KEY_STEP : 0;
+        if (step === 0) return;
+        event.preventDefault();
+        resize(cellWidth() + step);
+      }}
+    />
   );
 }
 

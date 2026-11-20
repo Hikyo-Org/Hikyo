@@ -11,11 +11,13 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"slices"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Rollout authority trust state (pqc-auth/1, DEC-02, DEC-03, DEC-07, DEC-20).
@@ -202,7 +204,7 @@ func sameBinding(a, b *CommandAuthority) bool {
 // commandInputV2 is the exact signed byte string: the label, then the command
 // (which carries the binding with generation, required set, key ids and target).
 func commandInputV2(command Command) ([]byte, bool) {
-	raw, err := json.Marshal(command)
+	raw, err := json.Marshal(command, jsonwire.Stable)
 	if err != nil || len(raw) > maxRecordBytes {
 		return nil, false
 	}
@@ -210,7 +212,7 @@ func commandInputV2(command Command) ([]byte, bool) {
 }
 
 func commandInputV1(command Command) ([]byte, bool) {
-	raw, err := json.Marshal(command)
+	raw, err := json.Marshal(command, jsonwire.Stable)
 	if err != nil || len(raw) > maxRecordBytes {
 		return nil, false
 	}

@@ -5,7 +5,7 @@ package upgradegate
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"golang.org/x/sys/unix"
 )
 
@@ -131,7 +132,7 @@ func operatorSecureOwnedBy(file *os.File, directory bool, owner int) error {
 	return nil
 }
 func (f *operatorFile) save() error {
-	raw, err := json.Marshal(f.value)
+	raw, err := json.Marshal(f.value, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

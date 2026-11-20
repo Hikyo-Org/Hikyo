@@ -1,9 +1,11 @@
 package compose
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func osMkdir(p string, perm os.FileMode) error { return os.Mkdir(p, perm) }
@@ -20,7 +22,7 @@ func osSymlink(oldname, newname string) error { return os.Symlink(oldname, newna
 func hex32() string { return strings.Repeat("ab", 16) }
 
 func mustJSON(v any) []byte {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		panic(err)
 	}

@@ -76,6 +76,7 @@ rarely:
 | Identity providers | Instance administration | OIDC providers, SAML providers and SP keys, federation issuers |
 | Provisioning | Organisation → SCIM | Bindings, mappings, provisioning credentials, directory views |
 | Remotes | This instance → Remotes | Directory-tier remotes, connection credentials, workspace sessions |
+| Change approvals | Project → Change approvals | Approval policies and the per-environment review queue: approve, reject, merge, emergency bypass; see [value workflows](/docs/values-workflows/#change-approvals) |
 | Dynamic secrets | Machine access → Providers and Leases | Providers, write-only credentials, mint/renew/revoke/settle leases |
 | Certificates | Instance administration, Machine access → SSH and Certificates | SSH CAs/profiles, private-PKI issuers/profiles, issuance and revocation |
 | Adapters | Project → Deployment adapters | Create, targets, pause/resume/resync, plan, test, credential custody, origin moves, deletion |
@@ -83,6 +84,23 @@ rarely:
 | Instance audit | Instance settings → Audit | Query authentication and instance security events, inspect actor/source metadata, and export after completion verification; human instance audit-read and a second factor required |
 | Remote crypto | Instance administration, Project settings | DEK/master/root/token/scanning-key rotation and resumable re-encryption |
 | Transit | Project → Transit keys | Key lifecycle, caller policy, encryption, signing and MAC operations under explicit crypto grants |
+
+## Audit trail in the browser
+
+The Audit pages show events oldest first, a page at a time, with a filter form
+that maps to the CLI's `audit query` flags: environment (project trail only),
+from and to, principal ID (with a **Self** shortcut), principal name, operation,
+outcome (`intent`, `success`, `denied`, `failure`, `unknown` or `disconnected`;
+check several to match any, none means all), resource type, resource ID and correlation ID. Names, operations and
+resource fields take `*` wildcards. When a filter matches nothing in the pages
+scanned so far, keep scanning; the page says when the end is reached. Selecting
+an event shows its sequence, ids, actor class, credential, source address,
+user agent, origin and scope. Reading the trail is itself audited. **Export
+JSONL** first verifies the complete export, then downloads it; a failed export is
+reported and produces no partial file. A browser download is capped at 64 MiB;
+use the CLI for larger exports. Reading needs `audit-read` at the scope (the
+instance trail needs instance-scope `audit-read`) and a second factor; see [CLI reference](/docs/cli-reference/#audit-query-and-export)
+for the paging and export rules.
 
 ## What stays outside the browser
 

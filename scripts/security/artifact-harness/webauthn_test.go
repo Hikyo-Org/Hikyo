@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -75,7 +75,7 @@ func TestAssertionDoesNotReplayRegistrationOnlyExtensionOutputs(t *testing.T) {
 			var assertion struct {
 				ClientExtensionResults map[string]any `json:"clientExtensionResults"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&assertion); err != nil || len(assertion.ClientExtensionResults) != 0 {
+			if err := json.UnmarshalRead(r.Body, &assertion); err != nil || len(assertion.ClientExtensionResults) != 0 {
 				http.Error(w, "unrequested assertion extension output", http.StatusBadRequest)
 				return
 			}

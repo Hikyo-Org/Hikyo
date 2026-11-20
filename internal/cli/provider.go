@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -247,6 +248,8 @@ func runProviderUpdate(ctx context.Context, ios IO, args []string) error {
 	var assuranceContexts stringList
 	var allowEmailNameID, forceSignRequests, enabled optionalBool
 	var clearAssurance bool
+	var lifecycleProfile optionalString
+	var lifecycleSecretFile, clientSecretFile string
 	st, flags, err := parseCommon("instance-config provider update", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&kind, "kind", "", "disambiguate provider kind: oidc or saml")
 		fs.Var(&displayName, "display-name", "new display name")
@@ -255,6 +258,9 @@ func runProviderUpdate(ctx context.Context, ios IO, args []string) error {
 		fs.Var(&allowEmailNameID, "allow-email-nameid", "accept or refuse emailAddress NameID opaquely")
 		fs.Var(&forceSignRequests, "force-sign-requests", "force or stop forcing signed AuthnRequests")
 		fs.Var(&enabled, "enabled", "enable or disable the provider")
+		fs.Var(&lifecycleProfile, "lifecycle-profile", "OIDC directory lifecycle profile: clerk, or none to clear")
+		fs.StringVar(&lifecycleSecretFile, "lifecycle-secret-file", "", "OIDC: file holding the write-only directory webhook signing secret")
+		fs.StringVar(&clientSecretFile, "client-secret-file", "", "OIDC: file holding the client secret that every OIDC update re-sends")
 	})
 	if err != nil {
 		return err
@@ -269,7 +275,14 @@ func runProviderUpdate(ctx context.Context, ios IO, args []string) error {
 	if len(assuranceContexts) > 0 && clearAssurance {
 		return failf(ExitUsage, "--assurance-context and --clear-assurance-policy are mutually exclusive")
 	}
-	if !displayName.set && len(assuranceContexts) == 0 && !clearAssurance && !allowEmailNameID.set && !forceSignRequests.set && !enabled.set {
+	if lifecycleProfile.set && lifecycleProfile.value != apigenClerk && lifecycleProfile.value != "none" {
+		return failf(ExitUsage, "--lifecycle-profile must be clerk or none")
+	}
+	if lifecycleProfile.set && lifecycleProfile.value == "none" && lifecycleSecretFile != "" {
+		return failf(ExitUsage, "--lifecycle-secret-file needs a lifecycle profile")
+	}
+	lifecycleChange := lifecycleProfile.set || lifecycleSecretFile != ""
+	if !displayName.set && len(assuranceContexts) == 0 && !clearAssurance && !allowEmailNameID.set && !forceSignRequests.set && !enabled.set && !lifecycleChange {
 		return failf(ExitUsage, "provider update requires at least one changed field")
 	}
 	client, _, err := authenticatedClient(st, ios, flags)
@@ -284,8 +297,17 @@ func runProviderUpdate(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	if provider.Kind != "saml" {
-		return failf(ExitRefused, "OIDC partial provider updates are not served by this API; SAML update is available")
+	if provider.Kind == "oidc" {
+		if len(assuranceContexts) > 0 || clearAssurance || allowEmailNameID.set || forceSignRequests.set {
+			return failf(ExitUsage, "--assurance-context, --clear-assurance-policy, --allow-email-nameid and --force-sign-requests apply to SAML providers only")
+		}
+		return runOIDCProviderUpdate(ctx, ios, client, name, oidcProviderChange{
+			displayName: displayName, enabled: enabled, lifecycleProfile: lifecycleProfile,
+			lifecycleSecretFile: lifecycleSecretFile, clientSecretFile: clientSecretFile,
+		})
+	}
+	if lifecycleChange || clientSecretFile != "" {
+		return failf(ExitUsage, "--lifecycle-profile, --lifecycle-secret-file and --client-secret-file apply to OIDC providers only")
 	}
 	patch := apigen.SamlProviderPatch{}
 	if displayName.set {
@@ -560,4 +582,130 @@ func (v *optionalBool) Set(raw string) error {
 		return fmt.Errorf("must be true or false")
 	}
 	return nil
+}
+
+// apigenClerk is the one lifecycle profile this CLI can name today; the server
+// owns the closed set and refuses anything else.
+const apigenClerk = string(apigen.OidcLifecycleProfileClerk)
+
+// oidcProviderChange is the set of fields an OIDC update may change from the CLI.
+type oidcProviderChange struct {
+	displayName         optionalString
+	enabled             optionalBool
+	lifecycleProfile    optionalString
+	lifecycleSecretFile string
+	clientSecretFile    string
+}
+
+// runOIDCProviderUpdate reconfigures an OIDC provider. The API replaces the whole
+// row and requires the client secret on every write, so the update reads the
+// stored row, applies the change, and takes the client secret from
+// --client-secret-file or a prompt, never from an argument. The directory
+// lifecycle secret is read the same way and is only asked for when a profile
+// needs one that is not stored; a stored secret is kept when none is given.
+func runOIDCProviderUpdate(ctx context.Context, ios IO, client *Client, name string, change oidcProviderChange) error {
+	var old apigen.OidcProvider
+	if err := client.Do(ctx, http.MethodGet, oidcProviderPath(name), nil, &old); err != nil {
+		return err
+	}
+	input := apigen.OidcProviderInput{
+		DisplayName: old.DisplayName, Issuer: old.Issuer, ClientId: old.ClientId, Scopes: old.Scopes,
+		AssurancePolicy: old.AssurancePolicy, Enabled: old.Enabled, RowVersion: &old.RowVersion,
+		LifecycleProfile: old.LifecycleProfile,
+	}
+	if change.displayName.set {
+		input.DisplayName = change.displayName.value
+	}
+	if change.enabled.set {
+		input.Enabled = change.enabled.value
+	}
+	switch {
+	case change.lifecycleProfile.set && change.lifecycleProfile.value == "none":
+		input.LifecycleProfile = nil
+	case change.lifecycleProfile.set:
+		profile := apigen.OidcLifecycleProfile(change.lifecycleProfile.value)
+		input.LifecycleProfile = &profile
+	}
+	if change.lifecycleSecretFile != "" && input.LifecycleProfile == nil {
+		return failf(ExitUsage, "--lifecycle-secret-file needs a lifecycle profile: pass --lifecycle-profile clerk")
+	}
+	var err error
+	if input.ClientSecret, err = secretFromFileOrPrompt(ios, change.clientSecretFile, "client secret",
+		"Client secret (required for every update): ", true); err != nil {
+		return err
+	}
+	if input.LifecycleProfile != nil {
+		storedSecret := old.LifecycleProfile != nil && old.LifecycleSecretSet
+		secret, err := secretFromFileOrPrompt(ios, change.lifecycleSecretFile, "lifecycle secret",
+			"Lifecycle signing secret (whsec_...): ", !storedSecret)
+		if err != nil {
+			return err
+		}
+		if secret != "" {
+			input.LifecycleSecret = &secret
+		}
+	}
+	var row apigen.OidcProvider
+	if err := client.Do(ctx, http.MethodPut, oidcProviderPath(name), input, &row); err != nil {
+		return err
+	}
+	return Render(ios.Stdout, FormatTable, Table{
+		Columns: []string{"KIND", "NAME", "DISPLAY NAME", "ENABLED", "LIFECYCLE"},
+		Rows:    [][]string{{"oidc", row.Slug, row.DisplayName, boolString(row.Enabled), lifecycleLabel(row)}}, JSON: row,
+	})
+}
+
+func lifecycleLabel(p apigen.OidcProvider) string {
+	if p.LifecycleProfile == nil {
+		return "-"
+	}
+	if p.LifecycleSecretSet {
+		return string(*p.LifecycleProfile)
+	}
+	return string(*p.LifecycleProfile) + " (no secret)"
+}
+
+// secretFromFileOrPrompt reads a write-only secret from a regular file of at
+// most 4098 bytes, or from a no-echo prompt when no file is named and the secret
+// is required. An optional secret with no file is returned empty. The secret is
+// never an argv value.
+func secretFromFileOrPrompt(ios IO, file, label, prompt string, required bool) (string, error) {
+	var secret string
+	switch {
+	case file != "":
+		raw, err := readSecretFile(file, label)
+		if err != nil {
+			return "", err
+		}
+		secret = raw
+	case required:
+		var err error
+		if secret, err = ios.readPassword(prompt); err != nil {
+			return "", err
+		}
+	default:
+		return "", nil
+	}
+	if secret == "" {
+		return "", failf(ExitUsage, "%s is empty", label)
+	}
+	if !utf8.ValidString(secret) || utf8.RuneCountInString(secret) > 4096 {
+		return "", failf(ExitUsage, "%s must contain at most 4096 characters", label)
+	}
+	return secret, nil
+}
+
+func readSecretFile(path, label string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", failf(ExitUsage, "cannot read %s file", label)
+	}
+	if !info.Mode().IsRegular() || info.Size() > 4098 {
+		return "", failf(ExitUsage, "%s file must be a regular file of at most 4098 bytes", label)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", failf(ExitUsage, "cannot read %s file", label)
+	}
+	return strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r"), nil
 }

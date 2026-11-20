@@ -12,7 +12,8 @@ package sealedreceiver
 
 import (
 	"crypto/subtle"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"maps"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Config is the receiver's pinned trust material and tenant bindings. A
@@ -335,4 +337,6 @@ func (r *Receiver) mutate(e sealedhook.Envelope, p sealedhook.Payload) outcome {
 }
 
 // MarshalState encodes the state for a state file.
-func MarshalState(s State) ([]byte, error) { return json.MarshalIndent(s, "", "  ") }
+func MarshalState(s State) ([]byte, error) {
+	return json.Marshal(s, jsonwire.Stable, jsontext.WithIndent("  "))
+}

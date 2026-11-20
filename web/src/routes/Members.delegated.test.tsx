@@ -15,7 +15,7 @@ const member = 'prn_33333333-3333-4333-8333-333333333333';
 const manager = 'prn_44444444-4444-4444-8444-444444444444';
 const ruleID = 'rul_55555555-5555-4555-8555-555555555555';
 const environment = 'env_66666666-6666-4666-8666-666666666666';
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), metadataRefused: false }));
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), metadataRefused: false, systemOrg: false }));
 const keyID = 'key_77777777-7777-4777-8777-777777777777';
 
 vi.mock('../app/AuthProvider.tsx', () => ({
@@ -27,6 +27,7 @@ vi.mock('../api/settings.ts', async (original) => ({
   useOrgTopology: () => mocks.metadataRefused ? { projects: [], isError: true, isPending: false, ready: false } : { projects: [{ id: project, name: 'Application', environments: [{ id: environment, name: 'Development', isProtected: false }] }], isError: false, isPending: false, ready: true },
 }));
 vi.mock('../ui/useModalDialog.ts', () => ({ useModalDialog: () => ({ current: null }) }));
+vi.mock('./SystemScope.tsx', () => ({ useInSystemScope: () => (mocks.systemOrg ? 'system' : 'ordinary') }));
 
 let ruleListingRefused = false;
 let savedReplacement: z.infer<typeof zReplaceRulesRequest> | null = null;
@@ -36,6 +37,7 @@ beforeEach(() => {
   ruleListingRefused = false;
   savedReplacement = null;
   mocks.metadataRefused = false;
+  mocks.systemOrg = false;
   mocks.refresh.mockReset().mockResolvedValue(undefined);
   client.setConfig({ baseUrl: 'https://hikyo.test' });
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
@@ -146,5 +148,19 @@ it('edits a disclosed rule using stable selector IDs when See and directory meta
     }] });
     expect(view.container.querySelector('dialog')).toBeNull();
     expect(mocks.refresh).toHaveBeenCalledOnce();
+  } finally { await view.unmount(); }
+});
+
+it.each([
+  [false, 'You hold no manage-members here'],
+  [true, 'Access rules do not apply to the Hikyo system configuration organisation'],
+])('explains a refused rule listing by scope (system organisation: %s)', async (systemOrg, text) => {
+  mocks.systemOrg = systemOrg;
+  ruleListingRefused = true;
+  const view = await renderMembers();
+  try {
+    await settleTask();
+    await settleTask();
+    expect(view.container.querySelector('#members-rules [role="alert"]')?.textContent).toContain(text);
   } finally { await view.unmount(); }
 });

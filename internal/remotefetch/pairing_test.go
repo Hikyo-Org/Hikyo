@@ -1,7 +1,7 @@
 package remotefetch
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,7 +46,7 @@ func TestPairedDirectoryUsesFreshKeyProof(t *testing.T) {
 		}
 		seen[proof.JTI] = true
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(Listing{Identity: "peer", Version: "test", Orgs: []OrgEntry{}, OrgCount: 0, ProjectCount: 0})
+		_ = json.MarshalWrite(w, Listing{Identity: "peer", Version: "test", Orgs: []OrgEntry{}, OrgCount: 0, ProjectCount: 0})
 	}))
 	defer peer.Close()
 	origin = peer.URL

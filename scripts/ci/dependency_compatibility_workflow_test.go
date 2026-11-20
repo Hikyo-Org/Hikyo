@@ -45,17 +45,17 @@ func TestDependencyCompatibilityWorkflowScopeAndAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	trigger := workflow.On["pull_request"]
-	if len(workflow.On) != 1 || !reflect.DeepEqual(trigger.Types, []string{"opened", "synchronize", "reopened", "edited"}) || !reflect.DeepEqual(trigger.Paths, []string{"go.mod", "go.sum"}) {
+	if len(workflow.On) != 1 || !reflect.DeepEqual(trigger.Types, []string{"opened", "synchronize", "reopened"}) || !reflect.DeepEqual(trigger.Paths, []string{"go.mod", "go.sum"}) {
 		t.Fatal("compatibility must automatically run for PR dependency selection changes with no privileged event")
 	}
 	if !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) {
 		t.Fatal("dependency consumers must execute with read-only permission")
 	}
-	if workflow.Concurrency.Group != "dependency-compatibility-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}" || !workflow.Concurrency.Cancel {
-		t.Fatal("latest useful dependency revisions must supersede older compatibility runs while metadata remains isolated")
+	if workflow.Concurrency.Group != "dependency-compatibility-${{ github.event.pull_request.number }}" || !workflow.Concurrency.Cancel {
+		t.Fatal("latest dependency revisions must supersede older compatibility runs")
 	}
 	job := workflow.Jobs["compatibility"]
-	if len(workflow.Jobs) != 1 || job.Timeout != 20 || job.Continue || job.If != "github.event.action != 'edited' || github.event.changes.base.ref.from != ''" {
+	if len(workflow.Jobs) != 1 || job.Timeout != 20 || job.Continue || job.If != "" {
 		t.Fatal("compatibility needs its explicit full-build budget and must propagate real failures")
 	}
 	if job.Env["GOCACHE"] != "${{ github.workspace }}/.dependency-compatibility" || job.Env["GOFLAGS"] != "-mod=readonly" || job.Env["FAST_FEEDBACK_DEADLINE"] != "" {

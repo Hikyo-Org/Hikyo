@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
@@ -236,7 +237,7 @@ func stageSecurityImage(ctx context.Context, cfg *config.Config, expected releas
 	if err != nil || current.Applied != state.Applied || current.InstanceID != state.InstanceID || current.Generation != state.Generation || current.RecoveryIncarnation != state.RecoveryIncarnation || current.Maintenance {
 		return observed, errors.Join(err, errors.New("source changed during security staging"))
 	}
-	raw, err = json.Marshal(stage)
+	raw, err = json.Marshal(stage, jsonwire.Stable)
 	if err != nil {
 		return observed, err
 	}

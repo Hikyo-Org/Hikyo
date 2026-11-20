@@ -35,10 +35,14 @@ func newAuditEvent(ctx context.Context, typ audit.EventType, principal domain.Pr
 		return audit.Event{}, err
 	}
 	wire := audit.FromContext(ctx)
+	if correlationID == "" {
+		correlationID = wire.CorrelationID
+	}
 	return audit.Event{
 		ID: id, Type: typ, SchemaVersion: 1,
 		OccurredAt:    time.Now().UTC(),
 		Actor:         audit.Actor{ID: string(principal)},
+		AuthorityID:   wire.AuthorityID,
 		Object:        obj,
 		Outcome:       outcome,
 		CorrelationID: correlationID,
@@ -263,6 +267,7 @@ func (a Actor) resolveSelf(ctx context.Context, az *authz.TxAuthorizer, now time
 		return authz.Identity{Principal: a.principal}, nil
 	}
 	if a.bearer == "" {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
 		return authz.Identity{}, domain.ErrUnauthenticated
 	}
 	return az.AuthenticateSelfSurface(ctx, a.bearer, now)

@@ -7,7 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -23,6 +23,8 @@ import (
 
 	"github.com/sigstore/sigstore/pkg/signature"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type fixture struct {
@@ -631,7 +633,7 @@ func TestConfigAndTrustFloorAreStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 	floor := trustFloor{Format: "hikyo.security-feed-trust/v1", BootstrapSHA256: digest(f.root), CheckedAt: time.Now(), Roles: map[string]roleFloor{}}
-	raw, err := json.Marshal(floor)
+	raw, err := json.Marshal(floor, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

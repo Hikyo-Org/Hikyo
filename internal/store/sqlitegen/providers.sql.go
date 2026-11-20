@@ -15,25 +15,27 @@ const createOIDCProvider = `-- name: CreateOIDCProvider :exec
 INSERT INTO oidc_providers
     (id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
      redirect_uri, assurance_policy, enabled, dek_version, row_version,
-     created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+     created_at, updated_at, lifecycle_profile, lifecycle_secret)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
 `
 
 type CreateOIDCProviderParams struct {
-	ID              string
-	Slug            string
-	DisplayName     string
-	Kind            string
-	Issuer          string
-	ClientID        string
-	ClientSecret    []byte
-	Scopes          string
-	RedirectUri     string
-	AssurancePolicy sql.NullString
-	Enabled         int64
-	DekVersion      int64
-	CreatedAt       string
-	UpdatedAt       string
+	ID               string
+	Slug             string
+	DisplayName      string
+	Kind             string
+	Issuer           string
+	ClientID         string
+	ClientSecret     []byte
+	Scopes           string
+	RedirectUri      string
+	AssurancePolicy  sql.NullString
+	Enabled          int64
+	DekVersion       int64
+	CreatedAt        string
+	UpdatedAt        string
+	LifecycleProfile sql.NullString
+	LifecycleSecret  []byte
 }
 
 // OIDC provider administration (#54, human-auth ADR - Login methods). The
@@ -59,6 +61,8 @@ func (q *Queries) CreateOIDCProvider(ctx context.Context, arg CreateOIDCProvider
 		arg.DekVersion,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.LifecycleProfile,
+		arg.LifecycleSecret,
 	)
 	return err
 }
@@ -76,7 +80,8 @@ func (q *Queries) DeleteOIDCProvider(ctx context.Context, id string) error {
 const getOIDCProviderBySlug = `-- name: GetOIDCProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE slug = ?
 `
 
@@ -100,6 +105,8 @@ func (q *Queries) GetOIDCProviderBySlug(ctx context.Context, slug string) (OidcP
 		&i.RowVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleProfile,
+		&i.LifecycleSecret,
 	)
 	return i, err
 }
@@ -135,7 +142,8 @@ func (q *Queries) GuardOIDCProviderForMint(ctx context.Context, arg GuardOIDCPro
 const listOIDCProviders = `-- name: ListOIDCProviders :many
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers ORDER BY slug
 `
 
@@ -165,6 +173,8 @@ func (q *Queries) ListOIDCProviders(ctx context.Context) ([]OidcProvider, error)
 			&i.RowVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LifecycleProfile,
+			&i.LifecycleSecret,
 		); err != nil {
 			return nil, err
 		}
@@ -199,22 +209,25 @@ const updateOIDCProviderCAS = `-- name: UpdateOIDCProviderCAS :execrows
 UPDATE oidc_providers
 SET display_name = ?, client_id = ?, client_secret = ?, scopes = ?,
     redirect_uri = ?, assurance_policy = ?, enabled = ?,
-    dek_version = ?, row_version = row_version + 1, updated_at = ?
+    dek_version = ?, row_version = row_version + 1, updated_at = ?,
+    lifecycle_profile = ?, lifecycle_secret = ?
 WHERE id = ? AND row_version = ?
 `
 
 type UpdateOIDCProviderCASParams struct {
-	DisplayName     string
-	ClientID        string
-	ClientSecret    []byte
-	Scopes          string
-	RedirectUri     string
-	AssurancePolicy sql.NullString
-	Enabled         int64
-	DekVersion      int64
-	UpdatedAt       string
-	ID              string
-	RowVersion      int64
+	DisplayName      string
+	ClientID         string
+	ClientSecret     []byte
+	Scopes           string
+	RedirectUri      string
+	AssurancePolicy  sql.NullString
+	Enabled          int64
+	DekVersion       int64
+	UpdatedAt        string
+	LifecycleProfile sql.NullString
+	LifecycleSecret  []byte
+	ID               string
+	RowVersion       int64
 }
 
 // The issuer is never in the SET list: it is immutable after create (A3), so a
@@ -232,6 +245,8 @@ func (q *Queries) UpdateOIDCProviderCAS(ctx context.Context, arg UpdateOIDCProvi
 		arg.Enabled,
 		arg.DekVersion,
 		arg.UpdatedAt,
+		arg.LifecycleProfile,
+		arg.LifecycleSecret,
 		arg.ID,
 		arg.RowVersion,
 	)

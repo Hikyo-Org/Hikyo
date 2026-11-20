@@ -257,7 +257,7 @@ func (r selfConfigRepo) BeginJob(ctx context.Context, p authz.Proof, want SelfCo
 	return r.q.job(ctx, want.ID, false)
 }
 
-func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string, at time.Time) (SelfConfigBinding, error) {
+func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string) (SelfConfigBinding, error) {
 	b, err := r.verify(ctx, p, authz.StoreSelfConfigCommitJob, true)
 	if err != nil {
 		return SelfConfigBinding{}, err
@@ -272,7 +272,7 @@ func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string,
 		}
 		return SelfConfigBinding{}, domain.ErrConflict
 	}
-	at, err = r.q.currentTime(ctx)
+	at, err := r.q.currentTime(ctx)
 	if err != nil {
 		return SelfConfigBinding{}, err
 	}

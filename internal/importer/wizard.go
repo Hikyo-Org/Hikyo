@@ -209,10 +209,8 @@ func wizardEnvironments(host WizardHost, source string, existing []NamedEnv, rea
 	claimed := map[string]bool{}
 	var envs []wizardEnv
 	for {
-		add := true
 		if len(envs) > 0 {
-			var err error
-			add, err = host.Confirm("Map another target environment?", false)
+			add, err := host.Confirm("Map another target environment?", false)
 			if err != nil {
 				return nil, err
 			}

@@ -3,7 +3,8 @@ package awssm
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -203,7 +204,7 @@ func (p *firstCurrentVisibilityTransport) RoundTrip(req *http.Request) (*http.Re
 	if err != nil {
 		return nil, err
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return nil, err
 	}

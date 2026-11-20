@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func (r adapterQueries) MoveTarget(ctx context.Context, p authz.Proof, mutation AdapterRouteMoveMutation) (AdapterRouteMoveResult, error) {
@@ -35,6 +36,39 @@ func (r adapterQueries) Move(ctx context.Context, p authz.Proof, moveID string) 
 		return AdapterMove{}, err
 	}
 	return readAdapterMove(ctx, r.db, chain, moveID, false)
+}
+
+func (r adapterQueries) ListOpenMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersListOpenMoves, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.db.adapterMoveQueries().listOpen(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
+}
+
+func (r adapterQueries) ListScrubs(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterScrubRef, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersListScrubs, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.db.adapterMoveQueries().listScrubs(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
+}
+
+func (r adapterQueries) ListOrphanedMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersListOrphanedMoves, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.db.adapterMoveQueries().listOrphanedMoves(ctx, chain.Org, chain.Project, adapterID, afterID, limit)
 }
 
 func (r adapterQueries) CancelMove(ctx context.Context, p authz.Proof, moveID, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
@@ -131,8 +165,7 @@ func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, mo
 	stamp := at
 	for _, target := range move.Targets {
 
-		lookupResult, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
-		if err != nil {
+		if _, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID); err != nil {
 			return AdapterMove{}, adapter.ErrSuperseded
 		}
 		// Superseded siblings are no longer claimable. Close only their
@@ -141,7 +174,7 @@ func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, mo
 			OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: target.EnvironmentID}, at); err != nil {
 			return AdapterMove{}, err
 		}
-		lookupResult, err = db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
+		lookupResult, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
 		if err != nil {
 			return AdapterMove{}, err
 		}
@@ -208,7 +241,7 @@ func replaceAdapterMoveTarget(ctx context.Context, db adapterDB, chain domain.Sc
 	if _, err := db.adapterMoveQueries().deleteKeys(ctx, moveID, target.ID, chain.Org, chain.Project, target.EnvironmentID); err != nil {
 		return AdapterMove{}, err
 	}
-	selectedJSON, err := json.Marshal(target.SelectedRepositoryIDs)
+	selectedJSON, err := json.Marshal(target.SelectedRepositoryIDs, jsonwire.Stable)
 	if err != nil {
 		return AdapterMove{}, err
 	}
@@ -439,8 +472,8 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 		if mutation.KeepRemote {
 			pendingOrphans = target.orphaned
 		}
-		orphanJSON, _ := json.Marshal(pendingOrphans)
-		selectedJSON, _ := json.Marshal(target.selectedRepositoryIDs)
+		orphanJSON, _ := json.Marshal(pendingOrphans, jsonwire.Stable)
+		selectedJSON, _ := json.Marshal(target.selectedRepositoryIDs, jsonwire.Stable)
 
 		if affected, err := db.adapterMoveQueries().insertTarget(ctx, mutation.MoveID, chain.Org, chain.Project, target.environmentID, target.id, target.kind, target.owner, target.name, target.destinationEnvironment, target.destinationScope, 0, target.visibility, selectedJSON, target.prefix, string(orphanJSON)); err != nil || affected != 1 {
 			if err != nil {
@@ -628,8 +661,8 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 	if mutation.KeepRemote {
 		pendingOrphans = orphaned
 	}
-	pendingOrphanJSON, _ := json.Marshal(pendingOrphans)
-	selectedJSON, _ := json.Marshal(mutation.Target.SelectedRepositoryIDs)
+	pendingOrphanJSON, _ := json.Marshal(pendingOrphans, jsonwire.Stable)
+	selectedJSON, _ := json.Marshal(mutation.Target.SelectedRepositoryIDs, jsonwire.Stable)
 
 	if rows, err := db.adapterMoveQueries().insertTarget(ctx, mutation.MoveID, chain.Org, chain.Project, mutation.Target.EnvironmentID, mutation.Target.ID, mutation.Target.DestinationKind, mutation.Target.DestinationOwner, mutation.Target.DestinationName, mutation.Target.DestinationEnvironment, mutation.Target.DestinationScope, mutation.Target.RepositoryID, mutation.Target.Visibility, selectedJSON, mutation.Target.NamePrefix, string(pendingOrphanJSON)); err != nil || rows != 1 {
 		if err != nil {

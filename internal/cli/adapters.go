@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type adapterCredentialSource struct {
@@ -129,7 +130,7 @@ func (a adapterAWSAuth) credential(ios IO, source adapterCredentialSource) ([]by
 		Mode: awssm.AuthMode(a.mode), Region: a.region, RoleARN: a.roleARN, ExternalID: a.externalID,
 		SessionSeconds: a.sessionSeconds, STSOrigin: a.stsOrigin,
 	}
-	raw, err := json.Marshal(descriptor)
+	raw, err := json.Marshal(descriptor, jsonwire.Stable)
 	if err != nil {
 		return nil, failf(ExitInternal, "encode AWS access descriptor: %v", err)
 	}

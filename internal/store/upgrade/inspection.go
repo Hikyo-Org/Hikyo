@@ -18,7 +18,7 @@ type InstalledSource struct {
 	SchemaDigest       releaseidentity.Digest `json:"schema_digest"`
 	InstanceID         string                 `json:"instance_id"`
 	RestoreEpoch       int64                  `json:"restore_epoch"`
-	Ledger             *State                 `json:"ledger,omitempty"`
+	Ledger             *State                 `json:"ledger,omitzero"`
 	RequiresLegacyStop bool                   `json:"requires_legacy_stop"`
 	RequiresBackup     bool                   `json:"requires_backup"`
 }

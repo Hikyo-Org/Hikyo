@@ -2,13 +2,14 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAdapterCredentialSourcesNeverNeedArgv(t *testing.T) {
@@ -41,7 +42,7 @@ func TestAdapterCredentialSourcesNeverNeedArgv(t *testing.T) {
 
 func TestAdapterMoveResumeBodiesAreExplicitAndCredentialIsWriteOnly(t *testing.T) {
 	originBody := resumeAdapterOriginBody("https://next.example", []byte("pending-token"))
-	raw, err := json.Marshal(originBody)
+	raw, err := json.Marshal(originBody, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestAdapterMoveResumeBodiesAreExplicitAndCredentialIsWriteOnly(t *testing.T
 		DestinationKind: "repository", DestinationOwner: "team", DestinationName: "repo",
 		NamePrefix: "PROD_", KeyIds: []apigen.ID{"key_019c1234-1234-7123-8123-123456789abc"},
 	})
-	raw, err = json.Marshal(targetBody)
+	raw, err = json.Marshal(targetBody, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

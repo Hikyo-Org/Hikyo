@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -225,7 +226,7 @@ func (h *realAWSDurable) inspect(id string) store.AdapterTarget {
 		h.t.Fatal("durable AWS target inspection failed")
 	}
 	// Ordinary reads must not contain any part of the protected descriptor.
-	raw, err := json.Marshal(view)
+	raw, err := json.Marshal(view, jsonwire.Stable)
 	if err != nil {
 		h.t.Fatal("cannot inspect ordinary target representation")
 	}

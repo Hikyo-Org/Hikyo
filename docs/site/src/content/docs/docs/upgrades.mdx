@@ -7,6 +7,26 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 Hikyo migrations move forward only. A downgrade means restoring a pre-upgrade
 archive with a compatible binary, not running a down migration.
 
+## Scheduled rotation upgrade notes
+
+A scheduled credential rotation that an earlier release only recorded now runs
+after you upgrade: once its next run is due, the server mints, publishes and
+later revokes credentials without a person present. Before upgrading, list your
+rotations in each environment (`hikyo rotation list --env <env>`) and pause any
+you do not want to start, then resume them deliberately. See
+[Scheduled credential rotation](/docs/rotation/).
+
+## Dynamic provider and SSH CA upgrade notes
+
+Dynamic secrets providers whose origin names several hosts (for example
+`postgres://u@h1,h2:5432/app`) stop working after this upgrade: creating,
+probing, renewing and revoking through them is refused. Before upgrading, list
+providers (`hikyo dynamic-provider list --env <env>`), revoke the leases of any
+multi-host provider, and recreate it with a single-host origin. SSH CA rotation
+now refuses a key the CA has used before; restore runbooks must rotate to a new
+key. See [Dynamic secrets](/docs/dynamic-secrets/) and
+[SSH certificates](/docs/ssh-certificates/).
+
 ## Social sign-in upgrade notes
 
 When upgrading across migration `00057_social_signin`, existing sessions survive
@@ -77,7 +97,11 @@ independent attestation key and root escrow, wrapped with a secret derived from
 rewrapped the next time `sudo hikyo upgrade` runs from a terminal; it asks for
 the passphrase once more and never again. This explicitly chosen local custody
 model does not provide an off-host recovery copy. Preserve the encrypted vault
-together with the root key through your recovery process.
+together with the root key through your recovery process. The server cannot reach
+this root-only vault, so `hikyo rotate-root-key` does not re-seal it: after a
+root rotation `sudo hikyo upgrade` reports that custody did not open under the
+root key in use. Keep the retired root key until a host re-seal procedure is
+documented.
 After each completed upgrade the command keeps only the encrypted backup taken
 before the current schema under `/var/lib/hikyo-upgrade`; earlier `backup-*`,
 `bundle-*` and `evidence-*` directories there are removed. Copy any backup you

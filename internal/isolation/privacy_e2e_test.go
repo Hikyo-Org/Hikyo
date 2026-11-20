@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"sync"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
@@ -96,7 +97,7 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw, err := json.Marshal(export)
+			raw, err := json.Marshal(export, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

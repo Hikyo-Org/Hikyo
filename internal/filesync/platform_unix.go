@@ -66,3 +66,23 @@ func syncRootDir(root *os.Root, name string) error {
 	}
 	return errors.Join(d.Sync(), d.Close())
 }
+
+// ownedByProcess reports whether fi is owned by this process's effective user.
+func ownedByProcess(fi fs.FileInfo) bool {
+	u, _ := ownerIDs(fi)
+	return u == os.Geteuid()
+}
+
+// linkCount is the number of hard links to fi; 0 when unknown.
+func linkCount(fi fs.FileInfo) uint64 {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0
+	}
+	return uint64(st.Nlink)
+}
+
+// readFlags opens a generation file for reading without ever blocking: a
+// recipient that owns the destination can swap a file for a FIFO, and a
+// blocking open would stall the publisher while it holds the directory lock.
+const readFlags = os.O_RDONLY | syscall.O_NONBLOCK

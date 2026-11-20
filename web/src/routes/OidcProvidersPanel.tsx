@@ -18,6 +18,7 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Select } from '../ui/Select.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
@@ -53,6 +54,8 @@ const emptyDraft: OidcProviderDraft = {
   clientSecret: '',
   scopes: 'openid',
   assurancePolicy: '',
+  lifecycleProfile: '',
+  lifecycleSecret: '',
   enabled: true,
 };
 
@@ -66,6 +69,9 @@ function draftFrom(provider: OidcProvider): OidcProviderDraft {
     clientSecret: '',
     scopes: provider.scopes,
     assurancePolicy: provider.assurance_policy ?? '',
+    lifecycleProfile: provider.lifecycle_profile ?? '',
+    // Write-only like the client secret: blank keeps the stored one.
+    lifecycleSecret: '',
     enabled: provider.enabled,
   };
 }
@@ -181,7 +187,7 @@ export function OidcProvidersPanel() {
           >
             <Glyph name="plus" /> add identity provider
           </Button>
-          <code className="instance-cli">$ hikyo oidc-provider put</code>
+          <code className="instance-cli">$ hikyo instance-config provider list</code>
         </div>
       ) : null}
 
@@ -292,7 +298,7 @@ function ProviderEditor({
       },
       (error: unknown) => {
         // The secret is write-only: never retain it after a failed save.
-        setDraft((current) => ({ ...current, clientSecret: '' }));
+        setDraft((current) => ({ ...current, clientSecret: '', lifecycleSecret: '' }));
         setBusy(false);
         onFailure(new Refusal(oidcProviderRefusalText(error, 'save-oidc-provider')));
         // Stale (409), forbidden (403), or ended-session (401) refusals are
@@ -395,6 +401,46 @@ function ProviderEditor({
         onChange={(event) => set('assurancePolicy', event.target.value)}
         error={refusalFor('assurance_policy')}
       />
+
+      <Select
+        label="Directory lifecycle events"
+        value={draft.lifecycleProfile}
+        onChange={(event) => set('lifecycleProfile', event.target.value === 'clerk' ? 'clerk' : '')}
+        hint="Optional. Lets your user directory tell Hikyo when a user is deleted or banned, so their linked identity is unlinked or their sessions end."
+      >
+        <option value="">None</option>
+        <option value="clerk">Clerk</option>
+      </Select>
+
+      {draft.lifecycleProfile !== '' ? (
+        <>
+          <Input
+            label="Lifecycle signing secret"
+            type="password"
+            autoComplete="off"
+            mono
+            value={draft.lifecycleSecret}
+            onChange={(event) => set('lifecycleSecret', event.target.value)}
+            hint={
+              original?.lifecycle_secret_set === true
+                ? 'Write-only. Leave blank to keep the stored secret; rotating it does not end sessions.'
+                : 'Write-only: the webhook signing secret (whsec_...) from your directory.'
+            }
+            error={refusalFor('lifecycle_secret')}
+          />
+          {original !== null ? (
+            <Input
+              label="Lifecycle endpoint URL"
+              mono
+              readOnly
+              value={original.lifecycle_uri}
+              hint="Register this URL as the webhook endpoint in your directory."
+            />
+          ) : (
+            <p className="field__hint">The webhook endpoint URL is shown here after you save.</p>
+          )}
+        </>
+      ) : null}
 
       <Checkbox
         label="Enabled (advertised on the sign-in page)"

@@ -110,6 +110,7 @@ if (!checkOnly) {
   }
   await rm(resolve(docsRoot, 'policies'), { recursive: true, force: true });
   await rm(resolve(docsRoot, 'license.md'), { force: true });
+  await rm(resolve(docsRoot, 'docs/cli-help.md'), { force: true });
   await mkdir(resolve(docsRoot, 'release'), { recursive: true });
 }
 
@@ -160,4 +161,13 @@ const license = await readFile(resolve(repositoryRoot, 'LICENSE'), 'utf8');
 if (!checkOnly) await writeFile(
   resolve(docsRoot, 'license.md'),
   `---\ntitle: Mozilla Public License 2.0\neditUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/LICENSE\n---\n\n\`\`\`text\n${license}\`\`\`\n`,
+);
+
+// The CLI help snapshot is the exact `hikyo help` output the CLI tests pin, so
+// the page cannot drift from the shipped binary.
+const cliHelp = await readFile(resolve(repositoryRoot, 'internal/cli/testdata/help.txt'), 'utf8');
+if (!checkOnly) await mkdir(resolve(docsRoot, 'docs'), { recursive: true });
+if (!checkOnly) await writeFile(
+  resolve(docsRoot, 'docs/cli-help.md'),
+  `---\ntitle: CLI help\ndescription: The exact hikyo help output for this release.\neditUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/internal/cli/verbs.go\n---\n\n\`\`\`text\n${cliHelp}\`\`\`\n`,
 );

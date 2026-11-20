@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -154,11 +155,7 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 		return cleanup, errors.New("running image payload differs from authenticated release executable")
 	}
 	if !cached {
-		raw, err := json.Marshal(target)
-		if err != nil {
-			return cleanup, err
-		}
-		if err := writeAutomaticFile(filepath.Join(directory, "image.json"), raw, 0600); err != nil {
+		if err := recordUnattendedImage(directory, target); err != nil {
 			return cleanup, err
 		}
 	}
@@ -166,11 +163,17 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 		return cleanup, err
 	}
 	target.BundleDirectory = cfg.Upgrade.BundleDirectory
-	raw, err := json.Marshal(target)
+	return cleanup, recordUnattendedImage(directory, target)
+}
+
+// recordUnattendedImage persists the exact admitted image and its bundle. Operator
+// commands in the same container read it back (ResolveUnattendedOperator).
+func recordUnattendedImage(directory string, target selfupdate.PreparedNightly) error {
+	raw, err := json.Marshal(target, jsonwire.Stable)
 	if err != nil {
-		return cleanup, err
+		return err
 	}
-	return cleanup, writeAutomaticFile(filepath.Join(directory, "image.json"), raw, 0600)
+	return writeAutomaticFile(filepath.Join(directory, "image.json"), raw, 0600)
 }
 
 func runPreparedUnattended(ctx context.Context, cfg *config.Config, options UnattendedUpgradeOptions, directory string, root []byte, pinned releasetrust.PinnedTrust, installer unattendedInstaller, source automaticReleaseSource, target selfupdate.PreparedNightly) error {
@@ -190,14 +193,9 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 		return stateErr
 	}
 	path := filepath.Join(directory, "enrollment.json")
-	var enrollment unattendedEnrollment
-	raw, err := readUnattendedPrivate(path)
-	enrolled := err == nil
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	enrollment, enrolled, err := readUnattendedEnrollment(directory)
+	if err != nil {
 		return err
-	}
-	if enrolled && (definitions.DecodeStrict(raw, &enrollment) != nil || enrollment.Format != "hikyo.unattended-enrollment/v1" || enrollment.Target.Validate() != nil || enrollment.Operator.Validate() != nil) {
-		return errors.New("invalid unattended enrollment")
 	}
 	custody := filepath.Join(directory, "custody")
 	publicPath := filepath.Join(directory, "operator.pub")
@@ -447,11 +445,27 @@ func preflightUnattendedRoute(ctx context.Context, route automaticRoute) error {
 }
 
 func writeUnattendedEnrollment(path string, enrollment unattendedEnrollment) error {
-	raw, err := json.Marshal(enrollment)
+	raw, err := json.Marshal(enrollment, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
 	return writeAutomaticFile(path, raw, 0600)
+}
+
+// readUnattendedEnrollment reports an absent enrollment as not enrolled. Any
+// other unreadable or malformed record is an error, never a fresh start.
+func readUnattendedEnrollment(directory string) (enrollment unattendedEnrollment, enrolled bool, err error) {
+	raw, err := readUnattendedPrivate(filepath.Join(directory, "enrollment.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return enrollment, false, nil
+	}
+	if err != nil {
+		return enrollment, false, err
+	}
+	if definitions.DecodeStrict(raw, &enrollment) != nil || enrollment.Format != "hikyo.unattended-enrollment/v1" || enrollment.Target.Validate() != nil || enrollment.Operator.Validate() != nil {
+		return unattendedEnrollment{}, false, errors.New("invalid unattended enrollment")
+	}
+	return enrollment, true, nil
 }
 
 func readUnattendedPrivate(path string) ([]byte, error) {
@@ -465,10 +479,23 @@ func readUnattendedPrivate(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-func cachedUnattendedImage(ctx context.Context, cfg *config.Config, directory string, claim []byte, pinned releasetrust.PinnedTrust, installer *selfupdate.Installer) (selfupdate.PreparedNightly, bool) {
+// readUnattendedImage returns the image record this installation's server wrote
+// after its last admitted start (or the one seeded for it).
+func readUnattendedImage(directory string) (selfupdate.PreparedNightly, error) {
 	var prepared selfupdate.PreparedNightly
 	raw, err := readUnattendedPrivate(filepath.Join(directory, "image.json"))
-	if err != nil || definitions.DecodeStrict(raw, &prepared) != nil || prepared.Identity.Validate() != nil || prepared.BinarySHA256.Validate() != nil {
+	if err != nil {
+		return prepared, err
+	}
+	if definitions.DecodeStrict(raw, &prepared) != nil || prepared.Identity.Validate() != nil || prepared.BinarySHA256.Validate() != nil {
+		return selfupdate.PreparedNightly{}, errors.New("invalid unattended image record")
+	}
+	return prepared, nil
+}
+
+func cachedUnattendedImage(ctx context.Context, cfg *config.Config, directory string, claim []byte, pinned releasetrust.PinnedTrust, installer *selfupdate.Installer) (selfupdate.PreparedNightly, bool) {
+	prepared, err := readUnattendedImage(directory)
+	if err != nil {
 		return prepared, false
 	}
 	floor := releaseidentity.SnapshotFloor{}
@@ -567,7 +594,7 @@ func recordAbandonedPreparation(directory, reason string, journal *automaticJour
 		Format  string            `json:"format"`
 		Reason  string            `json:"reason"`
 		Journal *automaticJournal `json:"journal"`
-	}{"hikyo.unattended-abandoned/v1", reason, journal})
+	}{"hikyo.unattended-abandoned/v1", reason, journal}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

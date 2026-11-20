@@ -340,6 +340,48 @@ func (r *Resolver) HoldRestoredPKIIssuers(ctx context.Context) error {
 	return nil
 }
 
+// HoldRestoredRotations holds every restored scheduled rotation (#148,
+// decision 9): a restored instance must not mint against a provider before its
+// operator has reconciled grants, so no rotation starts a run until `rotation
+// release-hold`. The closure runs against the archive's own schema, read from
+// the restored catalog. An archive without the rotations table holds nothing; one
+// that has the table but not the restore_hold column (migrations 00091 to 00093,
+// pre-release builds) cannot be held, so its active rotations are paused instead,
+// which the operator must resume by hand.
+func (r *Resolver) HoldRestoredRotations(ctx context.Context, now time.Time) error {
+	var table, column bool
+	var err error
+	if r.sq != nil {
+		err = r.sqdb.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'rotations'),
+			EXISTS(SELECT 1 FROM pragma_table_info('rotations') WHERE name = 'restore_hold')`).Scan(&table, &column)
+	} else {
+		err = r.pgdb.QueryRow(ctx, `SELECT
+			EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('rotations')),
+			EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = to_regclass('rotations') AND attname = 'restore_hold' AND NOT attisdropped)`).Scan(&table, &column)
+	}
+	if err != nil {
+		return fmt.Errorf("authn: probe restored rotations: %w", err)
+	}
+	if !table {
+		return nil
+	}
+	switch {
+	case r.sq != nil && column:
+		err = r.sq.HoldRestoredRotations(ctx, encodeTime(now))
+	case r.sq != nil:
+		err = r.sq.PauseRestoredRotations(ctx, encodeTime(now))
+	case column:
+		err = r.pg.HoldRestoredRotations(ctx, pgTimestamp(now))
+	default:
+		err = r.pg.PauseRestoredRotations(ctx, pgTimestamp(now))
+	}
+	if err != nil {
+		return fmt.Errorf("authn: hold restored rotations: %w", err)
+	}
+	return nil
+}
+
 // restoreNextEpoch is one past the largest epoch stamp in the restored state.
 // A restore runs against the ARCHIVE's schema before rolling forward, so the
 // credential tables added after the pinned legacy genesis (00057:

@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 	"time"
@@ -21,17 +21,21 @@ func TestDoctorResultsUseServerWarningsWithoutRecalculation(t *testing.T) {
 	}}}, apigen.RetentionHealth{LastPruneSuccess: &lastPrune, Stale: false, StaleAfterSeconds: 86400, Backup: healthyBackup(effectiveAt)}, effectiveAt)
 	// Findings: [0] retention-prune, [1] project-storage, [2] backup-rpo,
 	// [3] restore-drill, [4] backup-retention, [5] adapter-targets,
-	// [6] pki (unmeasured), [7] unavailable diagnostics, [8] the provider error.
-	if result.Status != "error" || len(result.Findings) != 9 {
+	// [6] pki (unmeasured), [7] rotation (unmeasured), [8] unavailable diagnostics,
+	// [9] the provider error.
+	if result.Status != "error" || len(result.Findings) != 10 {
 		t.Fatalf("doctor result = %#v", result)
 	}
-	if got := result.Findings[8]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
+	if got := result.Findings[9]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
 		t.Fatalf("doctor finding = %#v", got)
 	}
 	if got := result.Findings[6]; got.Code != "pki" || got.Severity != "unknown" {
 		t.Fatalf("an unmeasured PKI health must read unknown, never ok: %#v", got)
 	}
-	if len(rows) != 9 || rows[8][4] != "server message" {
+	if got := result.Findings[7]; got.Code != "rotation" || got.Severity != "unknown" {
+		t.Fatalf("an unmeasured rotation health must read unknown, never ok: %#v", got)
+	}
+	if len(rows) != 10 || rows[9][4] != "server message" {
 		t.Fatalf("doctor rows = %#v", rows)
 	}
 }
@@ -210,6 +214,42 @@ func TestDoctorPKIFinding(t *testing.T) {
 			got := doctorPKIFinding(apigen.RetentionHealth{PkiCertificatesUnknown: tc.unknown, PkiIssuersOnHold: tc.held})
 			if got.Code != "pki" || got.Severity != tc.severity || !strings.Contains(got.Message, tc.message) {
 				t.Fatalf("finding = %#v", got)
+			}
+		})
+	}
+}
+
+func TestDoctorRotationFinding(t *testing.T) {
+	zero, one := 0, 1
+	health := func(halted, held, quarantined, refused, unknown, overdue, expiring *int) apigen.RetentionHealth {
+		return apigen.RetentionHealth{RotationHalted: halted, RotationRestoreHeld: held, RotationRunsQuarantined: quarantined, RotationRunsRevokeRefused: refused,
+			RotationRunsUnknownOutcome: unknown, RotationOverdue: overdue, RotationCredentialsExpiring: expiring}
+	}
+	cases := []struct {
+		name              string
+		health            apigen.RetentionHealth
+		severity, message string
+	}{
+		{"healthy", health(&zero, &zero, &zero, &zero, &zero, &zero, &zero), "ok", "0 halted rotation(s), 0 rotation(s) held"},
+		{"halted", health(&one, &zero, &zero, &zero, &zero, &zero, &zero), "warn", "1 halted rotation(s)"},
+		{"held", health(&zero, &one, &zero, &zero, &zero, &zero, &zero), "warn", "1 rotation(s) held by a restore"},
+		{"quarantined", health(&zero, &zero, &one, &zero, &zero, &zero, &zero), "warn", "1 quarantined run(s)"},
+		{"revoke refused", health(&zero, &zero, &zero, &one, &zero, &zero, &zero), "warn", "1 run(s) whose superseded role could not be dropped"},
+		{"unknown outcome", health(&zero, &zero, &zero, &zero, &one, &zero, &zero), "warn", "1 run(s) with an unknown outcome"},
+		{"overdue", health(&zero, &zero, &zero, &zero, &zero, &one, &zero), "warn", "1 overdue rotation(s)"},
+		{"expiring", health(&zero, &zero, &zero, &zero, &zero, &zero, &one), "warn", "1 credential(s) expiring within the next six hours"},
+		{"one missing", health(&zero, &zero, &zero, &zero, &zero, &zero, nil), "unknown", "not measured"},
+		{"unmeasured", apigen.RetentionHealth{}, "unknown", "not measured"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctorRotationFinding(tc.health)
+			if got.Code != "rotation" || got.Severity != tc.severity || !strings.Contains(got.Message, tc.message) {
+				t.Fatalf("finding = %#v", got)
+			}
+			// Counts only, no tenant ids: a warning must name the commands that find the rotations and runs.
+			if tc.severity == "warn" && !strings.Contains(got.Message, "`hikyo rotation list`") {
+				t.Fatalf("warning does not name the listing commands: %q", got.Message)
 			}
 		})
 	}

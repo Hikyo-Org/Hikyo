@@ -113,5 +113,71 @@ requires out-of-band rebootstrap. Revocations reach only verifiers that fetch
 authenticated updates. No offline-generated-root or independent-human claim is
 made.
 
+**Pre-tag compatibility check (owner decision 2026-11-15, option B; the human tag ceremony stays).**
+`release-compatibility-check` is an optional, read-only, dispatch-only workflow. Before tagging,
+a maintainer can ask whether a release of a given `X.Y.Z` built from main's tip leaves upgrade
+compatibility unchanged. It generates the candidate's `upgrade-compatibility.json` with the release
+generator on scratch PostgreSQL and compares it, minus version, sequence and commit, with
+the declaration of the highest plain stable version below it in authenticated trust. Compatibility
+counts as unchanged only when the candidate equals that declaration plus exactly one reviewed
+release-source edge per engine whose source is the baseline release's identity, carrying the
+migrations and schema digest the baseline published (owner decision 2026-11-16): the upgrade
+planner follows an edge only when its source matches the installed release's identity, and
+genesis edges never do, so without it an installed release has no route to the next, for a patch as for a minor.
+No supported command authors a stable edge; it is written by hand and reviewed. That baseline is
+fetched and verified through `stable verify --historical --published` (as the public verifier
+does: an older release embeds older trust) and its declaration is bound to the signed
+manifest; neither GitHub's "latest" flag nor a prerelease decides. A baseline not signed under the
+`github-actions-stable` policy is refused outright: the planner skips an edge across a trust-policy
+change, so only a recovery bridge can route an upgrade from it. A difference, a missing or
+unverifiable baseline, or a malformed declaration is reported and left to a maintainer. The check
+creates no tag, release or trust change and is not part of the build; `release-build` and the
+signing and publication path are unchanged. Fully unattended tagging stays deferred to a later App phase.
+The workflow lands on `dev` and reaches `main` by promotion; a dispatch-only workflow runs only from the
+default branch, so it goes live then.
+
+**Security patch tag prompt (owner decision 2026-11-15, option B; the human tag ceremony stays).**
+`security-patch-plan` runs on every push to main and hourly. When a merged Dependabot security
+update (an alert-linked pull request authored by Dependabot, bound by numeric id) is missing from
+the latest stable release, it picks the target, checks what the ceremony would check, and
+writes one issue with exact commands for the signed tag and the existing release ceremony. The target
+is the newest of the last 60 first-parent commits of main that holds every pending security merge,
+records the latest stable release in trust, and has complete green source proof; a red tip falls back
+to the last green commit, never below the newest pending merge. The workflow tags nothing, publishes
+nothing and holds no tag or release authority: its plan job is read-only, only its second job writes
+the one issue, which it recognizes by title, marker and its own bot as author (numeric id and type),
+and that job also runs after a failed or timed-out plan to say so in the issue. A workflow GitHub rejects
+at parse time runs no job, so that case is repaired only by the next successful run.
+The issue's command starts with `security-patch-plan.sh recheck`, run by the maintainer with their own
+login, which refuses when the checkout is dirty, when a newer pending security merge exists, or when the
+version, the trust record, the tag checks, the fallback-channel gate or the release-source edge no
+longer hold. It does not close the window between the recheck and the tag push, and it does not
+regenerate the compatibility declaration; it guards stale instructions, it is not a lock. For a patch
+as well as a minor, the plan requires the reviewed release-source edge from the latest stable release in
+`release/compatibility/sources.json` (validated against that release's verified declaration), because
+an installed release is routed only through an edge whose source is its exact identity. No supported
+command authors that edge yet (a tooling gap); the issue says so. Fully unattended tagging stays deferred to a later
+App phase. The workflow lands on `dev` and reaches `main` by promotion; its triggers run only from
+`main`, so it goes live then.
+
+**No auto-merge (owner decision 2026-11-16).** The workflow token cannot add a pull request to the merge
+queue, so security updates are never merged by automation. Step 0 of the issue lists every open
+qualifying Dependabot security pull request into main with its head SHA, and a maintainer clicks "Merge
+when ready"; one the merge queue removed after its newest commit is marked as needing a person. This
+needs only read permissions (`pull-requests: read`, `checks: read`) and replaces the separate
+auto-merge workflow proposal (#1404, closed).
+
+**A minor release when compatibility blocks a patch (owner decision 2026-11-16).** Once a promotion
+brings unreleased migrations, the compatibility check refuses every patch. The issue then proposes the
+next minor `X.(Y+1).0` (a minor ships everything on its commit, not only the security fix) and lists the
+prerequisites a person must confirm before tagging: the declaration difference is only the unreleased
+migrations, the edge modes follow the compatibility ADR, everything since the latest stable release may
+ship, and the release notes are written. `recheck` verifies the kind it was given against the current
+state.
+
+**Homebrew stays manual (owner decision 2026-11-16).** `ceremony.sh homebrew VERSION` remains the last
+step of the release issue and no tap credential is added. This replaces, for now, the earlier decision
+that Homebrew follows the latest release automatically.
+
 Operational entry point: [online signing](../release/online-signing.md).
 Primary-source evidence: [release ceremony research](../research/release-signing-ceremonies.md).

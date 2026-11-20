@@ -110,7 +110,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install pinned Corepack
@@ -198,7 +198,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -392,7 +392,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Require a recent end-to-end fallback notification test
@@ -412,9 +412,13 @@ jobs:
           marker='<!-- hikyo-security-channel-alert -->'
           gh label create "$label" --force --color B60205 \
             --description 'Automation-owned fallback security channel alert'
-          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
-            --json number,title,author,body \
-            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
+          # The workflow's bot is bound by its numeric user id and type: gh spells its login
+          # `app/github-actions` and REST spells it `github-actions[bot]`, so a login match is
+          # fragile, and a person can write the same title and marker.
+          # A failed listing stops the step; it must never read as "no issue".
+          listing=$(gh api --paginate --slurp "repos/$GH_REPO/issues?state=open&labels=$label&creator=github-actions%5Bbot%5D&per_page=100")
+          issue_number=$(printf '%s' "$listing" |
+            jq -r --arg title "$title" --arg marker "$marker" '[.[][] | select(.pull_request == null and .user.type == "Bot" and .user.id == 41898282 and .title == $title and ((.body // "") | contains($marker)))][0].number // empty')
           if [ -n "$issue_number" ]; then
             gh issue comment "$issue_number" --body "The scheduled fallback-channel gate failed again: $RUN_URL"
             exit 0
@@ -433,9 +437,13 @@ jobs:
           title='Fallback security channel health check failed'
           label='security-channel-alert'
           marker='<!-- hikyo-security-channel-alert -->'
-          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
-            --json number,title,author,body \
-            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
+          # The workflow's bot is bound by its numeric user id and type: gh spells its login
+          # `app/github-actions` and REST spells it `github-actions[bot]`, so a login match is
+          # fragile, and a person can write the same title and marker.
+          # A failed listing stops the step; it must never read as "no issue".
+          listing=$(gh api --paginate --slurp "repos/$GH_REPO/issues?state=open&labels=$label&creator=github-actions%5Bbot%5D&per_page=100")
+          issue_number=$(printf '%s' "$listing" |
+            jq -r --arg title "$title" --arg marker "$marker" '[.[][] | select(.pull_request == null and .user.type == "Bot" and .user.id == 41898282 and .title == $title and ((.body // "") | contains($marker)))][0].number // empty')
           if [ -n "$issue_number" ]; then
             gh issue close "$issue_number" \
               --comment 'The scheduled fallback-channel gate is healthy again.'

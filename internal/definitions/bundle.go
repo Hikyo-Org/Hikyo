@@ -14,7 +14,7 @@
 package definitions
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -78,7 +78,7 @@ type Key struct {
 	// PersonalRequiredIn is where each developer must hold a personal value:
 	// `explicit` only once canonical. It is the one presence field omitted
 	// when `none`, so bundles and digests from before it existed are unchanged.
-	PersonalRequiredIn *Presence `json:"personal_required_in,omitempty"`
+	PersonalRequiredIn *Presence `json:"personal_required_in,omitzero"`
 }
 
 // Bundle is the mutable definitions wire/import DTO. Construct it only at an
@@ -88,7 +88,7 @@ type Key struct {
 // distinguishable from a zero base revision.
 type Bundle struct {
 	FormatVersion int           `json:"format_version"`
-	BaseRevision  *int64        `json:"base_revision,omitempty"`
+	BaseRevision  *int64        `json:"base_revision,omitzero"`
 	Environments  []Environment `json:"environments"`
 	KeyGroups     []KeyGroup    `json:"key_groups"`
 	Keys          []Key         `json:"keys"`

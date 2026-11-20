@@ -1,7 +1,7 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -9,6 +9,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -104,7 +105,7 @@ func TestEnrolledSourceLoaderAcceptsOnlyExplicitSingletonHAIdentity(t *testing.T
 	cfg.NodeID = "renamed"
 	cfg.ConfigRolloutEnrollment = filepath.Join(t.TempDir(), "enrollment.json")
 	d.enrollment.Target.TopologyNodeIDs = []string{"local", "renamed"}
-	raw, err := json.Marshal(d.enrollment)
+	raw, err := json.Marshal(d.enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +123,7 @@ func TestEnrolledSourceLoaderAcceptsOnlyExplicitSingletonHAIdentity(t *testing.T
 	}
 	cfg.NodeID = "local"
 	d.enrollment.Target.TopologyNodeIDs = nil
-	raw, err = json.Marshal(d.enrollment)
+	raw, err = json.Marshal(d.enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

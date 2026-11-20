@@ -9,7 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 	"math/big"
@@ -28,6 +28,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/samlsp"
 )
 
@@ -69,7 +70,7 @@ func guardedMetadataTestServer(t *testing.T, handler http.Handler) (*SAMLProvide
 func TestAssessSAMLMetadataReturnsCompleteDiffAndOnlyRequiresNewTrust(t *testing.T) {
 	oldCertificate := testSAMLCertificate(t, "old")
 	newCertificate := testSAMLCertificate(t, "new")
-	oldDER, err := json.Marshal([][]byte{oldCertificate.Raw})
+	oldDER, err := json.Marshal([][]byte{oldCertificate.Raw}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +704,7 @@ func TestSAMLProviderWarningsAreServerAuthoritativeAndDeterministic(t *testing.T
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	expired := testSAMLCertificateAt(t, "expired", now.Add(-48*time.Hour), now.Add(-time.Hour))
 	future := testSAMLCertificateAt(t, "future", now.Add(time.Hour), now.Add(48*time.Hour))
-	encoded, err := json.Marshal([][]byte{expired.Raw, future.Raw})
+	encoded, err := json.Marshal([][]byte{expired.Raw, future.Raw}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -734,7 +735,7 @@ func TestSAMLProviderWarningsAreServerAuthoritativeAndDeterministic(t *testing.T
 
 	expiredMetadata := now.Add(-time.Minute)
 	valid := testSAMLCertificateAt(t, "valid", now.Add(-time.Hour), now.Add(time.Hour))
-	validEncoded, err := json.Marshal([][]byte{valid.Raw})
+	validEncoded, err := json.Marshal([][]byte{valid.Raw}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +752,7 @@ func TestSAMLProviderViewRefusesCorruptStoredTrustState(t *testing.T) {
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	invalidPolicy := "not-json"
 	valid := testSAMLCertificateAt(t, "valid", now.Add(-time.Hour), now.Add(time.Hour))
-	validEncoded, err := json.Marshal([][]byte{valid.Raw})
+	validEncoded, err := json.Marshal([][]byte{valid.Raw}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

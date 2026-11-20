@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // `remote add`'s CEREMONY ORDER (#71, multi-instance ADR § The connection
@@ -48,7 +48,7 @@ func fakePeer(t *testing.T, meta *apigen.Meta, hits *int) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(meta)
+		_ = jsonwire.Encode(w, meta)
 	}))
 	t.Cleanup(s.Close)
 	return s

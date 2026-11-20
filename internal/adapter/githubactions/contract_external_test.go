@@ -8,7 +8,8 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 //go:embed testdata/hikyo-contract-consume.yml
@@ -444,7 +446,7 @@ func (c *contractHTTP) api(ctx context.Context, method, path string, body, out a
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, responseCap))
 		return response.StatusCode, nil
 	}
-	return response.StatusCode, json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(out)
+	return response.StatusCode, json.UnmarshalRead(io.LimitReader(response.Body, 4<<20), out)
 }
 
 func escapeContractPath(path string) string {
@@ -514,20 +516,20 @@ func (c *contractHTTP) environmentProtection(t *testing.T, name string) environm
 			ProtectedBranches    bool `json:"protected_branches"`
 			CustomBranchPolicies bool `json:"custom_branch_policies"`
 		} `json:"deployment_branch_policy"`
-		RawProtectionRules json.RawMessage
+		RawProtectionRules jsontext.Value
 	}
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	path := c.repoPath("/environments/" + url.PathEscape(name))
 	if _, err := c.api(t.Context(), http.MethodGet, path, nil, &raw); err != nil {
 		t.Fatalf("read protected environment settings: %v", err)
 	}
-	projection := map[string]json.RawMessage{
+	projection := map[string]jsontext.Value{
 		"protection_rules":         raw["protection_rules"],
 		"deployment_branch_policy": raw["deployment_branch_policy"],
 		"can_admins_bypass":        raw["can_admins_bypass"],
 		"prevent_self_review":      raw["prevent_self_review"],
 	}
-	encoded, err := json.Marshal(projection)
+	encoded, err := json.Marshal(projection, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -717,7 +719,7 @@ func (c *contractHTTP) downloadHashes(t *testing.T, archiveURL string) workflowH
 			t.Fatal(err)
 		}
 		var hashes workflowHashes
-		err = json.NewDecoder(io.LimitReader(opened, 1024)).Decode(&hashes)
+		err = json.UnmarshalRead(io.LimitReader(opened, 1024), &hashes)
 		_ = opened.Close()
 		if err != nil {
 			t.Fatal(err)

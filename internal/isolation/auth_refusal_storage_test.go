@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -123,30 +123,9 @@ func assertRetainedRefusalRequest(t *testing.T, db *store.DB, requestID, source 
 	if requestID == "" {
 		t.Fatal("no server correlation")
 	}
-	page, err := (&service.Audits{DB: db}).InstanceQuery(t.Context(), root, store.AuditFilter{Limit: 100})
-	if err != nil {
-		t.Fatal(err)
+	if sample, ok := retainedRefusalSample(t, db, requestID); !ok || sample.SourceIP != source {
+		t.Fatalf("request missing from supported instance reader: %+v found=%v", sample, ok)
 	}
-	for _, event := range page.Events {
-		if event.Type != audit.EventRequestRefused {
-			continue
-		}
-		var p struct {
-			Samples []struct {
-				SourceIP  string `json:"source_ip"`
-				RequestID string `json:"request_id"`
-			} `json:"samples"`
-		}
-		if err := json.Unmarshal([]byte(event.RawPayload), &p); err != nil {
-			t.Fatal(err)
-		}
-		for _, sample := range p.Samples {
-			if sample.RequestID == requestID && sample.SourceIP == source {
-				return
-			}
-		}
-	}
-	t.Fatal("request missing from supported instance reader")
 }
 
 func TestRequestRefusalRevokedReplayIsRetainedAndCorrelated(t *testing.T) {
@@ -415,7 +394,7 @@ func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, atte
 func refusalAccountingSnapshot(t *testing.T, db *store.DB) (audit.RefusalWindow, int64) {
 	t.Helper()
 	var window audit.RefusalWindow
-	state := ""
+	var state string
 	var sealed int64
 	if db.Engine() == store.EnginePostgres {
 		var err error

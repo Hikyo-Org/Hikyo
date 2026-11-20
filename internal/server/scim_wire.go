@@ -2,13 +2,14 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -166,7 +167,7 @@ func scimRequestBody(scim, plain *apigen.ScimResource) (map[string]any, *scimpro
 // buys one parser: the `password` refusal, the bounds and the UTF-8 check all
 // live in scimproto and are not duplicated here.
 func rawJSON(body map[string]any) ([]byte, *scimproto.Error) {
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(body, jsonwire.Stable)
 	if err != nil {
 		return nil, scimproto.ErrInvalidValue("The request body is not serialisable JSON.")
 	}

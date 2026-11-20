@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -67,7 +68,7 @@ func prepareUnattendedScratch(ctx context.Context, cfg *config.Config, directory
 		}
 	}
 	ownership = unattendedScratchOwnership{Format: "hikyo.unattended-scratch/v1", DSN: dsnDigest, Database: scratchName, SourceSchema: sourceSchema}
-	raw, err = json.Marshal(ownership)
+	raw, err = json.Marshal(ownership, jsonwire.Stable)
 	if err != nil {
 		return store.Config{}, nil, err
 	}

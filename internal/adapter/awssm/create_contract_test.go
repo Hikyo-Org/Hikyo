@@ -3,7 +3,8 @@ package awssm
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -18,13 +19,13 @@ import (
 // emulator. It does not establish real AWS acceptance of metadata-only creation.
 func TestCreateSecretWireIncludesTokenWithoutValue(t *testing.T) {
 	token := strings.Repeat("a", 64)
-	requests := make(chan map[string]json.RawMessage, 2)
+	requests := make(chan map[string]jsontext.Value, 2)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Amz-Target") != "secretsmanager.CreateSecret" {
 			t.Errorf("unexpected operation: %s", r.Header.Get("X-Amz-Target"))
 		}
-		var body map[string]json.RawMessage
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var body map[string]jsontext.Value
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			t.Error(err)
 			w.WriteHeader(http.StatusBadRequest)
 			return

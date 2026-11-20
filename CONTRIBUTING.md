@@ -204,6 +204,16 @@ Before you request review, run the checks for what you touched:
 - Run the formatter and linters so the `lint` gate does not bounce the pull
   request.
 
+User-visible changes (a CLI command or flag, an `/api/v1` operation or field, a
+server setting) update the matching page under
+`docs/site/src/content/docs/docs/` in the same pull request. The `docs-impact`
+feedback check enforces this for `internal/cli/testdata/help.txt`,
+`api/openapi.yaml` and `internal/config/variables.go`, and for the desktop shell's
+routes and launch environment (`desktop/internal/shell/shellroutes.go`,
+`desktop/main_darwin.go`), which `docs/spec/desktop-shell-protocol.md` or
+`desktop/README.md` satisfy; if no docs change is needed, add a `Docs-Impact: none - <reason>` trailer to a commit, in the final
+trailer block next to `Signed-off-by`.
+
 You do not need to reproduce the full release gate locally; CI is the source of
 truth for that.
 
@@ -253,11 +263,14 @@ The hook also runs `scripts/ci/golangci-lint-new.sh` when a push changes Go code
 minute). It applies the rules in `.golangci.yml`, chosen from findings that kept
 recurring in review (unchecked errors, `==` on errors, `http.Get` without a
 context, ignored `json.Marshal` errors, staticcheck
-`SA*` bugs plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
+`SA*` bugs except `SA4006` and `SA4009`, plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
 arguments, file modes), and reports only issues on lines you changed since the
-merge base. It lints a temporary worktree at the pushed commit, so any branch
+merge base, so the existing baseline of those rules never blocks you. A second strict
+pass applies `.golangci-strict.yml` (wastedassign, unused, staticcheck `SA4006` and
+`SA4009`) to every whole changed package (a moved file counts for both packages),
+since those rules hold at zero across the repo. It lints a temporary worktree at the pushed commit, so any branch
 can be pushed from any worktree, and uncommitted files and uncommitted local edits to
-`.golangci.yml` are ignored (the pushed commit's config, pin and script apply); fetch `hikyo-upstream` first, as
+`.golangci.yml` and `.golangci-strict.yml` are ignored (the pushed commit's configs, pin and script apply); fetch `hikyo-upstream` first, as
 a stale base widens "new code". Only the default build for your platform is
 linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are not), and
 type errors are always reported in full. Run it by hand with

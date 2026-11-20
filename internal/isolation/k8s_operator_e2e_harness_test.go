@@ -30,7 +30,8 @@ package isolation
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -809,7 +810,7 @@ func jwtAudience(t *testing.T, token string) string {
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	must(t, err)
 	var claims struct {
-		Aud json.RawMessage `json:"aud"`
+		Aud jsontext.Value `json:"aud"`
 	}
 	must(t, json.Unmarshal(payload, &claims))
 	var single string

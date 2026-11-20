@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/securitydeployment"
@@ -132,7 +133,7 @@ func TestCoordinatorSkipsAnExecutableItCannotOwnWithoutDownloading(t *testing.T)
 func TestCoordinatorFailureIsRetriedAndNeverChangesTheEngineResult(t *testing.T) {
 	probe := newCoordinatorProbe("1.3.0")
 	state := runningState(releaseidentity.StableV1)
-	before, err := json.Marshal(state)
+	before, err := json.Marshal(state, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +159,7 @@ func TestCoordinatorFailureIsRetriedAndNeverChangesTheEngineResult(t *testing.T)
 	if err := probe.follower.follow(t.Context(), "cache", state); err != nil || probe.swaps != 1 {
 		t.Fatalf("retry: err=%v swaps=%d", err, probe.swaps)
 	}
-	if after, _ := json.Marshal(state); string(after) != string(before) {
+	if after, _ := json.Marshal(state, jsonwire.Stable); string(after) != string(before) {
 		t.Fatal("following the coordinator changed the engine's status")
 	}
 	// A long-lived process still embeds the old release; it must not fetch again.

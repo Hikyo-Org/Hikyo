@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -211,6 +213,6 @@ func DrillUpgrade(ctx context.Context, request UpgradeDrillRequest) (UpgradeDril
 	if err := attestation.Validate(); err != nil {
 		return UpgradeDrillResult{}, err
 	}
-	result.Attestation, err = json.MarshalIndent(attestation, "", "  ")
+	result.Attestation, err = json.Marshal(attestation, jsonwire.Stable, jsontext.WithIndent("  "))
 	return result, err
 }

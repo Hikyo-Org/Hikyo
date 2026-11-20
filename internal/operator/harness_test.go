@@ -3,7 +3,7 @@ package operator
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -335,9 +335,7 @@ func (h *harness) requireValueFreeReports() {
 func valueFreeViolations(reports, tombstones [][]byte, denied []string) []string {
 	var out []string
 	check := func(kind string, body []byte, into any) {
-		dec := json.NewDecoder(bytes.NewReader(body))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(into); err != nil {
+		if err := json.Unmarshal(body, into, json.RejectUnknownMembers(true)); err != nil {
 			out = append(out, fmt.Sprintf("%s body is not the contract shape: %v: %s", kind, err, body))
 		}
 		for _, d := range denied {

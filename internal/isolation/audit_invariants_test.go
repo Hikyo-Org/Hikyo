@@ -5,7 +5,7 @@ package isolation
 // invariant → test map lives in docs/handoff/45-audit-core.md.
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"regexp"

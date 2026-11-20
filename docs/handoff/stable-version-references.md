@@ -30,6 +30,9 @@
   that step.
 - Fixture coverage: `check-doc-status_test.sh` covers a ledger behind the
   published stable release and a ledger naming only a prerelease of it.
+- A `sync-trust` retry keeps that ledger commit (the ledger and its two
+  generated READMEs) and still refuses any other change on the trust branch;
+  `stable-ceremony_test.sh` covers both.
 
 ## Evidence
 
@@ -46,10 +49,9 @@
 
 ## Remaining
 
-- No published stable chart has a recorded controller install. The v1.1.0
-  release notes say "Verified Flux and Argo CD recipes install …". The
-  repository documentation keeps the narrower claim until a controller install
-  is recorded.
+- The GitOps pages now carry `dev`'s record of a 15 November zero-replica Flux
+  and Argo CD install of the 1.1.0 chart. That is controller mechanics only; no
+  application or database install of a stable chart is recorded.
 - Machine access rules (whether a machine rule may be key-narrowed) and a
   server-side resolver still need owner decisions before they can be ticketed.
 - Milestone hygiene for v1.0, v1.0.1 and v1.1 was not changed.

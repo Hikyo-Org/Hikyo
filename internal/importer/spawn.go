@@ -3,7 +3,7 @@ package importer
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -49,7 +49,7 @@ type subprocessSpec struct {
 	Command             string   `json:"command"`
 	Args                []string `json:"args"`
 	MaxBytes            int      `json:"max_bytes"`
-	RunDeadlineUnixNano int64    `json:"run_deadline_unix_nano,omitempty"`
+	RunDeadlineUnixNano int64    `json:"run_deadline_unix_nano,omitzero"`
 }
 
 func newSubprocessSpec(ctx context.Context, command string, args []string, maxBytes int) subprocessSpec {

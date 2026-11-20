@@ -6,10 +6,12 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"regexp"
 	"slices"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Client-side key material for the Compose delivery path (compose-integration
@@ -179,7 +181,7 @@ func (a SnapshotAAD) Canonical() ([]byte, error) {
 	c := a
 	c.TargetNames = CanonicalStringSet(a.TargetNames)
 	c.Projection = CanonicalStringSet(a.Projection)
-	b, err := json.Marshal(c)
+	b, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		return nil, fmt.Errorf("crypto: marshal snapshot header: %w", err)
 	}

@@ -277,6 +277,10 @@ func runAccessRequest(ctx context.Context, ios IO, args []string) error {
 		if sub == "create" && duration < time.Second {
 			return failf(ExitUsage, "hikyo access request create requires --duration of at least 1s")
 		}
+		// A sub-second emergency duration would truncate to 0, which the server reads as "use the default".
+		if sub == "emergency" && duration > 0 && duration < time.Second {
+			return failf(ExitUsage, "hikyo access request emergency: --duration must be at least 1s when set")
+		}
 		if duration < 0 || duration/time.Second > math.MaxInt32 {
 			return failf(ExitUsage, "hikyo access request %s: --duration must be at most %d seconds", sub, math.MaxInt32)
 		}

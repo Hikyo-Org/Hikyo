@@ -3,7 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthnrp"
@@ -115,7 +116,7 @@ func splitTransports(s string) []string {
 }
 
 func joinTransports(ts []string) string {
-	b, err := json.Marshal(ts)
+	b, err := json.Marshal(ts, jsonwire.Stable)
 	if err != nil {
 		return "[]"
 	}
@@ -922,7 +923,7 @@ func (s *Auth) finishAssertionElevation(ctx context.Context, presented string, r
 	expectedBinding := ceremony.OperationBinding
 
 	// Per-account admission (A2): the account is known up front for step-up and
-	// reauth, so check AccountDelay + Enter the expensive-work budget before the
+	// reauth, so check AccountInBackoff + Enter the expensive-work budget before the
 	// signature verification, exactly as the factor proof paths do. Held across
 	// the verification and the write tx; a bad assertion advances the backoff.
 	release, err := s.enterFactorBudget(ctx, account.ID)
@@ -1278,16 +1279,6 @@ func (s *Auth) assertRemovalKeepsInvariant(ctx context.Context, az *authz.TxAuth
 	return nil
 }
 
-func discoverableCount(creds []authz.WebAuthnCredential) int {
-	n := 0
-	for _, c := range creds {
-		if c.Discoverable && !c.Disabled {
-			n++
-		}
-	}
-	return n
-}
-
 // hasCurrentRecoveryBatch reports whether the account holds a live-epoch recovery
 // batch with at least one unconsumed code. It opens the sealed batch to count
 // the remaining verifiers (an exhausted batch is an empty array, B4).
@@ -1446,7 +1437,7 @@ func operationBinding(op ReauthPurpose, environmentID string, keyIDs []string) (
 		Operation     string   `json:"operation"`
 		EnvironmentID string   `json:"environment_id"`
 		KeyIDs        []string `json:"key_ids"`
-	}{Operation: string(op), EnvironmentID: environmentID, KeyIDs: sorted})
+	}{Operation: string(op), EnvironmentID: environmentID, KeyIDs: sorted}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
@@ -1471,7 +1462,7 @@ func adapterOperationBinding(operation authz.Operation, environmentID string, en
 	b, err := json.Marshal(adapterReauthBinding{
 		Purpose: string(PurposeAdapter), Operation: string(operation),
 		EnvironmentID: environmentID, EnvironmentIDs: environmentIDs,
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/netip"
 	"strings"
 	"testing"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAWSRealLabeledVersionDelivery(t *testing.T) {
@@ -18,7 +19,7 @@ func TestAWSRealLabeledVersionDelivery(t *testing.T) {
 	t.Cleanup(remote.Close)
 	roots := x509.NewCertPool()
 	roots.AddCert(remote.Certificate())
-	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: awsRegion, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-version-observer"})
+	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: awsRegion, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-version-observer"}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal("cannot encode local test descriptor")
 	}

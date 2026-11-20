@@ -3,7 +3,9 @@ package isolation
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -34,10 +36,10 @@ func TestSCIMAuditBlindsPredictableIdentity(t *testing.T) {
 		raw := queryStrings(t, db, `SELECT payload FROM audit_tenant_events WHERE type = 'scim.user_provisioned' ORDER BY id`)
 		dictionary := sha256.Sum256([]byte(subject))
 		var commitments []string
-		decoder := json.NewDecoder(strings.NewReader(raw))
+		decoder := jsontext.NewDecoder(strings.NewReader(raw))
 		for {
 			var payload map[string]any
-			if err := decoder.Decode(&payload); err == io.EOF {
+			if err := json.UnmarshalDecode(decoder, &payload); errors.Is(err, io.EOF) {
 				break
 			} else if err != nil {
 				t.Fatal(err)

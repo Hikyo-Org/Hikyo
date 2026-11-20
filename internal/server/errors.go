@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mail"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -181,7 +181,7 @@ func writeError(w http.ResponseWriter, policy WireError, detail string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(policy.status)
-	_ = json.NewEncoder(w).Encode(policy.bodyWithDetail(detail))
+	_ = jsonwire.Encode(w, policy.bodyWithDetail(detail))
 }
 
 // wireErrorRules is the single mapping from recognized Hikyo error classes to
@@ -193,6 +193,7 @@ var wireErrorRules = []struct {
 }{
 	{service.ErrCLILoginBrowserFactorRequired, apigen.ErrorCodeCliLoginFactorRequired},
 	{service.ErrSelfConfigUnavailable, apigen.ErrorCodeServiceUnavailable},
+	{service.ErrLifecycleRetry, apigen.ErrorCodeServiceUnavailable},
 	// Explicit operator sends may find mail disabled or an unreachable relay.
 	// Both use the closed unavailable policy, without SMTP response details.
 	{mail.ErrDisabled, apigen.ErrorCodeServiceUnavailable},

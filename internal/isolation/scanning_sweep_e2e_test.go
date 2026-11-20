@@ -25,7 +25,8 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -38,6 +39,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -239,7 +241,7 @@ func runScanningCanarySweep(t *testing.T, db *store.DB) {
 		"name":           "SWEEP_BLOCKED",
 		"classification": "config",
 		"description":    "see the runbook token " + plantedCredential,
-		"declaration":    json.RawMessage(`{"rule":{"type":"string"}}`),
+		"declaration":    jsontext.Value(`{"rule":{"type":"string"}}`),
 		"presence":       map[string]any{"required_in": map[string]any{"mode": "none"}, "forbidden_in": map[string]any{"mode": "none"}},
 	}
 	code, body = e.call(t, http.MethodPost, e.base()+"/keys", blockBody)
@@ -417,7 +419,7 @@ func (e sweepEnv) call(t *testing.T, method, path string, body any) (int, []byte
 	t.Helper()
 	var payload io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

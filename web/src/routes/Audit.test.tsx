@@ -7,13 +7,19 @@ import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import * as auditApi from '../api/audit.ts';
 import { Audit, InstanceAudit } from './Audit.tsx';
 
+const shell = vi.hoisted(() => ({ bytes: vi.fn() }));
+vi.mock('../app/shell.ts', async (importActual) => ({
+  ...(await importActual<typeof import('../app/shell.ts')>()),
+  shellDownloadBytes: shell.bytes,
+}));
+
 // The page reads the current principal id (for the "Self" filter shortcut) from
 // the auth context; stub it so the route renders without the full provider.
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({ identity: { principal: { id: 'usr_self' } } }),
 }));
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); shell.bytes.mockReset(); });
 
 const event = {
   seq: 1,
@@ -152,6 +158,8 @@ it.each([
   expect(alert).toContain('This trail is not available, or you may not read it.');
   expect(alert).toContain(`audit-read grant on ${where}`);
   expect(alert).toContain('A member manager can grant it under Members.');
+  // Only the whole-project trail explains that an environment grant does not reach it.
+  expect(alert.includes("reaches only that environment's trail")).toBe(where === 'this project');
   await rendered.unmount();
 });
 
@@ -223,4 +231,64 @@ it('does not announce the end of the trail when a later page loses authority', a
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('audit-read grant on this instance');
     expect(container.querySelector('.audit__end')).toBeNull();
   } finally { await unmount(); }
+});
+
+/** A subclass, so unstubAllGlobals restores the real URL rather than leaving it patched. */
+function stubObjectUrls(createObjectURL: () => string) {
+  vi.stubGlobal('URL', class extends URL { static override createObjectURL = createObjectURL; static override revokeObjectURL = vi.fn(); });
+}
+
+async function exportWith(protocol: string) {
+  vi.spyOn(auditApi, 'downloadAuditExport').mockResolvedValue(new Blob(['{"seq":1}\n']));
+  const { container, release, unmount } = await renderAudit([]);
+  // Stubbed after render so the harness's own location use is untouched; the export reads it at click time.
+  vi.stubGlobal('location', { protocol, origin: `${protocol}//x` });
+  try {
+    await act(async () => release());
+    await settleTask();
+    const exportButton = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Export JSONL');
+    await act(async () => exportButton?.click());
+    await settleTask();
+  } finally { await unmount(); }
+}
+
+it('in the app, hands the verified export bytes to the shell save panel instead of a blob link', async () => {
+  const objectUrl = vi.fn(() => 'blob:x');
+  stubObjectUrls(objectUrl);
+  await exportWith('wails:');
+  expect(shell.bytes).toHaveBeenCalledOnce();
+  const [bytes, filename, type] = shell.bytes.mock.calls[0] ?? [];
+  expect(new TextDecoder().decode(bytes)).toBe('{"seq":1}\n');
+  expect(filename).toMatch(/audit/);
+  expect(type).toBe('application/x-ndjson');
+  expect(objectUrl).not.toHaveBeenCalled();
+});
+
+it('in the app, drops an export whose filter changed while the bytes were being read', async () => {
+  let release: (bytes: ArrayBuffer) => void = () => undefined;
+  const blob = new Blob(['{"seq":1}\n']);
+  vi.spyOn(blob, 'arrayBuffer').mockReturnValue(new Promise<ArrayBuffer>((resolve) => { release = resolve; }));
+  vi.spyOn(auditApi, 'downloadAuditExport').mockResolvedValue(blob);
+  const { container, release: loaded, unmount } = await renderAudit([]);
+  vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
+  try {
+    await act(async () => loaded());
+    await settleTask();
+    const byText = (text: string) => [...container.querySelectorAll('button')].find((b) => b.textContent === text);
+    await act(async () => byText('Export JSONL')?.click());
+    await settleTask();
+    await act(async () => byText('Clear')?.click());
+    await act(async () => release(new ArrayBuffer(1)));
+    await settleTask();
+    expect(shell.bytes).not.toHaveBeenCalled();
+  } finally { await unmount(); }
+});
+
+it('in a browser, saves the export through a blob link and never calls the shell', async () => {
+  const objectUrl = vi.fn(() => 'blob:x');
+  stubObjectUrls(objectUrl);
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  await exportWith('https:');
+  expect(objectUrl).toHaveBeenCalledOnce();
+  expect(shell.bytes).not.toHaveBeenCalled();
 });

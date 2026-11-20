@@ -18,7 +18,7 @@ import { cx } from './cx.ts';
  *
  * One size, `--control` tall; an icon-only button is square. The smaller
  * `btn--compact` class belongs to the matrix column header's anchor and
- * summary (DESIGN.md, Button).
+ * summary and the matrix group row's `+ Key` (DESIGN.md, Button).
  *
  * `type` is deliberately not defaulted: native pass-through keeps behaviour
  * identical to a raw <button> (submit inside a form, plain button elsewhere).

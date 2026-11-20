@@ -1,7 +1,7 @@
 package api_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strconv"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The document-coordinate layer (#1217). Every refused case below is a change
@@ -94,7 +95,7 @@ func contractTree(t *testing.T, doc string, fn func(root map[string]any)) string
 		t.Fatal(err)
 	}
 	fn(root)
-	out, err := json.Marshal(root)
+	out, err := json.Marshal(root, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +152,17 @@ func contractViolations(t *testing.T, base, revised string) []api.Violation {
 
 func hasContractViolation(vs []api.Violation) bool {
 	return slices.ContainsFunc(vs, func(v api.Violation) bool { return strings.HasPrefix(v.ID, "hikyo-contract-") })
+}
+
+// logContractViolations shows which violation refused a case, so a pass can be
+// checked against the location it was meant to refuse.
+func logContractViolations(t *testing.T, vs []api.Violation) {
+	t.Helper()
+	for _, v := range vs {
+		if strings.HasPrefix(v.ID, "hikyo-contract-") {
+			t.Log(v)
+		}
+	}
 }
 
 func TestFreezeContractRefusesForbiddenChanges(t *testing.T) {
@@ -295,11 +307,7 @@ func TestFreezeContractRefusesForbiddenChanges(t *testing.T) {
 			if !hasContractViolation(violations) {
 				t.Fatalf("the document-coordinate layer did not refuse it:\n%s", render(violations))
 			}
-			for _, v := range violations {
-				if strings.HasPrefix(v.ID, "hikyo-contract-") {
-					t.Log(v)
-				}
-			}
+			logContractViolations(t, violations)
 		})
 	}
 }
@@ -354,6 +362,7 @@ func TestFreezeContractRefusesForbiddenChangesInTheRealSpec(t *testing.T) {
 			if !hasContractViolation(violations) {
 				t.Fatalf("the document-coordinate layer did not refuse it:\n%s", render(violations))
 			}
+			logContractViolations(t, violations)
 		})
 	}
 }
@@ -562,7 +571,7 @@ func TestFreezeContractRefusesDirectionlessAndMisreadChanges(t *testing.T) {
 			"          headers:\n            X-Mode: {schema: {enum: " + values + "}}\n"
 	}
 	encoded := func(header string) string {
-		return contractThing(`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"},"encoding":{"f":{"headers":{"X-Enc":{"schema":` + header + `}}}}}}}},` + contractOK)
+		return contractThing(`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"},"encoding":{"f":{"headers":{"X-Enc":{"schema":` + header + `}}}}}}},` + contractOK)
 	}
 	component := func(header, schema string) string {
 		return contractDoc(`{"/api/v1/thing":{"post":{"requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/In"}}}},` +

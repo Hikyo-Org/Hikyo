@@ -1,7 +1,7 @@
 package conformance
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"strconv"
@@ -65,7 +65,7 @@ func scenarioKeyCatalogueCRUD(t *testing.T, db *store.DB) {
 		Declaration: schema.Declaration{AnyOf: []schema.Rule{
 			{Type: schema.TypeEnum, Members: []string{"  fast ", "safe"}},
 			{Type: schema.TypeURL, Schemes: []string{"HTTPS"}},
-			{Type: schema.TypeJSON, JSONSchema: json.RawMessage(
+			{Type: schema.TypeJSON, JSONSchema: jsontext.Value(
 				"{  \"required\" : [ \"b\" ] ,\n  \"type\":\"object\"  }")},
 		}},
 		Presence: schema.DefaultPresenceRules(),
@@ -232,7 +232,7 @@ func scenarioDeclarationFixtures(t *testing.T, db *store.DB) {
 		{"ENDPOINT", schema.Rule{Type: schema.TypeURL, Schemes: []string{"https", "postgres"}},
 			[]string{"https://a.test/x", "POSTGRES://db/x"}, []string{"ftp://a.test", "/relative"}},
 		{"DOC", schema.Rule{Type: schema.TypeJSON,
-			JSONSchema: json.RawMessage(`{"type":"object","required":["a"]}`)},
+			JSONSchema: jsontext.Value(`{"type":"object","required":["a"]}`)},
 			[]string{`{"a":1}`}, []string{`{"b":1}`, `{"a":1,"a":2}`, `nope`}},
 		// Whole-value anchoring: the pattern is implicitly \A(?:...)\z, so a
 		// value that merely CONTAINS a match is refused. An unanchored regex
@@ -293,16 +293,16 @@ func scenarioDeclarationRejections(t *testing.T, db *store.DB) {
 		{"NUL_IN_ENUM_MEMBER",
 			schema.Rule{Type: schema.TypeEnum, Members: []string{"ok", "bad\x00member"}}, "NUL"},
 		{"ALLOWLISTED_OUT_KEYWORD",
-			schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(`{"type":"string","format":"email"}`)}, "format"},
+			schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(`{"type":"string","format":"email"}`)}, "format"},
 		{"DYNAMIC_REF",
-			schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(`{"$dynamicRef":"#n"}`)}, "$dynamicRef"},
+			schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(`{"$dynamicRef":"#n"}`)}, "$dynamicRef"},
 		{"REF_CYCLE",
-			schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(
+			schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(
 				`{"$defs":{"a":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}`)}, "cycle"},
 		{"REMOTE_REF",
-			schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(`{"$ref":"https://evil.test/s.json"}`)}, "$ref"},
+			schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(`{"$ref":"https://evil.test/s.json"}`)}, "$ref"},
 		{"BUDGET_DEPTH",
-			schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(deep)}, "depth"},
+			schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(deep)}, "depth"},
 		{"BACKREFERENCE",
 			schema.Rule{Type: schema.TypeString, Pattern: `(a)\1`}, "pattern"},
 		{"LOOKAHEAD",

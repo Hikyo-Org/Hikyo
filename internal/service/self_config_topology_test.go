@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"testing"
 	"time"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -95,7 +96,7 @@ func publishTopology(t *testing.T, s *SelfConfig, local Actor, target domain.Sin
 		t.Fatal(err)
 	}
 	scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
-	sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: config.ManagedSingletonTopology{HA: target.HA, NodeID: target.NodeID}})
+	sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: config.ManagedSingletonTopology{HA: target.HA, NodeID: target.NodeID}}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +318,7 @@ func TestSelfConfigTopologySurvivesSourceRestoreAndOrdinaryRepair(t *testing.T) 
 					t.Fatal(err)
 				}
 				scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
-				sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: config.ManagedSingletonTopology{HA: target.HA, NodeID: target.NodeID}, DatabaseSource: "next"})
+				sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: config.ManagedSingletonTopology{HA: target.HA, NodeID: target.NodeID}, DatabaseSource: "next"}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

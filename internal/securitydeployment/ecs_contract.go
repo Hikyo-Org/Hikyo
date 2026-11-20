@@ -1,8 +1,8 @@
 package securitydeployment
 
 import (
-	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"path"
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -170,22 +171,22 @@ type ecsTag struct {
 }
 
 type ecsService struct {
-	ARN              string            `json:"serviceArn"`
-	Name             string            `json:"serviceName"`
-	ClusterARN       string            `json:"clusterArn"`
-	Status           string            `json:"status"`
-	CreatedAt        json.RawMessage   `json:"createdAt"`
-	TaskDefinition   string            `json:"taskDefinition"`
-	LaunchType       string            `json:"launchType"`
-	PlatformVersion  string            `json:"platformVersion"`
-	PlatformFamily   string            `json:"platformFamily"`
-	Scheduling       string            `json:"schedulingStrategy"`
-	Desired          int               `json:"desiredCount"`
-	Running          int               `json:"runningCount"`
-	Pending          int               `json:"pendingCount"`
-	HealthGrace      int               `json:"healthCheckGracePeriodSeconds"`
-	Rebalancing      string            `json:"availabilityZoneRebalancing"`
-	CapacityStrategy []json.RawMessage `json:"capacityProviderStrategy"`
+	ARN              string           `json:"serviceArn"`
+	Name             string           `json:"serviceName"`
+	ClusterARN       string           `json:"clusterArn"`
+	Status           string           `json:"status"`
+	CreatedAt        jsontext.Value   `json:"createdAt"`
+	TaskDefinition   string           `json:"taskDefinition"`
+	LaunchType       string           `json:"launchType"`
+	PlatformVersion  string           `json:"platformVersion"`
+	PlatformFamily   string           `json:"platformFamily"`
+	Scheduling       string           `json:"schedulingStrategy"`
+	Desired          int              `json:"desiredCount"`
+	Running          int              `json:"runningCount"`
+	Pending          int              `json:"pendingCount"`
+	HealthGrace      int              `json:"healthCheckGracePeriodSeconds"`
+	Rebalancing      string           `json:"availabilityZoneRebalancing"`
+	CapacityStrategy []jsontext.Value `json:"capacityProviderStrategy"`
 	Controller       struct {
 		Type string `json:"type"`
 	} `json:"deploymentController"`
@@ -201,9 +202,9 @@ type ecsService struct {
 			Enable   bool `json:"enable"`
 			Rollback bool `json:"rollback"`
 		} `json:"alarms"`
-		Hooks []json.RawMessage `json:"lifecycleHooks"`
+		Hooks []jsontext.Value `json:"lifecycleHooks"`
 	} `json:"deploymentConfiguration"`
-	Network       json.RawMessage `json:"networkConfiguration"`
+	Network       jsontext.Value `json:"networkConfiguration"`
 	LoadBalancers []struct {
 		Group     string `json:"targetGroupArn"`
 		Container string `json:"containerName"`
@@ -220,7 +221,7 @@ type ecsService struct {
 	Tags []ecsTag `json:"tags"`
 }
 
-func parseAWSDate(raw json.RawMessage) (time.Time, error) {
+func parseAWSDate(raw jsontext.Value) (time.Time, error) {
 	var value string
 	if json.Unmarshal(raw, &value) == nil {
 		return time.Parse(time.RFC3339Nano, value)
@@ -337,29 +338,29 @@ type ecsContainerDefinition struct {
 	Log struct {
 		Driver  string            `json:"logDriver"`
 		Options map[string]string `json:"options"`
-		Secrets []json.RawMessage `json:"secretOptions"`
+		Secrets []jsontext.Value  `json:"secretOptions"`
 	} `json:"logConfiguration"`
 	Linux struct {
 		Capabilities struct {
 			Add  []string `json:"add"`
 			Drop []string `json:"drop"`
 		} `json:"capabilities"`
-		Devices []json.RawMessage `json:"devices"`
-		Init    bool              `json:"initProcessEnabled"`
-		Tmpfs   []json.RawMessage `json:"tmpfs"`
+		Devices []jsontext.Value `json:"devices"`
+		Init    bool             `json:"initProcessEnabled"`
+		Tmpfs   []jsontext.Value `json:"tmpfs"`
 	} `json:"linuxParameters"`
 }
 
 type ecsDefinition struct {
 	ARN          string
-	Registration map[string]json.RawMessage
+	Registration map[string]jsontext.Value
 	Container    ecsContainerDefinition
 	Tags         []ecsTag
 }
 
-func (e *Executor) validateECSDefinition(raw map[string]json.RawMessage) (ecsDefinition, error) {
+func (e *Executor) validateECSDefinition(raw map[string]jsontext.Value) (ecsDefinition, error) {
 	c := e.c.ECS
-	result := ecsDefinition{Registration: map[string]json.RawMessage{}}
+	result := ecsDefinition{Registration: map[string]jsontext.Value{}}
 	registrationFields := []string{"family", "taskRoleArn", "executionRoleArn", "networkMode", "containerDefinitions", "volumes", "requiresCompatibilities", "cpu", "memory", "runtimePlatform", "ephemeralStorage", "enableFaultInjection", "placementConstraints"}
 	readOnlyFields := []string{"taskDefinitionArn", "revision", "status", "requiresAttributes", "compatibilities", "registeredAt", "registeredBy", "deregisteredAt"}
 	for key, value := range raw {
@@ -401,7 +402,7 @@ func (e *Executor) validateECSDefinition(raw map[string]json.RawMessage) (ecsDef
 	if placement := raw["placementConstraints"]; len(placement) > 0 && string(placement) != "[]" && string(placement) != "null" {
 		return result, ErrUnsupported
 	}
-	var containers []map[string]json.RawMessage
+	var containers []map[string]jsontext.Value
 	if json.Unmarshal(raw["containerDefinitions"], &containers) != nil || len(containers) != 1 {
 		return result, ErrUnsupported
 	}
@@ -416,8 +417,8 @@ func (e *Executor) validateECSDefinition(raw map[string]json.RawMessage) (ecsDef
 			return result, ErrUnsupported
 		}
 	}
-	containerRaw, _ := json.Marshal(containers[0])
-	if json.Unmarshal(containerRaw, &result.Container) != nil {
+	containerRaw, err := json.Marshal(containers[0], jsonwire.Stable)
+	if err != nil || json.Unmarshal(containerRaw, &result.Container) != nil {
 		return result, ErrUnsupported
 	}
 	s := result.Container
@@ -524,18 +525,21 @@ func (e *Executor) validateECSDefinition(raw map[string]json.RawMessage) (ecsDef
 	return result, nil
 }
 
-func (d ecsDefinition) withImage(image string) (map[string]json.RawMessage, error) {
-	copy := make(map[string]json.RawMessage, len(d.Registration))
+func (d ecsDefinition) withImage(image string) (map[string]jsontext.Value, error) {
+	copy := make(map[string]jsontext.Value, len(d.Registration))
 	for key, value := range d.Registration {
 		copy[key] = slices.Clone(value)
 	}
-	var containers []map[string]json.RawMessage
+	var containers []map[string]jsontext.Value
 	if json.Unmarshal(copy["containerDefinitions"], &containers) != nil || len(containers) != 1 {
 		return nil, ErrInvalid
 	}
-	encoded, _ := json.Marshal(image)
+	encoded, err := json.Marshal(image, jsonwire.Stable)
+	if err != nil {
+		return nil, err
+	}
 	containers[0]["image"] = encoded
-	raw, err := json.Marshal(containers)
+	raw, err := json.Marshal(containers, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}
@@ -543,19 +547,32 @@ func (d ecsDefinition) withImage(image string) (map[string]json.RawMessage, erro
 	return copy, nil
 }
 
-func ecsRegistrationDigest(registration map[string]json.RawMessage) (releaseidentity.Digest, error) {
-	raw, err := json.Marshal(registration)
+// keepNumberLiterals decodes every number into an untyped value as its literal
+// text, as json.Decoder.UseNumber did, so a re-encode does not rewrite 1.0 or
+// 1e3 and the registration digest stays stable.
+var keepNumberLiterals = json.WithUnmarshalers(json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *any) error {
+	if dec.PeekKind() != '0' {
+		return errors.ErrUnsupported
+	}
+	literal, err := dec.ReadValue()
+	if err != nil {
+		return err
+	}
+	*v = slices.Clone(literal)
+	return nil
+}))
+
+func ecsRegistrationDigest(registration map[string]jsontext.Value) (releaseidentity.Digest, error) {
+	raw, err := json.Marshal(registration, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
 	// AWS returns container keys in its own order. Hash the meaning, not the bytes.
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
 	var canonical any
-	if err := decoder.Decode(&canonical); err != nil {
+	if err := json.Unmarshal(raw, &canonical, keepNumberLiterals); err != nil {
 		return "", err
 	}
-	if raw, err = json.Marshal(canonical); err != nil {
+	if raw, err = json.Marshal(canonical, jsonwire.Stable); err != nil {
 		return "", err
 	}
 	return releaseidentity.Hash(raw), nil
@@ -569,7 +586,7 @@ func ecsServiceContractDigest(service ecsService) (releaseidentity.Digest, error
 	// ECS documents no tag order; keys are unique, so sorting by key is canonical.
 	service.Tags = slices.Clone(service.Tags)
 	slices.SortFunc(service.Tags, func(a, b ecsTag) int { return strings.Compare(a.Key, b.Key) })
-	raw, err := json.Marshal(service)
+	raw, err := json.Marshal(service, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

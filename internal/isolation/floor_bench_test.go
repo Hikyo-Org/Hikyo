@@ -4,7 +4,8 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -223,7 +225,7 @@ func floorWrite(t *testing.T, name string, value any) {
 	if directory == "" {
 		t.Fatal("HIKYO_FLOOR_EVIDENCE is required")
 	}
-	raw, err := json.MarshalIndent(value, "", "  ")
+	raw, err := json.Marshal(value, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}

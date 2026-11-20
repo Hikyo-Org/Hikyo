@@ -4,7 +4,8 @@ package auditexport
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"mime"
@@ -51,7 +52,7 @@ func Consume(resp *http.Response, dst io.Writer) (apigen.AuditExportReceipt, err
 		if terminal {
 			return receipt, fmt.Errorf("audit export: data follows terminal receipt")
 		}
-		var fields map[string]json.RawMessage
+		var fields map[string]jsontext.Value
 		if err := json.Unmarshal(line, &fields); err != nil || fields == nil {
 			return receipt, fmt.Errorf("audit export: invalid JSON object")
 		}
@@ -59,13 +60,11 @@ func Consume(resp *http.Response, dst io.Writer) (apigen.AuditExportReceipt, err
 			if len(fields) != 1 {
 				return receipt, fmt.Errorf("audit export: invalid receipt envelope")
 			}
-			var receiptFields map[string]json.RawMessage
+			var receiptFields map[string]jsontext.Value
 			if err := json.Unmarshal(raw, &receiptFields); err != nil || !required(receiptFields, "version", "started_event_id", "snapshot_time", "rows_streamed", "outcome", "outcome_recorded") {
 				return receipt, fmt.Errorf("audit export: missing required receipt fields")
 			}
-			dec := json.NewDecoder(bytes.NewReader(raw))
-			dec.DisallowUnknownFields()
-			if err := dec.Decode(&receipt); err != nil {
+			if err := json.Unmarshal(raw, &receipt, json.RejectUnknownMembers(true)); err != nil {
 				return receipt, fmt.Errorf("audit export: invalid receipt: %w", err)
 			}
 			var receiptSnapshot string
@@ -96,7 +95,7 @@ func Consume(resp *http.Response, dst io.Writer) (apigen.AuditExportReceipt, err
 	return receipt, nil
 }
 
-func required(fields map[string]json.RawMessage, names ...string) bool {
+func required(fields map[string]jsontext.Value, names ...string) bool {
 	for _, name := range names {
 		value, ok := fields[name]
 		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {

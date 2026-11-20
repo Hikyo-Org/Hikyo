@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"gopkg.in/yaml.v3"
@@ -228,7 +229,7 @@ func runFileSyncCLI(t *testing.T, engine store.Engine) {
 func writeYAML(t *testing.T, path string, v any) {
 	t.Helper()
 	// Round-trip through JSON so the map keys serialize deterministically.
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

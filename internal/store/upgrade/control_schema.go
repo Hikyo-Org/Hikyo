@@ -1,7 +1,8 @@
 package upgrade
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"reflect"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -12,7 +13,7 @@ func splitControl(c Catalog) (Catalog, []string, error) {
 	remaining.Objects = []string{}
 	control := []string{}
 	for _, object := range c.Objects {
-		var fields []json.RawMessage
+		var fields []jsontext.Value
 		if err := json.Unmarshal([]byte(object), &fields); err != nil {
 			return Catalog{}, nil, ErrCorrupt
 		}

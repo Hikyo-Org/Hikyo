@@ -2,9 +2,11 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Phase-1 pagination and traversal bounds (mcp-server ADR, Pagination and output bounds).
@@ -133,7 +135,7 @@ func (s CursorScope) matches(c cursorState) bool {
 
 // encodeCursor authenticates and encodes a continuation.
 func encodeCursor(ctx context.Context, sealer CursorSealer, state cursorState) (string, error) {
-	payload, err := json.Marshal(state)
+	payload, err := json.Marshal(state, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

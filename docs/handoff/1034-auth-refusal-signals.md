@@ -1,8 +1,9 @@
 # #1034 authentication refusal signals: decision packet
 
-Status: **Producer implemented in PR #1074. Scoped local and hosted source checks pass; maintainer security review and merge proof remain HOLD.**
-The owner explicitly waived cross-provider review for #1034 only. Maintainer
-security review and the human merge gate remain. This does not close #1034.
+Status: **Producer merged via PR #1074 (with the #1035 readers and PR #1084 pre-auth admission rework; issue #1040 itself stays open) and present on `dev`. Post-merge follow-up adds the operator site documentation and pins the five health series in the metrics registry.**
+The owner explicitly waived cross-provider review for #1034 only. The sections
+below record the pre-merge proof and are historical; "HOLD" entries describe the
+state at that time. Exact-head `dev` proof for the follow-up is in its PR.
 
 Source inspected: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, the live
 `Hikyo-Org/Hikyo` main on 2026-10-28. Scope: refusal producer, vocabulary,
@@ -375,6 +376,46 @@ The canonical `source-artifact-security` job in `.github/workflows/ci.yml`
 builds the stamped UI fixture and runs the full native campaign on both engines.
 Its receipt is source/local or hosted fixture proof, not a published release,
 live-provider, collector or deployed-instance acceptance receipt.
+
+## Acceptance close-out on `dev` (#1034)
+
+Every box of the issue's acceptance list was rechecked against `dev` at
+`91c4296ef` through the real router, MCP transports, services and both
+datastores. The new owner file is
+`internal/isolation/auth_refusal_acceptance_test.go`; the rest is existing
+coverage. A deliberate break of the source resolver (reading the leftmost
+`X-Forwarded-For` entry) fails the proxy test, and a free-text canary in a
+dedicated event's user agent fails the canary scan, so both can fail.
+
+| Box | Evidence |
+| --- | --- |
+| Route/artifact matrix | [Real route and artifact matrix](#real-route-and-artifact-matrix) above; owners unchanged. |
+| States through real entry points, with source and correlation | `TestAuthenticationRefusalWireCompatibility` (browser/CLI/machine: missing, malformed, unknown, expired, revoked, generation and epoch stale); `TestRequestRefusalMCPArtifactStatesAreSignalledUniformly` (MCP, both profiles: missing, malformed, unknown, expired, revoked, epoch stale, plus a live negative control on both profiles and an anonymous-discovery control on the modern profile, which is the only one with discovery); `TestRequestRefusalAttributesProxyClientAcrossTransports` (REST, MCP and Codex behind a trusted proxy: forged first line, forged leftmost entry, IPv6, IPv4-mapped IPv6, malformed and port-suffixed hops, absent header, untrusted peer; the sealed sample carries the right stage and source). |
+| No credential or secret material | `TestRequestRefusalCapturesNoCredentialOrRequestDataAnywhere` scans wire, debug logs, metrics, both audit exports and every table of the datastore for bearer, cookie, DPoP, CSRF, login body, path, query, header and tool-argument canaries, including a token pasted into the user agent, and checks that an unknown artifact's verifier is never stored. It also proves the scan sees stored verifiers and sealed summaries. Existing wire canaries remain. |
+| Non-enumerating responses; no loss or double count | The wire compatibility test compares every refusal body with the missing-artifact body, requires each artifact refusal to stage a generic signal (a dedicated developer refusal and a live wrong-class or `grant.denied` outcome must leave the generic window unchanged), and counts `grant.denied` and dedicated events; `assertChargedBeforeWork` additionally requires the final-allowance 401 and the overflow 429 to stage their signal; the MCP test compares status, body and `WWW-Authenticate` with an unknown bearer. |
+| Flood bounds, sink failure, no lockout | `TestRequestRefusalConcurrentFloodIsBoundedAndNeverLocksOut`: 400 concurrent refusals against a held writer and 800 against a healthy one saturate the 8 writer slots with a nonempty waiter queue (the bounds themselves hold by construction), keep one 401 body (plus the uniform 429 past the public in-flight cap), commit nothing late, retain at most 32 samples and 16 KiB of state, seal at most two windows of five events, recover health and leave no goroutines beyond the starting count plus a small slack. Credential, session and grant tables are byte-identical afterward and the victim's session still works from another source. Existing sink-failure, blocked-datastore, shared-node and startup-recovery tests remain. |
+| Operator interface correlation | `TestRequestRefusalSupportedInstanceConsumers` and `TestRequestRefusalRevokedReplayIsRetainedAndCorrelated` correlate a revoked-token replay to the retained record through the cookie reader and the real CLI `audit query` and `audit export`. |
+| ADRs, registry, migrations, contracts, guidance | [auth-refusal-signals.md](../adr/auth-refusal-signals.md), the registry entry in `internal/audit/registry.go`, migration 80 on both engines, generated outputs checked by the existing generators, and [the operator guide](../operations/authentication-refusal-signals.md). No change was needed. |
+
+One product defect was found by the security review and fixed in
+`internal/service/refusal.go`: the 100 ms accounting budget derived from the
+request context, so a client that disconnected as its refusal was answered
+cancelled the signal and hid the refusal. The budget now detaches from the
+request cancellation (`context.WithoutCancel`), and
+`TestRequestRefusalSurvivesCancelledRequestContext` fails without the fix. The
+rest of this change is tests and this record. Known and documented, not changed:
+a flood can drive collection health unhealthy (operator guide), and refusal write load
+is not limited by per-source admission, because a request refused by the rate
+limiter still records its refusal. Only the 8 writer slots, 64 waiters and the
+100 ms budget bound it, and on SQLite, which has one writer, a flood can delay
+legitimate writes by up to that budget per refusal. This is bounded but was not
+benchmarked here. A proxy that writes `ip:port` forwarding hops is attributed
+to its own address, so deployments must forward bare addresses.
+
+Remaining dependencies, not built here: [#1037](https://github.com/Hikyo-Org/Hikyo/issues/1037)
+(off-host evidence and independent retention) and
+[#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038) (alert delivery). The
+five health series and sealed events are the inputs they consume.
 
 ## Executable handoff
 

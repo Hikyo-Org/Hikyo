@@ -16,7 +16,7 @@ import (
 // user, so its refusals must hold before any AWS call. `aws` is a stub that
 // records its argv, so no case can reach a provider. Without STUB_PROVISION it
 // fails every call; with it, it answers as a root caller in an empty account,
-// with STUB_ALIASES as the merged list-aliases JSON and STUB_SECRETS as the
+// with STUB_ALIASES as the merged list-aliases JSON, STUB_KEY_ARN as the create-key ARN and STUB_SECRETS as the
 // list-secrets rows. Restores of ARNs containing "force" and force deletes of
 // ARNs containing "stuck" are refused. STUB_USERS adds the run's users, each with
 // one access key, one foreign and one run policy attached, and two customer
@@ -43,6 +43,7 @@ if [ -n "$STUB_PROVISION" ]; then
 	case "$*" in
 	*"sts get-caller-identity"*) echo "arn:aws:iam::123456789012:root"; exit 0 ;;
 	*"kms list-aliases"*) printf '%s\n' "$STUB_ALIASES"; exit 0 ;;
+	*"kms create-key"*) printf '%s\n' "$STUB_KEY_ARN"; exit 0 ;;
 	*"iam get-user"*) echo "An error occurred (NoSuchEntity) when calling the GetUser operation" >&2; exit 254 ;;
 	*"secretsmanager list-secrets"*) printf '%s' "$STUB_SECRETS"; exit 0 ;;
 	*"restore-secret"*force*) echo "An error occurred (InvalidRequestException)" >&2; exit 254 ;;
@@ -209,6 +210,39 @@ func TestAWSSandboxScriptProvisionPrintsRecovery(t *testing.T) {
 	}
 	if last := calls[len(calls)-1]; !strings.Contains(last, "kms create-key") {
 		t.Fatalf("want create-key as the failing call, got %q", last)
+	}
+}
+
+// create-key output is spliced into sed programs by render(), and an emulator
+// controls it, so a value that is not a key ARN of this account must stop
+// provision before any further call, and nothing it carries may execute.
+func TestAWSSandboxScriptProvisionRefusesMaliciousKeyARN(t *testing.T) {
+	requireSandboxTools(t)
+	marker := filepath.Join(t.TempDir(), "injected")
+	for _, arn := range []string{
+		"x|;e touch " + marker + ";#",
+		"arn:aws:kms:eu-central-1:123456789012:key/abc|;e touch " + marker + ";#",
+		"arn:aws:kms:us-east-1:123456789012:key/abc",
+		"arn:aws:kms:eu-central-1:210987654321:key/abc",
+		"",
+	} {
+		stub := append([]string{"STUB_KEY_ARN=" + arn}, awsAccountStub...)
+		stderr, calls, err := runSandboxScript(t, stub, "--endpoint-url", "https://127.0.0.1:4566", "provision", "0123456789")
+		if err == nil || !strings.Contains(stderr, "unexpected key ARN") {
+			t.Fatalf("want a refusal for key ARN %q, got %v:\n%s", arn, err, stderr)
+		}
+		for _, call := range calls {
+			if strings.Contains(call, "create-alias") {
+				t.Fatalf("provision went on with key ARN %q: %q", arn, calls)
+			}
+		}
+		if _, statErr := os.Stat(marker); statErr == nil {
+			t.Fatalf("key ARN %q executed a command", arn)
+		}
+	}
+	stub := append([]string{"STUB_KEY_ARN=arn:aws:kms:eu-central-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"}, awsAccountStub...)
+	if stderr, _, _ := runSandboxScript(t, stub, "--endpoint-url", "https://127.0.0.1:4566", "provision", "0123456789"); strings.Contains(stderr, "unexpected key ARN") {
+		t.Fatalf("genuine key ARN refused:\n%s", stderr)
 	}
 }
 

@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Live GitHub payloads (Hikyo-Org/Hikyo, 2026-11-07): GET pulls/1245, a layer of
@@ -56,14 +58,14 @@ func stackedFixture(t *testing.T, stackBase string) (*queueFixture, string) {
 	f.api.responses[f.c.endpoint("pulls/7")] = layer
 	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []any{layer}
 	var served pull
-	data, _ := json.Marshal(layer)
+	data, _ := json.Marshal(layer, jsonwire.Stable)
 	if err := decode(data, &served); err != nil {
 		t.Fatal(err)
 	}
 	f.pr = served
 	runs := livePayload(t, "live-run-42402392631-pull_requests.json").([]any)
 	patchLive(runs[0].(map[string]any), f)
-	data, _ = json.Marshal(runs)
+	data, _ = json.Marshal(runs, jsonwire.Stable)
 	if err := decode(data, &f.feedbackRun.Pulls); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +188,7 @@ func TestMalformedStackDoesNotStallMainQueue(t *testing.T) {
 	bad := patchLive(livePayload(t, "live-pull-1245.json").(map[string]any), f)
 	bad["number"], bad["stack"] = float64(8), map[string]any{"base": map[string]any{"ref": "dev", "sha": "abc"}}
 	bad["head"].(map[string]any)["sha"] = strings.Repeat("7", 40)
-	data, _ := json.Marshal(f.pr)
+	data, _ := json.Marshal(f.pr, jsonwire.Stable)
 	var good map[string]any
 	_ = json.Unmarshal(data, &good)
 	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []any{good, bad}

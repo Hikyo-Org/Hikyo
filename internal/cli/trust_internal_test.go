@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestPinnedClientReplacesPKIVerificationWithExactLeafIdentity(t *testing.T) {
@@ -94,7 +96,7 @@ func TestTrustStoreRejectsUncontrolledFilesystemObjects(t *testing.T) {
 	valid := map[string]TrustEntry{
 		"local": {Name: "local", Origin: "http://127.0.0.1:8080"},
 	}
-	raw, err := json.Marshal(valid)
+	raw, err := json.Marshal(valid, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

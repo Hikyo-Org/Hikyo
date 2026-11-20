@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
@@ -26,7 +27,7 @@ func applyPendingExists(stateDir string) bool {
 
 // writeApplyPending records the stamps to apply, atomically, BEFORE docker runs.
 func writeApplyPending(stateDir string, stamps map[string]string) error {
-	data, err := json.Marshal(stamps)
+	data, err := json.Marshal(stamps, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -72,7 +73,7 @@ func writeAppliedStamps(stateDir string, stamps map[string]string) error {
 			return fmt.Errorf("writing applied stamps for %q: %w", target, err)
 		}
 	}
-	data, err := json.Marshal(stamps)
+	data, err := json.Marshal(stamps, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

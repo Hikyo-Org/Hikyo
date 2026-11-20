@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -133,7 +134,7 @@ func (s *Auth) verifyPassword(ctx context.Context, accountID string, cred authz.
 // first to bound resource exhaustion, the second to bound online brute force of
 // a six-digit code whose skew window admits roughly three valid values.
 func (s *Auth) enterFactorBudget(ctx context.Context, accountID string) (func(), error) {
-	if delay := s.Admission.AccountDelay(accountID); delay > 0 {
+	if s.Admission.AccountInBackoff(ctx, accountID) {
 		return nil, admission.ErrOverloaded
 	}
 	return s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
@@ -634,6 +635,27 @@ func (s *Auth) RemoveTOTP(ctx context.Context, presented, password string) (Logi
 	return result, nil
 }
 
+// liveConfirmedTOTP resolves the account's confirmed TOTP factor for a proof. A
+// factor from a superseded credential epoch (a restored row) is inert
+// (human-auth ADR § Restore), so it is refused exactly like no factor.
+func liveConfirmedTOTP(ctx context.Context, az *authz.TxAuthorizer, accountID string) (authz.TOTPCredential, error) {
+	confirmed, err := az.ConfirmedTOTP(ctx, accountID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return authz.TOTPCredential{}, ErrNoTOTPFactor
+	}
+	if err != nil {
+		return authz.TOTPCredential{}, err
+	}
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
+		return authz.TOTPCredential{}, err
+	}
+	if confirmed.CredentialEpoch != epoch {
+		return authz.TOTPCredential{}, ErrNoTOTPFactor
+	}
+	return confirmed, nil
+}
+
 // StepUpTOTP elevates the acting session in place: a valid code consumes its
 // step (single-use CAS), then the session's factor set gains `totp` and its
 // token rotates. It is NOT an account-security mutation — no generation
@@ -657,10 +679,7 @@ func (s *Auth) StepUpTOTP(ctx context.Context, presented, code string) (LoginRes
 		if err != nil {
 			return err
 		}
-		confirmed, err = az.ConfirmedTOTP(ctx, account.ID)
-		if errors.Is(err, domain.ErrNotFound) {
-			return ErrNoTOTPFactor
-		}
+		confirmed, err = liveConfirmedTOTP(ctx, az, account.ID)
 		return err
 	})
 	if err != nil {
@@ -706,9 +725,7 @@ func (s *Auth) StepUpTOTP(ctx context.Context, presented, code string) (LoginRes
 		if err != nil {
 			return err
 		}
-		if _, err := az.ConfirmedTOTP(ctx, account.ID); errors.Is(err, domain.ErrNotFound) {
-			return ErrNoTOTPFactor
-		} else if err != nil {
+		if _, err := liveConfirmedTOTP(ctx, az, account.ID); err != nil {
 			return err
 		}
 		// CAS on the row whose seed was VERIFIED in phase 1, not a freshly read
@@ -822,7 +839,7 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		return nil, LoginResult{}, err
 	}
 	sealer := s.Keyring.ForInstance()
-	batchJSON, err := json.Marshal(verifiers)
+	batchJSON, err := json.Marshal(verifiers, jsonwire.Stable)
 	if err != nil {
 		return nil, LoginResult{}, err
 	}
@@ -912,7 +929,7 @@ type RecoveryResult struct {
 // enforced by the DB CHECK), advances the generation and deletes every session
 // — all in one transaction. A losing CAS discards the authority (finding B22).
 func (s *Auth) ConsumeRecoveryCode(ctx context.Context, username, code string) (RecoveryResult, error) {
-	if delay := s.Admission.AccountDelay(username); delay > 0 {
+	if s.Admission.AccountInBackoff(ctx, username) {
 		return RecoveryResult{}, admission.ErrOverloaded
 	}
 	release, err := s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
@@ -979,7 +996,6 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 	// Phase 2 — match. Every non-matching path scans a set of the same size so
 	// timing does not distinguish an unknown subject from a wrong code.
 	cause := ""
-	matchIdx := -1
 	switch {
 	case !resolved:
 		s.burnRecoveryMatch(ctx, code)
@@ -1003,7 +1019,7 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 			cause = "batch-unreadable"
 			break
 		}
-		matchIdx = crypto.MatchRecoveryCode(code, verifiers)
+		matchIdx := crypto.MatchRecoveryCode(code, verifiers)
 		zeroVerifiers(verifiers)
 		if matchIdx < 0 {
 			cause = "no-match"
@@ -1032,6 +1048,24 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 			}
 			refused = domain.ErrUnauthenticated
 			return nil
+		}
+		// Containment or a privacy restriction may have landed since phase 1
+		// resolved the account. Take the principal row lock every such writer
+		// takes, then re-resolve through the gated lookup: a held account gets the
+		// uniform unknown-subject refusal before any code is spent, factor retired,
+		// value purged or authority minted. The re-read sits inside this closure, so
+		// a serialization retry runs it again.
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
+		if _, err := az.AccountByID(ctx, account.ID); errors.Is(err, domain.ErrNotFound) {
+			if ferr := s.failRecovery(ctx, az, now, "", false, "unknown-subject"); ferr != nil {
+				return ferr
+			}
+			refused = domain.ErrUnauthenticated
+			return nil
+		} else if err != nil {
+			return err
 		}
 		// Re-read the batch and re-match under the write tx: a concurrent
 		// regenerate may have replaced it since phase 2.
@@ -1099,7 +1133,7 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 				return perr
 			}
 		}
-		batchJSON, err := json.Marshal(remaining)
+		batchJSON, err := json.Marshal(remaining, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -1286,7 +1320,7 @@ func (s *Auth) burnRecoveryMatch(ctx context.Context, code string) {
 		if err != nil {
 			return
 		}
-		j, err := json.Marshal(verifiers)
+		j, err := json.Marshal(verifiers, jsonwire.Stable)
 		if err != nil {
 			return
 		}

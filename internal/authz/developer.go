@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -89,7 +90,7 @@ func (a *TxAuthorizer) RevokeDeveloperCredentialsByProvenance(ctx context.Contex
 	}
 	out := []DeveloperCredential{}
 	for _, c := range rows {
-		match := false
+		var match bool
 		switch kind {
 		case "session":
 			match = c.ParentSessionID == id
@@ -109,6 +110,32 @@ func (a *TxAuthorizer) RevokeDeveloperCredentialsByProvenance(ctx context.Contex
 			c.RevokedAt = at
 			out = append(out, c)
 		}
+	}
+	return out, nil
+}
+
+// RevokeDeveloperCredentialsForSessions revokes one authority's live developer
+// credentials minted from any of the given sessions or through any of the given
+// providers. A directory lifecycle event uses it: it ends exactly the OIDC-born
+// delegation of one account, never a credential minted from a password session.
+func (a *TxAuthorizer) RevokeDeveloperCredentialsForSessions(ctx context.Context, authority domain.PrincipalID, sessionIDs, providerIDs []string, at time.Time) ([]DeveloperCredential, error) {
+	rows, err := a.r.ListDeveloperCredentials(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []DeveloperCredential{}
+	for _, c := range rows {
+		if c.AuthorityPrincipal != authority || !c.RevokedAt.IsZero() {
+			continue
+		}
+		if !slices.Contains(sessionIDs, c.ParentSessionID) && (c.ProviderID == "" || !slices.Contains(providerIDs, c.ProviderID)) {
+			continue
+		}
+		if err := a.r.RevokeDeveloperCredential(ctx, c.ID, at); err != nil {
+			return nil, err
+		}
+		c.RevokedAt = at
+		out = append(out, c)
 	}
 	return out, nil
 }

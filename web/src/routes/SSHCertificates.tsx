@@ -32,6 +32,7 @@ import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { runPasskeyCeremony } from '../api/values.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { useNavigationGuard } from '../app/useNavigationGuard.ts';
+import { NoEnvironments, type EnvironmentsRead } from './machineAccess/EnvironmentsRead.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -40,6 +41,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { useMintLifecycle, type MintBoundaryFields } from './mintLifecycle.ts';
 import { duration } from '../app/duration.ts';
 import { NamedId } from '../ui/NamedId.tsx';
+import { DownloadLink } from '../app/DownloadLink.tsx';
 
 /**
  * The SSH tab of the machine-access page (#155): an environment's SSH user
@@ -115,12 +117,14 @@ export function SSHCertificatesPanel({
   project,
   sessionId,
   environments,
+  environmentsRead,
   requesterOptions,
 }: {
   org: string;
   project: string;
   sessionId: string | null;
   environments: readonly EnvOption[];
+  environmentsRead: EnvironmentsRead;
   requesterOptions: readonly RequesterOption[];
 }) {
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? '');
@@ -138,7 +142,7 @@ export function SSHCertificatesPanel({
   const issue = useMintLifecycle<IssueRequest, SSHIssued>({ sessionId, org, project });
 
   if (current === undefined) {
-    return <p role="status">This project has no environments, so it has no SSH CAs.</p>;
+    return <NoEnvironments read={environmentsRead} what="SSH CAs" />;
   }
   const caItems = cas.data?.items ?? [];
   const profileItems = profiles.data?.items ?? [];
@@ -247,9 +251,9 @@ export function SSHCertificatesPanel({
                     </Button>
                     {workspace === null ? (
                       isDemo ? <Button type="button" disabled title="Downloads are unavailable in the demo">Download KRL</Button> : (
-                        <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
+                        <DownloadLink href={sshKRLPath(env, ca.id)} filename={`${ca.name}.krl`}>
                           Download KRL
-                        </a>
+                        </DownloadLink>
                       )
                     ) : null}
                     <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'rotate', ca })}>

@@ -31,7 +31,8 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +46,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pathutil"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
@@ -69,7 +71,7 @@ const (
 // Manifest describes an archive: what produced it, and what a restore needs
 // to know before it commits anything.
 type Manifest struct {
-	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitempty"`
+	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitzero"`
 	Format  string                  `json:"format"`
 	Engine  Engine                  `json:"engine"`
 	// SchemaVersion is the highest applied goose migration. Restore refuses
@@ -458,7 +460,7 @@ func pgSequenceBounds(ctx context.Context, tx pgx.Tx) (map[string]pgSequenceBoun
 }
 
 func writeManifest(tw *tar.Writer, m Manifest) error {
-	body, err := json.MarshalIndent(m, "", "  ")
+	body, err := json.Marshal(m, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return fmt.Errorf("store: encode manifest: %w", err)
 	}

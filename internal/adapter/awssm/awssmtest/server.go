@@ -6,7 +6,7 @@
 package awssmtest
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type version struct {
@@ -442,7 +444,7 @@ func tagList(tags map[string]string) []map[string]string {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/x-amz-json-1.1")
-	_ = json.NewEncoder(w).Encode(v)
+	_ = jsonwire.Encode(w, v)
 }
 
 func writeError(w http.ResponseWriter, status int, code, retryAfter string) {
@@ -452,5 +454,5 @@ func writeError(w http.ResponseWriter, status int, code, retryAfter string) {
 		w.Header().Set("Retry-After", retryAfter)
 	}
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"__type": code, "message": "awssmtest " + code})
+	_ = jsonwire.Encode(w, map[string]string{"__type": code, "message": "awssmtest " + code})
 }

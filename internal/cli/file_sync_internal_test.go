@@ -2,7 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/filesync"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestFileSyncOfflinePreservesReceiptOnlyForActuallyWrittenKeys(t *testing.T) {
@@ -150,7 +151,7 @@ func TestFileSyncCurrentReportsOnlyVerifiedDestinationStamp(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ApiRevision: api.Revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ApiRevision: api.Revision})
 					return
 				}
 				if strings.HasSuffix(r.URL.Path, "/delivery") {
@@ -166,12 +167,12 @@ func TestFileSyncCurrentReportsOnlyVerifiedDestinationStamp(t *testing.T) {
 						t.Error(err)
 					}
 					generation := int64(1)
-					_ = json.NewEncoder(w).Encode(apigen.DeliveryResponse{Current: true, Revision: 1, FileTargetGeneration: &generation})
+					_ = jsonwire.Encode(w, apigen.DeliveryResponse{Current: true, Revision: 1, FileTargetGeneration: &generation})
 					return
 				}
 				if strings.HasSuffix(r.URL.Path, "/report") {
 					var report apigen.FileTargetReportRequest
-					if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+					if err := json.UnmarshalRead(r.Body, &report); err != nil {
 						t.Error(err)
 					}
 					if matched {

@@ -2,7 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
@@ -66,7 +68,7 @@ func (s *Backup) publishUpgradeReceipt(ciphertext string, receipt backupreceipt.
 	if err := receipt.Validate(); err != nil {
 		return "", err
 	}
-	raw, err := json.MarshalIndent(receipt, "", "  ")
+	raw, err := json.Marshal(receipt, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return "", err
 	}

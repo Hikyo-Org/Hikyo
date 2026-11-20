@@ -192,6 +192,7 @@ prepare_prerequisite() {
 execute_check() {
 	case "$1" in
 		audit-collector) run python3 -I -B -m unittest discover -s scripts/ops/audit-collector -p 'test_*.py' ;;
+		docs-impact) run sh "$feedback_tooling_dir/check-docs-impact.sh" "$comparison" "$head" "$work/changed" ;;
 		release-admission) run python3 -B scripts/ci/release-admission/run_checks.py --unit ;;
 		go-format)
 			gofmt="$(go env GOROOT)/bin/gofmt"
@@ -207,6 +208,9 @@ execute_check() {
 			# DWARF and dependency vet; full validation still runs go vet ./...
 			run go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null "${go_packages[@]}"
 			;;
+		# desktop/ is its own module. Its darwin-only files compile only on macOS;
+		# elsewhere this covers the shared shell logic and the stub main.
+		desktop-compile) run go -C desktop test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./... ;;
 		shellcheck) run shellcheck -x -- "${shell_files[@]}" ;;
 		actionlint)
 			# Run immutable tooling against source workflow paths as data.
@@ -220,7 +224,7 @@ execute_check() {
 			;;
 		docs)
 			# An older source checkout may have a generation-only checker.
-			docs_checker="${FAST_FEEDBACK_TOOLS_DIR:-$repo_root/scripts/ci}/../../docs/site/scripts/prepare-content.mjs"
+			docs_checker="$feedback_tooling_dir/../../docs/site/scripts/prepare-content.mjs"
 			run node "$docs_checker" --check --source-root "$repo_root"
 			;;
 		client-typecheck) run pnpm --dir clients/ts run typecheck ;;

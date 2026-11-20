@@ -26,13 +26,17 @@ your deployment.
 | Compose | `install/compose/server.yaml` and `server-unattended.yaml` | Manual and fresh unattended deployment definitions | Explicit data/key/custody storage, TLS boundary, operator-owned replacement and recovery |
 | Cloud infrastructure | AWS CloudFormation, Azure template, GCP/DigitalOcean/Hetzner guides | Host/infrastructure preparation in the operator's account | Application activation and provider runtime acceptance; these are not managed services |
 
-The nightly chart publisher added by this deployment slice is a publication
-mechanism, not evidence that an existing nightly has a chart. On 2 November 2026
-an anonymous client could pull stable `1.0.0`, then the repository's only chart.
-Treat a nightly chart as **HOLD** until its exact publisher run and a clean
-anonymous pull succeed. Older prereleases do not acquire charts retroactively.
+The nightly chart publisher is a publication mechanism, not evidence that a
+given nightly has a chart. Nightlies published before it landed have none, and a
+nightly whose release job failed or was skipped (for example after a failed Apple
+notarization) has none either. Treat a nightly chart as **HOLD** until its exact
+publisher run and a clean anonymous pull succeed. Older prereleases do not
+acquire charts retroactively. On 15 November 2026 the registry listed nightly
+charts published from 4 November, among them
+`1.1.0-nightly.20261111.117.ga8f3cf47` (see the
+[published-artifact run](kubernetes-gitops.md#published-artifact-run) for what was verified).
 Nightly versions are prereleases, so Helm 3.16.1 kept resolving an unpinned chart
-reference to `1.0.0` when both were present. Always pin the exact digest anyway. A successful GitHub
+reference to the newest stable version (then `1.0.0`) when stable and nightly charts were both present. Always pin the exact digest anyway. A successful GitHub
 archive release can coexist with failed image or chart publication; consult the
 individual job and artifact digest rather than assuming the whole release exists.
 
@@ -75,8 +79,8 @@ the reverse proxy further reduces exposure.
 | Argo CD server installation | Exact-digest generic OCI Application and restricted AppProject; generated after chart/image verification; the stable 1.0.0 chart is refused | Manual sync, no automatic self-heal/pruning; manual full-stop migration | Chart rendering is Argo-owned, not a Helm release; no built-in Cosign plugin is added |
 
 The GitOps generator accepts stable and nightly charts, and the singleton guide's
-commands name the nightly publisher. The generator refuses the stable 1.0.0 chart
-because it predates two changes that the 1.1.0 chart carries:
+commands name the nightly publisher. The generator refuses stable 1.0.0 because that
+chart predates two changes in this source:
 
 - It does not set `HIKYO_ROOT_KEY_FILE`, and `admin` has no root-key flag. Inside a
   running 1.0.0 pod, `admin create` refuses with `no root key configured`. The chart
@@ -85,11 +89,12 @@ because it predates two changes that the 1.1.0 chart carries:
 - It does not normalize the `helm.sh/chart` label. Flux 2.10.0 verified its signature,
   then failed the install on the invalid label `hikyo-1.0.0+<digest>`.
 
-On 19 November 2026 the generator, with Helm 4.2.3, accepted the published 1.1.0
-chart (`sha256:bab52fb111e56d05d4178c938f7d12409139067176d4082e3cce91d89f150d6d`,
-source `c56b8b44820a6e088920759f974aabc456d737ef`) for Flux and Argo CD, but no
-published stable chart has completed a recorded controller install. In a test, an
-unsigned chart built from this source and running the released 1.0.0 image installed under Flux and created its
+Stable 1.1.0 was cut from this source. On 15 November 2026 the generator, with real
+Cosign and `gh` checks, authenticated its chart and image for Flux and Argo CD, and
+Flux 2.10.0 and Argo CD 3.5.6 each completed a zero-replica install of that exact digest in a
+disposable Kind cluster (see the [GitOps runbook](kubernetes-gitops.md#published-artifact-run)). That is
+controller-mechanics evidence only. A 1.0.0 test is also recorded: an unsigned chart built from
+this source and running the released 1.0.0 image installed under Flux and created its
 first administrator inside the pod. That run used controllers older than the qualified
 Flux 2.10.0, with signature verification removed, and a database and custody already
 initialized by the 1.0.0 chart, so it was not a fresh install. No complete stable Kubernetes first-install
@@ -106,24 +111,32 @@ establish a tested EKS/AKS/GKE or every-distribution matrix. Record the actual
 Kubernetes, Helm, CSI and CNI versions used by an installation and retain its
 source/artifact/runtime evidence separately.
 
-## Unattended operator-command gap
+## Unattended operator commands
 
 Unattended server startup resolves its authenticated bundle and operator public
-key into its in-memory configuration. Separately executed `admin`, `backup export`
-and `restore drill` processes do not inherit those resolved paths. These commands
-require the actual public bundle, operator pin and installed
-custody; `HIKYO_DB` and the root key alone are insufficient. The chart now exposes
-the staged root-key path for operator commands, but that does not resolve the
-other unattended inputs automatically.
+key into its in-memory configuration, and records the admitted image and the
+enrolled operator pin in the unattended state directory. Separately executed
+`admin`, `backup` and `restore` processes (`docker exec`, `kubectl exec`) read
+those records back and pass the same signed-release and custody gate, so they
+need only the environment the server already has: `HIKYO_DB`, the root key path
+(set by the chart and the Compose example) and the unattended state directory.
+They never enroll, migrate, take the coordinator lock or start an updater, and
+refuse a missing, malformed, stale or replaced record, another release, or an
+unfinished upgrade. See [local operator
+commands](unattended-container-upgrades.md#local-operator-commands).
 
-The complete singleton example therefore uses the manual-custody path. A safe
-admitted-custody resolver and end-to-end operator-command checks are still needed
-before advertising a complete fresh unattended Kubernetes operating experience.
-Do not bypass release admission, invent installation pins, relaunch an upgrade
-coordinator merely to run an admin command, or copy a custody journal into a
-different authority directory. Runtime unattended upgrade coverage remains
-separate from this operator-command gap. The repair and required runtime
-acceptance are tracked in [#1112](https://github.com/Hikyo-Org/Hikyo/issues/1112).
+Real-container acceptance (`scripts/ci/unattended-operator.sh`) covers the first
+administrator, credential establishment, diagnostics, encrypted backup and the
+readable restore drill in a distroless SQLite container and a singleton
+PostgreSQL container through Docker. The kind singleton run (`unattended-kind.sh`)
+repeats `admin create`, `backup keygen`, `backup export`, `restore status` and
+`admin config status` through `kubectl exec` in the admitted pod; credential
+establishment and the restore drill are covered only through Docker. The complete
+singleton example still documents manual custody; choosing unattended custody
+for a fresh Kubernetes install remains an operator decision. Do not bypass
+release admission, invent installation pins, relaunch an upgrade coordinator
+merely to run an admin command, or copy a custody journal into a different
+authority directory.
 
 ## Installation acceptance record
 

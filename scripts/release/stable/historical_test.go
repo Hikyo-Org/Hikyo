@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
@@ -59,8 +60,33 @@ func TestHistoricalUsesCurrentAuthorizationWithoutRollingBack(t *testing.T) {
 	writeCurrent()
 	state := filepath.Join(t.TempDir(), "release-trust.json")
 	args := []string{"verify", "--trust", trust, "--directory", directory, "--version", "1.0.0", "--commit", strings.Repeat("a", 40), "--state", state}
-	if err := run(append(args, "--historical"), &bytes.Buffer{}); err != nil {
+	var printed bytes.Buffer
+	if err := run(append(args, "--historical"), &printed); err != nil {
 		t.Fatal(err)
+	}
+	// The release-compatibility check takes the baseline's identity from this output
+	// (scripts/release/check-compatibility-unchanged.sh), so its shape is pinned here: exactly
+	// {identity, published_oci_verified}, with the identity derived from the verified files.
+	var verified struct {
+		Identity           releaseidentity.Identity `json:"identity"`
+		PublishedInventory *bool                    `json:"published_oci_verified"`
+	}
+	if err := definitions.DecodeStrict(printed.Bytes(), &verified); err != nil {
+		t.Fatalf("verify output is not {identity, published_oci_verified}: %v\n%s", err, printed.String())
+	}
+	var verifiedManifest releasetrust.Manifest
+	manifestFile := fixtureReadJSON(t, filepath.Join(directory, "release-manifest.json"), &verifiedManifest)
+	compatibilityFile, err := os.ReadFile(filepath.Join(directory, "upgrade-compatibility.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantIdentity := releaseidentity.Identity{Profile: releaseidentity.StableV1, Version: "1.0.0", Sequence: uint64(verifiedManifest.ReleaseSequence), Commit: strings.Repeat("a", 40),
+		CompatibilitySHA256: releaseidentity.Hash(compatibilityFile), ManifestSHA256: releaseidentity.Hash(manifestFile)}
+	if verified.PublishedInventory == nil {
+		t.Fatalf("verify output lacks published_oci_verified:\n%s", printed.String())
+	}
+	if verified.Identity != wantIdentity || *verified.PublishedInventory {
+		t.Fatalf("verify printed identity %+v (published %v), want %+v", verified.Identity, *verified.PublishedInventory, wantIdentity)
 	}
 	var floor releasetrust.SnapshotFloor
 	saved := fixtureReadJSON(t, state, &floor)

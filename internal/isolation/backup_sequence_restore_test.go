@@ -3,7 +3,7 @@ package isolation
 import (
 	"archive/tar"
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"math"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -147,7 +148,7 @@ func rewriteSequenceArchive(t *testing.T, plain []byte, c custody, name string, 
 				t.Fatal(err)
 			}
 			m.Sequences[name] = value
-			payload, err = json.Marshal(m)
+			payload, err = json.Marshal(m, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

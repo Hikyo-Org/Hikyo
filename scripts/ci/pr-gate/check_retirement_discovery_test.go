@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
@@ -33,7 +34,7 @@ func (a retirementDiscoveryAPI) read(ctx context.Context, path string, result an
 		if err, ok := response.(error); ok {
 			return err
 		}
-		data, err := json.Marshal(response)
+		data, err := json.Marshal(response, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

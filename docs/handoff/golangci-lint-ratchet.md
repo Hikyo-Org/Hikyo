@@ -13,7 +13,7 @@ These are the static-analysis findings CodeRabbit kept posting as "Supported by 
   - `HIKYO_PREPUSH_GOLANGCI=skip` skips the check for WIP pushes only.
 - `ci-advisory-golangci` (`.github/workflows/ci-golangci.yml`) runs the same script on PRs. It is not a required context.
 - The rule set matches the codes that fired in review:
-  - errcheck, errorlint, errchkjson, noctx, wastedassign and unused;
+  - errcheck, errorlint, noctx, wastedassign and unused;
   - staticcheck `SA*`, `QF1001` and `QF1003`;
   - gosec G115, G204 and G306, outside tests.
 

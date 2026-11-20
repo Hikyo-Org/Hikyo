@@ -1,5 +1,6 @@
-// workflow-lint validates GitHub's concurrency queue configuration before
-// passing the workflow to pinned actionlint, which predates this supported key.
+// workflow-lint validates GitHub's concurrency queue configuration and the
+// vulnerability-alerts permission before passing the workflow to pinned
+// actionlint, which predates both.
 package main
 
 import (
@@ -86,6 +87,83 @@ func validateQueues(raw []byte) ([]byte, error) {
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
+// alertsPermission is the workflow permission scope GitHub added after actionlint
+// v1.7.12; that release reports it as unknown, and an ignore entry would also stop
+// its value from being checked. Validate it here, then blank the line.
+// Remove this once the pinned actionlint knows the scope.
+const alertsPermission = "vulnerability-alerts"
+
+var alertsLine = regexp.MustCompile(`^\s+vulnerability-alerts:\s+(read|none)\s*(#.*)?$`)
+
+func validateAlertsPermission(raw []byte) ([]byte, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) != 1 {
+		return nil, fmt.Errorf("expected one workflow document")
+	}
+	root := doc.Content[0]
+	var blocks []*yaml.Node
+	if permissions := field(root, "permissions"); permissions != nil {
+		blocks = append(blocks, permissions)
+	}
+	if jobs := field(root, "jobs"); jobs != nil && jobs.Kind == yaml.MappingNode {
+		for i := 1; i < len(jobs.Content); i += 2 {
+			if permissions := field(jobs.Content[i], "permissions"); permissions != nil {
+				blocks = append(blocks, permissions)
+			}
+		}
+	}
+	lines := strings.Split(string(raw), "\n")
+	for _, block := range blocks {
+		if block.Kind != yaml.MappingNode {
+			continue
+		}
+		count := 0
+		for i := 0; i < len(block.Content); i += 2 {
+			if block.Content[i].Value == alertsPermission {
+				count++
+			}
+		}
+		if count > 1 {
+			return nil, fmt.Errorf("duplicate %s permission", alertsPermission)
+		}
+		value := field(block, alertsPermission)
+		if value == nil {
+			continue
+		}
+		// The rewrite below edits the anchored text, which would also change every alias of it.
+		if block.Anchor != "" {
+			return nil, fmt.Errorf("line %d: do not anchor a permissions block that declares %s", block.Line, alertsPermission)
+		}
+		if value.Kind != yaml.ScalarNode || value.Tag != "!!str" || (value.Value != "read" && value.Value != "none") {
+			return nil, fmt.Errorf("line %d: %s must be read or none", value.Line, alertsPermission)
+		}
+		line := value.Line - 1
+		if line < 0 || line >= len(lines) || !alertsLine.MatchString(lines[line]) {
+			return nil, fmt.Errorf("line %d: declare %s as a standalone unquoted key", value.Line, alertsPermission)
+		}
+		// A block whose only key is this scope would become empty, which actionlint
+		// rejects; an empty flow mapping keeps the line count and parses.
+		if len(block.Content) == 2 {
+			lines[line] = lines[line][:len(lines[line])-len(strings.TrimLeft(lines[line], " \t"))] + "{}"
+		} else {
+			lines[line] = ""
+		}
+	}
+	return []byte(strings.Join(lines, "\n")), nil
+}
+
+// normalize validates and strips every key the pinned actionlint predates.
+func normalize(raw []byte) ([]byte, error) {
+	normalized, err := validateQueues(raw)
+	if err != nil {
+		return nil, err
+	}
+	return validateAlertsPermission(normalized)
+}
+
 func execute(args []string) error {
 	if len(args) == 0 || !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(args[0]) {
 		return fmt.Errorf("usage: workflow-lint PINNED_VERSION [workflow paths]")
@@ -137,7 +215,7 @@ func execute(args []string) error {
 		if err != nil {
 			return err
 		}
-		normalized, err := validateQueues(raw)
+		normalized, err := normalize(raw)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
 			failed = true

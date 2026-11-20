@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securityfeed"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
@@ -44,7 +45,7 @@ func nativeSecurityHostFingerprint(configuration string, c hostupgrade.Config) (
 		}
 		files[i] = raw
 	}
-	raw, err := json.Marshal(files)
+	raw, err := json.Marshal(files, jsonwire.Stable)
 	return releaseidentity.Hash(raw), err
 }
 
@@ -63,7 +64,7 @@ func appendNativeSecuritySource(args []string, guard *nativeSecuritySourceGuard,
 	if guard == nil {
 		return args, nil
 	}
-	raw, err := json.Marshal(guard)
+	raw, err := json.Marshal(guard, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}

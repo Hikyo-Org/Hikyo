@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"os"
@@ -55,14 +55,14 @@ func TestAWSAdapterProtectedStaticDescriptorSources(t *testing.T) {
 					var credential string
 					if operation == "create" {
 						var body apigen.CreateAdapterRequest
-						if r.Method != http.MethodPost || r.URL.Path != "/api/v1/orgs/org_one/projects/prj_one/adapters" || json.NewDecoder(r.Body).Decode(&body) != nil {
+						if r.Method != http.MethodPost || r.URL.Path != "/api/v1/orgs/org_one/projects/prj_one/adapters" || json.UnmarshalRead(r.Body, &body) != nil {
 							t.Error("protected create lost its request contract")
 							return
 						}
 						credential = body.Credential
 					} else {
 						var body apigen.SetAdapterCredentialRequest
-						if r.Method != http.MethodPut || r.URL.Path != "/api/v1/orgs/org_one/projects/prj_one/adapters/adp_one/credential" || json.NewDecoder(r.Body).Decode(&body) != nil {
+						if r.Method != http.MethodPut || r.URL.Path != "/api/v1/orgs/org_one/projects/prj_one/adapters/adp_one/credential" || json.UnmarshalRead(r.Body, &body) != nil {
 							t.Error("protected replacement lost its request contract")
 							return
 						}

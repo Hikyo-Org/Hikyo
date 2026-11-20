@@ -9,10 +9,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 )
@@ -63,7 +64,7 @@ func newFuzzPQ(f *testing.F) fuzzPQ {
 	root, err := json.Marshal(releasetrust.PQRoot{Root: v1, PQ: releasetrust.PQRootPolicy{Profile: releasetrust.PQProfile, Generation: 1, Recovery: []releasetrust.PQRootKey{
 		{Algorithm: releasetrust.AlgorithmECDSAP256, ID: "fuzz-recovery", PublicKey: "recovery.pub", SHA256: v1.Recovery.SHA256},
 		{Algorithm: releasetrust.AlgorithmMLDSA65, ID: "fuzz-recovery-mldsa", PublicKey: "recovery-mldsa.pub", SHA256: string(releaseidentity.Hash(recoveryPEM))},
-	}}})
+	}}}, jsonwire.Stable)
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func newFuzzPQ(f *testing.F) fuzzPQ {
 	if err != nil {
 		f.Fatal(err)
 	}
-	keyset, err := json.Marshal(releasetrust.PQKeyset{Schema: releasetrust.PQKeysetSchema, Sequence: 1, Keys: []releasetrust.PQReleaseKey{{Algorithm: releasetrust.AlgorithmMLDSA65, ID: "fuzz-release", PublicKey: "release-mldsa.pub", SHA256: string(releaseidentity.Hash(releasePEM)), ValidFromReleaseSequence: 1}}})
+	keyset, err := json.Marshal(releasetrust.PQKeyset{Schema: releasetrust.PQKeysetSchema, Sequence: 1, Keys: []releasetrust.PQReleaseKey{{Algorithm: releasetrust.AlgorithmMLDSA65, ID: "fuzz-release", PublicKey: "release-mldsa.pub", SHA256: string(releaseidentity.Hash(releasePEM)), ValidFromReleaseSequence: 1}}}, jsonwire.Stable)
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func newFuzzPQ(f *testing.F) fuzzPQ {
 	set, err := json.Marshal(releasetrust.PQSignatureSet{Schema: releasetrust.PQSignatureSetSchema, Signatures: []releasetrust.PQSignature{
 		{Algorithm: releasetrust.AlgorithmECDSAP256, KeyID: classicalID, Signature: base64.StdEncoding.EncodeToString(classicalSig)},
 		{Algorithm: releasetrust.AlgorithmMLDSA65, KeyID: mldsaID, Signature: base64.StdEncoding.EncodeToString(mldsaSig)},
-	}})
+	}}, jsonwire.Stable)
 	if err != nil {
 		f.Fatal(err)
 	}

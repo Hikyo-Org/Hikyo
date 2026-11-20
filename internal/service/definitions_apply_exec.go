@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"maps"
 	"slices"
@@ -714,6 +714,9 @@ func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *
 		return err
 	}
 	if err := r.Catalogue().DeletePresenceForEnvironment(ctx, ep); err != nil {
+		return err
+	}
+	if err := purgeEnvironmentRotations(ctx, r, ep); err != nil {
 		return err
 	}
 	if err := r.SSH().PurgeEnvironment(ctx, ep); err != nil {

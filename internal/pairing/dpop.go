@@ -8,7 +8,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/url"
@@ -16,6 +17,8 @@ import (
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const (
@@ -86,7 +89,7 @@ func GenerateDPoP(private ed25519.PrivateKey, claims DPoPClaims) (string, error)
 	if claims.AccessToken != "" {
 		wire.AccessTokenHash = accessTokenHash(claims.AccessToken)
 	}
-	payload, err := json.Marshal(wire)
+	payload, err := json.Marshal(wire, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
@@ -224,29 +227,26 @@ func proofTarget(raw string) (string, error) {
 	return target.String(), nil
 }
 
-func jsonStringEquals(raw json.RawMessage, expected string) bool {
+func jsonStringEquals(raw jsontext.Value, expected string) bool {
 	var value string
 	return json.Unmarshal(raw, &value) == nil && value == expected
 }
 
 // strictObject refuses duplicate and unknown members before either JOSE or the
 // typed decoder interprets the object, preventing parser disagreement.
-func strictObject(raw []byte, allowed ...string) (map[string]json.RawMessage, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	open, err := decoder.Token()
-	if err != nil || open != json.Delim('{') {
+func strictObject(raw []byte, allowed ...string) (map[string]jsontext.Value, error) {
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
+	open, err := decoder.ReadToken()
+	if err != nil || open.Kind() != '{' {
 		return nil, ErrInvalidProof
 	}
-	fields := make(map[string]json.RawMessage)
-	for decoder.More() {
-		nameToken, err := decoder.Token()
-		if err != nil {
+	fields := make(map[string]jsontext.Value)
+	for decoder.PeekKind() != '}' {
+		nameToken, err := decoder.ReadToken()
+		if err != nil || nameToken.Kind() != '"' {
 			return nil, ErrInvalidProof
 		}
-		name, ok := nameToken.(string)
-		if !ok {
-			return nil, ErrInvalidProof
-		}
+		name := nameToken.String()
 		found := false
 		for _, candidate := range allowed {
 			found = found || name == candidate
@@ -254,16 +254,16 @@ func strictObject(raw []byte, allowed ...string) (map[string]json.RawMessage, er
 		if _, duplicate := fields[name]; !found || duplicate {
 			return nil, ErrInvalidProof
 		}
-		var value json.RawMessage
-		if err := decoder.Decode(&value); err != nil {
+		value, err := decoder.ReadValue()
+		if err != nil {
 			return nil, ErrInvalidProof
 		}
-		fields[name] = value
+		fields[name] = value.Clone()
 	}
-	if _, err := decoder.Token(); err != nil {
+	if _, err := decoder.ReadToken(); err != nil {
 		return nil, ErrInvalidProof
 	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, ErrInvalidProof
 	}
 	return fields, nil

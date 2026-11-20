@@ -6,7 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -56,7 +58,7 @@ func (p *probe) namedClients(ctx context.Context, dir string) error {
 		if err != nil || r == nil || r.IsError {
 			return errors.New("official SDK authenticated read failed")
 		}
-		b, err := json.Marshal(r)
+		b, err := json.Marshal(r, jsonwire.Stable)
 		if err != nil || !p.safe(b) {
 			return errors.New("official SDK output disclosed protected material")
 		}
@@ -122,8 +124,8 @@ func (p *probe) inspector(ctx context.Context, dir string) error {
 			}
 		} else {
 			var r struct {
-				IsError    bool            `json:"isError"`
-				Structured json.RawMessage `json:"structuredContent"`
+				IsError    bool           `json:"isError"`
+				Structured jsontext.Value `json:"structuredContent"`
 			}
 			if json.Unmarshal(out, &r) != nil || r.IsError || !bytes.Contains(r.Structured, []byte("synthetic-config-value")) {
 				return errors.New("Inspector authenticated configuration read missing")
@@ -182,9 +184,9 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	scanner := bufio.NewScanner(output)
 	scanner.Buffer(make([]byte, 4096), 1<<20)
 	sequence := 0
-	rpc := func(method string, params any) (json.RawMessage, error) {
+	rpc := func(method string, params any) (jsontext.Value, error) {
 		sequence++
-		if json.NewEncoder(input).Encode(map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}) != nil {
+		if jsonwire.Encode(input, map[string]any{"jsonrpc": "2.0", "id": sequence, "method": method, "params": params}) != nil {
 			return nil, errors.New("native client input failed")
 		}
 		for scanner.Scan() {
@@ -192,9 +194,9 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 				return nil, errors.New("native client disclosure; frame withheld")
 			}
 			var r struct {
-				ID     int             `json:"id"`
-				Result json.RawMessage `json:"result"`
-				Error  json.RawMessage `json:"error"`
+				ID     int            `json:"id"`
+				Result jsontext.Value `json:"result"`
+				Error  jsontext.Value `json:"error"`
 			}
 			if json.Unmarshal(scanner.Bytes(), &r) != nil || r.ID != sequence {
 				continue
@@ -209,7 +211,7 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	if _, err := rpc("initialize", map[string]any{"clientInfo": map[string]string{"name": "hikyo-651-proof", "version": "1"}, "capabilities": map[string]bool{"experimentalApi": true}}); err != nil {
 		return err
 	}
-	if err := json.NewEncoder(input).Encode(map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
+	if err := jsonwire.Encode(input, map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
 		return errors.New("native initialization failed")
 	}
 	thread, err := rpc("thread/start", map[string]any{"cwd": home, "ephemeral": true, "approvalPolicy": "never", "sandbox": "read-only"})

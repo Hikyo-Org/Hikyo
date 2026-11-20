@@ -3,7 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -100,7 +101,7 @@ type retainedBackup struct {
 // of a preparing run names none, and an aborted run's journal is deleted, so the
 // sweeps would otherwise leave the volume with no backup while a replacement is made.
 func retainLastBackup(directory string, runtime hostupgrade.RuntimeEvidence) error {
-	raw, err := json.Marshal(retainedBackup{Format: "hikyo.unattended-retained-backup/v1", EvidenceDirectory: runtime.EvidenceDirectory, CiphertextPath: runtime.CiphertextPath})
+	raw, err := json.Marshal(retainedBackup{Format: "hikyo.unattended-retained-backup/v1", EvidenceDirectory: runtime.EvidenceDirectory, CiphertextPath: runtime.CiphertextPath}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

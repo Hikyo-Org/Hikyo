@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -18,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -87,10 +89,14 @@ var (
 	ErrBindingClaims = fmt.Errorf("%w: service: a binding must pin at least one claim, each a string, integer or boolean", domain.ErrInvalid)
 	// ErrBindingImmutableID refuses a binding that does not pin the immutable
 	// identifiers its platform exposes. It is its own refusal because the remedy
-	// is specific: pin the numeric id, not the name — a renamed-and-reused
+	// is specific: pin the immutable id, not the name — a renamed-and-reused
 	// repository path or a recreated ServiceAccount otherwise inherits the
 	// binding.
 	ErrBindingImmutableID = fmt.Errorf("%w: service: a binding must pin the immutable identifiers this issuer exposes", domain.ErrInvalid)
+	// ErrBindingPinKind refuses a required pin of a JSON kind the issuer never
+	// emits for that claim: byte-exact comparison never folds kinds, so such a
+	// binding could never match a real token.
+	ErrBindingPinKind = fmt.Errorf("%w: service: a required pin must have the JSON kind the issuer emits", domain.ErrInvalid)
 	// ErrBindingEventName refuses a CI binding that does not pin `event_name`.
 	// This is the load-bearing refusal of the whole CI story: without the pin,
 	// a `pull_request_target` token carries the ordinary ref-form subject a
@@ -1037,6 +1043,12 @@ func checkBindingAgainstIssuer(issuer authz.FederationIssuer, audience, claimsJS
 		return fmt.Errorf("%w: %s requires %s", ErrBindingImmutableID,
 			issuer.Type, strings.Join(missing, ", "))
 	}
+	// A required pin must be a JSON string: these issuers emit the claim as one,
+	// and a number or boolean pin would never match a real token.
+	if wrong := oidcfed.NonStringRequiredPins(issuer.Type, pinned); len(wrong) > 0 {
+		return fmt.Errorf("%w: %s emits %s as a string, so pin it as a string (name=value), not a number or boolean",
+			ErrBindingPinKind, issuer.Type, strings.Join(wrong, ", "))
+	}
 	return nil
 }
 
@@ -1048,7 +1060,7 @@ func encodeClaimPins(pins []ClaimPin) (string, error) {
 	if len(pins) == 0 {
 		return "", ErrBindingClaims
 	}
-	out := map[string]json.RawMessage{}
+	out := map[string]jsontext.Value{}
 	for _, pin := range pins {
 		if pin.Claim == "" {
 			return "", ErrBindingClaims
@@ -1060,19 +1072,19 @@ func encodeClaimPins(pins []ClaimPin) (string, error) {
 			return "", fmt.Errorf("%w: %q is pinned twice", ErrBindingClaims, pin.Claim)
 		}
 		set := 0
-		var raw json.RawMessage
+		var raw jsontext.Value
 		var err error
 		if pin.String != nil {
 			set++
-			raw, err = json.Marshal(*pin.String)
+			raw, err = json.Marshal(*pin.String, jsonwire.Stable)
 		}
 		if pin.Number != nil {
 			set++
-			raw, err = json.Marshal(*pin.Number)
+			raw, err = json.Marshal(*pin.Number, jsonwire.Stable)
 		}
 		if pin.Boolean != nil {
 			set++
-			raw, err = json.Marshal(*pin.Boolean)
+			raw, err = json.Marshal(*pin.Boolean, jsonwire.Stable)
 		}
 		if err != nil {
 			return "", fmt.Errorf("%w: %v", ErrBindingClaims, err)
@@ -1084,7 +1096,7 @@ func encodeClaimPins(pins []ClaimPin) (string, error) {
 		}
 		out[pin.Claim] = raw
 	}
-	encoded, err := json.Marshal(out)
+	encoded, err := json.Marshal(out, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrBindingClaims, err)
 	}

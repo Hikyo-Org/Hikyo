@@ -43,6 +43,7 @@ FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = sqlc.arg(principal_id)
   AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 UNION ALL
 SELECT j.capability, j.org_id, j.project_id, j.env_id,
@@ -52,6 +53,7 @@ JOIN principals AS jp ON jp.id = j.principal_id
 WHERE j.principal_id = sqlc.arg(principal_id)
   AND j.expires_at > sqlc.arg(now)
   AND jp.privacy_state = 'active'
+  AND jp.containment_state = 'none'
   AND jp.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
 
 -- The denial writer's actor-class lookup (#45, audit-model ADR amendment
@@ -75,17 +77,17 @@ SELECT credential_epoch FROM auth_instance_state WHERE id = 1;
 -- hikyo:authn-resolution
 -- name: GetAccountByUsername :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE username = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
+WHERE username = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
 
 -- hikyo:authn-resolution
 -- name: GetAccountByID :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE accounts.id = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
+WHERE accounts.id = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
 
 -- hikyo:authn-resolution
 -- name: GetAccountByPrincipal :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE principal_id = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
+WHERE principal_id = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none');
 
 -- hikyo:authn-resolution
 -- name: CountAccounts :one
@@ -108,7 +110,7 @@ FROM password_credentials WHERE account_id = ?;
 
 -- hikyo:authn-resolution
 -- name: GetPrincipalGeneration :one
-SELECT session_generation FROM principals WHERE id = ? AND privacy_state = 'active';
+SELECT session_generation FROM principals WHERE id = ? AND privacy_state = 'active' AND containment_state = 'none';
 
 -- hikyo:authn-resolution
 -- name: GetSessionByVerifier :one
@@ -367,7 +369,8 @@ WHERE account_id = ? AND consumed_at IS NULL;
 -- name: GetEnabledProviderByIssuer :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE kind = ? AND issuer = ? AND enabled = 1;
 
 -- The recorded provider a callback exchanges at (A11): loaded by the id the
@@ -376,7 +379,8 @@ FROM oidc_providers WHERE kind = ? AND issuer = ? AND enabled = 1;
 -- name: GetProviderForCallback :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE id = ?;
 
 -- hikyo:authn-resolution
@@ -456,6 +460,22 @@ OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
  JOIN external_identities i ON i.id = e.identity_id
  WHERE i.kind = 'oidc' AND i.provider_id = sqlc.narg(provider_id));
 
+-- The directory-lifecycle sweep (human-auth ADR, 2026-11-17 amendment, f): one
+-- principal's sessions that were minted through ANY oidc provider row carrying
+-- the given issuer, plus those a credential-establishment stamp ties to an oidc
+-- identity of that issuer. Sessions minted by other methods survive, so a
+-- password session on the same account is not touched. reauth_windows cascade
+-- from the session. Run BEFORE the identity row is removed: the evidence join
+-- needs it.
+-- hikyo:authn-resolution
+-- name: DeleteSessionsForPrincipalAndIssuer :many
+DELETE FROM sessions WHERE sessions.principal_id = sqlc.arg(principal_id)
+AND (sessions.provider_id IN (SELECT p.id FROM oidc_providers p WHERE p.kind = 'oidc' AND p.issuer = sqlc.arg(issuer))
+ OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+  JOIN external_identities i ON i.id = e.identity_id
+  WHERE i.kind = 'oidc' AND i.issuer = sqlc.arg(issuer)))
+RETURNING sessions.id;
+
 -- A FRESH CEREMONY SUPERSEDES THE PAIR'S PREVIOUS WINDOW (#58).
 --
 -- The table holds AT MOST ONE window per (session, environment) and that
@@ -508,7 +528,8 @@ ON CONFLICT (session_id, environment_id) DO UPDATE SET
 -- name: GetEnabledProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
        redirect_uri, assurance_policy, enabled, dek_version, row_version,
-       created_at, updated_at
+       created_at, updated_at,
+       lifecycle_profile, lifecycle_secret
 FROM oidc_providers WHERE slug = ? AND enabled = 1;
 
 -- Reauth-window consumption at disclosure (#54, human-auth ADR - Reauthentication).
@@ -750,6 +771,24 @@ DELETE FROM remotes;
 -- name: HoldRestoredPKIIssuers :exec
 UPDATE pki_issuers SET restore_hold = 1;
 
+-- A restore brings back rotations whose grants, provider credentials and served
+-- keys are not reconciled yet, so every restored rotation is held: it starts no
+-- run and takes no pre-publish step until an operator releases it with
+-- `hikyo rotation release-hold` (#148, decision 9). A run-now queued before the
+-- backup is cleared so it cannot fire on release (a skip-overlap request would
+-- revoke a role still serving). A disabled rotation never runs again and is not held.
+-- hikyo:authn-resolution
+-- name: HoldRestoredRotations :exec
+UPDATE rotations SET restore_hold = 1, manual_run_id = NULL, manual_skip_overlap = 0, updated_at = sqlc.arg(updated_at) WHERE state <> 'disabled';
+
+-- The fallback for an archive written before the restore_hold column existed
+-- (migrations 00091 to 00093): the closure runs against the archive's own schema,
+-- so it can only use the columns that archive has. Every active rotation is
+-- paused, which is a state the operator must resume by hand.
+-- hikyo:authn-resolution
+-- name: PauseRestoredRotations :exec
+UPDATE rotations SET state = 'paused', next_run_at = NULL, generation = generation + 1, updated_at = sqlc.arg(updated_at) WHERE state = 'active';
+
 -- The operator's commit covers `manual` origins ONLY (#73, scim-provisioning
 -- ADR section 9.1). A restored `scim` origin is a claim about what an identity
 -- provider asserted BEFORE the backup was taken, and the whole point of the
@@ -873,6 +912,15 @@ SELECT id, client_secret, dek_version, row_version FROM oidc_providers WHERE id 
 -- hikyo:authn-resolution
 -- name: ReencryptOidcProvider :execrows
 UPDATE oidc_providers SET client_secret=sqlc.arg(ct), dek_version=sqlc.arg(dek_version), row_version=row_version+1 WHERE id=sqlc.arg(id) AND row_version=sqlc.arg(row_version);
+
+-- The lifecycle secret carries its own sealed record (the envelope header names
+-- the DEK version), so the reseal CASes on the old ciphertext like remotes do.
+-- hikyo:authn-resolution
+-- name: ListOidcLifecycleSecretsForReencrypt :many
+SELECT id, lifecycle_secret FROM oidc_providers WHERE lifecycle_secret IS NOT NULL AND id > ? ORDER BY id LIMIT ?;
+-- hikyo:authn-resolution
+-- name: ReencryptOidcLifecycleSecret :execrows
+UPDATE oidc_providers SET lifecycle_secret=sqlc.arg(new_ct) WHERE id=sqlc.arg(id) AND lifecycle_secret=sqlc.arg(old_ct);
 
 -- hikyo:authn-resolution
 -- name: ListOauth2ProvidersForReencrypt :many

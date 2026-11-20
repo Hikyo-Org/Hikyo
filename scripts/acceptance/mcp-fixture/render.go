@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +21,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 //go:embed resources.yaml.tmpl
@@ -154,7 +156,10 @@ func render(dir string) error {
 	if fileHash(filepath.Join(public, "operator.pub")) != b.OperatorPin {
 		return errors.New("operator pin differs from selected binding")
 	}
-	inventoryBytes, _ := json.Marshal(inventory)
+	inventoryBytes, err := json.Marshal(inventory, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
 	inventoryHash := sha256.Sum256(inventoryBytes)
 	if fmt.Sprintf("%x", inventoryHash) != b.Bundle {
 		return errors.New("public bundle inventory differs from selected binding")
@@ -172,7 +177,7 @@ func render(dir string) error {
 		return errors.New("fixture template rendering failed")
 	}
 	output.WriteString("\n---\n")
-	if json.NewEncoder(&output).Encode(cm) != nil {
+	if jsonwire.Encode(&output, cm) != nil {
 		return errors.New("public mount encoding failed")
 	}
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(output.Bytes()), 4096)

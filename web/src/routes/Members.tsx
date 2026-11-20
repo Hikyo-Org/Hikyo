@@ -39,6 +39,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { instanceOrigin } from '../app/shell.ts';
 import { useCeremonyTask } from './useCeremonyTask.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
@@ -95,6 +96,7 @@ import { EmailInvitations } from './EmailInvitations.tsx';
 import { EmailInviteDialog } from './EmailInviteDialog.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { OpenRegistrationPanel } from './OpenRegistration.tsx';
+import { useInSystemScope } from './SystemScope.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Explain, Panel, SectionTabs } from './Sections.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
@@ -171,6 +173,8 @@ export function Members({ scope }: { scope: MembersScope }) {
   const instanceGrants = useInstanceGrants(instance);
   const grants = instance ? instanceGrants : orgGrants;
   const topology = useOrgTopology(org);
+  // The system organisation refuses every rule operation, whatever the caller holds.
+  const systemOrg = useInSystemScope(org, null) === 'system';
   // A project rule listing admits narrowed managers independently of the
   // organisation grant listing, and returns only rules they may delegate.
   const rules = useRules(org, projectId, !instance && (projectId !== '' || grants.isSuccess));
@@ -539,7 +543,7 @@ export function Members({ scope }: { scope: MembersScope }) {
 
                 {grants.isSuccess || rulesPanelVisible ? (
                   <div id="members-rules">
-                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error)}</Alert> : null}
+                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error, systemOrg)}</Alert> : null}
                     {rulesPanelVisible && !rules.isSuccess && !rules.isError ? <p role="status">Loading access rules…</p> : null}
                     {rulePeople.length === 0 ? (
                       grants.isSuccess || rules.isSuccess ? <p role="status">{needle === '' ? scopedRulesOnly ? 'No delegable rules are disclosed here.' : 'No members with access here yet.' : `No member matches “${find.trim()}”.`}</p> : null
@@ -631,7 +635,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             <OpenRegistrationPanel
               scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
               scopeName={scopeName}
-              origin={window.location.origin}
+              origin={instanceOrigin()}
               authorityName={(principal) =>
                 principal === '' ? 'no one' : principal === me ? 'you' : principalLabel(principal, lines)}
               onChanged={(text) => {
@@ -653,7 +657,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             {scopedRulesOnly ? (
               <p role="status">This list contains only rules inside your delegated access. Scope-wide grants and other rules are not disclosed, so it cannot answer who has access across the project.</p>
             ) : rules.isError ? (
-              <Alert>{rulesListingText(rules.error)}</Alert>
+              <Alert>{rulesListingText(rules.error, systemOrg)}</Alert>
             ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
               <p role="status">Loading the grants, rules, topology and key names before answering…</p>
             ) : (
@@ -766,7 +770,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         <InviteDialog
           scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
           scopeName={scopeName}
-          origin={window.location.origin}
+          origin={instanceOrigin()}
           onDone={(text) => {
             feedback.ok(text);
             setModal('none');
@@ -792,7 +796,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           username={null}
           principalId={resetIssued.principal}
           issued={resetIssued.issued}
-          origin={window.location.origin}
+          origin={instanceOrigin()}
           onClose={() => {
             feedback.ok(
               `Reset the credential for ${principalLabel(resetIssued.principal, lines)}. The authority was shown once.`,
@@ -1356,6 +1360,7 @@ export function GrantModal({
   return (
     <Dialog
       title="Add scope-wide access"
+      size="wide"
       lede={
         projectContext && prototypeMode ? (
           <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>

@@ -2,11 +2,10 @@ package remotefetch
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -122,9 +121,7 @@ func (c *Client) Directory(ctx context.Context, origin, pin, credential string) 
 	// Unknown fields are refused rather than ignored: the listing is a closed
 	// contract, and a peer sending something this revision does not know about
 	// is a version-skew signal, not a field to drop on the floor.
-	dec := json.NewDecoder(strings.NewReader(string(body)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&l); err != nil {
+	if err := json.Unmarshal(body, &l, json.RejectUnknownMembers(true)); err != nil {
 		// Sanitized: the parse error is the caller's to log, never the
 		// operator's to read as foreign text on a card.
 		return Listing{}, OutcomeUnreachable, fmt.Errorf("remotefetch: listing did not parse: %w", err)

@@ -143,8 +143,11 @@ var reviewedWireExtras = wireExtras{
 		// refusal by cause, link, the claimed credential, the reissued/rotated
 		// session, reauth). link start mirrors start; unlink emits the unlink plus
 		// the reissued session. Provider administration is operation-modeled (Ops).
-		"http:POST /api/v1/auth/oidc/{provider}/start":   {Events: []string{"EventAuthAuthorityRefused", "EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/oauth2/{provider}/start": {Events: []string{"EventAuthAuthorityRefused", "EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/oidc/{provider}/start": {Events: []string{"EventAuthAuthorityRefused", "EventAuthThrottleCrossed"}},
+		// Directory lifecycle (human-auth ADR 2026-11-17): the signed webhook is
+		// unauthenticated; its verified events act as the system.
+		"http:POST /api/v1/auth/oidc/{provider}/lifecycle": {Events: []string{"EventIdentityUnlinkedByDirectory", "EventSessionsSweptByDirectory", "EventAccountNoLoginCredential", "EventDeveloperCredentialRevoked", "EventPersonalValueDeleted"}},
+		"http:POST /api/v1/auth/oauth2/{provider}/start":   {Events: []string{"EventAuthAuthorityRefused", "EventAuthThrottleCrossed"}},
 		// The TOTP half of the disclosure ceremony (#58). Unauthenticated-class
 		// for the same reason as every other reauth leg: it authenticates a factor
 		// rather than acting on a tenant object, and its refusals are uniform.
@@ -372,6 +375,8 @@ var reviewedWireExtras = wireExtras{
 		// `key` reaches the catalogue and the group routes, all tenant-class.
 		"cli:key":   {Class: "ClassTenant"},
 		"cli:lease": {Class: "ClassTenant"},
+		// `rotation` (#148) reaches only the environment-scoped rotation routes.
+		"cli:rotation": {Class: "ClassTenant"},
 		// Client verbs that reach the server. Their probe contract is the HTTP
 		// route they call, classified above; the verb itself carries the class of
 		// what it reaches, so a verb whose class is still ClassStub cannot

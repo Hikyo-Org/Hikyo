@@ -4,13 +4,15 @@ import (
 	"archive/tar"
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
@@ -117,7 +119,7 @@ func (r UpgradeExportRequest) bind(inspected upgrade.InstalledSource, m *Manifes
 // ManifestDigest hashes the exact encoding written by writeManifest. A reader
 // must instead hash original member bytes with ReadManifestEvidence below.
 func ManifestDigest(m Manifest) (releaseidentity.Digest, error) {
-	raw, err := json.MarshalIndent(m, "", "  ")
+	raw, err := json.Marshal(m, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return "", err
 	}

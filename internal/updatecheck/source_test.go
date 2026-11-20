@@ -2,13 +2,15 @@ package updatecheck
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -111,7 +113,7 @@ func TestGitHubSourceAcceptsLargeReleaseWindow(t *testing.T) {
 			Body: strings.Repeat("release notes ", 8192),
 		})
 	}
-	body, err := json.Marshal(records)
+	body, err := json.Marshal(records, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +128,7 @@ func TestGitHubSourceAcceptsLargeReleaseWindow(t *testing.T) {
 		if start >= len(records) {
 			t.Fatalf("read beyond release window: %s", request.URL)
 		}
-		page, err := json.Marshal(records[start:min(start+size, len(records))])
+		page, err := json.Marshal(records[start:min(start+size, len(records))], jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

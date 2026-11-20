@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -215,7 +214,7 @@ func runPKIIssuer(ctx context.Context, ios IO, args []string) error {
 	}
 	var ttlSecs *int64
 	if ttl != "" {
-		secs, err := ttlSeconds(ttl)
+		secs, err := durationSeconds("--ttl", ttl, false)
 		if err != nil {
 			return err
 		}
@@ -376,9 +375,7 @@ func readPolicy(path string) (apigen.PkiPolicy, error) {
 		return apigen.PkiPolicy{}, failf(ExitUsage, "--policy-file is required")
 	}
 	var policy apigen.PkiPolicy
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&policy); err != nil {
+	if err := decodeStrictDocument(strings.NewReader(raw), &policy); err != nil {
 		return apigen.PkiPolicy{}, failf(ExitUsage, "the policy file is not a PkiPolicy: %v", err)
 	}
 	return policy, nil
@@ -684,7 +681,7 @@ func runCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			body.Uris = &values
 		}
 		if ttl != "" {
-			secs, err := ttlSeconds(ttl)
+			secs, err := durationSeconds("--ttl", ttl, false)
 			if err != nil {
 				return err
 			}

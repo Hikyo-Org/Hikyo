@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"slices"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -27,7 +28,7 @@ func nativeSecurityIdentity(profile releaseidentity.Profile) releaseidentity.Ide
 
 func nativeSecurityIdentityJSON(t *testing.T, identity releaseidentity.Identity) string {
 	t.Helper()
-	raw, err := json.Marshal(identity)
+	raw, err := json.Marshal(identity, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

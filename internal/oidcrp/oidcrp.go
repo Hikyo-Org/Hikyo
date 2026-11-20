@@ -13,7 +13,7 @@ package oidcrp
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -226,7 +226,7 @@ func (p *Provider) Exchange(ctx context.Context, clientID string, clientSecret [
 // claim, #598 d5): parse, don't cast.
 type Claims struct {
 	Issuer          string
-	Raw             map[string]json.RawMessage
+	Raw             map[string]jsontext.Value
 	Subject         string
 	Nonce           string
 	ACR             string
@@ -277,7 +277,7 @@ func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now 
 		AZP      string   `json:"azp"`
 		AuthTime *int64   `json:"auth_time"`
 	}
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	if err := tok.Claims(&extra); err != nil {
 		return Claims{}, ErrTokenInvalid
 	}

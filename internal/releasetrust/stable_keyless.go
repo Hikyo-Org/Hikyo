@@ -2,12 +2,13 @@ package releasetrust
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -42,7 +43,10 @@ func (p StablePolicy) Validate() error {
 // PrimaryKeysDigest gives policy authors the canonical digest used to prevent
 // delegated CI from rewriting primary-key or bootstrap authority.
 func PrimaryKeysDigest(keys []Primary) releaseidentity.Digest {
-	raw, _ := json.Marshal(keys)
+	raw, err := json.Marshal(keys, jsonwire.Stable)
+	if err != nil {
+		return "" // not a valid digest, so no policy can match it
+	}
 	return releaseidentity.Hash(raw)
 }
 

@@ -272,7 +272,7 @@ func (e nativeEnrollment) bind(state upgrade.State, published string) error {
 	}
 	vault, err := upgradecustody.BindLocalEnrollment(c.CustodyDirectory, root, instance, public)
 	if err != nil {
-		return fmt.Errorf("the vault in %s does not open for this installation under its root key (a vault from an earlier passphrase design needs `sudo hikyo upgrade` once from a terminal): %w", c.CustodyDirectory, err)
+		return fmt.Errorf("the vault in %s does not open for this installation under its root key (a vault from an earlier passphrase design needs `sudo hikyo upgrade` once from a terminal; a vault sealed before a root key rotation is wrapped under the retired root): %w", c.CustodyDirectory, err)
 	}
 	vault.Close()
 	return nil

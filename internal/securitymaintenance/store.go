@@ -2,13 +2,15 @@ package securitymaintenance
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
@@ -129,7 +131,7 @@ func (s *Store) Save(state Status) (returnErr error) {
 	if err := validateStatus(state); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(state, "", "  ")
+	raw, err := json.Marshal(state, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

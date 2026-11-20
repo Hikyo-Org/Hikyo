@@ -2,13 +2,16 @@ package authn
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -36,13 +39,11 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 		return 0, fmt.Errorf("authn: invalid refusal staging state")
 	}
 	var window audit.RefusalWindow
-	d := json.NewDecoder(strings.NewReader(encoded))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&window); err != nil {
+	d := jsontext.NewDecoder(strings.NewReader(encoded))
+	if err := json.UnmarshalDecode(d, &window, json.RejectUnknownMembers(true)); err != nil {
 		return 0, fmt.Errorf("authn: invalid refusal staging encoding")
 	}
-	var extra json.RawMessage
-	if err := d.Decode(&extra); err != io.EOF {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("authn: trailing refusal staging data")
 	}
 	if err := window.Validate(); err != nil {
@@ -81,7 +82,7 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 		changed = true
 	}
 	if changed {
-		state, err := json.Marshal(window)
+		state, err := json.Marshal(window, jsonwire.Stable)
 		if err != nil {
 			return 0, err
 		}

@@ -1,10 +1,11 @@
 package schema_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -295,7 +296,7 @@ func TestWholeSecretVerdictCarriesNoPlaintext(t *testing.T) {
 				if v.Valid {
 					continue
 				}
-				encoded, err := json.Marshal(v)
+				encoded, err := json.Marshal(v, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -325,7 +326,7 @@ func TestErrorCapIsOnEncodedBytes(t *testing.T) {
 	if v.Valid {
 		t.Fatal("a missing required property was accepted")
 	}
-	encoded, err := json.Marshal(v)
+	encoded, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

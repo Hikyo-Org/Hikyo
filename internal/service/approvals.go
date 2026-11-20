@@ -140,11 +140,12 @@ type ApprovalCeremonyBinding struct {
 // approvalGatedTrigger reports whether a republish trigger is an out-of-band
 // value change that must be refused when a policy covers the destination. The
 // draft publishes ("values"/"restore") already ran the approval gate; the
-// structural fan-outs ("declare", "environment-create", "schema") are not value
-// changes a policy governs.
+// structural fan-outs ("environment-create", "key-create", "key-rename",
+// "key-declaration" and the other schema triggers) are not value changes a
+// policy governs. A supplied-value "declare" overwrites cells, so it is gated.
 func approvalGatedTrigger(trigger string) bool {
 	switch trigger {
-	case "import", copyOpCopy, copyOpBulkApply, copyOpClone:
+	case "declare", "import", copyOpCopy, copyOpBulkApply, copyOpClone:
 		return true
 	}
 	return false
@@ -199,6 +200,13 @@ func (s *Approvals) CreatePolicy(ctx context.Context, actor Actor, scope domain.
 		}
 		if err := recordPolicyChange(ctx, r, p, caller.Principal, id, "created", input); err != nil {
 			return err
+		}
+		if input.Enabled {
+			// An unattended rotation publish would become an approval request
+			// every cycle; pause the covered environment's rotations with the policy.
+			if err := pauseRotationsForEnvironment(ctx, r, p, caller.Principal, input.EnvironmentID, rotationPauseApprovalPolicy, now); err != nil {
+				return err
+			}
 		}
 		view, err = loadPolicyView(ctx, r, p, id)
 		return err
@@ -264,6 +272,11 @@ func (s *Approvals) UpdatePolicy(ctx context.Context, actor Actor, scope domain.
 		}
 		if err := recordPolicyChange(ctx, r, p, caller.Principal, id, "updated", input); err != nil {
 			return err
+		}
+		if input.Enabled {
+			if err := pauseRotationsForEnvironment(ctx, r, p, caller.Principal, current.EnvironmentID, rotationPauseApprovalPolicy, now); err != nil {
+				return err
+			}
 		}
 		view, err = loadPolicyView(ctx, r, p, id)
 		return err

@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -155,7 +156,7 @@ func TestAdapterTargetResponseIncludesConvergedRevisionAndPendingConflicts(t *te
 // generated client's schema, which the browser surface parses (#157).
 func TestAdapterTargetResponseEmitsArraysNotNull(t *testing.T) {
 	out := adapterTargetResponse(service.AdapterTarget{})
-	blob, err := json.Marshal(out)
+	blob, err := json.Marshal(out, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

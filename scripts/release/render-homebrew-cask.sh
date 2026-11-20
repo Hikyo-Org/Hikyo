@@ -87,6 +87,7 @@ cask "$cask_name" do
   homepage "https://hikyo.app/"
 
   conflicts_with cask: "$conflict"
+
   binary "hikyo"
 end
 EOF

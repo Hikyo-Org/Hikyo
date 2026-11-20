@@ -15,13 +15,17 @@
 package webauthnrp
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Sentinel refusals the service maps to closed audit causes. Every one is a
@@ -198,12 +202,52 @@ func (rp *RP) BeginDiscoverableLogin() (options, session []byte, challenge strin
 	return marshalCeremony(assertion, sess)
 }
 
+// sessionJSON keeps the persisted session bytes as encoding/json (v1) wrote
+// them: go-webauthn tags bools `omitempty`, which v2 no longer applies to
+// false. The mirrors below are conversions of the library types, so a library
+// field change stops the build instead of silently changing the bytes.
+var sessionJSON = json.JoinOptions(jsonwire.Stable, json.WithMarshalers(json.JoinMarshalers(
+	json.MarshalToFunc(func(enc *jsontext.Encoder, s webauthn.SessionData) error {
+		return json.MarshalEncode(enc, storedSession(s))
+	}),
+	json.MarshalToFunc(func(enc *jsontext.Encoder, e protocol.SessionExtensions) error {
+		return json.MarshalEncode(enc, storedExtensions(e))
+	}),
+)))
+
+type storedSession struct {
+	Challenge                 string                                  `json:"challenge"`
+	RelyingPartyID            string                                  `json:"rpId,omitempty"`
+	Origin                    string                                  `json:"origin,omitempty"`
+	UserID                    []byte                                  `json:"user_id,omitempty"`
+	AllowedCredentialIDs      [][]byte                                `json:"allowed_credentials,omitempty"`
+	Expires                   time.Time                               `json:"expires"`
+	UserVerification          protocol.UserVerificationRequirement    `json:"userVerification,omitempty"`
+	Extensions                protocol.SessionExtensions              `json:"extensions,omitzero"`
+	CredParams                []protocol.CredentialParameter          `json:"credParams,omitempty"`
+	Mediation                 protocol.CredentialMediationRequirement `json:"mediation,omitempty"`
+	AuthorizeUVInitialization bool                                    `json:"authorizeUVInitialization,omitzero"`
+}
+
+type storedExtensions struct {
+	Requested                         []string                            `json:"requested,omitempty"`
+	AppID                             string                              `json:"appid,omitempty"`
+	AppIDExclude                      string                              `json:"appidExclude,omitempty"`
+	LargeBlob                         protocol.LargeBlobSupport           `json:"largeBlob,omitempty"`
+	LargeBlobRead                     bool                                `json:"largeBlobRead,omitzero"`
+	LargeBlobWrite                    bool                                `json:"largeBlobWrite,omitzero"`
+	CredentialProtectionPolicy        protocol.CredentialProtectionPolicy `json:"credentialProtectionPolicy,omitempty"`
+	EnforceCredentialProtectionPolicy bool                                `json:"enforceCredentialProtectionPolicy,omitzero"`
+	CredBlob                          bool                                `json:"credBlob,omitzero"`
+	Extra                             map[string]any                      `json:"extra,omitempty"`
+}
+
 func marshalCeremony(options any, sess *webauthn.SessionData) ([]byte, []byte, string, error) {
-	optJSON, err := json.Marshal(options)
+	optJSON, err := json.Marshal(options, jsonwire.Stable)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("%w: %v", ErrCeremony, err)
 	}
-	sessJSON, err := json.Marshal(sess)
+	sessJSON, err := json.Marshal(sess, sessionJSON)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("%w: %v", ErrCeremony, err)
 	}

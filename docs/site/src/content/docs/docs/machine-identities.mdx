@@ -106,8 +106,40 @@ create an immutable binding from exact claims to one service account.
 Bindings do not accept wildcards or prefixes. Every platform binding must pin
 its immutable identifiers:
 
-- GitHub Actions: `repository_id`, `repository_owner_id`, and `event_name`.
+- GitHub Actions: `repository_id`, `repository_owner_id`, `event_name`,
+  `ref_protected`, `runner_environment`, and `job_workflow_ref`.
 - Kubernetes: `/kubernetes.io/serviceaccount/uid`.
+
+Every required pin is a JSON string, because the issuers emit them as strings:
+GitHub sends `repository_id` as `"74"` and `ref_protected` as `"true"`. Pin them
+as `name=value`, for example `--claim repository_id=74`. Pinning `repository_id=#74`
+or `ref_protected=?true` is refused when the binding is created, because Hikyo
+never folds a number or boolean onto a string and the binding could never match a
+real token. Bindings that already exist are not re-checked.
+
+Presence of the three newer GitHub pins is required, and you choose the value.
+They narrow which workflow runs receive the credentials; they cannot stop a
+compromised job from using credentials it was given.
+
+- `ref_protected`: pin `true`. This refuses runs on branches that are not
+  protected, such as a throwaway branch pushed by a stolen account. It does not
+  stop an account that is allowed to bypass branch protection, or code that
+  reaches the protected branch.
+- `runner_environment`: pin `github-hosted`, unless you deliberately run
+  self-hosted runners and pin `self-hosted`.
+- `job_workflow_ref`: pin the workflow file and ref, for example
+  `org/repo/.github/workflows/deploy.yml@refs/heads/main`. This refuses a new
+  workflow file, but not a new job added to the same workflow file in the same
+  repository. To close that, call a reusable workflow kept in a separate, locked
+  repository and pin its ref. When the reusable workflow is called at a fixed
+  commit, you can also pin `job_workflow_sha`; it is not required, because for a
+  same-repository workflow it changes with every commit.
+
+Copy the subject from a real token, for example with
+[github/actions-oidc-debugger](https://github.com/github/actions-oidc-debugger),
+instead of writing it by hand. GitHub repositories created, renamed or
+transferred after 2026-07-15 use GitHub's immutable subject format, so do not
+assume the `repo:owner/repository:ref:...` form.
 
 Forgejo Actions bindings are refused because its tokens do not expose an
 immutable repository identifier. Pinning `repository` and `event_name` cannot
@@ -123,9 +155,21 @@ hikyo sa binding create \
   --issuer <issuer-url> \
   --subject <subject> \
   --audience <audience> \
-  --claim name=value \
+  --claim repository_id=<id> \
+  --claim repository_owner_id=<id> \
+  --claim event_name=push \
+  --claim ref_protected=true \
+  --claim runner_environment=github-hosted \
+  --claim job_workflow_ref=<owner/repo/.github/workflows/file.yml@ref> \
   --replaces <old-credential-id>
 ```
+
+The example pins the GitHub Actions set. A Kubernetes binding pins
+`/kubernetes.io/serviceaccount/uid` instead.
+
+GitHub bindings created in the web interface before this requirement pinned
+`repository_id` and `repository_owner_id` as numbers and never matched a real
+token. Recreate them as replacements.
 
 The server revokes the predecessor and inserts the successor in one transaction.
 There is no overlap window in which to verify both. Validate the new formula
@@ -136,6 +180,23 @@ it counts against the per-source-IP allowance of 10 attempts per sliding
 minute. CI jobs sharing one egress address share that allowance; see
 [Rate limits](/docs/cli-reference/#rate-limits) for how to spread calls and
 reuse one export per job.
+
+## Keep production secrets out of CI
+
+Federation narrows which runs receive a credential, but a compromised job can
+still read whatever it was given. Keep production secrets out of CI: let
+production workloads fetch at runtime, through the Kubernetes operator or
+`hikyo run`, and give CI only deploy credentials.
+
+Values the GitHub Actions deployment adapter writes to repository or
+organization targets are readable by any workflow run that can reference
+secrets, from any branch, for example through `toJSON(secrets)`. Prefer
+environment targets protected by deployment-branch rules and, where your plan
+offers them, required reviewers. GitHub Free, Pro and Team offer required reviewers only on public repositories;
+deployment-branch rules also work on private repositories with Pro or Team.
+Where neither is available, keep the value out of GitHub and let the workload
+fetch it at runtime.
+See [Deployment adapters](/docs/deployment-adapters/).
 
 ## Delete
 

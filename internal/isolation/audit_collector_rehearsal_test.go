@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -67,7 +68,11 @@ func TestAuditCollectorProductRehearsal(t *testing.T) {
 				wantReceipt(t, got, apigen.AuditExportReceiptOutcomeSuccess, "", true)
 				var eventID string
 				for _, line := range got.events {
-					var row struct{ ID, Type, Outcome string }
+					var row struct {
+						ID      string `json:"id"`
+						Type    string `json:"type"`
+						Outcome string `json:"outcome"`
+					}
 					if err := json.Unmarshal([]byte(line), &row); err != nil {
 						t.Fatal(err)
 					}
@@ -88,7 +93,7 @@ func TestAuditCollectorProductRehearsal(t *testing.T) {
 				cfg, err := json.Marshal(map[string]any{
 					"source_id": "local-1037-" + string(db.Engine()), "trail": trail,
 					"scope": scope, "database": "retained.sqlite", "max_bytes": 16777216, "max_rows": 20000,
-				})
+				}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

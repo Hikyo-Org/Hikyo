@@ -2,7 +2,8 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
@@ -17,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
@@ -98,8 +100,8 @@ type ToolSpec struct {
 // RegistryRow is the immutable, reviewable projection used by closure tests.
 type RegistryRow struct {
 	Name                   string
-	InputSchema            json.RawMessage
-	OutputSchema           json.RawMessage
+	InputSchema            jsontext.Value
+	OutputSchema           jsontext.Value
 	ServiceOperation       string
 	AuthorizationOperation string
 	Formula                []string
@@ -216,11 +218,11 @@ func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaO
 	if err != nil {
 		return fmt.Errorf("mcpserver: tool %q output schema: %w", spec.Name, err)
 	}
-	inputSchemaJSON, err := json.Marshal(inputSchema)
+	inputSchemaJSON, err := json.Marshal(inputSchema, jsonwire.Stable)
 	if err != nil {
 		return fmt.Errorf("mcpserver: tool %q input schema encoding: %w", spec.Name, err)
 	}
-	outputSchemaJSON, err := json.Marshal(outputSchema)
+	outputSchemaJSON, err := json.Marshal(outputSchema, jsonwire.Stable)
 	if err != nil {
 		return fmt.Errorf("mcpserver: tool %q output schema encoding: %w", spec.Name, err)
 	}
@@ -252,7 +254,7 @@ func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaO
 			destructive := !policy.ReadOnly
 			mcp.AddTool(server, &mcp.Tool{
 				Name: spec.Name, Title: spec.Title, Description: spec.Description,
-				InputSchema: json.RawMessage(inputSchemaJSON), OutputSchema: json.RawMessage(outputSchemaJSON),
+				InputSchema: jsontext.Value(inputSchemaJSON), OutputSchema: jsontext.Value(outputSchemaJSON),
 				Annotations: &mcp.ToolAnnotations{
 					ReadOnlyHint: policy.ReadOnly, IdempotentHint: policy.ReadOnly,
 					DestructiveHint: &destructive, OpenWorldHint: &closedWorld,
@@ -280,7 +282,7 @@ func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaO
 					}
 					return nil, zero, errors.New(SafeOperationError)
 				}
-				encoded, err := json.Marshal(output)
+				encoded, err := json.Marshal(output, jsonwire.Stable)
 				if err != nil || len(encoded) > MaxStructuredContentBytes {
 					var zero Out
 					return nil, zero, errors.New(SafeOperationError)

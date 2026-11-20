@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -26,7 +28,7 @@ func (e *Executor) aws(ctx context.Context, service, action string, input, outpu
 	if service != "ecs" && service != "logs" && service != "application-autoscaling" && service != "elbv2" {
 		return ErrInvalid
 	}
-	raw, err := json.Marshal(input)
+	raw, err := json.Marshal(input, jsonwire.Stable)
 	if err != nil || len(raw) > maxRecordBytes {
 		return ErrInvalid
 	}
@@ -55,8 +57,8 @@ func (e *Executor) aws(ctx context.Context, service, action string, input, outpu
 
 func (e *Executor) ecsService(ctx context.Context) (ecsService, error) {
 	var response struct {
-		Services []ecsService      `json:"services"`
-		Failures []json.RawMessage `json:"failures"`
+		Services []ecsService     `json:"services"`
+		Failures []jsontext.Value `json:"failures"`
 	}
 	err := e.aws(ctx, "ecs", "describe-services", map[string]any{"cluster": e.c.ECS.ClusterARN, "services": []string{e.c.ECS.ServiceARN}, "include": []string{"TAGS"}}, &response)
 	if err != nil {
@@ -73,8 +75,8 @@ func (e *Executor) ecsDefinition(ctx context.Context, arn string) (ecsDefinition
 		return ecsDefinition{}, ErrInvalid
 	}
 	var response struct {
-		Definition map[string]json.RawMessage `json:"taskDefinition"`
-		Tags       []ecsTag                   `json:"tags"`
+		Definition map[string]jsontext.Value `json:"taskDefinition"`
+		Tags       []ecsTag                  `json:"tags"`
 	}
 	if err := e.aws(ctx, "ecs", "describe-task-definition", map[string]any{"taskDefinition": arn, "include": []string{"TAGS"}}, &response); err != nil {
 		if ecsDefinitionUnreadable.MatchString(err.Error()) {
@@ -105,15 +107,15 @@ var errECSDefinitionInactive = errors.New("security deployment: ECS task definit
 var ecsDefinitionUnreadable = regexp.MustCompile(`(?s)exited with status 254\b.*\(ClientException\) when calling the DescribeTaskDefinition operation`)
 
 type ecsTask struct {
-	ARN           string          `json:"taskArn"`
-	Cluster       string          `json:"clusterArn"`
-	Definition    string          `json:"taskDefinitionArn"`
-	StartedBy     string          `json:"startedBy"`
-	Group         string          `json:"group"`
-	LastStatus    string          `json:"lastStatus"`
-	DesiredStatus string          `json:"desiredStatus"`
-	Health        string          `json:"healthStatus"`
-	StoppedAt     json.RawMessage `json:"stoppedAt"`
+	ARN           string         `json:"taskArn"`
+	Cluster       string         `json:"clusterArn"`
+	Definition    string         `json:"taskDefinitionArn"`
+	StartedBy     string         `json:"startedBy"`
+	Group         string         `json:"group"`
+	LastStatus    string         `json:"lastStatus"`
+	DesiredStatus string         `json:"desiredStatus"`
+	Health        string         `json:"healthStatus"`
+	StoppedAt     jsontext.Value `json:"stoppedAt"`
 	Containers    []struct {
 		Name       string `json:"name"`
 		Image      string `json:"image"`
@@ -207,8 +209,8 @@ func (e *Executor) ecsServiceTasks(ctx context.Context) ([]ecsTask, error) {
 
 func (e *Executor) ecsNoAutoscaling(ctx context.Context) error {
 	var response struct {
-		Targets []json.RawMessage `json:"ScalableTargets"`
-		Next    string            `json:"NextToken"`
+		Targets []jsontext.Value `json:"ScalableTargets"`
+		Next    string           `json:"NextToken"`
 	}
 	input := map[string]any{"ServiceNamespace": "ecs", "ResourceIds": []string{"service/" + e.c.ECS.clusterName() + "/" + e.c.ECS.serviceName()}, "ScalableDimension": "ecs:service:DesiredCount", "MaxResults": 100}
 	if err := e.aws(ctx, "application-autoscaling", "describe-scalable-targets", input, &response); err != nil {
@@ -322,10 +324,10 @@ func (e *Executor) ecsReadiness(ctx context.Context, service ecsService, task ec
 }
 
 type ecsSnapshot struct {
-	Service    ecsService                 `json:"service"`
-	Definition map[string]json.RawMessage `json:"definition"`
-	SourceTask string                     `json:"source_task"`
-	Source     Observation                `json:"source"`
+	Service    ecsService                `json:"service"`
+	Definition map[string]jsontext.Value `json:"definition"`
+	SourceTask string                    `json:"source_task"`
+	Source     Observation               `json:"source"`
 }
 
 func (e *Executor) ecsCurrent(ctx context.Context, inspect bool) (ecsSnapshot, error) {
@@ -415,7 +417,7 @@ func ecsSnapshotDigest(snapshot ecsSnapshot) (releaseidentity.Digest, error) {
 		Contract, Definition releaseidentity.Digest
 		Task                 string
 		Source               Observation
-	}{contract, definition, snapshot.SourceTask, snapshot.Source})
+	}{contract, definition, snapshot.SourceTask, snapshot.Source}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

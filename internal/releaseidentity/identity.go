@@ -5,7 +5,7 @@ package releaseidentity
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type Profile string
@@ -187,7 +189,7 @@ func (m MigrationManifest) Digest() (Digest, error) {
 	if err := m.Validate(); err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(m)
+	raw, err := json.Marshal(m, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

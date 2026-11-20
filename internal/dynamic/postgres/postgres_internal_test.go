@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -37,6 +38,21 @@ func TestCanonicalDSNRejectsUnsafeOrigins(t *testing.T) {
 			origin == "postgres://u@:5432/app"
 		if unsafe && err == nil {
 			t.Errorf("canonicalDSN(%q) accepted an unsafe origin", origin)
+		}
+	}
+}
+
+func TestCanonicalDSNRejectsMultiHostOrigins(t *testing.T) {
+	for _, origin := range []string{
+		"postgres://u@h1:5432,h2:5432/db",
+		"postgres://u@h1,h2:5432/db",
+		"postgres://u@h1:5432:5433/db",
+	} {
+		if _, _, err := canonicalDSN(origin, "pw"); err == nil {
+			t.Errorf("canonicalDSN(%q) accepted a multi-host origin", origin)
+		}
+		if _, err := New(Config{Origin: origin, Password: "pw", Deadline: time.Second}); err == nil {
+			t.Errorf("New(%q) accepted a multi-host origin", origin)
 		}
 	}
 }
@@ -134,5 +150,21 @@ func TestNewBoundsPostgresWireMessageBody(t *testing.T) {
 	frontend = provider.connConfig.BuildFrontend(bytes.NewReader([]byte{'Z', 0, 0, 0, 5, 'I'}), io.Discard)
 	if _, err := frontend.Receive(); err != nil {
 		t.Fatalf("valid provider message refused: %v", err)
+	}
+}
+
+func TestBoundedStatementUsesLessThanTheRemainingTime(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	got := boundedStatement(ctx, "CREATE ROLE x")
+	var ms int
+	if _, err := fmt.Sscanf(got, "SET statement_timeout = %d; CREATE ROLE x", &ms); err != nil {
+		t.Fatalf("statement %q: %v", got, err)
+	}
+	if ms < 1 || ms > 3000 {
+		t.Fatalf("statement_timeout = %dms, want a bound under three quarters of 4s", ms)
+	}
+	if got := boundedStatement(context.Background(), "CREATE ROLE x"); got != "CREATE ROLE x" {
+		t.Fatalf("a context without a deadline changed the statement: %q", got)
 	}
 }

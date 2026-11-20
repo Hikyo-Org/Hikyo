@@ -598,6 +598,7 @@ func TestSensitiveFormattingCatchesViolations(t *testing.T) {
 			"passes sensitive type " + Module + "/internal/crypto.Keyring to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.ProjectSealer to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json",
+			"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json/v2",
 			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to encoding/json",
 			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to log/slog",
@@ -608,6 +609,7 @@ func TestSensitiveFormattingCatchesViolations(t *testing.T) {
 		// written, not merely somewhere in the file.
 		for marker, what := range map[string]string{
 			`any(ev)`:                        "any-conversion erasure",
+			`jsonv2.Marshal(kr)`:             "encoding/json/v2 marshal",
 			`ev.Payload["x"]`:                "payload map-index erasure",
 			`fmt.Printf("%v", any(kr))`:      "sensitive-type erasure",
 			`fmt.Printf("%#v", value)`:       "LocalKeys value",
@@ -822,6 +824,36 @@ func TestContextsSelectTaggedAndPlatformFiles(t *testing.T) {
 	if got := files(t, byName["darwin"], Module+"/internal/devupgrade"); !slices.Contains(got, "publish_darwin.go") {
 		t.Fatalf("darwin context devupgrade files = %v, want the darwin leg selected", got)
 	}
+}
+
+// The ui context's webui placeholder must not push the dependency closure onto
+// the source path: go/packages abandons export data for every package when it
+// is given Config.Overlay, which took the ui load's live heap from ~1.1GB to
+// ~2.5GB.
+func TestContextOverlayKeepsDependenciesOnExportData(t *testing.T) {
+	i := slices.IndexFunc(Contexts, func(c BuildContext) bool { return c.Name == "ui" })
+	if i < 0 {
+		t.Fatal("no ui context")
+	}
+	ui := Contexts[i]
+	if overlay, err := ui.Overlay(); err != nil {
+		t.Fatal(err)
+	} else if overlay == nil {
+		t.Skip("internal/webui/dist is populated; no placeholder overlay to exercise")
+	}
+	pkgs, err := LoadIn(ui, Module+"/internal/webui")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := map[*packages.Package]bool{}
+	for _, p := range pkgs {
+		roots[p] = true
+	}
+	packages.Visit(pkgs, nil, func(p *packages.Package) {
+		if !roots[p] && len(p.Syntax) > 0 {
+			t.Errorf("dependency %s was type-checked from source", p.ID)
+		}
+	})
 }
 
 // The context environment is explicit: ambient GOFLAGS never leaks into the

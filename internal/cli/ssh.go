@@ -326,9 +326,9 @@ func (p *sshProfileFlags) apply(fs *flag.FlagSet, body *apigen.SSHProfileRequest
 			v := p.forceCommand
 			body.ForceCommand = &v
 		case "default-ttl":
-			body.DefaultTtlSeconds, err = ttlSeconds(p.defaultTTL)
+			body.DefaultTtlSeconds, err = durationSeconds("--default-ttl", p.defaultTTL, false)
 		case "max-ttl":
-			body.MaxTtlSeconds, err = ttlSeconds(p.maxTTL)
+			body.MaxTtlSeconds, err = durationSeconds("--max-ttl", p.maxTTL, false)
 		case "disabled":
 			enabled := !p.disabled
 			body.Enabled = &enabled
@@ -564,7 +564,7 @@ func runSSHCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			body.Extensions = &v
 		}
 		if ttl != "" {
-			secs, err := ttlSeconds(ttl)
+			secs, err := durationSeconds("--ttl", ttl, false)
 			if err != nil {
 				return err
 			}

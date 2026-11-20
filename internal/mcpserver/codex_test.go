@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
 func codexRequest(body string) *http.Request {
@@ -102,9 +104,15 @@ func TestCodexDiscoveryAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, body := range []string{codexInitialize, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, `{"jsonrpc":"2.0","method":"notifications/initialized"}`} {
-		rec := serve(t, h, codexRequest(body))
+		req := codexRequest(body)
+		ctx := audit.WithRefusalReceipt(req.Context(), "192.0.2.7", "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee")
+		rec := serve(t, h, req.WithContext(ctx))
 		if rec.Code != 429 || rec.Header().Get("Retry-After") != "60" {
 			t.Fatalf("admission=%d %s", rec.Code, rec.Body.String())
+		}
+		// Each lifecycle method, not only tools/list, must reach the signal (#1034).
+		if got, ok := audit.PendingRefusal(ctx); !ok || got.Stage != audit.RefusalAdmission {
+			t.Fatalf("%s: discovery throttle not recorded: %+v ok=%v", body, got, ok)
 		}
 	}
 }

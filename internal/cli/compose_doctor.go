@@ -125,6 +125,7 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 	if runtimeResolved {
 		in.RuntimeDir = stack.runtimeDir
 		in.RuntimeTmpfs = doctorRuntimeTmpfs(stack.runtimeDir)
+		in.RuntimeCustody = compose.RuntimeDirCustody(stack.runtimeDir)
 	}
 
 	// Server agreement: feed compose.Doctor the per-target server stamps it needs
@@ -200,10 +201,11 @@ func doctorDocker(ctx context.Context, ios IO, cfgDir string) ([]compose.Finding
 func (s *composeStack) doctorServerStamps(ctx context.Context, managed map[string]string) (map[string]string, []compose.Finding, bool) {
 	present := s.eligibleCursor(managed)
 	if present == "" {
-		// No eligible cursor: never rendered, or the local render is gone. A full
+		// No eligible cursor: never rendered, the local render is gone, or the
+		// cursor predates the loader-acknowledgement binding. A full
 		// fetch would be a disclosure, so doctor does not do one.
 		return nil, []compose.Finding{{Severity: compose.SeverityError, Code: "never_rendered",
-			Message: "no eligible cursor: this box has not rendered, or its render is gone; run `hikyo compose render`"}}, false
+			Message: "no eligible cursor: this box has not rendered, its render is gone, or its cursor predates this version; run `hikyo compose render`"}}, false
 	}
 	resp, err := s.fetchDelivery(ctx, renderAcknowledged(s.cfg), present)
 	if err != nil {
@@ -402,8 +404,8 @@ func renderComposeFindings(w io.Writer, f Format, findings []compose.Finding) er
 // ---------------------------------------------------------------------------
 
 // dockerBinary resolves the docker executable. HIKYO_COMPOSE_DOCKER overrides
-// PATH resolution — the test seam, documented in the handoff/package doc only,
-// deliberately kept out of the help text.
+// PATH resolution; it is a documented environment override and the test seam,
+// kept out of the help text because it is not a flag.
 func dockerBinary(ios IO) (string, bool) {
 	if v := ios.Env.Getenv("HIKYO_COMPOSE_DOCKER"); v != "" {
 		return v, true

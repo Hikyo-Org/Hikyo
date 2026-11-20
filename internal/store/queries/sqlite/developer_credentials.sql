@@ -43,3 +43,13 @@ UPDATE developer_credentials SET expires_at = sqlc.arg(ceiling) WHERE id = sqlc.
 -- hikyo:authn-resolution
 -- name: RestoreDeveloperPolicySeedOccupied :one
 SELECT EXISTS (SELECT 1 FROM developer_credential_policy WHERE id <> 1 OR max_lifetime_seconds <> 28800);
+
+-- Incident enumeration lists the live delegations minted inside one org, in id
+-- order and bounded by the limit. A non-empty authority narrows it to one human.
+-- hikyo:reason Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded.
+-- hikyo:authn-resolution
+-- name: ListLiveDeveloperCredentialsInOrg :many
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
+WHERE org_id = sqlc.arg(org_id) AND revoked_at IS NULL AND expires_at > sqlc.arg(now) AND credential_epoch = sqlc.arg(epoch) AND id > sqlc.arg(after_id)
+  AND (CAST(sqlc.arg(authority) AS TEXT) = '' OR authority_principal_id = sqlc.arg(authority))
+ORDER BY id LIMIT sqlc.arg(row_limit);

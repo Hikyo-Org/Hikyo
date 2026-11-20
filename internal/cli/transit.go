@@ -11,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -252,7 +251,7 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 			body.AllowedOperations = &ops
 		}
 		if rotation != "" {
-			secs, err := transitSeconds("--rotation-period", rotation)
+			secs, err := durationSeconds("--rotation-period", rotation, true)
 			if err != nil {
 				return err
 			}
@@ -275,7 +274,7 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 			body.MinDecryptVersion = &minDec
 		}
 		if rotation != "" {
-			secs, err := transitSeconds("--rotation-period", rotation)
+			secs, err := durationSeconds("--rotation-period", rotation, true)
 			if err != nil {
 				return err
 			}
@@ -310,7 +309,7 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 	case transitLifecycleVerbs[sub]:
 		body := apigen.TransitLifecycleRequest{Action: apigen.TransitLifecycleRequestAction(sub)}
 		if delay != "" {
-			secs, err := transitSeconds("--delay", delay)
+			secs, err := durationSeconds("--delay", delay, true)
 			if err != nil {
 				return err
 			}
@@ -322,20 +321,6 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 		return render(out)
 	}
 	return failf(ExitUsage, "unknown transit key verb %q", sub)
-}
-
-// transitSeconds parses a duration flag into seconds, truncating fractional
-// seconds. "0" returns zero; other durations below one second and malformed
-// values return ExitUsage errors.
-func transitSeconds(flagName, raw string) (int64, error) {
-	if raw == "0" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(raw)
-	if err != nil || d < time.Second {
-		return 0, failf(ExitUsage, "%s must be a duration such as 720h", flagName)
-	}
-	return int64(d / time.Second), nil
 }
 
 // runTransitData executes a cryptographic command using file or stdin input.

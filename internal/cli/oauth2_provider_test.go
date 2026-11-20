@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestOAuth2CreateRefusesOverwriteAndOversizedSecret(t *testing.T) {
@@ -28,7 +28,7 @@ func TestOAuth2CreateRefusesOverwriteAndOversizedSecret(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 					return
 				}
 				if r.Method == http.MethodGet && !tc.exists {
@@ -39,7 +39,7 @@ func TestOAuth2CreateRefusesOverwriteAndOversizedSecret(t *testing.T) {
 				if r.Method == http.MethodPut {
 					puts++
 				}
-				_ = json.NewEncoder(w).Encode(apigen.Oauth2Provider{Slug: "github"})
+				_ = jsonwire.Encode(w, apigen.Oauth2Provider{Slug: "github"})
 			}))
 			defer srv.Close()
 			st, dir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))

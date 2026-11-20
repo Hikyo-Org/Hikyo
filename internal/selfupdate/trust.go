@@ -5,7 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -276,7 +278,7 @@ func updateVerificationState(path string, next releasetrust.SnapshotFloor) error
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	raw, err := json.MarshalIndent(next, "", "  ")
+	raw, err := json.Marshal(next, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

@@ -7,7 +7,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"strings"
 	"testing"

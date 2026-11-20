@@ -1,7 +1,8 @@
 package schema_test
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,12 +46,12 @@ import (
 var lexicalSkips = map[string]string{}
 
 type suiteGroup struct {
-	Description string          `json:"description"`
-	Schema      json.RawMessage `json:"schema"`
+	Description string         `json:"description"`
+	Schema      jsontext.Value `json:"schema"`
 	Tests       []struct {
-		Description string          `json:"description"`
-		Data        json.RawMessage `json:"data"`
-		Valid       bool            `json:"valid"`
+		Description string         `json:"description"`
+		Data        jsontext.Value `json:"data"`
+		Valid       bool           `json:"valid"`
 	} `json:"tests"`
 }
 

@@ -1,5 +1,6 @@
 import { useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
+import { FileInputFallback } from '../app/FileInputFallback.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
@@ -352,6 +353,7 @@ export function ChromeIdentityControls({
               {identity.image === null ? 'upload' : 'replace'}
             </label>
           </span>
+          <FileInputFallback what="upload the image" />
           {identity.image === null ? null : (
             <Button
               icon

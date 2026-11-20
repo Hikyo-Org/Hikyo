@@ -2,7 +2,8 @@ package lint
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 var updateReviewedPins = flag.Bool("update-reviewed-pins", false, "rewrite existing reviewed hashes for explicit diff review; never add authorities or protocol owners")
@@ -177,7 +180,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 	if err := checkReviewedPinAuthorities(reviewedPins, inventory); err != nil {
 		t.Fatal(err)
 	}
-	source, err := json.MarshalIndent(inventory, "", "  ")
+	source, err := json.Marshal(inventory, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +194,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 }
 
 func cloneReviewedPins(original reviewedPinInventory) (reviewedPinInventory, error) {
-	source, err := json.Marshal(original)
+	source, err := json.Marshal(original, jsonwire.Stable)
 	if err != nil {
 		return reviewedPinInventory{}, err
 	}
@@ -227,7 +230,7 @@ func checkReviewedPinAuthorities(before, after reviewedPinInventory) error {
 			}
 			clone.Protocols[owner] = pin
 		}
-		return json.Marshal(clone)
+		return json.Marshal(clone, jsonwire.Stable)
 	}
 	original, err := identity(before)
 	if err != nil {
@@ -244,7 +247,7 @@ func checkReviewedPinAuthorities(before, after reviewedPinInventory) error {
 }
 
 func TestReviewedPinUpdatePreservesAuthorityAndOriginalMaps(t *testing.T) {
-	before, err := json.Marshal(reviewedPins)
+	before, err := json.Marshal(reviewedPins, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +277,7 @@ func TestReviewedPinUpdatePreservesAuthorityAndOriginalMaps(t *testing.T) {
 	if err := checkReviewedPinAuthorities(reviewedPins, updated); err != nil {
 		t.Fatal(err)
 	}
-	after, err := json.Marshal(reviewedPins)
+	after, err := json.Marshal(reviewedPins, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -127,6 +127,11 @@ foreign symlink at a configured name, a symlinked destination directory, a
 directory already bound to another target, or a second client holding the
 directory's lock.
 
+The `.hikyo-gen` directory must be owned by the user running the client and
+closed to group and others. An existing one owned by another user (a changed
+publishing user, or NFS `root_squash`) or writable by group or others is
+refused as foreign: fix its owner and mode, or move it away and publish again.
+
 ## Outages and offline serve
 
 Every successful render also saves an encrypted snapshot in the client's state

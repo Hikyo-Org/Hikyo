@@ -3,7 +3,7 @@
 package benchmark
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"os"

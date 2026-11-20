@@ -17,7 +17,8 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -29,6 +30,8 @@ import (
 	"time"
 
 	"filippo.io/age"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Version is the only protocol version this package speaks.
@@ -521,7 +524,7 @@ func (s *Sealer) Seal(d Draft) (Sealed, error) {
 	if err := validatePayload(&e, &payload); err != nil {
 		return Sealed{}, err
 	}
-	plain, err := json.Marshal(payload)
+	plain, err := json.Marshal(payload, jsonwire.Stable)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -543,7 +546,7 @@ func (s *Sealer) Seal(d Draft) (Sealed, error) {
 		return Sealed{}, err
 	}
 	e.Sig = ed25519.Sign(s.signer.key, envelopeBytes(&e))
-	body, err := json.Marshal(e)
+	body, err := json.Marshal(e, jsonwire.Stable)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -554,12 +557,11 @@ func (s *Sealer) Seal(d Draft) (Sealed, error) {
 }
 
 func strictDecode(raw []byte, out any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(out); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, out, json.RejectUnknownMembers(true)); err != nil {
 		return fmt.Errorf("%w: %v", ErrMalformed, err)
 	}
-	if _, err := dec.Token(); err != io.EOF {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("%w: trailing data", ErrMalformed)
 	}
 	return nil
@@ -673,7 +675,7 @@ func (s *Signer) SignAck(digest, idempotencyKey string, status AckStatus, reason
 		return nil, err
 	}
 	a.Sig = ed25519.Sign(s.key, ackBytes(&a))
-	return json.Marshal(a)
+	return json.Marshal(a, jsonwire.Stable)
 }
 
 func validateAck(a *Ack) error {

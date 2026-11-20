@@ -58,7 +58,7 @@ run_probe "$ns" operator "app.kubernetes.io/name=hikyo-operator,app.kubernetes.i
 for role in idp adapter remote collector management; do
     kubectl -n "$targets" run "$role" --restart=Never --labels "role=$role" \
         --image="$HIKYO_NETWORK_POLICY_FIXTURE_IMAGE" --image-pull-policy=Never \
-        --overrides="$(jq -cn --argjson security "$security" --arg image "$HIKYO_NETWORK_POLICY_FIXTURE_IMAGE" '{spec:{automountServiceAccountToken:false,containers:[{name:"target",image:$image,imagePullPolicy:"Never",securityContext:$security,env:[{name:"POD_NAMESPACE",valueFrom:{fieldRef:{fieldPath:"metadata.namespace"}}}]}]}}')" >/dev/null
+        --overrides="$(jq -cn --argjson security "$security" --arg image "$HIKYO_NETWORK_POLICY_FIXTURE_IMAGE" '{spec:{automountServiceAccountToken:false,containers:[{name:"target",image:$image,imagePullPolicy:"Never",securityContext:$security,readinessProbe:{tcpSocket:{port:8080},periodSeconds:1},env:[{name:"POD_NAMESPACE",valueFrom:{fieldRef:{fieldPath:"metadata.namespace"}}}]}]}}')" >/dev/null
 done
 if ! kubectl -n "$targets" wait --for=condition=Ready pods --all --timeout=90s; then
     kubectl -n "$targets" get pods -o json >"$evidence/targets-failure.json"
@@ -74,6 +74,21 @@ for role in idp adapter remote collector management; do
 done
 kubectl -n "$targets" patch service adapter --type=merge --patch \
     '{"spec":{"ports":[{"name":"http","port":8080,"targetPort":8080},{"name":"tls","port":8443,"targetPort":8443}]}}' >/dev/null
+# A Service without a ready endpoint is rejected by kube-proxy (curl exit 7),
+# which the single-attempt reachability probes below would report as a failure.
+for role in idp adapter remote collector management; do
+    for ((attempt=1; ; attempt++)); do
+        ready=$(kubectl -n "$targets" get endpointslices -l "kubernetes.io/service-name=$role" \
+            -o jsonpath='{.items[*].endpoints[?(@.conditions.ready==true)].addresses[0]}')
+        [[ -z "$ready" ]] || break
+        if ((attempt == 60)); then
+            echo "network-policy: service $role has no ready endpoint" >&2
+            kubectl -n "$targets" get endpointslices -l "kubernetes.io/service-name=$role" -o yaml >&2 || true
+            exit 1
+        fi
+        sleep 1
+    done
+done
 pod=$(kubectl -n "$ns" get pods -l "app.kubernetes.io/name=hikyo,app.kubernetes.io/instance=$release" -o jsonpath='{.items[0].metadata.name}')
 pod_ip=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.status.podIP}')
 server="https://$release-hikyo.$ns.svc:8080/"

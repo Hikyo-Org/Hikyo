@@ -1,0 +1,23 @@
+# A base retarget needs fresh feedback against the new base, and GitHub cannot
+# filter edited events by what changed, so title and body edits start this
+# workflow too. It never runs on opened, synchronize or reopened, so its suites
+# are never the oldest on a head and never host ci-dev-required or
+# ci-queue-required. A newer run of it therefore hides no record.
+# It shares ci-feedback's name because gate-dev and gate-queue select their
+# workflow_run callbacks by name, and the dev publisher contract freezes
+# ci-dev-gate.yml until main is backmerged into every open dev PR.
+name: ci-feedback
+
+on:
+  pull_request:
+    types: [edited]
+
+permissions:
+  contents: read
+
+jobs:
+  retarget:
+    # Empty-string comparison also preserves legitimate numeric branch names;
+    # GitHub's loose equality would consider the previous ref "0" equal to null.
+    if: github.event.changes.base.ref.from != ''
+    uses: ./.github/workflows/ci-feedback.yml

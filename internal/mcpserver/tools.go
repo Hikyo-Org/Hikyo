@@ -2,7 +2,7 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"math"
 	"strconv"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -114,14 +115,14 @@ type (
 	projectInput struct {
 		OrgID     string        `json:"org_id" jsonschema:"required,the organization immutable id"`
 		ProjectID string        `json:"project_id" jsonschema:"required,the project immutable id"`
-		PageSize  pageSizeInput `json:"page_size,omitempty" jsonschema:"page size, 1 to 100, default 25"`
+		PageSize  pageSizeInput `json:"page_size,omitzero" jsonschema:"page size, 1 to 100, default 25"`
 		Cursor    cursorInput   `json:"cursor,omitempty" jsonschema:"opaque continuation from a previous page"`
 	}
 	envInput struct {
 		OrgID         string        `json:"org_id" jsonschema:"required,the organization immutable id"`
 		ProjectID     string        `json:"project_id" jsonschema:"required,the project immutable id"`
 		EnvironmentID string        `json:"environment_id" jsonschema:"required,the environment immutable id"`
-		PageSize      pageSizeInput `json:"page_size,omitempty" jsonschema:"page size, 1 to 100, default 25"`
+		PageSize      pageSizeInput `json:"page_size,omitzero" jsonschema:"page size, 1 to 100, default 25"`
 		Cursor        cursorInput   `json:"cursor,omitempty" jsonschema:"opaque continuation from a previous page"`
 	}
 )
@@ -457,7 +458,7 @@ func registerListRevisions(registry *Registry, services ProductionServices) erro
 }
 
 func encodedSize(value any) (int, error) {
-	encoded, err := json.Marshal(value)
+	encoded, err := json.Marshal(value, jsonwire.Stable)
 	return len(encoded), err
 }
 

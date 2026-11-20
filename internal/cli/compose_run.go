@@ -3,7 +3,7 @@ package cli
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // ---------------------------------------------------------------------------
@@ -474,7 +475,7 @@ func rowsToValues(rows []compose.SnapshotRow) map[string]string {
 
 func canonicalRows(rows []compose.SnapshotRow) []byte {
 	sorted := slices.SortedFunc(slices.Values(rows), func(a, b compose.SnapshotRow) int { return cmp.Compare(a.Name, b.Name) })
-	data, _ := json.Marshal(sorted)
+	data, _ := json.Marshal(sorted, jsonwire.Stable)
 	return data
 }
 

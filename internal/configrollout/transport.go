@@ -6,10 +6,11 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -50,7 +51,7 @@ type Enrollment struct {
 	ExecutorPod       string    `json:"executor_pod"`
 	// Authority is the strict-profile trust state. Absent means the compatibility
 	// profile: one Ed25519 key and the v1 command bytes, unchanged.
-	Authority *Authority `json:"authority,omitempty"`
+	Authority *Authority `json:"authority,omitzero"`
 }
 
 // Command is emitted only after the coordinator durably authorizes its action.
@@ -65,14 +66,14 @@ type Command struct {
 	PlanDigest            string                          `json:"plan_digest,omitempty"`
 	Changes               []Change                        `json:"changes,omitempty"`
 	PreviousTemplateStamp string                          `json:"previous_template_stamp,omitempty"`
-	Topology              *domain.SingletonTopologyChange `json:"topology,omitempty"`
-	Bootstrap             *BootstrapChanges               `json:"bootstrap,omitempty"`
-	Acknowledgement       *ApplicationAcknowledgement     `json:"acknowledgement,omitempty"`
+	Topology              *domain.SingletonTopologyChange `json:"topology,omitzero"`
+	Bootstrap             *BootstrapChanges               `json:"bootstrap,omitzero"`
+	Acknowledgement       *ApplicationAcknowledgement     `json:"acknowledgement,omitzero"`
 	IssuedAt              time.Time                       `json:"issued_at"`
 	ExpiresAt             time.Time                       `json:"expires_at"`
 	// Authority is set only under the strict profile and is signed with the
 	// command: generation, required set, key ids and target digest.
-	Authority *CommandAuthority `json:"authority,omitempty"`
+	Authority *CommandAuthority `json:"authority,omitzero"`
 }
 
 // SignedCommand carries the v1 Ed25519 signature (compatibility profile) or one
@@ -91,7 +92,7 @@ type Response struct {
 	PlanDigest    string           `json:"plan_digest,omitempty"`
 	TemplateStamp string           `json:"template_stamp,omitempty"`
 	Resources     ResourceVersions `json:"resources"`
-	Receipt       *Receipt         `json:"receipt,omitempty"`
+	Receipt       *Receipt         `json:"receipt,omitzero"`
 	Outcome       string           `json:"outcome"`
 }
 
@@ -160,7 +161,7 @@ func SignCommand(ctx context.Context, signer crypto.Signer, command Command) (Si
 	if key, ok := signer.Public().(ed25519.PublicKey); !ok || len(key) != ed25519.PublicKeySize {
 		return SignedCommand{}, ErrInvalid
 	}
-	raw, err := json.Marshal(command)
+	raw, err := json.Marshal(command, jsonwire.Stable)
 	if err != nil || len(raw) > maxRecordBytes {
 		return SignedCommand{}, ErrInvalid
 	}
@@ -203,8 +204,8 @@ func (m *Mailbox) Send(ctx context.Context, signed SignedCommand) error {
 	if !validCommand(signed.Command, m.enrollment) || !validEnvelope(signed, m.enrollment) {
 		return ErrInvalid
 	}
-	raw := mustJSON(signed)
-	if len(raw) > maxRecordBytes {
+	raw, err := json.Marshal(signed, jsonwire.Stable)
+	if err != nil || len(raw) > maxRecordBytes {
 		return ErrInvalid
 	}
 	s, err := m.client.CoreV1().Secrets(m.enrollment.Target.Namespace).Get(ctx, m.enrollment.CommandSecret, metav1.GetOptions{})

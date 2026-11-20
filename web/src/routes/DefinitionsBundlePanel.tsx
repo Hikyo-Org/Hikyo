@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { FileInputFallback } from '../app/FileInputFallback.tsx';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   applyBundle,
@@ -24,6 +25,7 @@ import { Sep } from '../ui/Sep.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import { DownloadLink } from '../app/DownloadLink.tsx';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
 
@@ -58,12 +60,12 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
                 </>
               ) : (
                 <>
-                  <a className="btn" href={path} download="definitions.json">
+                  <DownloadLink href={path} filename="definitions.json">
                     Download definitions bundle
-                  </a>
-                  <a className="btn" href={`${path}?portable=true`} download="definitions-portable.json">
+                  </DownloadLink>
+                  <DownloadLink href={`${path}?portable=true`} filename="definitions-portable.json">
                     Download portable bundle
-                  </a>
+                  </DownloadLink>
                 </>
               )}
             </>
@@ -286,6 +288,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
             disabled={busy}
             onChange={(event) => void selectFile(event.currentTarget.files?.[0])}
           />
+          <FileInputFallback what="choose the bundle" />
         </div>
         <p className="settings-note">
           Portable bundles add definitions; a based bundle can rename or delete existing

@@ -1421,6 +1421,30 @@ func (e CredentialLifetime) Valid() bool {
 	}
 }
 
+// Defines values for CredentialRotationState.
+const (
+	CredentialRotationStateActive   CredentialRotationState = "active"
+	CredentialRotationStateDisabled CredentialRotationState = "disabled"
+	CredentialRotationStateHalted   CredentialRotationState = "halted"
+	CredentialRotationStatePaused   CredentialRotationState = "paused"
+)
+
+// Valid indicates whether the value is a known member of the CredentialRotationState enum.
+func (e CredentialRotationState) Valid() bool {
+	switch e {
+	case CredentialRotationStateActive:
+		return true
+	case CredentialRotationStateDisabled:
+		return true
+	case CredentialRotationStateHalted:
+		return true
+	case CredentialRotationStatePaused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DEKRotationScope.
 const (
 	DEKRotationScopeInstance DEKRotationScope = "instance"
@@ -2291,6 +2315,24 @@ func (e Oauth2StartRequestIntent) Valid() bool {
 	}
 }
 
+// Defines values for OidcLifecycleProfile.
+const (
+	OidcLifecycleProfileClerk       OidcLifecycleProfile = "clerk"
+	OidcLifecycleProfileLessThannil OidcLifecycleProfile = "<nil>"
+)
+
+// Valid indicates whether the value is a known member of the OidcLifecycleProfile enum.
+func (e OidcLifecycleProfile) Valid() bool {
+	switch e {
+	case OidcLifecycleProfileClerk:
+		return true
+	case OidcLifecycleProfileLessThannil:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OidcStartRequestIntent.
 const (
 	OidcStartRequestIntentSignIn OidcStartRequestIntent = "sign-in"
@@ -3041,6 +3083,66 @@ func (e RotateRootKeyRequestPhase) Valid() bool {
 	case RotateRootKeyRequestPhasePrepare:
 		return true
 	case RotateRootKeyRequestPhaseVerify:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RotationRunTrigger.
+const (
+	RotationRunTriggerManual   RotationRunTrigger = "manual"
+	RotationRunTriggerSchedule RotationRunTrigger = "schedule"
+)
+
+// Valid indicates whether the value is a known member of the RotationRunTrigger enum.
+func (e RotationRunTrigger) Valid() bool {
+	switch e {
+	case RotationRunTriggerManual:
+		return true
+	case RotationRunTriggerSchedule:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RotationRunPhase.
+const (
+	RotationRunPhaseDone          RotationRunPhase = "done"
+	RotationRunPhaseFailed        RotationRunPhase = "failed"
+	RotationRunPhaseMinted        RotationRunPhase = "minted"
+	RotationRunPhaseMinting       RotationRunPhase = "minting"
+	RotationRunPhaseOverlap       RotationRunPhase = "overlap"
+	RotationRunPhasePublished     RotationRunPhase = "published"
+	RotationRunPhaseQuarantine    RotationRunPhase = "quarantine"
+	RotationRunPhaseRevokeRefused RotationRunPhase = "revoke_refused"
+	RotationRunPhaseRevoking      RotationRunPhase = "revoking"
+	RotationRunPhaseStaged        RotationRunPhase = "staged"
+)
+
+// Valid indicates whether the value is a known member of the RotationRunPhase enum.
+func (e RotationRunPhase) Valid() bool {
+	switch e {
+	case RotationRunPhaseDone:
+		return true
+	case RotationRunPhaseFailed:
+		return true
+	case RotationRunPhaseMinted:
+		return true
+	case RotationRunPhaseMinting:
+		return true
+	case RotationRunPhaseOverlap:
+		return true
+	case RotationRunPhasePublished:
+		return true
+	case RotationRunPhaseQuarantine:
+		return true
+	case RotationRunPhaseRevokeRefused:
+		return true
+	case RotationRunPhaseRevoking:
+		return true
+	case RotationRunPhaseStaged:
 		return true
 	default:
 		return false
@@ -4747,7 +4849,7 @@ type AccessPolicy struct {
 	MinApprovals       int32 `json:"min_approvals"`
 
 	// PrincipalNames Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
-	PrincipalNames    *map[string]string `json:"principal_names,omitempty"`
+	PrincipalNames    *map[string]string `json:"principal_names,omitzero"`
 	RequestTtlSeconds int32              `json:"request_ttl_seconds"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
@@ -4757,16 +4859,16 @@ type AccessPolicy struct {
 
 // AccessPolicyInput defines model for AccessPolicyInput.
 type AccessPolicyInput struct {
-	AllowSelfApproval *bool              `json:"allow_self_approval,omitempty"`
+	AllowSelfApproval *bool              `json:"allow_self_approval,omitzero"`
 	Approvers         []ApprovalApprover `json:"approvers"`
 
 	// Bypassers Principals who may take emergency access without the quorum.
-	Bypassers    *[]ID              `json:"bypassers,omitempty"`
+	Bypassers    *[]ID              `json:"bypassers,omitzero"`
 	Capabilities []AccessCapability `json:"capabilities"`
 	Enabled      bool               `json:"enabled"`
 
 	// EnvironmentId The environment this policy covers; empty means every environment in the project.
-	EnvironmentId *string `json:"environment_id,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitzero"`
 
 	// MaxDurationSeconds The longest duration a request (or emergency access) may run.
 	MaxDurationSeconds int32 `json:"max_duration_seconds"`
@@ -4786,7 +4888,7 @@ type AccessQueue struct {
 	Items []AccessRequest `json:"items"`
 
 	// Offer What may be requested in this environment. The approver roster is deliberately absent.
-	Offer *AccessOffer `json:"offer,omitempty"`
+	Offer *AccessOffer `json:"offer,omitzero"`
 }
 
 // AccessRequest defines model for AccessRequest.
@@ -4798,7 +4900,7 @@ type AccessRequest struct {
 	Bypassed bool `json:"bypassed"`
 
 	// CanApprove Whether this queue caller can currently approve this request; the vote endpoint reauthorizes every decision.
-	CanApprove   *bool              `json:"can_approve,omitempty"`
+	CanApprove   *bool              `json:"can_approve,omitzero"`
 	Capabilities []AccessCapability `json:"capabilities"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
@@ -4809,10 +4911,10 @@ type AccessRequest struct {
 	EnvironmentId ID `json:"environment_id"`
 
 	// ExpiresAt The absolute instant granted access stops.
-	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+	ExpiresAt *Timestamp `json:"expires_at,omitzero"`
 
 	// GrantedAt RFC 3339 UTC, microsecond precision.
-	GrantedAt *Timestamp `json:"granted_at,omitempty"`
+	GrantedAt *Timestamp `json:"granted_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id               ID                            `json:"id"`
@@ -4828,13 +4930,13 @@ type AccessRequest struct {
 	Requester ID `json:"requester"`
 
 	// RequesterName Current display name of the referenced principal, when available.
-	RequesterName *string `json:"requester_name,omitempty"`
+	RequesterName *string `json:"requester_name,omitzero"`
 
 	// ResolvedAt RFC 3339 UTC, microsecond precision.
-	ResolvedAt *Timestamp `json:"resolved_at,omitempty"`
+	ResolvedAt *Timestamp `json:"resolved_at,omitzero"`
 
 	// ResolvedBy Who resolved the request, when a person did.
-	ResolvedBy *ID `json:"resolved_by,omitempty"`
+	ResolvedBy *ID `json:"resolved_by,omitzero"`
 
 	// ReviewExpiresAt RFC 3339 UTC, microsecond precision.
 	ReviewExpiresAt Timestamp          `json:"review_expires_at"`
@@ -4904,7 +5006,7 @@ type ActiveSession struct {
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
-	Handoff   *string   `json:"handoff,omitempty"`
+	Handoff   *string   `json:"handoff,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
@@ -4917,9 +5019,9 @@ type ActiveSession struct {
 
 	// RequestingOrigin Workspace sessions only: which foreign shell holds a session on this
 	// account. Removing that origin from the allowlist kills it atomically.
-	RequestingOrigin *string `json:"requesting_origin,omitempty"`
-	SourceIp         *string `json:"source_ip,omitempty"`
-	UserAgent        *string `json:"user_agent,omitempty"`
+	RequestingOrigin *string `json:"requesting_origin,omitzero"`
+	SourceIp         *string `json:"source_ip,omitzero"`
+	UserAgent        *string `json:"user_agent,omitzero"`
 }
 
 // ActiveSessionArtifact A workspace session appears as its own artifact type — the ADR's
@@ -4928,19 +5030,19 @@ type ActiveSessionArtifact string
 
 // Adapter defines model for Adapter.
 type Adapter struct {
-	AllowPersonalToken *bool `json:"allow_personal_token,omitempty"`
+	AllowPersonalToken *bool `json:"allow_personal_token,omitzero"`
 
 	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	AuthorityPrincipalId ID `json:"authority_principal_id"`
 
 	// CaBundlePresent Whether a GitLab CA bundle is configured.
-	CaBundlePresent *bool `json:"ca_bundle_present,omitempty"`
+	CaBundlePresent *bool `json:"ca_bundle_present,omitzero"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt           Timestamp  `json:"created_at"`
-	CredentialExpiresAt *time.Time `json:"credential_expires_at,omitempty"`
+	CredentialExpiresAt *time.Time `json:"credential_expires_at,omitzero"`
 	CredentialPresent   bool       `json:"credential_present"`
-	CredentialSetAt     *time.Time `json:"credential_set_at,omitempty"`
+	CredentialSetAt     *time.Time `json:"credential_set_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id     ID     `json:"id"`
@@ -4950,7 +5052,7 @@ type Adapter struct {
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
-	SpkiPin *string         `json:"spki_pin,omitempty"`
+	SpkiPin *string         `json:"spki_pin,omitzero"`
 	State   AdapterState    `json:"state"`
 	Targets []AdapterTarget `json:"targets"`
 }
@@ -4972,7 +5074,7 @@ type AdapterAdoptionRequest struct {
 type AdapterChange struct {
 	Disposition   AdapterChangeDisposition `json:"disposition"`
 	EffectiveName string                   `json:"effective_name"`
-	Reason        *string                  `json:"reason,omitempty"`
+	Reason        *string                  `json:"reason,omitzero"`
 	Surface       AdapterChangeSurface     `json:"surface"`
 }
 
@@ -5006,7 +5108,7 @@ type AdapterConflictEntrySurface string
 
 // AdapterConnection defines model for AdapterConnection.
 type AdapterConnection struct {
-	CredentialExpiresAt *time.Time `json:"credential_expires_at,omitempty"`
+	CredentialExpiresAt *time.Time `json:"credential_expires_at,omitzero"`
 	DestinationId       int64      `json:"destination_id"`
 	RepositoryId        int64      `json:"repository_id"`
 	Version             string     `json:"version"`
@@ -5045,10 +5147,10 @@ type AdapterJob struct {
 // only keys of that classification. `exclude` applies to what the
 // patterns and classification selected, never to explicit ids or names.
 type AdapterKeySelection struct {
-	Classification *AdapterKeySelectionClassification `json:"classification,omitempty"`
-	Exclude        *[]string                          `json:"exclude,omitempty"`
-	Include        *[]string                          `json:"include,omitempty"`
-	Names          *[]string                          `json:"names,omitempty"`
+	Classification *AdapterKeySelectionClassification `json:"classification,omitzero"`
+	Exclude        *[]string                          `json:"exclude,omitzero"`
+	Include        *[]string                          `json:"include,omitzero"`
+	Names          *[]string                          `json:"names,omitzero"`
 }
 
 // AdapterKeySelectionClassification defines model for AdapterKeySelection.Classification.
@@ -5182,7 +5284,7 @@ type AdapterTarget struct {
 	DestinationOwner string                 `json:"destination_owner"`
 
 	// DestinationScope GitLab environment_scope; empty for other providers.
-	DestinationScope *string `json:"destination_scope,omitempty"`
+	DestinationScope *string `json:"destination_scope,omitzero"`
 
 	// DriftAttention The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
 	DriftAttention bool `json:"drift_attention"`
@@ -5190,7 +5292,7 @@ type AdapterTarget struct {
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID                `json:"environment_id"`
 	FailureNames  []string          `json:"failure_names"`
-	Findings      *[]AdapterFinding `json:"findings,omitempty"`
+	Findings      *[]AdapterFinding `json:"findings,omitzero"`
 	Generation    int64             `json:"generation"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
@@ -5220,9 +5322,9 @@ type AdapterTarget struct {
 	// the destination still holds `converged_revision`; `paused` wins
 	// over every other state while `paused_at` is set.
 	SyncStatus        AdapterTargetSyncStatus `json:"sync_status"`
-	VariableExpand    *bool                   `json:"variable_expand,omitempty"`
-	VariableHidden    *bool                   `json:"variable_hidden,omitempty"`
-	VariableProtected *bool                   `json:"variable_protected,omitempty"`
+	VariableExpand    *bool                   `json:"variable_expand,omitzero"`
+	VariableHidden    *bool                   `json:"variable_hidden,omitzero"`
+	VariableProtected *bool                   `json:"variable_protected,omitzero"`
 	Visibility        AdapterTargetVisibility `json:"visibility"`
 	Warnings          []string                `json:"warnings"`
 }
@@ -5253,7 +5355,7 @@ type AdapterTargetDetail struct {
 // AdapterTargetInput defines model for AdapterTargetInput.
 type AdapterTargetInput struct {
 	// AllowEnvironmentCreate Explicit consent to create missing GitHub environments using Administration:write.
-	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitempty"`
+	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitzero"`
 
 	// DestinationEnvironment GitHub environment, or the Pages environment (preview or production). For AWS, the optional customer KMS key (id, ARN, or alias) applied when creating a secret; changing it is a destination move. Empty for other destinations.
 	DestinationEnvironment string `json:"destination_environment"`
@@ -5268,7 +5370,7 @@ type AdapterTargetInput struct {
 	DestinationOwner string `json:"destination_owner"`
 
 	// DestinationScope GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
-	DestinationScope *string `json:"destination_scope,omitempty"`
+	DestinationScope *string `json:"destination_scope,omitzero"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID `json:"environment_id"`
@@ -5284,18 +5386,18 @@ type AdapterTargetInput struct {
 	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
 	// only keys of that classification. `exclude` applies to what the
 	// patterns and classification selected, never to explicit ids or names.
-	KeySelection          *AdapterKeySelection `json:"key_selection,omitempty"`
+	KeySelection          *AdapterKeySelection `json:"key_selection,omitzero"`
 	NamePrefix            string               `json:"name_prefix"`
 	SelectedRepositoryIds []int64              `json:"selected_repository_ids"`
 
 	// VariableExpand GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
-	VariableExpand *bool `json:"variable_expand,omitempty"`
+	VariableExpand *bool `json:"variable_expand,omitzero"`
 
 	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
-	VariableHidden *bool `json:"variable_hidden,omitempty"`
+	VariableHidden *bool `json:"variable_hidden,omitzero"`
 
 	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only).
-	VariableProtected *bool `json:"variable_protected,omitempty"`
+	VariableProtected *bool `json:"variable_protected,omitzero"`
 
 	// Visibility GitHub organization recipient visibility; empty for other destinations.
 	Visibility AdapterTargetInputVisibility `json:"visibility"`
@@ -5365,7 +5467,7 @@ type AddRemoteRequest struct {
 // AffectedCredential defines model for AffectedCredential.
 type AffectedCredential struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
-	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+	ExpiresAt *Timestamp `json:"expires_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id     ID                       `json:"id"`
@@ -5375,7 +5477,7 @@ type AffectedCredential struct {
 	ServiceAccountId ID `json:"service_account_id"`
 
 	// ServiceAccountName Display name of the service account, omitted when it no longer resolves.
-	ServiceAccountName *string `json:"service_account_name,omitempty"`
+	ServiceAccountName *string `json:"service_account_name,omitzero"`
 }
 
 // AffectedCredentialReason defines model for AffectedCredential.Reason.
@@ -5388,17 +5490,17 @@ type ApplyDefinitionsPlanRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
-	Actor            *string           `json:"actor,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
+	Actor            *string           `json:"actor,omitzero"`
 	AllowDelete      bool              `json:"allow_delete"`
-	Commit           *string           `json:"commit,omitempty"`
+	Commit           *string           `json:"commit,omitzero"`
 
 	// ConfirmWidening The principal ids a key folder move gives access through their member
 	// access rules, confirming it (member-access-rules ADR D9). It must name
 	// exactly the people the refusal's `widening` names.
-	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitempty"`
-	Digest          *string          `json:"digest,omitempty"`
-	Ref             *string          `json:"ref,omitempty"`
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
+	Digest          *string          `json:"digest,omitzero"`
+	Ref             *string          `json:"ref,omitzero"`
 }
 
 // ApplyDefinitionsPlanResult defines model for ApplyDefinitionsPlanResult.
@@ -5421,7 +5523,7 @@ type ApplyTemplateRequest struct {
 // ApprovalApprover defines model for ApprovalApprover.
 type ApprovalApprover struct {
 	// BindingId The SCIM binding a group approver's members are resolved through.
-	BindingId *ID                  `json:"binding_id,omitempty"`
+	BindingId *ID                  `json:"binding_id,omitzero"`
 	Kind      ApprovalApproverKind `json:"kind"`
 
 	// SubjectId A principal id, or a SCIM group id when kind is scim_group.
@@ -5467,7 +5569,7 @@ type ApprovalPolicy struct {
 	MinApprovals int32 `json:"min_approvals"`
 
 	// PrincipalNames Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
-	PrincipalNames    *map[string]string `json:"principal_names,omitempty"`
+	PrincipalNames    *map[string]string `json:"principal_names,omitzero"`
 	RequestTtlSeconds int32              `json:"request_ttl_seconds"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
@@ -5477,13 +5579,13 @@ type ApprovalPolicy struct {
 
 // ApprovalPolicyInput defines model for ApprovalPolicyInput.
 type ApprovalPolicyInput struct {
-	AllowSelfApproval *bool               `json:"allow_self_approval,omitempty"`
-	Approvers         *[]ApprovalApprover `json:"approvers,omitempty"`
-	Bypassers         *[]ID               `json:"bypassers,omitempty"`
+	AllowSelfApproval *bool               `json:"allow_self_approval,omitzero"`
+	Approvers         *[]ApprovalApprover `json:"approvers,omitzero"`
+	Bypassers         *[]ID               `json:"bypassers,omitzero"`
 	Enabled           bool                `json:"enabled"`
 
 	// EnvironmentId The environment this policy covers; empty means every environment in the project.
-	EnvironmentId     *string `json:"environment_id,omitempty"`
+	EnvironmentId     *string `json:"environment_id,omitzero"`
 	MinApprovals      int32   `json:"min_approvals"`
 	RequestTtlSeconds int32   `json:"request_ttl_seconds"`
 }
@@ -5525,10 +5627,10 @@ type ApprovalRequest struct {
 	Requester ID `json:"requester"`
 
 	// RequesterName Current display name of the referenced principal, when available.
-	RequesterName *string `json:"requester_name,omitempty"`
+	RequesterName *string `json:"requester_name,omitzero"`
 
 	// ResolvedAt RFC 3339 UTC, microsecond precision.
-	ResolvedAt *Timestamp           `json:"resolved_at,omitempty"`
+	ResolvedAt *Timestamp           `json:"resolved_at,omitzero"`
 	State      ApprovalRequestState `json:"state"`
 	Votes      []ApprovalVote       `json:"votes"`
 }
@@ -5573,7 +5675,7 @@ type ApprovalVote struct {
 	PrincipalId ID `json:"principal_id"`
 
 	// PrincipalName Current display name of the referenced principal, when available.
-	PrincipalName *string `json:"principal_name,omitempty"`
+	PrincipalName *string `json:"principal_name,omitzero"`
 }
 
 // ApprovalVoteDecision defines model for ApprovalVote.Decision.
@@ -5602,7 +5704,7 @@ type Assurance struct {
 
 	// CeremonyId The factor ceremony this session's assurance came from, where one
 	// occurred. `null` for a single-factor password login.
-	CeremonyId *string `json:"ceremony_id,omitempty"`
+	CeremonyId *string `json:"ceremony_id,omitzero"`
 
 	// Factors The factor classes actually presented in this session.
 	Factors []FactorClass `json:"factors"`
@@ -5612,7 +5714,7 @@ type Assurance struct {
 	Method AuthMethod `json:"method"`
 
 	// Provider The configured provider slug, present for OIDC and OAuth2 sessions.
-	Provider *string `json:"provider,omitempty"`
+	Provider *string `json:"provider,omitzero"`
 }
 
 // AuditEvent One stored trail event, exactly as the JSONL export emits it. No value
@@ -5622,22 +5724,22 @@ type Assurance struct {
 // additive field would break on every forward-compatible server.
 type AuditEvent struct {
 	ActorClass        string  `json:"actor_class"`
-	ActorCredentialId *string `json:"actor_credential_id,omitempty"`
-	ActorId           *string `json:"actor_id,omitempty"`
+	ActorCredentialId *string `json:"actor_credential_id,omitzero"`
+	ActorId           *string `json:"actor_id,omitzero"`
 
 	// ActorName Current display name of this event actor, when still available. This is a presentation label, not historical evidence.
-	ActorName     *string `json:"actor_name,omitempty"`
-	AuthorityId   *string `json:"authority_id,omitempty"`
-	CorrelationId *string `json:"correlation_id,omitempty"`
-	EnvId         *string `json:"env_id,omitempty"`
+	ActorName     *string `json:"actor_name,omitzero"`
+	AuthorityId   *string `json:"authority_id,omitzero"`
+	CorrelationId *string `json:"correlation_id,omitzero"`
+	EnvId         *string `json:"env_id,omitzero"`
 	Id            string  `json:"id"`
-	ObjectId      *string `json:"object_id,omitempty"`
-	ObjectType    *string `json:"object_type,omitempty"`
+	ObjectId      *string `json:"object_id,omitzero"`
+	ObjectType    *string `json:"object_type,omitzero"`
 
 	// OccurredAsserted Whether occurred_at was asserted by a client rather than the server clock.
 	OccurredAsserted bool      `json:"occurred_asserted"`
 	OccurredAt       time.Time `json:"occurred_at"`
-	OrgId            *string   `json:"org_id,omitempty"`
+	OrgId            *string   `json:"org_id,omitzero"`
 	Origin           string    `json:"origin"`
 	Outcome          string    `json:"outcome"`
 
@@ -5645,18 +5747,18 @@ type AuditEvent struct {
 	// event type and grow additively; render unknown members rather than
 	// failing on them.
 	Payload       map[string]interface{} `json:"payload"`
-	ProjectId     *string                `json:"project_id,omitempty"`
+	ProjectId     *string                `json:"project_id,omitzero"`
 	RecordedAt    time.Time              `json:"recorded_at"`
 	SchemaVersion int                    `json:"schema_version"`
 	ScopeClass    string                 `json:"scope_class"`
 
 	// Seq Immutable public allocation order and event position.
 	Seq      int64   `json:"seq"`
-	SourceIp *string `json:"source_ip,omitempty"`
+	SourceIp *string `json:"source_ip,omitzero"`
 
 	// Type The event type from the closed audit registry.
 	Type      string  `json:"type"`
-	UserAgent *string `json:"user_agent,omitempty"`
+	UserAgent *string `json:"user_agent,omitzero"`
 }
 
 // AuditExportReceipt How one export ended, as the export run saw it. Completion requires
@@ -5667,7 +5769,7 @@ type AuditEvent struct {
 // LF and fail closed on larger lines. Event fields remain extensible.
 type AuditExportReceipt struct {
 	// Cause Why the export did not succeed. Absent on success and on revocation.
-	Cause *AuditExportReceiptCause `json:"cause,omitempty"`
+	Cause *AuditExportReceiptCause `json:"cause,omitzero"`
 
 	// Outcome `success`: the export read to its snapshot. `failure`: a server
 	// fault stopped it, or its terminal audit event did not commit.
@@ -5756,12 +5858,12 @@ type AuthMethodProvider struct {
 	// Derived from the pinned issuer (Google's, or an Entra
 	// tenant-specific issuer); absent for a generic OIDC provider.
 	// Presentation only: admission never keys on it.
-	Brand       *string `json:"brand,omitempty"`
+	Brand       *string `json:"brand,omitzero"`
 	DisplayName string  `json:"display_name"`
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind    IdentityProviderKind       `json:"kind"`
-	Profile *AuthMethodProviderProfile `json:"profile,omitempty"`
+	Profile *AuthMethodProviderProfile `json:"profile,omitzero"`
 	Slug    string                     `json:"slug"`
 }
 
@@ -5778,7 +5880,7 @@ type AuthMethods struct {
 	// no grants (`none`), or a fresh org of its own (`fresh-org`). Not
 	// secret: the landing kind is what the confirmation step tells the
 	// signer before the round-trip (#585 d5, #587 d1).
-	SignupLanding *AuthMethodsSignupLanding `json:"signup_landing,omitempty"`
+	SignupLanding *AuthMethodsSignupLanding `json:"signup_landing,omitzero"`
 
 	// SignupMethods The methods the open door admits, empty unless `signup_open`
 	// (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
@@ -6011,18 +6113,18 @@ type CLIReauthStart struct {
 // browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
 // names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
-	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitempty"`
+	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	EnvironmentIds      []ID                             `json:"environment_ids"`
 
 	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
-	KeyIds        *[]ID                          `json:"key_ids,omitempty"`
+	KeyIds        *[]ID                          `json:"key_ids,omitzero"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
 	Purpose       CLIReauthStartRequestPurpose   `json:"purpose"`
 
 	// RedirectUri Exact ephemeral loopback callback, http://127.0.0.1:PORT/callback or the bracketed ::1 equivalent.
 	RedirectUri string                  `json:"redirect_uri"`
-	SelfConfig  *SelfConfigReauthIntent `json:"self_config,omitempty"`
+	SelfConfig  *SelfConfigReauthIntent `json:"self_config,omitzero"`
 	union       json.RawMessage
 }
 
@@ -6034,18 +6136,18 @@ type CLIReauthStartRequestPurpose string
 
 // CLIReauthStartRequest0 defines model for CLIReauthStartRequest.0.
 type CLIReauthStartRequest0 struct {
-	Purpose interface{} `json:"purpose,omitempty"`
+	Purpose interface{} `json:"purpose,omitzero"`
 }
 
 // CLIReauthStartRequest1 defines model for CLIReauthStartRequest.1.
 type CLIReauthStartRequest1 struct {
-	KeyIds  interface{} `json:"key_ids,omitempty"`
-	Purpose interface{} `json:"purpose,omitempty"`
+	KeyIds  interface{} `json:"key_ids,omitzero"`
+	Purpose interface{} `json:"purpose,omitzero"`
 }
 
 // CLIReauthTransaction defines model for CLIReauthTransaction.
 type CLIReauthTransaction struct {
-	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitempty"`
+	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	Environments        []CLIReauthEnvironmentPolicy     `json:"environments"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
@@ -6056,7 +6158,7 @@ type CLIReauthTransaction struct {
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`
 	RedirectUri string                        `json:"redirect_uri"`
-	SelfConfig  *SelfConfigReauthIntent       `json:"self_config,omitempty"`
+	SelfConfig  *SelfConfigReauthIntent       `json:"self_config,omitzero"`
 	State       string                        `json:"state"`
 }
 
@@ -6075,7 +6177,7 @@ type Capability = string
 // CellSignal defines model for CellSignal.
 type CellSignal struct {
 	// ChangedInRevision Set to the environment's LATEST revision when this cell changed in it, absent otherwise. This is the revision ADR's "recently changed" signal, which names only the last published revision -- it is not a per-cell last-change history; older changes live in the revision list.
-	ChangedInRevision *int64 `json:"changed_in_revision,omitempty"`
+	ChangedInRevision *int64 `json:"changed_in_revision,omitzero"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
@@ -6097,10 +6199,10 @@ type CellSignal struct {
 	// PendingByOthers At least one OTHER principal holds a draft here. Write-presence and
 	// nothing more: no id, no owner, no operation.
 	PendingByOthers  bool                        `json:"pending_by_others"`
-	PendingOperation *CellSignalPendingOperation `json:"pending_operation,omitempty"`
+	PendingOperation *CellSignalPendingOperation `json:"pending_operation,omitzero"`
 
 	// PendingVersionId A prefixed UUIDv7, e.g. `org_0198…`.
-	PendingVersionId *ID `json:"pending_version_id,omitempty"`
+	PendingVersionId *ID `json:"pending_version_id,omitzero"`
 }
 
 // CellSignalPendingOperation defines model for CellSignal.PendingOperation.
@@ -6108,11 +6210,11 @@ type CellSignalPendingOperation string
 
 // Certificate An issuance record. There is no private-key field, ever.
 type Certificate struct {
-	CertificatePem *string `json:"certificate_pem,omitempty"`
+	CertificatePem *string `json:"certificate_pem,omitzero"`
 
 	// ChainPem The issuing CA certificate followed by its chain.
-	ChainPem      *string   `json:"chain_pem,omitempty"`
-	CommonName    *string   `json:"common_name,omitempty"`
+	ChainPem      *string   `json:"chain_pem,omitzero"`
+	CommonName    *string   `json:"common_name,omitzero"`
 	CreatedAt     time.Time `json:"created_at"`
 	DnsNames      []string  `json:"dns_names"`
 	EnvironmentId string    `json:"environment_id"`
@@ -6133,10 +6235,10 @@ type Certificate struct {
 	PrincipalClass   string               `json:"principal_class"`
 	PrincipalId      string               `json:"principal_id"`
 	Profile          string               `json:"profile"`
-	RenewedBy        *string              `json:"renewed_by,omitempty"`
-	RenewedFrom      *string              `json:"renewed_from,omitempty"`
-	RevocationReason *string              `json:"revocation_reason,omitempty"`
-	RevokedAt        *time.Time           `json:"revoked_at,omitempty"`
+	RenewedBy        *string              `json:"renewed_by,omitzero"`
+	RenewedFrom      *string              `json:"renewed_from,omitzero"`
+	RevocationReason *string              `json:"revocation_reason,omitzero"`
+	RevokedAt        *time.Time           `json:"revoked_at,omitzero"`
 
 	// Serial Lowercase hexadecimal serial number.
 	Serial    string           `json:"serial"`
@@ -6153,20 +6255,20 @@ type CertificateState string
 
 // CertificateIssueRequest defines model for CertificateIssueRequest.
 type CertificateIssueRequest struct {
-	CommonName  *string   `json:"common_name,omitempty"`
-	CsrPem      *string   `json:"csr_pem,omitempty"`
-	DnsNames    *[]string `json:"dns_names,omitempty"`
-	GenerateKey *bool     `json:"generate_key,omitempty"`
-	IpAddresses *[]string `json:"ip_addresses,omitempty"`
+	CommonName  *string   `json:"common_name,omitzero"`
+	CsrPem      *string   `json:"csr_pem,omitzero"`
+	DnsNames    *[]string `json:"dns_names,omitzero"`
+	GenerateKey *bool     `json:"generate_key,omitzero"`
+	IpAddresses *[]string `json:"ip_addresses,omitzero"`
 
 	// Issuer An issuer or profile name.
-	Issuer       *PkiName                             `json:"issuer,omitempty"`
-	KeyAlgorithm *CertificateIssueRequestKeyAlgorithm `json:"key_algorithm,omitempty"`
+	Issuer       *PkiName                             `json:"issuer,omitzero"`
+	KeyAlgorithm *CertificateIssueRequestKeyAlgorithm `json:"key_algorithm,omitzero"`
 
 	// Profile An issuer or profile name.
 	Profile    PkiName   `json:"profile"`
-	TtlSeconds *int64    `json:"ttl_seconds,omitempty"`
-	Uris       *[]string `json:"uris,omitempty"`
+	TtlSeconds *int64    `json:"ttl_seconds,omitzero"`
+	Uris       *[]string `json:"uris,omitzero"`
 }
 
 // CertificateIssueRequestKeyAlgorithm defines model for CertificateIssueRequest.KeyAlgorithm.
@@ -6180,7 +6282,7 @@ type CertificateIssueResult struct {
 	// PrivateKeyPem A server-generated PKCS#8 private key, returned EXACTLY ONCE to
 	// exactly one caller and never stored. Absent for a CSR issuance.
 	// No other route in this contract returns it.
-	PrivateKeyPem *string `json:"private_key_pem,omitempty"`
+	PrivateKeyPem *string `json:"private_key_pem,omitzero"`
 }
 
 // CertificateList defines model for CertificateList.
@@ -6206,7 +6308,7 @@ type CertificateProfileList struct {
 
 // CertificateRevokeRequest defines model for CertificateRevokeRequest.
 type CertificateRevokeRequest struct {
-	Reason *CertificateRevokeRequestReason `json:"reason,omitempty"`
+	Reason *CertificateRevokeRequestReason `json:"reason,omitzero"`
 }
 
 // CertificateRevokeRequestReason defines model for CertificateRevokeRequest.Reason.
@@ -6249,7 +6351,7 @@ type CloneEnvironmentRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
@@ -6283,7 +6385,7 @@ type ClonedEnvironment struct {
 
 	// Findings Secret-scanning warnings the cloned config values produced (#74,
 	// Surface 1), warn-not-block.
-	Findings *[]ScanFinding `json:"findings,omitempty"`
+	Findings *[]ScanFinding `json:"findings,omitzero"`
 
 	// UncopiedSecrets The `secret` key names the source-material gate blocked. They land
 	// `absent` in the new environment - never silently, which is why
@@ -6293,10 +6395,10 @@ type ClonedEnvironment struct {
 
 // ConfigureTransitKeyRequest defines model for ConfigureTransitKeyRequest.
 type ConfigureTransitKeyRequest struct {
-	Callers               *[]TransitCaller `json:"callers,omitempty"`
-	MinDecryptVersion     *int64           `json:"min_decrypt_version,omitempty"`
-	MinEncryptVersion     *int64           `json:"min_encrypt_version,omitempty"`
-	RotationPeriodSeconds *int64           `json:"rotation_period_seconds,omitempty"`
+	Callers               *[]TransitCaller `json:"callers,omitzero"`
+	MinDecryptVersion     *int64           `json:"min_decrypt_version,omitzero"`
+	MinEncryptVersion     *int64           `json:"min_encrypt_version,omitzero"`
+	RotationPeriodSeconds *int64           `json:"rotation_period_seconds,omitzero"`
 }
 
 // ConfirmWidening The principal ids a key folder move gives access through their member
@@ -6308,7 +6410,7 @@ type ConfirmWidening = []ID
 type CopyValuesRequest struct {
 	// ConfirmProtected The protected-environment confirmation. A protected destination
 	// refuses the copy without it, naming the environment.
-	ConfirmProtected          *bool `json:"confirm_protected,omitempty"`
+	ConfirmProtected          *bool `json:"confirm_protected,omitzero"`
 	DestinationEnvironmentIds []ID  `json:"destination_environment_ids"`
 
 	// Keys The keys to copy, by name. Explicit: an empty list quietly meaning
@@ -6338,16 +6440,16 @@ type CopyValuesResult struct {
 
 	// Findings Secret-scanning warnings the copied config values produced (#74,
 	// Surface 1), warn-not-block. Absent or empty when nothing matched.
-	Findings *[]ScanFinding `json:"findings,omitempty"`
+	Findings *[]ScanFinding `json:"findings,omitzero"`
 }
 
 // CreateAdapterRequest defines model for CreateAdapterRequest.
 type CreateAdapterRequest struct {
 	// AllowPersonalToken GitLab only. Protected opt-in to accept a personal access token, which can act as its human owner everywhere they have access. By default only project and group access tokens are accepted.
-	AllowPersonalToken *bool `json:"allow_personal_token,omitempty"`
+	AllowPersonalToken *bool `json:"allow_personal_token,omitzero"`
 
 	// CaBundle GitLab only. PEM trust anchors added to the system roots for a self-hosted instance.
-	CaBundle *string `json:"ca_bundle,omitempty"`
+	CaBundle *string `json:"ca_bundle,omitzero"`
 
 	// Credential Write-only provider credential. Never returned. For aws-secrets-manager it is a JSON access descriptor: `{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`, `{"mode":"web-identity","role_arn":...}`, or `{"mode":"static","access_key_id":...,"secret_access_key":...}`, plus `region` (and optional `sts_origin`) for a non-AWS origin. Modes that use the server's own AWS identity require the node operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
 	Credential string `json:"credential"`
@@ -6357,7 +6459,7 @@ type CreateAdapterRequest struct {
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
-	SpkiPin *string            `json:"spki_pin,omitempty"`
+	SpkiPin *string            `json:"spki_pin,omitzero"`
 	Target  AdapterTargetInput `json:"target"`
 }
 
@@ -6373,22 +6475,26 @@ type CreateBindingRequest struct {
 	// authenticate here, and a Forgejo Actions audience defaults to
 	// `<instance>/<owner>`, shared across every repository that owner has.
 	Audience   string `json:"audience"`
-	Indefinite *bool  `json:"indefinite,omitempty"`
+	Indefinite *bool  `json:"indefinite,omitzero"`
 
 	// Issuer The byte-exact `iss` of a configured issuer.
 	Issuer          string `json:"issuer"`
-	LifetimeSeconds *int   `json:"lifetime_seconds,omitempty"`
+	LifetimeSeconds *int   `json:"lifetime_seconds,omitzero"`
 
 	// Replaces The binding this one supersedes. Bindings are IMMUTABLE, so every
 	// change is a replacement mint carrying the full formula: the
 	// predecessor is revoked and the successor inserted in one transaction.
-	Replaces *ID `json:"replaces,omitempty"`
+	Replaces *ID `json:"replaces,omitzero"`
 
-	// RequiredClaims Every pinned claim, all of which validation requires. A Forgejo or
-	// GitHub Actions binding MUST pin `event_name`: `pull_request_target`
-	// carries the ordinary ref-form subject — the default branch's subject,
-	// the one a production binding names — so the protection comes from the
-	// pinned event, never from the subject's shape.
+	// RequiredClaims Every pinned claim, all of which validation requires. A GitHub
+	// Actions binding MUST pin `repository_id`, `repository_owner_id`,
+	// `event_name`, `ref_protected`, `runner_environment` and
+	// `job_workflow_ref`, each as a string; a Kubernetes binding MUST pin
+	// `/kubernetes.io/serviceaccount/uid` as a string. `event_name` matters
+	// because `pull_request_target` carries the ordinary ref-form subject —
+	// the default branch's subject, the one a production binding names — so
+	// the protection comes from the pinned event, never from the subject's
+	// shape.
 	RequiredClaims []FederatedClaimPin `json:"required_claims"`
 	Subject        string              `json:"subject"`
 }
@@ -6406,7 +6512,7 @@ type CreateDynamicProviderRequest struct {
 	Origin string `json:"origin"`
 
 	// TlsMode Only verify-full is accepted; a weaker mode is refused.
-	TlsMode *CreateDynamicProviderRequestTlsMode `json:"tls_mode,omitempty"`
+	TlsMode *CreateDynamicProviderRequestTlsMode `json:"tls_mode,omitzero"`
 }
 
 // CreateDynamicProviderRequestTlsMode Only verify-full is accepted; a weaker mode is refused.
@@ -6419,7 +6525,7 @@ type CreateEnvironmentRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
@@ -6445,7 +6551,7 @@ type CreateFederationIssuerRequest struct {
 	// are refused in static mode. On update, omission preserves the current
 	// bundle in discovery mode; an empty string clears it. Static mode clears
 	// the bundle. This field is write-only; reads report ca_bundle_configured.
-	CaBundlePem *string `json:"ca_bundle_pem,omitempty"`
+	CaBundlePem *string `json:"ca_bundle_pem,omitzero"`
 
 	// Issuer The byte-exact `iss`, `https://` only. Discovery and JWKS are fetched
 	// from this URL, so an `http` issuer would rest the instance's whole
@@ -6471,14 +6577,14 @@ type CreateFederationIssuerRequest struct {
 	// StaticJwks The JWKS document, required under `static` mode and refused under
 	// `discovery`. The pairing is total: a document stored but unused is a
 	// key set nobody rotates.
-	StaticJwks *string `json:"static_jwks,omitempty"`
+	StaticJwks *string `json:"static_jwks,omitzero"`
 }
 
 // CreateFileTargetRequest defines model for CreateFileTargetRequest.
 type CreateFileTargetRequest struct {
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID    `json:"environment_id"`
-	KeyIds        *[]ID `json:"key_ids,omitempty"`
+	KeyIds        *[]ID `json:"key_ids,omitzero"`
 
 	// KeySelection Configuration-time selection conveniences (#157). They are resolved
 	// against the project catalogue when the target is saved, the resolved
@@ -6488,7 +6594,7 @@ type CreateFileTargetRequest struct {
 	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
 	// only keys of that classification. `exclude` applies to what the
 	// patterns and classification selected, never to explicit ids or names.
-	KeySelection *AdapterKeySelection `json:"key_selection,omitempty"`
+	KeySelection *AdapterKeySelection `json:"key_selection,omitzero"`
 	Name         string               `json:"name"`
 
 	// ServiceAccountId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -6502,7 +6608,7 @@ type CreateFolderRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Path A slash-separated namespace: no leading or trailing separator, no empty
 	// segment, no `.` or `..` segment, at most 32 segments. Organizational
@@ -6535,7 +6641,7 @@ type CreateKeyGroupRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 	Name             string            `json:"name"`
 }
 
@@ -6546,7 +6652,7 @@ type CreateKeyRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
@@ -6560,15 +6666,15 @@ type CreateKeyRequest struct {
 	// meanings for one word inside one product is a trap. Alternatives may
 	// not nest.
 	Declaration     KeyDeclaration `json:"declaration"`
-	Deprecated      *bool          `json:"deprecated,omitempty"`
-	DeprecationNote *string        `json:"deprecation_note,omitempty"`
-	Description     *string        `json:"description,omitempty"`
+	Deprecated      *bool          `json:"deprecated,omitzero"`
+	DeprecationNote *string        `json:"deprecation_note,omitzero"`
+	Description     *string        `json:"description,omitzero"`
 
 	// FolderPath The key's namespace within the project. Organizational only: a plain
 	// slash-separated path, empty for the catalogue root. It is a PATH, not a
 	// folder reference - no folder row need exist for it.
-	FolderPath *KeyFolderPath `json:"folder_path,omitempty"`
-	GroupId    *string        `json:"group_id,omitempty"`
+	FolderPath *KeyFolderPath `json:"folder_path,omitzero"`
+	GroupId    *string        `json:"group_id,omitzero"`
 
 	// Name The canonical key grammar: uppercase ASCII, digits and underscore, no
 	// leading digit. It is the environment-variable-safe grammar every
@@ -6581,7 +6687,7 @@ type CreateKeyRequest struct {
 	// Presence Presence is the ONLY thing that varies per environment; every other
 	// constraint is project-wide. `required` is a predicate about presence
 	// only - it means "resolves to set" and says nothing about content.
-	Presence *KeyPresenceRules `json:"presence,omitempty"`
+	Presence *KeyPresenceRules `json:"presence,omitzero"`
 }
 
 // CreateOrgRequest defines model for CreateOrgRequest.
@@ -6591,13 +6697,13 @@ type CreateOrgRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
-	Active           *bool             `json:"active,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
+	Active           *bool             `json:"active,omitzero"`
 
 	// Metadata Free-form operator metadata. `null` and absent both mean "no
 	// metadata"; the round-trip of absent/null/value is fixture-pinned
 	// through both the Go and the TypeScript consumer.
-	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitzero"`
 	Name     string                  `json:"name"`
 }
 
@@ -6608,7 +6714,7 @@ type CreateProjectRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
@@ -6635,6 +6741,24 @@ type CreateRemotePairingInviteRequest struct {
 	Phrase                    string `json:"phrase"`
 }
 
+// CreateRotationRequest defines model for CreateRotationRequest.
+type CreateRotationRequest struct {
+	// IntervalSeconds Seconds between rotations, from 1 hour to 90 days.
+	IntervalSeconds int64 `json:"interval_seconds"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID `json:"key_id"`
+
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId ID `json:"provider_id"`
+
+	// RevocationDelaySeconds Seconds the superseded credential stays valid after the new one is published, from 5 minutes to 7 days. Must be shorter than the interval.
+	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
+
+	// UsernameKeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	UsernameKeyId ID `json:"username_key_id"`
+}
+
 // CreateRuleRequest defines model for CreateRuleRequest.
 type CreateRuleRequest struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
@@ -6658,11 +6782,11 @@ type CreateRuleRequest struct {
 // CreateSSHCARequest defines model for CreateSSHCARequest.
 type CreateSSHCARequest struct {
 	// Algorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
-	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitempty"`
+	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitzero"`
 	Name      SSHName          `json:"name"`
 
 	// PrivateKey An unencrypted OpenSSH or PKCS#8 PEM private key to import. Omit to generate.
-	PrivateKey *string `json:"private_key,omitempty"`
+	PrivateKey *string `json:"private_key,omitzero"`
 }
 
 // CreateScimBindingRequest defines model for CreateScimBindingRequest.
@@ -6670,15 +6794,15 @@ type CreateScimBindingRequest struct {
 	// NameidFormat SAML bindings only. A scalar SCIM attribute cannot carry the locked
 	// SAML subject, so the binding declares the NameID PROFILE and the
 	// subject-source attribute supplies the NameID value alone.
-	NameidFormat    *string `json:"nameid_format,omitempty"`
-	NameidQualifier *string `json:"nameid_qualifier,omitempty"`
+	NameidFormat    *string `json:"nameid_format,omitzero"`
+	NameidQualifier *string `json:"nameid_qualifier,omitzero"`
 
 	// NameidQualifierPresent Presence is carried separately from value because an absent
 	// qualifier and an empty one are different inputs to the injective
 	// encoder, and collapsing them would make two SAML subjects collide.
-	NameidQualifierPresent   *bool                                `json:"nameid_qualifier_present,omitempty"`
-	NameidSpQualifier        *string                              `json:"nameid_sp_qualifier,omitempty"`
-	NameidSpQualifierPresent *bool                                `json:"nameid_sp_qualifier_present,omitempty"`
+	NameidQualifierPresent   *bool                                `json:"nameid_qualifier_present,omitzero"`
+	NameidSpQualifier        *string                              `json:"nameid_sp_qualifier,omitzero"`
+	NameidSpQualifierPresent *bool                                `json:"nameid_sp_qualifier_present,omitzero"`
 	ProviderKind             CreateScimBindingRequestProviderKind `json:"provider_kind"`
 	ProviderSlug             string                               `json:"provider_slug"`
 
@@ -6703,14 +6827,14 @@ type CreateServiceAccountRequest struct {
 // CreateTransitKeyRequest defines model for CreateTransitKeyRequest.
 type CreateTransitKeyRequest struct {
 	Algorithm         TransitAlgorithm    `json:"algorithm"`
-	AllowedOperations *[]TransitOperation `json:"allowed_operations,omitempty"`
-	Callers           *[]TransitCaller    `json:"callers,omitempty"`
-	Custody           *TransitCustody     `json:"custody,omitempty"`
+	AllowedOperations *[]TransitOperation `json:"allowed_operations,omitzero"`
+	Callers           *[]TransitCaller    `json:"callers,omitzero"`
+	Custody           *TransitCustody     `json:"custody,omitzero"`
 
 	// Exportable Must be false or absent; exportable keys are refused.
-	Exportable            *bool          `json:"exportable,omitempty"`
+	Exportable            *bool          `json:"exportable,omitzero"`
 	Name                  TransitKeyName `json:"name"`
-	RotationPeriodSeconds *int64         `json:"rotation_period_seconds,omitempty"`
+	RotationPeriodSeconds *int64         `json:"rotation_period_seconds,omitzero"`
 }
 
 // CredentialEstablishStatus defines model for CredentialEstablishStatus.
@@ -6742,10 +6866,10 @@ type CredentialPolicy struct {
 	MaxLiveCredentials       int  `json:"max_live_credentials"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
-	UpdatedAt *Timestamp `json:"updated_at,omitempty"`
+	UpdatedAt *Timestamp `json:"updated_at,omitzero"`
 
 	// UpdatedBy A prefixed UUIDv7, e.g. `org_0198…`.
-	UpdatedBy *ID `json:"updated_by,omitempty"`
+	UpdatedBy *ID `json:"updated_by,omitzero"`
 }
 
 // CredentialPolicyResult defines model for CredentialPolicyResult.
@@ -6775,12 +6899,90 @@ type CredentialResetResult struct {
 	ExpiresAt Timestamp `json:"expires_at"`
 }
 
+// CredentialRotation defines model for CredentialRotation.
+type CredentialRotation struct {
+	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// CreatedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	CreatedBy ID `json:"created_by"`
+
+	// CredentialExpiresAt When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it.
+	CredentialExpiresAt *time.Time `json:"credential_expires_at,omitzero"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID    `json:"environment_id"`
+	Generation    int64 `json:"generation"`
+
+	// HaltReason Present only while the state is halted: why the server stopped the rotation, as a fixed word.
+	HaltReason *RotationHaltReason `json:"halt_reason,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id              ID    `json:"id"`
+	IntervalSeconds int64 `json:"interval_seconds"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID `json:"key_id"`
+
+	// LastRun The newest run, the top row of the runs list. Absent when the rotation has never run.
+	LastRun *RotationLastRun `json:"last_run,omitzero"`
+
+	// NextRunAt Set only while the rotation is active.
+	NextRunAt *time.Time `json:"next_run_at,omitzero"`
+
+	// OwedDropRuns How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop: those in phase revoke_refused (held on purpose, Hikyo does not drop the role) or quarantine (Hikyo may still retry the drop, but it needs a person to look), whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
+	OwedDropRuns int64 `json:"owed_drop_runs"`
+
+	// OwedDropRunsVersionsChanged The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first.
+	OwedDropRunsVersionsChanged int64 `json:"owed_drop_runs_versions_changed"`
+
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId ID `json:"provider_id"`
+
+	// RestoreHold True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then.
+	RestoreHold            bool  `json:"restore_hold"`
+	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
+
+	// State `paused` is an operator or cascade pause (a deleted provider, a protected
+	// environment or an approval policy pauses the rotations it would break);
+	// `halted` is the executor's named stop (a failed authority or pre-publish
+	// gate, or an exhausted retry window); the rotation's `halt_reason` names
+	// which. Only a full resume authorization leaves either. `disabled` is the
+	// soft delete.
+	State CredentialRotationState `json:"state"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+
+	// UsernameKeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	UsernameKeyId ID `json:"username_key_id"`
+}
+
+// CredentialRotationList defines model for CredentialRotationList.
+type CredentialRotationList struct {
+	Items []CredentialRotation `json:"items"`
+
+	// NextAfter Pass as `after` to read the next page. Absent on the last page.
+	NextAfter *string `json:"next_after,omitzero"`
+}
+
+// CredentialRotationState `paused` is an operator or cascade pause (a deleted provider, a protected
+// environment or an approval policy pauses the rotations it would break);
+// `halted` is the executor's named stop (a failed authority or pre-publish
+// gate, or an exhausted retry window); the rotation's `halt_reason` names
+// which. Only a full resume authorization leaves either. `disabled` is the
+// soft delete.
+type CredentialRotationState string
+
 // DEKRotation defines model for DEKRotation.
 type DEKRotation struct {
 	// KeyVersion The new active DEK version. Old versions remain readable until reencrypt.
 	KeyVersion int64            `json:"key_version"`
-	Org        *string          `json:"org,omitempty"`
-	Project    *string          `json:"project,omitempty"`
+	Org        *string          `json:"org,omitzero"`
+	Project    *string          `json:"project,omitzero"`
 	Scope      DEKRotationScope `json:"scope"`
 }
 
@@ -6807,7 +7009,7 @@ type DefinitionsBundle = json.RawMessage
 // DefinitionsBundleEntity defines model for DefinitionsBundleEntity.
 type DefinitionsBundleEntity struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id   *ID    `json:"id,omitempty"`
+	Id   *ID    `json:"id,omitzero"`
 	Name string `json:"name"`
 }
 
@@ -6837,7 +7039,7 @@ type DefinitionsBundleKey struct {
 	Group       string                    `json:"group"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id *ID `json:"id,omitempty"`
+	Id *ID `json:"id,omitzero"`
 
 	// Name The canonical key grammar: uppercase ASCII, digits and underscore, no
 	// leading digit. It is the environment-variable-safe grammar every
@@ -6846,7 +7048,7 @@ type DefinitionsBundleKey struct {
 	// constraint, not a style preference. `maxLength` counts code points
 	// here and bytes in the service; the grammar is ASCII, so they agree.
 	Name               KeyName                    `json:"name"`
-	PersonalRequiredIn *DefinitionsBundlePresence `json:"personal_required_in,omitempty"`
+	PersonalRequiredIn *DefinitionsBundlePresence `json:"personal_required_in,omitzero"`
 	RequiredIn         DefinitionsBundlePresence  `json:"required_in"`
 }
 
@@ -6861,7 +7063,7 @@ type DefinitionsBundlePresenceMode string
 
 // DefinitionsCheckResult defines model for DefinitionsCheckResult.
 type DefinitionsCheckResult struct {
-	BaseRevision    *int64          `json:"base_revision,omitempty"`
+	BaseRevision    *int64          `json:"base_revision,omitzero"`
 	CurrentRevision int64           `json:"current_revision"`
 	Differences     DefinitionsDiff `json:"differences"`
 
@@ -6870,7 +7072,7 @@ type DefinitionsCheckResult struct {
 	// dry-run, so these carry no acknowledgement token and persist nothing —
 	// they warn an operator that a `plan` would be refused. Omitted when the
 	// bundle is clean.
-	Findings *[]ScanFinding              `json:"findings,omitempty"`
+	Findings *[]ScanFinding              `json:"findings,omitzero"`
 	State    DefinitionsCheckResultState `json:"state"`
 }
 
@@ -6891,7 +7093,7 @@ type DefinitionsEnvironmentDeletion struct {
 	Occurrences int64  `json:"occurrences"`
 
 	// PersonalValues Personal values the deletion would remove, counted when the plan was made. Apply removes whatever the environment holds then. Absent from servers older than revision 15.
-	PersonalValues *int64 `json:"personal_values,omitempty"`
+	PersonalValues *int64 `json:"personal_values,omitzero"`
 }
 
 // DefinitionsKeyDeletion defines model for DefinitionsKeyDeletion.
@@ -6910,26 +7112,26 @@ type DefinitionsKindDiff struct {
 
 // DefinitionsLastApply defines model for DefinitionsLastApply.
 type DefinitionsLastApply struct {
-	Actor *string `json:"actor,omitempty"`
+	Actor *string `json:"actor,omitzero"`
 
 	// AppliedAt RFC 3339 UTC, microsecond precision.
 	AppliedAt Timestamp `json:"applied_at"`
 	AppliedBy string    `json:"applied_by"`
 
 	// AppliedByName Display name of `applied_by` (a principal id), present only when it can be named.
-	AppliedByName *string `json:"applied_by_name,omitempty"`
-	Commit        *string `json:"commit,omitempty"`
+	AppliedByName *string `json:"applied_by_name,omitzero"`
+	Commit        *string `json:"commit,omitzero"`
 
 	// PlanId A prefixed UUIDv7, e.g. `org_0198…`.
 	PlanId   ID      `json:"plan_id"`
-	Ref      *string `json:"ref,omitempty"`
+	Ref      *string `json:"ref,omitzero"`
 	Revision int64   `json:"revision"`
 }
 
 // DefinitionsPlan defines model for DefinitionsPlan.
 type DefinitionsPlan struct {
 	Additive         bool                `json:"additive"`
-	BaseRevision     *int64              `json:"base_revision,omitempty"`
+	BaseRevision     *int64              `json:"base_revision,omitzero"`
 	CurrentRevision  int64               `json:"current_revision"`
 	DeletionsPresent bool                `json:"deletions_present"`
 	Diff             DefinitionsPlanDiff `json:"diff"`
@@ -6977,7 +7179,7 @@ type DefinitionsSettings struct {
 	// A UI affordance, never authority for an arbitrary declaration,
 	// folder, linked group, or bulk write. Actual writes authorize their
 	// complete scope and may return 404. Independent of `definitions_source`.
-	CanDeclareKeys *bool `json:"can_declare_keys,omitempty"`
+	CanDeclareKeys *bool `json:"can_declare_keys,omitzero"`
 
 	// CanEditDefinitions Whether THE CALLER has any matching Define authority in this
 	// project, from a legacy `definitions-edit` grant or an access rule,
@@ -6987,9 +7189,9 @@ type DefinitionsSettings struct {
 	// environment; linked-group changes require whole-environment
 	// authority. Actual writes authorize their complete scope and may
 	// return 404. Independent of `definitions_source`.
-	CanEditDefinitions *bool                                `json:"can_edit_definitions,omitempty"`
+	CanEditDefinitions *bool                                `json:"can_edit_definitions,omitzero"`
 	DefinitionsSource  DefinitionsSettingsDefinitionsSource `json:"definitions_source"`
-	LastApply          *DefinitionsLastApply                `json:"last_apply,omitempty"`
+	LastApply          *DefinitionsLastApply                `json:"last_apply,omitzero"`
 }
 
 // DefinitionsSettingsDefinitionsSource defines model for DefinitionsSettings.DefinitionsSource.
@@ -7021,10 +7223,10 @@ type DeliveredKey struct {
 	// key is `personal_required_in` this environment and they hold no
 	// value (consenting fetches only). A withheld, notice or missing key
 	// never carries the shared value, and `hikyo run` refuses it.
-	Personal *DeliveredKeyPersonal `json:"personal,omitempty"`
+	Personal *DeliveredKeyPersonal `json:"personal,omitzero"`
 
 	// PersonalReason For `withheld`, one of consent, config_only, suspended. For `notice`, the cause. Absent for `missing`.
-	PersonalReason *string `json:"personal_reason,omitempty"`
+	PersonalReason *string `json:"personal_reason,omitzero"`
 
 	// Presence What the fetch reports about this key in the addressed
 	// environment. `set` is a key the committed snapshot actually
@@ -7038,12 +7240,12 @@ type DeliveredKey struct {
 	// for later offline disclosure reconciliation; never log it.
 	// Absent for developer-credential delivery, which never authorizes
 	// offline snapshots or reconciliation.
-	SnapshotReceipt *string `json:"snapshot_receipt,omitempty"`
+	SnapshotReceipt *string `json:"snapshot_receipt,omitzero"`
 
 	// Value The delivered plaintext. Present ONLY when the caller was
 	// authorized to receive it (see the schema description); absent for a
 	// presence-only key. The maxLength matches the value-write bound.
-	Value *string `json:"value,omitempty"`
+	Value *string `json:"value,omitzero"`
 }
 
 // DeliveredKeyPersonal Developer-credential delivery only (#1235). `value`: the value is
@@ -7080,7 +7282,7 @@ type DeliveryResponse struct {
 	// credential's `expires_at`, a federated binding's expiry. ABSENT for
 	// an indefinite credential. The operator surfaces it as the ADR's
 	// ahead-of-time expiry condition and event.
-	CredentialExpiresAt *Timestamp `json:"credential_expires_at,omitempty"`
+	CredentialExpiresAt *Timestamp `json:"credential_expires_at,omitzero"`
 
 	// CredentialId The authenticated caller's credential identifier, returned on both
 	// dispositions so clients can bind snapshots and offline records to
@@ -7106,7 +7308,7 @@ type DeliveryResponse struct {
 	// configuration generation this delivery was narrowed under, on both
 	// dispositions, so the bound client can report exactly what it
 	// rendered. Added in API revision 7.
-	FileTargetGeneration *int64 `json:"file_target_generation,omitempty"`
+	FileTargetGeneration *int64 `json:"file_target_generation,omitzero"`
 
 	// IssuedAt RFC 3339 UTC, microsecond precision.
 	IssuedAt Timestamp `json:"issued_at"`
@@ -7118,7 +7320,7 @@ type DeliveryResponse struct {
 	PinExpired bool `json:"pin_expired"`
 
 	// PinnedRevision Present when a durable workload pin selected the snapshot.
-	PinnedRevision *int64 `json:"pinned_revision,omitempty"`
+	PinnedRevision *int64 `json:"pinned_revision,omitzero"`
 
 	// Revision The committed snapshot selected by this fetch; zero before first publication.
 	Revision int64 `json:"revision"`
@@ -7150,7 +7352,7 @@ type DeliveryTarget struct {
 
 		// RefusedAt RFC 3339 UTC, microsecond precision.
 		RefusedAt Timestamp `json:"refused_at"`
-	} `json:"refusal,omitempty"`
+	} `json:"refusal,omitzero"`
 	ReportIntervalSeconds int64 `json:"report_interval_seconds"`
 
 	// ReportedAt RFC 3339 UTC, microsecond precision.
@@ -7213,11 +7415,11 @@ type DeliveryTargetList struct {
 // DeliveryTargetPrincipal The server-observed layer for one reporting principal (ADR D2).
 type DeliveryTargetPrincipal struct {
 	// LastContactAt Its last authenticated delivery fetch in this environment. Absent when never observed.
-	LastContactAt *Timestamp `json:"last_contact_at,omitempty"`
+	LastContactAt *Timestamp `json:"last_contact_at,omitzero"`
 	PrincipalId   string     `json:"principal_id"`
 
 	// QuotaRefusedAt The closed `quota-refused` notice's last time. Absent when never refused.
-	QuotaRefusedAt *Timestamp `json:"quota_refused_at,omitempty"`
+	QuotaRefusedAt *Timestamp `json:"quota_refused_at,omitzero"`
 }
 
 // DeliveryTargetRef The target's identity plus the namespace and name an operator types into `kubectl`.
@@ -7292,7 +7494,7 @@ type DeveloperCredential struct {
 	AuthorityPrincipalId ID `json:"authority_principal_id"`
 
 	// AuthorityPrincipalName Display name of the human who delegated the credential. Omitted when unnamed.
-	AuthorityPrincipalName *string   `json:"authority_principal_name,omitempty"`
+	AuthorityPrincipalName *string   `json:"authority_principal_name,omitzero"`
 	CreatedAt              time.Time `json:"created_at"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -7304,7 +7506,7 @@ type DeveloperCredential struct {
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
 	OrgId           ID     `json:"org_id"`
-	PersonalConsent *bool  `json:"personal_consent,omitempty"`
+	PersonalConsent *bool  `json:"personal_consent,omitzero"`
 	PrefixHint      string `json:"prefix_hint"`
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -7312,7 +7514,7 @@ type DeveloperCredential struct {
 
 	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
 	ProjectId ID         `json:"project_id"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	RevokedAt *time.Time `json:"revoked_at,omitzero"`
 }
 
 // DeveloperCredentialList defines model for DeveloperCredentialList.
@@ -7332,7 +7534,7 @@ type DeveloperCredentialReauthIntent struct {
 	LifetimeSeconds         int64                                                  `json:"lifetime_seconds"`
 
 	// PersonalConsent The credential will also deliver the minting person's own personal values; bound into the ceremony.
-	PersonalConsent *bool `json:"personal_consent,omitempty"`
+	PersonalConsent *bool `json:"personal_consent,omitzero"`
 }
 
 // DeveloperCredentialReauthIntentConsentCurrentAndFuture defines model for DeveloperCredentialReauthIntent.ConsentCurrentAndFuture.
@@ -7370,11 +7572,11 @@ type DynamicLease struct {
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID         `json:"environment_id"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id       ID         `json:"id"`
-	IssuedAt *time.Time `json:"issued_at,omitempty"`
+	IssuedAt *time.Time `json:"issued_at,omitzero"`
 
 	// LastTransitionAt RFC 3339 UTC, microsecond precision.
 	LastTransitionAt Timestamp `json:"last_transition_at"`
@@ -7414,7 +7616,7 @@ type DynamicProvider struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt         Timestamp  `json:"created_at"`
 	CredentialPresent bool       `json:"credential_present"`
-	CredentialSetAt   *time.Time `json:"credential_set_at,omitempty"`
+	CredentialSetAt   *time.Time `json:"credential_set_at,omitzero"`
 	GrantRole         string     `json:"grant_role"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
@@ -7539,7 +7741,7 @@ type EmergencyAccessInput struct {
 	Capabilities []AccessCapability `json:"capabilities"`
 
 	// DurationSeconds Optional; defaults to one hour, capped by the policy maximum.
-	DurationSeconds *int32 `json:"duration_seconds,omitempty"`
+	DurationSeconds *int32 `json:"duration_seconds,omitzero"`
 
 	// Reason Why emergency access is needed. Recorded in the audit trail.
 	Reason string `json:"reason"`
@@ -7605,14 +7807,14 @@ type EnvironmentParameters map[string]string
 // EnvironmentSettings defines model for EnvironmentSettings.
 type EnvironmentSettings struct {
 	// ExpectedProtected Optional compare-and-set precondition; a changed protection flag returns 409.
-	ExpectedProtected *bool `json:"expected_protected,omitempty"`
+	ExpectedProtected *bool `json:"expected_protected,omitzero"`
 	Protected         bool  `json:"protected"`
 
 	// ReauthWindowSeconds The environment's own reauthentication window. Null or absent means
 	// it inherits the instance default - which is NOT the same statement
 	// as 0, and 0 is a legal value meaning every disclosure
 	// reauthenticates.
-	ReauthWindowSeconds *int `json:"reauth_window_seconds,omitempty"`
+	ReauthWindowSeconds *int `json:"reauth_window_seconds,omitzero"`
 }
 
 // EnvironmentSignals defines model for EnvironmentSignals.
@@ -7639,7 +7841,7 @@ type Error struct {
 		// `cli_login_factor_required`, it carries sign-in guidance.
 		// `null` and absent are
 		// equivalent; every other error code omits the member entirely.
-		Detail *string `json:"detail,omitempty"`
+		Detail *string `json:"detail,omitzero"`
 
 		// Findings Secret-scanning refusal detail (#74, Surface 2). Present only on
 		// a `bad_request` that a declaration ingress refused because an
@@ -7647,7 +7849,7 @@ type Error struct {
 		// entry names the immutable declaration-field locator, the rule id,
 		// and a short-lived content-bound acknowledgement token the
 		// resubmission presents to override. Never the matched text.
-		Findings *[]ScanFinding `json:"findings,omitempty"`
+		Findings *[]ScanFinding `json:"findings,omitzero"`
 
 		// Message Fixed per code. Never derived from the request, so two
 		// refusals of the same class are byte-identical.
@@ -7658,7 +7860,7 @@ type Error struct {
 		// people and what they gain are named only to a caller holding
 		// `manage-members` on the project, who confirms by resending the request
 		// with `confirm_widening` listing exactly those principal ids.
-		Widening *WideningRefusal `json:"widening,omitempty"`
+		Widening *WideningRefusal `json:"widening,omitzero"`
 	} `json:"error"`
 }
 
@@ -7681,15 +7883,15 @@ type EstablishCredentialRequest struct {
 
 // ExportValuesRequest defines model for ExportValuesRequest.
 type ExportValuesRequest struct {
-	Parameters *FetchParameters `json:"parameters,omitempty"`
+	Parameters *FetchParameters `json:"parameters,omitzero"`
 
 	// Reveal Ask for `secret` plaintext. Without it a `secret` key reports
 	// write-presence and no value; `config` values are returned either
 	// way, because classification IS the sensitivity boundary.
-	Reveal *bool `json:"reveal,omitempty"`
+	Reveal *bool `json:"reveal,omitzero"`
 
 	// Revision The revision to export; omitted means the latest.
-	Revision *int64 `json:"revision,omitempty"`
+	Revision *int64 `json:"revision,omitzero"`
 }
 
 // ExportedValue defines model for ExportedValue.
@@ -7710,7 +7912,7 @@ type ExportedValue struct {
 	Revealed bool    `json:"revealed"`
 
 	// Value Present only when `revealed` is true.
-	Value *string `json:"value,omitempty"`
+	Value *string `json:"value,omitzero"`
 }
 
 // ExportedValues defines model for ExportedValues.
@@ -7736,7 +7938,7 @@ type ExternalIdentity struct {
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind       IdentityProviderKind     `json:"kind"`
-	Profile    *ExternalIdentityProfile `json:"profile,omitempty"`
+	Profile    *ExternalIdentityProfile `json:"profile,omitzero"`
 	ProviderId string                   `json:"provider_id"`
 
 	// ProviderSlug The provider slug, addressed together with kind.
@@ -7767,24 +7969,26 @@ type FederatedBinding struct {
 	IssuerId ID `json:"issuer_id"`
 
 	// ReplacedId The predecessor this mint revoked, absent for a first issue.
-	ReplacedId *ID `json:"replaced_id,omitempty"`
+	ReplacedId *ID `json:"replaced_id,omitzero"`
 }
 
 // FederatedClaimPin One pinned claim, as a DISCRIMINATED scalar rather than a free-form JSON
 // value. Exactly one of `string_value`, `number_value` or `bool_value` is
 // set, and that is what makes "a string is never folded to a number" true
 // at the wire boundary rather than only inside the validator:
-// `repository_id: 123` and `repository_id: "123"` are two different
-// requests that cannot be mistaken for one another, and a 64-bit repository
-// id survives without passing through a float.
+// `run_attempt: 1` and `run_attempt: "1"` are two different requests that
+// cannot be mistaken for one another, and a 64-bit integer survives without
+// passing through a float. A platform's required pins are JSON strings,
+// because the issuer emits them as strings (GitHub's `repository_id` is
+// `"74"`); a required pin of another kind is refused at creation.
 //
 // A pin naming none or several values is refused rather than resolved by
 // precedence.
 type FederatedClaimPin struct {
-	BoolValue   *bool   `json:"bool_value,omitempty"`
+	BoolValue   *bool   `json:"bool_value,omitzero"`
 	Claim       string  `json:"claim"`
-	NumberValue *int64  `json:"number_value,omitempty"`
-	StringValue *string `json:"string_value,omitempty"`
+	NumberValue *int64  `json:"number_value,omitzero"`
+	StringValue *string `json:"string_value,omitzero"`
 }
 
 // FederationIssuer One instance-scoped issuer configuration. There is deliberately no
@@ -7840,10 +8044,10 @@ type FederationIssuer struct {
 	RefusedAudiences []string `json:"refused_audiences"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
-	UpdatedAt *Timestamp `json:"updated_at,omitempty"`
+	UpdatedAt *Timestamp `json:"updated_at,omitzero"`
 
 	// UpdatedBy A prefixed UUIDv7, e.g. `org_0198…`.
-	UpdatedBy *ID `json:"updated_by,omitempty"`
+	UpdatedBy *ID `json:"updated_by,omitzero"`
 }
 
 // FederationIssuerList defines model for FederationIssuerList.
@@ -7922,7 +8126,7 @@ type FileTargetReportRequest struct {
 	Generation int64     `json:"generation"`
 	ReportedAt time.Time `json:"reported_at"`
 	Revision   int64     `json:"revision"`
-	Stamp      *string   `json:"stamp,omitempty"`
+	Stamp      *string   `json:"stamp,omitzero"`
 
 	// State What the client reached: `applied` published a new generation;
 	// `current` found nothing to change; `offline` rendered from its
@@ -8013,7 +8217,7 @@ type Grant struct {
 	PrincipalId ID `json:"principal_id"`
 
 	// PrincipalName Current display name or username of this authorized member; not an identifier.
-	PrincipalName *string `json:"principal_name,omitempty"`
+	PrincipalName *string `json:"principal_name,omitzero"`
 
 	// Scope The scope the grant was made at. All three absent is instance scope.
 	// Grants inherit downward, so a grant at a scope applies to everything
@@ -8068,13 +8272,13 @@ type GrantResultList struct {
 // beneath it.
 type GrantScope struct {
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId *ID `json:"environment_id,omitempty"`
+	EnvironmentId *ID `json:"environment_id,omitzero"`
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
-	OrgId *ID `json:"org_id,omitempty"`
+	OrgId *ID `json:"org_id,omitzero"`
 
 	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
-	ProjectId *ID `json:"project_id,omitempty"`
+	ProjectId *ID `json:"project_id,omitzero"`
 }
 
 // ID A prefixed UUIDv7, e.g. `org_0198…`.
@@ -8083,8 +8287,8 @@ type ID = string
 // IdentityLinkRequest defines model for IdentityLinkRequest.
 type IdentityLinkRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
-	Browser  *bool                    `json:"browser,omitempty"`
-	Kind     *IdentityLinkRequestKind `json:"kind,omitempty"`
+	Browser  *bool                    `json:"browser,omitzero"`
+	Kind     *IdentityLinkRequestKind `json:"kind,omitzero"`
 	Proof    string                   `json:"proof"`
 	Provider string                   `json:"provider"`
 }
@@ -8104,12 +8308,12 @@ type IdentityProviderKind = string
 // absent field is left unchanged, so saving one field never overwrites
 // a concurrent change to the other.
 type IdentityRequest struct {
-	Hue *int `json:"hue,omitempty"`
+	Hue *int `json:"hue,omitzero"`
 
 	// Mark At most two grapheme clusters; no control or invisible format
 	// characters and no surrounding whitespace. Empty selects the
 	// name-derived monogram; null or absent leaves the stored mark.
-	Mark *string `json:"mark,omitempty"`
+	Mark *string `json:"mark,omitzero"`
 }
 
 // IdentityUnlinkRequest defines model for IdentityUnlinkRequest.
@@ -8120,10 +8324,10 @@ type IdentityUnlinkRequest struct {
 // ImpactChange defines model for ImpactChange.
 type ImpactChange struct {
 	// After Config plaintext when the caller also holds read; absent for secrets, clears, or unreadable config.
-	After *string `json:"after,omitempty"`
+	After *string `json:"after,omitzero"`
 
 	// Before Config plaintext when the caller also holds read; absent for secrets or unreadable config.
-	Before *string `json:"before,omitempty"`
+	Before *string `json:"before,omitzero"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
@@ -8217,20 +8421,20 @@ type ImportValuesRequest struct {
 	// Overwrite The enumerated `set`-bucket consent. Skip-by-default otherwise.
 	// Naming a key this import does not carry is refused: a typo in a
 	// consent list is the one place a silent no-op is dangerous.
-	Overwrite *[]KeyName `json:"overwrite,omitempty"`
+	Overwrite *[]KeyName `json:"overwrite,omitzero"`
 
 	// Precondition The run manifest's expected-state half - the one declared additive
 	// input `values import` gained. Verified inside the import's own
 	// authorized transaction, after `read@project AND read@environment` is
 	// re-evaluated for every environment named here.
-	Precondition *ImportPrecondition `json:"precondition,omitempty"`
+	Precondition *ImportPrecondition `json:"precondition,omitzero"`
 }
 
 // ImportValuesResult defines model for ImportValuesResult.
 type ImportValuesResult struct {
 	// Findings Secret-scanning warnings the imported config values produced (#74,
 	// Surface 1, surface `import_value`), warn-not-block.
-	Findings *[]ScanFinding `json:"findings,omitempty"`
+	Findings *[]ScanFinding `json:"findings,omitzero"`
 	Imported []KeyName      `json:"imported"`
 
 	// Skipped Keys already `set` in the target environment that no enumerated
@@ -8261,13 +8465,13 @@ type InstanceConfigApplyRequest struct {
 	IdempotencyKey             string `json:"idempotency_key"`
 
 	// PlanDigest Exact prepared deployment plan authorized by this decision.
-	PlanDigest *string `json:"plan_digest,omitempty"`
+	PlanDigest *string `json:"plan_digest,omitzero"`
 
 	// PrepareOnly Prepare and return the exact plan for review without committing or consuming reauthentication.
-	PrepareOnly *bool `json:"prepare_only,omitempty"`
+	PrepareOnly *bool `json:"prepare_only,omitzero"`
 
 	// RestoreDeployment Restore the partial controlled deployment with exact rollout-restore MFA. The desired runtime revision remains fenced until a separate repair Apply.
-	RestoreDeployment *bool `json:"restore_deployment,omitempty"`
+	RestoreDeployment *bool `json:"restore_deployment,omitzero"`
 	Revision          int64 `json:"revision"`
 	SchemaVersion     int   `json:"schema_version"`
 }
@@ -8282,23 +8486,23 @@ type InstanceConfigBinding struct {
 
 // InstanceConfigJob defines model for InstanceConfigJob.
 type InstanceConfigJob struct {
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitzero"`
 	CreatedAt   time.Time  `json:"created_at"`
 
 	// DeploymentRestorePending Deployment restoration was authorized and awaits the controller receipt.
-	DeploymentRestorePending *bool `json:"deployment_restore_pending,omitempty"`
+	DeploymentRestorePending *bool `json:"deployment_restore_pending,omitzero"`
 
 	// DeploymentRestored The controller verified restored deployment resources. A separate configuration repair Apply is still required.
-	DeploymentRestored *bool   `json:"deployment_restored,omitempty"`
-	Error              *string `json:"error,omitempty"`
+	DeploymentRestored *bool   `json:"deployment_restored,omitzero"`
+	Error              *string `json:"error,omitzero"`
 	Generation         int64   `json:"generation"`
 	Id                 string  `json:"id"`
 
 	// PlanDigest Exact prepared deployment plan authorized by this decision.
-	PlanDigest *string `json:"plan_digest,omitempty"`
+	PlanDigest *string `json:"plan_digest,omitzero"`
 
 	// Prepared Exact fixed participants and any deployment plan are ready for administrator authorization.
-	Prepared *bool                  `json:"prepared,omitempty"`
+	Prepared *bool                  `json:"prepared,omitzero"`
 	Revision int64                  `json:"revision"`
 	State    InstanceConfigJobState `json:"state"`
 }
@@ -8324,7 +8528,7 @@ type InstanceConfigMailTestResult struct {
 type InstanceConfigNode struct {
 	ActiveGeneration int64                   `json:"active_generation"`
 	ActiveRevision   *int64                  `json:"active_revision"`
-	Error            *string                 `json:"error,omitempty"`
+	Error            *string                 `json:"error,omitzero"`
 	NodeId           string                  `json:"node_id"`
 	State            InstanceConfigNodeState `json:"state"`
 	UpdatedAt        time.Time               `json:"updated_at"`
@@ -8356,10 +8560,10 @@ type InstanceConnection struct {
 	CreatedBy string    `json:"created_by"`
 
 	// CreatedByName Display name of `created_by`, present only when it can be named.
-	CreatedByName *string `json:"created_by_name,omitempty"`
+	CreatedByName *string `json:"created_by_name,omitzero"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
-	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+	ExpiresAt *Timestamp `json:"expires_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
@@ -8374,7 +8578,7 @@ type InstanceConnection struct {
 	Label string `json:"label"`
 
 	// LastUsedAt RFC 3339 UTC, microsecond precision.
-	LastUsedAt *Timestamp `json:"last_used_at,omitempty"`
+	LastUsedAt *Timestamp `json:"last_used_at,omitzero"`
 
 	// Lifetime `indefinite` is a VALUE, not a large number: it is unreachable by
 	// raising the instance ceiling, and is admitted only under a separate,
@@ -8391,7 +8595,7 @@ type InstanceConnection struct {
 	Principal  string `json:"principal"`
 
 	// RevokedAt RFC 3339 UTC, microsecond precision.
-	RevokedAt *Timestamp `json:"revoked_at,omitempty"`
+	RevokedAt *Timestamp `json:"revoked_at,omitzero"`
 }
 
 // InstanceConnectionList defines model for InstanceConnectionList.
@@ -8417,10 +8621,10 @@ type InstanceUpdateBackend string
 // InstanceUpdateJob defines model for InstanceUpdateJob.
 type InstanceUpdateJob struct {
 	Backend     InstanceUpdateBackend `json:"backend"`
-	FailureCode *string               `json:"failure_code,omitempty"`
+	FailureCode *string               `json:"failure_code,omitzero"`
 
 	// FinishedAt RFC 3339 UTC, microsecond precision.
-	FinishedAt *Timestamp `json:"finished_at,omitempty"`
+	FinishedAt *Timestamp `json:"finished_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id    ID                     `json:"id"`
@@ -8430,7 +8634,7 @@ type InstanceUpdateJob struct {
 	RequestedAt Timestamp `json:"requested_at"`
 
 	// StartedAt RFC 3339 UTC, microsecond precision.
-	StartedAt *Timestamp             `json:"started_at,omitempty"`
+	StartedAt *Timestamp             `json:"started_at,omitzero"`
 	State     InstanceUpdateJobState `json:"state"`
 	Version   string                 `json:"version"`
 }
@@ -8467,12 +8671,12 @@ type InvitationResult struct {
 // InviteMemberRequest defines model for InviteMemberRequest.
 type InviteMemberRequest struct {
 	// DisplayName Defaults to the username.
-	DisplayName *string `json:"display_name,omitempty"`
+	DisplayName *string `json:"display_name,omitzero"`
 
 	// Template Optional initial grants, expanded at the invitation's scope in the
 	// same transaction. Absent means the account can sign in and see
 	// nothing until someone grants it something.
-	Template *RoleTemplate `json:"template,omitempty"`
+	Template *RoleTemplate `json:"template,omitzero"`
 
 	// Username The invitee's local login handle; globally unique.
 	Username string `json:"username"`
@@ -8481,21 +8685,21 @@ type InviteMemberRequest struct {
 // IssueSSHCertificateRequest defines model for IssueSSHCertificateRequest.
 type IssueSSHCertificateRequest struct {
 	// Extensions A subset of the profile's extensions. Omit for the profile's set; an empty list asks for none.
-	Extensions *[]SSHExtension `json:"extensions,omitempty"`
+	Extensions *[]SSHExtension `json:"extensions,omitzero"`
 
 	// KeyAlgorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
-	KeyAlgorithm *SSHKeyAlgorithm `json:"key_algorithm,omitempty"`
+	KeyAlgorithm *SSHKeyAlgorithm `json:"key_algorithm,omitzero"`
 
 	// Principals A subset of the profile's principals; required when it allows several.
-	Principals *[]string `json:"principals,omitempty"`
+	Principals *[]string `json:"principals,omitzero"`
 
 	// ProfileId A prefixed UUIDv7, e.g. `org_0198…`.
 	ProfileId ID `json:"profile_id"`
 
 	// PublicKey An authorized_keys line to certify. Omit to have a key pair generated.
-	PublicKey       *string   `json:"public_key,omitempty"`
-	SourceAddresses *[]string `json:"source_addresses,omitempty"`
-	TtlSeconds      *int64    `json:"ttl_seconds,omitempty"`
+	PublicKey       *string   `json:"public_key,omitzero"`
+	SourceAddresses *[]string `json:"source_addresses,omitzero"`
+	TtlSeconds      *int64    `json:"ttl_seconds,omitzero"`
 }
 
 // IssuerType The federation issuer's platform. It is DECLARED rather than inferred
@@ -8539,7 +8743,7 @@ type Key struct {
 	// key whose existing values carry a credential-shaped string — the
 	// reclassify SUCCEEDS and each finding names its rule and key locator.
 	// Absent on every other key response.
-	Findings *[]ScanFinding `json:"findings,omitempty"`
+	Findings *[]ScanFinding `json:"findings,omitzero"`
 
 	// FolderPath The key's namespace within the project. Organizational only: a plain
 	// slash-separated path, empty for the catalogue root. It is a PATH, not a
@@ -8584,7 +8788,7 @@ type KeyClassification string
 // meanings for one word inside one product is a trap. Alternatives may
 // not nest.
 type KeyDeclaration struct {
-	AnyOf *[]KeyRule `json:"any_of,omitempty"`
+	AnyOf *[]KeyRule `json:"any_of,omitzero"`
 
 	// Rule One primitive type declaration with its constraints. Each constraint
 	// belongs to exactly one type, and a constraint declared on the wrong
@@ -8592,7 +8796,7 @@ type KeyDeclaration struct {
 	// integer key is the "appears to enforce something and does not" failure
 	// the schema model rejects everywhere. This document carries shape; the
 	// service is the authority on every rule below.
-	Rule *KeyRule `json:"rule,omitempty"`
+	Rule *KeyRule `json:"rule,omitzero"`
 }
 
 // KeyFolderPath The key's namespace within the project. Organizational only: a plain
@@ -8656,7 +8860,7 @@ type KeyName = string
 // from a rule the operator wrote as "always". `none` is the default.
 type KeyPresence struct {
 	// EnvironmentIds `explicit` only; empty or absent for `all` and `none`.
-	EnvironmentIds *[]ID           `json:"environment_ids,omitempty"`
+	EnvironmentIds *[]ID           `json:"environment_ids,omitzero"`
 	Mode           KeyPresenceMode `json:"mode"`
 }
 
@@ -8678,7 +8882,7 @@ type KeyPresenceRules struct {
 	// reach environments created later. Refused where the key is also
 	// required or forbidden, and for a key in a group. Absent means `none`
 	// on create; on a declaration update, absent keeps the stored setting.
-	PersonalRequiredIn *KeyPresence `json:"personal_required_in,omitempty"`
+	PersonalRequiredIn *KeyPresence `json:"personal_required_in,omitzero"`
 
 	// RequiredIn A mode plus an explicit set, never a bare id list: `all` is SYMBOLIC
 	// and covers environments created later, so expanding it into the ids
@@ -8695,7 +8899,7 @@ type KeyPresenceRules struct {
 // service is the authority on every rule below.
 type KeyRule struct {
 	// AllowEmpty `string` only; defaults to false.
-	AllowEmpty *bool `json:"allow_empty,omitempty"`
+	AllowEmpty *bool `json:"allow_empty,omitzero"`
 
 	// JsonSchema `json` only: a JSON Schema 2020-12 document, carried as a STRING so
 	// the bytes the profile checks are the bytes the client sent. A
@@ -8703,31 +8907,31 @@ type KeyRule struct {
 	// is last-wins) and number precision, and duplicate object keys are a
 	// rejection here, not last-wins. The accepted subset is a pinned,
 	// profiled, budgeted allowlist enforced by the service.
-	JsonSchema *string `json:"json_schema,omitempty"`
+	JsonSchema *string `json:"json_schema,omitzero"`
 
 	// Max `integer` only.
-	Max *int64 `json:"max,omitempty"`
+	Max *int64 `json:"max,omitzero"`
 
 	// MaxLength `string` only.
-	MaxLength *int `json:"max_length,omitempty"`
+	MaxLength *int `json:"max_length,omitzero"`
 
 	// Members `enum` only. Members must be non-empty and distinct after the
 	// write-time trim.
-	Members *[]string `json:"members,omitempty"`
+	Members *[]string `json:"members,omitzero"`
 
 	// Min `integer` only.
-	Min *int64 `json:"min,omitempty"`
+	Min *int64 `json:"min,omitzero"`
 
 	// MinLength `string` only.
-	MinLength *int `json:"min_length,omitempty"`
+	MinLength *int `json:"min_length,omitzero"`
 
 	// Pattern `string` only. RE2, and ANCHORED TO THE WHOLE VALUE - implicitly
 	// `\A(?:...)\z`, never a substring search. Backreferences and
 	// lookaround do not exist in RE2 and are refused at declaration.
-	Pattern *string `json:"pattern,omitempty"`
+	Pattern *string `json:"pattern,omitzero"`
 
 	// Schemes `url` only: the allowed scheme list.
-	Schemes *[]string   `json:"schemes,omitempty"`
+	Schemes *[]string   `json:"schemes,omitzero"`
 	Type    KeyRuleType `json:"type"`
 }
 
@@ -8753,7 +8957,7 @@ type LocalLoginRequest struct {
 	// lifetimes, distinct CSRF contracts and distinct revocation
 	// surfaces, so the caller states which one it is asking for rather
 	// than the server guessing from a header.
-	Artifact *LocalLoginRequestArtifact `json:"artifact,omitempty"`
+	Artifact *LocalLoginRequestArtifact `json:"artifact,omitzero"`
 	Password string                     `json:"password"`
 	Username string                     `json:"username"`
 }
@@ -8800,7 +9004,7 @@ type LoginResult struct {
 	// delivered ONLY on the `__Host-hikyo` HttpOnly cookie so injected
 	// same-origin script cannot read it. A CLI-artifact session, which has
 	// no cookie channel, still carries it here.
-	SessionToken *string `json:"session_token,omitempty"`
+	SessionToken *string `json:"session_token,omitzero"`
 }
 
 // MachineCredential Metadata only. There is deliberately no value property: a credential
@@ -8811,7 +9015,7 @@ type LoginResult struct {
 // no minted value to hint at — and carries the binding members instead.
 type MachineCredential struct {
 	// Audience `oidc-federation` only: the audience it accepts, never the issuer's default.
-	Audience *string `json:"audience,omitempty"`
+	Audience *string `json:"audience,omitzero"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
@@ -8820,7 +9024,7 @@ type MachineCredential struct {
 	CreatedBy ID `json:"created_by"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
-	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+	ExpiresAt *Timestamp `json:"expires_at,omitzero"`
 
 	// ExpiringSoon The in-product expiry warning, computed rather than stored - a
 	// stored flag would be stale the moment the clock moved past it.
@@ -8830,7 +9034,7 @@ type MachineCredential struct {
 	Id ID `json:"id"`
 
 	// Issuer `oidc-federation` only: the byte-exact issuer this binding trusts.
-	Issuer *string `json:"issuer,omitempty"`
+	Issuer *string `json:"issuer,omitzero"`
 
 	// Kind How a credential authenticates its service account. The discriminator
 	// exists before a second kind does, so adding one is a new row type
@@ -8838,7 +9042,7 @@ type MachineCredential struct {
 	Kind CredentialKind `json:"kind"`
 
 	// LastUsedAt RFC 3339 UTC, microsecond precision.
-	LastUsedAt *Timestamp `json:"last_used_at,omitempty"`
+	LastUsedAt *Timestamp `json:"last_used_at,omitzero"`
 
 	// Lifetime `indefinite` is a VALUE, not a large number: it is unreachable by
 	// raising the instance ceiling, and is admitted only under a separate,
@@ -8849,22 +9053,22 @@ type MachineCredential struct {
 	// prefix plus a few body characters, enough to tell two live
 	// credentials apart and far short of anything a search can narrow.
 	// Absent for an `oidc-federation` row.
-	PrefixHint *string `json:"prefix_hint,omitempty"`
+	PrefixHint *string `json:"prefix_hint,omitzero"`
 
 	// ReactivatedAt `oidc-federation` only, and null unless this binding has been through
 	// a restore. When set, the binding permanently refuses any token whose
 	// `iat` is not strictly after this instant plus the maximum accepted
 	// positive clock skew.
-	ReactivatedAt *Timestamp `json:"reactivated_at,omitempty"`
+	ReactivatedAt *Timestamp `json:"reactivated_at,omitzero"`
 
 	// RequiredClaims `oidc-federation` only: every pinned claim, all of which validation requires.
-	RequiredClaims *[]FederatedClaimPin `json:"required_claims,omitempty"`
+	RequiredClaims *[]FederatedClaimPin `json:"required_claims,omitzero"`
 
 	// RevokedAt RFC 3339 UTC, microsecond precision.
-	RevokedAt *Timestamp `json:"revoked_at,omitempty"`
+	RevokedAt *Timestamp `json:"revoked_at,omitzero"`
 
 	// Subject `oidc-federation` only: the byte-exact `sub` it names.
-	Subject *string `json:"subject,omitempty"`
+	Subject *string `json:"subject,omitzero"`
 }
 
 // MachineCredentialList defines model for MachineCredentialList.
@@ -8896,13 +9100,16 @@ type Meta struct {
 	ApiRevision int `json:"api_revision"`
 
 	// InstanceIdentity Stable server-generated instance identity, independent of URL aliases.
-	InstanceIdentity *string `json:"instance_identity,omitempty"`
+	InstanceIdentity *string `json:"instance_identity,omitzero"`
 
 	// ProtocolCapabilities Which protocols this instance serves: the authentication flows
 	// `login` needs before any session exists, and the machine protocols
 	// an integration probes before using them, such as
 	// `delivery-target-report/<vocabulary>` for each delivery-target
-	// report vocabulary this server accepts.
+	// report vocabulary this server accepts. `desktop-app/1` means the
+	// instance serves the embedded web application and that application
+	// implements the desktop shell handoff protocol; an instance built
+	// without it never advertises the token.
 	ProtocolCapabilities []ProtocolCapability `json:"protocol_capabilities"`
 
 	// ServerVersion The build's version string; `dev` for unreleased builds.
@@ -8919,10 +9126,10 @@ type MintCredentialRequest struct {
 	// `lifetime_seconds` is refused rather than resolved by precedence:
 	// a silent precedence rule on a credential is exactly the quiet
 	// ambiguity fail-loud exists to prevent.
-	Indefinite *bool `json:"indefinite,omitempty"`
+	Indefinite *bool `json:"indefinite,omitzero"`
 
 	// LifetimeSeconds Requested finite lifetime; absent means the instance default.
-	LifetimeSeconds *int `json:"lifetime_seconds,omitempty"`
+	LifetimeSeconds *int `json:"lifetime_seconds,omitzero"`
 }
 
 // MintCredentialResult defines model for MintCredentialResult.
@@ -8958,7 +9165,7 @@ type MintDeveloperCredentialRequest struct {
 	// PersonalConsent Explicit consent to deliver the minting person's current and future
 	// personal values in this environment through this credential. Without
 	// it, delivery names those keys only and `hikyo run` refuses them.
-	PersonalConsent *bool `json:"personal_consent,omitempty"`
+	PersonalConsent *bool `json:"personal_consent,omitzero"`
 }
 
 // MintDeveloperCredentialRequestConsentCurrentAndFuture Explicit consent to every current and future published key in this environment until expiry.
@@ -8975,13 +9182,13 @@ type MintDeveloperCredentialResult struct {
 // MintInstanceConnectionRequest defines model for MintInstanceConnectionRequest.
 type MintInstanceConnectionRequest struct {
 	// Indefinite Requires the instance to allow indefinite credentials.
-	Indefinite *bool  `json:"indefinite,omitempty"`
+	Indefinite *bool  `json:"indefinite,omitzero"`
 	Label      string `json:"label"`
 
 	// LifetimeSeconds Clamped to the instance ceiling, and the response says so. Omit for
 	// the default; naming both this and `indefinite` is a refusal, never a
 	// precedence rule.
-	LifetimeSeconds *int `json:"lifetime_seconds,omitempty"`
+	LifetimeSeconds *int `json:"lifetime_seconds,omitzero"`
 }
 
 // MintLeaseRequest defines model for MintLeaseRequest.
@@ -8995,7 +9202,7 @@ type MintLeaseRequest struct {
 
 // MintLeaseResult defines model for MintLeaseResult.
 type MintLeaseResult struct {
-	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
+	ExpiresAt *time.Time   `json:"expires_at,omitzero"`
 	Lease     DynamicLease `json:"lease"`
 
 	// Password The credential secret, returned EXACTLY ONCE to exactly one caller.
@@ -9010,13 +9217,13 @@ type MintLeaseResult struct {
 type MintScimCredentialRequest struct {
 	// Indefinite Requires the instance opt-in, which is default-off. Without it an
 	// indefinite credential is refused by name.
-	Indefinite *bool `json:"indefinite,omitempty"`
+	Indefinite *bool `json:"indefinite,omitzero"`
 
 	// Proof The reauthentication proof: a TOTP code, or the account password
 	// where no factor is enrolled. Minting a provisioning credential is
 	// `manage-members(org)` AND reauthentication, so a stolen elevated
 	// session cannot issue a durable bearer on its own.
-	Proof *string `json:"proof,omitempty"`
+	Proof *string `json:"proof,omitzero"`
 }
 
 // MintedInstanceConnection defines model for MintedInstanceConnection.
@@ -9041,7 +9248,7 @@ type MyOrg struct {
 	// the monogram is derived from the name; `image_version` is a lowercase
 	// hex content hash of the uploaded image, null when there is none, and is
 	// what the image URL's `v` query parameter carries.
-	Identity *ChromeIdentity `json:"identity,omitempty"`
+	Identity *ChromeIdentity `json:"identity,omitzero"`
 	Name     string          `json:"name"`
 }
 
@@ -9077,7 +9284,7 @@ type Oauth2ProviderInput struct {
 	Profile      Oauth2ProviderInputProfile `json:"profile"`
 
 	// RowVersion Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
-	RowVersion *int64 `json:"row_version,omitempty"`
+	RowVersion *int64 `json:"row_version,omitzero"`
 }
 
 // Oauth2ProviderInputProfile defines model for Oauth2ProviderInput.Profile.
@@ -9091,21 +9298,21 @@ type Oauth2ProviderList struct {
 // Oauth2StartRequest defines model for Oauth2StartRequest.
 type Oauth2StartRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
-	Browser *bool `json:"browser,omitempty"`
+	Browser *bool `json:"browser,omitzero"`
 
 	// EnvironmentId Never accepted. Any supplied value is refused with 400; OAuth2 cannot perform disclosure reauthentication.
-	EnvironmentId *string `json:"environment_id,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitzero"`
 
 	// Intent Valid only with purpose `login` (#604); absent = `sign-in`. It
 	// decides only what happens to an unknown identity at the callback:
 	// `sign-in` refuses it uniformly, `sign-up` enters the registration
 	// policy of the addressed scope. A known identity signs in under
 	// either. Supplied on any other purpose, the start refuses uniformly.
-	Intent *Oauth2StartRequestIntent `json:"intent,omitempty"`
+	Intent *Oauth2StartRequestIntent `json:"intent,omitzero"`
 
 	// Proof Required for link (the pre-existing password) and for claim (the
 	// credential-establishment authority being spent, #610).
-	Proof *string `json:"proof,omitempty"`
+	Proof *string `json:"proof,omitzero"`
 
 	// Purpose Reauth is always refused with 409 and a local-factor remedy.
 	Purpose string `json:"purpose"`
@@ -9114,7 +9321,7 @@ type Oauth2StartRequest struct {
 	// the instance scope. Valid only with intent `sign-up`. The start
 	// reads no policy: an unknown org refuses at the callback as a closed
 	// door.
-	SignupOrg *string `json:"signup_org,omitempty"`
+	SignupOrg *string `json:"signup_org,omitzero"`
 }
 
 // Oauth2StartRequestIntent Valid only with purpose `login` (#604); absent = `sign-in`. It
@@ -9150,23 +9357,37 @@ type OfflineDeliveryRecord struct {
 	SnapshotReceipt string `json:"snapshot_receipt"`
 }
 
+// OidcLifecycleProfile The directory lifecycle dialect, a closed set; null means the provider
+// takes no lifecycle events.
+type OidcLifecycleProfile string
+
 // OidcProvider defines model for OidcProvider.
 type OidcProvider struct {
-	AssurancePolicy *string `json:"assurance_policy,omitempty"`
+	AssurancePolicy *string `json:"assurance_policy,omitzero"`
 	ClientId        string  `json:"client_id"`
 	DisplayName     string  `json:"display_name"`
 	Enabled         bool    `json:"enabled"`
 	Issuer          string  `json:"issuer"`
-	RedirectUri     string  `json:"redirect_uri"`
-	RowVersion      int64   `json:"row_version"`
-	Scopes          string  `json:"scopes"`
-	Slug            string  `json:"slug"`
+
+	// LifecycleProfile The directory lifecycle dialect, a closed set; null means the provider
+	// takes no lifecycle events.
+	LifecycleProfile *OidcLifecycleProfile `json:"lifecycle_profile,omitzero"`
+
+	// LifecycleSecretSet Whether a lifecycle signing secret is stored. The secret itself never leaves the server.
+	LifecycleSecretSet bool `json:"lifecycle_secret_set"`
+
+	// LifecycleUri The endpoint to register at the directory.
+	LifecycleUri string `json:"lifecycle_uri"`
+	RedirectUri  string `json:"redirect_uri"`
+	RowVersion   int64  `json:"row_version"`
+	Scopes       string `json:"scopes"`
+	Slug         string `json:"slug"`
 }
 
 // OidcProviderInput defines model for OidcProviderInput.
 type OidcProviderInput struct {
 	// AssurancePolicy JSON `{acr_values[], amr_sets[][]}`; absent means single-factor.
-	AssurancePolicy *string `json:"assurance_policy,omitempty"`
+	AssurancePolicy *string `json:"assurance_policy,omitzero"`
 	ClientId        string  `json:"client_id"`
 
 	// ClientSecret Envelope-encrypted at rest; never returned.
@@ -9177,8 +9398,18 @@ type OidcProviderInput struct {
 	// Issuer Byte-exact, immutable after create (A3).
 	Issuer string `json:"issuer"`
 
+	// LifecycleProfile The directory lifecycle dialect, a closed set; null means the provider
+	// takes no lifecycle events.
+	LifecycleProfile *OidcLifecycleProfile `json:"lifecycle_profile,omitzero"`
+
+	// LifecycleSecret The directory's webhook signing secret (`whsec_...`), envelope-encrypted
+	// at rest under its own field binding and never returned. Required with a
+	// `lifecycle_profile` on create; on reconfigure, absent or empty keeps the
+	// stored secret. Setting, rotating or clearing it sweeps no sessions.
+	LifecycleSecret *string `json:"lifecycle_secret,omitzero"`
+
 	// RowVersion Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
-	RowVersion *int64 `json:"row_version,omitempty"`
+	RowVersion *int64 `json:"row_version,omitzero"`
 	Scopes     string `json:"scopes"`
 }
 
@@ -9190,28 +9421,28 @@ type OidcProviderList struct {
 // OidcStartRequest defines model for OidcStartRequest.
 type OidcStartRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
-	Browser *bool `json:"browser,omitempty"`
+	Browser *bool `json:"browser,omitzero"`
 
 	// EnvironmentId Required for reauth; the window scope. Refused (400) on any other purpose.
-	EnvironmentId *string `json:"environment_id,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitzero"`
 
 	// Intent Valid only with purpose `login` (#604); absent = `sign-in`. It
 	// decides only what happens to an unknown identity at the callback:
 	// `sign-in` refuses it uniformly, `sign-up` enters the registration
 	// policy of the addressed scope. A known identity signs in under
 	// either. Supplied on any other purpose, the start refuses uniformly.
-	Intent *OidcStartRequestIntent `json:"intent,omitempty"`
+	Intent *OidcStartRequestIntent `json:"intent,omitzero"`
 
 	// Proof Required for link (the pre-existing password) and for claim (the
 	// credential-establishment authority being spent, #610).
-	Proof   *string `json:"proof,omitempty"`
+	Proof   *string `json:"proof,omitzero"`
 	Purpose string  `json:"purpose"`
 
 	// SignupOrg The org whose registration policy a `sign-up` addresses; absent =
 	// the instance scope. Valid only with intent `sign-up`. The start
 	// reads no policy: an unknown org refuses at the callback as a closed
 	// door.
-	SignupOrg *string `json:"signup_org,omitempty"`
+	SignupOrg *string `json:"signup_org,omitzero"`
 }
 
 // OidcStartRequestIntent Valid only with purpose `login` (#604); absent = `sign-in`. It
@@ -9251,8 +9482,8 @@ type Org struct {
 	// the monogram is derived from the name; `image_version` is a lowercase
 	// hex content hash of the uploaded image, null when there is none, and is
 	// what the image URL's `v` query parameter carries.
-	Identity *ChromeIdentity         `json:"identity,omitempty"`
-	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Identity *ChromeIdentity         `json:"identity,omitzero"`
+	Metadata *map[string]interface{} `json:"metadata,omitzero"`
 	Name     string                  `json:"name"`
 
 	// Origin How the org came to exist (#585 d8): `manual` (an operator's
@@ -9263,7 +9494,7 @@ type Org struct {
 	// RegistrationPolicyId The registration policy that minted the org, a trail pointer with
 	// no foreign key (the org keeps it after the policy is deleted); null
 	// for a manual org.
-	RegistrationPolicyId *string `json:"registration_policy_id,omitempty"`
+	RegistrationPolicyId *string `json:"registration_policy_id,omitzero"`
 }
 
 // OrgOrigin How the org came to exist (#585 d8): `manual` (an operator's
@@ -9324,7 +9555,7 @@ type PendingChange struct {
 	// Findings Secret-scanning warnings this save produced (#74, Surface 1). The
 	// save SUCCEEDED regardless; each finding carries a keep-as-config
 	// acknowledgement token. Absent or empty on a clean save.
-	Findings *[]ScanFinding `json:"findings,omitempty"`
+	Findings *[]ScanFinding `json:"findings,omitzero"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
 	KeyId ID `json:"key_id"`
@@ -9361,8 +9592,8 @@ type PendingDraft struct {
 		Valid   bool `json:"valid"`
 
 		// ValidationDeferred True when caller parameters are needed for final config schema validation at fetch. Valid then describes template structure and presence only.
-		ValidationDeferred *bool `json:"validation_deferred,omitempty"`
-	} `json:"advisory,omitempty"`
+		ValidationDeferred *bool `json:"validation_deferred,omitzero"`
+	} `json:"advisory,omitzero"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
@@ -9386,7 +9617,7 @@ type PendingDraft struct {
 	Operation          PendingDraftOperation `json:"operation"`
 	Revealed           bool                  `json:"revealed"`
 	StagedFromRevision int64                 `json:"staged_from_revision"`
-	Value              *string               `json:"value,omitempty"`
+	Value              *string               `json:"value,omitzero"`
 
 	// VersionId A prefixed UUIDv7, e.g. `org_0198…`.
 	VersionId ID `json:"version_id"`
@@ -9466,42 +9697,42 @@ type PersonalValueCounts struct {
 // PersonalValueEntry defines model for PersonalValueEntry.
 type PersonalValueEntry struct {
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
-	KeyId *ID    `json:"key_id,omitempty"`
+	KeyId *ID    `json:"key_id,omitzero"`
 	Name  string `json:"name"`
 
 	// Notice Why a personal value disappeared other than by its owner.
-	Notice *PersonalValueNoticeCause `json:"notice,omitempty"`
+	Notice *PersonalValueNoticeCause `json:"notice,omitzero"`
 
 	// Required The key is `personal_required_in` this environment (the owner's checklist).
-	Required *bool `json:"required,omitempty"`
+	Required *bool `json:"required,omitzero"`
 	Set      bool  `json:"set"`
 
 	// Suspended The owner lost read, reveal or qualification without a credential
 	// change. The value is kept but not delivered, and the retention
 	// sweep deletes it 14 days after `suspended_at` unless access returns.
-	Suspended   *bool      `json:"suspended,omitempty"`
-	SuspendedAt *time.Time `json:"suspended_at,omitempty"`
-	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	Suspended   *bool      `json:"suspended,omitzero"`
+	SuspendedAt *time.Time `json:"suspended_at,omitzero"`
+	UpdatedAt   *time.Time `json:"updated_at,omitzero"`
 
 	// Value Present only on reveal.
-	Value *string `json:"value,omitempty"`
+	Value *string `json:"value,omitzero"`
 
 	// Warnings Schema rules this value does not satisfy, returned by set and
 	// reveal only (a list never decrypts). A warning to the owner only:
 	// no rule ever refuses a personal value, at write or delivery.
-	Warnings *[]string `json:"warnings,omitempty"`
+	Warnings *[]string `json:"warnings,omitzero"`
 }
 
 // PersonalValueHolder defines model for PersonalValueHolder.
 type PersonalValueHolder struct {
 	// Notice Why a personal value disappeared other than by its owner.
-	Notice *PersonalValueNoticeCause `json:"notice,omitempty"`
+	Notice *PersonalValueNoticeCause `json:"notice,omitzero"`
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID         `json:"principal_id"`
 	Set         bool       `json:"set"`
-	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
-	Username    *string    `json:"username,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitzero"`
+	Username    *string    `json:"username,omitzero"`
 }
 
 // PersonalValueHolderList defines model for PersonalValueHolderList.
@@ -9525,16 +9756,16 @@ type PkiCrl struct {
 // PkiIssuer One CA key version's public surface. There is no private-key field:
 // the key is sealed, non-exportable, and never leaves the server.
 type PkiIssuer struct {
-	CertificatePem     *string    `json:"certificate_pem,omitempty"`
-	ChainPem           *string    `json:"chain_pem,omitempty"`
+	CertificatePem     *string    `json:"certificate_pem,omitzero"`
+	ChainPem           *string    `json:"chain_pem,omitzero"`
 	CreatedAt          time.Time  `json:"created_at"`
-	CrlDistributionUrl *string    `json:"crl_distribution_url,omitempty"`
-	CrlNextUpdate      *time.Time `json:"crl_next_update,omitempty"`
+	CrlDistributionUrl *string    `json:"crl_distribution_url,omitzero"`
+	CrlNextUpdate      *time.Time `json:"crl_next_update,omitzero"`
 	CrlNumber          int64      `json:"crl_number"`
-	CrlThisUpdate      *time.Time `json:"crl_this_update,omitempty"`
+	CrlThisUpdate      *time.Time `json:"crl_this_update,omitzero"`
 
 	// CsrPem The CSR of a pending version, for an offline root to sign.
-	CsrPem *string `json:"csr_pem,omitempty"`
+	CsrPem *string `json:"csr_pem,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id           ID     `json:"id"`
@@ -9547,16 +9778,16 @@ type PkiIssuer struct {
 
 	// Name An issuer or profile name.
 	Name      PkiName         `json:"name"`
-	NotAfter  *time.Time      `json:"not_after,omitempty"`
-	NotBefore *time.Time      `json:"not_before,omitempty"`
+	NotAfter  *time.Time      `json:"not_after,omitzero"`
+	NotBefore *time.Time      `json:"not_before,omitzero"`
 	Origin    PkiIssuerOrigin `json:"origin"`
-	ParentId  *string         `json:"parent_id,omitempty"`
+	ParentId  *string         `json:"parent_id,omitzero"`
 
 	// RestoreHold True after a restore until the issuer is reconciled; no issuance while held.
 	RestoreHold bool           `json:"restore_hold"`
 	State       PkiIssuerState `json:"state"`
 	SubjectCn   string         `json:"subject_cn"`
-	SubjectOrg  *string        `json:"subject_org,omitempty"`
+	SubjectOrg  *string        `json:"subject_org,omitzero"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	Version     int64          `json:"version"`
 }
@@ -9572,23 +9803,23 @@ type PkiIssuerState string
 
 // PkiIssuerCreateRequest defines model for PkiIssuerCreateRequest.
 type PkiIssuerCreateRequest struct {
-	CertificatePem     *string                             `json:"certificate_pem,omitempty"`
-	ChainPem           *string                             `json:"chain_pem,omitempty"`
-	CommonName         *string                             `json:"common_name,omitempty"`
-	CrlDistributionUrl *string                             `json:"crl_distribution_url,omitempty"`
-	KeyAlgorithm       *PkiIssuerCreateRequestKeyAlgorithm `json:"key_algorithm,omitempty"`
+	CertificatePem     *string                             `json:"certificate_pem,omitzero"`
+	ChainPem           *string                             `json:"chain_pem,omitzero"`
+	CommonName         *string                             `json:"common_name,omitzero"`
+	CrlDistributionUrl *string                             `json:"crl_distribution_url,omitzero"`
+	KeyAlgorithm       *PkiIssuerCreateRequestKeyAlgorithm `json:"key_algorithm,omitzero"`
 	Mode               PkiIssuerCreateRequestMode          `json:"mode"`
 
 	// Name An issuer or profile name.
 	Name         PkiName `json:"name"`
-	Organization *string `json:"organization,omitempty"`
+	Organization *string `json:"organization,omitzero"`
 
 	// Parent An issuer or profile name.
-	Parent *PkiName `json:"parent,omitempty"`
+	Parent *PkiName `json:"parent,omitzero"`
 
 	// PrivateKeyPem Import only. Protected input, sealed on arrival and never returned.
-	PrivateKeyPem *string `json:"private_key_pem,omitempty"`
-	TtlSeconds    *int64  `json:"ttl_seconds,omitempty"`
+	PrivateKeyPem *string `json:"private_key_pem,omitzero"`
+	TtlSeconds    *int64  `json:"ttl_seconds,omitzero"`
 }
 
 // PkiIssuerCreateRequestKeyAlgorithm defines model for PkiIssuerCreateRequest.KeyAlgorithm.
@@ -9612,14 +9843,14 @@ type PkiIssuerList struct {
 
 // PkiIssuerRotateRequest defines model for PkiIssuerRotateRequest.
 type PkiIssuerRotateRequest struct {
-	CertificatePem     *string                             `json:"certificate_pem,omitempty"`
-	ChainPem           *string                             `json:"chain_pem,omitempty"`
-	CrlDistributionUrl *string                             `json:"crl_distribution_url,omitempty"`
-	KeyAlgorithm       *PkiIssuerRotateRequestKeyAlgorithm `json:"key_algorithm,omitempty"`
+	CertificatePem     *string                             `json:"certificate_pem,omitzero"`
+	ChainPem           *string                             `json:"chain_pem,omitzero"`
+	CrlDistributionUrl *string                             `json:"crl_distribution_url,omitzero"`
+	KeyAlgorithm       *PkiIssuerRotateRequestKeyAlgorithm `json:"key_algorithm,omitzero"`
 
 	// PrivateKeyPem Imported issuers only. Protected input, sealed on arrival and never returned.
-	PrivateKeyPem *string `json:"private_key_pem,omitempty"`
-	TtlSeconds    *int64  `json:"ttl_seconds,omitempty"`
+	PrivateKeyPem *string `json:"private_key_pem,omitzero"`
+	TtlSeconds    *int64  `json:"ttl_seconds,omitzero"`
 }
 
 // PkiIssuerRotateRequestKeyAlgorithm defines model for PkiIssuerRotateRequest.KeyAlgorithm.
@@ -9679,7 +9910,7 @@ type PkiProfile struct {
 
 // PkiProfileBindRequest defines model for PkiProfileBindRequest.
 type PkiProfileBindRequest struct {
-	EnvironmentId *string `json:"environment_id,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitzero"`
 	OrgId         string  `json:"org_id"`
 	ProjectId     string  `json:"project_id"`
 }
@@ -9687,7 +9918,7 @@ type PkiProfileBindRequest struct {
 // PkiProfileBinding defines model for PkiProfileBinding.
 type PkiProfileBinding struct {
 	CreatedAt     time.Time `json:"created_at"`
-	EnvironmentId *string   `json:"environment_id,omitempty"`
+	EnvironmentId *string   `json:"environment_id,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id        ID     `json:"id"`
@@ -9719,7 +9950,7 @@ type PkiProfileUpdateRequest struct {
 	Policy PkiPolicy `json:"policy"`
 
 	// RowVersion The version the operator reviewed; a concurrent edit is refused.
-	RowVersion *int64 `json:"row_version,omitempty"`
+	RowVersion *int64 `json:"row_version,omitzero"`
 }
 
 // PrepareRemotePairingRequest Omit the body or both fields to generate six random words. Choose
@@ -9727,14 +9958,14 @@ type PkiProfileUpdateRequest struct {
 // or a generated word count. Case and whitespace are significant.
 // Custom secrets are bounded to 4096 UTF-8 bytes by the service.
 type PrepareRemotePairingRequest struct {
-	Phrase    *string `json:"phrase,omitempty"`
-	WordCount *int    `json:"word_count,omitempty"`
+	Phrase    *string `json:"phrase,omitzero"`
+	WordCount *int    `json:"word_count,omitzero"`
 }
 
 // Principal defines model for Principal.
 type Principal struct {
 	// DisplayName For display only. Never a linking key, at any point, for any provider.
-	DisplayName *string `json:"display_name,omitempty"`
+	DisplayName *string `json:"display_name,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
@@ -9749,10 +9980,10 @@ type PrincipalCapabilities struct {
 	DeliveryReportGrant UnheldGrantReach `json:"delivery_report_grant"`
 
 	// InstanceAuditRead True when the caller's session can exercise instance audit-read: the grant, and the second factor it requires, so a password-only session reads false. This navigation hint does not imply instance-config or replace per-request authority checks. Absent on older servers.
-	InstanceAuditRead *bool `json:"instance_audit_read,omitempty"`
+	InstanceAuditRead *bool `json:"instance_audit_read,omitzero"`
 
 	// InstanceDirectory True when the caller's session can exercise instance-directory, which the remote-instance directory read requires: the grant, and the second factor it requires, so a password-only session reads false. This navigation hint does not imply instance-config or replace per-request authority checks. Absent on older servers.
-	InstanceDirectory *bool `json:"instance_directory,omitempty"`
+	InstanceDirectory *bool `json:"instance_directory,omitzero"`
 
 	// InstanceOperator True when the caller's session can exercise instance-config, which the retention-health and update-status reads require: the grant, and the second factor it requires, so a password-only session reads false. The instance administration chrome and those background polls gate on it.
 	InstanceOperator bool `json:"instance_operator"`
@@ -9764,10 +9995,10 @@ type PrincipalKind string
 // Project defines model for Project.
 type Project struct {
 	// CanDelete Whether the caller can delete this project.
-	CanDelete *bool `json:"can_delete,omitempty"`
+	CanDelete *bool `json:"can_delete,omitzero"`
 
 	// CanManagePolicy Whether the caller can manage policy for this project.
-	CanManagePolicy *bool `json:"can_manage_policy,omitempty"`
+	CanManagePolicy *bool `json:"can_manage_policy,omitzero"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
@@ -9779,7 +10010,7 @@ type Project struct {
 	// the monogram is derived from the name; `image_version` is a lowercase
 	// hex content hash of the uploaded image, null when there is none, and is
 	// what the image URL's `v` query parameter carries.
-	Identity *ChromeIdentity `json:"identity,omitempty"`
+	Identity *ChromeIdentity `json:"identity,omitzero"`
 	Name     string          `json:"name"`
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -9811,8 +10042,8 @@ type ProjectList struct {
 type ProjectRetentionPolicy struct {
 	// Inherited True clears the project override and follows the org live.
 	Inherited     bool `json:"inherited"`
-	LastRevisions *int `json:"last_revisions,omitempty"`
-	MaxAgeSeconds *int `json:"max_age_seconds,omitempty"`
+	LastRevisions *int `json:"last_revisions,omitzero"`
+	MaxAgeSeconds *int `json:"max_age_seconds,omitzero"`
 
 	// Mode Unlimited can appear only when inherited from an unlimited org.
 	Mode ProjectRetentionPolicyMode `json:"mode"`
@@ -9840,23 +10071,23 @@ type PublishRequest struct {
 	// request's reviewed version ids are used, and the request must be
 	// approved (quorum from currently-eligible approvers) unless `bypass`
 	// is set. Only the requester may merge their own reviewed change.
-	ApprovalRequestId *ID `json:"approval_request_id,omitempty"`
+	ApprovalRequestId *ID `json:"approval_request_id,omitzero"`
 
 	// Bypass Emergency bypass of a covered environment's approval quorum (#151). A
 	// named bypasser force-merges an existing request with a mandatory reason,
 	// under a current reauthentication ceremony; emits a dedicated high-signal
 	// audit event and never mutates the policy.
-	Bypass *ApprovalBypass `json:"bypass,omitempty"`
+	Bypass *ApprovalBypass `json:"bypass,omitzero"`
 
 	// ConfirmedProtectedEnvironments Exact protected-environment set reviewed by a machine principal; humans must use the bound ceremony.
-	ConfirmedProtectedEnvironments *[]ID `json:"confirmed_protected_environments,omitempty"`
+	ConfirmedProtectedEnvironments *[]ID `json:"confirmed_protected_environments,omitzero"`
 
 	// PreviewToken Required when any selected or closure-added draft came from rollback.
-	PreviewToken *string `json:"preview_token,omitempty"`
+	PreviewToken *string `json:"preview_token,omitzero"`
 
 	// Purpose Free-text reason recorded on the request when a covered publish
 	// stages one. Ignored where no policy covers the environment.
-	Purpose *string `json:"purpose,omitempty"`
+	Purpose *string `json:"purpose,omitzero"`
 
 	// VersionIds The pending-change version ids to commit. Naming an id the caller
 	// does not own, or one that has been superseded or already published,
@@ -9864,7 +10095,7 @@ type PublishRequest struct {
 	// since. Required for an ordinary publish; omitted when merging or
 	// bypassing an approval request (whose reviewed selection is used
 	// instead).
-	VersionIds *[]ID `json:"version_ids,omitempty"`
+	VersionIds *[]ID `json:"version_ids,omitzero"`
 }
 
 // PublishResult defines model for PublishResult.
@@ -9905,13 +10136,13 @@ type ReauthPurpose string
 // ReauthResult defines model for ReauthResult.
 type ReauthResult struct {
 	EnvironmentId  string `json:"environment_id"`
-	EnvironmentIds *[]ID  `json:"environment_ids,omitempty"`
+	EnvironmentIds *[]ID  `json:"environment_ids,omitzero"`
 
 	// SessionId A prefixed UUIDv7, e.g. `org_0198…`.
 	SessionId ID `json:"session_id"`
 
 	// SessionToken Rotated bearer returned only to Authorization-header callers; cookie-authenticated browser callers receive the rotated HttpOnly cookie and this field is omitted.
-	SessionToken *string `json:"session_token,omitempty"`
+	SessionToken *string `json:"session_token,omitzero"`
 
 	// SingleDecision True where the effective window is zero — the window authorizes exactly one decision.
 	SingleDecision bool `json:"single_decision"`
@@ -9981,8 +10212,8 @@ type RedeemWorkspaceHandoffRequest struct {
 
 // ReencryptResult defines model for ReencryptResult.
 type ReencryptResult struct {
-	Org     *string `json:"org,omitempty"`
-	Project *string `json:"project,omitempty"`
+	Org     *string `json:"org,omitzero"`
+	Project *string `json:"project,omitzero"`
 
 	// RowsMoved How many ciphertext rows this run moved onto the active DEK version.
 	RowsMoved int64                `json:"rows_moved"`
@@ -9997,14 +10228,14 @@ type RegistrationExternalEntry struct {
 	// Claim One issuer-specific string claim the signed ID token must carry,
 	// with a value in `values`. Never `email`. OAuth2 entries must omit
 	// `claim` and `values`: editable profile fields cannot admit signup.
-	Claim *string `json:"claim,omitempty"`
+	Claim *string `json:"claim,omitzero"`
 
 	// DisplayName The provider's display name; on responses only, ignored on input.
-	DisplayName *string `json:"display_name,omitempty"`
+	DisplayName *string `json:"display_name,omitzero"`
 
 	// Provider A federated provider named by kind and slug (slugs are unique per kind only).
 	Provider ProviderRef `json:"provider"`
-	Values   *[]string   `json:"values,omitempty"`
+	Values   *[]string   `json:"values,omitzero"`
 	union    json.RawMessage
 }
 
@@ -10013,8 +10244,8 @@ type RegistrationExternalEntry0 = interface{}
 
 // RegistrationExternalEntry1 defines model for RegistrationExternalEntry.1.
 type RegistrationExternalEntry1 struct {
-	Claim  *string   `json:"claim,omitempty"`
-	Values *[]string `json:"values,omitempty"`
+	Claim  *string   `json:"claim,omitzero"`
+	Values *[]string `json:"values,omitzero"`
 }
 
 // RegistrationLanding Where a sign-up lands. An organisation policy is `org-template` with a
@@ -10022,11 +10253,11 @@ type RegistrationExternalEntry1 struct {
 // `none` (zero grants) or `fresh-org` (a new organisation with the
 // signer as its first administrator) with a cap on live orgs minted.
 type RegistrationLanding struct {
-	Cap  *int                    `json:"cap,omitempty"`
+	Cap  *int                    `json:"cap,omitzero"`
 	Kind RegistrationLandingKind `json:"kind"`
 
 	// Template The closed v1 role template set.
-	Template *RoleTemplate `json:"template,omitempty"`
+	Template *RoleTemplate `json:"template,omitzero"`
 }
 
 // RegistrationLandingKind defines model for RegistrationLanding.Kind.
@@ -10035,7 +10266,7 @@ type RegistrationLandingKind string
 // RegistrationLocalEntry Email + password sign-up; present means enabled.
 type RegistrationLocalEntry struct {
 	// Domains Admitted address domains; empty or absent admits any address.
-	Domains *[]string `json:"domains,omitempty"`
+	Domains *[]string `json:"domains,omitzero"`
 }
 
 // RegistrationPolicy defines model for RegistrationPolicy.
@@ -10048,13 +10279,13 @@ type RegistrationPolicy struct {
 	External             []RegistrationExternalEntry `json:"external"`
 
 	// FreshOrgCount For a `fresh-org` landing, the live orgs this policy minted (the `n` of `n / cap`).
-	FreshOrgCount *int                             `json:"fresh_org_count,omitempty"`
+	FreshOrgCount *int                             `json:"fresh_org_count,omitzero"`
 	Id            string                           `json:"id"`
-	InactiveCause *RegistrationPolicyInactiveCause `json:"inactive_cause,omitempty"`
+	InactiveCause *RegistrationPolicyInactiveCause `json:"inactive_cause,omitzero"`
 
 	// InactivePrecondition When `inactive_cause` is `precondition`, the failing precondition
 	// by name, with the provider as `<kind>:<slug>` where one is involved.
-	InactivePrecondition *string `json:"inactive_precondition,omitempty"`
+	InactivePrecondition *string `json:"inactive_precondition,omitzero"`
 
 	// Landing Where a sign-up lands. An organisation policy is `org-template` with a
 	// template applicable at organisation scope; an instance policy is
@@ -10063,10 +10294,10 @@ type RegistrationPolicy struct {
 	Landing RegistrationLanding `json:"landing"`
 
 	// Local Email + password sign-up; present means enabled.
-	Local *RegistrationLocalEntry `json:"local,omitempty"`
+	Local *RegistrationLocalEntry `json:"local,omitzero"`
 
 	// Org The organisation; absent for the instance policy.
-	Org        *string                 `json:"org,omitempty"`
+	Org        *string                 `json:"org,omitzero"`
 	RowVersion int                     `json:"row_version"`
 	State      RegistrationPolicyState `json:"state"`
 	UpdatedAt  time.Time               `json:"updated_at"`
@@ -10095,7 +10326,7 @@ type RegistrationPolicyPutRequest struct {
 	Landing RegistrationLanding `json:"landing"`
 
 	// Local Email + password sign-up; present means enabled.
-	Local *RegistrationLocalEntry `json:"local,omitempty"`
+	Local *RegistrationLocalEntry `json:"local,omitzero"`
 
 	// Proof The reauthentication proof: a TOTP code, or the account password
 	// where no factor is enrolled.
@@ -10112,7 +10343,7 @@ type Remote struct {
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id       ID      `json:"id"`
-	Identity *string `json:"identity,omitempty"`
+	Identity *string `json:"identity,omitzero"`
 
 	// LastAttemptAt RFC 3339 UTC, microsecond precision.
 	LastAttemptAt Timestamp `json:"last_attempt_at"`
@@ -10134,10 +10365,10 @@ type Remote struct {
 	Name EntityName `json:"name"`
 
 	// ObservedAt RFC 3339 UTC, microsecond precision.
-	ObservedAt   *Timestamp      `json:"observed_at,omitempty"`
-	OrgCount     *int            `json:"org_count,omitempty"`
-	Orgs         *[]DirectoryOrg `json:"orgs,omitempty"`
-	ProjectCount *int            `json:"project_count,omitempty"`
+	ObservedAt   *Timestamp      `json:"observed_at,omitzero"`
+	OrgCount     *int            `json:"org_count,omitzero"`
+	Orgs         *[]DirectoryOrg `json:"orgs,omitzero"`
+	ProjectCount *int            `json:"project_count,omitzero"`
 
 	// SpkiPin base64(sha256(SubjectPublicKeyInfo)), confirmed by a human at add
 	// time and verified on every connection before any bytes are written.
@@ -10150,7 +10381,7 @@ type Remote struct {
 	Stale bool `json:"stale"`
 
 	// StaleForSeconds The snapshot's age, the number the card prints beside "unreachable".
-	StaleForSeconds *int `json:"stale_for_seconds,omitempty"`
+	StaleForSeconds *int `json:"stale_for_seconds,omitzero"`
 
 	// State The most recent fetch's outcome. A closed enum because the
 	// operator's fix differs per outcome, and collapsing them into one
@@ -10159,7 +10390,7 @@ type Remote struct {
 
 	// Url The canonical https origin. Immutable for the life of the entry.
 	Url     string  `json:"url"`
-	Version *string `json:"version,omitempty"`
+	Version *string `json:"version,omitzero"`
 }
 
 // RemoteState The most recent fetch's outcome. A closed enum because the
@@ -10182,14 +10413,14 @@ type RemotePairingFinished struct {
 
 // RemotePairingInvite defines model for RemotePairingInvite.
 type RemotePairingInvite struct {
-	ConsumedAt          *time.Time `json:"consumed_at,omitempty"`
+	ConsumedAt          *time.Time `json:"consumed_at,omitzero"`
 	CreatedAt           time.Time  `json:"created_at"`
 	CredentialExpiresAt time.Time  `json:"credential_expires_at"`
 	ExpiresAt           time.Time  `json:"expires_at"`
 	Id                  string     `json:"id"`
 	Label               string     `json:"label"`
 	Origin              string     `json:"origin"`
-	RevokedAt           *time.Time `json:"revoked_at,omitempty"`
+	RevokedAt           *time.Time `json:"revoked_at,omitzero"`
 	SpkiPin             string     `json:"spki_pin"`
 }
 
@@ -10202,7 +10433,7 @@ type RemotePairingInviteCreated struct {
 // RemotePairingInviteList defines model for RemotePairingInviteList.
 type RemotePairingInviteList struct {
 	// ConfigurationError Instance configuration must be corrected before an invitation can be created. Does not perform certificate discovery.
-	ConfigurationError *string               `json:"configuration_error,omitempty"`
+	ConfigurationError *string               `json:"configuration_error,omitzero"`
 	Count              int                   `json:"count"`
 	Items              []RemotePairingInvite `json:"items"`
 
@@ -10230,7 +10461,7 @@ type RenameFolderRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Path A slash-separated namespace: no leading or trailing separator, no empty
 	// segment, no `.` or `..` segment, at most 32 segments. Organizational
@@ -10251,7 +10482,7 @@ type RenameKeyGroupRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 	Name             string            `json:"name"`
 }
 
@@ -10262,7 +10493,7 @@ type RenameKeyRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Name The canonical key grammar: uppercase ASCII, digits and underscore, no
 	// leading digit. It is the environment-variable-safe grammar every
@@ -10299,7 +10530,7 @@ type RenameRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
@@ -10321,16 +10552,16 @@ type RenameRequest struct {
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
 	// MaxTtlSeconds Optional per-renewal ceiling in whole seconds. Omitted or null retains the stored ceiling; an explicit value may only retain or tighten it. Renewal expires at the current time plus the effective ceiling, not at a fixed lifetime since original issuance. An unrepresentable effective ceiling is refused.
-	MaxTtlSeconds *int64 `json:"max_ttl_seconds,omitempty"`
+	MaxTtlSeconds *int64 `json:"max_ttl_seconds,omitzero"`
 }
 
 // ReplaceRulesRequest defines model for ReplaceRulesRequest.
 type ReplaceRulesRequest struct {
-	Create *[]CreateRuleRequest `json:"create,omitempty"`
+	Create *[]CreateRuleRequest `json:"create,omitzero"`
 
 	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
 	Principal ID    `json:"principal"`
-	Revoke    *[]ID `json:"revoke,omitempty"`
+	Revoke    *[]ID `json:"revoke,omitzero"`
 	union     json.RawMessage
 }
 
@@ -10403,19 +10634,40 @@ type RetentionHealth struct {
 	Backup BackupHealth `json:"backup"`
 
 	// Diagnostics Instance operational findings. Unknown means the signal is not authoritatively measured, never healthy by default. No private custody or tenant identities.
-	Diagnostics      *[]OpsDiagnosticFinding `json:"diagnostics,omitempty"`
+	Diagnostics      *[]OpsDiagnosticFinding `json:"diagnostics,omitzero"`
 	LastPruneSuccess *time.Time              `json:"last_prune_success"`
 
 	// PeakProjectBytes Largest per-project stored payload across the instance, in bytes (ciphertext of value cells plus published snapshot entries). The per-project storage high-water surface.
 	PeakProjectBytes int `json:"peak_project_bytes"`
 
 	// PkiCertificatesUnknown Private-PKI certificates in the uncertain unknown state, published on the CRL as revoked (#154). Absent when not measured.
-	PkiCertificatesUnknown *int `json:"pki_certificates_unknown,omitempty"`
+	PkiCertificatesUnknown *int `json:"pki_certificates_unknown,omitzero"`
 
 	// PkiIssuersOnHold Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
-	PkiIssuersOnHold  *int                             `json:"pki_issuers_on_hold,omitempty"`
-	Stale             bool                             `json:"stale"`
-	StaleAfterSeconds RetentionHealthStaleAfterSeconds `json:"stale_after_seconds"`
+	PkiIssuersOnHold *int `json:"pki_issuers_on_hold,omitzero"`
+
+	// RotationCredentialsExpiring Scheduled rotations (not deleted) whose delivered credential expires within the next six hours; credentials already past expiry are not counted (#148). Absent when not measured.
+	RotationCredentialsExpiring *int `json:"rotation_credentials_expiring,omitzero"`
+
+	// RotationHalted Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
+	RotationHalted *int `json:"rotation_halted,omitzero"`
+
+	// RotationOverdue Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
+	RotationOverdue *int `json:"rotation_overdue,omitzero"`
+
+	// RotationRestoreHeld Scheduled rotations a restore holds until an operator releases them, so none starts a run (#148). Absent when not measured.
+	RotationRestoreHeld *int `json:"rotation_restore_held,omitzero"`
+
+	// RotationRunsQuarantined Scheduled-rotation runs closed as quarantine that still owe a drop (#148). Absent when not measured.
+	RotationRunsQuarantined *int `json:"rotation_runs_quarantined,omitzero"`
+
+	// RotationRunsRevokeRefused Scheduled-rotation runs whose superseded role could not be dropped, because it owns objects or a restore put its value back (#148). Absent when not measured.
+	RotationRunsRevokeRefused *int `json:"rotation_runs_revoke_refused,omitzero"`
+
+	// RotationRunsUnknownOutcome Scheduled-rotation runs not yet settled that recorded an effect of unknown outcome, so a possibly live credential exists (#148). Absent when not measured.
+	RotationRunsUnknownOutcome *int                             `json:"rotation_runs_unknown_outcome,omitzero"`
+	Stale                      bool                             `json:"stale"`
+	StaleAfterSeconds          RetentionHealthStaleAfterSeconds `json:"stale_after_seconds"`
 
 	// StorageWarn True once peak_project_bytes reaches the 1 GiB warn threshold, well before the 4 GiB publish refusal.
 	StorageWarn bool `json:"storage_warn"`
@@ -10427,10 +10679,10 @@ type RetentionHealthStaleAfterSeconds int
 // RetentionPolicy defines model for RetentionPolicy.
 type RetentionPolicy struct {
 	// LastRevisions Required for keep-if-either; absent for unlimited.
-	LastRevisions *int `json:"last_revisions,omitempty"`
+	LastRevisions *int `json:"last_revisions,omitzero"`
 
 	// MaxAgeSeconds Required for keep-if-either; absent for unlimited.
-	MaxAgeSeconds *int                `json:"max_age_seconds,omitempty"`
+	MaxAgeSeconds *int                `json:"max_age_seconds,omitzero"`
 	Mode          RetentionPolicyMode `json:"mode"`
 }
 
@@ -10470,7 +10722,7 @@ type RevealWindow struct {
 	// this environment read-authorized surface. Clients resolve an omitted
 	// lifetime before consent and bind the concrete positive lifetime to
 	// reauthentication and mint. Later policy changes cannot extend it.
-	DeveloperCredentialMaxLifetimeSeconds *int64 `json:"developer_credential_max_lifetime_seconds,omitempty"`
+	DeveloperCredentialMaxLifetimeSeconds *int64 `json:"developer_credential_max_lifetime_seconds,omitzero"`
 
 	// EffectiveWindowSeconds The environment's resolved reauthentication window. `0` means
 	// every disclosure takes its own ceremony — the state a protected
@@ -10478,7 +10730,7 @@ type RevealWindow struct {
 	EffectiveWindowSeconds int `json:"effective_window_seconds"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
-	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+	ExpiresAt *Timestamp `json:"expires_at,omitzero"`
 
 	// Live Whether a window is open for this session right now.
 	Live bool `json:"live"`
@@ -10507,7 +10759,7 @@ type Revision struct {
 	// CollectedPolicy The retention policy stamped at collection, verbatim, and present
 	// only when `payload_present` is false. It is what the named refusal
 	// reports forever, so it is carried as an opaque string.
-	CollectedPolicy *string `json:"collected_policy,omitempty"`
+	CollectedPolicy *string `json:"collected_policy,omitzero"`
 
 	// PayloadPresent Whether this revision's payload still exists. Lineage is retained
 	// forever; a payload collected by retention policy leaves the entry
@@ -10520,7 +10772,7 @@ type Revision struct {
 	PublishedBy ID `json:"published_by"`
 
 	// PublishedByName Current display name of the publisher, absent if the principal no longer exists.
-	PublishedByName *string `json:"published_by_name,omitempty"`
+	PublishedByName *string `json:"published_by_name,omitzero"`
 	Revision        int64   `json:"revision"`
 	SchemaRevision  int64   `json:"schema_revision"`
 }
@@ -10540,7 +10792,7 @@ type RevisionDetail struct {
 	PublishedBy ID `json:"published_by"`
 
 	// PublishedByName Current display name of the publisher, absent if the principal no longer exists.
-	PublishedByName *string `json:"published_by_name,omitempty"`
+	PublishedByName *string `json:"published_by_name,omitzero"`
 	Revision        int64   `json:"revision"`
 	SchemaRevision  int64   `json:"schema_revision"`
 }
@@ -10560,8 +10812,8 @@ type RevisionDiffRequest struct {
 
 // RevisionDiffRow defines model for RevisionDiffRow.
 type RevisionDiffRow struct {
-	After  *string `json:"after,omitempty"`
-	Before *string `json:"before,omitempty"`
+	After  *string `json:"after,omitzero"`
+	Before *string `json:"before,omitzero"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
@@ -10587,7 +10839,7 @@ type RevisionList struct {
 	// NextBefore Present when the page was full: the smallest revision on it, to
 	// pass as `before` for the next page. Absent once the page reached
 	// the oldest revision.
-	NextBefore *int64 `json:"next_before,omitempty"`
+	NextBefore *int64 `json:"next_before,omitzero"`
 }
 
 // RevisionPin defines model for RevisionPin.
@@ -10639,8 +10891,8 @@ type RevisionPinReleaseResult struct {
 // RevisionPinRequest defines model for RevisionPinRequest.
 type RevisionPinRequest struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
-	ExpiresAt      *Timestamp `json:"expires_at,omitempty"`
-	OverrideSchema *bool      `json:"override_schema,omitempty"`
+	ExpiresAt      *Timestamp `json:"expires_at,omitzero"`
+	OverrideSchema *bool      `json:"override_schema,omitzero"`
 	Revision       int64      `json:"revision"`
 
 	// WorkloadPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -10667,7 +10919,7 @@ type RollbackRequest struct {
 	// Secret data key, an adapter effective name - so it is a delivery
 	// constraint, not a style preference. `maxLength` counts code points
 	// here and bytes in the service; the grammar is ASCII, so they agree.
-	Key *KeyName `json:"key,omitempty"`
+	Key *KeyName `json:"key,omitzero"`
 }
 
 // RollbackResult defines model for RollbackResult.
@@ -10691,10 +10943,10 @@ type RootKeyRotationPhase string
 // RotateDEKRequest defines model for RotateDEKRequest.
 type RotateDEKRequest struct {
 	// Org Organisation id. Required when scope is `project`, absent otherwise.
-	Org *string `json:"org,omitempty"`
+	Org *string `json:"org,omitzero"`
 
 	// Project Project id. Required when scope is `project`, absent otherwise.
-	Project *string `json:"project,omitempty"`
+	Project *string `json:"project,omitzero"`
 
 	// Scope `project` rotates one project's DEK (org and project required);
 	// `instance` rotates the instance DEK for rows belonging to no project.
@@ -10721,13 +10973,105 @@ type RotateRootKeyRequestPhase string
 // RotateSSHCARequest defines model for RotateSSHCARequest.
 type RotateSSHCARequest struct {
 	// Algorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
-	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitempty"`
+	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitzero"`
 
 	// OverlapSeconds How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
-	OverlapSeconds *int64 `json:"overlap_seconds,omitempty"`
+	OverlapSeconds *int64 `json:"overlap_seconds,omitzero"`
 
 	// PrivateKey An unencrypted private key to import as the new key. Omit to generate.
-	PrivateKey *string `json:"private_key,omitempty"`
+	PrivateKey *string `json:"private_key,omitzero"`
+}
+
+// RotationHaltReason Why a halted rotation stopped, as a fixed word, never free text and never
+// provider detail. `retries_exhausted`: the cycle's retry window ran out
+// before a run could publish or extend the credential, so the delivered
+// credential is not extended. `authority_lost`: the recorded person no longer
+// holds the access the rotation needs, or one of its keys or its environment
+// is gone. `gate_failed`: a pre-publish gate refused, for example the
+// environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+// server writes (a legacy or restored value). OPEN enum: a later release may
+// add a word, so a client keeps an unrecognised one and says only that the
+// rotation is halted.
+type RotationHaltReason = string
+
+// RotationLastRun The newest run of a rotation, the top row of its runs list: metadata only.
+// Neither a role handle nor any provider detail is carried.
+type RotationLastRun struct {
+	// ErrorCode The fixed-word code of the run's last failure, if any, exactly as the runs list carries it. Never provider detail.
+	ErrorCode *string `json:"error_code,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Phase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+	Phase RotationRunPhase `json:"phase"`
+
+	// PhaseAt RFC 3339 UTC, microsecond precision.
+	PhaseAt Timestamp `json:"phase_at"`
+}
+
+// RotationRun defines model for RotationRun.
+type RotationRun struct {
+	// CredentialValidUntil For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. The role is owed a drop, not necessarily safe to drop: before dropping it, check that neither key serves it, because a revision restore can put it back (error_code `published_versions_changed` says one already did). A lower bound when credential_valid_until_lower_bound is true.
+	CredentialValidUntil *time.Time `json:"credential_valid_until,omitzero"`
+
+	// CredentialValidUntilLowerBound True when an extend of that role has an open or unknown outcome, so the role may stay valid past credential_valid_until: read the time as "at least until". Absent otherwise.
+	CredentialValidUntilLowerBound *bool `json:"credential_valid_until_lower_bound,omitzero"`
+
+	// ErrorCode The fixed-word code of the last failure, if any. Never provider detail. `published_versions_changed` on a revoke_refused or quarantine run means a restore put an earlier value back, so the keys may be serving the role the run owes a drop again: that role must not be dropped until the keys have moved off it.
+	ErrorCode *string `json:"error_code,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// NotConvergedAdapterTargets Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then.
+	NotConvergedAdapterTargets *int64 `json:"not_converged_adapter_targets,omitzero"`
+
+	// Phase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+	Phase RotationRunPhase `json:"phase"`
+
+	// PhaseAt RFC 3339 UTC, microsecond precision.
+	PhaseAt Timestamp `json:"phase_at"`
+
+	// PublishedRevision The catalogue revision this run published. Null until it publishes.
+	PublishedRevision *int64 `json:"published_revision,omitzero"`
+
+	// RevocationDelaySeconds The overlap this run snapshotted; zero for a run that skipped it.
+	RevocationDelaySeconds int64 `json:"revocation_delay_seconds"`
+
+	// StartedAt RFC 3339 UTC, microsecond precision.
+	StartedAt Timestamp          `json:"started_at"`
+	Trigger   RotationRunTrigger `json:"trigger"`
+}
+
+// RotationRunTrigger defines model for RotationRun.Trigger.
+type RotationRunTrigger string
+
+// RotationRunList defines model for RotationRunList.
+type RotationRunList struct {
+	Items []RotationRun `json:"items"`
+
+	// NextAfter Pass as `after` to read the next page. Absent on the last page.
+	NextAfter *string `json:"next_after,omitzero"`
+}
+
+// RotationRunPhase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+type RotationRunPhase string
+
+// RotationRunRequested defines model for RotationRunRequested.
+type RotationRunRequested struct {
+	// RotationId A prefixed UUIDv7, e.g. `org_0198…`.
+	RotationId ID `json:"rotation_id"`
+
+	// RunId A prefixed UUIDv7, e.g. `org_0198…`.
+	RunId       ID   `json:"run_id"`
+	SkipOverlap bool `json:"skip_overlap"`
+}
+
+// RotationStateRequest defines model for RotationStateRequest.
+type RotationStateRequest struct {
+	// ExpectedGeneration The generation the caller last read. Omitted or null means the current generation.
+	ExpectedGeneration *int64 `json:"expected_generation,omitzero"`
 }
 
 // Rule defines model for Rule.
@@ -10757,7 +11101,7 @@ type Rule struct {
 	PrincipalId ID `json:"principal_id"`
 
 	// PrincipalName Current display name or username of the person holding the rule; not an identifier.
-	PrincipalName *string `json:"principal_name,omitempty"`
+	PrincipalName *string `json:"principal_name,omitzero"`
 
 	// Where Where a rule reaches: projects, then environments, then keys. Every
 	// environment and key item names the project it belongs to, which must be
@@ -10809,10 +11153,10 @@ type RuleKeyItem struct {
 	// Folder The key's namespace within the project. Organizational only: a plain
 	// slash-separated path, empty for the catalogue root. It is a PATH, not a
 	// folder reference - no folder row need exist for it.
-	Folder *KeyFolderPath `json:"folder,omitempty"`
+	Folder *KeyFolderPath `json:"folder,omitzero"`
 
 	// Key A prefixed UUIDv7, e.g. `org_0198…`.
-	Key *ID `json:"key,omitempty"`
+	Key *ID `json:"key,omitzero"`
 
 	// Project A prefixed UUIDv7, e.g. `org_0198…`.
 	Project ID `json:"project"`
@@ -10833,6 +11177,22 @@ type RuleWhere struct {
 	Environments RuleEnvironmentAxis `json:"environments"`
 	Keys         RuleKeyAxis         `json:"keys"`
 	Projects     []ID                `json:"projects"`
+}
+
+// RunRotationNowRequest defines model for RunRotationNowRequest.
+type RunRotationNowRequest struct {
+	// ConfirmDestructive The run-now confirmation, required on every request. It must be true: the
+	// run publishes a new credential now, off the schedule, and with
+	// `skip_overlap` revokes the superseded one at once. A body without it,
+	// or with false, is refused by name; a request with no body at all is a
+	// plain bad request.
+	ConfirmDestructive bool `json:"confirm_destructive"`
+
+	// ExpectedGeneration The generation the caller last read. Omitted or null means the current generation.
+	ExpectedGeneration *int64 `json:"expected_generation,omitzero"`
+
+	// SkipOverlap Revoke the superseded credential right after this run publishes the new one (a revocation delay of zero for this run only).
+	SkipOverlap *bool `json:"skip_overlap,omitzero"`
 }
 
 // RuntimeStatus defines model for RuntimeStatus.
@@ -10882,9 +11242,9 @@ type SSHCAKey struct {
 	PublicKey string `json:"public_key"`
 
 	// RetireAfter End of the rotation overlap.
-	RetireAfter *time.Time    `json:"retire_after,omitempty"`
-	RetiredAt   *time.Time    `json:"retired_at,omitempty"`
-	RetiringAt  *time.Time    `json:"retiring_at,omitempty"`
+	RetireAfter *time.Time    `json:"retire_after,omitzero"`
+	RetiredAt   *time.Time    `json:"retired_at,omitzero"`
+	RetiringAt  *time.Time    `json:"retiring_at,omitzero"`
 	State       SSHCAKeyState `json:"state"`
 
 	// Trusted Whether hosts following the trust bundle accept this key now.
@@ -10932,9 +11292,9 @@ type SSHCertificate struct {
 	RequesterPrincipalId ID `json:"requester_principal_id"`
 
 	// RequesterPrincipalName Display name of the requester, present only when it can be named.
-	RequesterPrincipalName *string                         `json:"requester_principal_name,omitempty"`
-	RevocationReason       *SSHCertificateRevocationReason `json:"revocation_reason,omitempty"`
-	RevokedAt              *time.Time                      `json:"revoked_at,omitempty"`
+	RequesterPrincipalName *string                         `json:"requester_principal_name,omitzero"`
+	RevocationReason       *SSHCertificateRevocationReason `json:"revocation_reason,omitzero"`
+	RevokedAt              *time.Time                      `json:"revoked_at,omitzero"`
 
 	// Serial The certificate serial as a decimal string (64-bit).
 	Serial string `json:"serial"`
@@ -10973,7 +11333,7 @@ type SSHCertificateIssue struct {
 
 	// PrivateKey For a generated key only: the OpenSSH private key, returned EXACTLY
 	// ONCE to exactly one caller and never stored. No other route returns it.
-	PrivateKey *string `json:"private_key,omitempty"`
+	PrivateKey *string `json:"private_key,omitzero"`
 	PublicKey  string  `json:"public_key"`
 }
 
@@ -11033,19 +11393,19 @@ type SSHProfileRequest struct {
 	// CaId A prefixed UUIDv7, e.g. `org_0198…`.
 	CaId              ID                `json:"ca_id"`
 	DefaultTtlSeconds int64             `json:"default_ttl_seconds"`
-	Enabled           *bool             `json:"enabled,omitempty"`
-	Extensions        *[]SSHExtension   `json:"extensions,omitempty"`
-	ForceCommand      *string           `json:"force_command,omitempty"`
+	Enabled           *bool             `json:"enabled,omitzero"`
+	Extensions        *[]SSHExtension   `json:"extensions,omitzero"`
+	ForceCommand      *string           `json:"force_command,omitzero"`
 	KeyAlgorithms     []SSHKeyAlgorithm `json:"key_algorithms"`
 	MaxTtlSeconds     int64             `json:"max_ttl_seconds"`
 	Name              SSHName           `json:"name"`
 	Principals        []string          `json:"principals"`
 
 	// Requesters The principals allowed to request certificates through this profile.
-	Requesters *[]ID `json:"requesters,omitempty"`
+	Requesters *[]ID `json:"requesters,omitzero"`
 
 	// SourceAddresses CIDRs a certificate is bound to (source-address); a request may only narrow them.
-	SourceAddresses *[]string `json:"source_addresses,omitempty"`
+	SourceAddresses *[]string `json:"source_addresses,omitzero"`
 }
 
 // SamlACSRequest defines model for SamlACSRequest.
@@ -11069,16 +11429,16 @@ type SamlMetadataDiff struct {
 
 	// MetadataCertsRemovedFps Metadata-signature certificate fingerprints retired by this change.
 	MetadataCertsRemovedFps []string   `json:"metadata_certs_removed_fps"`
-	ValidUntil              *Timestamp `json:"valid_until,omitempty"`
+	ValidUntil              *Timestamp `json:"valid_until,omitzero"`
 }
 
 // SamlMetadataRefreshRequest defines model for SamlMetadataRefreshRequest.
 type SamlMetadataRefreshRequest struct {
-	ConfirmedEndpoints    *[]string `json:"confirmed_endpoints,omitempty"`
-	ConfirmedFingerprints *[]string `json:"confirmed_fingerprints,omitempty"`
+	ConfirmedEndpoints    *[]string `json:"confirmed_endpoints,omitzero"`
+	ConfirmedFingerprints *[]string `json:"confirmed_fingerprints,omitzero"`
 
 	// MetadataDocument Replacement XML for a file-backed provider; absent for URL-backed providers.
-	MetadataDocument *string `json:"metadata_document,omitempty"`
+	MetadataDocument *string `json:"metadata_document,omitzero"`
 }
 
 // SamlMetadataSource Closed source set; URL means one-shot admin-initiated fetch, never a poller.
@@ -11088,7 +11448,7 @@ type SamlMetadataSource string
 type SamlProvider struct {
 	AcsUrl           string    `json:"acs_url"`
 	AllowEmailNameid bool      `json:"allow_email_nameid"`
-	AssurancePolicy  *[]string `json:"assurance_policy,omitempty"`
+	AssurancePolicy  *[]string `json:"assurance_policy,omitzero"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt   Timestamp `json:"created_at"`
@@ -11100,12 +11460,12 @@ type SamlProvider struct {
 	ForceSignRequests          bool             `json:"force_sign_requests"`
 	Kind                       SamlProviderKind `json:"kind"`
 	MetadataSigned             bool             `json:"metadata_signed"`
-	MetadataSigningFingerprint *string          `json:"metadata_signing_fingerprint,omitempty"`
+	MetadataSigningFingerprint *string          `json:"metadata_signing_fingerprint,omitzero"`
 
 	// MetadataSource Closed source set; URL means one-shot admin-initiated fetch, never a poller.
 	MetadataSource                 SamlMetadataSource `json:"metadata_source"`
-	MetadataUrl                    *string            `json:"metadata_url,omitempty"`
-	MetadataValidUntil             *Timestamp         `json:"metadata_valid_until,omitempty"`
+	MetadataUrl                    *string            `json:"metadata_url,omitzero"`
+	MetadataValidUntil             *Timestamp         `json:"metadata_valid_until,omitzero"`
 	RowVersion                     int                `json:"row_version"`
 	SigningCertificateFingerprints []string           `json:"signing_certificate_fingerprints"`
 	Slug                           string             `json:"slug"`
@@ -11128,13 +11488,13 @@ type SamlProviderInput struct {
 	AllowEmailNameid bool `json:"allow_email_nameid"`
 
 	// AssurancePolicy Accepted AuthnContextClassRef values; null means single-factor.
-	AssurancePolicy *[]string `json:"assurance_policy,omitempty"`
+	AssurancePolicy *[]string `json:"assurance_policy,omitzero"`
 
 	// ConfirmedEndpoints New endpoint URLs explicitly confirmed in the current ceremony.
-	ConfirmedEndpoints *[]string `json:"confirmed_endpoints,omitempty"`
+	ConfirmedEndpoints *[]string `json:"confirmed_endpoints,omitzero"`
 
 	// ConfirmedFingerprints Fingerprints explicitly confirmed in the current ceremony.
-	ConfirmedFingerprints *[]string `json:"confirmed_fingerprints,omitempty"`
+	ConfirmedFingerprints *[]string `json:"confirmed_fingerprints,omitzero"`
 	DisplayName           string    `json:"display_name"`
 	Enabled               bool      `json:"enabled"`
 
@@ -11146,13 +11506,13 @@ type SamlProviderInput struct {
 	ForceSignRequests bool `json:"force_sign_requests"`
 
 	// MetadataDocument Raw IdP metadata XML for a file-backed configuration.
-	MetadataDocument *string `json:"metadata_document,omitempty"`
+	MetadataDocument *string `json:"metadata_document,omitzero"`
 
 	// MetadataSource Closed source set; URL means one-shot admin-initiated fetch, never a poller.
 	MetadataSource SamlMetadataSource `json:"metadata_source"`
 
 	// MetadataUrl One-shot WebPKI URL; redirects off-origin are refused.
-	MetadataUrl *string `json:"metadata_url,omitempty"`
+	MetadataUrl *string `json:"metadata_url,omitzero"`
 }
 
 // SamlProviderList defines model for SamlProviderList.
@@ -11167,18 +11527,18 @@ type SamlProviderList struct {
 type SamlProviderMutationResult struct {
 	Applied              bool             `json:"applied"`
 	Diff                 SamlMetadataDiff `json:"diff"`
-	Provider             *SamlProvider    `json:"provider,omitempty"`
+	Provider             *SamlProvider    `json:"provider,omitzero"`
 	RequiredEndpoints    []string         `json:"required_endpoints"`
 	RequiredFingerprints []string         `json:"required_fingerprints"`
 }
 
 // SamlProviderPatch Omitted members preserve their stored values.
 type SamlProviderPatch struct {
-	AllowEmailNameid  *bool     `json:"allow_email_nameid,omitempty"`
-	AssurancePolicy   *[]string `json:"assurance_policy,omitempty"`
-	DisplayName       *string   `json:"display_name,omitempty"`
-	Enabled           *bool     `json:"enabled,omitempty"`
-	ForceSignRequests *bool     `json:"force_sign_requests,omitempty"`
+	AllowEmailNameid  *bool     `json:"allow_email_nameid,omitzero"`
+	AssurancePolicy   *[]string `json:"assurance_policy,omitzero"`
+	DisplayName       *string   `json:"display_name,omitzero"`
+	Enabled           *bool     `json:"enabled,omitzero"`
+	ForceSignRequests *bool     `json:"force_sign_requests,omitzero"`
 }
 
 // SamlProviderWarning defines model for SamlProviderWarning.
@@ -11190,7 +11550,7 @@ type SamlProviderWarning struct {
 	EffectiveAt Timestamp `json:"effective_at"`
 
 	// Fingerprint Present only for certificate warnings.
-	Fingerprint *string                     `json:"fingerprint,omitempty"`
+	Fingerprint *string                     `json:"fingerprint,omitzero"`
 	Message     string                      `json:"message"`
 	Severity    SamlProviderWarningSeverity `json:"severity"`
 }
@@ -11219,10 +11579,10 @@ type SamlSpKeyList struct {
 // SamlStartRequest defines model for SamlStartRequest.
 type SamlStartRequest struct {
 	// EnvironmentId Required for reauth; the reveal-window scope.
-	EnvironmentId *string `json:"environment_id,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitzero"`
 
 	// Proof Required for link; the pre-existing account-security proof.
-	Proof   *string `json:"proof,omitempty"`
+	Proof   *string `json:"proof,omitzero"`
 	Purpose string  `json:"purpose"`
 }
 
@@ -11242,7 +11602,7 @@ type ScanFinding struct {
 	// dismissal or Surface-2 override). Present only where an
 	// acknowledgement is possible. Resubmit the write presenting it in
 	// `acknowledgements`. It embeds no plaintext.
-	Acknowledgement *string `json:"acknowledgement,omitempty"`
+	Acknowledgement *string `json:"acknowledgement,omitzero"`
 
 	// Locator The immutable locator. Surface 1: the key identity. Surface 2: the
 	// schema-location class of the offending field (e.g.
@@ -11316,22 +11676,22 @@ type ScimBinding struct {
 	Id ID `json:"id"`
 
 	// LastContactAt RFC 3339 UTC, microsecond precision.
-	LastContactAt *Timestamp `json:"last_contact_at,omitempty"`
+	LastContactAt *Timestamp `json:"last_contact_at,omitzero"`
 
 	// NameidFormat The SAML NameID profile's Format URI; empty for an OIDC binding.
-	NameidFormat *string `json:"nameid_format,omitempty"`
+	NameidFormat *string `json:"nameid_format,omitzero"`
 
 	// NameidQualifier The SAML NameID profile's fixed NameQualifier.
-	NameidQualifier *string `json:"nameid_qualifier,omitempty"`
+	NameidQualifier *string `json:"nameid_qualifier,omitzero"`
 
 	// NameidQualifierPresent Whether the assertion carries a NameQualifier at all. Presence is
 	// reported separately from value because an absent qualifier and an
 	// empty one are different inputs to the injective subject encoder.
-	NameidQualifierPresent *bool `json:"nameid_qualifier_present,omitempty"`
+	NameidQualifierPresent *bool `json:"nameid_qualifier_present,omitzero"`
 
 	// NameidSpQualifier The SAML NameID profile's fixed SPNameQualifier.
-	NameidSpQualifier        *string `json:"nameid_sp_qualifier,omitempty"`
-	NameidSpQualifierPresent *bool   `json:"nameid_sp_qualifier_present,omitempty"`
+	NameidSpQualifier        *string `json:"nameid_sp_qualifier,omitzero"`
+	NameidSpQualifierPresent *bool   `json:"nameid_sp_qualifier_present,omitzero"`
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
 	OrgId ID `json:"org_id"`
@@ -11397,17 +11757,17 @@ type ScimCredential struct {
 	CreatedAt Timestamp `json:"created_at"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
-	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+	ExpiresAt *Timestamp `json:"expires_at,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
 
 	// LastUsedAt RFC 3339 UTC, microsecond precision.
-	LastUsedAt *Timestamp `json:"last_used_at,omitempty"`
+	LastUsedAt *Timestamp `json:"last_used_at,omitzero"`
 	Live       bool       `json:"live"`
 
 	// RevokedAt RFC 3339 UTC, microsecond precision.
-	RevokedAt *Timestamp `json:"revoked_at,omitempty"`
+	RevokedAt *Timestamp `json:"revoked_at,omitzero"`
 }
 
 // ScimCredentialList defines model for ScimCredentialList.
@@ -11421,7 +11781,7 @@ type ScimDirectoryGroup struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt   Timestamp `json:"created_at"`
 	DisplayName string    `json:"display_name"`
-	ExternalId  *string   `json:"external_id,omitempty"`
+	ExternalId  *string   `json:"external_id,omitzero"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id          ID  `json:"id"`
@@ -11446,7 +11806,7 @@ type ScimDirectoryUser struct {
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt  Timestamp `json:"created_at"`
-	ExternalId *string   `json:"external_id,omitempty"`
+	ExternalId *string   `json:"external_id,omitzero"`
 	Groups     []ID      `json:"groups"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
@@ -11472,11 +11832,11 @@ type ScimMapping struct {
 	// grant time, so this is exactly the set a human applying the same
 	// template at the same scope would create.
 	Capabilities      []string                `json:"capabilities"`
-	CapabilityOrigins *[]ScimCapabilityOrigin `json:"capability_origins,omitempty"`
+	CapabilityOrigins *[]ScimCapabilityOrigin `json:"capability_origins,omitzero"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt     Timestamp `json:"created_at"`
-	EnvironmentId *string   `json:"environment_id,omitempty"`
+	EnvironmentId *string   `json:"environment_id,omitzero"`
 
 	// GroupId A prefixed UUIDv7, e.g. `org_0198…`.
 	GroupId ID `json:"group_id"`
@@ -11487,7 +11847,7 @@ type ScimMapping struct {
 	// Inert The group this row names no longer exists at the identity provider.
 	// An inert row grants nothing and is never removed automatically.
 	Inert     bool    `json:"inert"`
-	ProjectId *string `json:"project_id,omitempty"`
+	ProjectId *string `json:"project_id,omitzero"`
 	Template  string  `json:"template"`
 }
 
@@ -11499,7 +11859,7 @@ type ScimMappingList struct {
 
 // ScimMappingRequest defines model for ScimMappingRequest.
 type ScimMappingRequest struct {
-	EnvironmentId *string `json:"environment_id,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitzero"`
 
 	// GroupId A prefixed UUIDv7, e.g. `org_0198…`.
 	GroupId ID `json:"group_id"`
@@ -11507,7 +11867,7 @@ type ScimMappingRequest struct {
 	// ProjectId Absent means org scope, which is the WIDEST a binding can reach.
 	// Nothing preselects a scope for you, least of all a production
 	// environment.
-	ProjectId *string `json:"project_id,omitempty"`
+	ProjectId *string `json:"project_id,omitzero"`
 	Template  string  `json:"template"`
 }
 
@@ -11546,26 +11906,26 @@ type ScimResource map[string]interface{}
 // SecurityMaintenancePublicStatus defines model for SecurityMaintenancePublicStatus.
 type SecurityMaintenancePublicStatus struct {
 	// Action The exact local command an operator runs to leave a blocked state.
-	Action            *string    `json:"action,omitempty"`
+	Action            *string    `json:"action,omitzero"`
 	Applicable        []string   `json:"applicable"`
 	CatalogSequence   int64      `json:"catalog_sequence"`
-	Channel           *string    `json:"channel,omitempty"`
+	Channel           *string    `json:"channel,omitzero"`
 	Coverage          []string   `json:"coverage"`
-	CoverageThrough   *string    `json:"coverage_through,omitempty"`
+	CoverageThrough   *string    `json:"coverage_through,omitzero"`
 	CoveredComponents []string   `json:"covered_components"`
-	Detail            *string    `json:"detail,omitempty"`
+	Detail            *string    `json:"detail,omitzero"`
 	Enrolled          bool       `json:"enrolled"`
-	KnownUntil        *time.Time `json:"known_until,omitempty"`
-	LastAttempt       *time.Time `json:"last_attempt,omitempty"`
-	LastVerified      *time.Time `json:"last_verified,omitempty"`
-	Mode              *string    `json:"mode,omitempty"`
+	KnownUntil        *time.Time `json:"known_until,omitzero"`
+	LastAttempt       *time.Time `json:"last_attempt,omitzero"`
+	LastVerified      *time.Time `json:"last_verified,omitzero"`
+	Mode              *string    `json:"mode,omitzero"`
 	Phase             string     `json:"phase"`
 
 	// ProtectionGap A known advisory stays unremediated and the installation is stuck, not waiting for a schedule.
 	ProtectionGap  bool    `json:"protection_gap"`
-	Reason         *string `json:"reason,omitempty"`
-	RunningVersion *string `json:"running_version,omitempty"`
-	TargetVersion  *string `json:"target_version,omitempty"`
+	Reason         *string `json:"reason,omitzero"`
+	RunningVersion *string `json:"running_version,omitzero"`
+	TargetVersion  *string `json:"target_version,omitzero"`
 }
 
 // SecurityMaintenanceStatus `reported` is false when no status file is configured or the coordinator
@@ -11573,7 +11933,7 @@ type SecurityMaintenancePublicStatus struct {
 // read, is oversized or fails strict parsing; it is never a healthy state.
 type SecurityMaintenanceStatus struct {
 	Reported   bool                             `json:"reported"`
-	Status     *SecurityMaintenancePublicStatus `json:"status,omitempty"`
+	Status     *SecurityMaintenancePublicStatus `json:"status,omitzero"`
 	Unreadable bool                             `json:"unreadable"`
 }
 
@@ -11587,7 +11947,7 @@ type SelfConfigReauthIntent struct {
 	OwnerInstanceId            string `json:"owner_instance_id"`
 
 	// PlanDigest Exact prepared deployment plan authorized by this decision.
-	PlanDigest    *string `json:"plan_digest,omitempty"`
+	PlanDigest    *string `json:"plan_digest,omitzero"`
 	PreviewToken  string  `json:"preview_token"`
 	Revision      int64   `json:"revision"`
 	SchemaVersion int     `json:"schema_version"`
@@ -11681,7 +12041,7 @@ type SetCredentialPolicyRequest struct {
 	// Confirm Acknowledges the enumerated affected credentials. A tightening
 	// refuses with 409 until this is true, so a settings change never
 	// silently kills a live credential.
-	Confirm                  *bool `json:"confirm,omitempty"`
+	Confirm                  *bool `json:"confirm,omitzero"`
 	MaxFiniteLifetimeSeconds int   `json:"max_finite_lifetime_seconds"`
 	MaxLiveCredentials       int   `json:"max_live_credentials"`
 }
@@ -11711,7 +12071,7 @@ type SetPasswordRequest struct {
 	Password string `json:"password"`
 
 	// Proof Account-security proof; may be omitted with a live establish stamp.
-	Proof *string `json:"proof,omitempty"`
+	Proof *string `json:"proof,omitzero"`
 }
 
 // SetPersonalValueRequest defines model for SetPersonalValueRequest.
@@ -11732,8 +12092,8 @@ type SetProjectCapacityRequest struct {
 type SetProjectRetentionRequest struct {
 	// Inherited True clears the override; false requires both bounds.
 	Inherited     bool `json:"inherited"`
-	LastRevisions *int `json:"last_revisions,omitempty"`
-	MaxAgeSeconds *int `json:"max_age_seconds,omitempty"`
+	LastRevisions *int `json:"last_revisions,omitzero"`
+	MaxAgeSeconds *int `json:"max_age_seconds,omitzero"`
 }
 
 // SetValueRequest defines model for SetValueRequest.
@@ -11743,7 +12103,7 @@ type SetValueRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Value The plaintext. It is validated against the key's declaration
 	// before it commits, and stored sealed under the project data key
@@ -11759,14 +12119,14 @@ type SignupMethod struct {
 // SignupRequest defines model for SignupRequest.
 type SignupRequest struct {
 	Email string  `json:"email"`
-	Org   *string `json:"org,omitempty"`
+	Org   *string `json:"org,omitzero"`
 }
 
 // SignupVerifyRequest defines model for SignupVerifyRequest.
 type SignupVerifyRequest struct {
 	DisplayName string                      `json:"display_name"`
-	Landing     *SignupVerifyRequestLanding `json:"landing,omitempty"`
-	OrgName     *string                     `json:"org_name,omitempty"`
+	Landing     *SignupVerifyRequestLanding `json:"landing,omitzero"`
+	OrgName     *string                     `json:"org_name,omitzero"`
 	Password    string                      `json:"password"`
 	Token       string                      `json:"token"`
 }
@@ -11806,15 +12166,15 @@ type StartRemotePairingRequest struct {
 // StartWorkspaceHandoffRequest defines model for StartWorkspaceHandoffRequest.
 type StartWorkspaceHandoffRequest struct {
 	// Environment A prefixed UUIDv7, e.g. `org_0198…`.
-	Environment *ID `json:"environment,omitempty"`
+	Environment *ID `json:"environment,omitzero"`
 
 	// KeySet Step-up only, where the operation is key-scoped: the enumerated key
 	// set the consent covers.
-	KeySet *[]string `json:"key_set,omitempty"`
+	KeySet *[]string `json:"key_set,omitzero"`
 
 	// Operation Step-up only, with `session`: the EXACT operation being elevated, so
 	// an elevated consent cannot be replayed against a different one.
-	Operation *string `json:"operation,omitempty"`
+	Operation *string `json:"operation,omitzero"`
 
 	// Origin The requesting UI origin. Must be allowlisted, or the transaction refuses.
 	Origin string `json:"origin"`
@@ -11829,7 +12189,7 @@ type StartWorkspaceHandoffRequest struct {
 	RedirectUri string `json:"redirect_uri"`
 
 	// Session A prefixed UUIDv7, e.g. `org_0198…`.
-	Session *ID `json:"session,omitempty"`
+	Session *ID `json:"session,omitzero"`
 }
 
 // StartWorkspaceHandoffRequestPurpose defines model for StartWorkspaceHandoffRequest.Purpose.
@@ -11936,7 +12296,7 @@ type TotpStatus struct {
 
 	// Confirmed True when a confirmed authenticator factor stands on the account.
 	Confirmed bool                       `json:"confirmed"`
-	Establish *CredentialEstablishStatus `json:"establish,omitempty"`
+	Establish *CredentialEstablishStatus `json:"establish,omitzero"`
 
 	// HasPasskey True when the account has a usable passkey credential.
 	HasPasskey bool `json:"has_passkey"`
@@ -11970,13 +12330,13 @@ type TransitCustody string
 
 // TransitDataKeyRequest defines model for TransitDataKeyRequest.
 type TransitDataKeyRequest struct {
-	Bits *TransitDataKeyRequestBits `json:"bits,omitempty"`
+	Bits *TransitDataKeyRequestBits `json:"bits,omitzero"`
 
 	// Context Standard base64.
-	Context *string `json:"context,omitempty"`
+	Context *string `json:"context,omitzero"`
 
 	// Plaintext Also return the data key in plaintext; requires datakey-plaintext.
-	Plaintext *bool `json:"plaintext,omitempty"`
+	Plaintext *bool `json:"plaintext,omitzero"`
 }
 
 // TransitDataKeyRequestBits defines model for TransitDataKeyRequest.Bits.
@@ -11988,7 +12348,7 @@ type TransitDataKeyResult struct {
 	KeyVersion int64  `json:"key_version"`
 
 	// Plaintext Standard base64 data key when requested. Display-once.
-	Plaintext *string `json:"plaintext,omitempty"`
+	Plaintext *string `json:"plaintext,omitzero"`
 }
 
 // TransitDecryptRequest defines model for TransitDecryptRequest.
@@ -11997,7 +12357,7 @@ type TransitDecryptRequest struct {
 	Ciphertext string `json:"ciphertext"`
 
 	// Context Standard base64.
-	Context *string `json:"context,omitempty"`
+	Context *string `json:"context,omitzero"`
 }
 
 // TransitDecryptResult defines model for TransitDecryptResult.
@@ -12011,8 +12371,8 @@ type TransitDecryptResult struct {
 // TransitEncryptRequest defines model for TransitEncryptRequest.
 type TransitEncryptRequest struct {
 	// Context Standard base64.
-	Context    *string `json:"context,omitempty"`
-	KeyVersion *int64  `json:"key_version,omitempty"`
+	Context    *string `json:"context,omitzero"`
+	KeyVersion *int64  `json:"key_version,omitzero"`
 
 	// Plaintext Standard base64.
 	Plaintext string `json:"plaintext"`
@@ -12020,7 +12380,7 @@ type TransitEncryptRequest struct {
 
 // TransitHMACRequest defines model for TransitHMACRequest.
 type TransitHMACRequest struct {
-	KeyVersion *int64 `json:"key_version,omitempty"`
+	KeyVersion *int64 `json:"key_version,omitzero"`
 
 	// Message Standard base64.
 	Message string `json:"message"`
@@ -12053,7 +12413,7 @@ type TransitKey struct {
 	CreatedAt     Timestamp      `json:"created_at"`
 	CreatedBy     string         `json:"created_by"`
 	Custody       TransitCustody `json:"custody"`
-	DeletionAfter *time.Time     `json:"deletion_after,omitempty"`
+	DeletionAfter *time.Time     `json:"deletion_after,omitzero"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID `json:"environment_id"`
@@ -12069,7 +12429,7 @@ type TransitKey struct {
 	Name              TransitKeyName `json:"name"`
 
 	// PrincipalNames Current names for callers who hold a grant in this key's tenant; not a user directory.
-	PrincipalNames        *map[string]string `json:"principal_names,omitempty"`
+	PrincipalNames        *map[string]string `json:"principal_names,omitzero"`
 	RotationDue           bool               `json:"rotation_due"`
 	RotationPeriodSeconds int64              `json:"rotation_period_seconds"`
 	State                 TransitKeyState    `json:"state"`
@@ -12099,7 +12459,7 @@ type TransitKeyVersion struct {
 	Material TransitKeyVersionMaterial `json:"material"`
 
 	// PublicKey The public key (standard base64) for signing keys; public metadata. The encoding depends on the key's algorithm: ed25519 is the raw 32-byte key, mldsa65 is the DER SubjectPublicKeyInfo.
-	PublicKey *string `json:"public_key,omitempty"`
+	PublicKey *string `json:"public_key,omitzero"`
 	Version   int64   `json:"version"`
 }
 
@@ -12111,7 +12471,7 @@ type TransitLifecycleRequest struct {
 	Action TransitLifecycleRequestAction `json:"action"`
 
 	// DelaySeconds schedule-deletion only; between one and ninety days, seven by default.
-	DelaySeconds *int64 `json:"delay_seconds,omitempty"`
+	DelaySeconds *int64 `json:"delay_seconds,omitzero"`
 }
 
 // TransitLifecycleRequestAction defines model for TransitLifecycleRequest.Action.
@@ -12122,7 +12482,7 @@ type TransitOperation string
 
 // TransitSignRequest defines model for TransitSignRequest.
 type TransitSignRequest struct {
-	KeyVersion *int64 `json:"key_version,omitempty"`
+	KeyVersion *int64 `json:"key_version,omitzero"`
 
 	// Message Standard base64.
 	Message string `json:"message"`
@@ -12165,7 +12525,7 @@ type UnheldGrantReach struct {
 // UpdateAccountProfileRequest defines model for UpdateAccountProfileRequest.
 type UpdateAccountProfileRequest struct {
 	DisplayName string  `json:"display_name"`
-	Proof       *string `json:"proof,omitempty"`
+	Proof       *string `json:"proof,omitzero"`
 	Username    string  `json:"username"`
 }
 
@@ -12173,7 +12533,7 @@ type UpdateAccountProfileRequest struct {
 type UpdateAdapterOriginRequest struct {
 	// Credential Write-only credential for the pending origin.
 	Credential string `json:"credential"`
-	KeepRemote *bool  `json:"keep_remote,omitempty"`
+	KeepRemote *bool  `json:"keep_remote,omitzero"`
 	Origin     string `json:"origin"`
 }
 
@@ -12187,12 +12547,12 @@ type UpdateAdapterTargetRequest struct {
 	DestinationOwner string                 `json:"destination_owner"`
 
 	// DestinationScope GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
-	DestinationScope *string `json:"destination_scope,omitempty"`
+	DestinationScope *string `json:"destination_scope,omitzero"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId      ID    `json:"environment_id"`
 	ExpectedGeneration int64 `json:"expected_generation"`
-	KeepRemote         *bool `json:"keep_remote,omitempty"`
+	KeepRemote         *bool `json:"keep_remote,omitzero"`
 	KeyIds             []ID  `json:"key_ids"`
 
 	// KeySelection Configuration-time selection conveniences (#157). They are resolved
@@ -12203,18 +12563,18 @@ type UpdateAdapterTargetRequest struct {
 	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
 	// only keys of that classification. `exclude` applies to what the
 	// patterns and classification selected, never to explicit ids or names.
-	KeySelection          *AdapterKeySelection `json:"key_selection,omitempty"`
+	KeySelection          *AdapterKeySelection `json:"key_selection,omitzero"`
 	NamePrefix            string               `json:"name_prefix"`
 	SelectedRepositoryIds []int64              `json:"selected_repository_ids"`
 
 	// VariableExpand GitLab only. Allow `$VAR` expansion inside values. Omission preserves the current value.
-	VariableExpand *bool `json:"variable_expand,omitempty"`
+	VariableExpand *bool `json:"variable_expand,omitzero"`
 
 	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab. Omission preserves the current value.
-	VariableHidden *bool `json:"variable_hidden,omitempty"`
+	VariableHidden *bool `json:"variable_hidden,omitzero"`
 
 	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only). Omission preserves the current value.
-	VariableProtected *bool                                `json:"variable_protected,omitempty"`
+	VariableProtected *bool                                `json:"variable_protected,omitzero"`
 	Visibility        UpdateAdapterTargetRequestVisibility `json:"visibility"`
 }
 
@@ -12230,7 +12590,7 @@ type UpdateFederationIssuerRequest struct {
 	// are refused in static mode. On update, omission preserves the current
 	// bundle in discovery mode; an empty string clears it. Static mode clears
 	// the bundle. This field is write-only; reads report ca_bundle_configured.
-	CaBundlePem *string `json:"ca_bundle_pem,omitempty"`
+	CaBundlePem *string `json:"ca_bundle_pem,omitzero"`
 
 	// JwksMode Where the issuer's signing keys come from. `discovery` is the default:
 	// keys are fetched and cached with a bounded staleness window. `static` is
@@ -12240,13 +12600,13 @@ type UpdateFederationIssuerRequest struct {
 	// silently on the day someone rotates the issuer's keys.
 	JwksMode         JWKSMode `json:"jwks_mode"`
 	RefusedAudiences []string `json:"refused_audiences"`
-	StaticJwks       *string  `json:"static_jwks,omitempty"`
+	StaticJwks       *string  `json:"static_jwks,omitzero"`
 }
 
 // UpdateFileTargetRequest defines model for UpdateFileTargetRequest.
 type UpdateFileTargetRequest struct {
 	ExpectedGeneration int64 `json:"expected_generation"`
-	KeyIds             *[]ID `json:"key_ids,omitempty"`
+	KeyIds             *[]ID `json:"key_ids,omitzero"`
 
 	// KeySelection Configuration-time selection conveniences (#157). They are resolved
 	// against the project catalogue when the target is saved, the resolved
@@ -12256,7 +12616,7 @@ type UpdateFileTargetRequest struct {
 	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
 	// only keys of that classification. `exclude` applies to what the
 	// patterns and classification selected, never to explicit ids or names.
-	KeySelection *AdapterKeySelection `json:"key_selection,omitempty"`
+	KeySelection *AdapterKeySelection `json:"key_selection,omitzero"`
 }
 
 // UpdateKeyDeclarationRequest defines model for UpdateKeyDeclarationRequest.
@@ -12266,7 +12626,7 @@ type UpdateKeyDeclarationRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Declaration Exactly one of `rule` or `any_of`. `any_of` is a bounded union whose
 	// value is valid if it satisfies AT LEAST ONE alternative - deliberately
@@ -12288,44 +12648,44 @@ type UpdateKeyMetadataRequest struct {
 	// value. On a declaration write, one override token per finding is
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
-	Acknowledgements *Acknowledgements `json:"acknowledgements,omitempty"`
+	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
 	// ceremony. Closed, deliberately: a third value would be a third
 	// disclosure regime.
-	Classification *KeyClassification `json:"classification,omitempty"`
+	Classification *KeyClassification `json:"classification,omitzero"`
 
 	// ConfirmWidening The principal ids a key folder move gives access through their member
 	// access rules, confirming it (member-access-rules ADR D9). It must name
 	// exactly the people the refusal's `widening` names.
-	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitempty"`
-	Deprecated      *bool            `json:"deprecated,omitempty"`
-	DeprecationNote *string          `json:"deprecation_note,omitempty"`
-	Description     *string          `json:"description,omitempty"`
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
+	Deprecated      *bool            `json:"deprecated,omitzero"`
+	DeprecationNote *string          `json:"deprecation_note,omitzero"`
+	Description     *string          `json:"description,omitzero"`
 
 	// FolderPath The key's namespace within the project. Organizational only: a plain
 	// slash-separated path, empty for the catalogue root. It is a PATH, not a
 	// folder reference - no folder row need exist for it.
-	FolderPath *KeyFolderPath `json:"folder_path,omitempty"`
+	FolderPath *KeyFolderPath `json:"folder_path,omitzero"`
 }
 
 // UpdateStatus defines model for UpdateStatus.
 type UpdateStatus struct {
-	ApplyBackend *InstanceUpdateBackend `json:"apply_backend,omitempty"`
+	ApplyBackend *InstanceUpdateBackend `json:"apply_backend,omitzero"`
 
 	// ApplyError Operator-safe reason remote apply is unsupported; manual upgrades remain available.
-	ApplyError *string `json:"apply_error,omitempty"`
+	ApplyError *string `json:"apply_error,omitzero"`
 
 	// ApplySupported Always false while legacy remote apply is retired for migration safety.
 	ApplySupported bool                `json:"apply_supported"`
 	Available      bool                `json:"available"`
 	Channel        UpdateStatusChannel `json:"channel"`
 	CurrentVersion string              `json:"current_version"`
-	LatestVersion  *string             `json:"latest_version,omitempty"`
+	LatestVersion  *string             `json:"latest_version,omitzero"`
 	Prerelease     bool                `json:"prerelease"`
-	PublishedAt    *time.Time          `json:"published_at,omitempty"`
-	ReleaseUrl     *string             `json:"release_url,omitempty"`
+	PublishedAt    *time.Time          `json:"published_at,omitzero"`
+	ReleaseUrl     *string             `json:"release_url,omitzero"`
 }
 
 // UpdateStatusChannel defines model for UpdateStatus.Channel.
@@ -12367,18 +12727,18 @@ type ValueCell struct {
 	Set bool `json:"set"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
-	UpdatedAt *Timestamp `json:"updated_at,omitempty"`
+	UpdatedAt *Timestamp `json:"updated_at,omitzero"`
 
 	// UpdatedBy The principal whose act produced this occurrence.
-	UpdatedBy *string `json:"updated_by,omitempty"`
+	UpdatedBy *string `json:"updated_by,omitzero"`
 
 	// UpdatedByName Display name of `updated_by`, present only when it can be named
 	// from a row the caller already reads.
-	UpdatedByName *string `json:"updated_by_name,omitempty"`
+	UpdatedByName *string `json:"updated_by_name,omitzero"`
 
 	// Value Present only where the reader was authorized to see it: `config`
 	// under `read`, `secret` under `read` AND `reveal`.
-	Value *string `json:"value,omitempty"`
+	Value *string `json:"value,omitzero"`
 }
 
 // ValueDiff defines model for ValueDiff.
@@ -12404,7 +12764,7 @@ type ValueDiffRow struct {
 	// something the caller may not see - both sides `set` with at least
 	// one unreadable. Whether two secrets match is itself material, so it
 	// is not answered as `false` either.
-	Equal *bool `json:"equal,omitempty"`
+	Equal *bool `json:"equal,omitzero"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
 	KeyId ID `json:"key_id"`
@@ -12442,7 +12802,7 @@ type ValueList struct {
 
 	// Findings Secret-scanning warnings the declared config values produced (#74,
 	// Surface 1), warn-not-block. Absent or empty when nothing matched.
-	Findings *[]ScanFinding `json:"findings,omitempty"`
+	Findings *[]ScanFinding `json:"findings,omitzero"`
 	Items    []ValueCell    `json:"items"`
 }
 
@@ -12452,7 +12812,7 @@ type ValueOccurrence struct {
 	// secret or config; it changes only through the reclassification
 	// ceremony. Closed, deliberately: a third value would be a third
 	// disclosure regime.
-	Classification *KeyClassification `json:"classification,omitempty"`
+	Classification *KeyClassification `json:"classification,omitzero"`
 
 	// Declared Whether the project declares this key at all. False for a candidate
 	// the run proposes that does not exist yet.
@@ -12461,10 +12821,10 @@ type ValueOccurrence struct {
 	// DeclaredType The key catalogue's canonical textual type expression: a primitive,
 	// or `any_of(branch|branch)`. An importer uses the full expression to
 	// check its effective primitive against every permitted branch.
-	DeclaredType *string `json:"declared_type,omitempty"`
+	DeclaredType *string `json:"declared_type,omitzero"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
-	KeyId *ID `json:"key_id,omitempty"`
+	KeyId *ID `json:"key_id,omitzero"`
 
 	// Name The canonical key grammar: uppercase ASCII, digits and underscore, no
 	// leading digit. It is the environment-variable-safe grammar every
@@ -12538,8 +12898,8 @@ type ValueOccurrencesRequest struct {
 // the selection and spends a TOTP code inside the removal itself, so the
 // same code cannot remove a second credential.
 type WebauthnCredentialProofRequest struct {
-	Code     *string `json:"code,omitempty"`
-	Password *string `json:"password,omitempty"`
+	Code     *string `json:"code,omitzero"`
+	Password *string `json:"password,omitzero"`
 }
 
 // WebauthnEnrolStartRequest The account-security proof, selected possession-first over the
@@ -12554,10 +12914,10 @@ type WebauthnCredentialProofRequest struct {
 // proof credential stands.
 type WebauthnEnrolStartRequest struct {
 	// Code The confirmed TOTP code proof (an account holding a factor).
-	Code *string `json:"code,omitempty"`
+	Code *string `json:"code,omitzero"`
 
 	// Password The pre-existing password proof (an account with no confirmed factor).
-	Password *string `json:"password,omitempty"`
+	Password *string `json:"password,omitzero"`
 }
 
 // WebauthnOptions Opaque WebAuthn ceremony options (creation or request), generated by
@@ -12568,10 +12928,10 @@ type WebauthnOptions map[string]interface{}
 
 // WebauthnReauthStartRequest defines model for WebauthnReauthStartRequest.
 type WebauthnReauthStartRequest struct {
-	AdapterOperation    *WebauthnReauthStartRequestAdapterOperation `json:"adapter_operation,omitempty"`
-	DeveloperCredential *DeveloperCredentialReauthIntent            `json:"developer_credential,omitempty"`
+	AdapterOperation    *WebauthnReauthStartRequestAdapterOperation `json:"adapter_operation,omitzero"`
+	DeveloperCredential *DeveloperCredentialReauthIntent            `json:"developer_credential,omitzero"`
 	EnvironmentId       string                                      `json:"environment_id"`
-	EnvironmentIds      *[]ID                                       `json:"environment_ids,omitempty"`
+	EnvironmentIds      *[]ID                                       `json:"environment_ids,omitzero"`
 
 	// KeyIds The credential ids the reauthentication is bound to.
 	KeyIds []string `json:"key_ids"`
@@ -12581,7 +12941,7 @@ type WebauthnReauthStartRequest struct {
 	// spendable on `publish` over the same environment and keys — the same
 	// unit, a different decision, and the human agreed to only one of them.
 	Operation  ReauthPurpose           `json:"operation"`
-	SelfConfig *SelfConfigReauthIntent `json:"self_config,omitempty"`
+	SelfConfig *SelfConfigReauthIntent `json:"self_config,omitzero"`
 	union      json.RawMessage
 }
 
@@ -12590,13 +12950,13 @@ type WebauthnReauthStartRequestAdapterOperation string
 
 // WebauthnReauthStartRequest0 defines model for WebauthnReauthStartRequest.0.
 type WebauthnReauthStartRequest0 struct {
-	KeyIds    interface{} `json:"key_ids,omitempty"`
-	Operation interface{} `json:"operation,omitempty"`
+	KeyIds    interface{} `json:"key_ids,omitzero"`
+	Operation interface{} `json:"operation,omitzero"`
 }
 
 // WebauthnReauthStartRequest1 defines model for WebauthnReauthStartRequest.1.
 type WebauthnReauthStartRequest1 struct {
-	Operation interface{} `json:"operation,omitempty"`
+	Operation interface{} `json:"operation,omitzero"`
 }
 
 // WebauthnResponse Opaque WebAuthn authenticator response (attestation or assertion) as
@@ -12614,7 +12974,7 @@ type WhoAmI struct {
 	// recovery-code generation, `whoami`, and `logout` at the
 	// authorization chokepoint until a factor stands. Absent or false
 	// otherwise.
-	EnrolmentRequired *bool     `json:"enrolment_required,omitempty"`
+	EnrolmentRequired *bool     `json:"enrolment_required,omitzero"`
 	Principal         Principal `json:"principal"`
 	Session           Session   `json:"session"`
 }
@@ -12634,7 +12994,7 @@ type WideningGainer struct {
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId   ID      `json:"principal_id"`
-	PrincipalName *string `json:"principal_name,omitempty"`
+	PrincipalName *string `json:"principal_name,omitzero"`
 }
 
 // WideningRefusal A key folder move that gives people access through their member access
@@ -12644,7 +13004,7 @@ type WideningGainer struct {
 // with `confirm_widening` listing exactly those principal ids.
 type WideningRefusal struct {
 	Count   int               `json:"count"`
-	Gainers *[]WideningGainer `json:"gainers,omitempty"`
+	Gainers *[]WideningGainer `json:"gainers,omitzero"`
 }
 
 // WorkspaceHandoffApproved defines model for WorkspaceHandoffApproved.
@@ -12698,10 +13058,10 @@ type WorkspaceHandoffStepUp struct {
 	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
 
 	// OrgId Owning organisation of the environment, for display. Present only when the caller may list that environment.
-	OrgId *ID `json:"org_id,omitempty"`
+	OrgId *ID `json:"org_id,omitzero"`
 
 	// ProjectId Owning project of the environment, for display. Present only when the caller may list that environment.
-	ProjectId *ID                           `json:"project_id,omitempty"`
+	ProjectId *ID                           `json:"project_id,omitzero"`
 	Purpose   WorkspaceHandoffStepUpPurpose `json:"purpose"`
 
 	// RequestingOrigin Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
@@ -12760,10 +13120,10 @@ type WorkspaceSession struct {
 	// is then that same session's id and `value` is its ROTATED bearer —
 	// not a second session. The rotation is deliberate: a bearer stolen
 	// before an elevation must not become an elevated bearer after it.
-	Elevated *bool `json:"elevated,omitempty"`
+	Elevated *bool `json:"elevated,omitzero"`
 
 	// Environment A prefixed UUIDv7, e.g. `org_0198…`.
-	Environment *ID `json:"environment,omitempty"`
+	Environment *ID `json:"environment,omitzero"`
 
 	// Handoff A prefixed UUIDv7, e.g. `org_0198…`.
 	Handoff ID `json:"handoff"`
@@ -12782,7 +13142,7 @@ type WorkspaceSession struct {
 
 	// WindowExpiresAt When the reauthentication window this elevation opened lapses.
 	// Present only on an elevation.
-	WindowExpiresAt *Timestamp `json:"window_expires_at,omitempty"`
+	WindowExpiresAt *Timestamp `json:"window_expires_at,omitzero"`
 }
 
 // AdapterID A prefixed UUIDv7, e.g. `org_0198…`.
@@ -12872,6 +13232,9 @@ type EmailInvitationID = ID
 // EnvironmentID A prefixed UUIDv7, e.g. `org_0198…`.
 type EnvironmentID = ID
 
+// ExpectedGeneration defines model for ExpectedGeneration.
+type ExpectedGeneration = int64
+
 // FederationIssuerID A prefixed UUIDv7, e.g. `org_0198…`.
 type FederationIssuerID = ID
 
@@ -12956,6 +13319,9 @@ type RevisionBefore = int64
 
 // RevisionLimit defines model for RevisionLimit.
 type RevisionLimit = int
+
+// RotationID A prefixed UUIDv7, e.g. `org_0198…`.
+type RotationID = ID
 
 // RuleID A prefixed UUIDv7, e.g. `org_0198…`.
 type RuleID = ID
@@ -13055,81 +13421,81 @@ type AuthMethodsParams struct {
 	// `signup_paused`, `signup_methods`); absent means the instance
 	// scope. An unknown organisation and one without a policy are the
 	// same closed door.
-	Org *string `form:"org,omitempty" json:"org,omitempty"`
+	Org *string `form:"org" json:"org,omitzero"`
 }
 
 // Oauth2CallbackParams defines parameters for Oauth2Callback.
 type Oauth2CallbackParams struct {
-	Code  *string `form:"code,omitempty" json:"code,omitempty"`
-	State *string `form:"state,omitempty" json:"state,omitempty"`
-	Iss   *string `form:"iss,omitempty" json:"iss,omitempty"`
-	Error *string `form:"error,omitempty" json:"error,omitempty"`
+	Code  *string `form:"code" json:"code,omitzero"`
+	State *string `form:"state" json:"state,omitzero"`
+	Iss   *string `form:"iss" json:"iss,omitzero"`
+	Error *string `form:"error" json:"error,omitzero"`
 }
 
 // OidcCallbackParams defines parameters for OidcCallback.
 type OidcCallbackParams struct {
-	Code  *string `form:"code,omitempty" json:"code,omitempty"`
-	State *string `form:"state,omitempty" json:"state,omitempty"`
-	Iss   *string `form:"iss,omitempty" json:"iss,omitempty"`
-	Error *string `form:"error,omitempty" json:"error,omitempty"`
+	Code  *string `form:"code" json:"code,omitzero"`
+	State *string `form:"state" json:"state,omitzero"`
+	Iss   *string `form:"iss" json:"iss,omitzero"`
+	Error *string `form:"error" json:"error,omitzero"`
 }
 
 // QueryInstanceAuditParams defines parameters for QueryInstanceAudit.
 type QueryInstanceAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
 	// previous page's `next_after_seq` to page forward.
-	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+	AfterSeq *AuditAfterSeq `form:"after_seq" json:"after_seq,omitzero"`
 
 	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
 	// trail's current head and returns it as `upper_seq`); pass that value back
 	// on every later page so paging terminates and never chases the
 	// `audit.query` events the reads themselves append.
-	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+	ToSeq *AuditToSeq `form:"to_seq" json:"to_seq,omitzero"`
 
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
-	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *AuditLimit `form:"limit" json:"limit,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *QueryInstanceAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *QueryInstanceAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 }
 
 // QueryInstanceAuditParamsOutcome defines parameters for QueryInstanceAudit.
@@ -13141,49 +13507,49 @@ type QueryInstanceAuditParamsOutcomes string
 // ExportInstanceAuditParams defines parameters for ExportInstanceAudit.
 type ExportInstanceAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *ExportInstanceAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *ExportInstanceAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 
 	// Receipt Opt in to the export completion receipt at this version. The stream
 	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
-	Receipt *ExportInstanceAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
+	Receipt *ExportInstanceAuditParamsReceipt `form:"receipt" json:"receipt,omitzero"`
 }
 
 // ExportInstanceAuditParamsOutcome defines parameters for ExportInstanceAudit.
@@ -13208,7 +13574,7 @@ type RevokeInstanceGrantParams struct {
 type ListOrgsParams struct {
 	// Origin Only orgs of this origin: the operator's filter for self-served
 	// (`registration`) orgs, pruned with the ordinary delete (#585 d9).
-	Origin *ListOrgsParamsOrigin `form:"origin,omitempty" json:"origin,omitempty"`
+	Origin *ListOrgsParamsOrigin `form:"origin" json:"origin,omitzero"`
 }
 
 // ListOrgsParamsOrigin defines parameters for ListOrgs.
@@ -13217,59 +13583,59 @@ type ListOrgsParamsOrigin string
 // QueryOrgAuditParams defines parameters for QueryOrgAudit.
 type QueryOrgAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
 	// previous page's `next_after_seq` to page forward.
-	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+	AfterSeq *AuditAfterSeq `form:"after_seq" json:"after_seq,omitzero"`
 
 	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
 	// trail's current head and returns it as `upper_seq`); pass that value back
 	// on every later page so paging terminates and never chases the
 	// `audit.query` events the reads themselves append.
-	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+	ToSeq *AuditToSeq `form:"to_seq" json:"to_seq,omitzero"`
 
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
-	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *AuditLimit `form:"limit" json:"limit,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *QueryOrgAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *QueryOrgAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 }
 
 // QueryOrgAuditParamsOutcome defines parameters for QueryOrgAudit.
@@ -13281,49 +13647,49 @@ type QueryOrgAuditParamsOutcomes string
 // ExportOrgAuditParams defines parameters for ExportOrgAudit.
 type ExportOrgAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *ExportOrgAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *ExportOrgAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 
 	// Receipt Opt in to the export completion receipt at this version. The stream
 	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
-	Receipt *ExportOrgAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
+	Receipt *ExportOrgAuditParamsReceipt `form:"receipt" json:"receipt,omitzero"`
 }
 
 // ExportOrgAuditParamsOutcome defines parameters for ExportOrgAudit.
@@ -13347,17 +13713,17 @@ type RevokeOrgGrantParams struct {
 // GetOrgIdentityImageParams defines parameters for GetOrgIdentityImage.
 type GetOrgIdentityImageParams struct {
 	// V The `identity.image_version` being rendered; a cache-busting hint only.
-	V *IdentityImageVersion `form:"v,omitempty" json:"v,omitempty"`
+	V *IdentityImageVersion `form:"v" json:"v,omitzero"`
 }
 
 // RemoveAdapterTargetParams defines parameters for RemoveAdapterTarget.
 type RemoveAdapterTargetParams struct {
-	KeepRemote *bool `form:"keep_remote,omitempty" json:"keep_remote,omitempty"`
+	KeepRemote *bool `form:"keep_remote" json:"keep_remote,omitzero"`
 }
 
 // ShowAdapterTargetParams defines parameters for ShowAdapterTarget.
 type ShowAdapterTargetParams struct {
-	Format *ShowAdapterTargetParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+	Format *ShowAdapterTargetParamsFormat `form:"format" json:"format,omitzero"`
 }
 
 // ShowAdapterTargetParamsFormat defines parameters for ShowAdapterTarget.
@@ -13365,65 +13731,65 @@ type ShowAdapterTargetParamsFormat string
 
 // DeleteAdapterParams defines parameters for DeleteAdapter.
 type DeleteAdapterParams struct {
-	KeepRemote *bool `form:"keep_remote,omitempty" json:"keep_remote,omitempty"`
+	KeepRemote *bool `form:"keep_remote" json:"keep_remote,omitzero"`
 }
 
 // QueryProjectAuditParams defines parameters for QueryProjectAudit.
 type QueryProjectAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
 	// previous page's `next_after_seq` to page forward.
-	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+	AfterSeq *AuditAfterSeq `form:"after_seq" json:"after_seq,omitzero"`
 
 	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
 	// trail's current head and returns it as `upper_seq`); pass that value back
 	// on every later page so paging terminates and never chases the
 	// `audit.query` events the reads themselves append.
-	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+	ToSeq *AuditToSeq `form:"to_seq" json:"to_seq,omitzero"`
 
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
-	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *AuditLimit `form:"limit" json:"limit,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *QueryProjectAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *QueryProjectAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 }
 
 // QueryProjectAuditParamsOutcome defines parameters for QueryProjectAudit.
@@ -13435,49 +13801,49 @@ type QueryProjectAuditParamsOutcomes string
 // ExportProjectAuditParams defines parameters for ExportProjectAudit.
 type ExportProjectAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *ExportProjectAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *ExportProjectAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 
 	// Receipt Opt in to the export completion receipt at this version. The stream
 	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
-	Receipt *ExportProjectAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
+	Receipt *ExportProjectAuditParamsReceipt `form:"receipt" json:"receipt,omitzero"`
 }
 
 // ExportProjectAuditParamsOutcome defines parameters for ExportProjectAudit.
@@ -13491,7 +13857,7 @@ type ExportProjectAuditParamsReceipt string
 
 // ExportDefinitionsParams defines parameters for ExportDefinitions.
 type ExportDefinitionsParams struct {
-	Portable *bool `form:"portable,omitempty" json:"portable,omitempty"`
+	Portable *bool `form:"portable" json:"portable,omitzero"`
 }
 
 // CreateDefinitionsPlanParams defines parameters for CreateDefinitionsPlan.
@@ -13503,71 +13869,71 @@ type CreateDefinitionsPlanParams struct {
 	// ride the query rather than the body — the same exposure surface as the CLI
 	// `--acknowledge` flag that carries them. Comma-separated. There is no
 	// blanket ignore-all input.
-	Acknowledge *DefinitionsAcknowledgements `form:"acknowledge,omitempty" json:"acknowledge,omitempty"`
+	Acknowledge *DefinitionsAcknowledgements `form:"acknowledge" json:"acknowledge,omitzero"`
 }
 
 // DeleteDynamicProviderParams defines parameters for DeleteDynamicProvider.
 type DeleteDynamicProviderParams struct {
 	// RevokeAll Revoke every live lease of this provider before deleting it.
-	RevokeAll *bool `form:"revoke_all,omitempty" json:"revoke_all,omitempty"`
+	RevokeAll *bool `form:"revoke_all" json:"revoke_all,omitzero"`
 }
 
 // QueryEnvAuditParams defines parameters for QueryEnvAudit.
 type QueryEnvAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
 	// previous page's `next_after_seq` to page forward.
-	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+	AfterSeq *AuditAfterSeq `form:"after_seq" json:"after_seq,omitzero"`
 
 	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
 	// trail's current head and returns it as `upper_seq`); pass that value back
 	// on every later page so paging terminates and never chases the
 	// `audit.query` events the reads themselves append.
-	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+	ToSeq *AuditToSeq `form:"to_seq" json:"to_seq,omitzero"`
 
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
-	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *AuditLimit `form:"limit" json:"limit,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *QueryEnvAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *QueryEnvAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 }
 
 // QueryEnvAuditParamsOutcome defines parameters for QueryEnvAudit.
@@ -13579,49 +13945,49 @@ type QueryEnvAuditParamsOutcomes string
 // ExportEnvAuditParams defines parameters for ExportEnvAudit.
 type ExportEnvAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
-	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+	From *AuditFrom `form:"from" json:"from,omitzero"`
 
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
-	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+	To *AuditTo `form:"to" json:"to,omitzero"`
 
 	// Actor Match only events whose acting principal has this id (exact).
-	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+	Actor *AuditActor `form:"actor" json:"actor,omitzero"`
 
 	// ActorName Match only events whose acting principal's display name (or username)
 	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
 	// Names are resolved only for principals that already appear in the trail
 	// you are authorized to read; this filter narrows that view and performs
 	// no directory lookup, so it discloses nothing you cannot already see.
-	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+	ActorName *AuditActorName `form:"actor_name" json:"actor_name,omitzero"`
 
 	// Operation Match only events of this type (the operation), e.g. `value.set`.
 	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
 	// is not an error; it simply matches nothing.
-	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+	Operation *AuditOperation `form:"operation" json:"operation,omitzero"`
 
 	// Outcome Match only events with this outcome. To match several outcomes, use the
 	// repeatable `outcomes` parameter; both may be given and are unioned.
-	Outcome *ExportEnvAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Outcome *ExportEnvAuditParamsOutcome `form:"outcome" json:"outcome,omitzero"`
 
 	// Outcomes Match events with any of these outcomes (set membership). Repeat the
 	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
 	// Unioned with the singular `outcome` when both are present.
-	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+	Outcomes *AuditOutcomes `form:"outcomes" json:"outcomes,omitzero"`
 
 	// ObjectType Match only events acting on this object type. Supports `*` wildcards
 	// (e.g. `secret*`).
-	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+	ObjectType *AuditObjectType `form:"object_type" json:"object_type,omitzero"`
 
 	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
-	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+	ObjectId *AuditObjectID `form:"object_id" json:"object_id,omitzero"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
-	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	CorrelationId *AuditCorrelationID `form:"correlation_id" json:"correlation_id,omitzero"`
 
 	// Receipt Opt in to the export completion receipt at this version. The stream
 	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
-	Receipt *ExportEnvAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
+	Receipt *ExportEnvAuditParamsReceipt `form:"receipt" json:"receipt,omitzero"`
 }
 
 // ExportEnvAuditParamsOutcome defines parameters for ExportEnvAudit.
@@ -13639,7 +14005,7 @@ type FetchDeliveryParams struct {
 	// authorized delivery. A cursor is never parsed by the caller and never
 	// constructed by one: the server recomputes it for the state it is about to
 	// serve and compares.
-	Cursor *DeliveryCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Cursor *DeliveryCursor `form:"cursor" json:"cursor,omitzero"`
 
 	// Projection A SERVER-SIDE AUTHORIZED TERM, never a client-side filter (k8s ADR §
 	// Refresh). `config-only` omits `secret` keys from the delivery entirely
@@ -13647,7 +14013,7 @@ type FetchDeliveryParams struct {
 	// computed over, and the mode is bound into the conditional-fetch cursor
 	// so a projection change invalidates it. `full` (the default) delivers
 	// every key the caller is authorized to see.
-	Projection *DeliveryProjection `form:"projection,omitempty" json:"projection,omitempty"`
+	Projection *DeliveryProjection `form:"projection" json:"projection,omitzero"`
 
 	// AcknowledgedKeys The loader-control keys the consumer explicitly acknowledges, so the
 	// server's fetch audit record carries which acknowledgement was in force
@@ -13656,17 +14022,17 @@ type FetchDeliveryParams struct {
 	// loader-control refusal is enforced by the operator against its mapping,
 	// which the server cannot see. Comma-separated, each item under the key
 	// grammar, at most 64.
-	AcknowledgedKeys *DeliveryAcknowledgedKeys `form:"acknowledged_keys,omitempty" json:"acknowledged_keys,omitempty"`
+	AcknowledgedKeys *DeliveryAcknowledgedKeys `form:"acknowledged_keys" json:"acknowledged_keys,omitzero"`
 
 	// Target The file target (#164) the presenting workload is bound to. A bound
 	// account is delivered that target's key selection only and must name
 	// it (400 otherwise); naming a target the caller is not bound to, or one
 	// in another environment, is the uniform 404. Unbound callers omit it.
 	// Added in API revision 7.
-	Target *DeliveryFileTarget `form:"target,omitempty" json:"target,omitempty"`
+	Target *DeliveryFileTarget `form:"target" json:"target,omitzero"`
 
 	// Parameters JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
-	Parameters *string `form:"parameters,omitempty" json:"parameters,omitempty"`
+	Parameters *string `form:"parameters" json:"parameters,omitzero"`
 }
 
 // RevokeEnvGrantParams defines parameters for RevokeEnvGrant.
@@ -13682,7 +14048,7 @@ type RevokeEnvGrantParams struct {
 type ChangeEnvironmentParameterJSONBody struct {
 	Action  ChangeEnvironmentParameterJSONBodyAction `json:"action"`
 	Name    string                                   `json:"name"`
-	Pattern *string                                  `json:"pattern,omitempty"`
+	Pattern *string                                  `json:"pattern,omitzero"`
 }
 
 // ChangeEnvironmentParameterJSONBodyAction defines parameters for ChangeEnvironmentParameter.
@@ -13693,16 +14059,46 @@ type ListRevisionsParams struct {
 	// Before Page cursor, exclusive: return revisions strictly below this number.
 	// Omit it for the first page (the newest revisions); pass the previous
 	// page's `next_before` to continue.
-	Before *RevisionBefore `form:"before,omitempty" json:"before,omitempty"`
+	Before *RevisionBefore `form:"before" json:"before,omitzero"`
 
 	// Limit Maximum revisions returned on this page.
-	Limit *RevisionLimit `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *RevisionLimit `form:"limit" json:"limit,omitzero"`
+}
+
+// ListRotationsParams defines parameters for ListRotations.
+type ListRotationsParams struct {
+	// IncludeDisabled List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
+	IncludeDisabled *bool `form:"include_disabled" json:"include_disabled,omitzero"`
+
+	// Limit Maximum rotations on this page, in id order.
+	Limit *int `form:"limit" json:"limit,omitzero"`
+
+	// After The `next_after` a previous page returned. Absent reads the first page.
+	After *string `form:"after" json:"after,omitzero"`
+}
+
+// DeleteRotationParams defines parameters for DeleteRotation.
+type DeleteRotationParams struct {
+	// ExpectedGeneration The generation the caller last read. A different current generation is a conflict.
+	ExpectedGeneration *ExpectedGeneration `form:"expected_generation" json:"expected_generation,omitzero"`
+
+	// Abandon Close the rotation's unsettled runs instead of refusing the delete. Off by default.
+	Abandon *bool `form:"abandon" json:"abandon,omitzero"`
+}
+
+// ListRotationRunsParams defines parameters for ListRotationRuns.
+type ListRotationRunsParams struct {
+	// Limit Maximum runs on this page, newest first.
+	Limit *int `form:"limit" json:"limit,omitzero"`
+
+	// After The `next_after` a previous page returned. Absent reads the first page.
+	After *string `form:"after" json:"after,omitzero"`
 }
 
 // DeleteSshProfileParams defines parameters for DeleteSshProfile.
 type DeleteSshProfileParams struct {
 	// RevokeIssued Also revoke every live certificate issued through this profile.
-	RevokeIssued *bool `form:"revoke_issued,omitempty" json:"revoke_issued,omitempty"`
+	RevokeIssued *bool `form:"revoke_issued" json:"revoke_issued,omitzero"`
 }
 
 // RevokeProjectGrantParams defines parameters for RevokeProjectGrant.
@@ -13717,7 +14113,7 @@ type RevokeProjectGrantParams struct {
 // GetProjectIdentityImageParams defines parameters for GetProjectIdentityImage.
 type GetProjectIdentityImageParams struct {
 	// V The `identity.image_version` being rendered; a cache-busting hint only.
-	V *IdentityImageVersion `form:"v,omitempty" json:"v,omitempty"`
+	V *IdentityImageVersion `form:"v" json:"v,omitzero"`
 }
 
 // DiffValuesParams defines parameters for DiffValues.
@@ -13735,10 +14131,10 @@ type DeleteScimMappingParams struct {
 	Group ID `form:"group" json:"group"`
 
 	// Project The row's project scope, absent for an org-scoped row.
-	Project *ID `form:"project,omitempty" json:"project,omitempty"`
+	Project *ID `form:"project" json:"project,omitzero"`
 
 	// Environment The row's environment scope.
-	Environment *ID `form:"environment,omitempty" json:"environment,omitempty"`
+	Environment *ID `form:"environment" json:"environment,omitzero"`
 }
 
 // ScimListGroupsParams defines parameters for ScimListGroups.
@@ -13753,7 +14149,7 @@ type ScimListGroupsParams struct {
 	// before they have proved they may ask. Every bound and every grammar
 	// refusal for this parameter lives in the protocol layer, after
 	// authentication, where it is rendered as an RFC 7644 error.
-	Filter *ScimFilter `form:"filter,omitempty" json:"filter,omitempty"`
+	Filter *ScimFilter `form:"filter" json:"filter,omitzero"`
 
 	// StartIndex 1-based index of the first result; a value below 1 is read as 1, per
 	// RFC 7644 §3.4.2.4.
@@ -13763,23 +14159,23 @@ type ScimListGroupsParams struct {
 	// which is both an unauthenticated refusal and a contradiction of the
 	// RFC's own "read as 1". Parsing and clamping happen in the protocol
 	// layer after authentication.
-	StartIndex *ScimStartIndex `form:"startIndex,omitempty" json:"startIndex,omitempty"`
+	StartIndex *ScimStartIndex `form:"startIndex" json:"startIndex,omitzero"`
 
 	// Count Desired page size. It is a REQUEST: a value above this provider's bound
 	// is answered with the bound rather than refused.
 	//
 	// Typed `string` and unconstrained for the same reason as `startIndex`.
-	Count *ScimCount `form:"count,omitempty" json:"count,omitempty"`
+	Count *ScimCount `form:"count" json:"count,omitzero"`
 
 	// SortBy Present only so its presence can be REFUSED by name with 501. Sorting
 	// is advertised absent in ServiceProviderConfig and is not
 	// half-implemented. Unconstrained: see `filter`.
-	SortBy *ScimSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+	SortBy *ScimSortBy `form:"sortBy" json:"sortBy,omitzero"`
 
 	// SortOrder Present only so its presence can be REFUSED by name with 501, exactly
 	// like `sortBy`. Refusing one and ignoring the other would be the
 	// half-implementation the ADR forbids. Unconstrained: see `filter`.
-	SortOrder *ScimSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+	SortOrder *ScimSortOrder `form:"sortOrder" json:"sortOrder,omitzero"`
 }
 
 // ScimListUsersParams defines parameters for ScimListUsers.
@@ -13794,7 +14190,7 @@ type ScimListUsersParams struct {
 	// before they have proved they may ask. Every bound and every grammar
 	// refusal for this parameter lives in the protocol layer, after
 	// authentication, where it is rendered as an RFC 7644 error.
-	Filter *ScimFilter `form:"filter,omitempty" json:"filter,omitempty"`
+	Filter *ScimFilter `form:"filter" json:"filter,omitzero"`
 
 	// StartIndex 1-based index of the first result; a value below 1 is read as 1, per
 	// RFC 7644 §3.4.2.4.
@@ -13804,23 +14200,23 @@ type ScimListUsersParams struct {
 	// which is both an unauthenticated refusal and a contradiction of the
 	// RFC's own "read as 1". Parsing and clamping happen in the protocol
 	// layer after authentication.
-	StartIndex *ScimStartIndex `form:"startIndex,omitempty" json:"startIndex,omitempty"`
+	StartIndex *ScimStartIndex `form:"startIndex" json:"startIndex,omitzero"`
 
 	// Count Desired page size. It is a REQUEST: a value above this provider's bound
 	// is answered with the bound rather than refused.
 	//
 	// Typed `string` and unconstrained for the same reason as `startIndex`.
-	Count *ScimCount `form:"count,omitempty" json:"count,omitempty"`
+	Count *ScimCount `form:"count" json:"count,omitzero"`
 
 	// SortBy Present only so its presence can be REFUSED by name with 501. Sorting
 	// is advertised absent in ServiceProviderConfig and is not
 	// half-implemented. Unconstrained: see `filter`.
-	SortBy *ScimSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+	SortBy *ScimSortBy `form:"sortBy" json:"sortBy,omitzero"`
 
 	// SortOrder Present only so its presence can be REFUSED by name with 501, exactly
 	// like `sortBy`. Refusing one and ignoring the other would be the
 	// half-implementation the ADR forbids. Unconstrained: see `filter`.
-	SortOrder *ScimSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+	SortOrder *ScimSortOrder `form:"sortOrder" json:"sortOrder,omitzero"`
 }
 
 // ApproveCLILoginJSONRequestBody defines body for ApproveCLILogin for application/json ContentType.
@@ -14215,6 +14611,21 @@ type RevealRevisionDiffJSONRequestBody = RevealRevisionDiffRequest
 
 // RollbackRevisionJSONRequestBody defines body for RollbackRevision for application/json ContentType.
 type RollbackRevisionJSONRequestBody = RollbackRequest
+
+// CreateRotationJSONRequestBody defines body for CreateRotation for application/json ContentType.
+type CreateRotationJSONRequestBody = CreateRotationRequest
+
+// PauseRotationJSONRequestBody defines body for PauseRotation for application/json ContentType.
+type PauseRotationJSONRequestBody = RotationStateRequest
+
+// ReleaseRotationHoldJSONRequestBody defines body for ReleaseRotationHold for application/json ContentType.
+type ReleaseRotationHoldJSONRequestBody = RotationStateRequest
+
+// ResumeRotationJSONRequestBody defines body for ResumeRotation for application/json ContentType.
+type ResumeRotationJSONRequestBody = RotationStateRequest
+
+// RunRotationNowJSONRequestBody defines body for RunRotationNow for application/json ContentType.
+type RunRotationNowJSONRequestBody = RunRotationNowRequest
 
 // SetEnvironmentSettingsJSONRequestBody defines body for SetEnvironmentSettings for application/json ContentType.
 type SetEnvironmentSettingsJSONRequestBody = EnvironmentSettings
@@ -15479,6 +15890,9 @@ type ServerInterface interface {
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams)
+	// OidcLifecycle Receive a signed directory lifecycle event for an OIDC provider.
+	// (POST /api/v1/auth/oidc/{provider}/lifecycle)
+	OidcLifecycle(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
@@ -16265,6 +16679,33 @@ type ServerInterface interface {
 	// RollbackRevision Stage an environment or key restore from one revision.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 	RollbackRevision(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, revision int64)
+	// ListRotations List an environment's scheduled credential rotations.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRotationsParams)
+	// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// DeleteRotation Disable a rotation; the row stays as history.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	DeleteRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params DeleteRotationParams)
+	// ShowRotation Show one scheduled credential rotation.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	ShowRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// PauseRotation Pause a rotation so it stops being scheduled.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
+	PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// ReleaseRotationHold Release the restore hold of a rotation.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold)
+	ReleaseRotationHold(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
+	ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// RunRotationNow Request a rotation run now, outside its schedule.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now)
+	RunRotationNow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID)
+	// ListRotationRuns List a rotation's runs, newest first.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs)
+	ListRotationRuns(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params ListRotationRunsParams)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 	GetEnvironmentSettings(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -16847,6 +17288,12 @@ func (_ Unimplemented) Oauth2Start(w http.ResponseWriter, r *http.Request, provi
 // OidcCallback Complete an OIDC transaction from the IdP redirect.
 // (GET /api/v1/auth/oidc/{provider}/callback)
 func (_ Unimplemented) OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// OidcLifecycle Receive a signed directory lifecycle event for an OIDC provider.
+// (POST /api/v1/auth/oidc/{provider}/lifecycle)
+func (_ Unimplemented) OidcLifecycle(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18422,6 +18869,60 @@ func (_ Unimplemented) RollbackRevision(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListRotations List an environment's scheduled credential rotations.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+func (_ Unimplemented) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRotationsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+func (_ Unimplemented) CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteRotation Disable a rotation; the row stays as history.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+func (_ Unimplemented) DeleteRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params DeleteRotationParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowRotation Show one scheduled credential rotation.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+func (_ Unimplemented) ShowRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PauseRotation Pause a rotation so it stops being scheduled.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
+func (_ Unimplemented) PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReleaseRotationHold Release the restore hold of a rotation.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold)
+func (_ Unimplemented) ReleaseRotationHold(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResumeRotation Resume a paused or halted rotation and recompute its next run.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
+func (_ Unimplemented) ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RunRotationNow Request a rotation run now, outside its schedule.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now)
+func (_ Unimplemented) RunRotationNow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListRotationRuns List a rotation's runs, newest first.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs)
+func (_ Unimplemented) ListRotationRuns(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params ListRotationRunsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 func (_ Unimplemented) GetEnvironmentSettings(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
@@ -19895,6 +20396,32 @@ func (siw *ServerInterfaceWrapper) OidcCallback(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OidcCallback(w, r, provider, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) OidcLifecycle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider ProviderSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcLifecycle(w, r, provider)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -29296,6 +29823,565 @@ func (siw *ServerInterfaceWrapper) RollbackRevision(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListRotations operation middleware
+func (siw *ServerInterfaceWrapper) ListRotations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRotationsParams
+
+	// ------------- Optional query parameter "include_disabled" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_disabled", r.URL.Query(), &params.IncludeDisabled, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_disabled"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_disabled", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRotations(w, r, org, project, environment, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRotation operation middleware
+func (siw *ServerInterfaceWrapper) CreateRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRotation(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRotation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteRotationParams
+
+	// ------------- Optional query parameter "expected_generation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "expected_generation", r.URL.Query(), &params.ExpectedGeneration, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "expected_generation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "expected_generation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "abandon" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "abandon", r.URL.Query(), &params.Abandon, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "abandon"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "abandon", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRotation(w, r, org, project, environment, rotation, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowRotation operation middleware
+func (siw *ServerInterfaceWrapper) ShowRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PauseRotation operation middleware
+func (siw *ServerInterfaceWrapper) PauseRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PauseRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleaseRotationHold operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseRotationHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseRotationHold(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeRotation operation middleware
+func (siw *ServerInterfaceWrapper) ResumeRotation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeRotation(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunRotationNow operation middleware
+func (siw *ServerInterfaceWrapper) RunRotationNow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunRotationNow(w, r, org, project, environment, rotation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRotationRuns operation middleware
+func (siw *ServerInterfaceWrapper) ListRotationRuns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rotation" -------------
+	var rotation RotationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rotation", chi.URLParam(r, "rotation"), &rotation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rotation", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRotationRunsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRotationRuns(w, r, org, project, environment, rotation, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEnvironmentSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetEnvironmentSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -35404,70 +36490,25 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/runtime/status", wrapper.GetRuntimeStatus)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/meta", wrapper.GetMeta)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/credential/establish", wrapper.EstablishCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/local/login", wrapper.LocalLogin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/totp", wrapper.LoginChallengeTotp)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/webauthn/start", wrapper.LoginChallengeWebauthnStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/webauthn/finish", wrapper.LoginChallengeWebauthnFinish)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/whoami", wrapper.Whoami)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/auth/password", wrapper.SetPassword)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/totp/enrol/start", wrapper.EnrolTotpStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/totp/enrol/confirm", wrapper.EnrolTotpConfirm)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/totp/step-up", wrapper.StepUpTotp)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/reauth/totp", wrapper.ReauthTotp)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/cli-login/start", wrapper.StartCLILogin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/cli-login/device/start", wrapper.StartCLIDevice)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/cli-login/transactions/{reference}", wrapper.ShowCLILoginTransaction)
+		r.Post(options.BaseURL+"/api/v1/accounts/{principal}/credential-reset", wrapper.ResetCredential)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/cli-login/approve", wrapper.ApproveCLILogin)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/cli-login/redeem", wrapper.RedeemCLILogin)
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/device/start", wrapper.StartCLIDevice)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/cli-login/device/token", wrapper.PollCLIDevice)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/cli-reauth/start", wrapper.StartCLIReauth)
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/redeem", wrapper.RedeemCLILogin)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/cli-reauth/transactions/{state}", wrapper.ShowCLIReauthTransaction)
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/start", wrapper.StartCLILogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/cli-login/transactions/{reference}", wrapper.ShowCLILoginTransaction)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/cli-reauth/approve", wrapper.ApproveCLIReauth)
@@ -35476,10 +36517,76 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/auth/cli-reauth/redeem", wrapper.RedeemCLIReauth)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/auth/totp", wrapper.RemoveTotp)
+		r.Post(options.BaseURL+"/api/v1/auth/cli-reauth/start", wrapper.StartCLIReauth)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/totp", wrapper.GetTotpStatus)
+		r.Get(options.BaseURL+"/api/v1/auth/cli-reauth/transactions/{state}", wrapper.ShowCLIReauthTransaction)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/credential/establish", wrapper.EstablishCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/auth/developer-credentials", wrapper.RevokeAllMyDeveloperCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/developer-credentials", wrapper.ListMyDeveloperCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/auth/developer-credentials/{credential}", wrapper.RevokeMyDeveloperCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/identities", wrapper.ListIdentities)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/auth/identities/{id}", wrapper.UnlinkIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/identities/link", wrapper.LinkIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/local/login", wrapper.LocalLogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/totp", wrapper.LoginChallengeTotp)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/webauthn/finish", wrapper.LoginChallengeWebauthnFinish)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/webauthn/start", wrapper.LoginChallengeWebauthnStart)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/methods", wrapper.AuthMethods)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/oauth2/{provider}/callback", wrapper.Oauth2Callback)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/oauth2/{provider}/start", wrapper.Oauth2Start)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/oidc/{provider}/callback", wrapper.OidcCallback)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/oidc/{provider}/lifecycle", wrapper.OidcLifecycle)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/oidc/{provider}/start", wrapper.OidcStart)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/pairing/finish", wrapper.FinishRemotePairing)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/pairing/start", wrapper.StartRemotePairing)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/auth/password", wrapper.SetPassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/reauth/totp", wrapper.ReauthTotp)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/recovery-codes/regenerate", wrapper.RegenerateRecoveryCodes)
@@ -35488,346 +36595,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/auth/recovery/begin", wrapper.BeginRecovery)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs", wrapper.ListOrgs)
+		r.Post(options.BaseURL+"/api/v1/auth/saml/{provider}/acs", wrapper.SamlACS)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs", wrapper.CreateOrg)
+		r.Get(options.BaseURL+"/api/v1/auth/saml/{provider}/metadata", wrapper.SamlMetadata)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}", wrapper.DeleteOrg)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}", wrapper.GetOrg)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}", wrapper.RenameOrg)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects", wrapper.ListProjects)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects", wrapper.CreateProject)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/retention", wrapper.GetOrgRetention)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/retention", wrapper.SetOrgRetention)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity", wrapper.SetOrgIdentity)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.ClearOrgIdentityImage)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.GetOrgIdentityImage)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.SetOrgIdentityImage)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.DeleteProject)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.GetProject)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.RenameProject)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity", wrapper.SetProjectIdentity)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.ClearProjectIdentityImage)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.GetProjectIdentityImage)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.SetProjectIdentityImage)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments", wrapper.ListEnvironments)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments", wrapper.CreateEnvironment)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/clone", wrapper.CloneEnvironment)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/order", wrapper.ReorderEnvironments)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.DeleteEnvironment)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.GetEnvironment)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.RenameEnvironment)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/capacity", wrapper.GetProjectCapacity)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/capacity", wrapper.SetProjectCapacity)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/retention", wrapper.GetProjectRetention)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/retention", wrapper.SetProjectRetention)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders", wrapper.ListFolders)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders", wrapper.CreateFolder)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders/{folder}", wrapper.DeleteFolder)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders/{folder}", wrapper.GetFolder)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders/{folder}", wrapper.RenameFolder)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/grants", wrapper.RevokeInstanceGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/grants", wrapper.ListInstanceGrants)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/grants", wrapper.CreateInstanceGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/grants/template", wrapper.ApplyInstanceTemplate)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/invitations", wrapper.InviteInstanceMember)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.DeleteInstanceRegistrationPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.GetInstanceRegistrationPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.PutInstanceRegistrationPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.RevokeOrgGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.ListOrgGrants)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.CreateOrgGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.ListOrgRules)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.CreateRule)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules/replace", wrapper.ReplaceRules)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/rules/{rule}", wrapper.RevokeRule)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants/template", wrapper.ApplyOrgTemplate)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.ListOrgEmailInvitations)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.InviteOrgMemberByEmail)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/email-invitations/{invitation}", wrapper.RevokeOrgEmailInvitation)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.DeleteOrgRegistrationPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.GetOrgRegistrationPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.PutOrgRegistrationPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.RevokeProjectGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.ListProjectGrants)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.CreateProjectGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/rules", wrapper.ListProjectRules)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants/template", wrapper.ApplyProjectTemplate)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants", wrapper.RevokeEnvGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants", wrapper.CreateEnvGrant)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants/template", wrapper.ApplyEnvTemplate)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings", wrapper.GetEnvironmentSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings", wrapper.SetEnvironmentSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/export", wrapper.ExportDefinitions)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/check", wrapper.CheckDefinitions)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/plans", wrapper.CreateDefinitionsPlan)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/plans/{plan}", wrapper.GetDefinitionsPlan)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/plans/{plan}/apply", wrapper.ApplyDefinitionsPlan)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/settings", wrapper.GetDefinitionsSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/settings", wrapper.SetDefinitionsSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/machine-reveal", wrapper.GetMachineReveal)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/machine-reveal", wrapper.SetMachineReveal)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys", wrapper.ListKeys)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys", wrapper.CreateKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}", wrapper.DeleteKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}", wrapper.GetKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}", wrapper.UpdateKeyMetadata)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/name", wrapper.RenameKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration", wrapper.UpdateKeyDeclaration)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/classification", wrapper.ReclassifyKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/group", wrapper.SetKeyGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups", wrapper.ListKeyGroups)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups", wrapper.CreateKeyGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups/{group}", wrapper.DeleteKeyGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups/{group}", wrapper.GetKeyGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups/{group}", wrapper.RenameKeyGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values", wrapper.ListValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}", wrapper.ClearValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}", wrapper.GetValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}", wrapper.SetValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/declare", wrapper.DeclareValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize", wrapper.InitializeValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/copy", wrapper.CopyValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/diff", wrapper.DiffValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window", wrapper.GetRevealWindow)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/occurrences", wrapper.ListValueOccurrences)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/import", wrapper.ImportValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/reveal", wrapper.RevealValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/reveal", wrapper.RevealValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values", wrapper.ListMyPersonalValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}", wrapper.DeleteMyPersonalValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}", wrapper.SetMyPersonalValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal", wrapper.RevealMyPersonalValue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts", wrapper.ListPersonalValueCounts)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}", wrapper.GetPersonalOffboardingReport)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members", wrapper.ListPersonalValueMembers)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}", wrapper.DeletePersonalValueMember)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/diff/reveal", wrapper.RevealValueDiff)
+		r.Post(options.BaseURL+"/api/v1/auth/saml/{provider}/start", wrapper.SamlStart)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/signup", wrapper.SignupRequest)
@@ -35836,79 +36610,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/auth/signup/verify", wrapper.SignupVerify)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/mail/test", wrapper.TestInstanceMail)
+		r.Delete(options.BaseURL+"/api/v1/auth/totp", wrapper.RemoveTotp)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/mail", wrapper.GetInstanceMail)
+		r.Get(options.BaseURL+"/api/v1/auth/totp", wrapper.GetTotpStatus)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/methods", wrapper.AuthMethods)
+		r.Post(options.BaseURL+"/api/v1/auth/totp/enrol/confirm", wrapper.EnrolTotpConfirm)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/oidc/{provider}/start", wrapper.OidcStart)
+		r.Post(options.BaseURL+"/api/v1/auth/totp/enrol/start", wrapper.EnrolTotpStart)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/oidc/{provider}/callback", wrapper.OidcCallback)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/oauth2/{provider}/start", wrapper.Oauth2Start)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/oauth2/{provider}/callback", wrapper.Oauth2Callback)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/saml/{provider}/start", wrapper.SamlStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/saml/{provider}/acs", wrapper.SamlACS)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/saml/{provider}/metadata", wrapper.SamlMetadata)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/me/profile", wrapper.GetMyProfile)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/me/profile", wrapper.UpdateMyProfile)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/me/orgs", wrapper.ListMyOrgs)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/identities", wrapper.ListIdentities)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/identities/link", wrapper.LinkIdentity)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/auth/identities/{id}", wrapper.UnlinkIdentity)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/accounts/{principal}/credential-reset", wrapper.ResetCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/enrol/start", wrapper.EnrolPasskeyStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/enrol/finish", wrapper.EnrolPasskeyFinish)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/login/start", wrapper.PasskeyLoginStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/login/finish", wrapper.PasskeyLoginFinish)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/step-up/start", wrapper.StepUpPasskeyStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/step-up/finish", wrapper.StepUpPasskeyFinish)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/reauth/start", wrapper.ReauthPasskeyStart)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/webauthn/reauth/finish", wrapper.ReauthPasskeyFinish)
+		r.Post(options.BaseURL+"/api/v1/auth/totp/step-up", wrapper.StepUpTotp)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/webauthn/credentials", wrapper.ListPasskeys)
@@ -35917,91 +36631,49 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/api/v1/auth/webauthn/credentials/{id}", wrapper.RemovePasskey)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/oidc-providers", wrapper.ListOidcProviders)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/enrol/finish", wrapper.EnrolPasskeyFinish)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.DeleteOidcProvider)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/enrol/start", wrapper.EnrolPasskeyStart)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.GetOidcProvider)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/login/finish", wrapper.PasskeyLoginFinish)
 	})
 	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.PutOidcProvider)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/login/start", wrapper.PasskeyLoginStart)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/oauth2-providers", wrapper.ListOauth2Providers)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/reauth/finish", wrapper.ReauthPasskeyFinish)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.DeleteOauth2Provider)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/reauth/start", wrapper.ReauthPasskeyStart)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.GetOauth2Provider)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/step-up/finish", wrapper.StepUpPasskeyFinish)
 	})
 	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.PutOauth2Provider)
+		r.Post(options.BaseURL+"/api/v1/auth/webauthn/step-up/start", wrapper.StepUpPasskeyStart)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/retention-health", wrapper.GetRetentionHealth)
+		r.Get(options.BaseURL+"/api/v1/auth/whoami", wrapper.Whoami)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/update-status", wrapper.GetUpdateStatus)
+		r.Post(options.BaseURL+"/api/v1/auth/workspace/approve", wrapper.ApproveWorkspaceHandoff)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/security-maintenance", wrapper.GetSecurityMaintenance)
+		r.Post(options.BaseURL+"/api/v1/auth/workspace/redeem", wrapper.RedeemWorkspaceHandoff)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/update", wrapper.RequestInstanceUpdate)
+		r.Post(options.BaseURL+"/api/v1/auth/workspace/start", wrapper.StartWorkspaceHandoff)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/updates/{job}", wrapper.GetInstanceUpdateJob)
+		r.Get(options.BaseURL+"/api/v1/auth/workspace/transactions/{state}", wrapper.ShowWorkspaceHandoff)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/saml-providers", wrapper.ListSamlProviders)
+		r.Get(options.BaseURL+"/api/v1/instance/audit", wrapper.QueryInstanceAudit)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.DeleteSamlProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.GetSamlProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.PatchSamlProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.PutSamlProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/saml-providers/{slug}/refresh-metadata", wrapper.RefreshSamlProviderMetadata)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/saml-sp-keys", wrapper.ListSamlSpKeys)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/saml-sp-keys/rotate", wrapper.RotateSamlSpKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/saml-sp-keys/{fingerprint}", wrapper.RetireSamlSpKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire", wrapper.CompromiseRetireSamlSpKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts", wrapper.ListServiceAccounts)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts", wrapper.CreateServiceAccount)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}", wrapper.DeleteServiceAccount)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials", wrapper.ListMachineCredentials)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials", wrapper.MintMachineCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials/{credential}", wrapper.RevokeMachineCredential)
+		r.Get(options.BaseURL+"/api/v1/instance/audit/export", wrapper.ExportInstanceAudit)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/config", wrapper.GetInstanceConfig)
@@ -36019,10 +36691,31 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/instance/config/mail/test", wrapper.TestInstanceConfigMail)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/connections", wrapper.ListInstanceConnections)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/connections", wrapper.MintInstanceConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/connections/{connection}", wrapper.RevokeInstanceConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/connections/{connection}", wrapper.ShowInstanceConnection)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/credential-policy", wrapper.GetCredentialPolicy)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/v1/instance/credential-policy", wrapper.SetCredentialPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/developer-credential-policy", wrapper.GetDeveloperCredentialPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/developer-credential-policy", wrapper.SetDeveloperCredentialPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/directory", wrapper.ServeDirectory)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/federation-issuers", wrapper.ListFederationIssuers)
@@ -36037,130 +36730,49 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/api/v1/instance/federation-issuers/{issuer}", wrapper.UpdateFederationIssuer)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/bindings", wrapper.CreateFederatedBinding)
+		r.Delete(options.BaseURL+"/api/v1/instance/grants", wrapper.RevokeInstanceGrant)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters", wrapper.ListEnvironmentParameters)
+		r.Get(options.BaseURL+"/api/v1/instance/grants", wrapper.ListInstanceGrants)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters", wrapper.ChangeEnvironmentParameter)
+		r.Post(options.BaseURL+"/api/v1/instance/grants", wrapper.CreateInstanceGrant)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery", wrapper.FetchDelivery)
+		r.Post(options.BaseURL+"/api/v1/instance/grants/template", wrapper.ApplyInstanceTemplate)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records", wrapper.ReconcileOfflineRecords)
+		r.Post(options.BaseURL+"/api/v1/instance/invitations", wrapper.InviteInstanceMember)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ListDeliveryTargets)
+		r.Get(options.BaseURL+"/api/v1/instance/mail", wrapper.GetInstanceMail)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ReportDeliveryTarget)
+		r.Post(options.BaseURL+"/api/v1/instance/mail/test", wrapper.TestInstanceMail)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone", wrapper.TombstoneDeliveryTarget)
+		r.Get(options.BaseURL+"/api/v1/instance/oauth2-providers", wrapper.ListOauth2Providers)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings", wrapper.ListScimBindings)
+		r.Delete(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.DeleteOauth2Provider)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings", wrapper.CreateScimBinding)
+		r.Get(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.GetOauth2Provider)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}", wrapper.DeleteScimBinding)
+		r.Put(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.PutOauth2Provider)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}", wrapper.GetScimBinding)
+		r.Get(options.BaseURL+"/api/v1/instance/oidc-providers", wrapper.ListOidcProviders)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.DeleteScimMapping)
+		r.Delete(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.DeleteOidcProvider)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.ListScimMappings)
+		r.Get(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.GetOidcProvider)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.CreateScimMapping)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.UpdateScimMapping)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials", wrapper.ListScimCredentials)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials", wrapper.MintScimCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials/{id}", wrapper.RevokeScimCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials/{id}", wrapper.GetScimCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/directory/users", wrapper.ListScimDirectoryUsers)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/directory/groups", wrapper.ListScimDirectoryGroups)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/ServiceProviderConfig", wrapper.ScimServiceProviderConfig)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/ResourceTypes", wrapper.ScimResourceTypes)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Schemas", wrapper.ScimSchemas)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users", wrapper.ScimListUsers)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users", wrapper.ScimCreateUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimDeleteUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimGetUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimPatchUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimReplaceUser)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups", wrapper.ScimListGroups)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups", wrapper.ScimCreateGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimDeleteGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimGetGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimPatchGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimReplaceGroup)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Bulk", wrapper.ScimBulk)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Me", wrapper.ScimMe)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/.search", wrapper.ScimSearchUsers)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/.search", wrapper.ScimSearchGroups)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/pairing-requests", wrapper.PrepareRemotePairing)
+		r.Put(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.PutOidcProvider)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/pairing-invites", wrapper.ListRemotePairingInvites)
@@ -36172,379 +36784,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/api/v1/instance/pairing-invites/{invite}", wrapper.RevokeRemotePairingInvite)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/remotes/pair", wrapper.PairRemote)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/pairing/start", wrapper.StartRemotePairing)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/pairing/finish", wrapper.FinishRemotePairing)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/directory", wrapper.ServeDirectory)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/remotes", wrapper.ListRemotes)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/remotes", wrapper.AddRemote)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/remotes/{remote}", wrapper.RemoveRemote)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/remotes/{remote}", wrapper.ShowRemote)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/instance/remotes/{remote}", wrapper.RenameRemote)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/connections", wrapper.ListInstanceConnections)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/connections", wrapper.MintInstanceConnection)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/connections/{connection}", wrapper.RevokeInstanceConnection)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/connections/{connection}", wrapper.ShowInstanceConnection)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/instance/workspace-origins", wrapper.RemoveWorkspaceOrigin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/workspace-origins", wrapper.ListWorkspaceOrigins)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/workspace-origins", wrapper.AddWorkspaceOrigin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/workspace/start", wrapper.StartWorkspaceHandoff)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/workspace/approve", wrapper.ApproveWorkspaceHandoff)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/auth/workspace/redeem", wrapper.RedeemWorkspaceHandoff)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/workspace/transactions/{state}", wrapper.ShowWorkspaceHandoff)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/me/invitations/preview", wrapper.PreviewEmailInvitation)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/me/invitations/accept", wrapper.AcceptEmailInvitation)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/me/sessions", wrapper.ListMySessions)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/me/sessions/{session}", wrapper.RevokeMySession)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/publish", wrapper.PublishPendingChanges)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies", wrapper.ListApprovalPolicies)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies", wrapper.CreateApprovalPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}", wrapper.DeleteApprovalPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}", wrapper.UpdateApprovalPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests", wrapper.ListApprovalRequests)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote", wrapper.VoteApprovalRequest)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony", wrapper.GetApprovalCeremony)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.ListAccessPolicies)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.CreateAccessPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.DeleteAccessPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.UpdateAccessPolicy)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.ListAccessRequests)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.CreateAccessRequest)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency", wrapper.EmergencyAccess)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote", wrapper.VoteAccessRequest)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel", wrapper.CancelAccessRequest)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke", wrapper.RevokeAccessRequest)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff", wrapper.DiffRevisions)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal", wrapper.RevealRevisionDiff)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals", wrapper.GetEnvironmentSignals)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending", wrapper.ListPendingDrafts)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback", wrapper.RollbackRevision)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins", wrapper.ListRevisionPins)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins", wrapper.CreateRevisionPin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins/{workloadPrincipal}", wrapper.ReleaseRevisionPin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions", wrapper.ListRevisions)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}", wrapper.GetRevision)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/export", wrapper.ExportValues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/events", wrapper.WatchProjectEvents)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/audit", wrapper.QueryOrgAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/audit/export", wrapper.ExportOrgAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/audit", wrapper.QueryProjectAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/audit/export", wrapper.ExportProjectAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit", wrapper.QueryEnvAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export", wrapper.ExportEnvAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/audit", wrapper.QueryInstanceAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/audit/export", wrapper.ExportInstanceAudit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/rotate-token-key", wrapper.RotateTokenKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/rotate-dek", wrapper.RotateDEK)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/reencrypt", wrapper.ReencryptInstance)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/rotate-master-key", wrapper.RotateMasterKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/rotate-root-key", wrapper.RotateRootKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/reencrypt", wrapper.ReencryptProject)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/rotate-scanning-key", wrapper.RotateScanningKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters", wrapper.ListAdapters)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters", wrapper.CreateAdapter)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}", wrapper.DeleteAdapter)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}", wrapper.ShowAdapter)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}", wrapper.UpdateAdapterOrigin)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}", wrapper.CancelAdapterMove)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}", wrapper.ShowAdapterMove)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}", wrapper.ResumeAdapterMove)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential", wrapper.RevokeAdapterCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential", wrapper.SetAdapterCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets", wrapper.ListAdapterTargets)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets", wrapper.AddAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}", wrapper.RemoveAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}", wrapper.ShowAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}", wrapper.UpdateAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan", wrapper.PlanAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync", wrapper.SyncAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause", wrapper.PauseAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume", wrapper.ResumeAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test", wrapper.TestAdapterTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions", wrapper.AdoptAdapterTargetNames)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets", wrapper.ListFileTargets)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets", wrapper.CreateFileTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.DeleteFileTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.GetFileTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.UpdateFileTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report", wrapper.ReportFileTarget)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.ListDynamicProviders)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.CreateDynamicProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}", wrapper.DeleteDynamicProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}", wrapper.ShowDynamicProvider)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential", wrapper.RevokeDynamicProviderCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential", wrapper.SetDynamicProviderCredential)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases", wrapper.ListLeases)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases", wrapper.MintLease)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}", wrapper.ShowLease)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew", wrapper.RenewLease)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke", wrapper.RevokeLease)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle", wrapper.SettleLease)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas", wrapper.ListSshCas)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas", wrapper.CreateSshCa)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}", wrapper.DeleteSshCa)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}", wrapper.ShowSshCa)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate", wrapper.RotateSshCa)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire", wrapper.RetireSshCaKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys", wrapper.GetSshTrustedKeys)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl", wrapper.GetSshKrl)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles", wrapper.ListSshProfiles)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles", wrapper.CreateSshProfile)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.DeleteSshProfile)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.ShowSshProfile)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.UpdateSshProfile)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates", wrapper.ListSshCertificates)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates", wrapper.IssueSshCertificate)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}", wrapper.ShowSshCertificate)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke", wrapper.RevokeSshCertificate)
+		r.Post(options.BaseURL+"/api/v1/instance/pairing-requests", wrapper.PrepareRemotePairing)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/pki/issuers", wrapper.ListPkiIssuers)
@@ -36556,25 +36796,25 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}", wrapper.ShowPkiIssuer)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/rotate", wrapper.RotatePkiIssuer)
-	})
-	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/install", wrapper.InstallPkiIssuerCertificate)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/release-hold", wrapper.ReleasePkiIssuerHold)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire", wrapper.RetirePkiIssuer)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke", wrapper.RevokePkiIssuer)
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/rotate", wrapper.RotatePkiIssuer)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl", wrapper.GetPkiIssuerCrl)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl", wrapper.PublishPkiIssuerCrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire", wrapper.RetirePkiIssuer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke", wrapper.RevokePkiIssuer)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/pki/profiles", wrapper.ListPkiProfiles)
@@ -36598,6 +36838,393 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/api/v1/instance/pki/profiles/{profile}/bindings/{binding}", wrapper.UnbindPkiProfile)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/reencrypt", wrapper.ReencryptInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.DeleteInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.GetInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.PutInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/remotes", wrapper.ListRemotes)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/remotes", wrapper.AddRemote)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/remotes/{remote}", wrapper.RemoveRemote)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/remotes/{remote}", wrapper.ShowRemote)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/instance/remotes/{remote}", wrapper.RenameRemote)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/remotes/pair", wrapper.PairRemote)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/retention-health", wrapper.GetRetentionHealth)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/rotate-dek", wrapper.RotateDEK)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/rotate-master-key", wrapper.RotateMasterKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/rotate-root-key", wrapper.RotateRootKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/rotate-scanning-key", wrapper.RotateScanningKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/rotate-token-key", wrapper.RotateTokenKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/saml-providers", wrapper.ListSamlProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.DeleteSamlProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.GetSamlProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.PatchSamlProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/saml-providers/{slug}", wrapper.PutSamlProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/saml-providers/{slug}/refresh-metadata", wrapper.RefreshSamlProviderMetadata)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/saml-sp-keys", wrapper.ListSamlSpKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/saml-sp-keys/{fingerprint}", wrapper.RetireSamlSpKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire", wrapper.CompromiseRetireSamlSpKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/saml-sp-keys/rotate", wrapper.RotateSamlSpKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/security-maintenance", wrapper.GetSecurityMaintenance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/update", wrapper.RequestInstanceUpdate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/update-status", wrapper.GetUpdateStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/updates/{job}", wrapper.GetInstanceUpdateJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/workspace-origins", wrapper.RemoveWorkspaceOrigin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/workspace-origins", wrapper.ListWorkspaceOrigins)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/workspace-origins", wrapper.AddWorkspaceOrigin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/me/invitations/accept", wrapper.AcceptEmailInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/me/invitations/preview", wrapper.PreviewEmailInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/me/orgs", wrapper.ListMyOrgs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/me/profile", wrapper.GetMyProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/me/profile", wrapper.UpdateMyProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/me/sessions", wrapper.ListMySessions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/me/sessions/{session}", wrapper.RevokeMySession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/meta", wrapper.GetMeta)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs", wrapper.ListOrgs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs", wrapper.CreateOrg)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}", wrapper.DeleteOrg)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}", wrapper.GetOrg)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}", wrapper.RenameOrg)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/audit", wrapper.QueryOrgAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/audit/export", wrapper.ExportOrgAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.ListOrgEmailInvitations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/email-invitations", wrapper.InviteOrgMemberByEmail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/email-invitations/{invitation}", wrapper.RevokeOrgEmailInvitation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.RevokeOrgGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.ListOrgGrants)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.CreateOrgGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants/template", wrapper.ApplyOrgTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity", wrapper.SetOrgIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.ClearOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.GetOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.SetOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects", wrapper.ListProjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects", wrapper.CreateProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.DeleteProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.GetProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.RenameProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.ListAccessPolicies)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.CreateAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.DeleteAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.UpdateAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}", wrapper.CancelAdapterMove)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}", wrapper.ShowAdapterMove)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}", wrapper.ResumeAdapterMove)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}", wrapper.RemoveAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}", wrapper.ShowAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}", wrapper.UpdateAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions", wrapper.AdoptAdapterTargetNames)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause", wrapper.PauseAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan", wrapper.PlanAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume", wrapper.ResumeAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync", wrapper.SyncAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test", wrapper.TestAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters", wrapper.ListAdapters)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters", wrapper.CreateAdapter)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}", wrapper.DeleteAdapter)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}", wrapper.ShowAdapter)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}", wrapper.UpdateAdapterOrigin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential", wrapper.RevokeAdapterCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential", wrapper.SetAdapterCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets", wrapper.ListAdapterTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets", wrapper.AddAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies", wrapper.ListApprovalPolicies)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies", wrapper.CreateApprovalPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}", wrapper.DeleteApprovalPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}", wrapper.UpdateApprovalPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/audit", wrapper.QueryProjectAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/audit/export", wrapper.ExportProjectAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/capacity", wrapper.GetProjectCapacity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/capacity", wrapper.SetProjectCapacity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/check", wrapper.CheckDefinitions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/export", wrapper.ExportDefinitions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/plans", wrapper.CreateDefinitionsPlan)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/plans/{plan}", wrapper.GetDefinitionsPlan)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/plans/{plan}/apply", wrapper.ApplyDefinitionsPlan)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/settings", wrapper.GetDefinitionsSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/definitions/settings", wrapper.SetDefinitionsSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/developer-credentials", wrapper.ListProjectDeveloperCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential}", wrapper.RevokeProjectDeveloperCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.ListDynamicProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.CreateDynamicProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}", wrapper.DeleteDynamicProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}", wrapper.ShowDynamicProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential", wrapper.RevokeDynamicProviderCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential", wrapper.SetDynamicProviderCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments", wrapper.ListEnvironments)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments", wrapper.CreateEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.DeleteEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.GetEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.RenameEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.ListAccessRequests)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.CreateAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel", wrapper.CancelAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke", wrapper.RevokeAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote", wrapper.VoteAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency", wrapper.EmergencyAccess)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests", wrapper.ListApprovalRequests)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony", wrapper.GetApprovalCeremony)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote", wrapper.VoteApprovalRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit", wrapper.QueryEnvAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export", wrapper.ExportEnvAudit)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles", wrapper.ListCertificateProfiles)
 	})
 	r.Group(func(r chi.Router) {
@@ -36610,13 +37237,208 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}", wrapper.ShowCertificate)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl", wrapper.GetCertificateCrl)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew", wrapper.RenewCertificate)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke", wrapper.RevokeCertificate)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl", wrapper.GetCertificateCrl)
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery", wrapper.FetchDelivery)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ListDeliveryTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ReportDeliveryTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone", wrapper.TombstoneDeliveryTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records", wrapper.ReconcileOfflineRecords)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials", wrapper.MintDeveloperCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report", wrapper.ReportFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants", wrapper.RevokeEnvGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants", wrapper.CreateEnvGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants/template", wrapper.ApplyEnvTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases", wrapper.ListLeases)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases", wrapper.MintLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}", wrapper.ShowLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew", wrapper.RenewLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke", wrapper.RevokeLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle", wrapper.SettleLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters", wrapper.ListEnvironmentParameters)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters", wrapper.ChangeEnvironmentParameter)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending", wrapper.ListPendingDrafts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-value-counts", wrapper.ListPersonalValueCounts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values", wrapper.ListMyPersonalValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}", wrapper.DeleteMyPersonalValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}", wrapper.SetMyPersonalValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members", wrapper.ListPersonalValueMembers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/members/{member}", wrapper.DeletePersonalValueMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/personal-values/{key}/reveal", wrapper.RevealMyPersonalValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins", wrapper.ListRevisionPins)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins", wrapper.CreateRevisionPin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins/{workloadPrincipal}", wrapper.ReleaseRevisionPin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/publish", wrapper.PublishPendingChanges)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window", wrapper.GetRevealWindow)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions", wrapper.ListRevisions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}", wrapper.GetRevision)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback", wrapper.RollbackRevision)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff", wrapper.DiffRevisions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal", wrapper.RevealRevisionDiff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations", wrapper.ListRotations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations", wrapper.CreateRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}", wrapper.DeleteRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}", wrapper.ShowRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause", wrapper.PauseRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold", wrapper.ReleaseRotationHold)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume", wrapper.ResumeRotation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now", wrapper.RunRotationNow)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs", wrapper.ListRotationRuns)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings", wrapper.GetEnvironmentSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings", wrapper.SetEnvironmentSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals", wrapper.GetEnvironmentSignals)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas", wrapper.ListSshCas)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas", wrapper.CreateSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}", wrapper.DeleteSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}", wrapper.ShowSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire", wrapper.RetireSshCaKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl", wrapper.GetSshKrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate", wrapper.RotateSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys", wrapper.GetSshTrustedKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates", wrapper.ListSshCertificates)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates", wrapper.IssueSshCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}", wrapper.ShowSshCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke", wrapper.RevokeSshCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles", wrapper.ListSshProfiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles", wrapper.CreateSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.DeleteSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.ShowSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.UpdateSshProfile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys", wrapper.ListTransitKeys)
@@ -36631,31 +37453,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}", wrapper.ConfigureTransitKey)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate", wrapper.RotateTransitKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle", wrapper.ChangeTransitKeyState)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim", wrapper.TrimTransitKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt", wrapper.TransitEncrypt)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey", wrapper.TransitDataKey)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt", wrapper.TransitDecrypt)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap", wrapper.TransitRewrap)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey", wrapper.TransitDataKey)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign", wrapper.TransitSign)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify", wrapper.TransitVerify)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt", wrapper.TransitEncrypt)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac", wrapper.TransitHMAC)
@@ -36664,28 +37468,340 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify", wrapper.TransitVerifyHMAC)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials", wrapper.MintDeveloperCredential)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle", wrapper.ChangeTransitKeyState)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/auth/developer-credentials", wrapper.RevokeAllMyDeveloperCredentials)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap", wrapper.TransitRewrap)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/auth/developer-credentials", wrapper.ListMyDeveloperCredentials)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate", wrapper.RotateTransitKey)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/auth/developer-credentials/{credential}", wrapper.RevokeMyDeveloperCredential)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign", wrapper.TransitSign)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/developer-credentials", wrapper.ListProjectDeveloperCredentials)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim", wrapper.TrimTransitKey)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential}", wrapper.RevokeProjectDeveloperCredential)
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify", wrapper.TransitVerify)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/instance/developer-credential-policy", wrapper.GetDeveloperCredentialPolicy)
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values", wrapper.ListValues)
 	})
 	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/api/v1/instance/developer-credential-policy", wrapper.SetDeveloperCredentialPolicy)
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}", wrapper.ClearValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}", wrapper.GetValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}", wrapper.SetValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize", wrapper.InitializeValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/reveal", wrapper.RevealValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/export", wrapper.ExportValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/import", wrapper.ImportValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/occurrences", wrapper.ListValueOccurrences)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/reveal", wrapper.RevealValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/clone", wrapper.CloneEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/order", wrapper.ReorderEnvironments)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/events", wrapper.WatchProjectEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets", wrapper.ListFileTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets", wrapper.CreateFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.DeleteFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.GetFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.UpdateFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders", wrapper.ListFolders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders", wrapper.CreateFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders/{folder}", wrapper.DeleteFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders/{folder}", wrapper.GetFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/folders/{folder}", wrapper.RenameFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.RevokeProjectGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.ListProjectGrants)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.CreateProjectGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants/template", wrapper.ApplyProjectTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity", wrapper.SetProjectIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.ClearProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.GetProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.SetProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups", wrapper.ListKeyGroups)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups", wrapper.CreateKeyGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups/{group}", wrapper.DeleteKeyGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups/{group}", wrapper.GetKeyGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/key-groups/{group}", wrapper.RenameKeyGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys", wrapper.ListKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys", wrapper.CreateKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}", wrapper.DeleteKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}", wrapper.GetKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}", wrapper.UpdateKeyMetadata)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/classification", wrapper.ReclassifyKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration", wrapper.UpdateKeyDeclaration)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/group", wrapper.SetKeyGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/keys/{key}/name", wrapper.RenameKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/machine-reveal", wrapper.GetMachineReveal)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/machine-reveal", wrapper.SetMachineReveal)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/personal-offboarding-report/{member}", wrapper.GetPersonalOffboardingReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/reencrypt", wrapper.ReencryptProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/retention", wrapper.GetProjectRetention)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/retention", wrapper.SetProjectRetention)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/rules", wrapper.ListProjectRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts", wrapper.ListServiceAccounts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts", wrapper.CreateServiceAccount)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}", wrapper.DeleteServiceAccount)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/bindings", wrapper.CreateFederatedBinding)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials", wrapper.ListMachineCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials", wrapper.MintMachineCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials/{credential}", wrapper.RevokeMachineCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/copy", wrapper.CopyValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/declare", wrapper.DeclareValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/diff", wrapper.DiffValues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/diff/reveal", wrapper.RevealValueDiff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.DeleteOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.GetOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.PutOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/retention", wrapper.GetOrgRetention)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/retention", wrapper.SetOrgRetention)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.ListOrgRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.CreateRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/rules/{rule}", wrapper.RevokeRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules/replace", wrapper.ReplaceRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings", wrapper.ListScimBindings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings", wrapper.CreateScimBinding)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}", wrapper.DeleteScimBinding)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}", wrapper.GetScimBinding)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials", wrapper.ListScimCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials", wrapper.MintScimCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials/{id}", wrapper.RevokeScimCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/credentials/{id}", wrapper.GetScimCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/directory/groups", wrapper.ListScimDirectoryGroups)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/directory/users", wrapper.ListScimDirectoryUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.DeleteScimMapping)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.ListScimMappings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.CreateScimMapping)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings/{binding}/mappings", wrapper.UpdateScimMapping)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Bulk", wrapper.ScimBulk)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups", wrapper.ScimListGroups)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups", wrapper.ScimCreateGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/.search", wrapper.ScimSearchGroups)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimDeleteGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimGetGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimPatchGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}", wrapper.ScimReplaceGroup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Me", wrapper.ScimMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/ResourceTypes", wrapper.ScimResourceTypes)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Schemas", wrapper.ScimSchemas)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/ServiceProviderConfig", wrapper.ScimServiceProviderConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users", wrapper.ScimListUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users", wrapper.ScimCreateUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/.search", wrapper.ScimSearchUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimDeleteUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimGetUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimPatchUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}", wrapper.ScimReplaceUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/runtime/status", wrapper.GetRuntimeStatus)
 	})
 
 	return r
@@ -39663,6 +40779,96 @@ func (response OidcCallback500JSONResponse) VisitOidcCallbackResponse(w http.Res
 type OidcCallback503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response OidcCallback503JSONResponse) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycleRequestObject struct {
+	Provider    ProviderSlug `json:"provider"`
+	ContentType string
+	Body        io.Reader
+}
+
+type OidcLifecycleResponseObject interface {
+	VisitOidcLifecycleResponse(w http.ResponseWriter) error
+}
+
+type OidcLifecycle204Response struct {
+}
+
+func (response OidcLifecycle204Response) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type OidcLifecycle400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response OidcLifecycle400JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response OidcLifecycle401JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response OidcLifecycle429JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle500JSONResponse struct{ InternalJSONResponse }
+
+func (response OidcLifecycle500JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcLifecycle503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response OidcLifecycle503JSONResponse) VisitOidcLifecycleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -69814,6 +71020,988 @@ func (response RollbackRevision503JSONResponse) VisitRollbackRevisionResponse(w 
 	return err
 }
 
+type ListRotationsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Params      ListRotationsParams
+}
+
+type ListRotationsResponseObject interface {
+	VisitListRotationsResponse(w http.ResponseWriter) error
+}
+
+type ListRotations200JSONResponse CredentialRotationList
+
+func (response ListRotations200JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListRotations401JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListRotations404JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListRotations500JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotations503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRotations503JSONResponse) VisitListRotationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateRotationJSONRequestBody
+}
+
+type CreateRotationResponseObject interface {
+	VisitCreateRotationResponse(w http.ResponseWriter) error
+}
+
+type CreateRotation201JSONResponse CredentialRotation
+
+func (response CreateRotation201JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRotation400JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateRotation401JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateRotation403JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateRotation404JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateRotation409JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateRotation500JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateRotation503JSONResponse) VisitCreateRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Params      DeleteRotationParams
+}
+
+type DeleteRotationResponseObject interface {
+	VisitDeleteRotationResponse(w http.ResponseWriter) error
+}
+
+type DeleteRotation200JSONResponse CredentialRotation
+
+func (response DeleteRotation200JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteRotation400JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteRotation401JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteRotation404JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteRotation409JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteRotation500JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteRotation503JSONResponse) VisitDeleteRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+}
+
+type ShowRotationResponseObject interface {
+	VisitShowRotationResponse(w http.ResponseWriter) error
+}
+
+type ShowRotation200JSONResponse CredentialRotation
+
+func (response ShowRotation200JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowRotation401JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowRotation404JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowRotation500JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowRotation503JSONResponse) VisitShowRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *PauseRotationJSONRequestBody
+}
+
+type PauseRotationResponseObject interface {
+	VisitPauseRotationResponse(w http.ResponseWriter) error
+}
+
+type PauseRotation200JSONResponse CredentialRotation
+
+func (response PauseRotation200JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PauseRotation400JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PauseRotation401JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PauseRotation404JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PauseRotation409JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response PauseRotation500JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PauseRotation503JSONResponse) VisitPauseRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHoldRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *ReleaseRotationHoldJSONRequestBody
+}
+
+type ReleaseRotationHoldResponseObject interface {
+	VisitReleaseRotationHoldResponse(w http.ResponseWriter) error
+}
+
+type ReleaseRotationHold200JSONResponse CredentialRotation
+
+func (response ReleaseRotationHold200JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReleaseRotationHold400JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReleaseRotationHold401JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReleaseRotationHold403JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReleaseRotationHold404JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReleaseRotationHold409JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReleaseRotationHold500JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRotationHold503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReleaseRotationHold503JSONResponse) VisitReleaseRotationHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotationRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *ResumeRotationJSONRequestBody
+}
+
+type ResumeRotationResponseObject interface {
+	VisitResumeRotationResponse(w http.ResponseWriter) error
+}
+
+type ResumeRotation200JSONResponse CredentialRotation
+
+func (response ResumeRotation200JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResumeRotation400JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResumeRotation401JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ResumeRotation403JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResumeRotation404JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ResumeRotation409JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation500JSONResponse struct{ InternalJSONResponse }
+
+func (response ResumeRotation500JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeRotation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResumeRotation503JSONResponse) VisitResumeRotationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNowRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Body        *RunRotationNowJSONRequestBody
+}
+
+type RunRotationNowResponseObject interface {
+	VisitRunRotationNowResponse(w http.ResponseWriter) error
+}
+
+type RunRotationNow202JSONResponse RotationRunRequested
+
+func (response RunRotationNow202JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RunRotationNow400JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RunRotationNow401JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RunRotationNow403JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RunRotationNow404JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RunRotationNow409JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow500JSONResponse struct{ InternalJSONResponse }
+
+func (response RunRotationNow500JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunRotationNow503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RunRotationNow503JSONResponse) VisitRunRotationNowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRunsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Rotation    RotationID    `json:"rotation"`
+	Params      ListRotationRunsParams
+}
+
+type ListRotationRunsResponseObject interface {
+	VisitListRotationRunsResponse(w http.ResponseWriter) error
+}
+
+type ListRotationRuns200JSONResponse RotationRunList
+
+func (response ListRotationRuns200JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListRotationRuns400JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListRotationRuns401JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListRotationRuns404JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListRotationRuns500JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRotationRuns503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRotationRuns503JSONResponse) VisitListRotationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnvironmentSettingsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -85336,6 +87524,9 @@ type StrictServerInterface interface {
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(ctx context.Context, request OidcCallbackRequestObject) (OidcCallbackResponseObject, error)
+	// OidcLifecycle Receive a signed directory lifecycle event for an OIDC provider.
+	// (POST /api/v1/auth/oidc/{provider}/lifecycle)
+	OidcLifecycle(ctx context.Context, request OidcLifecycleRequestObject) (OidcLifecycleResponseObject, error)
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(ctx context.Context, request OidcStartRequestObject) (OidcStartResponseObject, error)
@@ -86122,6 +88313,33 @@ type StrictServerInterface interface {
 	// RollbackRevision Stage an environment or key restore from one revision.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision}/rollback)
 	RollbackRevision(ctx context.Context, request RollbackRevisionRequestObject) (RollbackRevisionResponseObject, error)
+	// ListRotations List an environment's scheduled credential rotations.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	ListRotations(ctx context.Context, request ListRotationsRequestObject) (ListRotationsResponseObject, error)
+	// CreateRotation Configure scheduled rotation of one PostgreSQL credential pair.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations)
+	CreateRotation(ctx context.Context, request CreateRotationRequestObject) (CreateRotationResponseObject, error)
+	// DeleteRotation Disable a rotation; the row stays as history.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	DeleteRotation(ctx context.Context, request DeleteRotationRequestObject) (DeleteRotationResponseObject, error)
+	// ShowRotation Show one scheduled credential rotation.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation})
+	ShowRotation(ctx context.Context, request ShowRotationRequestObject) (ShowRotationResponseObject, error)
+	// PauseRotation Pause a rotation so it stops being scheduled.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause)
+	PauseRotation(ctx context.Context, request PauseRotationRequestObject) (PauseRotationResponseObject, error)
+	// ReleaseRotationHold Release the restore hold of a rotation.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold)
+	ReleaseRotationHold(ctx context.Context, request ReleaseRotationHoldRequestObject) (ReleaseRotationHoldResponseObject, error)
+	// ResumeRotation Resume a paused or halted rotation and recompute its next run.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume)
+	ResumeRotation(ctx context.Context, request ResumeRotationRequestObject) (ResumeRotationResponseObject, error)
+	// RunRotationNow Request a rotation run now, outside its schedule.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now)
+	RunRotationNow(ctx context.Context, request RunRotationNowRequestObject) (RunRotationNowResponseObject, error)
+	// ListRotationRuns List a rotation's runs, newest first.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs)
+	ListRotationRuns(ctx context.Context, request ListRotationRunsRequestObject) (ListRotationRunsResponseObject, error)
 	// GetEnvironmentSettings Read an environment's protection state and reauthentication window.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings)
 	GetEnvironmentSettings(ctx context.Context, request GetEnvironmentSettingsRequestObject) (GetEnvironmentSettingsResponseObject, error)
@@ -87360,6 +89578,35 @@ func (sh *strictHandler) OidcCallback(w http.ResponseWriter, r *http.Request, pr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OidcCallbackResponseObject); ok {
 		if err := validResponse.VisitOidcCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OidcLifecycle operation middleware
+func (sh *strictHandler) OidcLifecycle(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
+	var request OidcLifecycleRequestObject
+
+	request.Provider = provider
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OidcLifecycle(ctx, request.(OidcLifecycleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OidcLifecycle")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OidcLifecycleResponseObject); ok {
+		if err := validResponse.VisitOidcLifecycleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -95075,6 +97322,312 @@ func (sh *strictHandler) RollbackRevision(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RollbackRevisionResponseObject); ok {
 		if err := validResponse.VisitRollbackRevisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRotations operation middleware
+func (sh *strictHandler) ListRotations(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRotationsParams) {
+	var request ListRotationsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRotations(ctx, request.(ListRotationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRotations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRotationsResponseObject); ok {
+		if err := validResponse.VisitListRotationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRotation operation middleware
+func (sh *strictHandler) CreateRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateRotationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRotation(ctx, request.(CreateRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRotationResponseObject); ok {
+		if err := validResponse.VisitCreateRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRotation operation middleware
+func (sh *strictHandler) DeleteRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params DeleteRotationParams) {
+	var request DeleteRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRotation(ctx, request.(DeleteRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRotationResponseObject); ok {
+		if err := validResponse.VisitDeleteRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowRotation operation middleware
+func (sh *strictHandler) ShowRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request ShowRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowRotation(ctx, request.(ShowRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowRotationResponseObject); ok {
+		if err := validResponse.VisitShowRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PauseRotation operation middleware
+func (sh *strictHandler) PauseRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request PauseRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body PauseRotationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PauseRotation(ctx, request.(PauseRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PauseRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PauseRotationResponseObject); ok {
+		if err := validResponse.VisitPauseRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseRotationHold operation middleware
+func (sh *strictHandler) ReleaseRotationHold(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request ReleaseRotationHoldRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body ReleaseRotationHoldJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseRotationHold(ctx, request.(ReleaseRotationHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseRotationHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseRotationHoldResponseObject); ok {
+		if err := validResponse.VisitReleaseRotationHoldResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeRotation operation middleware
+func (sh *strictHandler) ResumeRotation(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request ResumeRotationRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body ResumeRotationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeRotation(ctx, request.(ResumeRotationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeRotation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeRotationResponseObject); ok {
+		if err := validResponse.VisitResumeRotationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunRotationNow operation middleware
+func (sh *strictHandler) RunRotationNow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID) {
+	var request RunRotationNowRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+
+	var body RunRotationNowJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunRotationNow(ctx, request.(RunRotationNowRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunRotationNow")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunRotationNowResponseObject); ok {
+		if err := validResponse.VisitRunRotationNowResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRotationRuns operation middleware
+func (sh *strictHandler) ListRotationRuns(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, rotation RotationID, params ListRotationRunsParams) {
+	var request ListRotationRunsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Rotation = rotation
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRotationRuns(ctx, request.(ListRotationRunsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRotationRuns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRotationRunsResponseObject); ok {
+		if err := validResponse.VisitListRotationRunsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -280,6 +280,7 @@ type stubMeasuredGauges struct {
 	err       error
 
 	pkiLive, pkiUnknown, pkiHeld int64
+	rotation                     server.RotationCounts
 }
 
 func (s stubMeasuredGauges) ApprovalSnapshot() (server.ApprovalStats, error) {
@@ -298,6 +299,10 @@ func (s stubMeasuredGauges) PKISnapshot() (int64, int64, int64, error) {
 	return s.pkiLive, s.pkiUnknown, s.pkiHeld, s.err
 }
 
+func (s stubMeasuredGauges) RotationSnapshot() (server.RotationCounts, error) {
+	return s.rotation, s.err
+}
+
 // A failed gauge read must never render as a healthy zero: the lease and
 // approval gauges are omitted and the known flag reads 0, so an alert can tell
 // "not measured" from "nothing pending". A healthy source renders both values
@@ -310,6 +315,7 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 		metrics.SetDynamicSource(source)
 		metrics.SetSSHSource(source)
 		metrics.SetPKISource(source)
+		metrics.SetRotationSource(source)
 		operational := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}, metrics))
 		t.Cleanup(operational.Close)
 		resp, err := operational.Client().Get(operational.URL + "/metrics")
@@ -328,6 +334,8 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 		server.MetricApprovalRequestsOpen, server.MetricApprovalRequestsExpired,
 		server.MetricSSHCertificatesActive, server.MetricSSHKRLEntries,
 		server.MetricPKICertificatesLive, server.MetricPKICertificatesUnknown, server.MetricPKIIssuersOnHold,
+		server.MetricRotationRunsQuarantined, server.MetricRotationRunsUnknownOutcome, server.MetricRotationRunsRevokeRefused,
+		server.MetricRotationHalted, server.MetricRotationRestoreHeld, server.MetricRotationOverdue, server.MetricRotationCredentialsExpiring,
 	}
 
 	body := scrape(t, stubMeasuredGauges{err: errors.New("datastore unavailable")})
@@ -340,8 +348,18 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	mustContain(t, body, server.MetricApprovalGaugesKnown+" 0")
 	mustContain(t, body, server.MetricSSHGaugesKnown+" 0")
 	mustContain(t, body, server.MetricPKIGaugesKnown+" 0")
+	mustContain(t, body, server.MetricRotationGaugesKnown+" 0")
 
-	body = scrape(t, stubMeasuredGauges{approvals: server.ApprovalStats{Open: 3, Expired: 1}, active: 5, unknown: 2, pkiLive: 7, pkiUnknown: 1, pkiHeld: 2})
+	body = scrape(t, stubMeasuredGauges{approvals: server.ApprovalStats{Open: 3, Expired: 1}, active: 5, unknown: 2, pkiLive: 7, pkiUnknown: 1, pkiHeld: 2,
+		rotation: server.RotationCounts{Quarantined: 1, UnknownOutcome: 2, RevokeRefused: 3, Halted: 4, RestoreHeld: 7, Overdue: 5, CredentialsExpiring: 6}})
+	mustContain(t, body, server.MetricRotationRunsQuarantined+" 1")
+	mustContain(t, body, server.MetricRotationRunsUnknownOutcome+" 2")
+	mustContain(t, body, server.MetricRotationRunsRevokeRefused+" 3")
+	mustContain(t, body, server.MetricRotationHalted+" 4")
+	mustContain(t, body, server.MetricRotationRestoreHeld+" 7")
+	mustContain(t, body, server.MetricRotationOverdue+" 5")
+	mustContain(t, body, server.MetricRotationCredentialsExpiring+" 6")
+	mustContain(t, body, server.MetricRotationGaugesKnown+" 1")
 	mustContain(t, body, server.MetricPKICertificatesLive+" 7")
 	mustContain(t, body, server.MetricPKICertificatesUnknown+" 1")
 	mustContain(t, body, server.MetricPKIIssuersOnHold+" 2")
@@ -379,4 +397,5 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	mustContain(t, unwired, server.MetricApprovalGaugesKnown+" 0")
 	mustContain(t, unwired, server.MetricSSHGaugesKnown+" 0")
 	mustContain(t, unwired, server.MetricPKIGaugesKnown+" 0")
+	mustContain(t, unwired, server.MetricRotationGaugesKnown+" 0")
 }

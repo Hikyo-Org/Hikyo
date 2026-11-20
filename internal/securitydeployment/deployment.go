@@ -11,7 +11,8 @@ package securitydeployment
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
@@ -60,9 +62,9 @@ type Config struct {
 	StateDirectory  string            `json:"state_directory"`
 	ImageRepository string            `json:"image_repository"`
 	TimeoutSeconds  int               `json:"timeout_seconds"`
-	Compose         *ComposeConfig    `json:"compose,omitempty"`
-	Kubernetes      *KubernetesConfig `json:"kubernetes,omitempty"`
-	ECS             *ECSConfig        `json:"ecs,omitempty"`
+	Compose         *ComposeConfig    `json:"compose,omitzero"`
+	Kubernetes      *KubernetesConfig `json:"kubernetes,omitzero"`
+	ECS             *ECSConfig        `json:"ecs,omitzero"`
 }
 
 type ComposeConfig struct {
@@ -98,7 +100,7 @@ type KubernetesConfig struct {
 	// otherwise fail the ancestor check. In-cluster only.
 	VolumeRoot string `json:"volume_root,omitempty"`
 	// AcceptWorldWritableVolumeRoot accepts a 0777 VolumeRoot (local-path), where another user could replace the state.
-	AcceptWorldWritableVolumeRoot bool `json:"accept_world_writable_volume_root,omitempty"`
+	AcceptWorldWritableVolumeRoot bool `json:"accept_world_writable_volume_root,omitzero"`
 }
 
 func (p *KubernetesConfig) inCluster() bool { return p.Kubeconfig == "" }
@@ -140,7 +142,7 @@ type Observation struct {
 	// AbortedBeforeMutation is reported by the target image after its own
 	// preparation failed before the live database was written. The other fields
 	// then describe the untouched source release.
-	AbortedBeforeMutation bool `json:"aborted_before_mutation,omitempty"`
+	AbortedBeforeMutation bool `json:"aborted_before_mutation,omitzero"`
 }
 
 // PastFinalGate is whether this row shows a target that may have served: healthy at a release
@@ -164,7 +166,7 @@ type deploymentJournal struct {
 	// the gate decision was then taken, and a crash while the database is absent resumes from it,
 	// because the row cannot be read. It is never set while the target may still run, since it
 	// vouches that no gate was crossed. Observe clears it only when the target itself completes; Reconcile clears it with the journal.
-	RollingBack bool `json:"rolling_back,omitempty"`
+	RollingBack bool `json:"rolling_back,omitzero"`
 }
 
 // Executor is single-owner. The enclosing maintenance coordinator must hold its
@@ -413,16 +415,14 @@ func decode(raw []byte, out any) error {
 	if len(raw) == 0 || len(raw) > maxRecordBytes {
 		return ErrInvalid
 	}
-	d := json.NewDecoder(bytes.NewReader(raw))
+	d := jsontext.NewDecoder(bytes.NewReader(raw))
 	// A target image may be newer than this coordinator and add observation
 	// fields. Everything this installation wrote itself stays strictly decoded.
-	if _, observation := out.(*Observation); !observation {
-		d.DisallowUnknownFields()
-	}
-	if err := d.Decode(out); err != nil {
+	_, observation := out.(*Observation)
+	if err := json.UnmarshalDecode(d, out, json.RejectUnknownMembers(!observation)); err != nil {
 		return ErrInvalid
 	}
-	if err := d.Decode(new(any)); err != io.EOF {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrInvalid
 	}
 	return nil
@@ -453,7 +453,7 @@ func (e *Executor) journal() (*deploymentJournal, error) {
 }
 
 func (e *Executor) save(j *deploymentJournal) error {
-	raw, err := json.Marshal(j)
+	raw, err := json.Marshal(j, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

@@ -2,13 +2,14 @@ package app
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	trustfixture "github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -69,7 +70,7 @@ func TestProductionBackupCustodyRefusesBeforeDatabaseAdmission(t *testing.T) {
 					EpochFloor int64          `json:"epoch_floor"`
 					Journal    journalFixture `json:"journal"`
 				}{"hikyo-operator-custody/v1", before.InstanceID, prior.PrimaryPublic, before.RestoreEpoch, journal}
-				raw, err := json.Marshal(custody)
+				raw, err := json.Marshal(custody, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

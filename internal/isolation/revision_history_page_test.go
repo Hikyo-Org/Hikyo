@@ -135,9 +135,11 @@ func TestHistoryPagingIsContiguous(t *testing.T) {
 				!slices.Equal(paged[i].ChangedKeys, full[i].ChangedKeys) {
 				t.Fatalf("entry %d: paged %+v, full %+v", i, paged[i], full[i])
 			}
-			if wantChanged := 1; i >= 5 {
+			wantChanged := 1
+			if i >= 5 {
 				wantChanged = 0
-			} else if len(full[i].ChangedKeys) != wantChanged {
+			}
+			if len(full[i].ChangedKeys) != wantChanged {
 				t.Fatalf("entry %d (revision %d): changed keys %+v, want %d", i, full[i].Revision, full[i].ChangedKeys, wantChanged)
 			}
 			if i > 0 && paged[i].Revision != paged[i-1].Revision-1 {

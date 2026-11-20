@@ -2,7 +2,7 @@ package updatecheck
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +12,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func releasePageResponse(body string) *http.Response {
@@ -47,7 +49,7 @@ func releasePageBody(t *testing.T, start, count int) string {
 			Prerelease: true, PublishedAt: "2026-10-30T02:00:00Z",
 		}
 	}
-	body, err := json.Marshal(records)
+	body, err := json.Marshal(records, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
