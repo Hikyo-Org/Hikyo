@@ -14,7 +14,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"testing"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
@@ -57,21 +56,6 @@ func loadFixture(ctx BuildContext, tests bool, patterns ...string) ([]*packages.
 		}
 	}
 	return pkgs, nil
-}
-
-// eachContext runs fn over a negative fixture loaded under every supported
-// analysis context, test variants included.
-func eachContext(t *testing.T, pattern string, fn func(t *testing.T, pkgs []*packages.Package)) {
-	t.Helper()
-	for _, ctx := range Contexts {
-		t.Run(ctx.Name, func(t *testing.T) {
-			pkgs, err := loadFixture(ctx, true, pattern)
-			if err != nil {
-				t.Fatal(err)
-			}
-			fn(t, pkgs)
-		})
-	}
 }
 
 // runAnalyzer runs c's analyzer over each package that has type information and

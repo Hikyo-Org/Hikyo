@@ -396,23 +396,6 @@ func assertFindings(t *testing.T, findings, wantSubstrings []string) {
 	}
 }
 
-// fixtureLine finds the 1-indexed line of the first source line containing
-// marker, so position assertions survive edits to the fixture above them.
-func fixtureLine(t *testing.T, path, marker string) int {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i, line := range strings.Split(string(b), "\n") {
-		if strings.Contains(line, marker) {
-			return i + 1
-		}
-	}
-	t.Fatalf("marker %q not found in %s", marker, path)
-	return 0
-}
-
 // --- redaction + append-only (audit-model ADR, #45) ---
 
 // The context environment is explicit: ambient GOFLAGS never leaks into the

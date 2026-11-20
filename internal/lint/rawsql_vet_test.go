@@ -11,21 +11,6 @@ func rawSQLFixtureRoot() string {
 	return filepath.Join(moduleRoot(), "internal/lint/testdata/badrawsql")
 }
 
-// rawSQLFixtureProtocols are the fixture's pins, read through the same decode
-// the analyzer uses.
-func rawSQLFixtureProtocols() (map[string]RawSQLProtocol, error) {
-	root := rawSQLFixtureRoot()
-	raw, err := osSource{}.ReadFile(filepath.Join(root, filepath.FromSlash(reviewedPinsPath)))
-	if err != nil {
-		return nil, err
-	}
-	inventory, err := parseReviewedPins(raw)
-	if err != nil {
-		return nil, err
-	}
-	return inventory.rawProtocols()
-}
-
 // flagValue is the value of the flag with the given "-name=" prefix.
 func flagValue(flags []string, prefix string) string {
 	for _, flag := range flags {
