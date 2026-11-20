@@ -39,6 +39,6 @@ func TestObserversCatchProductionReferences(t *testing.T) {
 			owner:              {"RenamedObserver"},
 			owner + "/missing": {"SetQueryObserver"},
 		})
-		assertFindings(t, missing, []string{"installer " + owner + ".RenamedObserver not found", "owner package " + owner + "/missing not loaded"})
+		assertFindings(t, missing, []string{"installer " + owner + ".RenamedObserver not found", "target package " + owner + "/missing was not analyzed"})
 	})
 }

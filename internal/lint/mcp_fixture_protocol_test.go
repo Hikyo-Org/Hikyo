@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,8 +57,7 @@ func TestMCPFixtureDriverAuthorityIsExactFileScoped(t *testing.T) {
 				candidate := *actual
 				candidate.PkgPath, candidate.Fset = tc.pkg, files
 				if tc.generated {
-					candidate.Imports = maps.Clone(actual.Imports)
-					candidate.Imports[Module+"/internal/store/pggen"] = &packages.Package{PkgPath: Module + "/internal/store/pggen"}
+					addImport(&candidate, Module+"/internal/store/pggen")
 				}
 				findings := CheckDriverHandles([]*packages.Package{&candidate})
 				driverFound := false

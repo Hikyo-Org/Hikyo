@@ -1,10 +1,10 @@
 package lint
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -12,24 +12,27 @@ import (
 // release generator. Resolve symbols through Go types so import aliases and
 // captured function values cannot turn this into a runtime migration bypass.
 func UpgradeBuildAuthority(pkgs []*packages.Package) []string {
-	var findings []string
-	for _, pkg := range pkgs {
-		if pkg.TypesInfo == nil {
-			continue
-		}
-		for identifier, object := range pkg.TypesInfo.Uses {
+	return RunOver(Check{Analyzer: UpgradeBuild}, pkgs).Findings
+}
+
+// UpgradeBuild is UpgradeBuildAuthority as an analyzer.
+var UpgradeBuild = &analysis.Analyzer{
+	Name: "upgradebuild",
+	Doc:  "BuildScratchSchema is confined to app/releasecompat.go",
+	Run: func(pass *analysis.Pass) (any, error) {
+		for identifier, object := range pass.TypesInfo.Uses {
 			if object.Pkg() == nil || object.Pkg().Path() != Module+"/internal/store/upgrade" || object.Name() != "BuildScratchSchema" {
 				continue
 			}
-			position := pkg.Fset.Position(identifier.Pos())
+			position := pass.Fset.Position(identifier.Pos())
 			if strings.HasSuffix(position.Filename, "_test.go") {
 				continue
 			}
-			if pkg.PkgPath == Module+"/internal/app" && filepath.Base(position.Filename) == "releasecompat.go" {
+			if pass.Pkg.Path() == Module+"/internal/app" && filepath.Base(position.Filename) == "releasecompat.go" {
 				continue
 			}
-			findings = append(findings, fmt.Sprintf("%s: scratch schema generation is confined to app/releasecompat.go", position))
+			pass.Reportf(identifier.Pos(), "scratch schema generation is confined to app/releasecompat.go")
 		}
-	}
-	return findings
+		return nil, nil
+	},
 }

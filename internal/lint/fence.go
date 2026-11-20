@@ -1,11 +1,11 @@
 package lint
 
 import (
-	"fmt"
 	"go/ast"
 	"go/types"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -29,8 +29,10 @@ import (
 //     seals but returns the ciphertext and its DEK version to a caller that
 //     fences on that version before writing (the sealVerifier / sealSecret /
 //     generateSPKey helpers).
-//   - a `fence:exempt` marker: the sealed bytes are never written to any table
-//     (the recovery timing-equalisation dummy), so no row can be stranded.
+//   - a `fence:exempt` marker: no row can be stranded, either because the sealed
+//     bytes are never written to any table (the recovery timing-equalisation
+//     dummy) or because a test helper seeds an isolated fixture database no
+//     rotation can race.
 //
 // reencrypt.go is exempt wholesale: it IS the mover, re-sealing rows under the
 // new active version; fencing it against the version it is installing would be
@@ -51,21 +53,32 @@ import (
 //     reviewer owns that a delegated helper's version truly reaches a fencing
 //     caller, and that an exempt seal truly never reaches a table.
 func CheckFenceCompleteness(pkgs []*packages.Package, servicePath string) []string {
-	var svc *packages.Package
-	for _, p := range flatten(pkgs) {
-		if p.PkgPath == servicePath {
-			svc = p
-			break
-		}
-	}
-	if svc == nil {
-		return []string{fmt.Sprintf("fence: package %s not loaded", servicePath)}
-	}
+	return RunOver(Check{Analyzer: newFence(servicePath), Targets: []string{servicePath}}, pkgs).Findings
+}
 
-	var findings []string
-	for _, file := range svc.Syntax {
-		filename := svc.Fset.Position(file.Pos()).Filename
-		if strings.HasSuffix(filename, "reencrypt.go") {
+// Fence is CheckFenceCompleteness as an analyzer over the service package.
+var Fence = newFence(Module + "/internal/service")
+
+func newFence(service string) *analysis.Analyzer {
+	a := &analysis.Analyzer{
+		Name: "fence",
+		Doc:  "functions that seal ciphertext also call the writer fence",
+	}
+	a.Flags.StringVar(&service, "service", service, "import path of the service package")
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		runFence(pass, service)
+		return nil, nil
+	}
+	return a
+}
+
+func runFence(pass *analysis.Pass, servicePath string) {
+	if pass.Pkg.Path() != servicePath {
+		return
+	}
+	reportTarget(pass)
+	for _, file := range pass.Files {
+		if strings.HasSuffix(fileName(pass, file.Pos()), "reencrypt.go") {
 			continue // the mover re-seals under the new active version by design
 		}
 		for _, decl := range file.Decls {
@@ -83,24 +96,22 @@ func CheckFenceCompleteness(pkgs []*packages.Package, servicePath string) []stri
 					return true
 				}
 				switch {
-				case sealCall(svc, call):
+				case sealCall(pass.TypesInfo, call):
 					seals = true
-				case fenceCall(svc, call, servicePath):
+				case fenceCall(pass.TypesInfo, call, servicePath):
 					fences = true
 				}
 				return true
 			})
 			if seals && !fences {
-				pos := svc.Fset.Position(fn.Pos())
-				findings = append(findings, fmt.Sprintf(
-					"fence: %s: %s seals ciphertext but never calls the writer fence (invariant 7) — "+
+				pass.Reportf(fn.Pos(),
+					"%s seals ciphertext but never calls the writer fence (invariant 7) — "+
 						"add fenceProject/fenceInstance(Version) or az.AssertActiveInstanceDEKVersion before the write, "+
 						"or mark the function fence:delegated / fence:exempt with a reason",
-					pos, fn.Name.Name))
+					fn.Name.Name)
 			}
 		}
 	}
-	return findings
 }
 
 // marked reports whether a function's doc comment carries a marker token.
@@ -111,12 +122,12 @@ func marked(fn *ast.FuncDecl, token string) bool {
 // sealCall reports a call to ProjectSealer.SealValue/SealField/SealPersonalValue or
 // InstanceSealer.SealField, resolved through the type-checked selection so a
 // same-named method on any other type does not match.
-func sealCall(p *packages.Package, call *ast.CallExpr) bool {
+func sealCall(info *types.Info, call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
 	}
-	selection := p.TypesInfo.Selections[sel]
+	selection := info.Selections[sel]
 	if selection == nil {
 		return false
 	}
@@ -130,17 +141,17 @@ func sealCall(p *packages.Package, call *ast.CallExpr) bool {
 // fenceCall reports a call to one of the fence helpers or the authn-surface
 // fence. The helpers are package functions in internal/service; the authn
 // fence is a method named AssertActiveInstanceDEKVersion.
-func fenceCall(p *packages.Package, call *ast.CallExpr, servicePath string) bool {
+func fenceCall(info *types.Info, call *ast.CallExpr, servicePath string) bool {
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		if obj, ok := p.TypesInfo.Uses[fun].(*types.Func); ok {
+		if obj, ok := info.Uses[fun].(*types.Func); ok {
 			switch obj.Name() {
 			case "fenceProject", "fenceInstance", "fenceInstanceVersion":
 				return obj.Pkg() != nil && obj.Pkg().Path() == servicePath
 			}
 		}
 	case *ast.SelectorExpr:
-		if selection := p.TypesInfo.Selections[fun]; selection != nil {
+		if selection := info.Selections[fun]; selection != nil {
 			return selection.Obj().Name() == "AssertActiveInstanceDEKVersion"
 		}
 	}

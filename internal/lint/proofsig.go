@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/types"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -22,40 +23,52 @@ import (
 // covered automatically; one not wired in is unreachable by services and
 // therefore dead code.
 func CheckProofSignatures(pkgs []*packages.Package, storePath string) []string {
-	var storePkg *packages.Package
-	var authzPkg *packages.Package
-	var domainPkg *packages.Package
-	flat := flatten(pkgs)
-	for _, p := range flat {
-		switch p.PkgPath {
-		case storePath:
-			storePkg = p
-		case Module + "/internal/authz":
-			authzPkg = p
-		case Module + "/internal/domain":
-			domainPkg = p
-		}
+	return RunOver(Check{Analyzer: newProofSig(storePath), Targets: []string{storePath}}, pkgs).Findings
+}
+
+// ProofSig is CheckProofSignatures as an analyzer over the store package.
+var ProofSig = newProofSig(Module + "/internal/store")
+
+func newProofSig(store string) *analysis.Analyzer {
+	a := &analysis.Analyzer{
+		Name: "proofsig",
+		Doc:  "store methods take (ctx, authz.Proof, ...) and no tenant-identifier-typed parameter",
 	}
-	if storePkg == nil || authzPkg == nil || domainPkg == nil {
-		return []string{"proofsig: store, authz or domain package not loaded"}
+	a.Flags.StringVar(&store, "store", store, "import path of the package declaring Repos and ReadRepos")
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		runProofSig(pass, store)
+		return nil, nil
+	}
+	return a
+}
+
+func runProofSig(pass *analysis.Pass, storePath string) {
+	if pass.Pkg.Path() != storePath {
+		return
+	}
+	reportTarget(pass)
+	authzPkg := findPackage(pass.Pkg, Module+"/internal/authz")
+	domainPkg := findPackage(pass.Pkg, Module+"/internal/domain")
+	if authzPkg == nil || domainPkg == nil {
+		pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "authz or domain package not reachable from the store package"})
+		return
 	}
 
-	proofType := authzPkg.Types.Scope().Lookup("Proof").Type()
+	proofType := authzPkg.Scope().Lookup("Proof").Type()
 	tenantTypes := map[types.Type]bool{
-		domainPkg.Types.Scope().Lookup("OrgID").Type():     true,
-		domainPkg.Types.Scope().Lookup("ProjectID").Type(): true,
-		domainPkg.Types.Scope().Lookup("EnvID").Type():     true,
+		domainPkg.Scope().Lookup("OrgID").Type():     true,
+		domainPkg.Scope().Lookup("ProjectID").Type(): true,
+		domainPkg.Scope().Lookup("EnvID").Type():     true,
 	}
 
-	var findings []string
-	scope := storePkg.Types.Scope()
+	scope := pass.Pkg.Scope()
 	roots := []string{"Repos", "ReadRepos"}
 	seen := map[*types.Interface]bool{}
 	var queue []*types.Named
 	for _, name := range roots {
 		obj := scope.Lookup(name)
 		if obj == nil {
-			findings = append(findings, fmt.Sprintf("proofsig: store.%s not found", name))
+			pass.Reportf(packagePos(pass), "store.%s not found", name)
 			continue
 		}
 		if n, ok := obj.Type().(*types.Named); ok {
@@ -80,24 +93,27 @@ func CheckProofSignatures(pkgs []*packages.Package, storePath string) []string {
 				queue = append(queue, bundled...)
 				continue
 			}
+			pos := fn.Pos()
+			if !pos.IsValid() {
+				pos = named.Obj().Pos()
+			}
 			label := fmt.Sprintf("store.%s.%s", named.Obj().Name(), fn.Name())
 			params := sig.Params()
 			if params.Len() < 2 {
-				findings = append(findings, label+": store methods take (ctx, proof, ...)")
+				pass.Reportf(pos, "%s: store methods take (ctx, proof, ...)", label)
 				continue
 			}
 			if !isNamed(params.At(0).Type(), "context", "Context") {
-				findings = append(findings, label+": first parameter must be context.Context")
+				pass.Reportf(pos, "%s: first parameter must be context.Context", label)
 			}
 			if !types.Identical(params.At(1).Type(), proofType) {
-				findings = append(findings, label+": second parameter must be authz.Proof")
+				pass.Reportf(pos, "%s: second parameter must be authz.Proof", label)
 			}
 			for i := 2; i < params.Len(); i++ {
-				findings = append(findings, tenantTyped(label, params.At(i).Type(), tenantTypes, map[types.Type]bool{})...)
+				tenantTyped(func(msg string) { pass.Reportf(pos, "%s", msg) }, label, params.At(i).Type(), tenantTypes, map[types.Type]bool{})
 			}
 		}
 	}
-	return findings
 }
 
 // bundleResults returns named interfaces among a no-parameter method's
@@ -120,35 +136,32 @@ func bundleResults(sig *types.Signature) []*types.Named {
 
 // tenantTyped reports uses of tenant-identifier types in a parameter type,
 // recursing through named structs, pointers, slices and maps.
-func tenantTyped(label string, t types.Type, tenant map[types.Type]bool, visited map[types.Type]bool) []string {
+func tenantTyped(report func(string), label string, t types.Type, tenant map[types.Type]bool, visited map[types.Type]bool) {
 	if visited[t] {
-		return nil
+		return
 	}
 	visited[t] = true
 	if tenant[t] {
-		return []string{fmt.Sprintf("%s: tenant-identifier-typed parameter (%s) — chain values come from the proof only", label, t)}
+		report(fmt.Sprintf("%s: tenant-identifier-typed parameter (%s) — chain values come from the proof only", label, t))
+		return
 	}
 	switch u := t.(type) {
 	case *types.Named:
-		return tenantTyped(label, u.Underlying(), tenant, visited)
+		tenantTyped(report, label, u.Underlying(), tenant, visited)
 	case *types.Pointer:
-		return tenantTyped(label, u.Elem(), tenant, visited)
+		tenantTyped(report, label, u.Elem(), tenant, visited)
 	case *types.Slice:
-		return tenantTyped(label, u.Elem(), tenant, visited)
+		tenantTyped(report, label, u.Elem(), tenant, visited)
 	case *types.Array:
-		return tenantTyped(label, u.Elem(), tenant, visited)
+		tenantTyped(report, label, u.Elem(), tenant, visited)
 	case *types.Map:
-		return append(
-			tenantTyped(label, u.Key(), tenant, visited),
-			tenantTyped(label, u.Elem(), tenant, visited)...)
+		tenantTyped(report, label, u.Key(), tenant, visited)
+		tenantTyped(report, label, u.Elem(), tenant, visited)
 	case *types.Struct:
-		var out []string
 		for i := range u.NumFields() {
-			out = append(out, tenantTyped(label, u.Field(i).Type(), tenant, visited)...)
+			tenantTyped(report, label, u.Field(i).Type(), tenant, visited)
 		}
-		return out
 	}
-	return nil
 }
 
 func isNamed(t types.Type, pkg, name string) bool {

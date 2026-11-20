@@ -2,8 +2,6 @@ package lint
 
 import (
 	"fmt"
-	"go/ast"
-	"go/types"
 	"maps"
 	"strings"
 	"testing"
@@ -19,38 +17,22 @@ var internalOnlyRedactionPins = map[string]bool{
 	Module + "/internal/crypto.dekEntry":  true,
 }
 
-// redactionPins reads actual typed assertions, including pointer and value
-// expressions, rather than introducing a third hand-maintained sensitive set.
+// redactionPins collects the RedactPins analyzer's pin summaries.
 func redactionPins(t *testing.T, pkgs []*packages.Package) map[string]bool {
 	t.Helper()
+	res := RunOver(Check{Analyzer: RedactPins, Targets: []string{sensitiveOwner}}, pkgs)
+	for _, finding := range res.Findings {
+		t.Error(finding)
+	}
+	return pinSet(t, res.Summaries)
+}
+
+func pinSet(t *testing.T, summaries []Summary) map[string]bool {
+	t.Helper()
 	pins := map[string]bool{}
-	for _, p := range pkgs {
-		if p.PkgPath != sensitiveOwner || p.TypesInfo == nil {
-			continue
-		}
-		for _, file := range p.Syntax {
-			ast.Inspect(file, func(n ast.Node) bool {
-				v, ok := n.(*ast.ValueSpec)
-				if !ok || v.Type == nil {
-					return true
-				}
-				surface, ok := p.TypesInfo.TypeOf(v.Type).(*types.Named)
-				if !ok || surface.Obj().Name() != "redactionSurface" || surface.Obj().Pkg().Path() != sensitiveOwner {
-					return true
-				}
-				for _, value := range v.Values {
-					typ := types.Unalias(p.TypesInfo.TypeOf(value))
-					if pointer, ok := typ.(*types.Pointer); ok {
-						typ = types.Unalias(pointer.Elem())
-					}
-					named, ok := typ.(*types.Named)
-					if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != sensitiveOwner {
-						t.Fatalf("unexpected redaction pin at %s", p.Fset.Position(value.Pos()))
-					}
-					pins[namedKey(named)] = true
-				}
-				return false
-			})
+	for _, s := range summaries {
+		if s.Kind == summaryPin {
+			pins[s.Subject] = true
 		}
 	}
 	if len(pins) == 0 {

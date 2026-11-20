@@ -12,7 +12,7 @@ func fenceProject() error { return nil }
 func aad() crypto.ProjectFieldAAD { return crypto.ProjectFieldAAD{} }
 
 // missingFence seals but never fences — the violation the analyzer must catch.
-func missingFence(s *crypto.ProjectSealer) []byte {
+func missingFence(s *crypto.ProjectSealer) []byte { // want "missingFence seals ciphertext but never calls the writer fence \\(invariant 7\\)"
 	b, _ := s.SealField(aad(), nil)
 	return b
 }

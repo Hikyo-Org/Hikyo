@@ -2,7 +2,6 @@ package lint
 
 import (
 	"go/token"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,8 +54,7 @@ func TestAlertCollectorDriverAuthorityIsExactFileScoped(t *testing.T) {
 			candidate.PkgPath = tc.pkg
 			candidate.Fset = files
 			if tc.generated {
-				candidate.Imports = maps.Clone(actual.Imports)
-				candidate.Imports[Module+"/internal/store/sqlitegen"] = &packages.Package{PkgPath: Module + "/internal/store/sqlitegen"}
+				addImport(&candidate, Module+"/internal/store/sqlitegen")
 			}
 			findings := CheckDriverHandles([]*packages.Package{&candidate})
 			driverFound := false

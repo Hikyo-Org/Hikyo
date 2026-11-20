@@ -3,17 +3,17 @@
 package badnil
 
 import (
-	"reflect"
+	"reflect" // want "imports \"reflect\" while handling authz\\.Proof values"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 )
 
-func returnsNil() authz.Proof { return nil }
+func returnsNil() authz.Proof { return nil } // want "nil in an authz\\.Proof position"
 
-var globalNil authz.Proof = nil
+var globalNil authz.Proof = nil // want "nil in an authz\\.Proof position"
 
 func passesNil() {
-	take(nil)
+	take(nil) // want "nil in an authz\\.Proof position"
 }
 
 func take(p authz.Proof) { _ = p }

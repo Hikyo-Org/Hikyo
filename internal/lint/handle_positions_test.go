@@ -1,9 +1,11 @@
 package lint
 
 import (
+	"go/ast"
 	"go/token"
-	"maps"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -15,19 +17,18 @@ func TestRawDriverAuthorityIsExactFileScoped(t *testing.T) {
 	allowed := files.AddFile("/owned/internal/store/admission.go", -1, 100)
 	injected := files.AddFile("/owned/internal/store/new_writer.go", -1, 100)
 	adjacentTest := files.AddFile("/owned/internal/store/new_writer_test.go", -1, 100)
-	p := &packages.Package{Fset: files}
-	if !permittedHandlePosition(p, Module+"/internal/store", allowed.Pos(1)) {
+	if !permittedHandlePosition(files, Module+"/internal/store", allowed.Pos(1)) {
 		t.Fatal("reviewed admission boundary refused")
 	}
 	for _, f := range []*token.File{injected, adjacentTest} {
-		if permittedHandlePosition(p, Module+"/internal/store", f.Pos(1)) {
+		if permittedHandlePosition(files, Module+"/internal/store", f.Pos(1)) {
 			t.Fatalf("new file received ambient authority: %s", f.Name())
 		}
 	}
-	if permittedRawConstructor(p, Module+"/internal/store", injected.Pos(1)) {
+	if permittedRawConstructor(files, Module+"/internal/store", injected.Pos(1)) {
 		t.Fatal("new runtime file received private constructor authority")
 	}
-	if permittedHandlePosition(p, Module+"/internal/service", allowed.Pos(1)) {
+	if permittedHandlePosition(files, Module+"/internal/service", allowed.Pos(1)) {
 		t.Fatal("matching basename granted another package authority")
 	}
 	// Run the actual typed bypass fixture pretending it resides in store. A
@@ -94,8 +95,7 @@ func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 			candidate.PkgPath = tt.owner
 			candidate.Fset = files
 			if tt.generated {
-				candidate.Imports = maps.Clone(actual.Imports)
-				candidate.Imports[Module+"/internal/store/pggen"] = &packages.Package{PkgPath: Module + "/internal/store/pggen"}
+				addImport(&candidate, Module+"/internal/store/pggen")
 			}
 			findings := CheckDriverHandles([]*packages.Package{&candidate})
 			var driverFindings []string
@@ -117,4 +117,15 @@ func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 			}
 		})
 	}
+}
+
+// addImport adds an import spec to the first file of a copy of the package; the
+// analyzer judges imports from the variant's files, not from Imports.
+func addImport(p *packages.Package, path string) {
+	file := *p.Syntax[0]
+	file.Imports = append(slices.Clone(file.Imports), &ast.ImportSpec{
+		Path: &ast.BasicLit{ValuePos: file.Package, Kind: token.STRING, Value: strconv.Quote(path)},
+	})
+	p.Syntax = slices.Clone(p.Syntax)
+	p.Syntax[0] = &file
 }

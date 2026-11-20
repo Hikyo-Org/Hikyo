@@ -1,11 +1,13 @@
 package lint
 
 import (
-	"fmt"
 	"go/ast"
 	"go/types"
+	"maps"
+	"slices"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -73,58 +75,62 @@ var redactionSurfaceMethods = []string{
 
 // CheckRedactionSurfaces asserts rule 1 against the loaded repo.
 func CheckRedactionSurfaces(pkgs []*packages.Package) []string {
-	var findings []string
-	found := map[string]bool{}
-	for _, p := range flatten(pkgs) {
-		if p.Types == nil || p.Types.Path() != sensitiveOwner {
-			continue
+	return RunOver(Check{Analyzer: RedactSurfaces, Targets: []string{sensitiveOwner}}, pkgs).Findings
+}
+
+// RedactSurfaces is CheckRedactionSurfaces as an analyzer over the crypto package.
+var RedactSurfaces = &analysis.Analyzer{
+	Name: "redactsurface",
+	Doc:  "every pinned sensitive type implements the full redaction surface",
+	Run: func(pass *analysis.Pass) (any, error) {
+		if pass.Pkg.Path() != sensitiveOwner {
+			return nil, nil
 		}
-		scope := p.Types.Scope()
-		for name := range SensitiveTypes {
+		reportTarget(pass)
+		scope := pass.Pkg.Scope()
+		for _, name := range slices.Sorted(maps.Keys(SensitiveTypes)) {
 			short := strings.TrimPrefix(name, sensitiveOwner+".")
 			obj := scope.Lookup(short)
 			if obj == nil {
+				pass.Reportf(packagePos(pass), "pinned sensitive type %s not found in %s", name, sensitiveOwner)
 				continue
 			}
-			found[name] = true
 			ms := types.NewMethodSet(types.NewPointer(obj.Type()))
 			for _, m := range redactionSurfaceMethods {
 				if ms.Lookup(nil, m) == nil {
-					findings = append(findings, fmt.Sprintf(
-						"redaction: sensitive type %s lacks %s() — the full formatting surface must redact (audit-model ADR CI invariant 8)",
-						name, m))
+					pass.Reportf(obj.Pos(),
+						"sensitive type %s lacks %s() — the full formatting surface must redact (audit-model ADR CI invariant 8)",
+						name, m)
 				}
 			}
 		}
-	}
-	for name := range SensitiveTypes {
-		if !found[name] {
-			findings = append(findings, fmt.Sprintf("redaction: pinned sensitive type %s not found in %s", name, sensitiveOwner))
-		}
-	}
-	return findings
+		return nil, nil
+	},
 }
 
 // CheckSensitiveFormatting asserts rules 2 and 3 across the module, tests
 // included.
 func CheckSensitiveFormatting(pkgs []*packages.Package) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if !strings.HasPrefix(p.PkgPath, Module+"/") && p.PkgPath != Module {
-			continue
+	return RunOver(Check{Analyzer: RedactFormat}, pkgs).Findings
+}
+
+// RedactFormat is CheckSensitiveFormatting as an analyzer.
+var RedactFormat = &analysis.Analyzer{
+	Name: "redactfmt",
+	Doc:  "sensitive types are not formatted outside crypto; audit content is not logged",
+	Run: func(pass *analysis.Pass) (any, error) {
+		if !inModule(pass.Pkg.Path()) {
+			return nil, nil
 		}
-		base := strings.TrimSuffix(p.PkgPath, ".test")
-		if p.TypesInfo == nil {
-			continue
-		}
+		base := strings.TrimSuffix(pass.Pkg.Path(), ".test")
 		exemptSensitive := base == sensitiveOwner
-		for _, file := range p.Syntax {
+		for _, file := range pass.Files {
 			ast.Inspect(file, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true
 				}
-				calleePkg := calleePackage(p.TypesInfo, call)
+				calleePkg := calleePackage(pass.TypesInfo, call)
 				if calleePkg == "" {
 					return true
 				}
@@ -139,30 +145,30 @@ func CheckSensitiveFormatting(pkgs []*packages.Package) []string {
 					// position while still carrying the value. Every
 					// sub-expression's type is therefore checked, not just the
 					// argument's own.
-					argTypes := subexpressionTypes(p.TypesInfo, arg)
+					argTypes := subexpressionTypes(pass.TypesInfo, arg)
 					if len(argTypes) == 0 {
 						continue
 					}
 					if !exemptSensitive {
 						if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
-							findings = append(findings, fmt.Sprintf(
-								"redaction: %s: %s passes sensitive type %s to %s — formatting/marshaling sensitive types outside their owning package is banned",
-								p.Fset.Position(arg.Pos()), base, name, calleePkg))
+							pass.Reportf(arg.Pos(),
+								"%s passes sensitive type %s to %s — formatting/marshaling sensitive types outside their owning package is banned",
+								base, name, calleePkg)
 						}
 					}
 					if logCall {
 						if name := mentionsAny(argTypes, auditContentTypes); name != "" {
-							findings = append(findings, fmt.Sprintf(
-								"redaction: %s: %s logs audit content %s — audit events are never mirrored to the ops log (audit-model ADR)",
-								p.Fset.Position(arg.Pos()), base, name))
+							pass.Reportf(arg.Pos(),
+								"%s logs audit content %s — audit events are never mirrored to the ops log (audit-model ADR)",
+								base, name)
 						}
 					}
 				}
 				return true
 			})
 		}
-	}
-	return findings
+		return nil, nil
+	},
 }
 
 // calleePackage resolves the package path of a call's callee — a package

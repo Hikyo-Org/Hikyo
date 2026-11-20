@@ -1,12 +1,12 @@
 package lint
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -25,45 +25,43 @@ import (
 // The authorization package itself (and its tests) are exempt: boundary
 // tests must construct exactly these invalid values.
 func CheckProofForgery(pkgs []*packages.Package) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if !strings.HasPrefix(p.PkgPath, Module+"/") && p.PkgPath != Module {
-			continue
-		}
+	return RunOver(Check{Analyzer: ForgeGuard}, pkgs).Findings
+}
+
+// ForgeGuard is CheckProofForgery as an analyzer. "Handles Proof values" is
+// decided from the files of the variant being analyzed, in-package tests
+// included.
+var ForgeGuard = &analysis.Analyzer{
+	Name: "forgeguard",
+	Doc:  "no nil authz.Proof, and no reflect/unsafe import beside Proof values",
+	Run: func(pass *analysis.Pass) (any, error) {
+		path := pass.Pkg.Path()
 		// The authorization package and its test variants are exempt:
 		// boundary tests construct exactly these invalid values on purpose.
 		// Exact paths only — a prefix match would silently exempt a
 		// neighbouring `internal/authzforge` that reflects on proof values.
-		if authzExempt[p.PkgPath] {
-			continue
-		}
-		// flatten reaches imported module packages that are not roots of the
-		// current load: with NeedDeps omitted they carry Types (from export
-		// data) but no TypesInfo. This analyzer, unlike the ones that select
-		// their target package by path, walks TypesInfo.Uses on every package,
-		// so it must skip those explicitly. In LoadRepo every module package is
-		// a root, so this never elides a real check.
-		if p.TypesInfo == nil {
-			continue
+		if !inModule(path) || authzExempt[path] {
+			return nil, nil
 		}
 		usesProof := false
-		for _, obj := range p.TypesInfo.Uses {
+		for _, obj := range pass.TypesInfo.Uses {
 			if isAuthzProof(obj.Type()) {
 				usesProof = true
 				break
 			}
 		}
 		if usesProof {
-			for imp := range p.Imports {
-				if imp == "reflect" || imp == "unsafe" {
-					findings = append(findings,
-						fmt.Sprintf("forgeguard: %s imports %q while handling authz.Proof values", p.PkgPath, imp))
+			for _, file := range pass.Files {
+				for _, spec := range file.Imports {
+					if imp := strings.Trim(spec.Path.Value, "\"`"); imp == "reflect" || imp == "unsafe" {
+						pass.Reportf(spec.Pos(), "%s imports %q while handling authz.Proof values", path, imp)
+					}
 				}
 			}
 		}
-		findings = append(findings, nilProofLiterals(p)...)
-	}
-	return findings
+		nilProofLiterals(pass)
+		return nil, nil
+	},
 }
 
 // authzExempt is the exact set of package paths allowed to construct
@@ -92,18 +90,15 @@ func isAuthzProof(t types.Type) bool {
 // smuggled through a positional struct literal or an intermediate untyped
 // construct escapes this walk — and still dies at the store boundary, which
 // is the enforcement; this guard just surfaces it earlier.
-func nilProofLiterals(p *packages.Package) []string {
-	var findings []string
+func nilProofLiterals(p *analysis.Pass) {
 	flag := func(n ast.Node) {
-		pos := p.Fset.Position(n.Pos())
-		findings = append(findings,
-			fmt.Sprintf("forgeguard: %s: nil in an authz.Proof position — the one forgeable value; get a proof from authorize()", pos))
+		p.Reportf(n.Pos(), "nil in an authz.Proof position — the one forgeable value; get a proof from authorize()")
 	}
 	isNil := func(e ast.Expr) bool {
 		id, ok := e.(*ast.Ident)
 		return ok && id.Name == "nil" && p.TypesInfo.Uses[id] == types.Universe.Lookup("nil")
 	}
-	for _, file := range p.Syntax {
+	for _, file := range p.Files {
 		// Enclosing-function result types, resolved by narrowest span, so a
 		// `return nil` can be matched against the function's Proof results.
 		type fnSpan struct {
@@ -206,5 +201,4 @@ func nilProofLiterals(p *packages.Package) []string {
 			return true
 		})
 	}
-	return findings
 }
