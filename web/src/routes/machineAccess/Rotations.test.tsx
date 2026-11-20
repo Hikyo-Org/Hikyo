@@ -95,7 +95,7 @@ it('names why a rotation halted, in the CLI sentence, on the notice and on the r
     expect(notice).toContain(`Rotation ${HALTED_ROTATION} is halted (retries_exhausted): the retry window ran out before a run could publish or extend the credential.`);
     const row = container.querySelector(`[data-rotation="${HALTED_ROTATION}"]`)!;
     expect(row.textContent).toContain('Halt reason');
-    expect(row.textContent).toContain('(retries_exhausted): the retry window ran out');
+    expect(row.textContent).toContain('retries_exhausted: the retry window ran out');
     expect(row.textContent).toContain('Last run');
     expect(row.textContent).toContain('failed (retries_exhausted)');
     // No owed drop: no attention line or badge on this row.

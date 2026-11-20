@@ -22,12 +22,17 @@ export const HALTED_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174106';
 export const GONE_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174107';
 export const GONE_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174108';
 
+export const LONG_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174109';
+export const LONG_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174110';
+export const LONG_PASSWORD_NAME = 'ANALYTICS_REPORTING_WAREHOUSE_DB_PASSWORD';
+
 const OPERATOR = 'prn_123e4567-e89b-12d3-a456-426614174010';
 export const ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174201';
 export const HELD_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174202';
 export const HALTED_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174203';
 export const DELETED_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174204';
 export const GONE_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174205';
+export const LONG_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174206';
 
 const catalogueKey = (id: string, name: string): WireKey => ({
   id,
@@ -46,7 +51,7 @@ const catalogueKey = (id: string, name: string): WireKey => ({
 });
 
 export const rotationKeys = {
-  count: 8,
+  count: 10,
   schema_revision: 1,
   items: [
     catalogueKey(PASSWORD_KEY, 'DATABASE_PASSWORD'),
@@ -57,6 +62,8 @@ export const rotationKeys = {
     catalogueKey(HALTED_USERNAME_KEY, 'ANALYTICS_USER'),
     catalogueKey(GONE_PASSWORD_KEY, 'BILLING_PASSWORD'),
     catalogueKey(GONE_USERNAME_KEY, 'BILLING_USER'),
+    catalogueKey(LONG_PASSWORD_KEY, LONG_PASSWORD_NAME),
+    catalogueKey(LONG_USERNAME_KEY, 'ANALYTICS_REPORTING_WAREHOUSE_DB_USER'),
   ],
 } satisfies z.input<typeof zKeyList>;
 
@@ -140,6 +147,12 @@ export const deletedOwedRotation = (environment: string = PROD) =>
     next_run_at: null,
     owed_drop_runs: 1,
     last_run: { id: QUARANTINED_RUN, phase: 'quarantine', error_code: 'abandoned', phase_at: '2026-10-20T02:05:00Z' },
+  });
+
+/** A rotation whose keys have names about 45 characters long: they must wrap, not overflow. */
+export const longKeyNameRotation = (environment: string = PROD) =>
+  rotation(LONG_ROTATION, environment, [LONG_PASSWORD_KEY, LONG_USERNAME_KEY], {
+    last_run: { id: SETTLED_RUN, phase: 'done', phase_at: '2026-10-20T02:05:00Z' },
   });
 
 const run = (n: number, overrides: Partial<WireRun>): WireRun => ({

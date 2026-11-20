@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
 import {
   haltCause,
+  haltReasonField,
   MAX_RUN_PAGES,
   owedBadgeText,
   owedRunText,
@@ -59,6 +60,51 @@ function span(seconds: bigint): string {
 /** at renders an optional instant, or the words that say why there is none. */
 function at(value: string | null | undefined, none: string): string {
   return value === undefined || value === null ? none : formatWhen(value);
+}
+
+/**
+ * Breakable is a word that may break only after an underscore: a long key name or
+ * error code wraps at its own word boundaries and is never split mid-word.
+ */
+function Breakable({ text }: { text: string }) {
+  const parts = text.split(/(?<=_)/);
+  return (
+    <>
+      {parts.map((part, index) => (
+        <Fragment key={`${String(index)}-${part}`}>
+          {part}
+          {index < parts.length - 1 ? <wbr /> : null}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/** CodeText is a sentence whose snake_case words (error codes, halt reasons) are Breakable. */
+function CodeText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/([a-z]+(?:_[a-z]+)+)/).map((part, index) =>
+        index % 2 === 1 ? (
+          <span key={`${String(index)}-${part}`} className="rotations__code">
+            <Breakable text={part} />
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** A key by name (id on hover), the id in mono when the catalogue does not name it. */
+function KeyName({ id, name }: { id: string; name: string | undefined }) {
+  if (name === undefined || name === id) return <span className="mono">{id}</span>;
+  return (
+    <bdi title={id}>
+      <Breakable text={name} />
+    </bdi>
+  );
 }
 
 /**
@@ -158,7 +204,7 @@ function RotationList({
   return (
     <>
       <Checkbox
-        label="Include deleted rotations"
+        label="Include all deleted rotations"
         checked={includeDisabled}
         onChange={(event) => {
           setIncludeDisabled(event.target.checked);
@@ -180,7 +226,7 @@ function RotationList({
           {halted.map((rotation) => (
             <span key={`cause-${rotation.id}`}>
               {' '}
-              Rotation {rotation.id} is {haltCause(rotation)}.
+              Rotation {rotation.id} is <CodeText text={haltCause(rotation)} />.
             </span>
           ))}
           {halted
@@ -224,10 +270,10 @@ function RotationList({
                           <span className="mono rotations__id" title={rotation.id}>{rotation.id}</span>
                         </Fact>
                         <Fact label="Password key">
-                          <NamedId id={rotation.key_id} name={keyName(rotation.key_id)} />
+                          <KeyName id={rotation.key_id} name={keyName(rotation.key_id)} />
                         </Fact>
                         <Fact label="Role name key">
-                          <NamedId id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
+                          <KeyName id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
                         </Fact>
                         <Fact label="Provider">
                           {minter === undefined ? (
@@ -261,12 +307,12 @@ function RotationList({
                         <Facts>
                           {rotation.state === 'halted' ? (
                             <Fact label="Halt reason">
-                              <span className="rotations__note">{haltCause(rotation).replace(/^halted /, '')}</span>
+                              <span className="rotations__note"><CodeText text={haltReasonField(rotation)} /></span>
                             </Fact>
                           ) : null}
                           {owed ? (
                             <Fact label="Attention">
-                              <span className="rotations__note">{owedSummaryText(rotation)}</span>
+                              <span className="rotations__note"><CodeText text={owedSummaryText(rotation)} /></span>
                             </Fact>
                           ) : null}
                         </Facts>
@@ -312,13 +358,13 @@ function RotationList({
                           ) : (
                             <>
                               <span className="mono rotations__id">{rotation.last_run.id}</span>{' '}
-                              {rotation.last_run.phase}
+                              <span className="rotations__code"><Breakable text={rotation.last_run.phase} /></span>
                               {rotation.last_run.error_code === undefined || rotation.last_run.error_code === null ? (
                                 ''
                               ) : (
                                 <>
                                   {' '}
-                                  (<span className="mono rotations__id">{rotation.last_run.error_code}</span>)
+                                  (<span className="mono rotations__code"><Breakable text={rotation.last_run.error_code} /></span>)
                                 </>
                               )}
                               , {formatWhen(rotation.last_run.phase_at)}
@@ -407,7 +453,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
         </Alert>
       ) : null}
       {owed.map((run) => (
-        <Alert key={run.id}>{owedRunText(run)}</Alert>
+        <Alert key={run.id}><CodeText text={owedRunText(run)} /></Alert>
       ))}
       {query.isSuccess && runs.length === 0 ? (
         <p role="status">This rotation has not run yet.</p>
@@ -452,7 +498,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
                         {run.error_code === undefined || run.error_code === null ? (
                           'None'
                         ) : (
-                          <span className="mono">{run.error_code}</span>
+                          <span className="mono rotations__code"><Breakable text={run.error_code} /></span>
                         )}
                       </Fact>
                       <Fact label="Owed role valid until">

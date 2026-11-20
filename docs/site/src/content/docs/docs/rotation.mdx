@@ -314,8 +314,9 @@ moved off it or you have checked; no rotation-level text ever tells you to drop 
 The CLI never shows the count as a yes or no. The browser badge says whether a rotation
 owes a drop (`Owes a drop`, or `Do not drop: restore`) and its notice carries the count.
 A deleted rotation can still owe a drop, and the count stays on it: the default list
-(CLI and browser) still shows a deleted rotation that owns such a run, marked deleted,
-so the warning is not lost with the delete.
+(CLI and browser) still shows a deleted rotation that owns such a run, with `deleted` in
+its state cell, so the warning is not lost with the delete. The CLI also marks it
+deleted on its `ATTENTION` line.
 
 ## In the browser
 
@@ -329,7 +330,8 @@ environment" without saying whether anything exists.
 
 The list shows each rotation's id, keys (by name, with the key id on hover), provider
 (kind, origin and id), interval and overlap, its state as a word (`active`, `paused`,
-`halted` or `disabled`), the next run, when the delivered credential expires, its last
+`halted` or `deleted`; the CLI table and the browser badge both say `deleted` for a
+deleted rotation, the API field is `disabled`), the next run, when the delivered credential expires, its last
 run (id, phase, error code and when it last changed) and its record: authority
 principal, creator, generation and created and updated times. That is everything the
 API returns for a rotation; the environment is the one you chose above the list. A halted
@@ -338,12 +340,14 @@ it halted in the same words as the CLI (see the halt reasons above), and when it
 held after a restore the tab says to lift the hold first. A rotation with a run that owes
 a provider drop carries a badge in its state cell, "Owes a drop", and the rotation-level
 `ATTENTION` line the CLI prints, naming `hikyo rotation runs <rotation>`; when a
-restore refused any of those drops the badge reads "Do not drop: restore" and the line
-says **do NOT drop** the role until the keys have moved off it. The badge is words, not
+restore refused any of those drops, or a restore hold is on, the badge reads "Do not
+drop: restore" and the line says **do NOT drop** the role until the keys have moved off
+it or you have checked. The badge is words, not
 only a colour. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
 `hikyo rotation release-hold <rotation>` command, and its next run reads "Held after a
-restore: no run starts". Deleted rotations are listed only when you tick **Include deleted
-rotations**.
+restore: no run starts". A deleted rotation that still owes a drop is listed by default, with
+`deleted` in its state cell; tick **Include all deleted rotations** to list every other
+deleted one too.
 
 **Show runs** opens the timeline of one rotation, newest first: phase, trigger,
 start and last change, the published revision, the overlap, the fixed-word error

@@ -403,7 +403,7 @@ transaction. It is never stored, not even sealed. Order:
 | Keys serve the superseded value again before the drop (restore or manual publish) | `revoking`, assertion fails | `revoke_refused` (`published_versions_changed`), no drop, loud |
 | During `DropRole` | `revoking`, effect INTENT only | re-probe `RoleStatus`, settle |
 | Fence-losing worker after `CreateRole` (multi-node takeover) | candidate role exists, run `failed` or `quarantine` | candidate reconciler re-probes `RoleStatus(candidate_handle)` and drops it (below) |
-| Key restored after the restore assertion but before the drop (TOCTOU) | `revoking`, assertion passed | the drop proceeds; the window is the span between the assertion read and the provider call, bounded by one provider deadline, and is accepted: a restore stages a new revision, and the role was already past its overlap |
+| Key restored after the restore assertion but before the drop (TOCTOU) | `revoking`, assertion passed | the drop proceeds; the window is the span between the assertion read and the provider call, bounded by one provider deadline, and is accepted: a restore stages a new revision, and the role was already past its overlap. Since S4 round 1 the assertion is read before `LoadSupersededRole` and the provider open, so the gap between that read and the drop is slightly wider (local steps only: a store read and a provider open). A remote keyring would need a re-read after the open |
 | Run abandoned past publish (`--abandon`) | `quarantine`, `published_revision` set, superseded role may be live | revoke-obligation loop drops `superseded_handle` after the overlap deadline (below); a run abandoned while still `published` gets abandon time + delay (note 38) |
 
 **`superseded_handle` is derived across rotations.** The role being superseded is the
@@ -1687,7 +1687,10 @@ its root; nothing was deferred.
   when it was added.
 - **M2 (deleted rotations).** `RotationList` keeps a disabled rotation when it owns a
   `revoke_refused` or `quarantine` run (`EXISTS`, same chain), still in id order, so
-  the default CLI list and the browser show it marked deleted with the owed-drop notice.
+  the default browser list shows it with `deleted` in its state badge, and since round 2
+  the default CLI table prints `deleted` in its STATE cell too (round 1 said "marked
+  deleted", which was true only of the CLI `ATTENTION` line). The owed-drop notice and
+  count stay on it.
 - **M3.** The OpenAPI, `rotation.mdx` and this handoff say `owed_drop_runs` counts the runs
   that need an operator (`revoke_refused`, `quarantine`); a run still in flight owes a
   drop the executor carries out. The definition did not change.
@@ -1701,6 +1704,66 @@ its root; nothing was deferred.
   and its notice carries the count.
 - **L5.** Tests for cross-org, project, environment and rotation reads of the owed counts,
   and for the counts in SetState and ReleaseHold responses.
+
+Round 2 (two independent reviews of 9b8a104dc, cf58e58a7 and d12fc352c). Final fix round.
+
+- **H-1 and M-1 (one root cause: the do-not-drop signal lived in a column other writers
+  replace).** A run's `last_error='published_versions_changed'` is what tells every
+  reader "a restore refused this drop, the keys may serve the role again". Two writers
+  replaced it: `extendDelivered` (an `ExtendRole` failure wrote `extend_failed` on the
+  refused run, so the next revoke never re-read the assertion), `AbandonOpenRuns`
+  (wrote `abandoned`, turning a restore refusal into a plain quarantine); deleting a
+  rotation clears its `restore_hold`, so the run's code is the only record left. Design: **the refusal is sticky in the store, no new column and
+  no migration** (00096 is unchanged). `RotationRtSettleRun` keeps the stored
+  `last_error` when the stored value is `published_versions_changed`, the stored phase
+  and the new phase are both `revoke_refused` or `quarantine`, and the settle did not
+  carry `RestoreChecked`. Only `revoke()` sets `RestoreChecked`, and only after a fresh
+  `RestoreAssertion` read, so only a re-read can clear or replace the code.
+  `RotationAbandonOpenRuns` keeps it in a `CASE`. A restore refusal now survives an
+  extend outage, an abandon and a deleted rotation, and clears itself once the
+  assertion holds again (a drop then follows). A dedicated column was rejected: it
+  would need a migration, a backfill and a second source of truth for the same fact.
+  Tests (both engines): `TestRotationRestoreRefusalSurvivesExtendOutage`,
+  `TestRotationAbandonKeepsTheRestoreRefusal`,
+  `TestRotationRestoreRefusalClearsOnceTheAssertionHoldsAgain` and `...OnQuarantine...`.
+  Each fails without the fix (checked by reverting the CASE).
+- **Writer audit** (every writer of `rotation_runs.phase` and `last_error` that can
+  touch a `revoke_refused` or `quarantine` run):
+
+  | Writer | Verdict |
+  | --- | --- |
+  | `RotationRtInsertRun` | new run, phase `minting`: not applicable |
+  | `RotationRtClaimRun` | writes attempt and lease only, not `last_error`: safe |
+  | `RotationRtSettleRun` | the one place the rule lives (see above) |
+  | `revoke()` `hold(...)` (restore refusal, provider unavailable) | `RestoreChecked: true` after a fresh read: may set or clear, correct |
+  | `revoke()` revoking settle and `finish()` | `RestoreChecked: true`: clear the code on the way to `done`, correct |
+  | `extendDelivered` (success, failure, skip, held skip) | no `RestoreChecked`: refused code kept (was H-1) |
+  | `settleDrop` callers, `confirmAbsent`, failed rollbacks, `finishFailed` | move runs that are not refused or quarantined, or carry no `pvc`: unaffected |
+  | `haltClosing`, `haltDue`, wake and the reconciler's drop-candidate settle | keep the run's own `LastError`, or act on `minting`/`minted` runs: unaffected |
+  | `RotationAbandonOpenRuns` | keeps `pvc`, else `abandoned` (was M-1) |
+  | `RotationSetState(disabled)` | writes the rotation row only (it clears `restore_hold`); the run's code stays, so the deleted rotation keeps its warning |
+  | release-hold | writes `restore_hold` only: unaffected |
+  | restore paths | write the hold and revisions, never a run: unaffected |
+- **L-1.** The assertion read now runs before `LoadSupersededRole` and the provider open
+  (note on the TOCTOU row above).
+- **L-2.** A transient assertion read error no longer blocks settling an expired role;
+  the error is handled when the role has expired (test with `RestoreAssertionFault`).
+- **L-3.** The `RotationList` query comment says it is the environment delete's read of
+  live rotations; the API's default list uses the owed-aware query.
+- **L-4.** The CLI list prints `deleted` in the STATE cell for a deleted rotation.
+- **L-5.** A table test ties every `rotCode*` constant to the fixed error words (service)
+  and the CLI's word list to the executor's constants.
+- **L-6 and Low 3.** Key names and error codes break only after an underscore (`<wbr>`),
+  `published_versions_changed` never splits mid-word; stories and e2e check a 45 character
+  key name at 1280, 860 and 390 (name inside its cell, no sideways scroll).
+- **M-A.** `rotation.mdx` now says a deleted rotation that owes a drop is listed by default,
+  the state word is `deleted` in the CLI and browser, the checkbox is "Include all
+  deleted rotations", and "Do not drop: restore" also covers a restore hold.
+- **Low 5 to 8.** The CLI HALT REASON cell follows `State==halted` through one helper; run
+  phases and codes print bare when known and quoted otherwise; the halt reason field reads
+  `retries_exhausted: the retry window ran out`.
+- **00096.** Still the next free migration after the rebase onto origin/dev (6d8db0f4d),
+  `development.json` regenerated. Check again before merge.
 
 ### Left after S4
 

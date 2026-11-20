@@ -22,6 +22,8 @@ import {
   HELD_ROTATION,
   deletedOwedRotation,
   haltedRotation,
+  LONG_PASSWORD_NAME,
+  longKeyNameRotation,
   owedRuns,
   rotationKeys,
   rotationList,
@@ -86,6 +88,35 @@ async function revokeMinted(page: Page) {
     await expect(panel.locator('.cred')).toHaveCount(remaining - 1);
   }
   await expect(panel.locator('.cred')).toHaveCount(0);
+}
+
+/**
+ * The key names of the Rotations table that do not fit: a name that breaks inside a word
+ * (anything but after an underscore) or whose right edge is past its own cell's.
+ */
+async function keyNameProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    for (const name of document.querySelectorAll('.rotations__table .kv bdi')) {
+      const label = name.textContent ?? '';
+      for (const node of name.childNodes) {
+        if (node.nodeType !== Node.TEXT_NODE) continue;
+        const text = node.textContent ?? '';
+        const range = document.createRange();
+        for (let i = 1; i < text.length; i += 1) {
+          range.setStart(node, i - 1);
+          range.setEnd(node, i);
+          const before = range.getBoundingClientRect().top;
+          range.setStart(node, i);
+          range.setEnd(node, i + 1);
+          if (range.getBoundingClientRect().top > before + 1 && text[i - 1] !== '_') problems.push(`${label} breaks inside a word`);
+        }
+      }
+      const cell = name.closest('th, td');
+      if (cell === null || name.getBoundingClientRect().right > cell.getBoundingClientRect().right + 0.5) problems.push(`${label} runs past its cell`);
+    }
+    return problems;
+  });
 }
 
 test.describe('machine access', () => {
@@ -229,7 +260,7 @@ test.describe('machine access', () => {
       await expect(table.getByRole('row').filter({ hasText: 'halted' })).toBeVisible();
       // S4: the halted row says why in words, and the owed-drop row is flagged in words that
       // never say to drop when a restore refused one.
-      await expect(table.getByRole('row').filter({ hasText: 'ANALYTICS_PASSWORD' })).toContainText('(retries_exhausted): the retry window ran out');
+      await expect(table.getByRole('row').filter({ hasText: 'ANALYTICS_PASSWORD' })).toContainText('retries_exhausted: the retry window ran out');
       const owingRow = table.getByRole('row').filter({ hasText: 'DATABASE_PASSWORD' });
       await expect(owingRow).toContainText('Do not drop: restore');
       await expect(owingRow).toContainText('do NOT drop it at the provider until the keys have moved off it');
@@ -279,34 +310,44 @@ test.describe('machine access', () => {
         expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-      // A key name never splits mid-word to fit a narrow column.
-      const splitNames = await page.evaluate(() =>
-        [...document.querySelectorAll('.rotations__table .kv bdi')].filter((name) => {
-          const range = document.createRange();
-          range.selectNodeContents(name);
-          return range.getClientRects().length > 1;
-        }).map((name) => name.textContent),
-      );
-      expect(splitNames).toEqual([]);
-      // ...and never runs over the next cell: in the column layout each name ends before its row's second cell.
-      const overlaps = await page.evaluate(() =>
-        [...document.querySelectorAll('.rotations__table tbody tr')].flatMap((row) => {
-          const next = row.querySelector('td')?.getBoundingClientRect();
-          return [...row.querySelectorAll('th bdi')]
-            .filter((name) => {
-              const box = name.getBoundingClientRect();
-              return next !== undefined && box.left < next.left && box.right > next.left + 0.5;
-            })
-            .map((name) => name.textContent);
-        }),
-      );
-      expect(overlaps).toEqual([]);
+      // A key name breaks only after an underscore and stays inside its own cell.
+      expect(await keyNameProblems(page)).toEqual([]);
       // The restore hold badge is inside the page's width, not pushed off an edge by a sideways scroll.
       const badge = await table.getByText('Restore hold', { exact: true }).boundingBox();
       const width = await page.evaluate(() => document.documentElement.clientWidth);
       expect(badge !== null && badge.x >= 0 && badge.x + badge.width <= width).toBe(true);
     } finally {
       await page.unroute('**/rotations/*/runs*');
+      await page.unroute('**/environments/*/rotations');
+      await page.unroute('**/environments/*/rotations?*');
+      await page.unroute(keysPattern);
+    }
+  });
+
+  test('a rotation with a 45 character key name wraps it after an underscore, inside its cell, at 860 and 1280', async () => {
+    const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    const keysPattern = '**/projects/*/keys*';
+    const body = { items: [...rotationList().items, haltedRotation(), longKeyNameRotation()] };
+    await page.route(keysPattern, (route) => route.fulfill(json(rotationKeys)));
+    await page.route('**/environments/*/rotations?*', (route) => route.fulfill(json(body)));
+    await page.route('**/environments/*/rotations', (route) => route.fulfill(json(body)));
+    const original = page.viewportSize();
+    try {
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+      const table = page.getByRole('table', { name: /credential rotations/ });
+      await expect(table.getByRole('row').filter({ hasText: LONG_PASSWORD_NAME })).toBeVisible();
+      for (const width of [1280, 860, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        expect(await keyNameProblems(page)).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        for (const scroller of await page.locator('.table-scroll').all()) {
+          expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        }
+        // The whole name is there to read, whatever way it wrapped.
+        await expect(table.getByText(LONG_PASSWORD_NAME, { exact: true })).toBeVisible();
+      }
+    } finally {
+      if (original) await page.setViewportSize(original);
       await page.unroute('**/environments/*/rotations');
       await page.unroute('**/environments/*/rotations?*');
       await page.unroute(keysPattern);

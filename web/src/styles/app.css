@@ -4038,11 +4038,12 @@ fieldset.field > legend {
   overflow-wrap: normal;
 }
 
-/* The name is also what sizes its column: the sentences and identifiers beside it
-   wrap anywhere, so without nowrap the table layout narrows the column below the
-   name and the name runs over the next cell. */
-.rotations__table .kv bdi {
-  white-space: nowrap;
+/* A key name or error code breaks only after an underscore (the markup puts a
+   <wbr> there) and never mid-word: `.rotations__note` and `.rotations__id` wrap
+   anywhere, so the word gets its own, normal wrapping. The grid track below keeps
+   its min-content width, the longest piece between two underscores. */
+.rotations__table .rotations__code {
+  overflow-wrap: normal;
 }
 
 /* A badge's word may wrap rather than widen its cell. */
@@ -4057,10 +4058,6 @@ fieldset.field > legend {
 @media (max-width: 700px) {
   .rotations__table .kv :is(dt, dd) {
     overflow-wrap: break-word;
-  }
-
-  .rotations__table .kv bdi {
-    white-space: normal;
   }
 
   /* A card per row: a row's own cells run together, and only its last cell

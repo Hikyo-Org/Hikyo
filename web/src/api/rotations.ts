@@ -177,15 +177,21 @@ const HALT_SENTENCES: Record<string, string> = {
   unknown: 'the server halted the rotation without a reason it can name',
 };
 
-/** haltCause is `halted (word): sentence`, the part of the CLI's HALTED line that names the cause. */
-export function haltCause(rotation: Rotation): string {
+/** haltReasonField is `word: sentence`, the halt reason as a field of the rotation's row. */
+export function haltReasonField(rotation: Rotation): string {
   const given = rotation.halt_reason ?? 'unknown';
   // Own keys only: `toString` or `__proto__` is an unrecognised word, not a sentence.
   const known = Object.hasOwn(HALT_SENTENCES, given);
   // A word this client does not know is printed quoted and never interpreted.
   const word = known ? given : JSON.stringify(given);
   const why = known ? HALT_SENTENCES[given] : 'the server recorded a reason this client does not know';
-  return `halted (${word}): ${why}`;
+  return `${word}: ${why}`;
+}
+
+/** haltCause is `halted (word): sentence`, the part of the CLI's HALTED line that names the cause. */
+export function haltCause(rotation: Rotation): string {
+  const [word, ...why] = haltReasonField(rotation).split(': ');
+  return `halted (${word}): ${why.join(': ')}`;
 }
 
 /** haltReasonText is the CLI's whole HALTED line for a halted rotation. */
