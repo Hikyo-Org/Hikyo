@@ -163,7 +163,7 @@ func TestRemoveAfterAFailedLaunchReadRevokesOnlyAtTheItemsOrigin(t *testing.T) {
 	}
 }
 
-// An item this build may not use (another build or location created it, or
+// An item this build may not use (another build created it, or
 // other applications can read it) is never used or revoked through, and
 // removal says the session was not revoked.
 func TestUntrustedKeychainItemIsNeverUsedOrRevokedThrough(t *testing.T) {

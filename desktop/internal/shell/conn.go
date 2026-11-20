@@ -84,7 +84,7 @@ func (m *Manager) newConn(info Connection) (*Conn, error) {
 		// through. A different build or a moved unsigned app lands here too, so
 		// signing in again (which replaces the item) must stay possible; the
 		// sign-in confirmation names the origin because no item vouches for it.
-		c.stopped = "The saved session was created by a different build or location of this app, or can be read by other applications, so it was not used. Sign in again to replace it."
+		c.stopped = "The saved session was created by a different build of this app, or can be read by other applications, so it was not used. Sign in again to replace it."
 		log.Printf("connection %s: keychain item is not restricted to this app", info.Host)
 	case errors.Is(err, ErrNoSecret):
 		c.stopped = "This connection has no stored session. Sign in again."
