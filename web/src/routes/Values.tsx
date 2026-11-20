@@ -338,7 +338,7 @@ function ValuesSurface({
   }, []);
 
   const recordDisclosures = useCallback(
-    (entries: Array<{ id: string; name: string; value: string }>) => {
+    (entries: Array<{ id: string; name: string; value: string }>, recorded = true) => {
       const revealedAt = Date.now();
       setNow(revealedAt);
       const until = revealedAt + REMASK_MS;
@@ -364,7 +364,7 @@ function ValuesSurface({
           message: `${subject}: ${verb} in ${String(REMASK_MS / 1000)} seconds`,
         }));
       }
-      noteDisclosure(entries.map((e) => e.name));
+      if (recorded) noteDisclosure(entries.map((e) => e.name));
     },
     [env.environment, noteDisclosure, setDisclosed],
   );
@@ -392,14 +392,16 @@ function ValuesSurface({
               setRefusal("The server disclosed no value for that key.");
               return;
             }
+            // The server classifies by key: a config response wrote no disclosure.
+            const recorded = fresh.classification === "secret";
             if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
-              noteDisclosure([fresh.name]);
+              if (recorded) noteDisclosure([fresh.name]);
               setRefusal(FOCUS_REMASK_NOTICE);
               return;
             }
             recordDisclosures([
               { id: fresh.key_id, name: fresh.name, value: fresh.value },
-            ]);
+            ], recorded);
           });
         } catch (err) {
           ceremony.commit(task, () => {
@@ -489,10 +491,12 @@ function ValuesSurface({
             });
             return;
           }
-          if (!ceremony.commit(task, () => noteDisclosure([fresh.name]))) {
+          // The server classifies by key: a config response wrote no disclosure.
+          const recorded = fresh.classification === "secret";
+          if (!ceremony.commit(task, () => { if (recorded) noteDisclosure([fresh.name]); })) {
             return;
           }
-          const message = await writeExpiringClipboard(fresh.value, true, () => ceremony.isCurrent(task));
+          const message = await writeExpiringClipboard(fresh.value, recorded, () => ceremony.isCurrent(task));
           ceremony.commit(task, () => setNotice(message));
         } catch (err) {
           ceremony.commit(task, () => setRefusal(disclosureRefusalText(err)));
@@ -713,7 +717,7 @@ function ValuesSurface({
                         onClick={() => doCopy(cell)}
                         aria-label={
                           secret
-                            ? `Copy ${cell.name} (audited disclosure)`
+                            ? `Copy ${cell.name} (audited if still secret)`
                             : `Copy ${cell.name}`
                         }
                       >

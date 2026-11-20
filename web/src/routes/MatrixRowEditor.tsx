@@ -219,13 +219,9 @@ export function MatrixRowEditor({
       ) : null}
       {sourceSet && (!secret || disclosure.canReveal) ? (
         <Button type="button" onClick={disclosure.copy}>
-          {/* Only the server's answer to the reveal says whether this copy is
-              recorded: a secret cell under a config key may be a stale view. */}
-          {keyRecord.classification === 'secret'
-            ? `Copy ${keyRecord.name} (audited disclosure)`
-            : secret
-              ? `Copy ${keyRecord.name} (audited if secret)`
-              : `Copy ${keyRecord.name}`}
+          {/* Only the reveal response says whether this copy is recorded: the
+              key may have become config since this view was loaded. */}
+          {secret ? `Copy ${keyRecord.name} (audited if still secret)` : `Copy ${keyRecord.name}`}
         </Button>
       ) : null}
       <Link className="btn" to={declarationHref} onClick={onClose}>

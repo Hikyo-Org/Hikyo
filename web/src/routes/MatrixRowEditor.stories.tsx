@@ -387,7 +387,7 @@ export const SecretCellUnderConfigKeyRevealable: Story = {
     },
   },
   play: async ({ canvas, canvasElement }) => {
-    await expect(await canvas.findByRole('button', { name: 'Copy LOG_LEVEL (audited if secret)' })).toBeVisible();
+    await expect(await canvas.findByRole('button', { name: 'Copy LOG_LEVEL (audited if still secret)' })).toBeVisible();
     await expect(canvas.queryByRole('button', { name: 'Copy LOG_LEVEL' })).toBeNull();
     await expect(canvas.queryByRole('button', { name: /^Copy published/ })).toBeNull();
     await expect(canvasElement.innerHTML).not.toContain(CELL_LEAK);
@@ -397,7 +397,7 @@ export const SecretCellUnderConfigKeyRevealable: Story = {
     // The audited control: a secret response makes Copy a recorded disclosure.
     const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
     try {
-      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited if secret)' }));
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited if still secret)' }));
       await expect(await canvas.findByText(/^Copied, and recorded as a disclosure\./)).toBeVisible();
       await expect(write).toHaveBeenCalledWith('audited-reveal-value');
     } finally {
@@ -440,12 +440,55 @@ export const SecretCellUnderConfigKeyNowConfig: Story = {
     // Copy reads the same response: the value is copied, and no disclosure claimed.
     const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
     try {
-      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited if secret)' }));
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy LOG_LEVEL (audited if still secret)' }));
       await expect(await canvas.findByText('Copied. This value is not a secret, so no disclosure was recorded.')).toBeVisible();
       await expect(write).toHaveBeenCalledWith('config-reveal-value');
     } finally {
       write.mockRestore();
     }
+  },
+};
+
+// The same stale view under a key held as secret: another session made the key
+// config before this catalogue refreshed. Copy promises no audit beforehand, and
+// the config response records none.
+export const SecretKeyNowConfig: Story = {
+  args: RevealedSecret.args ?? {},
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: true,
+            single_decision: false,
+            can_reveal: true,
+            expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+          },
+        },
+        {
+          url: `${SECRET_ENV_URL}/values/API_TOKEN/reveal`,
+          method: 'POST',
+          body: { key_id: keyRecord.id, name: 'API_TOKEN', classification: 'config', set: true, revealed: true, value: 'now-config-value' },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('button', { name: 'Copy API_TOKEN (audited if still secret)' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: /audited disclosure/ })).toBeNull();
+    const write = spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    try {
+      await userEvent.click(canvas.getByRole('button', { name: 'Copy API_TOKEN (audited if still secret)' }));
+      await expect(await canvas.findByText('Copied. This value is not a secret, so no disclosure was recorded.')).toBeVisible();
+      await expect(write).toHaveBeenCalledWith('now-config-value');
+    } finally {
+      write.mockRestore();
+    }
+    await expect(canvas.queryByText(/Disclosure recorded/)).toBeNull();
   },
 };
 
