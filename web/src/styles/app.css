@@ -2512,6 +2512,9 @@ fieldset.field > legend {
   width: 100cqi;
   white-space: nowrap;
   padding-right: var(--space-3);
+  /* It overruns its cell, so it carries the cell's sticky background: rows
+     scrolling up under the stuck group row must not show through it. */
+  background: var(--sticky-bg);
 }
 
 .matrix__group-name {

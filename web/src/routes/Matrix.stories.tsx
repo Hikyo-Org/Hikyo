@@ -412,6 +412,9 @@ const expectStickyKeyColumn = async (root: HTMLElement) => {
   const addBox = add.getBoundingClientRect();
   await expect(addBox.right).toBeLessThanOrEqual(scrollerLeft + scroller.clientWidth);
   await expect(addBox.left).toBeGreaterThanOrEqual(toggle.getBoundingClientRect().right);
+  // The bar overruns its pinned cell to the visible width, so it is opaque too:
+  // rows scrolling up under the stuck group row must not show through it.
+  await expect(alphaOf(getComputedStyle(groupLabel).backgroundColor)).toBe(1);
   scroller.scrollLeft = 0;
 };
 
