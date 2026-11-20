@@ -843,6 +843,9 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		}
 		own = append(own, part...)
 	}
+	if err := checksuites.Recheck(ctx, c.suiteSource(), head, listings); err != nil {
+		return nil, err
+	}
 	for _, v := range local {
 		if seen[v.ID] {
 			continue

@@ -55,8 +55,8 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	} {
 		var queries []string
 		got, err := Listings(context.Background(), source(tc.suites, 7, &queries), "abc", "report")
-		if err != nil || fmt.Sprint(got) != fmt.Sprint(tc.want) || len(queries) != 2 {
-			t.Fatalf("%d suites: %v/%v after %d queries, want %v after two counts", tc.suites, got, err, len(queries), tc.want)
+		if err != nil || fmt.Sprint(got) != fmt.Sprint(tc.want) || len(queries) != 1 {
+			t.Fatalf("%d suites: %v/%v after %d queries, want %v after one", tc.suites, got, err, len(queries), tc.want)
 		}
 	}
 	// Past the margin only the suite that holds the check is listed, and the scan
@@ -68,25 +68,27 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	}
 }
 
-// Suites added between the count and the read must not leave an older suite out
-// of the commit endpoint's newest 1000: the second count decides.
-func TestListingsFallBackWhenSuitesGrowAfterTheCount(t *testing.T) {
-	var queries []string
-	counts := 0
-	s := source(Margin+1, 7, &queries)
-	read := s.Read
-	s.Read = func(ctx context.Context, query string, out any) error {
-		if !strings.Contains(query, "checkSuites(") {
-			counts++
-			if counts == 1 {
-				return source(Margin, 7, &queries).Read(ctx, query, out)
-			}
+// Suites added while a commit listing is read can push an older suite out of
+// REST's newest 1000, so the read is refused when the count has grown past the
+// margin, and a per-suite read needs no recount.
+func TestRecheckRefusesACommitListingAfterTheSuitesGrew(t *testing.T) {
+	commit := []string{"commits/abc/check-runs"}
+	for _, tc := range []struct {
+		suites  int
+		wantErr bool
+	}{
+		{suites: Margin},
+		{suites: Margin + 1, wantErr: true},
+	} {
+		var queries []string
+		err := Recheck(context.Background(), source(tc.suites, 7, &queries), "abc", commit)
+		if (err != nil) != tc.wantErr || len(queries) != 1 {
+			t.Fatalf("%d suites: err = %v after %d queries, want error %t after one count", tc.suites, err, len(queries), tc.wantErr)
 		}
-		return read(ctx, query, out)
 	}
-	got, err := Listings(context.Background(), s, "abc", "report")
-	if err != nil || fmt.Sprint(got) != "[check-suites/7/check-runs]" {
-		t.Fatalf("listings = %v/%v, want the per-suite listing", got, err)
+	var queries []string
+	if err := Recheck(context.Background(), source(Margin+1, 7, &queries), "abc", []string{"check-suites/7/check-runs"}); err != nil || len(queries) != 0 {
+		t.Fatalf("per-suite listing: err = %v after %d queries, want no recount", err, len(queries))
 	}
 }
 
