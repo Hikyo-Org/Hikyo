@@ -565,3 +565,21 @@ func TestGzipHelperIsStillAccepted(t *testing.T) {
 		t.Errorf("%d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestFinishDownloadsWaitsForAPublicationInProgress(t *testing.T) {
+	publishing.RLock() // a publication in progress
+	done := make(chan struct{})
+	go func() { FinishDownloads(); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("FinishDownloads returned while a publication was in progress")
+	case <-time.After(50 * time.Millisecond):
+	}
+	publishing.RUnlock()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("FinishDownloads did not return after the publication ended")
+	}
+	publishing.Unlock() // later tests publish again
+}
