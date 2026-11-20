@@ -72,8 +72,17 @@ The spike also established that:
    loader and variant differences (what the go/packages walk sees against what
    vet sees); it is not an independent check of the analyzer logic, which the
    `// want` fixtures cover:
-   1. driver, summary aggregation, and the per-package analyzers;
-   2. input hashing and the analyzers that read non-Go inputs;
+   1. driver, summary aggregation, and the per-package analyzers (including
+      `recoverylookup` and `containmentsetters`, the name-confinement checks
+      that arrived on `dev`: they read only Go syntax of the package they are
+      given, and their stale-allowlist and target-presence results travel as
+      summaries);
+   2. input hashing and the analyzers that read non-Go inputs. Left on the old
+      harness until here from `dev`: `containmentgates` and its `sqlscope`
+      scanner (read `.sql` query text), `CheckJSONv1Imports` (walks every Go
+      file in the repository, including directories outside the module's
+      packages) and `CheckStableCopies` (parses `scripts/ci` programs that are
+      not analyzed packages);
    3. RawSQL with facts and summaries;
    4. removal of `LoadRepo`, `flatten`, and the old harness, including the
       `internal/isolation` callers.

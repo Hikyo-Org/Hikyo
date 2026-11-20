@@ -1,7 +1,7 @@
 // Package badsetter is the negative fixture for the containment-setter
 // analyzer: Licensed is the one allowed caller, and the rest reach the
 // setters by routes a name-only check must still catch.
-package badsetter
+package badsetter // want "ContainPrincipal never referenced in .*badsetter.NeverCalled \\(stale allowlist entry\\)"
 
 type setter interface {
 	ContainPrincipal(id string) error
@@ -12,15 +12,15 @@ type setter interface {
 func Licensed(s setter) error { return s.ContainPrincipal("a") }
 
 // ServiceContain is the violation: service code setting the state.
-func ServiceContain(s setter) error { return s.ContainPrincipal("a") }
+func ServiceContain(s setter) error { return s.ContainPrincipal("a") } // want "ContainPrincipal referenced outside"
 
 // ServiceRelease is the violation: service code clearing the state.
-func ServiceRelease(s setter) error { return s.ReleasePrincipalContainment("a") }
+func ServiceRelease(s setter) error { return s.ReleasePrincipalContainment("a") } // want "ReleasePrincipalContainment referenced outside"
 
 type localSetter interface{ ContainPrincipal(id string) error }
 
 // ViaAssertion renames the interface through a type assertion.
-func ViaAssertion(s any) error { return s.(localSetter).ContainPrincipal("a") }
+func ViaAssertion(s any) error { return s.(localSetter).ContainPrincipal("a") } // want "ContainPrincipal referenced outside"
 
 // ViaMethodValue takes the method as a value and calls it later.
-func ViaMethodValue(s setter) func(string) error { return s.ContainPrincipal }
+func ViaMethodValue(s setter) func(string) error { return s.ContainPrincipal } // want "ContainPrincipal referenced outside"

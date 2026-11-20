@@ -5,7 +5,6 @@ package app
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
 
@@ -113,7 +113,7 @@ func TestResolveUnattendedOperatorRefusals(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("got %v, want %q", err, test.want)
 			}
-			if !reflect.DeepEqual(*i.cfg, before) {
+			if !reflectx.Equal(*i.cfg, before) {
 				t.Fatalf("a refused resolution changed the configuration: %+v", i.cfg.Upgrade)
 			}
 		})
@@ -123,7 +123,7 @@ func TestResolveUnattendedOperatorRefusals(t *testing.T) {
 func TestResolveUnattendedOperatorLeavesManualInstallationsAlone(t *testing.T) {
 	cfg := &config.Config{AutoMigrate: true, Upgrade: config.UpgradeConfiguration{BundleDirectory: "/bundle", OperatorPublicKeyFile: "/operator.pub", StateDirectory: "/state"}}
 	before := *cfg
-	if err := ResolveUnattendedOperator(t.Context(), cfg); err != nil || !reflect.DeepEqual(*cfg, before) {
+	if err := ResolveUnattendedOperator(t.Context(), cfg); err != nil || !reflectx.Equal(*cfg, before) {
 		t.Fatalf("a manual installation was changed or refused: %v %+v", err, cfg.Upgrade)
 	}
 }

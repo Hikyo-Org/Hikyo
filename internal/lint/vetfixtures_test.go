@@ -76,10 +76,37 @@ var vetFixtures = []vetFixture{
 		},
 	},
 	{
+		name: "recoverylookup", analyzer: "recoverylookup", patterns: []string{fixtureRoot + "badrecovery"},
+		flags:   []string{"-recoverylookup.rules=" + rulesFlag(badRecoveryRules)},
+		targets: []string{fixtureImportRoot + "badrecovery"},
+		old: func(pkgs []*packages.Package) []string {
+			return CheckRecoveryLookup(pkgs, badRecoveryRules)
+		},
+	},
+	{
+		name: "containmentsetters", analyzer: "containmentsetters", patterns: []string{fixtureRoot + "badsetter"},
+		flags:   []string{"-containmentsetters.rules=" + rulesFlag(badSetterRules)},
+		targets: []string{fixtureImportRoot + "badsetter"},
+		old: func(pkgs []*packages.Package) []string {
+			return CheckContainmentSetters(pkgs, badSetterRules)
+		},
+	},
+	{
 		name: "upgradebuild", analyzer: "upgradebuild", patterns: []string{fixtureRoot + "badupgradebuild"},
 		old: UpgradeBuildAuthority,
 	},
 }
+
+var badRecoveryRules = []RecoveryRule{
+	{Name: "RecoveryAccountByID", Allowed: map[string][]string{fixtureImportRoot + "badrecovery": {"ResetAllowed", "NeverCalled", "licensedType.Reset"}}},
+}
+
+var badSetterRules = []RecoveryRule{
+	{Name: "ContainPrincipal", Allowed: map[string][]string{fixtureImportRoot + "badsetter": {"Licensed", "NeverCalled"}}},
+	{Name: "ReleasePrincipalContainment", Allowed: map[string][]string{}},
+}
+
+func rulesFlag(rules []RecoveryRule) string { return (*confinementFlag)(&rules).String() }
 
 const observerOwner = fixtureImportRoot + "badobserver/owner"
 

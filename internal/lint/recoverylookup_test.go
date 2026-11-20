@@ -57,7 +57,7 @@ func TestContainmentSettersCatchesBypasses(t *testing.T) {
 		for _, marker := range []string{"func ServiceContain", "func ServiceRelease", "func ViaAssertion", "func ViaMethodValue"} {
 			assertFindings(t, findings, []string{fmt.Sprintf("badsetter.go:%d:", fixtureLine(t, file, marker))})
 		}
-		assertFindings(t, findings, []string{"containment setter: ContainPrincipal never referenced in " + path + ".NeverCalled (stale allowlist entry)"})
+		assertFindings(t, findings, []string{"ContainPrincipal never referenced in " + path + ".NeverCalled (stale allowlist entry)"})
 		for _, finding := range findings {
 			if strings.Contains(finding, fmt.Sprintf("badsetter.go:%d:", fixtureLine(t, file, "func Licensed"))) {
 				t.Errorf("licensed caller flagged: %s", finding)

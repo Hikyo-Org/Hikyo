@@ -41,7 +41,7 @@ forgeguard and fence: 0 deferred; their 35 newly visible findings (33 forgeguard
 - internal/service/adapter_authorization_clock_test.go: 44
 - internal/store/upgrade/schema_postgres_scope_test.go: 43
 - internal/store/postgres_pool_prepared_test.go: 41
-- internal/app/backup_recovery_schema65_test.go: 27
+- internal/app/backup_recovery_schema65_test.go: 29
 - internal/app/backup_recovery_capability_test.go: 26
 - internal/isolation/transit_admission_lock_test.go: 25
 - internal/store/admission_settlement_driver_test.go: 25
@@ -128,6 +128,16 @@ forgeguard and fence: 0 deferred; their 35 newly visible findings (33 forgeguard
 - internal/service/ux_benchmark_test.go: 2
 - internal/store/migrate/adapter_custody_move_repair_test.go: 2
 - internal/store/upgrade/session_timeouts_test.go: 2
+- internal/isolation/auth_refusal_acceptance_test.go: 8
+- internal/isolation/containment_historical_test.go: 14
+- internal/isolation/rotation_executor_real_pg_test.go: 14
+- internal/store/audit_commit_seq_ssi_test.go: 12
+- internal/isolation/rotation_cascade_e2e_test.go: 8
+- internal/isolation/rotation_summary_review_test.go: 8
+- internal/isolation/rotation_summary_test.go: 4
+- internal/service/incident_census_test.go: 4
+- internal/isolation/containment_e2e_test.go: 2
+- internal/service/incident_unit_test.go: 2
 
 ## Per-file breakdown: redactfmt
 
@@ -152,6 +162,10 @@ forgeguard and fence: 0 deferred; their 35 newly visible findings (33 forgeguard
 - internal/isolation/federated_signup_e2e_test.go: 1
 - internal/isolation/fixture_cli_login_e2e_test.go: 1
 - internal/isolation/incident_containment_cli_test.go: 1
+- internal/isolation/rotation_cascade_e2e_test.go: 6
+- internal/isolation/rotation_executor_round4_test.go: 4
+- internal/isolation/rotation_e2e_test.go: 2
+- internal/isolation/rotation_runnow_e2e_test.go: 2
 
 ## Classification sample
 
@@ -190,6 +204,30 @@ All 10 are legitimate test-harness use under the current rule: tests open an eng
 | internal/isolation/rules_wire_test.go:35 | `Sprintf` INSERT with env IDs | rule false positive |
 | internal/app/self_config_topology_test.go:107 | `json.Marshal(d.enrollment)` | unverified |
 | internal/app/self_config_topology_test.go:125 | `json.Marshal(d.enrollment)` | unverified |
+
+## Entries added when the branch was integrated with `dev`
+
+`dev` added test files and extended one, all in-package `_test.go` files that the old harness never loaded. The ceilings were raised by hand (the regenerator refuses raises by design). None is a production finding: every file below is a test, and `TestVetDriverRepo` still fails any production file or external test package finding.
+
+| File | Analyzer | Count | Why it is a legitimate deferred test site |
+|---|---|---|---|
+| internal/app/backup_recovery_schema65_test.go (27 to 29) | handles | 29 | existing file grew: schema fixtures open `database/sql` and `pgx` handles to restore and inspect a backup |
+| internal/isolation/auth_refusal_acceptance_test.go | handles | 8 | `db.PG()`/`SQLiteRead()` queries over `information_schema` and tables for the datastore canary scan |
+| internal/isolation/containment_e2e_test.go | handles | 2 | `db.SQLiteWrite().Stats()` reads writer-pool wait counts |
+| internal/isolation/containment_historical_test.go | handles | 14 | opens raw `sql`/`pgx` handles to build a historical-schema fixture |
+| internal/isolation/rotation_cascade_e2e_test.go | handles | 8 | raw `PG()`/`SQLiteWrite()` seeding of rotation rows |
+| internal/isolation/rotation_executor_real_pg_test.go | handles | 14 | `SQLiteRead()`/`PG()` assertions on rotation run state |
+| internal/isolation/rotation_summary_review_test.go | handles | 8 | `pggen.New(db.PG())` reads generated rotation queries |
+| internal/isolation/rotation_summary_test.go | handles | 4 | same generated-query reads |
+| internal/service/incident_census_test.go | handles | 4 | `SQLiteWrite().ExecContext` seeds incident rows |
+| internal/service/incident_unit_test.go | handles | 2 | same seeding |
+| internal/store/audit_commit_seq_ssi_test.go | handles | 12 | `pgx.Connect` to drive concurrent serializable transactions |
+| internal/isolation/rotation_cascade_e2e_test.go | redactfmt | 6 | rule false positive: `fmt.Sprintf` INSERTs over strings and ints, flagged because the receiver `f` holds a `crypto.Keyring` |
+| internal/isolation/rotation_e2e_test.go | redactfmt | 2 | same false positive (`principal`, `f.seq` in IDs) |
+| internal/isolation/rotation_executor_round4_test.go | redactfmt | 4 | same false positive (`runID`, `stamp(...)` in UPDATEs) |
+| internal/isolation/rotation_runnow_e2e_test.go | redactfmt | 2 | same false positive (`id`, `ts` in INSERTs) |
+
+Totals added: handles +78 diagnostics in 10 new files (plus 2 in a grown file), redactfmt +14 in 4 new files. The sets are identical in the default, ui, darwin and windows contexts. The first reported site of every handles file and of every redactfmt file was read at the flagged line; the classification is from that reading, not from running the code.
 
 ## Follow-up scope
 

@@ -1,6 +1,8 @@
 package lint
 
 import (
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -70,13 +72,13 @@ func TestDecodeVetOutput(t *testing.T) {
 				}
 			},
 		},
-		{name: "unknown related field", raw: tree("forgeguard", diag(`,"related":[{"posn":"x","extra":1}]`)), wantErr: "unknown field"},
-		{name: "unknown edit field", raw: tree("forgeguard", diag(`,"suggested_fixes":[{"message":"z","edits":[{"filename":"f","extra":1}]}]`)), wantErr: "unknown field"},
+		{name: "unknown related field", raw: tree("forgeguard", diag(`,"related":[{"posn":"x","extra":1}]`)), wantErr: "unknown object member name"},
+		{name: "unknown edit field", raw: tree("forgeguard", diag(`,"suggested_fixes":[{"message":"z","edits":[{"filename":"f","extra":1}]}]`)), wantErr: "unknown object member name"},
 		{name: "mistyped edit offset", raw: tree("forgeguard", diag(`,"suggested_fixes":[{"message":"z","edits":[{"start":"1"}]}]`)), wantErr: "decode vet output"},
 		{name: "analyzer error object", raw: tree("handles", `{"error":"boom"}`), wantErr: "analyzer handles failed"},
 		{name: "empty error object", raw: tree("handles", `{}`), wantErr: "neither a diagnostic list nor an error"},
-		{name: "unknown diagnostic field", raw: tree("handles", diag(`,"extra":1`)), wantErr: "unknown field"},
-		{name: "unknown error object field", raw: tree("handles", `{"error":"x","extra":1}`), wantErr: "unknown field"},
+		{name: "unknown diagnostic field", raw: tree("handles", diag(`,"extra":1`)), wantErr: "unknown object member name"},
+		{name: "unknown error object field", raw: tree("handles", `{"error":"x","extra":1}`), wantErr: "unknown object member name"},
 		{name: "stray non-JSON line", raw: "go: downloading something\n" + tree("handles", diag("")), wantErr: "decode vet output"},
 		{
 			name: "target summary", raw: tree("fence", summary("target "+Module+"/internal/service")),
@@ -183,4 +185,31 @@ func TestCheckDeferredCeiling(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfinementFlagRoundTrip(t *testing.T) {
+	rules := append(slices.Clone(badRecoveryRules), badSetterRules...)
+	var got confinementFlag
+	if err := got.Set(rulesFlag(rules)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual([]RecoveryRule(got), normalizeRules(rules)) {
+		t.Fatalf("round trip = %v, want %v", got, rules)
+	}
+	for _, bad := range []string{"NoEquals", "=pkg:Fn", "Name=pkgWithoutColon"} {
+		if err := new(confinementFlag).Set(bad); err == nil {
+			t.Errorf("Set(%q) accepted a malformed rule", bad)
+		}
+	}
+}
+
+// normalizeRules gives a rule with no entries the empty map Set produces.
+func normalizeRules(rules []RecoveryRule) []RecoveryRule {
+	out := slices.Clone(rules)
+	for i := range out {
+		if out[i].Allowed == nil {
+			out[i].Allowed = map[string][]string{}
+		}
+	}
+	return out
 }

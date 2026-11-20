@@ -196,6 +196,8 @@ func Checks() []Check {
 		{Analyzer: TxResult},
 		{Analyzer: TestObservers, Targets: []string{Module + "/internal/store/authn", Module + "/internal/service"}},
 		{Analyzer: UpgradeBuild},
+		{Analyzer: RecoveryLookup, Targets: ruleTargets(RecoveryLookupRules)},
+		{Analyzer: ContainmentSetters, Targets: ruleTargets(ContainmentSetterRules)},
 		{Analyzer: ActorSplit, Targets: []string{Module + "/internal/server"}},
 		{Analyzer: RedactPins, Targets: []string{sensitiveOwner}},
 	}

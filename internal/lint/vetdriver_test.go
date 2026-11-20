@@ -8,7 +8,8 @@ package lint
 import (
 	"bytes"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,8 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // vetDiagnostic is one entry of `go vet -json`, mirroring the JSON shapes of
@@ -54,6 +57,10 @@ type vetTextEdit struct {
 	New      string `json:"new"`
 }
 
+// strictMembers makes an unknown member a decode error, as v1's
+// DisallowUnknownFields did.
+var strictMembers = json.RejectUnknownMembers(true)
+
 // vetResult is one analyzer's output for one package: diagnostics, or the
 // analyzer's own error.
 type vetResult struct {
@@ -62,15 +69,13 @@ type vetResult struct {
 }
 
 func (r *vetResult) UnmarshalJSON(raw []byte) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
 	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
-		return dec.Decode(&r.Diagnostics)
+		return json.Unmarshal(raw, &r.Diagnostics, strictMembers)
 	}
 	var failure struct {
 		Error string `json:"error"`
 	}
-	if err := dec.Decode(&failure); err != nil {
+	if err := json.Unmarshal(raw, &failure, strictMembers); err != nil {
 		return err
 	}
 	if failure.Error == "" {
@@ -106,10 +111,10 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 		kept = append(kept, line...)
 	}
 	out := &vetOutcome{Deferred: map[string]string{}, Targets: map[string]map[string]bool{}, Summaries: map[string][]Summary{}}
-	dec := json.NewDecoder(bytes.NewReader(kept))
+	dec := jsontext.NewDecoder(bytes.NewReader(kept))
 	for {
 		var tree vetTree
-		if err := dec.Decode(&tree); err == io.EOF {
+		if err := json.UnmarshalDecode(dec, &tree, strictMembers); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return nil, fmt.Errorf("decode vet output: %w", err)
@@ -227,13 +232,8 @@ type deferredCounts struct {
 
 func decodeDeferredCounts(raw []byte) (deferredCounts, error) {
 	var counts deferredCounts
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&counts); err != nil {
+	if err := jsonwire.Decode(bytes.NewReader(raw), &counts, strictMembers); err != nil {
 		return deferredCounts{}, fmt.Errorf("decode %s: %w", deferredSitesFile, err)
-	}
-	if dec.More() {
-		return deferredCounts{}, fmt.Errorf("decode %s: trailing data", deferredSitesFile)
 	}
 	return counts, nil
 }
@@ -353,7 +353,7 @@ func TestVetDriverRepo(t *testing.T) {
 		t.Fatalf("-update-deferred-sites ran %d of %d contexts; run it without -run filters so no context's pin is dropped", ran, len(Contexts))
 	}
 	if *updateDeferredSites && !t.Failed() {
-		raw, err := json.MarshalIndent(observed, "", "  ")
+		raw, err := json.Marshal(observed, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {
 			t.Fatal(err)
 		}
