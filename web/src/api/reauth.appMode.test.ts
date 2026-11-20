@@ -38,6 +38,7 @@ describe('self-config reauth in the app', () => {
 
   it('sends the decision with an empty environment set and the matching operation', async () => {
     await reauthenticateSelfConfig(intent, { kind: 'passkey' });
+    expect(fetcher).toHaveBeenCalledOnce();
     expect(sent()).toEqual({
       url: '/__shell/reauth',
       body: { purpose: 'self-config', operation: 'self-config.apply', environment_ids: [], self_config: { ...intent, revision: 3, expected_generation: 7 } },
@@ -47,6 +48,7 @@ describe('self-config reauth in the app', () => {
   it.each([['adopt', 'self-config.adopt'], ['apply', 'self-config.apply'], ['mail-test', 'self-config.test']] as const)(
     'maps %s to %s', async (action, operation) => {
       await reauthenticateSelfConfig({ ...intent, action }, { kind: 'passkey' });
+      expect(fetcher).toHaveBeenCalledOnce();
       expect(sent().body).toMatchObject({ operation });
     },
   );

@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderForm } from '../testkit/renderForm.tsx';
 import { clearNotification, notifyUpdate, ToastViewport } from './notifications.tsx';
 
-const shell = vi.hoisted(() => ({ origin: undefined as string | undefined }));
+const shell = vi.hoisted((): { origin?: string } => ({}));
 vi.mock('./shell.ts', async (importActual) => ({
   ...(await importActual<typeof import('./shell.ts')>()),
   knownShellOrigin: () => shell.origin,
 }));
 
-afterEach(() => { vi.unstubAllGlobals(); clearNotification(); shell.origin = undefined; });
+afterEach(() => { vi.unstubAllGlobals(); clearNotification(); delete shell.origin; });
 
 async function hrefFor(protocol: string, href: string): Promise<string | null | undefined> {
   vi.stubGlobal('location', { protocol, origin: `${protocol}//x` });

@@ -16,14 +16,14 @@ async function startCamera() {
   await settleTask();
   await view.unmount();
 }
+const getUserMedia = vi.fn();
 function cameraRefused() {
   vi.stubGlobal('isSecureContext', true);
-  Object.defineProperty(navigator, 'mediaDevices', {
-    value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException('Denied', 'NotAllowedError')) }, configurable: true,
-  });
+  getUserMedia.mockRejectedValue(new DOMException('Denied', 'NotAllowedError'));
+  vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
 }
 
-beforeEach(() => dismissContinueInBrowser());
+beforeEach(() => { getUserMedia.mockReset(); dismissContinueInBrowser(); });
 afterEach(() => { vi.unstubAllGlobals(); dismissContinueInBrowser(); });
 
 describe('camera scanning in the app', () => {
@@ -47,6 +47,7 @@ describe('camera scanning in the app', () => {
     await startCamera();
     cameraRefused();
     await startCamera();
+    expect(getUserMedia).toHaveBeenCalledOnce();
     expect(continueInBrowserReason()).toBeNull();
   });
 });
