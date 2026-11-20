@@ -116,7 +116,7 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 		n.manager.UnbindWindow(id)
 		pendingDownloads.Drop(host)
 	})
-	installProbe(w)
+	installProbe(w, host)
 	w.SetURL(shell.PageScheme + "://" + host + "/")
 	return nil
 }
