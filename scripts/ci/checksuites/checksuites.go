@@ -21,8 +21,9 @@ import (
 const AppID = 15368
 
 // Margin is the suite count above which a listing by commit cannot be trusted.
-// It sits under REST's cap of 1000 so suites added between counting and listing
-// cannot push a commit over it unnoticed.
+// It sits under REST's cap of 1000, and Confirm counts again after the listing,
+// so suites added between counting and listing cannot push a commit over it
+// unnoticed.
 const Margin = 900
 
 // MaxSuites bounds the github-actions suites one scan reads (50 pages of 100).
@@ -256,4 +257,22 @@ func Listings(ctx context.Context, s Source, head, name string) ([]string, error
 		listings = append(listings, fmt.Sprintf("check-suites/%d/check-runs", suite))
 	}
 	return listings, nil
+}
+
+// Confirm counts head's suites again after the caller has read the listings that
+// Listings returned. A listing by commit is refused when the count grew past
+// Margin while it was read, as REST may then have hidden runs from it. Listings
+// by suite need no second count.
+func Confirm(ctx context.Context, s Source, head string, listings []string) error {
+	if len(listings) != 1 || !strings.HasPrefix(listings[0], "commits/") {
+		return nil
+	}
+	count, err := Count(ctx, s, head)
+	if err != nil {
+		return err
+	}
+	if count > Margin {
+		return fmt.Errorf("check suites on %s grew past %d during the listing by commit; a later attempt reads by suite", head, Margin)
+	}
+	return nil
 }

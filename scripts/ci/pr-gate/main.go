@@ -833,6 +833,9 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 			return nil, errors.New("untrusted controller check identity")
 		}
+		if v.App.ID == actionsAppID || v.App.Slug == "github-actions" {
+			return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
+		}
 	}
 	var own []check
 	seen := make(map[int64]bool)
@@ -844,9 +847,16 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		own = append(own, part...)
 	}
 	for _, v := range local {
-		if (strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix)) && !seen[v.ID] {
+		if seen[v.ID] {
+			continue
+		}
+		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 			return nil, errors.New("controller check missing from the check suite inventory")
 		}
+		return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
+	}
+	if err := checksuites.Confirm(ctx, c.suiteSource(), head, listings); err != nil {
+		return nil, err
 	}
 	return own, nil
 }
@@ -854,10 +864,11 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 // sameNameByCommit lists this context's name by commit when owners read by suite,
 // which sees REST's newest 1000 suites of every app. It returns the records of
 // other apps, so the refusal a listing by commit gave still holds, and those of
-// github-actions, so a fresh record the suite inventory has not indexed yet is
-// refused rather than taken for absent. A record another app adds to an older
-// suite of its own, or one older than the newest 1000 suites that the inventory
-// lacks, is not visible here, as it was not before.
+// github-actions, so a fresh record the suite inventory has not indexed yet, with
+// or without the controller identity, is refused rather than taken for absent. A
+// record another app adds to an older suite of its own, or one older than the
+// newest 1000 suites that the inventory lacks, is not visible here, as it was not
+// before.
 func (c *controller) sameNameByCommit(ctx context.Context, head string, listings []string) (foreign, local []check, err error) {
 	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
 		return nil, nil, nil

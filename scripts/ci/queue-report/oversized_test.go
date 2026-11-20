@@ -107,3 +107,13 @@ func TestReportSeenOnlyByTheCommitListingBeyondRESTSuiteCapIsRefused(t *testing.
 		t.Fatalf("error %v with %d writes, want a refusal", err, len(f.writes))
 	}
 }
+
+// A head that grew past the margin while its commit was listed may hide its
+// report, so the reporter refuses rather than create a second one.
+func TestReportRefusesHeadThatGrewPastSuiteMarginDuringCommitListing(t *testing.T) {
+	f := newFixture(t)
+	f.suites, f.grown = checksuites.Margin, checksuites.Margin+1
+	if err := f.c.publish(context.Background(), f.e); err == nil || len(f.writeMethods) != 0 || f.counts != 2 {
+		t.Fatalf("err=%v writes %v after %d counts, want a refusal without writes", err, f.writeMethods, f.counts)
+	}
+}

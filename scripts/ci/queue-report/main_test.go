@@ -44,6 +44,8 @@ type fixture struct {
 	// recent makes a listing by commit show this head's records from every app,
 	// as for a record newer than the suite scan.
 	recent bool
+	// grown, when set, is the suite count every count after the first reports.
+	grown, counts int
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -187,6 +189,12 @@ func (f *fixture) serveGraphQL(t *testing.T, w http.ResponseWriter, req *http.Re
 	}
 	f.requests = append(f.requests, "graphql")
 	suites := max(f.suites, 1)
+	if !strings.Contains(body.Query, "checkSuites(") {
+		f.counts++
+		if f.grown != 0 && f.counts > 1 {
+			suites = f.grown
+		}
+	}
 	object := map[string]any{"oid": suiteHead.FindStringSubmatch(body.Query)[1], "checkSuites": map[string]any{"totalCount": suites}}
 	if strings.Contains(body.Query, "checkSuites(") {
 		if !strings.Contains(body.Query, fmt.Sprintf("checkName:%q", reportName(f.r))) {
