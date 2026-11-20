@@ -199,7 +199,7 @@ note for the step 3 PR.
 
 Owner decision (2026-11-20): RawSQL's production-ownership scope is accepted.
 RawSQL keeps excluding `_test.go` files and generated sqlc files. The exclusion
-keeps about 1,100 raw-SQL-shaped call sites in about 212 in-package test files
+keeps about 1,100 raw-SQL-shaped call sites in about 212 test files (in-package and external)
 out of scope (a grep estimate and an upper bound, not a typed count), as well as
 those files' references to restricted protocols and the SQL-outside-a-named-
 function check. The exclusion pre-dates the vet driver: the old harness skipped
@@ -236,8 +236,11 @@ variant they are given) that the owner accepted for RawSQL only.
 - **Cache costs.** Every module package opens the declared inputs, so an edit to
   `reviewed_pins.json` or a `.sql` query changes flags that apply to every
   package and re-vets every package of the context, standard library and
-  dependencies included, in all four contexts. An edit to any exported
-  function's body changes its package's facts and re-vets its direct importers.
+  dependencies included, in all four contexts. Editing the body of any
+  production function in some exported function's helper closure (an exported
+  method's own body included) changes its package's facts; the re-vet then
+  spreads to transitive importers whenever their own facts change, and always
+  for methods, whose facts every importer re-exports.
 - **Registration.** RawSQL is registered in `Analyzers()` but not in `Checks()`,
   because `RunOver` cannot supply facts. Its parity
   leg is inside `TestVetDriverParity` (`requireRawSQLParity` on the repository
