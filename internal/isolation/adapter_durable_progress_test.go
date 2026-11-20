@@ -181,7 +181,7 @@ func TestAdapterDurableRetryResumesAcknowledgedPrefixAndNewJobRedelivers(t *test
 			if worked, err := worker.RunOnce(t.Context()); !worked || err != nil {
 				t.Fatalf("durable attempt %d = %v, %v; jobs=%s; completed=%v", attempt+1, worked, err, queryStrings(t, db, `SELECT id||':'||state||':'||authority_principal_id FROM adapter_outbox WHERE target_id='deadline_target_a'`), module.completed)
 			}
-			clock = clock.Add(4 * time.Minute)
+			clock = stepWorkerClock(clock, 4*time.Minute)
 		}
 		if len(module.writes) != 3 || len(module.completed) != 3 || module.completed[0] != 0 || module.completed[1] != 1 || module.completed[2] != 2 {
 			t.Fatalf("progress did not survive durable retries: writes=%v completed=%v", module.writes, module.completed)
@@ -210,7 +210,7 @@ func TestAdapterDurableRetryResumesAcknowledgedPrefixAndNewJobRedelivers(t *test
 			if worked, err := worker.RunOnce(t.Context()); !worked || err != nil {
 				t.Fatalf("new job attempt %d = %v, %v", attempt+1, worked, err)
 			}
-			clock = clock.Add(4 * time.Minute)
+			clock = stepWorkerClock(clock, 4*time.Minute)
 		}
 		for name, writes := range module.writes {
 			if writes != 2 {
