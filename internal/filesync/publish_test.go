@@ -699,20 +699,25 @@ func genDirEntries(t *testing.T, dir string) []string {
 
 func TestPublishRefusesUnsafeGenDir(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t)
-	gen := filepath.Join(f.dir, genDir)
-	if err := os.Mkdir(gen, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	// Mkdir is subject to the umask; widen explicitly.
-	if err := os.Chmod(gen, 0o777); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.publish(nil, file("a", "1")); !errors.Is(err, ErrForeign) {
-		t.Fatalf("group/other-writable %s: %v", genDir, err)
-	}
-	if _, err := os.Lstat(filepath.Join(f.dir, "a")); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal("published into an unsafe generation directory")
+	// 0o320 is also unreadable by its owner: the refusal must come from the
+	// custody check, not from a failed open.
+	for _, mode := range []os.FileMode{0o777, 0o320} {
+		f := newFixture(t)
+		gen := filepath.Join(f.dir, genDir)
+		if err := os.Mkdir(gen, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// Mkdir is subject to the umask; set the mode explicitly.
+		if err := os.Chmod(gen, mode); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(gen, 0o700) })
+		if _, err := f.publish(nil, file("a", "1")); !errors.Is(err, ErrForeign) {
+			t.Fatalf("group-writable %s (%v): %v", genDir, mode, err)
+		}
+		if _, err := os.Lstat(filepath.Join(f.dir, "a")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("published into an unsafe generation directory (%v)", mode)
+		}
 	}
 }
 
@@ -1042,4 +1047,33 @@ func TestInvalidPredecessorIsForeignAndRepublished(t *testing.T) {
 			t.Errorf("%s: publish over the predecessor = %+v, %v; want a fresh generation", tc.name, res, err)
 		}
 	}
+}
+
+// A FIFO swapped in for .hikyo-gen after pinGen's Lstat must fail the open,
+// not block the publisher while it holds the destination lock.
+func TestOpenDirRootRefusesFIFOWithoutBlocking(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(dir, genDir), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	bounded(t, func() {
+		if gen, err := openDirRoot(root, genDir); err == nil {
+			_ = gen.Close()
+			t.Error("opened a FIFO as the generation directory")
+		}
+	})
+	if err := os.Mkdir(filepath.Join(dir, "real"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gen, err := openDirRoot(root, "real")
+	if err != nil {
+		t.Fatalf("a real directory must still open: %v", err)
+	}
+	_ = gen.Close()
 }

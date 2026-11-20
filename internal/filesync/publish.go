@@ -544,20 +544,42 @@ func (d *Destination) pinGen() error {
 	if !fi.IsDir() {
 		return fmt.Errorf("%w: %s is not a directory", ErrForeign, where)
 	}
-	if !ownedByProcess(fi) || fi.Mode().Perm()&0o022 != 0 {
-		return fmt.Errorf("%w: %s must be owned by this user and not writable by group or others", ErrForeign, where)
+	unsafe := fmt.Errorf("%w: %s must be owned by this user and not writable by group or others", ErrForeign, where)
+	// Checked before the open too: a foreign directory may not be readable,
+	// and the refusal must not turn into a permission error.
+	if !custodyOK(fi) {
+		return unsafe
 	}
-	gen, err := d.root.OpenRoot(genDir)
+	gen, err := openDirRoot(d.root, genDir)
 	if err != nil {
 		return err
 	}
+	// Judge the opened directory as well, not only the name Lstat saw.
 	opened, err := gen.Stat(".")
 	if err != nil || !os.SameFile(fi, opened) {
 		_ = gen.Close()
 		return fmt.Errorf("filesync: %s changed while it was being opened", where)
 	}
+	if !custodyOK(opened) {
+		_ = gen.Close()
+		return unsafe
+	}
 	d.gen = gen
 	return nil
+}
+
+func custodyOK(fi fs.FileInfo) bool {
+	return ownedByProcess(fi) && fi.Mode().Perm()&0o022 == 0
+}
+
+// openDirRoot opens the directory name under parent without blocking.
+// Root.OpenRoot opens its last component without O_DIRECTORY, so a FIFO swapped
+// in after an Lstat would block the publisher while it holds the lock. The
+// trailing "." makes name an intermediate component, which os.Root opens
+// O_DIRECTORY, so anything but a directory fails at once. An in-root symlink
+// is still followed; callers compare identity with what Lstat saw.
+func openDirRoot(parent *os.Root, name string) (*os.Root, error) {
+	return parent.OpenRoot(name + "/.")
 }
 
 // recover removes what a crash can leave behind: a generation without its
@@ -697,7 +719,7 @@ func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string)
 	}
 	// Pin the new generation: every write below and the final chown/chmod use
 	// these handles, never the name, so a swapped directory is not followed.
-	root, err := d.gen.OpenRoot(gen)
+	root, err := openDirRoot(d.gen, gen)
 	if err != nil {
 		return err
 	}
