@@ -91,7 +91,11 @@ trusts only the app that created it. It is not shared with the CLI, and the page
 it. If a sign-in returns a different account than the connection used before,
 the app asks you to confirm before it uses it.
 
-When a session ends, the connection stops and offers **Sign in** again.
+If the connection details stored on disk no longer match the keychain item, the
+app refuses to open the connection and says so.
+
+When a session ends, the app opens the system browser to sign in again. After
+you sign out yourself, it waits until you choose **Sign in**.
 
 ## What continues in the browser
 
@@ -146,9 +150,9 @@ absolute. Revoke it from another signed-in session.
 - **Approvals can be phished.** An attacker can start a login for a device you
   do not control and send you to approve it. Confirm that a code or request is
   yours before you approve it.
-- **Browser pages show raw identifiers.** The browser step lists environment and
-  key IDs, not names, and a hostile page chooses them in the app. Check what
-  you approve.
+- **Browser pages can show raw identifiers.** The browser step shows names for
+  environments and keys you can read and raw IDs for the rest, and a hostile
+  page chooses them in the app. Check what you approve.
 - **A process running as you** may be able to reach the keychain item through a
   prompt or by bypassing the app's code signature. It is the same boundary as
   your browser profile.
