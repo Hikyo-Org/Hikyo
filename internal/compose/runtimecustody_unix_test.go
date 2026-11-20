@@ -125,6 +125,10 @@ func TestRuntimeCustodyRefusesReplaceableAncestor(t *testing.T) {
 // when it is owned by neither the effective uid nor root: its owner can rename
 // the hierarchy below it.
 func TestRuntimeCustodyRefusesForeignOwnedAncestor(t *testing.T) {
+	if os.Geteuid() == 0 {
+		// Root owns the hierarchy, and a root-owned ancestor is always accepted.
+		t.Skip("needs a non-root owner for the shifted effective uid to refuse")
+	}
 	grand := filepath.Join(t.TempDir(), "team")
 	runtime := filepath.Join(grand, "private", "runtime")
 	if err := os.MkdirAll(runtime, 0o700); err != nil {
