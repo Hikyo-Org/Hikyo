@@ -308,14 +308,16 @@ func TestBuildProjectPlanRefusesCreatedEnvironmentWithID(t *testing.T) {
 	wantCode(t, err, CodeMalformed)
 }
 
-// TestBuildProjectPlanRefusesRepeatedTargets: ParseManifest refuses a target
+// TestBuildProjectPlanRefusesRepeatedTargets: ParseTemplate refuses a target
 // named twice, so the plan must refuse it up front rather than write an artifact
-// that cannot be replayed. Existing ids and created names are each checked.
+// that cannot be replayed. Existing ids and created names share one set.
 func TestBuildProjectPlanRefusesRepeatedTargets(t *testing.T) {
 	rec := []Record{{SourceName: "API_KEY", Value: "k", Type: schema.TypeString}}
 	for name, envs := range map[string][]EnvInput{
 		"existing": {{EnvID: "env_a", Records: rec}, {EnvID: "env_a", Records: rec}},
 		"created":  {{Create: true, EnvName: "staging", Records: rec}, {Create: true, EnvName: "staging", Records: rec}},
+		// mapping.json writes both as `target`, which ParseTemplate checks in one set.
+		"existing id named as created": {{EnvID: "env_a", Records: rec}, {Create: true, EnvName: "env_a", Records: rec}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := BuildProjectPlan(ProjectPlanInput{
