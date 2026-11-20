@@ -179,9 +179,17 @@ node cannot hand one out. Nodes hold no cached signing key.
 
 A restore rolls the certificate records back to the backup's instant. A
 certificate issued and revoked after the backup has no record, so it cannot be
-in the KRL. After a restore, rotate every SSH CA with `--overlap 0` to a newly
-generated key, or to an imported key the CA has never used, and refresh host
-trust; certificates from before the rotation then stop working.
+in the KRL. Rotation retires only the active key: a key already `retiring`
+keeps its own `TRUSTED UNTIL`. So after a restore, for every SSH CA:
+
+```sh
+hikyo ssh-ca show <ca-id> --env production                              # list keys in state `retiring`
+hikyo ssh-ca retire-key <ca-id> --key <retiring-key-id> --env production  # each one, ending its overlap now
+hikyo ssh-ca rotate <ca-id> --env production --overlap 0                 # to a new key, or an imported key the CA never used
+```
+
+Then refresh host trust. Certificates signed by any key from before the
+rotation stop working once hosts have the new trust bundle.
 
 ## Monitoring
 
