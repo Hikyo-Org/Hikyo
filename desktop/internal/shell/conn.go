@@ -265,5 +265,5 @@ func (c *Conn) confirmSignIn() bool {
 	}
 	info := c.Info()
 	return c.m.native.Confirm("Sign in to this instance?",
-		fmt.Sprintf("%s\n    origin: %s\n\nSign in opens your browser at this address. Continue only if it is the instance you added.", info.Name, info.Origin), "Sign in")
+		fmt.Sprintf("origin: %s\nname: %s\n\nSign in opens your browser at this address. Continue only if it is the instance you added.", info.Origin, logSafe(info.Name)), "Sign in")
 }

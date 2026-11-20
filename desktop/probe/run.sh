@@ -6,9 +6,10 @@
 #   sh probe/run.sh          # from desktop/
 set -eu
 seeded=""
+server=""
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
-trap 'kill $server 2>/dev/null || true; pkill -f "$work/probe" 2>/dev/null || true; [ -z "${seeded:-}" ] || for h in $seeded; do security delete-generic-password -s io.hikyo.desktop -a "$h" >/dev/null 2>&1 || true; done; rm -rf "$work"' EXIT
+trap '[ -z "$server" ] || kill $server 2>/dev/null || true; pkill -f "$work/probe" 2>/dev/null || true; [ -z "${seeded:-}" ] || for h in $seeded; do security delete-generic-password -s io.hikyo.desktop -a "$h" >/dev/null 2>&1 || true; done; rm -rf "$work"' EXIT
 go build -tags probe -o "$work/probe" . 2>/dev/null
 python3 probe/instance.py 2>"$work/server.log" &
 server=$!

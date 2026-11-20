@@ -6,10 +6,32 @@ package main
 #cgo CFLAGS: -Wno-deprecated-declarations
 #cgo LDFLAGS: -framework Security -framework CoreFoundation
 #include <stdlib.h>
+#include <stdio.h>
+#include <pwd.h>
+#include <unistd.h>
 #include <string.h>
 #include <Security/Security.h>
 
 #define HIKYO_SERVICE "io.hikyo.desktop"
+
+static SecKeychainRef hkLogin(void) {
+	// The passwd entry, not $HOME: the path must not depend on the environment.
+	struct passwd *pw = getpwuid(getuid());
+	if (pw == NULL || pw->pw_dir == NULL) {
+		return NULL;
+	}
+	char path[1024];
+	if (snprintf(path, sizeof path, "%s/Library/Keychains/login.keychain-db", pw->pw_dir) >= (int)sizeof path) {
+		return NULL;
+	}
+	SecKeychainRef kc = NULL;
+	if (SecKeychainOpen(path, &kc) != errSecSuccess) {
+		return NULL;
+	}
+	return kc;
+}
+
+#define HK_NO_KEYCHAIN (-25294) // errSecNoSuchKeychain
 
 static CFMutableDictionaryRef hkQuery(const char *account) {
 	CFMutableDictionaryRef q = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -20,16 +42,19 @@ static CFMutableDictionaryRef hkQuery(const char *account) {
 	CFDictionarySetValue(q, kSecAttrAccount, acct);
 	CFRelease(service);
 	CFRelease(acct);
-	// Only the user's default keychain: a keychain file another process put
-	// at the front of the search list must not answer for our item.
-	SecKeychainRef def = NULL;
-	if (SecKeychainCopyDefault(&def) == errSecSuccess && def != NULL) {
-		CFArrayRef list = CFArrayCreate(NULL, (const void **)&def, 1, &kCFTypeArrayCallBacks);
-		CFDictionarySetValue(q, kSecMatchSearchList, list);
-		CFDictionarySetValue(q, kSecUseKeychain, def);
-		CFRelease(list);
-		CFRelease(def);
+	// Only the login keychain, opened by its path: neither the search list
+	// nor the default keychain, both of which another process of the same user
+	// can change. If it can't be opened the query fails closed.
+	SecKeychainRef login = hkLogin();
+	if (login == NULL) {
+		CFRelease(q);
+		return NULL;
 	}
+	CFArrayRef list = CFArrayCreate(NULL, (const void **)&login, 1, &kCFTypeArrayCallBacks);
+	CFDictionarySetValue(q, kSecMatchSearchList, list);
+	CFDictionarySetValue(q, kSecUseKeychain, login);
+	CFRelease(list);
+	CFRelease(login);
 	return q;
 }
 
@@ -43,6 +68,9 @@ static CFMutableDictionaryRef hkQuery(const char *account) {
 // connection is the safe failure.
 static int hkPut(const char *account, const void *data, int len) {
 	CFMutableDictionaryRef q = hkQuery(account);
+	if (q == NULL) {
+		return HK_NO_KEYCHAIN;
+	}
 	OSStatus status = SecItemDelete(q);
 	if (status != errSecSuccess && status != errSecItemNotFound) {
 		CFRelease(q);
@@ -78,6 +106,9 @@ static int hkPut(const char *account, const void *data, int len) {
 // hkGet returns a malloc'd copy of the item's data and its length.
 static int hkGet(const char *account, void **out, int *len) {
 	CFMutableDictionaryRef q = hkQuery(account);
+	if (q == NULL) {
+		return HK_NO_KEYCHAIN;
+	}
 	CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
 	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
 	CFTypeRef result = NULL;
@@ -96,6 +127,9 @@ static int hkGet(const char *account, void **out, int *len) {
 
 static int hkDelete(const char *account) {
 	CFMutableDictionaryRef q = hkQuery(account);
+	if (q == NULL) {
+		return HK_NO_KEYCHAIN;
+	}
 	OSStatus status = SecItemDelete(q);
 	CFRelease(q);
 	return (int)status;
