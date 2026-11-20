@@ -4001,9 +4001,11 @@ fieldset.field > legend {
 
 /* The 140px label track of a bare `.kv` list sets a cell's minimum width, and
    three such cells in a row are wider than the page column; stacked, the cell
-   wraps. */
+   wraps. The track's minimum is its content's min-content, not 0: with 0 the
+   cell's own minimum ignores a key name, and the table narrows the column
+   below it. */
 .rotations__table .kv__pair {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(min-content, 1fr);
   gap: 0;
 }
 
@@ -4036,6 +4038,13 @@ fieldset.field > legend {
   overflow-wrap: normal;
 }
 
+/* The name is also what sizes its column: the sentences and identifiers beside it
+   wrap anywhere, so without nowrap the table layout narrows the column below the
+   name and the name runs over the next cell. */
+.rotations__table .kv bdi {
+  white-space: nowrap;
+}
+
 /* A badge's word may wrap rather than widen its cell. */
 .rotations__table .badge {
   white-space: normal;
@@ -4048,6 +4057,10 @@ fieldset.field > legend {
 @media (max-width: 700px) {
   .rotations__table .kv :is(dt, dd) {
     overflow-wrap: break-word;
+  }
+
+  .rotations__table .kv bdi {
+    white-space: normal;
   }
 
   /* A card per row: a row's own cells run together, and only its last cell

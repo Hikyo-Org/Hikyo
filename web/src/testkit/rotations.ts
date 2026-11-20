@@ -19,12 +19,15 @@ export const OTHER_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174103';
 export const OTHER_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174104';
 export const HALTED_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174105';
 export const HALTED_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174106';
+export const GONE_PASSWORD_KEY = 'key_123e4567-e89b-12d3-a456-426614174107';
+export const GONE_USERNAME_KEY = 'key_123e4567-e89b-12d3-a456-426614174108';
 
 const OPERATOR = 'prn_123e4567-e89b-12d3-a456-426614174010';
 export const ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174201';
 export const HELD_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174202';
 export const HALTED_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174203';
 export const DELETED_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174204';
+export const GONE_ROTATION = 'rot_123e4567-e89b-12d3-a456-426614174205';
 
 const catalogueKey = (id: string, name: string): WireKey => ({
   id,
@@ -43,7 +46,7 @@ const catalogueKey = (id: string, name: string): WireKey => ({
 });
 
 export const rotationKeys = {
-  count: 6,
+  count: 8,
   schema_revision: 1,
   items: [
     catalogueKey(PASSWORD_KEY, 'DATABASE_PASSWORD'),
@@ -52,6 +55,8 @@ export const rotationKeys = {
     catalogueKey(OTHER_USERNAME_KEY, 'REPORTING_USER'),
     catalogueKey(HALTED_PASSWORD_KEY, 'ANALYTICS_PASSWORD'),
     catalogueKey(HALTED_USERNAME_KEY, 'ANALYTICS_USER'),
+    catalogueKey(GONE_PASSWORD_KEY, 'BILLING_PASSWORD'),
+    catalogueKey(GONE_USERNAME_KEY, 'BILLING_USER'),
   ],
 } satisfies z.input<typeof zKeyList>;
 
@@ -126,6 +131,15 @@ export const deletedRotation = (environment: string = PROD) =>
   rotation(DELETED_ROTATION, environment, [PASSWORD_KEY, USERNAME_KEY], {
     state: 'disabled',
     next_run_at: null,
+  });
+
+/** A deleted rotation whose delete left a quarantined run: the default list still shows it. */
+export const deletedOwedRotation = (environment: string = PROD) =>
+  rotation(GONE_ROTATION, environment, [GONE_PASSWORD_KEY, GONE_USERNAME_KEY], {
+    state: 'disabled',
+    next_run_at: null,
+    owed_drop_runs: 1,
+    last_run: { id: QUARANTINED_RUN, phase: 'quarantine', error_code: 'abandoned', phase_at: '2026-10-20T02:05:00Z' },
   });
 
 const run = (n: number, overrides: Partial<WireRun>): WireRun => ({

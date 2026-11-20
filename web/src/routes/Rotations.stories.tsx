@@ -6,6 +6,8 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { dynamicProvider } from '../testkit/machineAccess.ts';
 import {
+  deletedOwedRotation,
+  GONE_ROTATION,
   haltedRotation,
   HALTED_ROTATION,
   HELD_ROTATION,
@@ -43,7 +45,7 @@ const meta = {
   },
   parameters: {
     ...topLayerDocs,
-    app: { responses: [keys, list([...rotationList().items, haltedRotation()]), runs(ROTATION, owedRuns), runs(HELD_ROTATION, { items: [] })] },
+    app: { responses: [keys, list([...rotationList().items, haltedRotation(), deletedOwedRotation()]), runs(ROTATION, owedRuns), runs(HELD_ROTATION, { items: [] })] },
     docs: {
       ...topLayerDocs.docs,
       description: {
@@ -59,16 +61,16 @@ type Story = StoryObj<typeof meta>;
 export const Populated: Story = {
   play: async ({ canvas }) => {
     const table = await canvas.findByRole('table', { name: /credential rotations/ });
-    await expect(within(table).getAllByRole('row')).toHaveLength(4);
+    await expect(within(table).getAllByRole('row')).toHaveLength(5);
     // Status is a word, never only a colour, and the table has no act to take.
     await expect(within(table).getByText('halted')).toBeVisible();
-    await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Show runs', 'Show runs', 'Show runs']);
+    await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Show runs', 'Show runs', 'Show runs', 'Show runs']);
     await expect(within(table).getByRole('button', { name: 'Show runs of ANALYTICS_PASSWORD' })).toBeVisible();
     // The id is labelled (the CLI takes it) and the record fields are on the row.
-    await expect(within(table).getAllByText('Rotation', { selector: 'dt' })).toHaveLength(3);
+    await expect(within(table).getAllByText('Rotation', { selector: 'dt' })).toHaveLength(4);
     await expect(within(table).getByText(ROTATION)).toBeVisible();
     for (const label of ['Authority principal', 'Created by', 'Generation', 'Created', 'Updated']) {
-      await expect(within(table).getAllByText(label, { selector: 'dt' })).toHaveLength(3);
+      await expect(within(table).getAllByText(label, { selector: 'dt' })).toHaveLength(4);
     }
   },
 };
@@ -94,7 +96,11 @@ export const OwedDropSummary: Story = {
     await expect(within(row).queryByText('Owes a drop')).toBeNull();
     await expect(within(row).getByText(/do NOT drop it at the provider until the keys have moved off it/)).toBeVisible();
     await expect(within(row).getByText('Last run', { selector: 'dt' })).toBeVisible();
-    await expect(within(table).queryAllByText(/^ATTENTION: rotation /)).toHaveLength(1);
+    // The other line is the deleted rotation that still owes a drop: the default list keeps it, marked deleted.
+    await expect(within(table).queryAllByText(/^ATTENTION: rotation /)).toHaveLength(2);
+    const gone = within(table).getByText(GONE_ROTATION).closest('tr')!;
+    await expect(within(gone).getByText('deleted')).toBeVisible();
+    await expect(within(gone).getByText(/\(deleted\) has 1 run\(s\) that owe a provider role a drop/)).toBeVisible();
   },
 };
 

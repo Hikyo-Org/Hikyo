@@ -243,7 +243,7 @@ function RotationList({
                       </Facts>
                     </th>
                     <td>
-                      <Badge tone={STATE_TONE[rotation.state]}>{rotation.state}</Badge>
+                      <Badge tone={STATE_TONE[rotation.state]}>{rotation.state === 'disabled' ? 'deleted' : rotation.state}</Badge>
                       {isHeld ? (
                         <>
                           {' '}

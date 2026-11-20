@@ -20,6 +20,7 @@ import { surfacesForFlow } from '../registry.ts';
 import { registerAwsAdapterFlows } from './aws-adapters.flows.ts';
 import {
   HELD_ROTATION,
+  deletedOwedRotation,
   haltedRotation,
   owedRuns,
   rotationKeys,
@@ -211,10 +212,10 @@ test.describe('machine access', () => {
     const keysPattern = '**/projects/*/keys*';
     await page.route(keysPattern, (route) => route.fulfill(json(rotationKeys)));
     await page.route('**/environments/*/rotations?*', (route) =>
-      route.fulfill(json({ items: [...rotationList().items, haltedRotation()] })),
+      route.fulfill(json({ items: [...rotationList().items, haltedRotation(), deletedOwedRotation()] })),
     );
     await page.route('**/environments/*/rotations', (route) =>
-      route.fulfill(json({ items: [...rotationList().items, haltedRotation()] })),
+      route.fulfill(json({ items: [...rotationList().items, haltedRotation(), deletedOwedRotation()] })),
     );
     await page.route('**/rotations/*/runs*', (route) =>
       route.fulfill(json(route.request().url().includes(ROTATION) ? owedRuns : { items: [] })),
@@ -223,7 +224,7 @@ test.describe('machine access', () => {
       await page.getByRole('tab', { name: 'Rotations' }).click();
 
       const table = page.getByRole('table', { name: /credential rotations/ });
-      await expect(table.getByRole('row')).toHaveCount(4);
+      await expect(table.getByRole('row')).toHaveCount(5);
       await expect(table.getByRole('row').filter({ hasText: 'REPORTING_PASSWORD' })).toContainText('Restore hold');
       await expect(table.getByRole('row').filter({ hasText: 'halted' })).toBeVisible();
       // S4: the halted row says why in words, and the owed-drop row is flagged in words that
@@ -233,6 +234,12 @@ test.describe('machine access', () => {
       await expect(owingRow).toContainText('Do not drop: restore');
       await expect(owingRow).toContainText('do NOT drop it at the provider until the keys have moved off it');
       await expect(owingRow).not.toContainText('Owes a drop');
+
+      // A deleted rotation that still owes a drop stays in the default list, marked deleted.
+      const goneRow = table.getByRole('row').filter({ hasText: 'BILLING_PASSWORD' });
+      await expect(goneRow).toContainText('deleted');
+      await expect(goneRow).toContainText('(deleted) has 1 run(s) that owe a provider role a drop');
+      await expect(goneRow).toContainText('check that neither key serves that role');
 
       // The hold is a role="alert" that names the command, and offers no button for it.
       const hold = page.getByRole('alert').filter({ hasText: 'RESTORE HOLD' });
@@ -281,6 +288,19 @@ test.describe('machine access', () => {
         }).map((name) => name.textContent),
       );
       expect(splitNames).toEqual([]);
+      // ...and never runs over the next cell: in the column layout each name ends before its row's second cell.
+      const overlaps = await page.evaluate(() =>
+        [...document.querySelectorAll('.rotations__table tbody tr')].flatMap((row) => {
+          const next = row.querySelector('td')?.getBoundingClientRect();
+          return [...row.querySelectorAll('th bdi')]
+            .filter((name) => {
+              const box = name.getBoundingClientRect();
+              return next !== undefined && box.left < next.left && box.right > next.left + 0.5;
+            })
+            .map((name) => name.textContent);
+        }),
+      );
+      expect(overlaps).toEqual([]);
       // The restore hold badge is inside the page's width, not pushed off an edge by a sideways scroll.
       const badge = await table.getByText('Restore hold', { exact: true }).boundingBox();
       const width = await page.evaluate(() => document.documentElement.clientWidth);

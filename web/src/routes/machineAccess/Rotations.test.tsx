@@ -114,7 +114,7 @@ it('reads a halt it cannot name as unknown, and quotes a word it does not know',
   try {
     await settleTask();
     const notice = container.querySelector('.notice')?.textContent ?? '';
-    expect(notice).toContain(`Rotation ${HALTED_ROTATION} is halted (unknown): the server recorded a reason this client does not know.`);
+    expect(notice).toContain(`Rotation ${HALTED_ROTATION} is halted (unknown): the server halted the rotation without a reason it can name.`);
     expect(notice).toContain('is halted ("solar_flare"): the server recorded a reason this client does not know.');
   } finally {
     await unmount();
@@ -137,7 +137,7 @@ it('flags a rotation that owes a drop in words, and never says drop when a resto
     expect(restore).toContain('revoke_refused (published_versions_changed)');
     const owed = container.querySelector(`[data-rotation="${plain.id}"]`)!.textContent ?? '';
     expect(owed).toContain('Owes a drop');
-    expect(owed).toContain('1 run(s) that owe a provider role a drop and the role is still live; read before you act');
+    expect(owed).toContain('1 run(s) that owe a provider role a drop and the role is still live; before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back');
     expect(owed).not.toContain('do NOT drop');
     // A rotation with nothing owed has neither badge nor line, and the page offers no act.
     const held = container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)!.textContent ?? '';
@@ -145,6 +145,23 @@ it('flags a rotation that owes a drop in words, and never says drop when a resto
     expect(held).not.toContain('Do not drop');
     expect(held).not.toContain('ATTENTION');
     expect([...container.querySelectorAll('button')].map((b) => b.textContent).join(' ')).not.toMatch(/release|resume|pause|delete|run now|drop it/i);
+  } finally {
+    await unmount();
+  }
+});
+
+it('shows a deleted rotation that still owes a drop, marked deleted, in the default list', async () => {
+  const gone = { ...deletedRotation(), owed_drop_runs: 1, owed_drop_runs_versions_changed: 0 };
+  stub({ ...keysRoute, [listPath(PROD)]: () => Response.json({ items: [gone] }) });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const row = container.querySelector(`[data-rotation="${gone.id}"]`)!.textContent ?? '';
+    expect(row).toContain('deleted');
+    expect(row).not.toContain('disabled');
+    expect(row).toContain('Owes a drop');
+    expect(row).toContain(`rotation ${gone.id} (deleted) has 1 run(s) that owe a provider role a drop`);
+    expect(row).toContain('check that neither key serves that role');
   } finally {
     await unmount();
   }
@@ -502,7 +519,7 @@ it('pages the rotation list and asks for deleted ones only on request', async ()
     await act(async () => include.click());
     await settleTask();
     expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
-    expect(container.querySelector('tbody tr')?.textContent).toContain('disabled');
+    expect(container.querySelector('tbody tr')?.textContent).toContain('deleted');
     expect(calls.calls.filter((c) => c.includes('/rotations')).map((c) => c.split('/rotations')[1])).toEqual([
       '',
       `?after=${ROTATION}`,

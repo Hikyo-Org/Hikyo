@@ -174,15 +174,17 @@ const HALT_SENTENCES: Record<string, string> = {
   authority_lost:
     'the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone',
   gate_failed: 'a pre-publish gate refused: the environment became protected, a key changed or a draft appeared',
+  unknown: 'the server halted the rotation without a reason it can name',
 };
 
 /** haltCause is `halted (word): sentence`, the part of the CLI's HALTED line that names the cause. */
 export function haltCause(rotation: Rotation): string {
   const given = rotation.halt_reason ?? 'unknown';
-  const known = given in HALT_SENTENCES;
+  // Own keys only: `toString` or `__proto__` is an unrecognised word, not a sentence.
+  const known = Object.hasOwn(HALT_SENTENCES, given);
   // A word this client does not know is printed quoted and never interpreted.
-  const word = known || given === 'unknown' ? given : JSON.stringify(given);
-  const why = HALT_SENTENCES[given] ?? 'the server recorded a reason this client does not know';
+  const word = known ? given : JSON.stringify(given);
+  const why = known ? HALT_SENTENCES[given] : 'the server recorded a reason this client does not know';
   return `halted (${word}): ${why}`;
 }
 
@@ -201,20 +203,30 @@ export function owedVersionsChanged(rotation: Rotation): boolean {
   return rotation.owed_drop_runs_versions_changed > 0n;
 }
 
+/** A deleted rotation is gone from the default list but its roles can still be live. */
+function deletedMark(rotation: Rotation): string {
+  return rotation.state === 'disabled' ? ' (deleted)' : '';
+}
+
 /**
  * owedSummaryText is the rotation-level ATTENTION line. It counts the runs
  * `owesDrop` marks and points at the run list instead of repeating each run's
- * sentence. It never says to drop: when a restore refused any of them the keys may be
- * serving the role again, and it says not to drop it until they have moved off it.
+ * sentence. It carries the same key check as a run's own line: a restore (one that
+ * refused a run, or a hold that is still on) may have put the role back, so it never
+ * plainly says to drop.
  */
 export function owedSummaryText(rotation: Rotation): string {
+  const count = String(rotation.owed_drop_runs);
   if (owedVersionsChanged(rotation)) {
-    return `ATTENTION: rotation ${rotation.id} has ${String(rotation.owed_drop_runs)} run(s) that owe a provider role a drop, ${String(rotation.owed_drop_runs_versions_changed)} of them refused after a restore (${VERSIONS_CHANGED_CODE}): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs ${rotation.id}`;
+    return `ATTENTION: rotation ${rotation.id}${deletedMark(rotation)} has ${count} run(s) that owe a provider role a drop, ${String(rotation.owed_drop_runs_versions_changed)} of them refused after a restore (${VERSIONS_CHANGED_CODE}): the keys may be serving that role again, so do NOT drop it at the provider until the keys have moved off it; read: hikyo rotation runs ${rotation.id}`;
   }
-  return `ATTENTION: rotation ${rotation.id} has ${String(rotation.owed_drop_runs)} run(s) that owe a provider role a drop and the role is still live; read before you act: hikyo rotation runs ${rotation.id}`;
+  if (rotation.restore_hold) {
+    return `ATTENTION: rotation ${rotation.id}${deletedMark(rotation)} has ${count} run(s) that owe a provider role a drop and a restore holds the rotation: the keys may be serving that role again, so do NOT drop it at the provider until you have checked that neither key serves it; read: hikyo rotation runs ${rotation.id}`;
+  }
+  return `ATTENTION: rotation ${rotation.id}${deletedMark(rotation)} has ${count} run(s) that owe a provider role a drop and the role is still live; before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back; read: hikyo rotation runs ${rotation.id}`;
 }
 
 /** The badge on a rotation row that owes a drop: text, with the restore case never saying drop. */
 export function owedBadgeText(rotation: Rotation): string {
-  return owedVersionsChanged(rotation) ? 'Do not drop: restore' : 'Owes a drop';
+  return owedVersionsChanged(rotation) || rotation.restore_hold ? 'Do not drop: restore' : 'Owes a drop';
 }

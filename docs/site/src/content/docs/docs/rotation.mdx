@@ -205,8 +205,9 @@ hikyo rotation runs rot_0198... --env production
 ```
 
 `--interval` and `--revocation-delay` take Go durations (`90m`, `720h`) or a whole
-number of days with a `d` suffix (`30d`). `list` shows live rotations; add
-`--include-disabled` to include deleted history. A page holds up to `--limit`
+number of days with a `d` suffix (`30d`). `list` shows live rotations and any deleted
+one that still owns a run owing a provider role a drop (marked deleted); add
+`--include-disabled` to include all deleted history. A page holds up to `--limit`
 rotations (1 to 500, default 100) in id order; when more follow, the CLI prints the
 `--after` value that continues the list. `pause`, `resume` and `delete`
 accept `--expected-generation N`, which fails
@@ -295,18 +296,26 @@ follow, the CLI prints the `--after` value that continues the list. It needs onl
 
 Each rotation also carries a summary of its runs, so a list or a show tells you at a
 glance without reading the run history: `last_run` (its id, phase, error code and last
-change) and two counts. `owed_drop_runs` is the number of runs that owe a provider
-role a drop, which is every run in the phase `revoke_refused` or `quarantine`,
-whatever its error code (the same runs the per-run `ATTENTION` lines and the
-`hikyo_rotation_runs_{quarantined,revoke_refused}` gauges count).
+change) and two counts. `owed_drop_runs` is the number of runs that need your attention because they owe a
+provider role a drop Hikyo will not carry out on its own: every run in the phase
+`revoke_refused` or `quarantine`, whatever its error code (the same runs the per-run
+`ATTENTION` lines and the `hikyo_rotation_runs_{quarantined,revoke_refused}` gauges
+count). A run still in flight (`published`, `overlap` or `revoking`) also owes a drop,
+but the executor carries it out itself, so it is not counted and a zero does not mean
+no role is waiting to be dropped.
 `owed_drop_runs_versions_changed` is the part of that count a restore refused
 (`published_versions_changed`). The CLI prints `LAST RUN` and `OWED DROPS` columns
 and, when a rotation owes a drop, one rotation-level `ATTENTION` line that counts
-the runs and points at `hikyo rotation runs <rotation>` for each run's own line. When
-any of them was refused after a restore that line says **do NOT drop** the role until
-the keys have moved off it; no rotation-level text ever tells you to drop a role, and
-a count is never shown as a yes or no. A deleted rotation can still owe a drop, and the
-count stays on it.
+the runs and points at `hikyo rotation runs <rotation>` for each run's own line. That
+line carries the same key check as the run's own: check that neither key serves that
+role, because a revision restore can put it back. When any of them was refused after a
+restore, or a restore hold is on, it says **do NOT drop** the role until the keys have
+moved off it or you have checked; no rotation-level text ever tells you to drop a role.
+The CLI never shows the count as a yes or no. The browser badge says whether a rotation
+owes a drop (`Owes a drop`, or `Do not drop: restore`) and its notice carries the count.
+A deleted rotation can still owe a drop, and the count stays on it: the default list
+(CLI and browser) still shows a deleted rotation that owns such a run, marked deleted,
+so the warning is not lost with the delete.
 
 ## In the browser
 

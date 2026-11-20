@@ -1614,7 +1614,8 @@ API revision stays 20: it is the in-flight revision, shared with the OIDC lifecy
 settings, so `api/spec.go` appends a sentence to the revision 20 comment and no revision
 is cut. Additive only: every new `CredentialRotation` property is a response
 property, and `halt_reason` is an open enum (`x-extensible-enum`), so the freeze check
-needs no allowance. No migration: the `halt_reason` column (migration 00091) existed.
+needs no allowance. The `halt_reason` column (migration 00091) existed; review round 1
+added one index, migration 00096 (below).
 
 - **`halt_reason`.** A fixed word, `retries_exhausted`, `authority_lost`, `gate_failed`
   (the words the executor writes) or `unknown`. The store keeps the raw column text;
@@ -1626,10 +1627,15 @@ needs no allowance. No migration: the `halt_reason` column (migration 00091) exi
   interpreted. The sentences live in three places; a web test keeps the browser equal to the CLI source:
   `haltReasonSentence` (`internal/cli/credential_rotation.go`), `HALT_SENTENCES`
   (`web/src/api/rotations.ts`) and `rotation.mdx`.
-- **`last_run`.** The newest run of the rotation by id (id, phase, `error_code`,
-  `phase_at`), absent when it never ran. `RotationLastRuns` reads it for a whole page
-  in one window query (`ROW_NUMBER() OVER (PARTITION BY rotation_id ORDER BY id DESC)`),
-  reviewed pin in `internal/lint/testdata/reviewed_pins.json`.
+- **`last_run`.** The newest run of the rotation (id, phase, `error_code`, `phase_at`),
+  absent when it never ran. `RotationLastRuns` reads it for a page as one correlated probe
+  per requested rotation, newest by `(started_at, id)` through `rotation_runs_rotation`
+  (checked on 100,000 runs of one rotation: SQLite answers it in microseconds, the sort
+  reads only the first group of equal start times). It equals the first row of the runs
+  list (newest by id) because a run id is a time-ordered UUIDv7 made at the instant the
+  same clock stamps `started_at`, and a rotation has at most one open run; a test on runs
+  the executor started asserts the two agree. Reviewed pin in
+  `internal/lint/testdata/reviewed_pins.json`.
 - **Owed-drop definition (single source).** A run owes a drop iff its `phase` is
   `revoke_refused` or `quarantine`, whatever its error code. It lives in
   `RotationOwedDropCounts` (both engine query files, one grouped aggregate per page),
@@ -1646,8 +1652,12 @@ needs no allowance. No migration: the `halt_reason` column (migration 00091) exi
   `hikyo rotation runs <rotation>` without repeating the per-run text. The S3 strings
   (`owedRunText`, `restoreHoldText`, `noteOwedRuns`, `noteRestoreHold`) are unchanged.
   The browser stays status only: no mutating button.
-- **No N+1.** `get` and `List` in `internal/store/rotation.go` fill the summary with the
-  two page-wide queries after the page's rotation rows, on SQLite and PostgreSQL.
+- **No N+1, and not on the executor's path.** The summary is a response concern.
+  `RotationReader.Get`, `List` and every mutation return a record without it, so the
+  executor's gates and existence checks pay nothing. `RotationReader.Summarize` fills a
+  slice with two reads whatever its length; the service calls it for List after trimming
+  the page to its limit, for Get, and for the SetState and ReleaseHold responses.
+  `internal/store/rotation_summary_cost_test.go` counts the reads.
 - **Parity.** `createRotation`, `deleteRotation`, `pauseRotation`, `resumeRotation`,
   `releaseRotationHold` and `runRotationNow` are `{issue: 1440}` in `api/parity.yaml`;
   `check-parity-issues.sh` accepts it (#1440 open). `listRotations`, `showRotation` and
@@ -1655,7 +1665,42 @@ needs no allowance. No migration: the `halt_reason` column (migration 00091) exi
 
 ### Review rounds (S4)
 
-- Round 1: pending. Independent Standards and Spec reviews run after this slice.
+Round 1 (two independent reviews, Security/data and Standards/Spec). Every item was fixed at
+its root; nothing was deferred.
+
+- **H1 (safety).** In `revoke()` the restore assertion (a store read) now runs before the
+  provider is opened. A transient provider failure, or a missing superseded role, on a
+  run already held as `published_versions_changed` keeps that code, and a restore that
+  follows a `role_owns_objects` refusal is detected on the next visit. Tests in
+  `internal/isolation/rotation_executor_restore_retry_test.go`. The summary never says
+  "Owes a drop" plainly when the run code is `published_versions_changed` or a restore
+  hold is on; the rotation-level CLI line and browser notice carry the per-run key
+  check ("check that neither key serves that role, because a revision restore can put it
+  back").
+- **M1 (cost).** See "No N+1" above. Migration 00096 (`rotation_runs_owed`, a partial
+  index on `(org_id, project_id, environment_id, rotation_id)` for phases
+  `revoke_refused` and `quarantine`) makes the owed counts and the deleted-rotation
+  probe read only those runs. Without it SQLite chose `rotation_runs_minter` and read
+  every run of the environment. Both engines, additive;
+  `internal/buildcompat/development.json` regenerated against PostgreSQL 18. **Re-check
+  the migration number before merge**: 00096 was the next free number on `origin/dev`
+  when it was added.
+- **M2 (deleted rotations).** `RotationList` keeps a disabled rotation when it owns a
+  `revoke_refused` or `quarantine` run (`EXISTS`, same chain), still in id order, so
+  the default CLI list and the browser show it marked deleted with the owed-drop notice.
+- **M3.** The OpenAPI, `rotation.mdx` and this handoff say `owed_drop_runs` counts the runs
+  that need an operator (`revoke_refused`, `quarantine`); a run still in flight owes a
+  drop the executor carries out. The definition did not change.
+- **M4.** `unknown` has its own sentence in Go, TypeScript and `rotation.mdx`; "does not
+  know" is only for a word no client recognises. A web test keeps all three equal.
+- **L1.** A run's `error_code` reaches the summary and the runs list only as a fixed word
+  (the executor's codes and `abandoned`), else `unknown`.
+- **L2.** The browser looks halt words up with `Object.hasOwn`, so `toString` is unrecognised.
+- **L3.** The CLI table and the `HALTED` line print the halt reason through one helper.
+- **L4.** `rotation.mdx` scopes "never a yes or no" to the CLI; the browser badge is a yes/no
+  and its notice carries the count.
+- **L5.** Tests for cross-org, project, environment and rotation reads of the owed counts,
+  and for the counts in SetState and ReleaseHold responses.
 
 ### Left after S4
 
