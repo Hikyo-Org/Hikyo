@@ -4,13 +4,13 @@ Work: PR 1 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-d
 
 ## Why this exists
 
-The vet driver analyzes the in-package test variant of every package. The old go/packages harness kept one variant per package path (the production one), so it never saw in-package `_test.go` files. One analyzer, `handles`, still reports many sites there. `redactfmt` reported 84 more; those were all false positives of the analyzer rule and are resolved by the rule fix (see "redactfmt: resolved"). Per the owner's scope decision (option A), PR 1 ships `handles` in the vet driver for every context but does not gate on those sites yet.
+The vet driver analyzes the in-package test variant of every package. The old go/packages harness kept one variant per package path (the production one), so it never saw in-package `_test.go` files. Two analyzers, `handles` and `redactfmt`, report many sites there. Per the owner's scope decision (option A), PR 1 ships these two analyzers in the vet driver for every context but does not gate on those sites yet.
 
 ## Exact gate
 
 `TestVetDriverRepo` ignores a diagnostic only when all of these hold (`strictDeferred` in `internal/lint/analyzer.go`, `deferTestSites` in the same file):
 
-1. The analyzer is `handles` (the only entry in `strictDeferred`).
+1. The analyzer is `handles` or `redactfmt` (the entries in `strictDeferred`).
 2. The package is an in-package test variant: its path does not end in `_test` (an external test package stays strict).
 3. The diagnostic's file name ends in `_test.go`, read from the file on disk without `//line` adjustment, so a `//line` directive cannot move a site into a test file.
 
@@ -24,13 +24,14 @@ The deferred sites are gated by a ratchet, not by the old harness. The old go/pa
 
 ## Counts
 
-Distinct diagnostics (union over the default, ui, darwin and windows contexts, one per file:line, since `handles` reports each line once):
+Distinct diagnostics (union over the default, ui, darwin and windows contexts, one per file:line for `handles`, which reports each line once, and one per file:line:column for `redactfmt`):
 
-| Analyzer | Diagnostics | Files |
-|---|---|---|
-| handles | 1141 | 103 |
+| Analyzer | Diagnostics | Distinct file:line | Files |
+|---|---|---|---|
+| handles | 1141 | not recounted after the `dev` integration (784 before it) | 103 |
+| redactfmt | 84 | not recounted after the `dev` integration (56 before it) | 25 |
 
-redactfmt: 0 deferred (resolved). forgeguard and fence: 0 deferred; their 36 newly visible findings (34 forgeguard, 2 fence) were fixed in this PR (34 forgeguard includes `unattended_operator_test.go`, added by the `dev` integration). Every other analyzer: 0 findings in all four contexts.
+forgeguard and fence: 0 deferred; their 36 newly visible findings (34 forgeguard, 2 fence) were fixed in this PR (34 forgeguard includes `unattended_operator_test.go`, added by the `dev` integration). Every other analyzer: 0 findings in all four contexts.
 
 ## Per-file breakdown: handles
 
@@ -138,6 +139,34 @@ redactfmt: 0 deferred (resolved). forgeguard and fence: 0 deferred; their 36 new
 - internal/isolation/containment_e2e_test.go: 2
 - internal/service/incident_unit_test.go: 2
 
+## Per-file breakdown: redactfmt
+
+- internal/isolation/automation_preview_test.go: 16
+- internal/isolation/adapter_lifecycle_retirement_test.go: 9
+- internal/isolation/dynamic_ttl_test.go: 7
+- internal/isolation/profile_e2e_test.go: 6
+- internal/isolation/audit_export_receipt_wire_test.go: 5
+- internal/isolation/policy_member_footprint_test.go: 5
+- internal/isolation/audit_collector_rehearsal_test.go: 3
+- internal/app/self_config_topology_test.go: 2
+- internal/isolation/access_e2e_test.go: 2
+- internal/isolation/instance_audit_wire_test.go: 2
+- internal/isolation/rules_wire_test.go: 2
+- internal/isolation/scanning_sweep_e2e_test.go: 2
+- internal/app/candidate_next_root_test.go: 1
+- internal/app/self_config_deployment_test.go: 1
+- internal/isolation/aws_real_credential_fence_test.go: 1
+- internal/isolation/cli_tls_consumer_test.go: 1
+- internal/isolation/client_skew_e2e_test.go: 1
+- internal/isolation/dynamic_renewal_test.go: 1
+- internal/isolation/federated_signup_e2e_test.go: 1
+- internal/isolation/fixture_cli_login_e2e_test.go: 1
+- internal/isolation/incident_containment_cli_test.go: 1
+- internal/isolation/rotation_cascade_e2e_test.go: 6
+- internal/isolation/rotation_executor_round4_test.go: 4
+- internal/isolation/rotation_e2e_test.go: 2
+- internal/isolation/rotation_runnow_e2e_test.go: 2
+
 ## Classification sample
 
 Sampled 10 sites per analyzer (seeded random draw), read at the flagged line. The classification is from reading the line and its immediate context, not from running the code.
@@ -159,11 +188,22 @@ All 10 are legitimate test-harness use under the current rule: tests open an eng
 | internal/upgradegate/operator_rotation_test.go:237 | `BeginTx` to simulate a concurrent operator | harness |
 | internal/isolation/scim_page_bound_test.go:165 | `PG().Acquire` to pin a connection | harness |
 
-### redactfmt: resolved
+### redactfmt (10 of 56 lines, sampled before the `dev` integration)
 
-All 84 pinned redactfmt sites, in 25 files in `internal/isolation` and `internal/app`, were false positives. `subexpressionTypes` (`internal/lint/redaction.go`) walked every sub-expression of a format argument, so in `fmt.Sprintf("%d", h.seq)` it also walked the receiver `h` and found a `crypto.Keyring` field in its struct, though only the int is formatted. The rule now skips the types along a selection's receiver path (through parentheses, dereferences, index bases and nested selections) unless the receiver, or an embedded field on the selection path, is itself a pinned sensitive or audit-content type. The selected value's own type is still checked, call arguments, composite literals and index keys inside the receiver are still walked, and a method whose results include an interface walks its whole receiver, because the interface can carry any part of it. Field walks of `audit.Event`, promoted `Keyring` methods and `h.inner` holding a Keyring stay flagged. Fixture cases in `internal/lint/testdata/badredact/badredact.go` pin both sides (clean: the holder's int field and a holder method; flagged: the Keyring field, `any(h.keyring)`, `h.keyring.String()`, an audit event field walk, an embedded promoted method, `h.anyKey()` and `h.evAny()` returning `any`, `box(kr).v`, `box(ev).v` and `struct{ v any }{kr}.v`). Known limit, marked `shortcut:` in the code: only top-level interface results widen the walk, so a method returning `[]any` that carries a pinned value is missed.
+8 of 10 look like false positives of the analyzer rule: the formatted value is a string or int (`principal`, `h.seq`, `ts`, `wire.org`), and the finding comes from the sub-expression walk reaching a harness struct (`h`, `wire`, `db`) whose fields include a `crypto.Keyring`. Narrowing the rule (skip the receiver of a field selection whose own type is not sensitive) would remove them; a narrowing was tried in PR 1 and reverted because it also lost real detections (see "Follow-up scope"). The other 2 (`json.Marshal(d.enrollment)`) are unverified: whether `enrollment` reaches a Keyring was not checked, so they are not classified as safe.
 
-Measured by the reviewer: the unpatched tool over `./internal/isolation ./internal/app` reported exactly the 84 pinned findings; with the fix, 0. The two `json.Marshal(d.enrollment)` sites formerly marked unverified are also no longer reported. `redactfmt` was removed from `strictDeferred` and its entries from `testdata/deferred_sites.json` (`-update-deferred-sites`). The rule is shared with the old harness adapter; its tests pass.
+| Site | Formatted value | Class |
+|---|---|---|
+| internal/isolation/access_e2e_test.go:82 | `h.seq` int, `principal` string in `Sprintf` ID | rule false positive (receiver `h` holds a Keyring) |
+| internal/isolation/access_e2e_test.go:101 | `Sprintf` ID from strings | rule false positive |
+| internal/isolation/automation_preview_test.go:123 | `Sprintf` INSERT from strings and `ts` | rule false positive |
+| internal/isolation/automation_preview_test.go:140 | `Sprintf` INSERT from `wire.org`, `ts` | rule false positive |
+| internal/isolation/audit_collector_rehearsal_test.go:44 | `Sprintf` INSERT | rule false positive |
+| internal/isolation/scanning_sweep_e2e_test.go:361 | `Sprintf` args from `org.ID`, `ts` | rule false positive |
+| internal/isolation/dynamic_ttl_test.go:133 | `Sprintf` UPDATE with an int and an ID | rule false positive |
+| internal/isolation/rules_wire_test.go:35 | `Sprintf` INSERT with env IDs | rule false positive |
+| internal/app/self_config_topology_test.go:107 | `json.Marshal(d.enrollment)` | unverified |
+| internal/app/self_config_topology_test.go:125 | `json.Marshal(d.enrollment)` | unverified |
 
 ## Entries added when the branch was integrated with `dev`
 
@@ -182,10 +222,15 @@ Measured by the reviewer: the unpatched tool over `./internal/isolation ./intern
 | internal/service/incident_census_test.go | handles | 4 | `SQLiteWrite().ExecContext` seeds incident rows |
 | internal/service/incident_unit_test.go | handles | 2 | same seeding |
 | internal/store/audit_commit_seq_ssi_test.go | handles | 12 | `pgx.Connect` to drive concurrent serializable transactions |
+| internal/isolation/rotation_cascade_e2e_test.go | redactfmt | 6 | rule false positive: `fmt.Sprintf` INSERTs over strings and ints, flagged because the receiver `f` holds a `crypto.Keyring` |
+| internal/isolation/rotation_e2e_test.go | redactfmt | 2 | same false positive (`principal`, `f.seq` in IDs) |
+| internal/isolation/rotation_executor_round4_test.go | redactfmt | 4 | same false positive (`runID`, `stamp(...)` in UPDATEs) |
+| internal/isolation/rotation_runnow_e2e_test.go | redactfmt | 2 | same false positive (`id`, `ts` in INSERTs) |
 
-Totals added: handles +78 diagnostics in 10 new files (plus 2 in a grown file). The sets are identical in the default, ui, darwin and windows contexts. The first reported site of every handles file and of every redactfmt file was read at the flagged line; the classification is from that reading, not from running the code.
+Totals added: handles +78 diagnostics in 10 new files (plus 2 in a grown file), redactfmt +14 in 4 new files. The sets are identical in the default, ui, darwin and windows contexts. The first reported site of every handles file and of every redactfmt file was read at the flagged line; the classification is from that reading, not from running the code.
 
 ## Follow-up scope
 
-1. `handles`: decide between a `driverFiles` inventory for harness test files and a reviewed test helper; then drop `strictDeferred`. About 1141 diagnostics in 103 files; the largest are `internal/store` and `internal/store/upgrade` postgres tests.
-2. Remove `strictDeferred`, the `Deferred` bookkeeping and `deferred_sites.json` once `handles` is clean.
+1. `redactfmt`: narrow the sub-expression rule for selections from a non-sensitive holder, in its own PR. A narrowing was tried in this PR and reverted after three review rounds: each patch removed the false positives but lost real detections (a method returning `any`, a call argument or literal inside the receiver, audit field walks two or more fields deep such as `ev.Actor.ID`). The follow-up's acceptance gate is a differential test: run the old and new rules over a shared adversarial corpus (start from the `Narrowing`/`NarrowingKeepsLeaks` cases in `internal/lint/testdata/badredact/badredact.go`) and require every case the old rule flags and the new rule does not to be on an explicit false-positive list. Then remove the 84 pinned sites.
+2. `handles`: decide between a `driverFiles` inventory for harness test files and a reviewed test helper; then drop `strictDeferred`. About 1141 diagnostics in 103 files; the largest are `internal/store` and `internal/store/upgrade` postgres tests.
+3. Remove `strictDeferred`, the `Deferred` bookkeeping and `deferred_sites.json` once both are clean.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -48,15 +49,17 @@ type holder struct {
 	ev      audit.Event
 }
 
-// A field of a struct that merely holds a sensitive value is not the value;
-// the sensitive field itself and a field walk of audit content still are.
+// Every sub-expression is checked, so a field of a struct that merely holds a
+// sensitive value is flagged too (h.seq, h.count()). That over-approximation is
+// deliberate until a narrower rule passes a differential test against these
+// fixtures; the leaks below must stay flagged under any narrowing.
 func Narrowing(h holder) {
-	_ = fmt.Sprintf("id_%d", h.seq)
-	_ = fmt.Sprintf("%v", h.keyring)      // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", any(h.keyring)) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%d", h.count())
+	_ = fmt.Sprintf("id_%d", h.seq)           // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.keyring)          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", any(h.keyring))     // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%d", h.count())          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.keyring.String()) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	slog.Info("audit", "actor", h.ev.Actor)   // want "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "actor", h.ev.Actor)   // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
 }
 
 func (h holder) count() int { return h.seq }
@@ -68,14 +71,17 @@ type anybox struct{ v any }
 
 func box(v any) anybox { return anybox{v: v} }
 
-// Narrowing a selection must not hide a pinned value that reaches the output
-// through a call argument, a composite literal, or a method returning `any`.
-func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event) {
-	_ = fmt.Sprintf("%v", h.anyKey())            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", box(kr).v)             // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", struct{ v any }{kr}.v) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	slog.Info("audit", "v", box(ev).v)           // want "logs audit content .*internal/audit\\.Event"
-	slog.Info("audit", "v", h.evAny())           // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+// Leaks through a call argument, a composite literal, a method returning
+// `any`, or a field walk several levels into audit content.
+func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store.AuditEvent) {
+	_ = fmt.Sprintf("%v", h.anyKey())                            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", box(kr).v)                             // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", struct{ v any }{kr}.v)                 // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	slog.Info("audit", "v", box(ev).v)                           // want "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "v", h.evAny())                           // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "id", ev.Actor.ID)                        // want "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "id", row.Actor.ID)                       // want "logs audit content .*internal/store\\.AuditEvent"
+	slog.Info("audit", "at", ev.OccurredAt.Format(time.RFC3339)) // want "logs audit content .*internal/audit\\.Event"
 }
 
 type wrap struct{ *crypto.Keyring }
