@@ -113,12 +113,6 @@ func (c *Conn) bearer() string {
 	return c.secret.Token
 }
 
-func (c *Conn) sessionID() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.secret.SessionID
-}
-
 // Stopped returns why the connection can't be used, or "" when it can.
 func (c *Conn) Stopped() string {
 	c.mu.RLock()

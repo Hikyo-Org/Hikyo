@@ -150,7 +150,7 @@ func TestConnectionListUI(t *testing.T) {
 		rec := h.pageFrom(AppHost, "app-win", "GET", path, "")
 		return rec.Code, rec.Body.String(), rec.Header()
 	}
-	code, body, hdr := get("/__app/state")
+	code, body, _ := get("/__app/state")
 	if code != 200 || strings.Contains(body, secret.Token) || strings.Contains(body, secret.SessionID) {
 		t.Fatalf("state %d: %s", code, body)
 	}
@@ -158,8 +158,7 @@ func TestConnectionListUI(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &st); err != nil || len(st.Connections) != 1 || st.Connections[0].Host != c.host {
 		t.Fatalf("state %+v err %v", st, err)
 	}
-	_ = hdr
-	code, _, hdr = get("/index.html")
+	code, _, _ = get("/index.html")
 	if code != 200 && code != 404 {
 		t.Fatalf("index %d", code)
 	}

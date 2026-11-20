@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -323,13 +322,4 @@ func (h *harness) pageFrom(host, windowID, method, path, body string, headers ..
 	rec := httptest.NewRecorder()
 	h.m.ServeHTTP(rec, req.WithContext(context.Background()))
 	return rec
-}
-
-func mustQuery(t *testing.T, raw string) url.Values {
-	t.Helper()
-	u, err := url.Parse(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return u.Query()
 }

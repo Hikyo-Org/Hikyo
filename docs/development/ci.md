@@ -138,6 +138,12 @@ range opts out. On failure, the check names the page that usually needs the
 update. Feedback tooling comes from the PR's integration merge, so the check
 applies to a PR once the check is on that PR's base branch.
 
+The `docs-impact` check also covers the desktop shell: a change to
+`desktop/internal/shell/shellroutes.go` (the `/__shell` routes) or
+`desktop/main_darwin.go` (the launch environment) needs a change to
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`, or the same opt-out
+trailer. User docs under `docs/site/src/content/docs/` also satisfy it.
+
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
 base's [classifier](../../scripts/ci/classify-changed-paths.sh). All previous test,

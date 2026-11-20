@@ -103,6 +103,11 @@ plan all app/deleted.go removed/final.go
 expect '.go and (.lanes.go.checks | map(.id)) == ["go-compile"]'
 feedback_plan_select go application
 [ "${#go_files[@]}" -eq 0 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./app ]
+# The desktop shell'"'"'s wire contract and launch environment are documented surfaces.
+plan all desktop/main_darwin.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
+plan all desktop/internal/shell/shellroutes.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
 # Unknown declarative identifiers must never become silent successful no-ops.
 if (feedback_check_prerequisites unknown) >"$work/output" 2>&1; then fail 'accepted unknown check'; fi
 if (feedback_plan_hosted_lane unknown) >"$work/output" 2>&1; then fail 'accepted unknown hosted lane'; fi

@@ -67,5 +67,21 @@ The instance must advertise `desktop-app/1` in `/api/v1/meta`.
 
 ## Not shipped yet
 
-Code signing, notarization, an updater and CI are later work (plan PR 4 and
-the release process).
+Code signing, notarization and an updater are later work (the release process).
+
+## CI
+
+The `desktop` job in `.github/workflows/ci.yml` runs on a pinned macOS runner:
+the module boundary check, `go test -race ./...`, the probe and release builds,
+and the driven WKWebView lane. The advisory `ci-golangci-desktop.yml` lints it. Run the same locally:
+
+```sh
+export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
+go test -race ./...
+go build -tags probe -o /tmp/hikyo-desktop-probe .
+go run ./probes/driven -app /tmp/hikyo-desktop-probe   # opens a window briefly
+../scripts/ci/check-desktop-deps.sh
+```
+
+The driven lane seeds one login-keychain item for a fake connection and deletes it
+when the run ends. See [docs/development/ci.md](../docs/development/ci.md#desktop-shell-macos).
