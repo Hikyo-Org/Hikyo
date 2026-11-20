@@ -55,8 +55,22 @@ The spike also established that:
    package variant they are given, test files included. A rule such as "this
    package handles `authz.Proof`" is decided from those files. Violations that
    become visible are fixed in the port PRs, not allowlisted.
+
+   Amendment (PR 1): a test whose subject is a nil `authz.Proof` (a boundary
+   test asserting the store refuses it), or that can reach no real proof, may
+   carry an inline `// forgeguard:nil-proof <reason>` marker on the flagged
+   line. forgeguard honours it only in `_test.go` files and requires a reason;
+   a marker in a production file, or without a reason, is a finding of its own.
+   It is a reviewed, reasoned, test-only exemption at the site, not an inventory
+   entry. Test helpers that seed an isolated fixture database may likewise
+   carry `fence:fixture <reason>`, honoured by the fence analyzer only in
+   `_test.go` files; `fence:exempt` keeps its original meaning.
 5. **Rollout.** A stack of PRs, each runs both harnesses for the analyzers it
-   moves until every old finding is also reported by the new driver:
+   moves until every old finding is also reported by the new driver. The parity
+   leg runs the same analyzer core through the old loader, so it detects only
+   loader and variant differences (what the go/packages walk sees against what
+   vet sees); it is not an independent check of the analyzer logic, which the
+   `// want` fixtures cover:
    1. driver, summary aggregation, and the per-package analyzers;
    2. input hashing and the analyzers that read non-Go inputs;
    3. RawSQL with facts and summaries;

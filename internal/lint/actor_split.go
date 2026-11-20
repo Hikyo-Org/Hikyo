@@ -26,6 +26,7 @@ var ActorSplit = &analysis.Analyzer{
 	Name: "actorsplit",
 	Doc:  "internal/server never names service.LocalPrincipal",
 	Run: func(pass *analysis.Pass) (any, error) {
+		// The ".test" trim serves the old loader's test-main roots until PR 4.
 		path := strings.TrimSuffix(pass.Pkg.Path(), ".test")
 		if path != transportPath {
 			return nil, nil
@@ -53,7 +54,9 @@ var ActorSplit = &analysis.Analyzer{
 	},
 }
 
-// CheckTransportLocalPrincipal is ActorSplit over loaded packages.
+// CheckTransportLocalPrincipal is ActorSplit over the load roots, as the old
+// harness iterated them (including internal/server's test variant), until PR 4
+// removes the old loader.
 func CheckTransportLocalPrincipal(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: ActorSplit, Targets: []string{transportPath}}, pkgs).Findings
+	return runPackages(Check{Analyzer: ActorSplit, Targets: []string{transportPath}}, pkgs).Findings
 }

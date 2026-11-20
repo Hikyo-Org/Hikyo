@@ -108,6 +108,7 @@ var Handles = &analysis.Analyzer{
 }
 
 func runHandles(pass *analysis.Pass) {
+	// The ".test" trim serves the old loader's test-main roots until PR 4.
 	base := strings.TrimSuffix(pass.Pkg.Path(), ".test")
 	info := pass.TypesInfo
 	for ident, obj := range info.Uses {

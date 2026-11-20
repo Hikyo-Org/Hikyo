@@ -122,6 +122,7 @@ var RedactFormat = &analysis.Analyzer{
 		if !inModule(pass.Pkg.Path()) {
 			return nil, nil
 		}
+		// The ".test" trim serves the old loader's test-main roots until PR 4.
 		base := strings.TrimSuffix(pass.Pkg.Path(), ".test")
 		exemptSensitive := base == sensitiveOwner
 		for _, file := range pass.Files {

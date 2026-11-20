@@ -14,7 +14,13 @@ The vet driver analyzes the in-package test variant of every package. The old go
 2. The package ID is an in-package test variant (`pkg [pkg.test]`, not `pkg_test [pkg.test]`).
 3. The file ends in `_test.go`.
 
-Any production-file finding, any external test package finding, and every other analyzer's finding still fail the test. The test logs the deferred count per analyzer. `TestVetDriverParity` still proves every old-harness finding for both analyzers is reported by the vet driver. The old harness keeps enforcing both unchanged. No `driverFiles` inventory entries were added.
+Any production-file finding, any external test package finding, and every other analyzer's finding still fail the test.
+
+## What gates these sites today
+
+The deferred sites are gated by a ratchet, not by the old harness. The old go/packages harness never loads in-package `_test.go` files, so it does not enforce them, and `TestVetDriverParity` proves nothing about them (its leg runs the same analyzer core through the old loader and detects only loader and variant differences).
+
+`TestVetDriverRepo` compares the deferred diagnostics of every context with `internal/lint/testdata/deferred_sites.json`, a checked-in ceiling of analyzer -> file -> count per context, decoded strictly into typed structures. It fails when a file absent from the pin gains a deferred diagnostic, when a file's count exceeds its ceiling, and, with an instruction to lower the pin, when a count drops, so the pin only ratchets down. After fixing sites, lower it with `go test ./internal/lint -run 'TestVetDriverRepo$' -update-deferred-sites` and review the diff. The pin is not a `driverFiles` inventory entry: it grants nothing, it only caps the backlog. No `driverFiles` entries were added.
 
 ## Counts
 
@@ -189,4 +195,4 @@ All 10 are legitimate test-harness use under the current rule: tests open an eng
 
 1. `redactfmt`: decide on narrowing the sub-expression rule for non-sensitive field selections; then fix or exempt the remainder (about 56 lines in 21 files).
 2. `handles`: decide between a `driverFiles` inventory for harness test files and a reviewed test helper; then drop `strictDeferred`. About 784 lines in 93 files; the largest are `internal/store` and `internal/store/upgrade` postgres tests.
-3. Remove `strictDeferred` and the `Deferred` bookkeeping once both are clean.
+3. Remove `strictDeferred`, the `Deferred` bookkeeping and `deferred_sites.json` once both are clean.

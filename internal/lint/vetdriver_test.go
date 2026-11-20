@@ -7,10 +7,14 @@ package lint
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"maps"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -26,6 +30,10 @@ type vetDiagnostic struct {
 	Posn     string `json:"posn"`
 	End      string `json:"end"`
 	Message  string `json:"message"`
+	// Related and SuggestedFixes are legitimate vet fields; the driver reads
+	// neither, but an unknown field still fails the decode.
+	Related        json.RawMessage `json:"related"`
+	SuggestedFixes json.RawMessage `json:"suggested_fixes"`
 }
 
 // vetResult is one analyzer's output for one package: diagnostics, or the
@@ -103,6 +111,9 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 						continue
 					}
 					summary, err := ParseSummary(d.Message)
+					if err == nil {
+						err = summary.validate(analyzer)
+					}
 					if err != nil {
 						return nil, err
 					}
@@ -123,7 +134,7 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 
 // strictDeferred are the analyzers whose in-package test sites the vet driver
 // reports but does not yet gate: the old harness never saw those files, and
-// the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-test-sites.md).
+// the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-pr1-deferred-test-sites.md).
 // Production files and external test packages stay strict.
 var strictDeferred = map[string]bool{"handles": true, "redactfmt": true}
 
@@ -199,24 +210,116 @@ func missingTargets(out *vetOutcome, checks []Check) []string {
 	return missing
 }
 
+// deferredSites is the checked-in ceiling of deferred in-package test-site
+// diagnostics (see strictDeferred), so the sites can only be paid down.
+//
+//go:embed testdata/deferred_sites.json
+var deferredSitesJSON []byte
+
+var updateDeferredSites = flag.Bool("update-deferred-sites", false, "rewrite testdata/deferred_sites.json from the observed deferred counts")
+
+const deferredSitesFile = "internal/lint/testdata/deferred_sites.json"
+
+// deferredCounts is context name -> analyzer -> repo-relative file -> count.
+type deferredCounts struct {
+	Contexts map[string]map[string]map[string]int `json:"contexts"`
+}
+
+func decodeDeferredCounts(raw []byte) (deferredCounts, error) {
+	var counts deferredCounts
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&counts); err != nil {
+		return deferredCounts{}, fmt.Errorf("decode %s: %w", deferredSitesFile, err)
+	}
+	if dec.More() {
+		return deferredCounts{}, fmt.Errorf("decode %s: trailing data", deferredSitesFile)
+	}
+	return counts, nil
+}
+
+// observedDeferred counts a run's deferred findings per analyzer and file.
+func observedDeferred(out *vetOutcome) (map[string]map[string]int, error) {
+	counts := map[string]map[string]int{}
+	for _, finding := range out.Findings {
+		if !out.Deferred[finding] {
+			continue
+		}
+		analyzer := deferredAnalyzer(finding)
+		cut := strings.Index(finding, ": "+analyzer+": ")
+		if cut < 0 {
+			return nil, fmt.Errorf("deferred finding %q has no analyzer", finding)
+		}
+		file, _, err := splitPosn(finding[:cut])
+		if err != nil {
+			return nil, err
+		}
+		if rel, err := filepath.Rel(moduleRoot(), file); err == nil {
+			file = rel
+		}
+		if counts[analyzer] == nil {
+			counts[analyzer] = map[string]int{}
+		}
+		counts[analyzer][filepath.ToSlash(file)]++
+	}
+	return counts, nil
+}
+
+// checkDeferredCeiling compares observed counts with the pinned ceiling: a file
+// absent from the pin or above its ceiling fails, and a count below its ceiling
+// fails with an instruction to lower the pin, so the pin only ratchets down.
+func checkDeferredCeiling(context string, pinned, observed map[string]map[string]int) []string {
+	var findings []string
+	for _, analyzer := range slices.Sorted(maps.Keys(observed)) {
+		for _, file := range slices.Sorted(maps.Keys(observed[analyzer])) {
+			got := observed[analyzer][file]
+			ceiling, ok := pinned[analyzer][file]
+			switch {
+			case !ok:
+				findings = append(findings, fmt.Sprintf("%s: %s: %s gained %d deferred diagnostics and is not in the pin; fix them", context, analyzer, file, got))
+			case got > ceiling:
+				findings = append(findings, fmt.Sprintf("%s: %s: %s has %d deferred diagnostics, above its pinned ceiling %d; fix them", context, analyzer, file, got, ceiling))
+			}
+		}
+	}
+	for _, analyzer := range slices.Sorted(maps.Keys(pinned)) {
+		for _, file := range slices.Sorted(maps.Keys(pinned[analyzer])) {
+			ceiling := pinned[analyzer][file]
+			if got := observed[analyzer][file]; got < ceiling {
+				findings = append(findings, fmt.Sprintf("%s: %s: %s has %d deferred diagnostics, below its pinned ceiling %d; lower the pin in %s (go test ./internal/lint -run TestVetDriverRepo -update-deferred-sites)", context, analyzer, file, got, ceiling, deferredSitesFile))
+			}
+		}
+	}
+	return findings
+}
+
 // The ported analyzers run over the whole module under every context. Test
 // files are analyzed in every context, so the windows and darwin source sets
 // are no longer production-only here.
 func TestVetDriverRepo(t *testing.T) {
+	pinned, err := decodeDeferredCounts(deferredSitesJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := deferredCounts{Contexts: map[string]map[string]map[string]int{}}
 	bin := buildVetTool(t)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
 			out := runVet(t, bin, ctx, nil, []string{Module + "/..."})
-			deferred := map[string]int{}
 			for _, finding := range out.Findings {
-				if out.Deferred[finding] {
-					deferred[deferredAnalyzer(finding)]++
-					continue
+				if !out.Deferred[finding] {
+					t.Error(finding)
 				}
-				t.Error(finding)
 			}
-			for analyzer, n := range deferred {
-				t.Logf("deferred in-package test sites, %s: %d", analyzer, n)
+			counts, err := observedDeferred(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			observed.Contexts[ctx.Name] = counts
+			if !*updateDeferredSites {
+				for _, finding := range checkDeferredCeiling(ctx.Name, pinned.Contexts[ctx.Name], counts) {
+					t.Error(finding)
+				}
 			}
 			for _, finding := range missingTargets(out, Checks()) {
 				t.Error(finding)
@@ -226,6 +329,15 @@ func TestVetDriverRepo(t *testing.T) {
 				t.Error(finding)
 			}
 		})
+	}
+	if *updateDeferredSites && !t.Failed() {
+		raw, err := json.MarshalIndent(observed, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(moduleRoot(), filepath.FromSlash(deferredSitesFile)), append(raw, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

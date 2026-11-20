@@ -137,7 +137,9 @@ type State struct {
 	Pending             *Operation                    `json:"pending"`
 }
 
-// Equal reports deep equality, following the Pending pointer.
+// Equal reports deep equality, following the Pending pointer. It stays on
+// reflect.DeepEqual: State nests Operation, Source, Acceptance and identity
+// values, and a field-wise copy would silently skip every field added later.
 func (s State) Equal(other State) bool { return reflect.DeepEqual(s, other) }
 
 func (s State) Validate() error {

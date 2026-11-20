@@ -39,6 +39,22 @@ func ParseSummary(message string) (Summary, error) {
 	return Summary{Kind: kind, Subject: subject}, nil
 }
 
+// validate rejects a summary kind the driver does not know, and a pin from any
+// analyzer but redactpins: an unknown or misplaced summary must fail, not be
+// dropped.
+func (s Summary) validate(analyzer string) error {
+	switch s.Kind {
+	case summaryTarget:
+		return nil
+	case summaryPin:
+		if analyzer != RedactPins.Name {
+			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, summaryPin, RedactPins.Name)
+		}
+		return nil
+	}
+	return fmt.Errorf("analyzer %s reported unknown summary kind %q", analyzer, s.Kind)
+}
+
 func reportSummary(pass *analysis.Pass, kind, subject string) {
 	pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Category: SummaryCategory, Message: kind + " " + subject})
 }
@@ -88,10 +104,14 @@ type Result struct {
 // points share the analysis.Pass core with the vet tool. Like the old loader
 // walk it analyzes each package path once and skips packages without type
 // information (imports that are not load roots).
-func RunOver(c Check, pkgs []*packages.Package) Result {
+func RunOver(c Check, pkgs []*packages.Package) Result { return runPackages(c, flatten(pkgs)) }
+
+// runPackages is RunOver over an explicit package list, so an entry point whose
+// old harness iterated the load roots keeps doing so.
+func runPackages(c Check, list []*packages.Package) Result {
 	var res Result
 	seenTargets := map[string]bool{}
-	for _, p := range flatten(pkgs) {
+	for _, p := range list {
 		if p.TypesInfo == nil || p.Types == nil {
 			continue
 		}
@@ -112,6 +132,9 @@ func RunOver(c Check, pkgs []*packages.Package) Result {
 					return
 				}
 				summary, err := ParseSummary(d.Message)
+				if err == nil {
+					err = summary.validate(c.Analyzer.Name)
+				}
 				if err != nil {
 					res.Findings = append(res.Findings, FormatFinding("-", c.Analyzer.Name, err.Error()))
 					return

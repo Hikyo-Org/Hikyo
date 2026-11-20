@@ -591,3 +591,40 @@ func TestTransitMockCustodyIsTestOnly(t *testing.T) {
 		}
 	})
 }
+
+// internal/testutil holds helpers for tests. A package importing it from a
+// non-test file would link test scaffolding into a product binary.
+func TestTestutilIsTestOnly(t *testing.T) {
+	const testutil = module + "/internal/testutil"
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			for _, imp := range p.Imports {
+				if matchesDependencyPrefix(imp, testutil) {
+					t.Errorf("%s imports %s outside a test file: internal/testutil is test-only", p.ImportPath, imp)
+				}
+			}
+		}
+	})
+}
+
+// reflectx wraps reflect for tests so that no package handling authz.Proof
+// imports reflect; giving it unsafe would reopen the forgery path that
+// forgeguard closes.
+func TestReflectxDoesNotImportUnsafe(t *testing.T) {
+	const reflectx = module + "/internal/testutil/reflectx"
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		found := false
+		for _, p := range pkgs {
+			if p.ImportPath != reflectx {
+				continue
+			}
+			found = true
+			if slices.Contains(allImports(p), "unsafe") {
+				t.Errorf("%s imports unsafe", p.ImportPath)
+			}
+		}
+		if !found {
+			t.Fatalf("%s was not listed: the rule would be vacuous", reflectx)
+		}
+	})
+}
