@@ -771,11 +771,15 @@ describe('KeyDeclarationDetail', () => {
     await act(async () => buttonBy(view.container, 'Reclassify as secret…').click());
     const dialogText = confirmDialog(view.container).textContent ?? '';
     expect(dialogText).toContain('dismissals are dropped');
+    const advisory =
+      'Tightening cannot un-disclose: the value was readable as config, so treat it as exposed and rotate it. ' +
+      'Old values stay readable in history under ordinary read.';
+    expect(dialogText).toContain(advisory);
     // Tightening does not disclose, so it names no second-factor requirement.
     expect(dialogText.toLowerCase()).not.toContain('second-factor');
 
     await act(async () => dialogButton(view.container, 'Reclassify as secret').click());
-    expect(textOf(view.container)).toContain('Reclassified as secret.');
+    expect(textOf(view.container)).toContain(`Reclassified as secret. ${advisory}`);
 
     await view.unmount();
   });

@@ -159,6 +159,23 @@ it.each(['  padded password  ', '   ', '\tpassword\n'].flatMap((password) => [tr
   } finally { await view.unmount(); }
 });
 
+it('trims a row save and says how many values it changed', async () => {
+  mocks.stage.mockResolvedValue({ findings: [] });
+  const view = await renderMatrix();
+  try {
+    await act(async () => buttonNamed(view.container, 'LOG_LEVEL in development: info').click());
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    if (textarea === null) throw new Error('matrix row editor textarea is missing');
+    await act(async () => typeInto(textarea, '  debug\n'));
+    await act(async () => buttonNamed(view.container, 'Save 1 draft').click());
+    await settle();
+    expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ key: 'LOG_LEVEL', value: 'debug' }));
+    expect(view.container.textContent).toContain(
+      '1 draft updated for LOG_LEVEL. Leading and trailing whitespace was removed from 1 value.',
+    );
+  } finally { await view.unmount(); }
+});
+
 describe('Matrix mutation refusal ownership', () => {
   it('shows an editor refusal once and removes it when the editor closes', async () => {
     const view = await renderMatrix();

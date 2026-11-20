@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
 import { MatrixRowEditor, type MatrixEditorChange } from './MatrixRowEditor.tsx';
+import { normalizeMatrixDraftValue } from './matrix-state.ts';
 
 type MatrixRowEditorProps = Parameters<typeof MatrixRowEditor>[0];
 
@@ -399,7 +400,8 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(fieldError()?.getAttribute('role')).toBe('alert');
     expect(fieldError()?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
     expect(textarea.getAttribute('aria-invalid')).toBe('true');
-    expect(textarea.getAttribute('aria-describedby')).toBe(fieldError()?.id);
+    // The any_of alternatives stay described alongside the error.
+    expect(textarea.getAttribute('aria-describedby')).toBe(`${textarea.id}-hint ${fieldError()?.id ?? ''}`);
 
     // Typing an invalid value hands the error slot to the live validation; the
     // standing problem steps aside into the alert above the control, where it
@@ -410,6 +412,35 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     const standing = view.container.querySelector('.matrix-row-editor__row .alert');
     expect(standing?.getAttribute('role')).toBe('alert');
     expect(standing?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    await view.unmount();
+  });
+
+  it('names the any_of alternatives before anything is typed', async () => {
+    const view = await renderEditor({ ...keyRecord, declaration: { any_of: [{ type: 'boolean' }, { type: 'integer', min: 5n }] } });
+    const hint = view.container.querySelector('.matrix-row-editor__row .field__hint');
+    expect(hint?.textContent).toBe('Valid as a boolean (true or false), or an integer at least 5.');
+    await view.unmount();
+  });
+
+  it('warns when editing a deprecated key, naming where it still has a value', async () => {
+    const view = await renderEditor({ ...keyRecord, deprecated: true, deprecation_note: 'Use LOG_LEVEL_V2.' });
+    const warning = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent?.includes('deprecated'));
+    expect(warning?.textContent).toContain('This key is deprecated. Use LOG_LEVEL_V2.');
+    expect(warning?.querySelector('.glyph')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('keeps interior newlines of a multiline value through staging', async () => {
+    const view = await renderEditor();
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
+    const saveButton = view.container.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (textarea === null || saveButton === null) throw new Error('row form controls are missing');
+    const pem = '-----BEGIN CERTIFICATE-----\nMIIB\nAQAB\n-----END CERTIFICATE-----';
+    await act(async () => typeInto(textarea, `${pem}\n`));
+    await act(async () => saveButton.click());
+    // The matrix trims at stage time (normalizeMatrixDraftValue); interior newlines survive it.
+    expect(view.onApply).toHaveBeenCalledWith([{ environmentId, operation: 'set', value: `${pem}\n` }]);
+    expect(normalizeMatrixDraftValue(`${pem}\n`)).toBe(pem);
     await view.unmount();
   });
 
@@ -428,7 +459,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     // control and out of its error slot.
     await act(async () => typeInto(textarea, 'true'));
     expect(textarea.getAttribute('aria-invalid')).toBeNull();
-    expect(textarea.getAttribute('aria-describedby')).toBeNull();
+    expect(textarea.getAttribute('aria-describedby')).toBe(`${textarea.id}-hint`);
     expect(view.container.querySelector('.matrix-row-editor__row .field__error')).toBeNull();
     const standing = view.container.querySelector('.matrix-row-editor__row .alert');
     expect(standing?.getAttribute('role')).toBe('alert');

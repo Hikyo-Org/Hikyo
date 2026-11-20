@@ -54,6 +54,8 @@ const rows: Props['rows'] = [
   },
 ];
 
+const multilineValue = '-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ2hpa3lv\nc3Rvcnlib29rZXhhbXBsZQ==\n-----END CERTIFICATE-----';
+
 const meta = {
   title: 'Features/Values/MatrixRowEditor',
   id: 'routes-matrixroweditor',
@@ -214,6 +216,35 @@ export const LongValue: Story = {
     await expect(textarea).toHaveValue(longValue);
     await expectNoHorizontalOverflow(textarea);
     await expectActionsPinned(canvasElement);
+  },
+};
+
+// An any_of union is free text; the hint names every alternative before typing.
+export const AnyOfHint: Story = {
+  args: { keyRecord: { ...keyRecord, declaration: { any_of: [{ type: 'boolean' }, { type: 'integer', min: 5n }] } } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Valid as a boolean (true or false), or an integer at least 5.')).toBeVisible();
+  },
+};
+
+// Editing a deprecated key warns where values are actually written.
+export const DeprecatedKey: Story = {
+  args: { keyRecord: { ...keyRecord, deprecated: true, deprecation_note: 'Use LOG_LEVEL_V2.' } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText(/This key is deprecated\. Use LOG_LEVEL_V2\./)).toBeVisible();
+  },
+};
+
+// A PEM-style value: the editor grows and keeps its interior newlines.
+export const MultilineValue: Story = {
+  args: {
+    rows: rows.map((row) => ({
+      ...row,
+      cell: row.cell === undefined ? undefined : { ...row.cell, value: multilineValue },
+    })),
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('textbox', { name: 'development value' })).toHaveValue(multilineValue);
   },
 };
 
