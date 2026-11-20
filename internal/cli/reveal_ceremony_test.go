@@ -479,8 +479,8 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 	if code := cli.Run(t.Context(), ios, declareArgs(t)); code != cli.ExitOK {
 		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
 	}
-	if startBody["purpose"] != "publish" {
-		t.Fatalf("handoff started with purpose=%v", startBody["purpose"])
+	if startBody["purpose"] != "publish" || startBody["operation"] != "value.copy-destination" {
+		t.Fatalf("handoff started with purpose=%v operation=%v", startBody["purpose"], startBody["operation"])
 	}
 	keys, _ := startBody["key_ids"].([]any)
 	if len(keys) != 1 || keys[0] != "key_pw" {
