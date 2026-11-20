@@ -426,10 +426,6 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 		}
 	}
 	if err := d.swapCurrent(newGen, staged); err != nil {
-		if errors.Is(err, ErrForeign) {
-			// Refused before the commit: nothing names the staged generation.
-			_ = d.gen.RemoveAll(newGen)
-		}
 		return res, err
 	}
 	res.Changed, res.Generation = true, newGen
@@ -862,8 +858,21 @@ func (d *Destination) retain(gen, name string) error {
 	return d.syncDir(".")
 }
 
-// swapCurrent is the commit point: a fresh link renamed over `current`.
+// swapCurrent is the commit point: a fresh link renamed over `current`. Any
+// failure before the rename removes the staged generation: like a staging
+// failure, a staged .complete generation would survive recover() and never be
+// collected, leaking plaintext on every poll.
 func (d *Destination) swapCurrent(gen string, staged fs.FileInfo) error {
+	if err := d.linkCurrent(gen, staged); err != nil {
+		_ = d.gen.RemoveAll(gen)
+		return err
+	}
+	return syncRootDir(d.gen, ".")
+}
+
+// linkCurrent renames a fresh link to gen over `current`, leaving no temporary
+// link behind when it fails.
+func (d *Destination) linkCurrent(gen string, staged fs.FileInfo) error {
 	suffix, err := randomHex(8)
 	if err != nil {
 		return err
@@ -880,7 +889,7 @@ func (d *Destination) swapCurrent(gen string, staged fs.FileInfo) error {
 		_ = d.gen.Remove(tmp)
 		return err
 	}
-	return syncRootDir(d.gen, ".")
+	return nil
 }
 
 // stillNamed refuses a commit the public links could not see: readers resolve

@@ -358,6 +358,30 @@ func TestPublishCrashBeforeCommitThenRecover(t *testing.T) {
 	assertOnlyGenerations(t, f.dir, old.Generation, res.Generation)
 }
 
+// A commit that fails before the rename for any reason, not only a refusal,
+// removes the staged generation: it already carries .complete, so recover()
+// would keep it and its plaintext forever.
+func TestPublishFailedCommitRemovesStagedGeneration(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	old := f.mustPublish(file("a", "old-a"))
+	current := filepath.Join(f.dir, genDir, "current")
+	// A non-empty directory at `current` makes the commit's rename fail.
+	probe := &beforeCommitProbe{run: func() {
+		if err := os.Remove(current); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(current, "keep"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	res, err := f.publish(probe, file("a", "new-a"))
+	if err == nil || errors.Is(err, ErrForeign) || res.Changed {
+		t.Fatalf("publish = %+v, %v; want a plain commit failure", res, err)
+	}
+	assertOnlyGenerations(t, f.dir, old.Generation)
+}
+
 func TestPublishCrashAfterCommitIsNewGeneration(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
