@@ -443,16 +443,15 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 }
 
 func (d *Destination) predecessor(current string) (string, error) {
-	_, raw, err := d.readGenFile(path.Join(current, previousName), markerLimit)
+	// Every invalid marker is ErrForeign: Publish then rebuilds the generation
+	// instead of refusing on every poll.
+	_, raw, err := d.readGenFile(path.Join(current, previousName), predecessorLimit)
 	if err != nil {
 		return "", err
 	}
-	if len(raw) > 64 {
-		return "", errors.New("filesync: invalid predecessor metadata")
-	}
 	prior := strings.TrimSpace(string(raw))
 	if prior != "" && (!genGrammar.MatchString(prior) || prior == current) {
-		return "", errors.New("filesync: invalid predecessor generation")
+		return "", fmt.Errorf("%w: %s in generation %s names %q", ErrForeign, previousName, current, prior)
 	}
 	return prior, nil
 }
@@ -955,6 +954,10 @@ func (d *Destination) readGenFile(name string, limit int64) (fs.FileInfo, []byte
 
 // markerLimit bounds .complete and .previous, which hold one stamp or name.
 const markerLimit = 4096
+
+// predecessorLimit bounds .previous, which holds one generation name and its
+// newline (genGrammar is 52 bytes).
+const predecessorLimit = 64
 
 // readGenText is readGenFile for a small marker file, trimmed.
 func (d *Destination) readGenText(name string) (string, error) {

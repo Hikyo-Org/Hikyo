@@ -1016,3 +1016,30 @@ func TestOversizedMarkerIsForeignAndRepublished(t *testing.T) {
 		}
 	}
 }
+
+// Every invalid predecessor marker must take the same ErrForeign recovery as an
+// oversized one, or the same-content path refuses on every poll.
+func TestInvalidPredecessorIsForeignAndRepublished(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		content func(current string) string
+	}{
+		{"just over the name limit", func(string) string { return strings.Repeat("x", predecessorLimit+1) }},
+		{"not a generation name", func(string) string { return "zzz\n" }},
+		{"names itself", func(current string) string { return current + "\n" }},
+	} {
+		f := newFixture(t)
+		f.mustPublish(file("a", "A"))
+		current, p := currentGenPath(t, f, previousName)
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(tc.content(current)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if res, err := f.publish(nil, file("a", "A")); err != nil || !res.Changed {
+			t.Errorf("%s: publish over the predecessor = %+v, %v; want a fresh generation", tc.name, res, err)
+		}
+	}
+}
