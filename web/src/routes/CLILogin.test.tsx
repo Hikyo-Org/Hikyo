@@ -59,7 +59,7 @@ async function mount(query: string) {
 }
 function approve(container: HTMLElement) {
   const button = [...container.querySelectorAll('button')].find(
-    (node) => node.textContent === 'Authorize CLI sign-in',
+    (node) => node.textContent === 'Authorize sign-in',
   );
   if (button === undefined) throw new Error('missing approval');
   return button;
@@ -97,7 +97,7 @@ it.each([`state=${state}`, 'user_code=ABCDEFGH'])('recovers assurance refusal th
   const view = await mount(path);
   await act(async () => approve(view.container).click());
   await settleTask();
-  expect(view.container.textContent).toContain('Use your authenticator or passkey to finish signing in.');
+  expect(view.container.textContent).toContain('needs an enrolled second factor');
   const retry = [...view.container.querySelectorAll('button')].find((node) => node.textContent === 'Sign out and sign in again');
   if (retry === undefined) throw new Error('missing sign-in recovery');
   await act(async () => retry.click());
@@ -119,7 +119,7 @@ it.each([`state=${state}`, 'user_code=ABCDEFGH'])('recovers assurance refusal th
   await settleTask();
   expect(approvals).toBe(2);
   if (reference === state) expect(navigate).toHaveBeenCalledOnce();
-  else expect(view.container.textContent).toContain('CLI sign-in approved');
+  else expect(view.container.textContent).toContain('Sign-in approved');
 });
 
 it('retains the held session and retry when recovery sign-out fails', async () => {
@@ -156,7 +156,7 @@ it.each([
   const { container } = await mount(`state=${state}`);
   await act(async () => approve(container).click());
   await settleTask();
-  expect(container.textContent).toContain('This request may have expired or already been used.');
+  expect(container.textContent).toContain('This request may have expired, already been used');
   expect(container.textContent).not.toContain('Sign out and sign in again');
   expect(auth.endSession).not.toHaveBeenCalled();
 });
@@ -167,7 +167,7 @@ it('shows server consent metadata and ignores callback/instance URL fields', asy
     `state=${state}&instance=attacker&redirect_uri=https://attacker.example`,
   );
   expect(container.textContent).toContain('https://instance.example');
-  expect(container.textContent).toContain('Separate CLI session');
+  expect(container.textContent).toContain('Separate session for that client');
   expect(container.textContent).not.toContain('attacker');
   expect(approve(container).disabled).toBe(false);
 });
@@ -215,7 +215,7 @@ it('finishes device approval without caching the approval response', async () =>
   const { container, client } = await mount('user_code=ABCDEFGH');
   await act(async () => approve(container).click());
   await settleTask();
-  expect(container.textContent).toContain('CLI sign-in approved');
+  expect(container.textContent).toContain('Sign-in approved');
   expect(client.getMutationCache().getAll()).toHaveLength(0);
 });
 it('does not approve after the browser session changed during the metadata refresh', async () => {
@@ -239,7 +239,7 @@ it('cancels in an ordinary browser tab without sending approval', async () => {
   );
   if (cancel === undefined) throw new Error('missing cancel');
   await act(async () => cancel.click());
-  expect(container.textContent).toContain('CLI sign-in cancelled');
+  expect(container.textContent).toContain('Sign-in cancelled');
   expect(
     fetcher.mock.calls.every(([input]) => input instanceof Request && input.method === 'GET'),
   ).toBe(true);
@@ -254,14 +254,14 @@ it('requires a separate approval after the route changes to another device reque
   const { container } = await mount('user_code=ABCDEFGH');
   await act(async () => approve(container).click());
   await settleTask();
-  expect(container.textContent).toContain('CLI sign-in approved');
+  expect(container.textContent).toContain('Sign-in approved');
   const next = [...container.querySelectorAll('button')].find(
     (node) => node.textContent === 'Next request',
   );
   if (next === undefined) throw new Error('missing next request');
   await act(async () => next.click());
   await settleTask();
-  expect(container.textContent).not.toContain('CLI sign-in approved');
+  expect(container.textContent).not.toContain('Sign-in approved');
   expect(container.textContent).toContain('JKMNPQRS');
   expect(approve(container).disabled).toBe(false);
 });
@@ -269,10 +269,10 @@ it('requires a separate approval after the route changes to another device reque
 it('refuses mismatched transaction metadata without consent', async () => {
   fetcher.mockResolvedValue(response({ ...transaction(), reference: 'B'.repeat(43) }));
   const { container } = await mount(`state=${state}`);
-  expect(container.textContent).toContain('CLI sign-in could not be completed');
+  expect(container.textContent).toContain('Sign-in could not be completed');
   expect(
     [...container.querySelectorAll('button')].some(
-      (node) => node.textContent === 'Authorize CLI sign-in',
+      (node) => node.textContent === 'Authorize sign-in',
     ),
   ).toBe(false);
 });
@@ -280,10 +280,10 @@ it('refuses mismatched transaction metadata without consent', async () => {
 it('refuses malformed expiry metadata without consent', async () => {
   fetcher.mockResolvedValue(response({ ...transaction(), expires_at: 'invalid' }));
   const { container } = await mount(`state=${state}`);
-  expect(container.textContent).toContain('CLI sign-in could not be completed');
+  expect(container.textContent).toContain('Sign-in could not be completed');
   expect(
     [...container.querySelectorAll('button')].some(
-      (node) => node.textContent === 'Authorize CLI sign-in',
+      (node) => node.textContent === 'Authorize sign-in',
     ),
   ).toBe(false);
 });
@@ -291,10 +291,10 @@ it('refuses malformed expiry metadata without consent', async () => {
 it('refuses a transaction the server reports expired before showing consent', async () => {
   fetcher.mockResolvedValue(response({ error: 'forbidden' }, 403));
   const { container } = await mount(`state=${state}`);
-  expect(container.textContent).toContain('CLI sign-in could not be completed');
+  expect(container.textContent).toContain('Sign-in could not be completed');
   expect(
     [...container.querySelectorAll('button')].some(
-      (node) => node.textContent === 'Authorize CLI sign-in',
+      (node) => node.textContent === 'Authorize sign-in',
     ),
   ).toBe(false);
 });
@@ -309,8 +309,8 @@ it.each(['refresh', 'approval'])(
     const { container } = await mount('user_code=ABCDEFGH');
     await act(async () => approve(container).click());
     await settleTask();
-    expect(container.textContent).toContain('CLI sign-in could not be completed');
-    expect(container.textContent).not.toContain('CLI sign-in approved');
+    expect(container.textContent).toContain('Sign-in could not be completed');
+    expect(container.textContent).not.toContain('Sign-in approved');
     expect(
       fetcher.mock.calls.map(([input]) => (input instanceof Request ? input.method : 'invalid')),
     ).toEqual(leg === 'approval' ? ['GET', 'GET', 'POST'] : ['GET', 'GET']);
@@ -366,7 +366,7 @@ it('approves a server-live request even when the browser clock is a day ahead', 
     const { container } = await mount('user_code=ABCDEFGH');
     await act(async () => approve(container).click());
     await settleTask();
-    expect(container.textContent).toContain('CLI sign-in approved');
+    expect(container.textContent).toContain('Sign-in approved');
   } finally {
     clock.mockRestore();
   }

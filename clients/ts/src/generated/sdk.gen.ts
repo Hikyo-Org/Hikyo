@@ -2731,7 +2731,7 @@ export const linkIdentity = <ThrowOnError extends boolean = false>(options: Opti
  * An account-security mutation proved by the selected local credential.
  * Requires a password, another external identity, or a complete usable
  * passkey login set to remain after removal; TOTP alone is insufficient.
- * Deletes the identity's sessions and
+ * Deletes every session of the principal, whichever artifact it holds, and
  * reissues the acting session. The reissued token replaces the old one.
  *
  */
@@ -6088,7 +6088,9 @@ export const settleLease = <ThrowOnError extends boolean = false>(options: Optio
  *
  * Metadata only: no credential, candidate handle or password is stored or
  * returned. Deleted (disabled) rotations are history and are listed only
- * with `include_disabled`. The list is paged in id order (`limit`, default
+ * with `include_disabled`, except one that owns a run owing a provider role
+ * a drop (`owed_drop_runs` above zero), which is always listed so the
+ * warning is not lost with the delete. The list is paged in id order (`limit`, default
  * 100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
  * currently delivered into the rotation's keys lapses, once a run has
  * published one. Slice one of scheduled rotation records the

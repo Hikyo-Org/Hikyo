@@ -22,6 +22,15 @@ export const Named: Story = {
   },
 };
 
+export const BreaksALongNameOnlyAfterAnUnderscore: Story = {
+  args: { name: 'ANALYTICS_REPORTING_WAREHOUSE_DB_PASSWORD', breakable: true },
+  play: async ({ canvasElement }) => {
+    const name = within(canvasElement).getByText('ANALYTICS_REPORTING_WAREHOUSE_DB_PASSWORD');
+    await expect(name).toHaveAttribute('title', ID);
+    await expect(name.querySelectorAll('wbr')).toHaveLength(4);
+  },
+};
+
 export const ShowsTheIdTailForConsent: Story = {
   args: { tail: true },
   play: async ({ canvasElement }) => {

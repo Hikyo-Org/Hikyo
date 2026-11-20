@@ -26,7 +26,11 @@ for (const target of Object.keys(templates)) {
           (path === target ? '/* changed header\n\nend */\n' : header) + calls);
       }
       const before = readFileSync(join(root, 'src/generated', target), 'utf8');
-      const result = spawnSync(process.execPath, ['--experimental-strip-types', script], { encoding: 'utf8' });
+      // pnpm 12 injects an ESM resolve hook through NODE_OPTIONS that treats this
+      // package-less temp script as CommonJS; the fixture must not inherit it.
+      const env = { ...process.env };
+      delete env.NODE_OPTIONS;
+      const result = spawnSync(process.execPath, ['--experimental-strip-types', script], { encoding: 'utf8', env });
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /Generated JSON parser template changed:.*import anchor/);
       assert.equal(readFileSync(join(root, 'src/generated', target), 'utf8'), before);

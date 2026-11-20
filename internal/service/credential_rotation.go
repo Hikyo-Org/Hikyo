@@ -127,6 +127,94 @@ func purgeEnvironmentRotations(ctx context.Context, r store.Repos, proof authz.P
 // lapses, when a run has published one.
 type RotationView struct {
 	store.RotationRecord
+	// HaltReason is why a halted rotation stopped, as one of the fixed words
+	// (retries_exhausted, authority_lost, gate_failed, or unknown for any stored
+	// value that is not one of them); empty unless the state is halted. Never the
+	// stored text itself: an archive can carry anything in that column.
+	HaltReason string
+	// LastRunSummary is the rotation's newest run with its stamp parsed, nil when it
+	// has never run. The owed-drop counts are the record's OwedDropRuns and
+	// OwedDropRunsVersionsChanged.
+	LastRunSummary *RotationLastRunView
+}
+
+// RotationLastRunView is the newest run of a rotation: metadata only, the fixed-word
+// error code the runs list carries, and no role handle.
+type RotationLastRunView struct {
+	ID        string
+	Phase     string
+	ErrorCode string
+	PhaseAt   time.Time
+}
+
+// newRotationView is the one place a stored record becomes the view a transport
+// reads, so the halt reason is never passed on raw and the stamps are parsed once.
+func newRotationView(rec store.RotationRecord) (RotationView, error) {
+	view := RotationView{RotationRecord: rec, HaltReason: rotationHaltWord(rec.State, rec.RawHaltReason)}
+	if rec.LastRun != nil {
+		phaseAt, err := time.Parse(time.RFC3339Nano, rec.LastRun.PhaseAt)
+		if err != nil {
+			return RotationView{}, fmt.Errorf("service: parse rotation last run phase_at: %w", err)
+		}
+		view.LastRunSummary = &RotationLastRunView{ID: rec.LastRun.ID, Phase: rec.LastRun.Phase, ErrorCode: rotationErrorWord(rec.LastRun.ErrorCode), PhaseAt: phaseAt}
+	}
+	return view, nil
+}
+
+// summarizedRotationView returns the view of one rotation a response carries, with
+// the run summary read for it. The summary is a response concern only: the stores'
+// Get and List, the executor's gates and every existence check leave it empty.
+func summarizedRotationView(ctx context.Context, rotations store.RotationReader, proof authz.Proof, rec store.RotationRecord) (RotationView, error) {
+	one := []store.RotationRecord{rec}
+	if err := rotations.Summarize(ctx, proof, one); err != nil {
+		return RotationView{}, err
+	}
+	return newRotationView(one[0])
+}
+
+// RotationErrorUnknown is the error code a run shows when its stored one is not one
+// of the fixed words the executor writes.
+const RotationErrorUnknown = "unknown"
+
+// rotationErrorWord maps a run's stored error code to the fixed words the wire, the
+// CLI and the browser carry (the rotCode words and `abandoned`). The column is text,
+// so a value outside that list, whatever wrote it, is shown as unknown and never
+// passed on. Empty stays empty: the run has no code.
+func rotationErrorWord(stored string) string {
+	switch {
+	case stored == "":
+		return ""
+	case slices.Contains(rotationRunErrorWords, stored):
+		return stored
+	}
+	return RotationErrorUnknown
+}
+
+// rotationRunErrorWords is the one list of the words a run's error code may carry:
+// every rotCode constant plus abandoned. A test ties it to the constants, so a new
+// code cannot be added and silently shown as unknown.
+var rotationRunErrorWords = []string{
+	rotCodeInterrupted, rotCodeProvider, rotCodeMintFailed, rotCodeMintAmbiguous, rotCodePublishFailed,
+	rotCodeBudget, rotCodePaused, rotCodeHeld, rotCodeDropFailed, rotCodeOwnsObjects, rotCodeVersionsChanged,
+	rotCodeRevokeFailed, rotCodeExtendFailed, rotCodeExtendSkipped, rotCodeExpired, rotCodeInfra, "abandoned",
+}
+
+// RotationHaltUnknown is the halt reason of a halted rotation whose stored reason is
+// not one of the words the executor writes (an empty or legacy value).
+const RotationHaltUnknown = "unknown"
+
+// rotationHaltWord maps the stored halt reason to the fixed words the wire, the CLI
+// and the browser use. The reason is read only for a halted rotation: every state
+// change clears it, and a column that disagrees with the state is not believed.
+func rotationHaltWord(state, stored string) string {
+	if state != store.RotationStateHalted {
+		return ""
+	}
+	switch stored {
+	case rotHaltExhausted, rotHaltAuthority, rotHaltGate:
+		return stored
+	}
+	return RotationHaltUnknown
 }
 
 // CreateRotationRequest configures one rotation. The keys must already exist;
@@ -438,7 +526,9 @@ func (s *CredentialRotations) Create(ctx context.Context, actor Actor, scope dom
 		if err != nil {
 			return err
 		}
-		out = RotationView{RotationRecord: record}
+		if out, err = newRotationView(record); err != nil {
+			return err
+		}
 		return insertRotationConfigured(ctx, r, proof, caller.Principal, rotationActionCreated, "", record)
 	})
 	return out, err
@@ -547,7 +637,7 @@ func (s *CredentialRotations) List(ctx context.Context, actor Actor, scope domai
 			return err
 		}
 		// One extra row tells whether another page follows.
-		rows, err := r.Rotations().List(ctx, proof, store.RotationListQuery{IncludeDisabled: req.IncludeDisabled, After: req.After, Limit: limit + 1})
+		rows, err := r.Rotations().List(ctx, proof, store.RotationListQuery{IncludeDisabled: req.IncludeDisabled, KeepOwed: true, After: req.After, Limit: limit + 1})
 		if err != nil {
 			return err
 		}
@@ -555,9 +645,17 @@ func (s *CredentialRotations) List(ctx context.Context, actor Actor, scope domai
 			rows = rows[:limit]
 			out.NextAfter = rows[limit-1].ID
 		}
+		// The summary is read for the returned page only, never for the extra row.
+		if err := r.Rotations().Summarize(ctx, proof, rows); err != nil {
+			return err
+		}
 		out.Items = make([]RotationView, 0, len(rows))
 		for _, row := range rows {
-			out.Items = append(out.Items, RotationView{RotationRecord: row})
+			view, err := newRotationView(row)
+			if err != nil {
+				return err
+			}
+			out.Items = append(out.Items, view)
 		}
 		return nil
 	})
@@ -576,7 +674,10 @@ func (s *CredentialRotations) Get(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		rec, err := r.Rotations().Get(ctx, proof, rotationID)
-		out = RotationView{RotationRecord: rec}
+		if err != nil {
+			return err
+		}
+		out, err = summarizedRotationView(ctx, r.Rotations(), proof, rec)
 		return err
 	})
 	return out, err
@@ -774,7 +875,7 @@ func rotationRunView(row store.RotationRunRecord) (RotationRunView, error) {
 	view := RotationRunView{
 		ID: row.ID, Trigger: row.Trigger, Phase: row.Phase, PublishedRevision: row.PublishedRevision,
 		RevocationDelaySeconds: row.RevocationDelaySeconds, StartedAt: started, PhaseAt: phaseAt,
-		ErrorCode: row.ErrorCode, NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
+		ErrorCode: rotationErrorWord(row.ErrorCode), NotConvergedAdapterTargets: row.NotConvergedAdapterTargets,
 	}
 	if row.CredentialValidUntil != "" {
 		until, err := time.Parse(time.RFC3339Nano, row.CredentialValidUntil)
@@ -968,7 +1069,9 @@ func (s *CredentialRotations) transition(ctx context.Context, actor Actor, scope
 			}
 			return err
 		}
-		out = RotationView{RotationRecord: rec}
+		if out, err = summarizedRotationView(ctx, r.Rotations(), proof, rec); err != nil {
+			return err
+		}
 		return insertRotationConfigured(ctx, r, proof, caller.Principal, action, "", rec)
 	})
 	return out, err
@@ -1030,7 +1133,9 @@ func (s *CredentialRotations) ReleaseHold(ctx context.Context, actor Actor, scop
 		if err != nil {
 			return err
 		}
-		out = RotationView{RotationRecord: rec}
+		if out, err = summarizedRotationView(ctx, r.Rotations(), proof, rec); err != nil {
+			return err
+		}
 		return insertRotationConfigured(ctx, r, proof, caller.Principal, rotationActionHoldReleased, "", rec)
 	})
 	return out, err

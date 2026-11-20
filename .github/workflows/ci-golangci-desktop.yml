@@ -1,0 +1,77 @@
+# Advisory lint of the nested desktop module (#1215) on macOS, where its cgo and
+# darwin-only files compile: golangci-lint at the pinned version with both repository
+# configs over the whole module. The root advisory workflow (ci-golangci.yml) cannot
+# load desktop/. Like it, this is not a required context and is not part of any
+# required job or fast-feedback lane, needs no secrets, and restores or saves no cache.
+name: ci-advisory-golangci-desktop
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'desktop/**'
+      - .golangci.yml
+      - .golangci-strict.yml
+      - scripts/ci/golangci-lint-version
+      - scripts/ci/run-go-tool.sh
+      - .github/workflows/ci-golangci-desktop.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisory-golangci-desktop-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # The workflow's own and the shared lint inputs trigger it everywhere, but the
+  # module exists only once the shell has landed: skip paid macOS minutes before that.
+  module:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      present: ${{ steps.present.outputs.present }}
+    steps:
+      - name: Check out the exact PR head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Detect the desktop module
+        id: present
+        run: |
+          if [ -f desktop/go.mod ]; then echo present=true; else echo present=false; fi >>"$GITHUB_OUTPUT"
+
+  golangci-desktop:
+    name: golangci-lint on the desktop module
+    needs: module
+    if: ${{ needs.module.outputs.present == 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      CGO_ENABLED: "1"
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
+    steps:
+      - name: Check out the exact PR head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify the checkout is the PR head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
+          cache: false
+      - name: golangci-lint, desktop module
+        working-directory: desktop
+        run: |
+          ../scripts/ci/run-go-tool.sh golangci-lint run -j 2 --config ../.golangci.yml ./...
+      # .golangci-strict.yml exists on dev only until main carries it.
+      - name: golangci-lint strict rules, desktop module
+        if: ${{ !cancelled() && hashFiles('.golangci-strict.yml') != '' }}
+        working-directory: desktop
+        run: |
+          ../scripts/ci/run-go-tool.sh golangci-lint run -j 2 --config ../.golangci-strict.yml ./...

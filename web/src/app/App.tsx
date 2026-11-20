@@ -10,7 +10,10 @@ import {
   surfaceById,
   type SurfaceId,
 } from './navigation.ts';
+import { AppSignIn } from './AppSignIn.tsx';
+import { ContinueInBrowser } from './ContinueInBrowser.tsx';
 import { ToastViewport } from './notifications.tsx';
+import { isAppMode } from './shell.ts';
 import { useAuth } from './AuthProvider.tsx';
 import { loginReturnTarget } from './loginReturn.ts';
 import { isDemo, DEMO_MATRIX_PATH } from '../demo/config.ts';
@@ -257,13 +260,18 @@ export function AppRoutes() {
   // A public page's fragment is its own bearer material (a sign-up or
   // invitation token), never a destination to carry into a query string.
   const bearerFragment = publicSurfaces.some((surface) => matchPath(surface.path, location.pathname) !== null);
-  const loginPath = `${surfaceById('login').path}?${new URLSearchParams({
+  // The app's gate page opens in the browser as `/login`, and the shell refuses a
+  // `returnTo`, so app mode goes there bare.
+  const loginPath = isAppMode() ? surfaceById('login').path : `${surfaceById('login').path}?${new URLSearchParams({
     returnTo: `${location.pathname}${location.search}${bearerFragment ? '' : location.hash}`,
   })}`;
   const returnTo = loginReturnTarget(new URLSearchParams(location.search).get('returnTo'));
 
   return <>
-      {live === null ? (
+      {live === null && isAppMode() ? (
+        // The login form never runs in the app: a dead session asks the shell.
+        <AppSignIn />
+      ) : live === null ? (
         <Routes>
           {anonymousSurfaces.map((surface) => (
             <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />
@@ -296,6 +304,7 @@ export function AppRoutes() {
           </Route>
         </Routes>
       )}
+    <ContinueInBrowser />
     <ToastViewport />
   </>;
 }
