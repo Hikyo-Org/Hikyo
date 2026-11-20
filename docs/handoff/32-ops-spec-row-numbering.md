@@ -15,6 +15,7 @@
   - `docs/spec/ops-catalogue.md`: the adapter-outbox citation (row 19 → 20) and
     a dated correction under "Row numbering collision".
   - Code comments and one test citation string:
+    `internal/definitions/bundle.go` (row 15 → 16),
     `internal/remotefetch/bounds.go`, `internal/freetext/sanitize.go` and
     `internal/conformance/boundregistry_test.go`.
 - Handoffs and reports dated before 2026-11-20 keep the old numbers; the
