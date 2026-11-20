@@ -49,6 +49,7 @@ for its ripple register.
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |
 | k8s-integration ADR | [k8s-integration.md](./k8s-integration.md) |
 | k8s-condition-reporting ADR | [k8s-condition-reporting.md](./k8s-condition-reporting.md) |
+| lint-analysis-driver ADR | [lint-analysis-driver.md](./lint-analysis-driver.md) |
 | transit ADR | [transit.md](./transit.md) |
 | machine-identities ADR | [machine-identities.md](./machine-identities.md) |
 | member-access-rules ADR | [member-access-rules.md](./member-access-rules.md) |
