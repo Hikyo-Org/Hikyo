@@ -1,6 +1,9 @@
 // Package reflectx keeps reflection out of packages that handle authz.Proof
 // values: the forgery guard bans reflect there, and this package never sees a
-// proof it could assemble. It is for tests.
+// proof it could assemble. It is for tests. The boundary test
+// TestReflectxCannotForgeUnexportedFields rejects unsafe, reflect.NewAt and the
+// Unsafe*/Pointer() accessors here; that syntactic check is the guard, not a
+// proof that no other route to unexported fields exists.
 package reflectx
 
 import (
