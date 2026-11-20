@@ -626,23 +626,31 @@ suites added before REST reads it) is read differently: a GraphQL scan of its
 `github-actions` suites compares each suite's latest and finished run counts,
 and REST reads only the suites where they differ. Suite status is not used;
 GitHub reports a suite completed while a synthetic run in it is still queued.
-The retire and reporter owners list checks by commit under the same REST cap,
-so an unfinished synthetic context on a commit with more than 900 suites refuses
-all targets instead of being routed to an owner that may not see it. No operator
-tool clears that refusal: it lasts until the context completes, the commit's
-rollup turns `SUCCESS` or the commit leaves the window. Targeted dispatch on a
-head with more than 1,000 suites can likewise miss such a context and report
-success. API failures, incomplete pages, more
-than 5,000 `github-actions` suites or 100 unfinished suites on such a commit,
-more than 1,000 records in one suite's listing or more than 100 target heads
-refuse all targets. A suite-count refusal persists until the commit's rollup
-turns `SUCCESS` or it leaves the 1,000-commit window, about three weeks at the
-current merge rate. A commit still
-gaining checks, such as a busy main head, can change its totals mid-scan and
-refuse until the next run. A full window takes about three to four minutes, so
-discovery has a five-minute deadline. Each 100 suites scanned adds about 2 s and
-history pages run one after another, so the deadline, not the suite cap, bounds
-oversized commits: about 40 more suite pages per window than today's 36. Window completion is not
+The retire and reporter owners read the same way: past 900 suites (a count read
+before every listing) they list a check's runs only in the `github-actions`
+suites that hold runs of its name, one REST listing per suite, so a context on an
+oversized commit is routed, retired and found by the reporter like any other.
+Queue admission lists a head's checks at least three times inside its 45-second
+read budget and each listing repeats the scan (about 1.4 s per 100 suites for the
+owners' scan). Past 900 suites admission may time out; at 1,000 the scans alone
+take about 42 s. It then fails closed and the PR needs a new head.
+Because those reads open only `github-actions` suites, the owners also list the
+name by commit and refuse another app's same-name record there, as a listing by
+commit alone did. They refuse when the `github-actions` suite total changes during a scan, so a
+head still gaining suites can refuse until a later attempt. A controller record the listing by commit shows but the suite inventory lacks is
+refused, not treated as absent.
+Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
+cannot be completed, a run reported by two suites, or a check in more than 100
+suites refuses instead of listing partially. Discovery refuses all targets on
+API failures, incomplete pages, more than 5,000 `github-actions` suites or 100
+unfinished suites on a candidate, more than 1,000 records in one suite's listing
+or more than 100 target heads. A commit still gaining checks, such as a busy main
+head, can change its totals mid-scan and refuse until the next run. A full window
+takes about three to four minutes, so discovery has a five-minute deadline. Each
+100 suites scanned adds about 2 s and history pages run one after another, so the
+deadline, not the suite cap, bounds oversized commits: about 40 more suite pages
+per window than today's 36. Running out of time after suite pages reports how many
+pages and history pages were read. Window completion is not
 evidence that all history was cleaned.
 Legacy observer heads run in batches of at most ten unique heads concurrently
 under their one global lease and compiled executable. Every child is awaited,

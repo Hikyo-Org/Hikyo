@@ -15,7 +15,7 @@ func normalizeImpactAdditions(jobs map[string]map[string]any) error {
 	delete(jobs["ci-required"], "permissions")
 	expected := map[string]any{
 		"name": "Staged impact CI fixtures",
-		"run": "go test -count=1 ./scripts/ci/queue-report\n" +
+		"run": "go test -count=1 ./scripts/ci/queue-report ./scripts/ci/checksuites\n" +
 			"go test -count=1 ./scripts/ci -run '^TestDocsQueue'\n",
 	}
 	steps, ok := jobs["supply-chain-checks"]["steps"].([]any)

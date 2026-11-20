@@ -210,7 +210,7 @@ jobs:
       # Keep supervisor/refusal regressions mandatory without spending the
       # per-commit deadline testing the feedback harness itself.
       - name: Select pinned Node for feedback fixtures
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Fast feedback refusal and deadline fixtures
@@ -382,7 +382,7 @@ jobs:
           go test -count=1 ./scripts/ci -run '^(TestRequiredJobCannotSkipOnPullRequests|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
       - name: Staged impact CI fixtures
         run: |
-          go test -count=1 ./scripts/ci/queue-report
+          go test -count=1 ./scripts/ci/queue-report ./scripts/ci/checksuites
           go test -count=1 ./scripts/ci -run '^TestDocsQueue'
       - name: Docker daemon mirror and PostgreSQL startup fixtures
         run: |
@@ -458,7 +458,7 @@ jobs:
           key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
             go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -545,7 +545,7 @@ jobs:
           key: go-release-snapshot-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', '.goreleaser.yaml') }}
           restore-keys: |
             go-release-snapshot-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -737,7 +737,7 @@ jobs:
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
         run: ./scripts/ci/start-ci-postgres.sh
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -804,7 +804,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Typecheck, build, and assert O4-O6 policy content
@@ -925,7 +925,7 @@ jobs:
       # permission before the browser harness starts the downloaded binary.
       - name: Prepare prebuilt browser binaries
         run: chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp ci-artifacts/mail-sink
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -1030,7 +1030,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Download every leg's flow run log
@@ -1069,7 +1069,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -1365,7 +1365,7 @@ jobs:
         with:
           go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
           cache: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install pinned Corepack
