@@ -43,6 +43,7 @@ fmt
 github.com/wailsapp/wails/v3/pkg/application
 github.com/Hikyo-Org/hikyo/desktop
 github.com/Hikyo-Org/hikyo/desktop/internal/shell
+github.com/Hikyo-Org/hikyo/desktop_test [github.com/Hikyo-Org/hikyo/desktop.test]
 github.com/Hikyo-Org/hikyo/internal/clientauth
 github.com/Hikyo-Org/hikyo/internal/clienttrust [github.com/Hikyo-Org/hikyo/internal/clienttrust.test]
 github.com/Hikyo-Org/hikyo/internal/clienttrust.test
