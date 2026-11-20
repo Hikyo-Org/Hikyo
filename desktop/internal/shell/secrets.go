@@ -42,7 +42,7 @@ func (s Secret) bindingMismatch(info Connection) string {
 var ErrNoSecret = errors.New("no stored session for this connection")
 
 // ErrItemUntrusted means the keychain item exists but is not restricted to this
-// application, so another process may have planted or can read it. Get returns
+// application, so another process can read it. This is an access check, not proof of who wrote the item. Get returns
 // it instead of the secret; the item is never used or revoked through.
 var ErrItemUntrusted = errors.New("the keychain item is not restricted to this application")
 
