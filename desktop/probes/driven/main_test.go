@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func passing() map[string]finding {
@@ -81,4 +82,19 @@ func post(t *testing.T, base, body string) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return http.DefaultClient.Do(req)
+}
+
+// An app that exits before the page reports must return its error, not block on
+// the deferred wait.
+func TestRunReturnsWhenTheAppExitsEarly(t *testing.T) {
+	done := make(chan error, 1)
+	go func() { done <- run("/usr/bin/false", time.Minute) }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "exited before the page reported") {
+			t.Fatalf("run = %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("run blocked after the app exited")
+	}
 }

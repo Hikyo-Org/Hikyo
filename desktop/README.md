@@ -100,17 +100,25 @@ Code signing and notarization are later work (plan PR 5). v1 has no updater
 
 ## CI
 
-The `desktop` job in `.github/workflows/ci.yml` runs on a pinned macOS runner:
-the module boundary check, `go test -race ./...`, the probe and release builds,
-and the driven WKWebView lane. The advisory `ci-golangci-desktop.yml` lints it. Run the same locally:
+The CI definitions for this module (the pinned-macOS `desktop` job in
+`.github/workflows/ci.yml`, the advisory `.github/workflows/ci-golangci-desktop.yml`
+lint, `scripts/ci/check-desktop-deps.sh` and the
+[Desktop shell (macOS)](../docs/development/ci.md#desktop-shell-macos) section of the
+CI guide) land with #1462 on `main` first. Until that merges they do not exist in
+this tree, and no CI job builds or tests this module. Once they land, the `desktop`
+job runs the module boundary check, `go test -race ./...`, the probe and release
+builds and the driven WKWebView lane.
+
+Run the same checks locally from `desktop/` (the last line needs the #1462 script):
 
 ```sh
 export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
 go test -race ./...
 go build -tags probe -o /tmp/hikyo-desktop-probe .
+go build -o /tmp/hikyo-desktop .   # the release build, without the probe tag
 go run ./probes/driven -app /tmp/hikyo-desktop-probe   # opens a window briefly
-../scripts/ci/check-desktop-deps.sh
+../scripts/ci/check-desktop-deps.sh   # after #1462
 ```
 
 The driven lane seeds one login-keychain item for a fake connection and deletes it
-when the run ends. See [docs/development/ci.md](../docs/development/ci.md#desktop-shell-macos).
+when the run ends.

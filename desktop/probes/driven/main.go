@@ -211,15 +211,18 @@ func run(app string, timeout time.Duration) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
+	// exited closes when the app stops; waitErr is valid only after that, so the
+	// select and the deferred wait below can both observe the exit.
+	var waitErr error
+	exited := make(chan struct{})
+	go func() { waitErr = cmd.Wait(); close(exited) }()
 	defer deleteSeededSecret(work)
-	defer func() { cancel(); <-exited }() //nolint:errcheck // the receive only waits for the app to stop
+	defer func() { cancel(); <-exited }()
 
 	select {
 	case <-in.done:
-	case err := <-exited:
-		return fmt.Errorf("the app exited before the page reported: %w", err)
+	case <-exited:
+		return fmt.Errorf("the app exited before the page reported: %w", waitErr)
 	case <-ctx.Done():
 		return errors.New("timed out waiting for the page's report")
 	}
