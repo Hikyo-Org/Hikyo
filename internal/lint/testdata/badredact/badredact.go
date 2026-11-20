@@ -52,7 +52,8 @@ type holder struct {
 // Every sub-expression is checked, so a field of a struct that merely holds a
 // sensitive value is flagged too (h.seq, h.count()). That over-approximation is
 // deliberate until a narrower rule passes a differential test against these
-// fixtures; the leaks below must stay flagged under any narrowing.
+// fixtures (#1468); the other cases in Narrowing, and all of
+// NarrowingKeepsLeaks and Promoted, must stay flagged under any narrowing.
 func Narrowing(h holder) {
 	_ = fmt.Sprintf("id_%d", h.seq)           // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.keyring)          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
