@@ -397,7 +397,8 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 		return res, err
 	}
 	newGen := plan.Stamp + "-" + suffix
-	if err := d.stage(newGen, plan, probe, oldGen); err != nil {
+	staged, err := d.stage(newGen, plan, probe, oldGen)
+	if err != nil {
 		// A staging failure (a full disk, a refused chown) removes the partial
 		// generation; `current` was never touched.
 		_ = d.gen.RemoveAll(newGen)
@@ -424,7 +425,11 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 			res.Retained = append(res.Retained, name)
 		}
 	}
-	if err := d.swapCurrent(newGen); err != nil {
+	if err := d.swapCurrent(newGen, staged); err != nil {
+		if errors.Is(err, ErrForeign) {
+			// Refused before the commit: nothing names the staged generation.
+			_ = d.gen.RemoveAll(newGen)
+		}
 		return res, err
 	}
 	res.Changed, res.Generation = true, newGen
@@ -712,38 +717,39 @@ func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
 
 // stage writes a complete, fsynced generation. Each file is created O_EXCL
 // with owner-only mode, chowned and chmodded BEFORE any byte is written, so
-// plaintext never exists under a wider mode or the wrong owner.
-func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string) error {
+// plaintext never exists under a wider mode or the wrong owner. It returns the
+// staged directory's identity, which swapCurrent checks before the commit.
+func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string) (fs.FileInfo, error) {
 	if err := d.gen.Mkdir(gen, 0o700); err != nil {
-		return err
+		return nil, err
 	}
 	// Pin the new generation: every write below and the final chown/chmod use
 	// these handles, never the name, so a swapped directory is not followed.
 	root, err := openDirRoot(d.gen, gen)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = root.Close() }()
 	dir, err := root.Open(".")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = dir.Close() }()
 	for _, f := range plan.Files {
 		if probe != nil {
 			if err := probe.BeforeWrite(f.Name); err != nil {
-				return fmt.Errorf("filesync: write %s: %w", f.Name, err)
+				return nil, fmt.Errorf("filesync: write %s: %w", f.Name, err)
 			}
 		}
 		if err := d.writeOwned(root, f.Name, f.Content, plan.Policy); err != nil {
-			return fmt.Errorf("filesync: write %s: %w", f.Name, err)
+			return nil, fmt.Errorf("filesync: write %s: %w", f.Name, err)
 		}
 	}
 	if err := d.writeFileSynced(root, previousName, []byte(previous+"\n"), 0o600); err != nil {
-		return err
+		return nil, err
 	}
 	if err := d.writeFileSynced(root, completeName, []byte(plan.Stamp+"\n"), 0o600); err != nil {
-		return err
+		return nil, err
 	}
 	// The generation directory must let the configured owner and group reach
 	// the files it holds; it never grants more than the file mode does.
@@ -753,16 +759,20 @@ func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string)
 	}
 	if plan.Policy.UID >= 0 || plan.Policy.GID >= 0 {
 		if err := dir.Chown(plan.Policy.UID, plan.Policy.GID); err != nil {
-			return fmt.Errorf("filesync: chown generation: %w", err)
+			return nil, fmt.Errorf("filesync: chown generation: %w", err)
 		}
 	}
 	if err := dir.Chmod(dirMode); err != nil {
-		return err
+		return nil, err
 	}
 	if err := dir.Sync(); err != nil {
-		return err
+		return nil, err
 	}
-	return syncRootDir(d.gen, ".")
+	staged, err := dir.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return staged, syncRootDir(d.gen, ".")
 }
 
 // ensureGenDirAccess keeps the shared generation directory independent from
@@ -853,7 +863,7 @@ func (d *Destination) retain(gen, name string) error {
 }
 
 // swapCurrent is the commit point: a fresh link renamed over `current`.
-func (d *Destination) swapCurrent(gen string) error {
+func (d *Destination) swapCurrent(gen string, staged fs.FileInfo) error {
 	suffix, err := randomHex(8)
 	if err != nil {
 		return err
@@ -862,11 +872,32 @@ func (d *Destination) swapCurrent(gen string) error {
 	if err := d.gen.Symlink(gen, tmp); err != nil {
 		return err
 	}
+	if err := d.stillNamed(gen, staged); err != nil {
+		_ = d.gen.Remove(tmp)
+		return err
+	}
 	if err := d.gen.Rename(tmp, currentName); err != nil {
 		_ = d.gen.Remove(tmp)
 		return err
 	}
 	return syncRootDir(d.gen, ".")
+}
+
+// stillNamed refuses a commit the public links could not see: readers resolve
+// .hikyo-gen and the generation by name, while staging went through the pinned
+// handles. A move after this check is a later tamper that Intact reports.
+func (d *Destination) stillNamed(gen string, staged fs.FileInfo) error {
+	pinned, err := d.gen.Stat(".")
+	if err != nil {
+		return err
+	}
+	if named, err := d.root.Lstat(genDir); err != nil || !os.SameFile(pinned, named) {
+		return fmt.Errorf("%w: %s moved during publication", ErrForeign, path.Join(d.dir, genDir))
+	}
+	if named, err := d.gen.Lstat(gen); err != nil || !os.SameFile(staged, named) {
+		return fmt.Errorf("%w: generation %s moved during publication", ErrForeign, gen)
+	}
+	return nil
 }
 
 // ensureLinks creates the stable per-name links that do not exist yet. Each is

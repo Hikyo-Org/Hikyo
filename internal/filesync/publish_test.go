@@ -777,9 +777,17 @@ func TestPublishGenerationSwapDoesNotChmodTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := &swapProbe{t: t, dir: f.dir, victim: "victim"}
-	_, _ = f.publish(probe, file("a", "1"))
+	res, err := f.publish(probe, file("a", "1"))
 	if !probe.done {
 		t.Fatal("probe never ran")
+	}
+	// The staged files live in the moved directory; `current` would name the
+	// symlink, so readers could not open them. That is not a publication.
+	if err == nil || res.Changed {
+		t.Fatalf("publish through a swapped generation = %+v, %v; want a refusal", res, err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.dir, "a")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("public path a exists after a refused publication: %v", err)
 	}
 	fi, err := os.Stat(victim)
 	if err != nil {
@@ -1112,4 +1120,36 @@ func TestRetainRefusesSymlinkPlantedBeforePublication(t *testing.T) {
 	}
 	_, err := f.publish(nil, file("a", "A2"))
 	assertNotLeaked(t, f, err)
+}
+
+// Moving .hikyo-gen after pinGen leaves the pinned handle on the moved
+// directory while the public links still resolve through the name. Committing
+// there would report a publication no reader can see.
+func TestPublishRefusesCommitThroughMovedGenDir(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.mustPublish(file("a", "A"))
+	oldGen, _ := currentGenPath(t, f, "a")
+	away := filepath.Join(f.dir, "away")
+	if err := os.Mkdir(away, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(away, genDir)
+	probe := &beforeCommitProbe{run: func() {
+		if err := os.Rename(filepath.Join(f.dir, genDir), moved); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	res, err := f.publish(probe, file("a", "A2"))
+	if !errors.Is(err, ErrForeign) || res.Changed {
+		t.Fatalf("publish through a moved %s = %+v, %v; want ErrForeign", genDir, res, err)
+	}
+	if got, err := os.Readlink(filepath.Join(moved, currentName)); err != nil || got != oldGen {
+		t.Fatalf("moved current = %q, %v; want the untouched %s", got, err, oldGen)
+	}
+	if _, err := os.ReadFile(filepath.Join(f.dir, "a")); err == nil {
+		t.Fatal("public path a resolved after its generation directory moved")
+	}
+	// The refused staged generation is removed, not left to leak plaintext.
+	assertOnlyGenerations(t, away, oldGen)
 }
