@@ -91,8 +91,10 @@ or `absent`; production never silently borrows a development default.
 | `LOG_LEVEL` | `debug` | `info` | `info` |
 | `SENTRY_DSN` | ○ absent | ● secret set | ● secret set |
 
-The same model is available through the embedded web UI, CLI, and API. Hikyo
-ships as one Go binary and supports both SQLite and PostgreSQL.
+The same model is available through the embedded web UI, CLI, API, and the
+macOS [desktop app](https://hikyo.app/docs/desktop-app/) (not published yet). The Hikyo server ships
+as one Go binary and supports both SQLite and PostgreSQL. The desktop app is a
+separate client for hosted instances and contains no server.
 
 ## What makes Hikyo different
 
@@ -105,8 +107,8 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
   Reveal and copy require reauthentication and create dedicated audit events.
 - **One authorization chokepoint.** Humans, machine identities, and local
   break-glass use the same capability-and-scope decision model.
-- **Self-hosting is the product.** One binary, an embedded UI, your database,
-  your root key, and no enterprise-only implementation.
+- **Self-hosting is the product.** One server binary, an embedded UI, your
+  database, your root key, and no enterprise-only implementation.
 
 ## Quick start
 
@@ -158,7 +160,10 @@ to declare a key and set its first value.
 
 ## CLI at a glance
 
-One binary handles both operator and day-to-day client workflows.
+The `hikyo` binary handles both operator and day-to-day client workflows. Against
+a hosted instance the CLI needs no server on your Mac: run
+`hikyo login <instance-url> --tls-mode system-ca` (for a publicly trusted
+certificate) and go.
 
 ```bash
 # Operate the instance
