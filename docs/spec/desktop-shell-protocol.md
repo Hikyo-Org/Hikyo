@@ -42,7 +42,10 @@ retryable), `invalid` (malformed request).
   in `api/openapi.yaml`. `developer-credential` is `refused`. `key_ids` holds at
   most 500 entries (the handoff's limit for non-adapter purposes); a larger unit
   is `refused` by the SPA before it calls the shell. `adapter` sends the whole
-  environment set in one call and no `key_ids`. `self-config` carries
+  environment set in one call and no `key_ids`. The key-bound purposes (`reveal`,
+  `copy`, `publish`, `approve`, `reject`, `bypass`) send exactly one environment
+  and `key_ids` naming exactly the unit the decision covers; a ceremony over a
+  different or empty key set does not authorize the decision. `self-config` carries
   `self_config` and an empty `environment_ids`, because the handoff refuses a
   self-config request that names an environment (`internal/server/cli_reauth.go`);
   every other purpose names at least one environment and carries no `self_config`.
