@@ -143,7 +143,7 @@ func deferredSite(pkgID, analyzer, posn string) bool {
 func buildVetTool(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "lintvet")
-	cmd := exec.Command("go", "build", "-o", bin, Module+"/internal/lint/cmd/lintvet")
+	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", bin, Module+"/internal/lint/cmd/lintvet")
 	cmd.Dir = moduleRoot()
 	cmd.Env = Contexts[0].Env()
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -167,7 +167,7 @@ func runVet(t *testing.T, bin string, ctx BuildContext, flags, patterns []string
 		args = append(args, "-overlay="+overlay)
 	}
 	args = append(append(args, flags...), patterns...)
-	cmd := exec.Command("go", args...)
+	cmd := exec.CommandContext(t.Context(), "go", args...)
 	cmd.Dir = moduleRoot()
 	cmd.Env = ctx.Env()
 	var stdout, stderr bytes.Buffer
