@@ -342,6 +342,12 @@ func hikyoDownloadFinished(key C.uintptr_t) {
 		failDownload("The download took too long or its window was closed, so it was not saved.")
 		return
 	}
+	// Off the main thread: on a volume without hard links PublishDownload copies
+	// the whole file, and the alerts post themselves to the main thread.
+	go finishDownload(temp, final, replace)
+}
+
+func finishDownload(temp, final string, replace bool) {
 	if err := shell.Quarantine(temp); err != nil {
 		log.Printf("download: could not mark the file as downloaded: %v", err)
 		_ = os.Remove(temp)
