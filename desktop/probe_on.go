@@ -61,9 +61,20 @@ func installProbe(w *application.WebviewWindow, host string) {
 	if host == shell.AppHost {
 		name = "app"
 	}
+	// The poller ends with its window, so a reopened host's command file is
+	// never taken by the old one.
+	closed := make(chan struct{})
+	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) { close(closed) })
 	go func() {
 		file := filepath.Join(dir, name+".js")
-		for range time.Tick(250 * time.Millisecond) {
+		tick := time.NewTicker(250 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-closed:
+				return
+			case <-tick.C:
+			}
 			script, err := os.ReadFile(file)
 			if err != nil || !ready.Load() {
 				continue
@@ -90,6 +101,14 @@ func probeSeed(s *shell.Store) string {
 		PrincipalID: "usr_probe", PrincipalName: "Probe", Created: time.Now()}
 	if err := s.Put(info); err != nil {
 		log.Fatal(err)
+	}
+	// Recorded before the keychain write, outside the renderer log, so a run
+	// that dies early still has its item cleaned up.
+	if dir := devDataDir(); dir != "" {
+		if f, err := os.OpenFile(filepath.Join(dir, "seeded"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			_, _ = f.WriteString(host + "\n")
+			_ = f.Close()
+		}
 	}
 	if err := (keychain{}).Put(host, shell.Secret{Token: "probe-token", SessionID: "ses_probe", Origin: origin, TrustMode: clienttrust.ModeSystemCA, PrincipalID: "usr_probe"}); err != nil {
 		log.Fatal(err)

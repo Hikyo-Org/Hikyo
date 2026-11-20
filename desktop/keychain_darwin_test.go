@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,7 +57,7 @@ func TestKeychainPutReplacesAPlantedItem(t *testing.T) {
 	host := "c-test-planted"
 	t.Cleanup(func() { _ = k.Delete(host) })
 	// -A: any application may read it, as a planting process would arrange.
-	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", host, "-w", "planted").CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", host, "-w", "planted", loginKeychain(t)).CombinedOutput(); err != nil {
 		t.Fatalf("planting: %v %s", err, out)
 	}
 	// A reader must refuse the planted item outright, never return its token.
@@ -217,9 +218,20 @@ func TestKeychainSignedMatchesByRequirement(t *testing.T) {
 	adhoc.expect(t, "get", "untrusted")
 	// An item open to any application is refused even by the signed app.
 	a.expect(t, "delete", "ok")
-	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", helperHost, "-w", "planted").CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", helperHost, "-w", "planted", loginKeychain(t)).CombinedOutput(); err != nil {
 		t.Fatalf("planting: %v %s", err, out)
 	}
 	a.expect(t, "get", "untrusted")
 	moved.expect(t, "get", "untrusted")
+}
+
+// loginKeychain is the file the app reads and writes. Planting into it by path
+// keeps the test valid when the default keychain is another one.
+func loginKeychain(t *testing.T) string {
+	t.Helper()
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(u.HomeDir, "Library", "Keychains", "login.keychain-db")
 }
