@@ -32,7 +32,10 @@ type Native interface {
 	// with the window's id before the window loads anything, so the shell
 	// can tell which window a request came from.
 	OpenWindow(host, title string, bind func(windowID string)) error
-	CloseWindow(host string)
+	// CloseWindow closes host's window and returns only once its web view is
+	// torn down, so the storage can be wiped. An error means it is not known to
+	// be gone.
+	CloseWindow(host string) error
 	// WipeStorage deletes the website data of the connection's origin.
 	WipeStorage(host string) error
 	// Confirm shows a blocking native confirmation.
@@ -41,8 +44,10 @@ type Native interface {
 	Alert(title, message string)
 	// SavePanel shows a blocking save panel with a suggested name. source
 	// names the connection asking, so the user can tell which one it is.
-	// mimeType, when set, is the page's type hint for the file.
-	SavePanel(suggestedName, source, mimeType string) (path string, ok bool)
+	// mimeType, when set, is the page's type hint for the file. replace is true
+	// only when the person was asked about, and accepted, replacing a file that
+	// was at path when the panel answered; nothing else may be replaced.
+	SavePanel(suggestedName, source, mimeType string) (path string, replace, ok bool)
 	// AppActive reports whether the app is the frontmost application.
 	AppActive() bool
 	// ShowDeviceCode shows a device-flow code until dismiss is called. cancel
@@ -207,6 +212,13 @@ func (m *Manager) OpenConnection(host string) error {
 	var missing capabilityError
 	if err := checkCapability(ctx, c.inst); errors.As(err, &missing) {
 		return &shellErr{codeCapabilityMissing, c.Info().Name + ": " + missing.Error()}
+	}
+	// Held across the open so a removal either finishes first (refused here) or
+	// starts after the window exists (and closes it).
+	c.lifeMu.Lock()
+	defer c.lifeMu.Unlock()
+	if c.state != lifeActive || c.isTampered() {
+		return &shellErr{codeRefused, c.Stopped()}
 	}
 	return m.native.OpenWindow(host, "Hikyo: "+c.Info().Name, func(id string) { m.BindWindow(id, host) })
 }

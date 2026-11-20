@@ -95,17 +95,18 @@ func (c *Conn) download(ctx context.Context, proxiedPath string, data []byte, na
 	if name == "" {
 		name = fallbackName
 	}
-	dest, ok := c.m.native.SavePanel(SanitizeFilename(name), c.Info().Name, mimeType)
-	if !ok {
+	dest, replace, ok := c.m.native.SavePanel(SanitizeFilename(name), c.Info().Name, mimeType)
+	// A request cancelled while the panel was open saves nothing, however the
+	// panel was answered.
+	if !ok || ctx.Err() != nil {
 		return &shellErr{codeCancelled, "the download was cancelled"}
 	}
-	// The panel asks before replacing a file it saw; one that appears later is
-	// not replaced (PublishDownload).
-	_, statErr := os.Lstat(dest)
-	return c.writeDownload(dest, statErr == nil, src, data)
+	// replace is the panel's own answer; a file that appeared later is never
+	// replaced (PublishDownload).
+	return c.writeDownload(ctx, dest, replace, src, data)
 }
 
-func (c *Conn) writeDownload(dest string, replaceApproved bool, src *downloadSource, data []byte) *shellErr {
+func (c *Conn) writeDownload(ctx context.Context, dest string, replaceApproved bool, src *downloadSource, data []byte) *shellErr {
 	tmp, err := os.CreateTemp(filepath.Dir(dest), ".hikyo-download-*")
 	if err != nil {
 		return &shellErr{codeFailed, "the file could not be created there"}
@@ -138,8 +139,15 @@ func (c *Conn) writeDownload(dest string, replaceApproved bool, src *downloadSou
 	if err := setQuarantine(tmp.Name()); err != nil {
 		return &shellErr{codeFailed, "the file could not be marked as downloaded"}
 	}
-	if _, err := PublishDownload(tmp.Name(), dest, replaceApproved); err != nil {
+	if ctx.Err() != nil {
+		return &shellErr{codeCancelled, "the download was cancelled"}
+	}
+	saved, err := PublishDownload(tmp.Name(), dest, replaceApproved)
+	if err != nil {
 		return &shellErr{codeFailed, "the file could not be saved there"}
+	}
+	if saved != dest {
+		c.m.native.Alert("Download saved under another name", "A file with that name appeared while the download ran, so it was saved as "+filepath.Base(saved)+".")
 	}
 	return nil
 }

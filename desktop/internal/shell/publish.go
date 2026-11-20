@@ -3,6 +3,7 @@ package shell
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -34,13 +35,44 @@ func PublishDownload(temp, final string, replaceApproved bool) (string, error) {
 		case errors.Is(err, fs.ErrExist):
 			continue
 		}
-		// shortcut: a volume without hard links (exFAT, some network shares)
-		// falls back to a checked rename, which has a small race; upgrade if
-		// those volumes matter.
-		if _, serr := os.Lstat(name); serr == nil {
-			continue
+		// A volume without hard links (exFAT, some network shares): claim the name
+		// with an exclusive create, which also fails when the name exists, then fill
+		// it in. The claimed file is marked before it gets any content.
+		if err := copyExclusive(temp, name); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+			return "", err
 		}
-		return name, os.Rename(temp, name)
+		_ = os.Remove(temp)
+		return name, nil
 	}
 	return "", errors.New("no free file name")
+}
+
+// copyExclusive creates name only if it does not exist, marks it as downloaded,
+// and copies temp into it. A failure removes the file it created.
+func copyExclusive(temp, name string) (err error) {
+	src, err := os.Open(temp)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = src.Close() }()
+	dst, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := dst.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			_ = os.Remove(name)
+		}
+	}()
+	if err = setQuarantine(name); err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	return err
 }

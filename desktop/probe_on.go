@@ -142,13 +142,15 @@ func (p probeDialogs) Confirm(title, message, label string) bool {
 	return true
 }
 
-func (p probeDialogs) SavePanel(name, source, mimeType string) (string, bool) {
+func (p probeDialogs) SavePanel(name, source, mimeType string) (string, bool, bool) {
 	dir := os.Getenv("HIKYO_DESKTOP_PROBE_SAVE_DIR")
 	if dir == "" {
 		return p.Native.SavePanel(name, source, mimeType)
 	}
 	log.Printf("probe: save panel for %q from %q", name, source)
-	return filepath.Join(dir, name), true
+	dest := filepath.Join(dir, name)
+	_, err := os.Lstat(dest)
+	return dest, err == nil, true
 }
 
 // probeOpener appends the URL the shell wants opened to

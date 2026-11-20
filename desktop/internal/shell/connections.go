@@ -73,7 +73,9 @@ func checkCapability(ctx context.Context, in *Instance) error {
 	}
 	var meta apigen.Meta
 	if err := json.Unmarshal(data, &meta); err != nil {
-		return clienterr.Failf(clienterr.ExitInternal, "the instance sent an unreadable response")
+		// A 200 that is not the meta document (a login page, a proxy's error
+		// page) does not advertise the capability.
+		return capabilityError{serverVersion: "unknown"}
 	}
 	if !slices.Contains(meta.ProtocolCapabilities, capabilityDesktop) {
 		return capabilityError{serverVersion: meta.ServerVersion}
@@ -167,73 +169,68 @@ type RemoveResult struct {
 }
 
 // Remove revokes the connection's session on the instance first, then deletes
-// its window, browser storage, keychain item and record together (ADR D2).
-// A failed revocation is reported plainly and does not keep the data. A failed
-// storage wipe keeps an unusable record, so it can be retried.
+// its window, browser storage, keychain item and record (ADR D2). The retry
+// marker is stored before anything is destroyed (beginRemoval); from then on the
+// connection is unusable and never restored, so a step that fails is reported
+// and Remove can be run again from the list. A failed revocation is reported
+// plainly and does not keep the data.
 func (m *Manager) Remove(ctx context.Context, host string) (RemoveResult, error) {
 	c := m.conn(host)
 	if c == nil {
 		return RemoveResult{}, &shellErr{codeInvalid, "unknown connection"}
 	}
-	// No ceremony may store a session after this point (ADR D2).
-	undo := c.beginRemoval()
+	c.removeMu.Lock()
+	defer c.removeMu.Unlock()
+	token, retry, err := c.beginRemoval()
+	if errors.Is(err, errRemoved) {
+		return RemoveResult{}, &shellErr{codeInvalid, "unknown connection"}
+	}
+	if err != nil {
+		return RemoveResult{}, &shellErr{codeFailed, "the removal could not be recorded, so nothing was changed: " + err.Error()}
+	}
 	const notRevoked = "The session could not be revoked on the instance, so it stays valid until it expires. Revoke it from another signed-in session."
-	const ended = "This connection's session was ended while it was being removed. Sign in again, or remove it again to finish."
 	var revokeErr error
-	switch token := c.bearer(); {
-	case token != "":
+	if token != "" {
 		revokeErr = c.revoke(ctx, token)
-	default:
+	} else {
 		revokeErr = m.revokeStored(ctx, host)
 	}
-	if c.Info().WipePending && errors.Is(revokeErr, ErrNoSecret) {
-		// Revoked and deleted by the earlier removal; only the data is left.
-		// The flag is a file edit away, so an item that is still there is revoked.
-		revokeErr = nil
+	if revokeErr == nil {
+		c.revoked = true
 	}
 	result := RemoveResult{Revoked: revokeErr == nil}
 	switch {
+	case errors.Is(revokeErr, ErrNoSecret) && c.revoked:
+		// An earlier attempt of this run revoked it and deleted the item.
+		result.Revoked = true
+	case errors.Is(revokeErr, ErrNoSecret) && retry:
+		result.Message = "An earlier removal already deleted the stored session; whether it was revoked on the instance can't be confirmed here."
 	case errors.Is(revokeErr, ErrNoSecret):
 		result.Message = "There was no stored session to revoke."
 	case revokeErr != nil:
 		result.Message = notRevoked
 	}
-	if revokeErr == nil {
-		c.endSession(ended)
+	// The renderer must be gone before its data is wiped, or it could write the
+	// data back.
+	if err := m.native.CloseWindow(host); err != nil {
+		return result, &shellErr{codeFailed, "the window did not close, so the browser data was not deleted: " + err.Error()}
 	}
-	m.native.CloseWindow(host)
 	wipeErr := m.native.WipeStorage(host)
 	if err := m.secrets.Delete(host); err != nil {
-		// Keep the record so the user can retry: an orphaned keychain item
-		// would be unreachable from the list.
-		undo()
 		return result, &shellErr{codeFailed, "the keychain item could not be deleted: " + err.Error()}
 	}
-	c.endSession(ended)
 	if wipeErr != nil {
-		// The session and keychain item are gone but the page's data is not.
-		// Keep a record that can't open the connection, so the wipe can be
-		// retried from the list.
-		info := c.Info()
-		info.WipePending = true
-		if err := m.store.Put(info); err != nil {
-			undo()
-			return result, &shellErr{codeFailed, "browser data could not be deleted and the connection could not be marked for a retry: " + err.Error()}
-		}
-		c.markWipePending(info)
 		result.StorageKept = true
 		result.Message = strings.TrimSpace(result.Message + " The connection's browser data could not be deleted (" + wipeErr.Error() + "). It stays in the list; remove it again to retry.")
 		return result, nil
 	}
 	if err := m.store.Remove(host); err != nil {
-		undo()
 		return result, &shellErr{codeFailed, "the connection record could not be deleted: " + err.Error()}
 	}
 	m.mu.Lock()
 	delete(m.conns, host)
 	m.mu.Unlock()
-	c.flights.cancelAll()
-	c.closeInstance()
+	c.finishRemoval()
 	return result, nil
 }
 
