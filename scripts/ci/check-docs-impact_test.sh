@@ -80,6 +80,23 @@ expect_page http-api.mdx
 expect_fail variables-alone 'feat: setting' "$vars"
 expect_page configuration.mdx
 
+# desktop/: the shell's routes and launch environment need the spec or the README.
+routes=desktop/internal/shell/shellroutes.go
+launch=desktop/main_darwin.go
+spec=docs/spec/desktop-shell-protocol.md
+expect_pass desktop-internal 'fix: proxy' desktop/internal/shell/proxy.go
+expect_fail desktop-routes-alone 'feat: route' "$routes"
+expect_page desktop-shell-protocol.md
+expect_fail desktop-launch-alone 'feat: env' "$launch"
+expect_page desktop/README.md
+expect_pass desktop-routes-with-spec 'feat: route' "$routes" "$spec"
+expect_pass desktop-launch-with-readme 'feat: env' "$launch" desktop/README.md
+expect_pass desktop-routes-with-readme 'feat: route' "$routes" desktop/README.md
+expect_pass desktop-routes-with-user-docs 'feat: route' "$routes" "$page"
+expect_pass desktop-trailer 'feat: route
+
+Docs-Impact: none - internal rename only' "$routes"
+
 expect_pass trailer 'feat: flag
 
 Docs-Impact: none - internal rename only' "$help"

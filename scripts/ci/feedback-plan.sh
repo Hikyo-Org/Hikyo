@@ -47,6 +47,7 @@ feedback_plan_build() {
 		esac
 		case "$path" in
 			internal/cli/testdata/help.txt | api/openapi.yaml | internal/config/variables.go) docs_impact=true ;;
+			desktop/main_darwin.go | desktop/internal/shell/shellroutes.go) docs_impact=true ;;
 		esac
 		case "$path" in
 			web/*) web=true ;;

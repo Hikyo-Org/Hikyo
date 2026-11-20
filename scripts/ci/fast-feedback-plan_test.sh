@@ -125,7 +125,7 @@ feedback_plan_select go application
 plan all internal/crypto/seal.go
 expect '.desktop and .go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "desktop-compile"]'
 plan all desktop/main_darwin.go
-expect '.desktop and (.lanes.go.checks | map(.id)) == ["go-format", "desktop-compile"]'
+expect '.desktop and (.lanes.go.checks | map(.id)) == ["go-format", "desktop-compile", "docs-impact"]'
 plan all desktop/README.md
 expect '.desktop and (.lanes.go.checks | map(.id)) == ["desktop-compile"]'
 plan all app/owner.go
@@ -134,6 +134,11 @@ expect '(.desktop | not) and (.lanes.go.checks | map(.id)) == ["go-format", "go-
 rm desktop/go.mod
 plan all internal/crypto/seal.go
 expect '(.desktop | not) and .go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"]'
+# The desktop shell'"'"'s wire contract and launch environment are documented surfaces.
+plan all desktop/main_darwin.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
+plan all desktop/internal/shell/shellroutes.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
 # Unknown declarative identifiers must never become silent successful no-ops.
 if (feedback_check_prerequisites unknown) >"$work/output" 2>&1; then fail 'accepted unknown check'; fi
 if (feedback_plan_hosted_lane unknown) >"$work/output" 2>&1; then fail 'accepted unknown hosted lane'; fi

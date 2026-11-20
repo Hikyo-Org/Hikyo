@@ -30,8 +30,6 @@ func sameOrigin(u *url.URL, origin string) bool {
 	return err == nil && got == origin
 }
 
-func (c *Conn) transport() authTransport { return authTransport{in: c.inst, bearer: c.bearer} }
-
 // runReauth runs the browser ceremony for a page's request (ADR D7, D9) and
 // stores the rotated session. The page gets no token and no window result.
 func (c *Conn) runReauth(ctx context.Context, in reauthIn) *shellErr {

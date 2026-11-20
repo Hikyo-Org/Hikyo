@@ -99,7 +99,10 @@ run() { # exit status of the script against main, output in $out, args in $calls
 	set -e
 	return "$status"
 }
-desktop_calls="desktop: golangci-lint run -j 2 --config ../.golangci.yml --new-from-merge-base=main ./..."
+desktop_new="desktop: golangci-lint run -j 2 --config ../.golangci.yml --new-from-merge-base=main ./..."
+# The desktop module gets the same two passes as the root: new code, then strict.
+desktop_calls="$desktop_new
+desktop: golangci-lint run -j 2 --config ../.golangci-strict.yml ./..."
 expect_call() {
 	# Two passes over the same packages: new code only, then the strict rules on whole packages.
 	want="golangci-lint run -j 2 --new-from-merge-base=main $1
@@ -109,7 +112,7 @@ golangci-lint run -j 2 --config .golangci-strict.yml $1"
 }
 expect_desktop_calls() {
 	[ "$(grep '^desktop: ' "$calls")" = "$desktop_calls" ] || fail "desktop pass was '$(grep '^desktop: ' "$calls")', want '$desktop_calls'"
-	[ "$(tail -n 1 "$calls")" = "$desktop_calls" ] || fail 'desktop pass did not follow the root passes'
+	[ "$(tail -n 2 "$calls")" = "$desktop_calls" ] || fail 'desktop passes did not follow the root passes'
 }
 
 # 1. No Go inputs: nothing runs, exit 0.
@@ -235,9 +238,10 @@ echo '# x' >>a/a.go
 git add a/a.go
 git commit -q -m 'no strict config'
 run || fail 'strict-config-less tree failed'
-# Removing the strict config is itself a lint input change, so desktop is linted too.
-[ "$(grep -v '^desktop: ' "$calls")" = 'golangci-lint run -j 2 --new-from-merge-base=main ./...' ] || fail "strict-config-less run-go-tool got '$(cat "$calls")'"
-expect_desktop_calls
+# Removing the strict config is itself a lint input change, so desktop is linted
+# too, and without the config its strict pass is skipped as well.
+[ "$(cat "$calls")" = "golangci-lint run -j 2 --new-from-merge-base=main ./...
+$desktop_new" ] || fail "strict-config-less run-go-tool got '$(cat "$calls")'"
 grep -F 'no .golangci-strict.yml in this tree; skipping the strict pass' "$out" >/dev/null || fail 'strict skip note missing'
 
 # 9. A failing `git diff` is a setup failure (64), never "nothing to lint":
@@ -306,9 +310,15 @@ change a/a.go desktop/main.go
 : >"$root/tool-fail"
 if run; then fail 'root failure was swallowed beside desktop'; fi
 [ "$status" = 7 ] || fail "root failure exited $status, want 7"
-# New code, strict, then desktop: a failing root pass skips neither of the others.
-[ "$(wc -l <"$calls" | tr -d ' ')" = 3 ] || fail 'a failing root pass skipped the desktop pass'
+# Root new code and strict, then desktop's two: a failing root pass skips none of them.
+[ "$(wc -l <"$calls" | tr -d ' ')" = 4 ] || fail 'a failing root pass skipped the desktop pass'
 rm "$root/tool-fail-desktop" "$root/tool-fail"
+# A strict finding in desktop alone fails the script.
+change desktop/main.go
+: >"$root/tool-fail-strict"
+if run; then fail 'desktop strict failure was swallowed'; fi
+[ "$status" = 9 ] || fail "desktop strict failure exited $status, want 9"
+rm "$root/tool-fail-strict"
 
 # 10f. Where desktop/ does not exist (main, dev before the shell lands) a lint-input
 # change lints the root only, and a deleted desktop file selects nothing.
