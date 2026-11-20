@@ -1,7 +1,9 @@
 package importer
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +17,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"filippo.io/age"
+	"filippo.io/age/armor"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -372,6 +377,89 @@ func TestSOPSVaultRedirectDoesNotCarryTheToken(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Redirects being off must not stop a pinned Vault that answers directly: the
+// age fixture's data key, served by a Transit stub, decrypts the same records.
+func TestSOPSVaultDecryptsThroughThePinnedVault(t *testing.T) {
+	withAgeIdentity(t)
+	want, err := run(t, sopsSource, "sops-age.yaml", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataKey := fixtureDataKey(t)
+	var hits atomic.Int32
+	vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path != "/v1/transit/decrypt/k" || r.Header.Get("X-Vault-Token") != "hvs.operator-token" {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"data":{"plaintext":%q}}`, base64.StdEncoding.EncodeToString(dataKey))
+	}))
+	defer vault.Close()
+
+	in := string(read(t, "sops-age.yaml").Data)
+	start, end := strings.Index(in, "    age:\n"), strings.Index(in, "    encrypted_regex:")
+	if start < 0 || end < start {
+		t.Fatal("sops-age.yaml no longer has the expected age block")
+	}
+	file := in[:start] + fmt.Sprintf("    hc_vault:\n        - vault_address: %s\n          engine_path: transit\n          key_name: k\n          created_at: \"2026-01-01T00:00:00Z\"\n          enc: vault:v1:AAAA\n", vault.URL) + in[end:]
+
+	for _, tc := range []struct{ name, allowlist string }{
+		{"pinned to VAULT_ADDR", ""},
+		{"operator allowlist", vault.URL},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hits.Store(0)
+			t.Setenv("SOPS_AGE_KEY", "")
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("VAULT_TOKEN", "hvs.operator-token")
+			t.Setenv("VAULT_ADDR", vault.URL)
+			t.Setenv("SOPS_HC_VAULT_ALLOWLIST", tc.allowlist)
+			got, err := Run(t.Context(), sopsSource, Input{Path: "sops-vault.yaml", Data: []byte(file)})
+			if err != nil {
+				t.Fatalf("decrypt through the pinned Vault: %v", err)
+			}
+			if hits.Load() == 0 {
+				t.Fatal("the pinned Vault was never contacted")
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("records through Vault differ from the age decryption:\n got %+v\nwant %+v", got, want)
+			}
+		})
+	}
+}
+
+// fixtureDataKey unwraps the data key of sops-age.yaml with the test identity.
+func fixtureDataKey(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "sops-age-identity.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := age.ParseIdentities(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := string(read(t, "sops-age.yaml").Data)
+	begin, stop := strings.Index(in, "-----BEGIN AGE ENCRYPTED FILE-----"), strings.Index(in, "-----END AGE ENCRYPTED FILE-----")
+	if begin < 0 || stop < begin {
+		t.Fatal("sops-age.yaml has no armored age stanza")
+	}
+	var block strings.Builder
+	for line := range strings.Lines(in[begin : stop+len("-----END AGE ENCRYPTED FILE-----")]) {
+		block.WriteString(strings.TrimSpace(line) + "\n")
+	}
+	r, err := age.Decrypt(armor.NewReader(strings.NewReader(block.String())), ids...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var key bytes.Buffer
+	if _, err := key.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
+	return key.Bytes()
 }
 
 // ---------------------------------------------------------------------------
