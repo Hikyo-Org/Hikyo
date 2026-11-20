@@ -56,6 +56,10 @@ func TestKeychainPutReplacesAPlantedItem(t *testing.T) {
 	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", host, "-w", "planted").CombinedOutput(); err != nil {
 		t.Fatalf("planting: %v %s", err, out)
 	}
+	// A reader must refuse the planted item outright, never return its token.
+	if _, err := k.Get(host); !errors.Is(err, shell.ErrItemUntrusted) {
+		t.Fatalf("planted any-app item: %v", err)
+	}
 	want := shell.Secret{Token: "tok", SessionID: "ses", Origin: "https://a.example", TrustMode: "system-ca"}
 	if err := k.Put(host, want); err != nil {
 		t.Fatal(err)

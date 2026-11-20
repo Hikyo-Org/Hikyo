@@ -103,17 +103,87 @@ static int hkPut(const char *account, const void *data, int len) {
 	return (int)status;
 }
 
-// hkGet returns a malloc'd copy of the item's data and its length.
+#define HK_UNTRUSTED (-1) // not an OSStatus: the item's access list is not exactly this app
+
+// hkOnlyUs reports whether this application, and nothing else, may decrypt the
+// item. A NULL application list means any application can, which is what an
+// item planted with `security add-generic-password -A` has. Every failure to
+// establish the list counts as "not only us".
+static int hkOnlyUs(SecKeychainItemRef item) {
+	SecTrustedApplicationRef self = NULL;
+	if (SecTrustedApplicationCreateFromPath(NULL, &self) != errSecSuccess) {
+		return 0;
+	}
+	CFDataRef selfData = NULL;
+	OSStatus status = SecTrustedApplicationCopyData(self, &selfData);
+	CFRelease(self);
+	if (status != errSecSuccess || selfData == NULL) {
+		return 0;
+	}
+	SecAccessRef access = NULL;
+	if (SecKeychainItemCopyAccess(item, &access) != errSecSuccess || access == NULL) {
+		CFRelease(selfData);
+		return 0;
+	}
+	CFArrayRef acls = SecAccessCopyMatchingACLList(access, kSecACLAuthorizationDecrypt);
+	int ok = acls != NULL && CFArrayGetCount(acls) > 0;
+	for (CFIndex i = 0; ok && i < CFArrayGetCount(acls); i++) {
+		CFArrayRef apps = NULL;
+		CFStringRef desc = NULL;
+		SecKeychainPromptSelector selector;
+		if (SecACLCopyContents((SecACLRef)CFArrayGetValueAtIndex(acls, i), &apps, &desc, &selector) != errSecSuccess || apps == NULL || CFArrayGetCount(apps) != 1) {
+			ok = 0;
+		} else {
+			CFDataRef appData = NULL;
+			if (SecTrustedApplicationCopyData((SecTrustedApplicationRef)CFArrayGetValueAtIndex(apps, 0), &appData) != errSecSuccess || appData == NULL || !CFEqual(appData, selfData)) {
+				ok = 0;
+			}
+			if (appData != NULL) {
+				CFRelease(appData);
+			}
+		}
+		if (apps != NULL) {
+			CFRelease(apps);
+		}
+		if (desc != NULL) {
+			CFRelease(desc);
+		}
+	}
+	if (acls != NULL) {
+		CFRelease(acls);
+	}
+	CFRelease(access);
+	CFRelease(selfData);
+	return ok;
+}
+
+// hkGet returns a malloc'd copy of the item's data and its length. It finds the
+// item by reference first, checks its access list, and reads the data from that
+// same reference, so an item swapped in between is not the one read.
 static int hkGet(const char *account, void **out, int *len) {
 	CFMutableDictionaryRef q = hkQuery(account);
 	if (q == NULL) {
 		return HK_NO_KEYCHAIN;
 	}
-	CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
+	CFDictionarySetValue(q, kSecReturnRef, kCFBooleanTrue);
 	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
-	CFTypeRef result = NULL;
-	OSStatus status = SecItemCopyMatching(q, &result);
+	CFTypeRef item = NULL;
+	OSStatus status = SecItemCopyMatching(q, &item);
 	CFRelease(q);
+	if (status != errSecSuccess) {
+		return (int)status;
+	}
+	if (!hkOnlyUs((SecKeychainItemRef)item)) {
+		CFRelease(item);
+		return HK_UNTRUSTED;
+	}
+	CFMutableDictionaryRef rq = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	CFDictionarySetValue(rq, kSecValueRef, item);
+	CFDictionarySetValue(rq, kSecReturnData, kCFBooleanTrue);
+	CFTypeRef result = NULL;
+	status = SecItemCopyMatching(rq, &result);
+	CFRelease(rq);
+	CFRelease(item);
 	if (status != errSecSuccess) {
 		return (int)status;
 	}
@@ -183,6 +253,9 @@ func (keychain) Get(host string) (shell.Secret, error) {
 	if status := C.hkGet(account, &data, &n); status != 0 {
 		if int(status) == errSecItemNotFound {
 			return shell.Secret{}, shell.ErrNoSecret
+		}
+		if int(status) == C.HK_UNTRUSTED {
+			return shell.Secret{}, shell.ErrItemUntrusted
 		}
 		return shell.Secret{}, statusError("read", status)
 	}

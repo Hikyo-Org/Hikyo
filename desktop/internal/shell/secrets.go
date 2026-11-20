@@ -41,8 +41,14 @@ func (s Secret) bindingMismatch(info Connection) string {
 // ErrNoSecret means the keychain has no item for the connection.
 var ErrNoSecret = errors.New("no stored session for this connection")
 
+// ErrItemUntrusted means the keychain item exists but is not restricted to this
+// application, so another process may have planted or can read it. Get returns
+// it instead of the secret; the item is never used or revoked through.
+var ErrItemUntrusted = errors.New("the keychain item is not restricted to this application")
+
 // SecretStore is the OS keychain. Implementations restrict access to the
-// signed app (ADR D3). Put replaces the item as a whole: it deletes any
+// signed app (ADR D3), and Get refuses (ErrItemUntrusted) an item whose access
+// list is anything else. Put replaces the item as a whole: it deletes any
 // existing item first, so a pre-planted item's access list is never kept, and
 // a failure leaves no item rather than a half-written one.
 type SecretStore interface {
