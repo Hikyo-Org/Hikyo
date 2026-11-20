@@ -28,8 +28,8 @@ Distinct diagnostics (union over the default, ui, darwin and windows contexts, o
 
 | Analyzer | Diagnostics | Distinct file:line | Files |
 |---|---|---|---|
-| handles | 1063 | 784 | 93 |
-| redactfmt | 70 | 56 | 21 |
+| handles | 1141 | not recounted after the `dev` integration (784 before it) | 103 |
+| redactfmt | 84 | not recounted after the `dev` integration (56 before it) | 25 |
 
 forgeguard and fence: 0 deferred; their 35 newly visible findings (33 forgeguard, 2 fence) were fixed in this PR. Every other analyzer: 0 findings in all four contexts.
 
@@ -171,7 +171,7 @@ forgeguard and fence: 0 deferred; their 35 newly visible findings (33 forgeguard
 
 Sampled 10 sites per analyzer (seeded random draw), read at the flagged line. The classification is from reading the line and its immediate context, not from running the code.
 
-### handles (10 of 784 lines)
+### handles (10 of 784 lines, sampled before the `dev` integration)
 
 All 10 are legitimate test-harness use under the current rule: tests open an engine handle to seed rows, hold a lock, or assert on raw state. No production exposure was observed. None is a violation a production path could reach. The follow-up decision is policy, not defect: inventory the harness files, or give tests a reviewed helper.
 
@@ -188,7 +188,7 @@ All 10 are legitimate test-harness use under the current rule: tests open an eng
 | internal/upgradegate/operator_rotation_test.go:237 | `BeginTx` to simulate a concurrent operator | harness |
 | internal/isolation/scim_page_bound_test.go:165 | `PG().Acquire` to pin a connection | harness |
 
-### redactfmt (10 of 56 lines)
+### redactfmt (10 of 56 lines, sampled before the `dev` integration)
 
 8 of 10 look like false positives of the analyzer rule: the formatted value is a string or int (`principal`, `h.seq`, `ts`, `wire.org`), and the finding comes from the sub-expression walk reaching a harness struct (`h`, `wire`, `db`) whose fields include a `crypto.Keyring`. Narrowing the rule (skip the receiver of a field selection whose own type is not sensitive) would remove them; this was not done in PR 1 because the old production-only scope never exercised it. The other 2 (`json.Marshal(d.enrollment)`) are unverified: whether `enrollment` reaches a Keyring was not checked, so they are not classified as safe.
 
@@ -231,6 +231,6 @@ Totals added: handles +78 diagnostics in 10 new files (plus 2 in a grown file), 
 
 ## Follow-up scope
 
-1. `redactfmt`: decide on narrowing the sub-expression rule for non-sensitive field selections; then fix or exempt the remainder (about 56 lines in 21 files).
-2. `handles`: decide between a `driverFiles` inventory for harness test files and a reviewed test helper; then drop `strictDeferred`. About 784 lines in 93 files; the largest are `internal/store` and `internal/store/upgrade` postgres tests.
+1. `redactfmt`: decide on narrowing the sub-expression rule for non-sensitive field selections; then fix or exempt the remainder (about 70 lines in 25 files).
+2. `handles`: decide between a `driverFiles` inventory for harness test files and a reviewed test helper; then drop `strictDeferred`. About 1141 diagnostics in 103 files; the largest are `internal/store` and `internal/store/upgrade` postgres tests.
 3. Remove `strictDeferred`, the `Deferred` bookkeeping and `deferred_sites.json` once both are clean.
