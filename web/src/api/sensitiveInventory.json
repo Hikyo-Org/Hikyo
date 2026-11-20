@@ -23,7 +23,7 @@
     "api/remotePairing.ts": "7d0341c1db61c76f70f31410e212172e1a3a2d142de85bc9bbc517d6f4accdac",
     "api/remotes.ts": "7d5d47212d595dffd2a4526e593e4a29beaf6112165c8e0e1a7d79bd906df92b",
     "api/revisionDiff.ts": "5dca7d0ddb63c8832d7507eb62ecc1ea7b49080a72a329ad38043e342017d21f",
-    "api/rules.ts": "8253372a71916ce2688932972c05fc81e2118c9e2ece8df166d5e41aaf81909b",
+    "api/rules.ts": "f2d70da42bb60edd11cd418a582106a3fd8b16a406e73b02273202d5c924b5a6",
     "api/samlProviders.ts": "d1d011dd7762a4f5c6568835fc51ac887309b13b2211d2f6a6fb259ff0cc60ce",
     "api/scim.ts": "58952f12ff55819176d2f03b82c5e98d4cc4dc262606b5353ff5a69cfc93983d",
     "api/selfConfig.ts": "f0c0eb55b52a947dd08746d8902be3fda67307e44a14fa30799c380f538b1cd5",

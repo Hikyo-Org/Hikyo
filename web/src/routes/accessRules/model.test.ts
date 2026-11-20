@@ -9,6 +9,8 @@ import {
   availability,
   createBody,
   effective,
+  machineRefusal,
+  machineWhereRefusal,
   newRule,
   perm,
   PERMS,
@@ -307,5 +309,32 @@ describe('where labels', () => {
   });
   it('a one-project rule never qualifies', () => {
     expect(mergeByName([{ project: 'p1', name: 'db/', flag: false }], ['p1'], label)).toEqual([{ label: 'db/', flag: false }]);
+  });
+});
+
+describe('machine rules (D11)', () => {
+  const where = { projects: [PAY], envs: { mode: 'only' as const, items: [{ project: PAY, environment: STAGING }] }, keys: ALL };
+  it('a workload holds See only, an automation See, Edit, Publish and Define keys', () => {
+    const ids = PERMS.map((p) => p.id);
+    expect(ids.filter((id) => allowed(id, where, 'workload'))).toEqual(['read']);
+    expect(ids.filter((id) => allowed(id, where, 'automation'))).toEqual(['read', 'edit', 'publish', 'definitions-edit']);
+  });
+  it('a permission the class may not hold is refused with its reason, before any Where reason', () => {
+    expect(availability('edit', where, 'workload')).toEqual({ ok: false, why: 'Not for a workload account: it holds See only.' });
+    expect(availability('manage-identities', where, 'automation')).toEqual({ ok: false, why: machineRefusal('manage-identities', 'automation') });
+    expect(machineRefusal('reveal', 'automation')).toContain('environment grant');
+    expect(machineRefusal('reveal', undefined)).toBeUndefined();
+  });
+  it('effective drops what the class may not hold', () => {
+    expect(effective({ ...where, perms: ['read', 'edit', 'reveal'] }, 'workload')).toEqual(['read']);
+    expect(effective({ ...where, perms: ['read', 'edit', 'reveal'] })).toEqual(['read', 'edit', 'reveal']);
+  });
+  it('a machine rule names one project, no keys, and a workload lists its environments', () => {
+    expect(machineWhereRefusal(where, 'workload')).toBeUndefined();
+    expect(machineWhereRefusal({ ...where, envs: ALL }, 'workload')).toContain('lists its environments');
+    expect(machineWhereRefusal({ ...where, envs: ALL }, 'automation')).toBeUndefined();
+    expect(machineWhereRefusal({ ...where, projects: [PAY, IDS.web] }, 'automation')).toContain('own project');
+    expect(machineWhereRefusal({ ...where, keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }] } }, 'automation')).toContain('every key');
+    expect(machineWhereRefusal({ ...where, projects: [PAY, IDS.web] }, undefined)).toBeUndefined();
   });
 });
