@@ -738,7 +738,7 @@ export async function openKeyDeclaration(page: Page, testInfo: TestInfo, name: s
     return;
   }
   await link.tap();
-  await expect(page.locator('.matrix__key-tip').filter({ hasText: name })).toBeVisible();
+  await expect(page.locator('.matrix__key-tip:not(.matrix__key-tip--value)').filter({ hasText: name })).toBeVisible();
   await expect(page).toHaveURL(/\/matrix$/);
   await link.tap();
 }
