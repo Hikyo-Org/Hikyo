@@ -207,7 +207,7 @@ var Registry = []Bound{
 		goTest("internal/importer", "TestK8sLiveExecPluginCannotExceedOutputCap")),
 	bound("remote-count", "Remote count", "ops-catalogue §Multi-instance", "service.ErrRemoteCap (remotefetch.RemoteCount)", "isolation remote_e2e (fixture: cap enforced at service/remotes.go)", StatusEnforced,
 		goTest("internal/isolation", "TestRemoteCountCapSQLite")),
-	bound("outbox-depth-per-target", "Outbox depth per target", "ops-catalogue §GitHub (row 19)", "adapter.ErrQueueFull", "store adapter_runtime (enforcement site)", StatusEnforced,
+	bound("outbox-depth-per-target", "Outbox depth per target", "ops-catalogue §GitHub (row 20)", "adapter.ErrQueueFull", "store adapter_runtime (enforcement site)", StatusEnforced,
 		goTest("internal/store", "TestAdapterEnqueueRefusesAtPerTargetQueueDepth")),
 
 	// §20 audit ops.

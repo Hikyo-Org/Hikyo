@@ -426,7 +426,7 @@
       "kind": "obligation",
       "title": "Renumber duplicate ops-spec inventory rows",
       "status": "implemented",
-      "summary": "The 2026-11-20 editorial amendment (#32) relabels the duplicate row 15 (Plans/pins/grants) as 15b; rows cited by number elsewhere keep their numbers.",
+      "summary": "The 2026-11-20 editorial amendment (#32) renumbers the second row 15 (Plans/pins/grants) and every later row by one; live citations are updated and the amendment banner maps old numbers to new.",
       "source": "docs/spec/open-items.md",
       "evidence": [
         { "label": "operations contract", "path": "docs/adr/ops-spec.md" },
