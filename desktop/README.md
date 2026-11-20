@@ -27,19 +27,31 @@ go build -o hikyo-desktop .          # macOS, needs Xcode command line tools
 `HIKYO_DESKTOP_KEYCHAIN_TEST=1 go test -run Keychain .` also exercises the real
 login keychain; it is opt-in because a locked keychain shows a prompt.
 
-Wails is pinned to `v3.1.0` in `go.mod`. The CLI (`wails3`) is not needed for
-`go build`; for a bundled `.app`:
+Wails is pinned to `v3.1.0` in `go.mod`. `go build` does not need its CLI. The
+bundled, ad-hoc signed `.app` does:
 
 ```sh
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+cd desktop
+wails3 package        # runs the Taskfile's build, writes bin/hikyo-desktop.app
+open bin/hikyo-desktop.app
 ```
+
+`wails3 build` alone writes `bin/hikyo-desktop`. `Taskfile.yml` and
+`build/darwin/Info.plist` are all it reads: no icons, Developer ID signing or
+notarization yet (plan PR 5). `bin/` is ignored by Git.
 
 ## Signing and the keychain
 
 Each connection's token and session id are one generic-password item in the
 login keychain (service `io.hikyo.desktop`, account = the connection's random
-host). The legacy file keychain is used on purpose: its default access control
-trusts only the application that created the item.
+host). The item also records the origin, trust mode, pin and principal id the
+token belongs to; `connections.json` is plain user-writable data, so at start
+the shell compares it with the item and stops a connection that disagrees,
+with a visible error and no repair. Saving a session deletes any existing item
+and adds a new one whose access list names only this application, so an item
+planted under the same name never keeps access. The legacy file keychain is
+used on purpose: it needs no entitlements or provisioning profile.
 
 - A **signed** (Developer ID) build keeps access across updates signed by the
   same identity.
@@ -49,16 +61,24 @@ trusts only the application that created the item.
 
 ## Developing against a local server
 
-Plain http is refused unless explicitly allowed, and then only for loopback:
+Plain http is refused unless explicitly allowed, and then only for loopback.
+The two variables below are read only by a development build, `go build -tags
+probe`. A release build ignores them, so another process of the same user can't
+set them to move the connection list or allow plain http:
 
 ```sh
-HIKYO_DESKTOP_ALLOW_LOOPBACK_HTTP=1 HIKYO_DESKTOP_HOME=$(mktemp -d) ./hikyo-desktop
+go build -tags probe -o hikyo-desktop-dev .
+HIKYO_DESKTOP_ALLOW_LOOPBACK_HTTP=1 HIKYO_DESKTOP_HOME=$(mktemp -d) ./hikyo-desktop-dev
 ```
 
 `HIKYO_DESKTOP_HOME` moves the connection list; secrets always use the keychain.
 The instance must advertise `desktop-app/1` in `/api/v1/meta`.
 
+`sh probe/run.sh` drives a probe build against a stand-in instance (macOS GUI
+session needed): it checks that the Wails runtime stays inert in a window and
+that downloads save once, named and gated as the ADR requires.
+
 ## Not shipped yet
 
-Code signing, notarization, an updater and CI are later work (plan PR 4 and
-the release process).
+Code signing and notarization are later work (plan PR 5) and so is CI. v1 has
+no updater (ADR D13); adding one needs its own decision.

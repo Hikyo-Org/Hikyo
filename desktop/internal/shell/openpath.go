@@ -3,7 +3,6 @@ package shell
 import (
 	"errors"
 	"net/url"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -26,7 +25,7 @@ func (c *Conn) BrowserURL(raw string) (string, error) {
 		return "", err
 	}
 	target, err := url.Parse(c.inst.Origin + raw)
-	if err != nil || target.Scheme+"://"+target.Host != c.inst.Origin || target.User != nil || target.Fragment != "" {
+	if err != nil || !c.sameSite(target) || target.User != nil || target.Fragment != "" {
 		return "", errRefusedPath
 	}
 	return target.String(), nil
@@ -116,27 +115,10 @@ func (c *Conn) ExternalLink(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// sameSite reports whether u is this connection's origin under any spelling:
-// case, a default port, or a trailing dot on the host must not turn a link to
-// the instance into an "external" one that skips the D9 refusals.
+// sameSite reports whether u is this connection's origin under any spelling
+// (case, default port, trailing dot, IDN or IPv6 form): such a link to the
+// instance must not count as "external" and skip the D9 refusals.
 func (c *Conn) sameSite(u *url.URL) bool {
-	own, err := url.Parse(c.inst.Origin)
-	if err != nil {
-		return false
-	}
-	return u.Scheme == own.Scheme && siteHost(u) == siteHost(own) && sitePort(u) == sitePort(own)
-}
-
-func siteHost(u *url.URL) string { return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".") }
-
-// sitePort is the effective port as a number, so 0443 and 443 agree as they
-// do in a browser.
-func sitePort(u *url.URL) int {
-	if p, err := strconv.Atoi(u.Port()); err == nil && u.Port() != "" {
-		return p
-	}
-	if u.Scheme == "https" {
-		return 443
-	}
-	return 80
+	got, err := originOf(u)
+	return err == nil && got == c.inst.Origin
 }

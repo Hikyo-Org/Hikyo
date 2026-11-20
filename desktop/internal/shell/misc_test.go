@@ -75,14 +75,14 @@ func TestClipboardClearsOnlyAnUnchangedPasteboard(t *testing.T) {
 		return func() {}
 	}
 	// Nothing copied: arm does nothing.
-	g.arm()
+	g.arm("a")
 	if fire != nil {
 		t.Fatal("armed without a pasteboard change")
 	}
 	// The page copies a secret, then the shell sees the change.
 	n.pasteboard++
 	g.observe()
-	g.arm()
+	g.arm("a")
 	if fire == nil {
 		t.Fatal("not armed after a change")
 	}
@@ -96,7 +96,7 @@ func TestClipboardClearsOnlyAnUnchangedPasteboard(t *testing.T) {
 	n.pasteboard++
 	g.observe()
 	fire = nil
-	g.arm()
+	g.arm("a")
 	fire()
 	if n.cleared != 1 {
 		t.Errorf("cleared %d times", n.cleared)
@@ -206,6 +206,34 @@ func TestRemovalDuringSignInStoresNothing(t *testing.T) {
 	}
 }
 
+// A copy made in another app just before switching back is at or below the
+// activation count, whether or not a poll ran in between.
+func TestClipboardIgnoresACopyJustBeforeSwitchBack(t *testing.T) {
+	n := newFakeNative()
+	now := time.Unix(1000, 0)
+	g := newClipboardGuard(n, func() time.Time { return now })
+	armed := false
+	g.after = func(time.Duration, func()) func() { armed = true; return func() {} }
+	n.inactive = true
+	n.pasteboard++ // copied elsewhere; no poll saw it
+	n.inactive = false
+	n.activation = n.pasteboard // the app became active
+	g.arm("a")
+	if armed {
+		t.Fatal("armed on a change made before the app came to the front")
+	}
+	g.observe() // a poll after activation must not attribute it either
+	g.arm("a")
+	if armed {
+		t.Fatal("armed after a late poll attributed the foreign copy to the page")
+	}
+	n.pasteboard++ // the page copies while active
+	g.arm("a")
+	if !armed {
+		t.Fatal("did not arm for the page's own copy")
+	}
+}
+
 func TestClipboardIgnoresCopiesMadeInOtherApps(t *testing.T) {
 	n := newFakeNative()
 	g := newClipboardGuard(n, time.Now)
@@ -214,7 +242,7 @@ func TestClipboardIgnoresCopiesMadeInOtherApps(t *testing.T) {
 	n.inactive = true
 	n.pasteboard++
 	g.observe()
-	g.arm()
+	g.arm("a")
 	if armed {
 		t.Fatal("armed for a copy made while another app was frontmost")
 	}
@@ -245,9 +273,63 @@ func TestCanonicalOriginKeepsIPv6ZoneAndNormalizesPortSpellings(t *testing.T) {
 	if again, err := canonicalOrigin(got); err != nil || again != got {
 		t.Errorf("not idempotent: %q then %q, %v", got, again, err)
 	}
-	u, _ := url.Parse("https://x:0443/")
-	if sitePort(u) != 443 {
-		t.Errorf("0443 = %d", sitePort(u))
+}
+
+func TestOriginSpellingsAgree(t *testing.T) {
+	groups := [][]string{
+		{"https://bücher.example", "https://xn--bcher-kva.example", "https://BÜCHER.example.:443", "https://xn--bcher-kva.example:0443"},
+		{"http://[::1]:8080", "http://[0:0:0:0:0:0:0:1]:8080", "http://[0000::0001]:8080", "http://[::0001]:08080"},
+		{"http://[fe80::1%25en0]", "http://[FE80:0:0:0:0:0:0:1%25en0]"},
+	}
+	for _, g := range groups {
+		want, err := canonicalOrigin(g[0])
+		if err != nil {
+			t.Fatal(g[0], err)
+		}
+		for _, in := range g {
+			if got, err := canonicalOrigin(in); err != nil || got != want {
+				t.Errorf("%q = %q, %v; want %q", in, got, err, want)
+			}
+		}
+	}
+	distinct := []string{
+		"http://[::1]", "http://[::2]", "http://[::ffff:127.0.0.1]", "http://127.0.0.1",
+		"http://[fe80::1%25en0]", "http://[fe80::1%25en1]", "http://[fe80::1]",
+		"https://bücher.example", "https://bucher.example", "https://xn--bcher-kva.example:8443",
+	}
+	seen := map[string]string{}
+	for _, in := range distinct {
+		got, err := canonicalOrigin(in)
+		if err != nil {
+			t.Fatal(in, err)
+		}
+		if prev, dup := seen[got]; dup {
+			t.Errorf("%q and %q collide as %q", in, prev, got)
+		}
+		seen[got] = in
+	}
+	for _, bad := range []string{"https://[::1", "https://[zz::1]", "https://xn--a.example", "https://exa mple"} {
+		if got, err := canonicalOrigin(bad); err == nil {
+			t.Errorf("%q accepted as %q", bad, got)
+		}
+	}
+}
+
+func TestSameSiteCoversIDNAndIPv6(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	c.inst.Origin = "https://xn--bcher-kva.example"
+	for _, in := range []string{"https://xn--bcher-kva.example/x", "https://BÜCHER.example:443/x", "https://xn--bcher-kva.example./x"} {
+		u, _ := url.Parse(in)
+		if !c.sameSite(u) {
+			t.Errorf("%q should be the connection's origin", in)
+		}
+	}
+	for _, in := range []string{"https://bucher.example/x", "https://xn--bcher-kva.example:8443/x", "http://xn--bcher-kva.example/x"} {
+		u, _ := url.Parse(in)
+		if c.sameSite(u) {
+			t.Errorf("%q must not be the connection's origin", in)
+		}
 	}
 }
 
@@ -281,5 +363,58 @@ func TestFailedRemovalLeavesAWorkingConnection(t *testing.T) {
 	c.rotMu.Unlock()
 	if removed {
 		t.Error("the connection still refuses sessions")
+	}
+}
+
+// The device-code dialog's "Open in browser" uses openHandoff: the verification
+// page of this origin only, under any spelling of the origin.
+func TestOpenHandoffAcceptsOnlyThisOriginsHandoffPages(t *testing.T) {
+	h := newHarness(t)
+	origin := "https://xn--bcher-kva.example"
+	for _, ok := range []string{origin + "/login/cli?device=1", "https://bücher.example:443/login/cli?device=1", origin + "/reauth/cli?x=1"} {
+		if err := h.m.openHandoff(origin, ok); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"https://bucher.example/login/cli", origin + "/orgs", "https://u@xn--bcher-kva.example/login/cli", "http://xn--bcher-kva.example/login/cli", "https://evil.example/login/cli"} {
+		if err := h.m.openHandoff(origin, bad); err == nil {
+			t.Errorf("%q opened", bad)
+		}
+	}
+	if got := len(h.openedURLs()); got != 3 {
+		t.Errorf("opened %d URLs, want 3", got)
+	}
+}
+
+// One connection arming its clear must not cancel another's.
+func TestClipboardArmingIsPerConnection(t *testing.T) {
+	n := newFakeNative()
+	g := newClipboardGuard(n, time.Now)
+	fires := map[string]func(){}
+	stopped := map[string]bool{}
+	var current string
+	g.after = func(_ time.Duration, f func()) func() {
+		owner := current
+		fires[owner] = f
+		return func() { stopped[owner] = true }
+	}
+	current = "a"
+	n.pasteboard++
+	g.observe()
+	g.arm("a")
+	current = "b"
+	n.pasteboard++
+	g.observe()
+	g.arm("b")
+	if stopped["a"] {
+		t.Fatal("arming b cancelled a's pending clear")
+	}
+	fires["a"]() // a's secret was replaced by b's: a must not clear it
+	if n.cleared != 0 {
+		t.Fatal("a cleared b's copy")
+	}
+	fires["b"]()
+	if n.cleared != 1 {
+		t.Fatalf("b's copy cleared %d times", n.cleared)
 	}
 }

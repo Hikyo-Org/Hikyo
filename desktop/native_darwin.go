@@ -11,11 +11,12 @@ int hikyoInstallDelegates(void);
 int hikyoHardenWindow(void *nswindow);
 int hikyoConfirm(const char *title, const char *message, const char *label);
 void hikyoAlert(const char *title, const char *message);
-char *hikyoSavePanel(const char *name, const char *source);
+char *hikyoSavePanel(const char *name, const char *source, const char *mime);
 int hikyoAppActive(void);
 void hikyoShowCode(long id, const char *url, const char *code);
 void hikyoDismissCode(long id);
 long hikyoPasteboardCount(void);
+long hikyoPasteboardCountAtActivation(void);
 void hikyoClearPasteboard(void);
 int hikyoWipeStorage(const char *host);
 */
@@ -113,8 +114,9 @@ func (n *macNative) OpenWindow(host, title string, bind func(string)) error {
 		}
 		n.mu.Unlock()
 		n.manager.UnbindWindow(id)
+		pendingDownloads.Drop(host)
 	})
-	installProbe(w)
+	installProbe(w, host)
 	w.SetURL(shell.PageScheme + "://" + host + "/")
 	return nil
 }
@@ -153,11 +155,12 @@ func (n *macNative) Alert(title, message string) {
 	C.hikyoAlert(t, m)
 }
 
-func (n *macNative) SavePanel(name, source string) (string, bool) {
-	cName, cSource := C.CString(name), C.CString(source)
+func (n *macNative) SavePanel(name, source, mimeType string) (string, bool) {
+	cName, cSource, cMIME := C.CString(name), C.CString(source), C.CString(mimeType)
 	defer C.free(unsafe.Pointer(cName))
 	defer C.free(unsafe.Pointer(cSource))
-	chosen := C.hikyoSavePanel(cName, cSource)
+	defer C.free(unsafe.Pointer(cMIME))
+	chosen := C.hikyoSavePanel(cName, cSource, cMIME)
 	if chosen == nil {
 		return "", false
 	}
@@ -168,29 +171,35 @@ func (n *macNative) SavePanel(name, source string) (string, bool) {
 var (
 	codeSeq     atomic.Int64
 	codeCancels sync.Map // id -> func()
+	codeOpens   sync.Map // id -> func()
 )
 
-func (n *macNative) ShowDeviceCode(url, code string, cancel func()) func() {
+func (n *macNative) ShowDeviceCode(url, code string, cancel, open func()) func() {
 	id := codeSeq.Add(1)
 	codeCancels.Store(id, cancel)
+	codeOpens.Store(id, open)
 	u, c := C.CString(url), C.CString(code)
 	defer C.free(unsafe.Pointer(u))
 	defer C.free(unsafe.Pointer(c))
 	C.hikyoShowCode(C.long(id), u, c)
 	return func() {
 		codeCancels.Delete(id)
+		codeOpens.Delete(id)
 		C.hikyoDismissCode(C.long(id))
 	}
 }
 
 func (n *macNative) AppActive() bool        { return C.hikyoAppActive() == 1 }
 func (n *macNative) PasteboardCount() int64 { return int64(C.hikyoPasteboardCount()) }
-func (n *macNative) ClearPasteboard()       { C.hikyoClearPasteboard() }
+func (n *macNative) PasteboardCountAtActivation() int64 {
+	return int64(C.hikyoPasteboardCountAtActivation())
+}
+func (n *macNative) ClearPasteboard() { C.hikyoClearPasteboard() }
 
 // ---- callbacks from Objective-C ----
 
 //export hikyoNavigate
-func hikyoNavigate(pageHost, rawURL *C.char, flags C.int) C.int {
+func hikyoNavigate(pageHost, rawURL *C.char, flags C.int, method, filename *C.char) C.int {
 	n := theNative.Load()
 	if n == nil || n.manager == nil {
 		return 0
@@ -203,6 +212,7 @@ func hikyoNavigate(pageHost, rawURL *C.char, flags C.int) C.int {
 	action := n.manager.Navigate(shell.NavRequest{
 		PageHost: host, URL: C.GoString(rawURL),
 		MainFrame: flags&1 != 0, NewWindow: flags&2 != 0, Download: flags&4 != 0, UserGesture: flags&8 != 0,
+		Method: C.GoString(method), Filename: C.GoString(filename),
 	})
 	switch action {
 	case shell.NavAllow:
@@ -215,9 +225,7 @@ func hikyoNavigate(pageHost, rawURL *C.char, flags C.int) C.int {
 
 // pendingDownloads maps a WKDownload to where it is writing and where the
 // file goes when it finishes. Concurrent downloads never share an entry.
-var pendingDownloads sync.Map // uintptr -> download
-
-type download struct{ temp, final string }
+var pendingDownloads = shell.NewPendingDownloads()
 
 //export hikyoDownloadDestination
 func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.char {
@@ -230,7 +238,7 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 	if c := n.manager.Conn(host); c != nil {
 		source = c.Info().Name
 	}
-	final, ok := n.SavePanel(shell.SanitizeFilename(C.GoString(suggested)), source)
+	final, ok := n.SavePanel(shell.SanitizeFilename(C.GoString(suggested)), source, "")
 	if !ok {
 		return nil
 	}
@@ -245,26 +253,27 @@ func hikyoDownloadDestination(key C.uintptr_t, pageHost, suggested *C.char) *C.c
 	temp := f.Name()
 	_ = f.Close()
 	_ = os.Remove(temp) // WKDownload needs a destination that does not exist
-	pendingDownloads.Store(uintptr(key), download{temp: temp, final: final})
+	pendingDownloads.Add(uintptr(key), host, temp, final)
 	return C.CString(temp) // freed by the caller
 }
 
 //export hikyoDownloadFinished
 func hikyoDownloadFinished(key C.uintptr_t) {
-	v, ok := pendingDownloads.LoadAndDelete(uintptr(key))
+	temp, final, ok := pendingDownloads.Take(uintptr(key))
 	if !ok {
+		// The entry expired or its window closed, and its file was removed.
+		failDownload("The download took too long or its window was closed, so it was not saved.")
 		return
 	}
-	d := v.(download)
-	if err := shell.Quarantine(d.temp); err != nil {
+	if err := shell.Quarantine(temp); err != nil {
 		log.Printf("download: could not mark the file as downloaded: %v", err)
-		_ = os.Remove(d.temp)
+		_ = os.Remove(temp)
 		failDownload("The file could not be marked as downloaded.")
 		return
 	}
-	if err := os.Rename(d.temp, d.final); err != nil {
-		log.Printf("download: could not save %s: %v", d.final, err)
-		_ = os.Remove(d.temp)
+	if err := os.Rename(temp, final); err != nil {
+		log.Printf("download: could not save %s: %v", final, err)
+		_ = os.Remove(temp)
 		failDownload("The file could not be saved there.")
 	}
 }
@@ -277,11 +286,18 @@ func failDownload(message string) {
 
 //export hikyoDownloadFailed
 func hikyoDownloadFailed(key C.uintptr_t, message *C.char) {
-	if v, ok := pendingDownloads.LoadAndDelete(uintptr(key)); ok {
-		_ = os.Remove(v.(download).temp)
+	if temp, _, ok := pendingDownloads.Take(uintptr(key)); ok {
+		_ = os.Remove(temp)
 	}
 	if n := theNative.Load(); n != nil {
 		n.Alert("Download failed", fmt.Sprint(C.GoString(message)))
+	}
+}
+
+//export hikyoCodeOpenBrowser
+func hikyoCodeOpenBrowser(id C.long) {
+	if open, ok := codeOpens.Load(int64(id)); ok {
+		go open.(func())() // off the main thread: the dialog must stay responsive
 	}
 }
 

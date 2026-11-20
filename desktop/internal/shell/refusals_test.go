@@ -155,6 +155,12 @@ func TestTOTPReauthForDeveloperCredentialIsRefusedAndFailsClosed(t *testing.T) {
 	for name, body := range map[string]string{
 		"developer-credential": `{"purpose":"developer-credential","code":"123456"}`,
 		"duplicate key":        `{"purpose":"self-config","purpose":"developer-credential","code":"1"}`,
+		"upper case name":      `{"PURPOSE":"developer-credential","code":"1"}`,
+		"mixed case name":      `{"Purpose":"developer-credential","code":"1"}`,
+		"long s name":          `{"purpoſe":"developer-credential","code":"1"}`,
+		"case variant dup":     `{"purpose":"self-config","Purpose":"developer-credential","code":"1"}`,
+		"case variant dup ok":  `{"purpose":"self-config","PURPOSE":"self-config","code":"1"}`,
+		"non-string variant":   `{"Purpose":5,"code":"1"}`,
 		"not json":             `purpose=developer-credential`,
 		"truncated":            `{"purpose":"developer-cred`,
 		"too large":            `{"code":"` + strings.Repeat("a", 70<<10) + `"}`,
@@ -167,5 +173,21 @@ func TestTOTPReauthForDeveloperCredentialIsRefusedAndFailsClosed(t *testing.T) {
 	}
 	if rec := h.page(c, "POST", "/api/v1/auth/reauth/totp", `{"purpose":"self-config","code":"123456"}`); rec.Code != 200 {
 		t.Errorf("a legitimate totp reauth was refused: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAStreamCannotAnswerASessionChange(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	h.inst.on("POST /api/v1/auth/totp/step-up", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"session_token\":\"x\"}\n\n"))
+	})
+	rec := h.page(c, "POST", "/api/v1/auth/totp/step-up", `{}`)
+	if rec.Code != 502 || strings.Contains(rec.Body.String(), "session_token") {
+		t.Fatalf("stream on a rotation route: %d %s", rec.Code, rec.Body)
+	}
+	if c.Stopped() == "" {
+		t.Error("the connection was not stopped")
 	}
 }

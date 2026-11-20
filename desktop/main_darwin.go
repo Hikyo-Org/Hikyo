@@ -33,7 +33,7 @@ func main() {
 
 // dataDir is where the connection list lives. Secrets are never stored there.
 func dataDir() (string, error) {
-	if dir := os.Getenv("HIKYO_DESKTOP_HOME"); dir != "" {
+	if dir := devDataDir(); dir != "" {
 		return dir, nil
 	}
 	base, err := os.UserConfigDir()
@@ -54,11 +54,11 @@ func run() error {
 	}
 	seeded := probeSeed(store)
 	native := newMacNative()
-	manager, err := shell.NewManager(store, keychain{}, native, shell.Options{
+	manager, err := shell.NewManager(store, keychain{}, probeNative(native), shell.Options{
 		Version: version,
-		// Development only: plain http to a loopback instance.
-		AllowLoopbackHTTP: os.Getenv("HIKYO_DESKTOP_ALLOW_LOOPBACK_HTTP") == "1",
-		OpenURL:           clientauth.OpenBrowser,
+		// Development builds only: plain http to a loopback instance.
+		AllowLoopbackHTTP: devAllowLoopbackHTTP(),
+		OpenURL:           probeOpener(clientauth.OpenBrowser),
 	})
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func run() error {
 	app := application.New(application.Options{
 		Name: "Hikyo",
 		// The shell is the outermost handler; the fallback never answers.
-		Assets: application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: manager.Middleware()},
+		Assets: application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: probeMiddleware(manager.Middleware())},
 		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
 	native.app = app

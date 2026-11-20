@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/clientauth"
 	"github.com/Hikyo-Org/hikyo/internal/clienterr"
 	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
+	"golang.org/x/net/idna"
 )
 
 const maxAPIResponse = 4 << 20
@@ -31,7 +33,8 @@ type Instance struct {
 }
 
 // canonicalOrigin is clienttrust.CanonicalOrigin without the spellings that
-// name the same site differently: a default port and a trailing dot. One
+// name the same site differently: a default port, a trailing dot, an IDN in
+// Unicode or punycode, and an IPv6 literal compressed or expanded. One
 // spelling per instance keeps the duplicate check and every origin comparison
 // honest (ADR D8, D9).
 func canonicalOrigin(raw string) (string, error) {
@@ -44,13 +47,17 @@ func canonicalOrigin(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-	if host == "" {
-		return "", errors.New("instance URL has no host")
-	}
-	if strings.Contains(host, ":") {
-		// An IPv6 literal; a zone id's % must be escaped again in a URL.
-		host = "[" + strings.ReplaceAll(host, "%", "%25") + "]"
+	return originOf(u)
+}
+
+// originOf is the canonical origin of an absolute URL. Every origin
+// comparison in the shell (connection binding, browser opens, links,
+// redirects, handoff pages) goes through it, so two spellings of one origin
+// agree and no other origin can.
+func originOf(u *url.URL) (string, error) {
+	host, err := canonicalHost(u.Hostname())
+	if err != nil {
+		return "", err
 	}
 	scheme := strings.ToLower(u.Scheme)
 	port := u.Port()
@@ -69,6 +76,29 @@ func canonicalOrigin(raw string) (string, error) {
 		host += ":" + port
 	}
 	return scheme + "://" + host, nil
+}
+
+// canonicalHost lower-cases, drops a trailing dot, writes an IPv6 literal in
+// its one compressed form (the zone id kept, its % escaped for a URL) and a
+// name as punycode. A 4-in-6 address stays distinct from the IPv4 one, as it
+// is for a browser.
+func canonicalHost(h string) (string, error) {
+	h = strings.TrimSuffix(h, ".")
+	if h == "" {
+		return "", errors.New("instance URL has no host")
+	}
+	if strings.Contains(h, ":") {
+		addr, err := netip.ParseAddr(h)
+		if err != nil {
+			return "", errors.New("instance URL has an invalid IPv6 host")
+		}
+		return "[" + strings.ReplaceAll(addr.String(), "%", "%25") + "]", nil
+	}
+	ascii, err := idna.Lookup.ToASCII(h)
+	if err != nil || ascii == "" {
+		return "", errors.New("instance URL has an invalid host name")
+	}
+	return strings.TrimSuffix(strings.ToLower(ascii), "."), nil
 }
 
 // newInstance builds the channel for a canonical origin. It refuses plain

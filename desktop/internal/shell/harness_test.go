@@ -26,11 +26,15 @@ type fakeNative struct {
 	savePath      string
 	saveOK        bool
 	saveNames     []string
+	saveMIME      []string
 	closed        []string
 	wiped         []string
 	wipeErr       error
 	deviceCodes   []string
 	pasteboard    int64
+	activation    int64
+	deviceURLs    []string
+	deviceOpen    func()
 	inactive      bool // another app is frontmost
 	cleared       int
 	opened        map[string]string // host -> window id
@@ -72,22 +76,30 @@ func (f *fakeNative) Alert(title, message string) {
 }
 func (f *fakeNative) AppActive() bool { f.mu.Lock(); defer f.mu.Unlock(); return !f.inactive }
 
-func (f *fakeNative) SavePanel(name, _ string) (string, bool) {
+func (f *fakeNative) SavePanel(name, _, mimeType string) (string, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.saveNames = append(f.saveNames, name)
+	f.saveMIME = append(f.saveMIME, mimeType)
 	return f.savePath, f.saveOK
 }
-func (f *fakeNative) ShowDeviceCode(_, code string, _ func()) func() {
+func (f *fakeNative) ShowDeviceCode(url, code string, _, open func()) func() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deviceCodes = append(f.deviceCodes, code)
+	f.deviceURLs = append(f.deviceURLs, url)
+	f.deviceOpen = open
 	return func() {}
 }
 func (f *fakeNative) PasteboardCount() int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.pasteboard
+}
+func (f *fakeNative) PasteboardCountAtActivation() int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.activation
 }
 func (f *fakeNative) ClearPasteboard() {
 	f.mu.Lock()
@@ -274,12 +286,13 @@ func (h *harness) connect() (*Conn, Secret) {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	secret := Secret{Token: newToken(h.t), SessionID: h.inst.loginSID}
+	info := Connection{Host: host, Origin: h.inst.srv.URL, Name: "Test", Trust: Trust{Mode: clienttrust.ModeSystemCA},
+		PrincipalID: h.inst.loginPID, PrincipalName: "Test Person", Created: time.Now()}
+	secret := Secret{Token: newToken(h.t), SessionID: h.inst.loginSID, Origin: info.Origin,
+		TrustMode: info.Trust.Mode, Pin: info.Trust.Pin, PrincipalID: info.PrincipalID}
 	if err := h.secrets.Put(host, secret); err != nil {
 		h.t.Fatal(err)
 	}
-	info := Connection{Host: host, Origin: h.inst.srv.URL, Name: "Test", Trust: Trust{Mode: clienttrust.ModeSystemCA},
-		PrincipalID: h.inst.loginPID, PrincipalName: "Test Person", Created: time.Now()}
 	if err := h.store.Put(info); err != nil {
 		h.t.Fatal(err)
 	}

@@ -178,3 +178,30 @@ func TestHostsAreRandomAndNeverReused(t *testing.T) {
 		seen[host] = true
 	}
 }
+
+func TestOpenRechecksTheCapabilityEveryTime(t *testing.T) {
+	h := newHarness(t)
+	c, _ := h.connect()
+	if err := h.m.OpenConnection(c.host); err != nil {
+		t.Fatal(err)
+	}
+	delete(h.native.opened, c.host)
+	h.inst.mu.Lock()
+	h.inst.caps = []string{"loopback-handoff"} // the instance was downgraded
+	h.inst.mu.Unlock()
+	err := h.m.OpenConnection(c.host)
+	var e *shellErr
+	if !errors.As(err, &e) || e.code != codeCapabilityMissing || !strings.Contains(e.message, c.Info().Name) || !strings.Contains(e.message, capabilityDesktop) {
+		t.Fatalf("error %v", err)
+	}
+	if _, opened := h.native.opened[c.host]; opened {
+		t.Error("a window opened for an instance without the capability")
+	}
+}
+
+func TestLogSafeBoundsInstanceText(t *testing.T) {
+	got := logSafe("bad\nINFO forged\x1b[31m" + strings.Repeat("é", 500))
+	if strings.ContainsAny(got, "\n\x1b") || len(got) > 210 {
+		t.Fatalf("%q", got)
+	}
+}

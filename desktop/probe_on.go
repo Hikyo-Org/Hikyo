@@ -3,8 +3,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -17,23 +24,55 @@ import (
 // Probe builds (`-tags probe`) exist for driven checks of the renderer policy
 // (ADR D10). They are never part of a release.
 
+// devDataDir and devAllowLoopbackHTTP read the development variables, in dev
+// and probe builds only (see probe_off.go).
+func devDataDir() string { return os.Getenv("HIKYO_DESKTOP_HOME") }
+func devAllowLoopbackHTTP() bool {
+	return os.Getenv("HIKYO_DESKTOP_ALLOW_LOOPBACK_HTTP") == "1"
+}
+
 // installProbe runs the script in HIKYO_DESKTOP_PROBE_JS after every
-// navigation of a window.
-func installProbe(w *application.WebviewWindow) {
+// navigation of a window. Scripts dropped into HIKYO_DESKTOP_PROBE_CMD_DIR as
+// <host>.js run once in that host's window (the connection list is "app").
+func installProbe(w *application.WebviewWindow, host string) {
 	path := os.Getenv("HIKYO_DESKTOP_PROBE_JS")
-	if path == "" {
-		return
-	}
+	var ready atomic.Bool
 	w.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, func(*application.WindowEvent) {
+		// ExecJS queues until the Wails runtime reports ready, which this shell never loads.
+		if !ready.Load() {
+			w.HandleMessage("wails:runtime:ready")
+			ready.Store(true)
+		}
+		if path == "" {
+			return
+		}
 		script, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("probe: %v", err)
 			return
 		}
-		// ExecJS queues until the Wails runtime reports ready, which this shell never loads.
-		w.HandleMessage("wails:runtime:ready")
 		w.ExecJS(string(script))
 	})
+	dir := os.Getenv("HIKYO_DESKTOP_PROBE_CMD_DIR")
+	if dir == "" {
+		return
+	}
+	name := host
+	if host == shell.AppHost {
+		name = "app"
+	}
+	go func() {
+		file := filepath.Join(dir, name+".js")
+		for range time.Tick(250 * time.Millisecond) {
+			script, err := os.ReadFile(file)
+			if err != nil || !ready.Load() {
+				continue
+			}
+			_ = os.Remove(file)
+			log.Printf("probe: running %s (%d bytes)", file, len(script))
+			w.ExecJS(string(script))
+		}
+	}()
 }
 
 // probeSeed adds one connection to HIKYO_DESKTOP_PROBE_SEED (an http loopback
@@ -52,7 +91,7 @@ func probeSeed(s *shell.Store) string {
 	if err := s.Put(info); err != nil {
 		log.Fatal(err)
 	}
-	if err := (keychain{}).Put(host, shell.Secret{Token: "probe-token", SessionID: "ses_probe"}); err != nil {
+	if err := (keychain{}).Put(host, shell.Secret{Token: "probe-token", SessionID: "ses_probe", Origin: origin, TrustMode: clienttrust.ModeSystemCA, PrincipalID: "usr_probe"}); err != nil {
 		log.Fatal(err)
 	}
 	return host
@@ -65,5 +104,77 @@ func probeOpen(m *shell.Manager, host string) {
 	}
 	if err := m.OpenConnection(host); err != nil {
 		log.Printf("probe: %v", err)
+	}
+}
+
+// probeNative answers the native dialogs without a click so a driven run can
+// get past them. HIKYO_DESKTOP_PROBE_CONFIRM=1 accepts every confirmation (its
+// text is logged); HIKYO_DESKTOP_PROBE_SAVE_DIR makes the save panel return
+// that directory plus the suggested name.
+func probeNative(n shell.Native) shell.Native { return probeDialogs{n} }
+
+type probeDialogs struct{ shell.Native }
+
+func (p probeDialogs) Confirm(title, message, label string) bool {
+	if os.Getenv("HIKYO_DESKTOP_PROBE_CONFIRM") != "1" {
+		return p.Native.Confirm(title, message, label)
+	}
+	log.Printf("probe: confirm %q accepted: %s", title, message)
+	return true
+}
+
+func (p probeDialogs) SavePanel(name, source, mimeType string) (string, bool) {
+	dir := os.Getenv("HIKYO_DESKTOP_PROBE_SAVE_DIR")
+	if dir == "" {
+		return p.Native.SavePanel(name, source, mimeType)
+	}
+	log.Printf("probe: save panel for %q from %q", name, source)
+	return filepath.Join(dir, name), true
+}
+
+// probeOpener appends the URL the shell wants opened to
+// HIKYO_DESKTOP_PROBE_OPEN_LOG instead of starting a browser; a driver reads
+// the file and plays the browser's part.
+func probeOpener(open func(string) error) func(string) error {
+	path := os.Getenv("HIKYO_DESKTOP_PROBE_OPEN_LOG")
+	if path == "" {
+		return open
+	}
+	return func(u string) error {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		_, err = f.WriteString(u + "\n")
+		return err
+	}
+}
+
+// probeMiddleware gives a probe script a way to report: a POST to
+// /__probe/log on its own origin is written to the log.
+func probeMiddleware(next func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		inner := next(h)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/__probe/log" && r.Method == http.MethodPost {
+				body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+				log.Printf("probe-js [%s]: %s", r.Host, body)
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if r.URL.Path == "/__probe/secret" && r.Method == http.MethodGet {
+				// Fingerprints only, so a run can see a rotation without a token leaving the keychain.
+				secret, err := keychain{}.Get(r.Host)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusNotFound)
+					return
+				}
+				sum := sha256.Sum256([]byte(secret.Token))
+				_ = json.MarshalWrite(w, map[string]string{"token_fp": hex.EncodeToString(sum[:4]), "session_id": secret.SessionID})
+				return
+			}
+			inner.ServeHTTP(w, r)
+		})
 	}
 }

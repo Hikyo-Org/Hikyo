@@ -138,7 +138,7 @@ func (m *Manager) serveApp(w http.ResponseWriter, r *http.Request) {
 			writeShellError(w, e)
 			return
 		}
-		origin, cerr := clienttrust.CanonicalOrigin(in.Origin)
+		origin, cerr := canonicalOrigin(in.Origin)
 		if u, perr := url.Parse(origin); cerr != nil || perr != nil || u.Scheme != "https" {
 			writeShellError(w, &shellErr{codeInvalid, "that is not an https origin"})
 			return

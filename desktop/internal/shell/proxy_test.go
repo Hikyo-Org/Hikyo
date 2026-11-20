@@ -121,7 +121,8 @@ func TestIdempotentRequestRetriesOnceAfterRotation(t *testing.T) {
 		if r.Header.Get("Authorization") == "Bearer "+secret.Token {
 			// The rotation lands while this request is in flight.
 			c.mu.Lock()
-			c.secret = Secret{Token: next, SessionID: secret.SessionID}
+			c.secret = secret
+			c.secret.Token = next
 			c.mu.Unlock()
 			w.WriteHeader(401)
 			return
@@ -137,7 +138,8 @@ func TestIdempotentRequestRetriesOnceAfterRotation(t *testing.T) {
 	// A POST is not idempotent and is not retried.
 	h.inst.on("POST /api/v1/once", func(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
-		c.secret = Secret{Token: newToken(t), SessionID: secret.SessionID}
+		c.secret = secret
+		c.secret.Token = newToken(t)
 		c.mu.Unlock()
 		w.WriteHeader(401)
 	})
