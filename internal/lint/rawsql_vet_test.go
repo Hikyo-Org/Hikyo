@@ -2,6 +2,7 @@ package lint
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,7 +50,11 @@ func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return RawSQLSummaryFindings(in, root, out.Context, out.Summaries[RawSQL.Name])
+	native := flagValue(out.Flags, "-rawsql.native=")
+	if native == "" {
+		native = runtime.GOOS
+	}
+	return rawSQLSummaryFindings(in, root, out.Context, native, out.Summaries[RawSQL.Name])
 }
 
 // requireRawSQLParity checks that every finding of the old RawSQL harness over

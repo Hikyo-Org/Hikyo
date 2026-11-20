@@ -57,7 +57,7 @@ func (s Summary) validate(analyzer string) error {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, summaryPin, RedactPins.Name)
 		}
 		return nil
-	case summaryRawOwner, summaryRawCaller, summaryRawHelper, summaryRawUnreached:
+	case summaryRawOwner, summaryRawCaller, summaryRawHelper, summaryRawUnreached, summaryRawDump:
 		if analyzer != RawSQL.Name {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, s.Kind, RawSQL.Name)
 		}

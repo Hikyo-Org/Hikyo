@@ -22,6 +22,7 @@ import (
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -42,6 +43,10 @@ const (
 	// summaryRawUnreached: "<owner> <dependency>", a pinned helper dependency the
 	// owner's pass could not reach.
 	summaryRawUnreached = "rawunreached"
+	// summaryRawDump is reported only under -rawsql.dump, for the reviewed-pin
+	// updater: "fn <key> <hash>" for a protocol owner or reviewed caller, and
+	// "dep <owner> <helper key> <hash>" for each helper an owner reaches.
+	summaryRawDump = "rawdump"
 )
 
 // reviewedPinsPath is the pin inventory, relative to the repository root.
@@ -82,8 +87,12 @@ func newRawSQL(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyze
 	}
 	prefix := Module
 	var context string
+	native := runtime.GOOS
+	var dump bool
 	a.Flags.StringVar(&prefix, "prefix", Module, "package path prefix the check applies to")
 	a.Flags.StringVar(&context, "context", "", "analysis context name (set by the driver; part of the vet cache key)")
+	a.Flags.StringVar(&native, "native", runtime.GOOS, "native helper target the pins are expanded for (the reviewed-pin updater passes linux; the driver leaves the host)")
+	a.Flags.BoolVar(&dump, "dump", false, "report the actual owner, caller and helper hashes as rawdump summaries (the reviewed-pin updater)")
 	in := provide(a)
 	a.Run = func(pass *analysis.Pass) (any, error) {
 		path := pass.Pkg.Path()
@@ -98,7 +107,7 @@ func newRawSQL(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyze
 			reportRefusal(pass, err)
 			return nil, nil
 		}
-		if err := runRawSQL(pass, src, root, prefix, context); err != nil {
+		if err := runRawSQL(pass, src, root, prefix, context, native, dump); err != nil {
 			reportRefusal(pass, err)
 		}
 		return nil, nil
@@ -108,7 +117,7 @@ func newRawSQL(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyze
 
 // rawSQLConfig loads the protocols in force for the context: a refusal for an
 // unreadable or invalid inventory and for a context the driver did not name.
-func rawSQLConfig(src source, root, context string) (map[string]RawSQLProtocol, error) {
+func rawSQLConfig(src source, root, context, native string) (map[string]RawSQLProtocol, error) {
 	if context == "" {
 		return nil, errors.New("the driver did not pass -rawsql.context")
 	}
@@ -123,7 +132,7 @@ func rawSQLConfig(src source, root, context string) (map[string]RawSQLProtocol, 
 	if err != nil {
 		return nil, err
 	}
-	protocols, err := inventory.rawProtocols()
+	protocols, err := inventory.rawProtocolsForGOOS(native)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +162,8 @@ type rawSQLFile struct {
 	rel  string
 }
 
-func runRawSQL(pass *analysis.Pass, src source, root, prefix, context string) error {
-	protocols, err := rawSQLConfig(src, root, context)
+func runRawSQL(pass *analysis.Pass, src source, root, prefix, context, native string, dump bool) error {
+	protocols, err := rawSQLConfig(src, root, context, native)
 	if err != nil {
 		return err
 	}
@@ -287,7 +296,11 @@ func runRawSQL(pass *analysis.Pass, src source, root, prefix, context string) er
 	}
 
 	pinnedHelpers := map[string]bool{}
+	reviewedCallers := map[string]bool{}
 	for _, protocol := range protocols {
+		for caller := range protocol.Callers {
+			reviewedCallers[caller] = true
+		}
 		for dependency := range rawSQLProtocolDependencies(protocol, context) {
 			pinnedHelpers[dependency] = true
 		}
@@ -338,6 +351,17 @@ func runRawSQL(pass *analysis.Pass, src source, root, prefix, context string) er
 			if actual == "" {
 				report(fn.Pos(), "%s: cannot pin body: %v", owner, hashErrors[owner])
 				continue
+			}
+			if dump {
+				_, isOwner := protocols[owner]
+				if isOwner || reviewedCallers[owner] {
+					reportSummary(pass, summaryRawDump, "fn "+owner+" "+actual)
+				}
+				if isOwner {
+					for dependency, hash := range reach(self) {
+						reportSummary(pass, summaryRawDump, "dep "+owner+" "+dependency+" "+hash)
+					}
+				}
 			}
 			var sites []token.Pos
 			ast.Inspect(fn.Body, func(node ast.Node) bool {
@@ -429,7 +453,13 @@ func rawSQLNameable(fn *types.Func) bool { return fn.Exported() }
 // the inventory judged here is the one the passes saw. The wording is the old
 // harness's, so the two compare by string.
 func RawSQLSummaryFindings(src source, root, context string, summaries []Summary) ([]string, error) {
-	protocols, err := rawSQLConfig(src, root, context)
+	return rawSQLSummaryFindings(src, root, context, runtime.GOOS, summaries)
+}
+
+// rawSQLSummaryFindings is RawSQLSummaryFindings for the pins expanded for native
+// (the reviewed-pin updater verifies for linux, whatever its host).
+func rawSQLSummaryFindings(src source, root, context, native string, summaries []Summary) ([]string, error) {
+	protocols, err := rawSQLConfig(src, root, context, native)
 	if err != nil {
 		return nil, err
 	}

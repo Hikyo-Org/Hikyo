@@ -459,7 +459,7 @@ func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	rawIn := snapshotAbsent(t, RawSQL.Name, rawRoot)
-	if _, err := rawSQLConfig(rawIn, rawRoot, "default"); err != nil {
+	if _, err := rawSQLConfig(rawIn, rawRoot, "default", "linux"); err != nil {
 		t.Errorf("rawsql: the pins with absent query directories were refused: %v", err)
 	}
 	path := filepath.Join(rawRoot, "internal", "store", "sqlitegen", "a.sql.go")
