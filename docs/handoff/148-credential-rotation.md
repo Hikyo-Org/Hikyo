@@ -1717,8 +1717,10 @@ Round 2 (two independent reviews of 9b8a104dc, cf58e58a7 and d12fc352c). Final f
   no migration** (00096 is unchanged). `RotationRtSettleRun` keeps the stored
   `last_error` when the stored value is `published_versions_changed`, the stored phase
   and the new phase are both `revoke_refused` or `quarantine`, and the settle did not
-  carry `RestoreChecked`. Only `revoke()` sets `RestoreChecked`, and only after a fresh
-  `RestoreAssertion` read, so only a re-read can clear or replace the code.
+  carry `RestoreChecked`. Only `revoke()` sets `RestoreChecked`, after a fresh
+  `RestoreAssertion` read or for a role that has expired (there the revoke settle and
+  `finish()` also set it after a failed read, which is safe: `finish` always ends in
+  `done` on that path), so only a re-read or an expired role can clear or replace the code.
   `RotationAbandonOpenRuns` keeps it in a `CASE`. A restore refusal now survives an
   extend outage, an abandon and a deleted rotation, and clears itself once the
   assertion holds again (a drop then follows). A dedicated column was rejected: it
@@ -1726,7 +1728,9 @@ Round 2 (two independent reviews of 9b8a104dc, cf58e58a7 and d12fc352c). Final f
   Tests (both engines): `TestRotationRestoreRefusalSurvivesExtendOutage`,
   `TestRotationAbandonKeepsTheRestoreRefusal`,
   `TestRotationRestoreRefusalClearsOnceTheAssertionHoldsAgain` and `...OnQuarantine...`.
-  Each fails without the fix (checked by reverting the CASE).
+  The extend-outage and abandon tests guard stickiness: they fail when the CASE is
+  reverted (checked on both engines). The two `...ClearsOnce...` tests guard liveness
+  only: they fail if `RestoreChecked` is never set, so a refusal could never clear.
 - **Writer audit** (every writer of `rotation_runs.phase` and `last_error` that can
   touch a `revoke_refused` or `quarantine` run):
 

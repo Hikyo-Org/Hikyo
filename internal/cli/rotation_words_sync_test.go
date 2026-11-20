@@ -32,6 +32,9 @@ func TestRotationRunErrorWordsMatchTheExecutor(t *testing.T) {
 				continue
 			}
 			for i, name := range vs.Names {
+				if i >= len(vs.Values) {
+					t.Fatalf("%s has an implicit value: give each rotCode constant a string literal", name.Name)
+				}
 				lit, isLit := vs.Values[i].(*ast.BasicLit)
 				if strings.HasPrefix(name.Name, "rotCode") && isLit {
 					value, err := strconv.Unquote(lit.Value)

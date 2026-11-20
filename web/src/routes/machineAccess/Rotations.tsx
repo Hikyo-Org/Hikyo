@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
@@ -26,7 +26,7 @@ import { Alert } from '../../ui/Alert.tsx';
 import { Badge, type BadgeTone } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
-import { NamedId } from '../../ui/NamedId.tsx';
+import { Breakable, NamedId } from '../../ui/NamedId.tsx';
 import { Select } from '../../ui/Select.tsx';
 import { NoEnvironments, type EnvironmentsRead } from './EnvironmentsRead.tsx';
 
@@ -62,24 +62,6 @@ function at(value: string | null | undefined, none: string): string {
   return value === undefined || value === null ? none : formatWhen(value);
 }
 
-/**
- * Breakable is a word that may break only after an underscore: a long key name or
- * error code wraps at its own word boundaries and is never split mid-word.
- */
-function Breakable({ text }: { text: string }) {
-  const parts = text.split(/(?<=_)/);
-  return (
-    <>
-      {parts.map((part, index) => (
-        <Fragment key={`${String(index)}-${part}`}>
-          {part}
-          {index < parts.length - 1 ? <wbr /> : null}
-        </Fragment>
-      ))}
-    </>
-  );
-}
-
 /** CodeText is a sentence whose snake_case words (error codes, halt reasons) are Breakable. */
 function CodeText({ text }: { text: string }) {
   return (
@@ -94,16 +76,6 @@ function CodeText({ text }: { text: string }) {
         ),
       )}
     </>
-  );
-}
-
-/** A key by name (id on hover), the id in mono when the catalogue does not name it. */
-function KeyName({ id, name }: { id: string; name: string | undefined }) {
-  if (name === undefined || name === id) return <span className="mono">{id}</span>;
-  return (
-    <bdi title={id}>
-      <Breakable text={name} />
-    </bdi>
   );
 }
 
@@ -270,10 +242,10 @@ function RotationList({
                           <span className="mono rotations__id" title={rotation.id}>{rotation.id}</span>
                         </Fact>
                         <Fact label="Password key">
-                          <KeyName id={rotation.key_id} name={keyName(rotation.key_id)} />
+                          <NamedId breakable id={rotation.key_id} name={keyName(rotation.key_id)} />
                         </Fact>
                         <Fact label="Role name key">
-                          <KeyName id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
+                          <NamedId breakable id={rotation.username_key_id} name={keyName(rotation.username_key_id)} />
                         </Fact>
                         <Fact label="Provider">
                           {minter === undefined ? (

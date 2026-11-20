@@ -29,8 +29,11 @@ func rotCodeValues(t *testing.T) map[string]string {
 				continue
 			}
 			for i, name := range vs.Names {
-				if !strings.HasPrefix(name.Name, "rotCode") || i >= len(vs.Values) {
+				if !strings.HasPrefix(name.Name, "rotCode") {
 					continue
+				}
+				if i >= len(vs.Values) {
+					t.Fatalf("%s has an implicit value: give each rotCode constant a string literal", name.Name)
 				}
 				lit, ok := vs.Values[i].(*ast.BasicLit)
 				if !ok {

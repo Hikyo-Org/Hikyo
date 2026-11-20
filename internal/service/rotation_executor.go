@@ -1447,8 +1447,9 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: "done", NextAttempt: rotationExtendDue(run.CandidateValidUntil)})
 	}
 	hold := func(phase, code string) error {
-		// Only called after the restore assertion was read this visit, so it may replace
-		// a restore refusal's code.
+		// Only called after a fresh restore assertion read this visit, or for a role that
+		// has expired (the revoke settle and finish() then also set it after a failed read:
+		// finish always ends in done there), so it may replace a restore refusal's code.
 		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: phase, LastError: code, NextAttempt: now.Add(rotationBackoff(run.AttemptCount)), RestoreChecked: true})
 	}
 	refusedPhase := run.Phase
