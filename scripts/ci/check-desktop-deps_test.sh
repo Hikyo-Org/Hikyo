@@ -20,16 +20,20 @@ cat >"$work/go" <<'STUB'
 #!/bin/sh
 [ ! -f "$STUB_LIST_FAIL" ] || exit 3
 [ "$1" = list ] || exit 99
-cat "$STUB_LIST"
+case "$*" in
+*"-tags probe"*) if [ -f "$STUB_LIST_PROBE" ]; then cat "$STUB_LIST_PROBE"; else cat "$STUB_LIST"; fi ;;
+*) cat "$STUB_LIST" ;;
+esac
 STUB
 chmod +x "$work/go"
 GO=$work/go
 STUB_LIST=$work/list
 STUB_LIST_FAIL=$work/list-fail
-export GO STUB_LIST STUB_LIST_FAIL
+STUB_LIST_PROBE=$work/list-probe
+export GO STUB_LIST STUB_LIST_PROBE STUB_LIST_FAIL
 
 reset() {
-	rm -rf "$work/repo" "$STUB_LIST_FAIL"
+	rm -rf "$work/repo" "$STUB_LIST_FAIL" "$STUB_LIST_PROBE"
 	mkdir -p "$work/repo/desktop"
 	printf 'module github.com/Hikyo-Org/hikyo\n\ngo 1.27\n\nrequire github.com/getkin/kin-openapi v0.1.0\n' >"$work/repo/go.mod"
 	printf 'github.com/getkin/kin-openapi v0.1.0 h1:x\n' >"$work/repo/go.sum"
@@ -97,6 +101,24 @@ reset
 sed 's|=> ../|=> ../../elsewhere|' "$work/repo/desktop/go.mod" >"$work/gomod" && mv "$work/gomod" "$work/repo/desktop/go.mod"
 expect_refusal 'a replace to another directory' 'must keep: replace'
 
+# The grouped replace form is the same mapping.
+reset
+printf 'module github.com/Hikyo-Org/hikyo/desktop\n\ngo 1.27\n\nreplace (\n\tgithub.com/other/x => ../x // note\n\tgithub.com/Hikyo-Org/hikyo => ../\n)\n' >"$work/repo/desktop/go.mod"
+run || fail 'a grouped replace was refused'
+reset
+printf 'module github.com/Hikyo-Org/hikyo/desktop\n\nreplace (\n\tgithub.com/Hikyo-Org/hikyo => ../elsewhere\n)\n' >"$work/repo/desktop/go.mod"
+expect_refusal 'a grouped replace to another directory' 'must keep: replace'
+
+# Go sources without the module manifest must not pass unvalidated.
+reset
+rm "$work/repo/desktop/go.mod"
+printf 'package main\n' >"$work/repo/desktop/main.go"
+expect_refusal 'desktop Go sources without go.mod' 'desktop/go.mod is missing'
+reset
+rm "$work/repo/desktop/go.mod"
+printf 'doc\n' >"$work/repo/desktop/README.md"
+run || fail 'a desktop/ without Go sources or go.mod was refused'
+
 # Where desktop/ does not exist yet (main before the shell lands) the check passes,
 # does not list packages, and still guards the root module.
 reset
@@ -122,6 +144,16 @@ expect_refusal 'a go list failure' 'go list failed'
 reset
 printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST"
 expect_refusal 'an import the classifier does not select' 'scripts/ci/gotools, but a change there does not select the desktop job'
+
+# The default build can import what the probe build does not, and the reverse.
+reset
+printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST"
+sed '$d' "$STUB_LIST" >"$STUB_LIST_PROBE"
+expect_refusal 'a default-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop job'
+reset
+cp "$STUB_LIST" "$STUB_LIST_PROBE"
+printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST_PROBE"
+expect_refusal 'a probe-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop job'
 
 reset
 printf 'fmt\ngithub.com/Hikyo-Org/hikyo/desktop\n' >"$STUB_LIST"

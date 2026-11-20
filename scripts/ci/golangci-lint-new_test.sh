@@ -11,62 +11,6 @@ out=$root/out
 calls=$root/calls
 
 fail() {
-	# 10. A change inside the nested desktop module never reaches `go list` or the root
-# pass (both fail on a path outside the root module); desktop is linted from inside it.
-change desktop/internal/shell/s.go desktop/main.go
-: >"$GO_LIST_FAIL"
-run || fail 'desktop-only change failed'
-rm "$GO_LIST_FAIL"
-[ "$(cat "$calls")" = "$desktop_calls" ] || fail "desktop-only change ran '$(cat "$calls")'"
-grep -F 'golangci-lint-new: linting new code since main (desktop/...)' "$out" >/dev/null || fail 'desktop label missing'
-
-# 10b. Only desktop/go.mod or desktop/go.sum changing still lints desktop.
-for f in desktop/go.mod desktop/go.sum; do
-	change "$f"
-	run || fail "$f change failed"
-	[ "$(cat "$calls")" = "$desktop_calls" ] || fail "$f change ran '$(cat "$calls")'"
-done
-
-# 10c. A docs file under desktop/ lints nothing.
-change desktop/README.md
-run || fail 'desktop doc change failed'
-[ ! -s "$calls" ] || fail 'desktop doc change ran the linter'
-
-# 10d. Root and desktop changes together: root pass first, then desktop's.
-change a/a.go desktop/main.go
-run || fail 'mixed root and desktop change failed'
-expect_call './a'
-expect_desktop_calls
-
-# 10e. A desktop failure fails the script, and a root failure is reported first.
-change desktop/main.go
-: >"$root/tool-fail-desktop"
-if run; then fail 'desktop lint failure was swallowed'; fi
-[ "$status" = 5 ] || fail "desktop lint failure exited $status, want 5"
-change a/a.go desktop/main.go
-: >"$root/tool-fail"
-if run; then fail 'root failure was swallowed beside desktop'; fi
-[ "$status" = 7 ] || fail "root failure exited $status, want 7"
-[ "$(wc -l <"$calls" | tr -d ' ')" = 2 ] || fail 'a failing root pass skipped the desktop pass'
-rm "$root/tool-fail-desktop" "$root/tool-fail"
-
-# 10f. Where desktop/ does not exist (main, dev before the shell lands) a lint-input
-# change lints the root only, and a deleted desktop file selects nothing.
-git switch -q -c nodesktop main
-git rm -q -r desktop
-echo '# x' >>go.mod
-git add go.mod
-git commit -q -m 'no desktop'
-run || fail 'desktop-less tree failed'
-expect_call './...'
-[ "$(grep -c '^desktop: ' "$calls")" = 0 ] || fail 'linted a desktop/ that does not exist'
-git switch -q -c nodesktop-only main
-git rm -q -r desktop
-git commit -q -m 'drop desktop only'
-run || fail 'desktop-only deletion failed'
-[ ! -s "$calls" ] || fail "desktop deletion ran '$(cat "$calls")'"
-grep -F 'nothing to lint' "$out" >/dev/null || fail 'desktop deletion message missing'
-
 printf 'golangci-lint-new fixture failed: %s\n' "$*" >&2
 	[ ! -f "$out" ] || cat "$out" >&2
 	exit 1
@@ -279,5 +223,61 @@ for nth in 1 2 3; do
 	[ ! -s "$calls" ] || fail "failing git diff #$nth still ran the linter"
 	grep -F 'nothing to lint' "$out" >/dev/null && fail "failing git diff #$nth read as nothing to lint"
 done
+
+# 10. A change inside the nested desktop module never reaches `go list` or the root
+# pass (both fail on a path outside the root module); desktop is linted from inside it.
+change desktop/internal/shell/s.go desktop/main.go
+: >"$GO_LIST_FAIL"
+run || fail 'desktop-only change failed'
+rm "$GO_LIST_FAIL"
+[ "$(cat "$calls")" = "$desktop_calls" ] || fail "desktop-only change ran '$(cat "$calls")'"
+grep -F 'golangci-lint-new: linting new code since main (desktop/...)' "$out" >/dev/null || fail 'desktop label missing'
+
+# 10b. Only desktop/go.mod or desktop/go.sum changing still lints desktop.
+for f in desktop/go.mod desktop/go.sum; do
+	change "$f"
+	run || fail "$f change failed"
+	[ "$(cat "$calls")" = "$desktop_calls" ] || fail "$f change ran '$(cat "$calls")'"
+done
+
+# 10c. A docs file under desktop/ lints nothing.
+change desktop/README.md
+run || fail 'desktop doc change failed'
+[ ! -s "$calls" ] || fail 'desktop doc change ran the linter'
+
+# 10d. Root and desktop changes together: root pass first, then desktop's.
+change a/a.go desktop/main.go
+run || fail 'mixed root and desktop change failed'
+expect_call './a'
+expect_desktop_calls
+
+# 10e. A desktop failure fails the script, and a root failure is reported first.
+change desktop/main.go
+: >"$root/tool-fail-desktop"
+if run; then fail 'desktop lint failure was swallowed'; fi
+[ "$status" = 5 ] || fail "desktop lint failure exited $status, want 5"
+change a/a.go desktop/main.go
+: >"$root/tool-fail"
+if run; then fail 'root failure was swallowed beside desktop'; fi
+[ "$status" = 7 ] || fail "root failure exited $status, want 7"
+[ "$(wc -l <"$calls" | tr -d ' ')" = 2 ] || fail 'a failing root pass skipped the desktop pass'
+rm "$root/tool-fail-desktop" "$root/tool-fail"
+
+# 10f. Where desktop/ does not exist (main, dev before the shell lands) a lint-input
+# change lints the root only, and a deleted desktop file selects nothing.
+git switch -q -c nodesktop main
+git rm -q -r desktop
+echo '# x' >>go.mod
+git add go.mod
+git commit -q -m 'no desktop'
+run || fail 'desktop-less tree failed'
+expect_call './...'
+[ "$(grep -c '^desktop: ' "$calls")" = 0 ] || fail 'linted a desktop/ that does not exist'
+git switch -q -c nodesktop-only main
+git rm -q -r desktop
+git commit -q -m 'drop desktop only'
+run || fail 'desktop-only deletion failed'
+[ ! -s "$calls" ] || fail "desktop deletion ran '$(cat "$calls")'"
+grep -F 'nothing to lint' "$out" >/dev/null || fail 'desktop deletion message missing'
 
 printf 'golangci-lint-new fixture: selects changed package directories, lints everything for config changes, skips deletions and testdata, propagates failure\n'
