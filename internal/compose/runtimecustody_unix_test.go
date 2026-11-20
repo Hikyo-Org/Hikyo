@@ -81,6 +81,46 @@ func TestRuntimeCustodyRefusesUnsafeParent(t *testing.T) {
 	}
 }
 
+// An ancestor above the parent can rename the parent away and substitute its
+// own, so the parent rule applies to every ancestor, also through a symlinked
+// ancestor's target hierarchy.
+func TestRuntimeCustodyRefusesReplaceableAncestor(t *testing.T) {
+	base := t.TempDir()
+	shared := filepath.Join(base, "shared")
+	parent := filepath.Join(shared, "private")
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shared, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(parent, alias); err != nil {
+		t.Fatal(err)
+	}
+	k := testKeys(t)
+	rl := begin(t, t.TempDir(), nil)
+	for name, dir := range map[string]string{"direct": parent, "through a symlink": alias} {
+		runtime := filepath.Join(dir, "runtime")
+		if _, _, err := rl.WriteGeneration(runtime, k, "api", []byte("A=1\n")); !errors.Is(err, ErrRuntimeCustody) {
+			t.Errorf("%s: WriteGeneration err=%v, want ErrRuntimeCustody", name, err)
+		}
+		if err := os.MkdirAll(runtime, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := RuntimeDirCustody(runtime); !errors.Is(err, ErrRuntimeCustody) {
+			t.Errorf("%s: RuntimeDirCustody err=%v, want ErrRuntimeCustody", name, err)
+		}
+	}
+	// The same hierarchy with a sticky shared directory is accepted.
+	if err := os.Chmod(shared, 0o777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := rl.WriteGeneration(filepath.Join(alias, "runtime"), k, "api", []byte("A=1\n")); err != nil {
+		t.Fatalf("sticky ancestor refused: %v", err)
+	}
+}
+
 func TestRuntimeCustodyMissingDirIsNotAFailure(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent")
 	if err := RuntimeDirCustody(missing); err != nil {
