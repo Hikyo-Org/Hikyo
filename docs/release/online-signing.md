@@ -194,6 +194,8 @@ runs from main only, so no issue appears before a promotion has landed it.
    token cannot read that administration endpoint. It requires immutable
    releases, then redownloads and verifies the public result. Wait for the
    command to pass.
+   For stable versions it then publishes the staged `desktop-v<version>` draft
+   (see [Desktop app](#desktop-app-release)); it is never marked Latest.
 4. **Record published trust:** run
    `scripts/release/ceremony.sh sync-trust VERSION`. It re-verifies the public
    release and opens a PR containing its signed metadata and catalog. On that
@@ -297,3 +299,20 @@ binds source, producer and artifact hashes, but is not an independently isolated
 builder, reproducible-build proof or a certified SLSA level. See the
 [design decision](../adr/stable-workflow-signing.md) and
 [primary-source comparison](../research/release-signing-ceremonies.md).
+
+## Desktop app release
+
+Every stable tag run also stages a `desktop-v<version>` draft (see
+[Apple signing](apple-signing.md#desktop-app)). A desktop job failure fails the
+run and blocks CLI publication until the failed jobs are rerun.
+
+Once, before the first stable tag, an administrator runs
+`scripts/release/configure-repository.sh Hikyo-Org/Hikyo` to apply the
+`desktop-v*` tag creation and immutability rulesets. The desktop publisher
+refuses to run until both are active.
+
+Before `publish`, download the staged draft's DMG and verify it as the
+[desktop app page](https://hikyo.app/docs/desktop-app/#verify-the-download)
+describes. `publish` retries are safe: if `v<version>` is already public it
+still publishes the desktop draft, and an already published matching desktop
+release is verified and left unchanged.
