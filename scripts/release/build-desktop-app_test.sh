@@ -51,18 +51,38 @@ if [ "$(uname -s)" = Darwin ]; then
 	refuses_with 'sign-app without identity names it' 'missing APPLE_SIGNING_IDENTITY' sign-app "$work/Hikyo.app"
 fi
 
-# Entitlements: the committed file is accepted and every refused key is caught.
-"$script" check-entitlements "$repo_root/desktop/build/darwin/entitlements.plist" >/dev/null || fail 'committed entitlements refused'
-if command -v plutil >/dev/null 2>&1; then plutil -lint "$repo_root/desktop/build/darwin/entitlements.plist" >/dev/null || fail 'entitlements are not a valid plist'; fi
-for key in com.apple.security.get-task-allow com.apple.security.cs.disable-library-validation \
-	com.apple.security.cs.allow-unsigned-executable-memory com.apple.security.cs.allow-dyld-environment-variables; do
-	cat >"$work/entitlements.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict><key>$key</key><true/></dict></plist>
-PLIST
-	refuses_with "entitlement $key" "entitlement refused: $key" check-entitlements "$work/entitlements.plist"
-done
+# Entitlements are an allowlist: exactly an empty dictionary. The check reads
+# them with plutil, so it runs on macOS only (as does signing).
+if [ "$(uname -s)" = Darwin ]; then
+	"$script" check-entitlements "$repo_root/desktop/build/darwin/entitlements.plist" >/dev/null || fail 'committed entitlements refused'
+	plutil -lint "$repo_root/desktop/build/darwin/entitlements.plist" >/dev/null || fail 'entitlements are not a valid plist'
+	for body in '<key>com.apple.security.get-task-allow</key><true/>' \
+		'<key>com.apple.security.cs.disable-library-validation</key><true/>' \
+		'<key>com.apple.security.network.client</key><true/>' \
+		'<key>com.apple.security.cs.debugger</key><false/>'; do
+		printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>%s</dict></plist>\n' "$body" >"$work/entitlements.plist"
+		refuses_with "entitlement $body" 'exactly an empty dictionary' check-entitlements "$work/entitlements.plist"
+	done
+	printf 'not a plist' >"$work/entitlements.plist"
+	refuses_with 'unreadable entitlements' 'exactly an empty dictionary' check-entitlements "$work/entitlements.plist"
+	printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><array/></plist>\n' >"$work/entitlements.plist"
+	refuses_with 'non-dictionary entitlements' 'exactly an empty dictionary' check-entitlements "$work/entitlements.plist"
+fi
 refuses 'missing entitlements file' check-entitlements "$work/absent.plist"
+
+# Signing refuses any bundle member that is not the plist and the executable, a
+# symlink included, before any Keychain work (dummy identity, no credentials).
+if [ "$(uname -s)" = Darwin ]; then
+	bundle=$work/extra/Hikyo.app
+	mkdir -p "$bundle/Contents/MacOS"
+	: >"$bundle/Contents/Info.plist"
+	: >"$bundle/Contents/MacOS/hikyo-desktop"
+	ln -s hikyo-desktop "$bundle/Contents/MacOS/alias"
+	APPLE_SIGNING_IDENTITY='Developer ID Application: Test (ABCDE12345)' APPLE_TEAM_ID=ABCDE12345 \
+		APPLE_DEVELOPER_ID_P12_BASE64=dummy APPLE_DEVELOPER_ID_P12_PASSWORD=dummy \
+		"$script" sign-app "$bundle" >"$work/out" 2>&1 && fail 'bundle with a symlink accepted'
+	grep -F 'unexpected files in the app bundle' "$work/out" >/dev/null || fail "symlink not refused for its bundle: $(cat "$work/out")"
+fi
 
 # The release script never re-introduces the ad-hoc, deep signing the Taskfile uses.
 if grep -E -e '--deep|--sign -( |$)' "$script" | grep -v '^[[:space:]]*#' >/dev/null; then fail 'script signs ad hoc or with --deep'; fi

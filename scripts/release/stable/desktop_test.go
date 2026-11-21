@@ -18,11 +18,17 @@ func commit() string { return strings.Repeat(desktopTestCommit, 40) }
 // desktopDraft builds a signed desktop release directory for version 1.0.0 and
 // returns the trust directory, the directory and the signer for re-signing.
 func desktopDraft(t *testing.T) (string, string, func([]byte, string, string) []byte) {
+	return desktopDraftAt(t, "1.0.0")
+}
+
+// desktopDraftAt builds a complete, correctly named and signed draft for any
+// version, so a refusal can only come from the version rules themselves.
+func desktopDraftAt(t *testing.T, version string) (string, string, func([]byte, string, string) []byte) {
 	t.Helper()
 	trust, _, _, sign := fullDraftFixture(t)
 	dir := t.TempDir()
-	inventory := desktopInventory{Schema: desktopInventorySchema, Version: "1.0.0", SourceCommit: commit(), Tag: "desktop-v1.0.0", CLITag: "v1.0.0"}
-	for _, name := range desktopImageNames("1.0.0") {
+	inventory := desktopInventory{Schema: desktopInventorySchema, Version: version, SourceCommit: commit(), Tag: "desktop-v" + version, CLITag: "v" + version}
+	for _, name := range desktopImageNames(version) {
 		payload := []byte("synthetic disk image " + name)
 		sum := sha256.Sum256(payload)
 		if err := os.WriteFile(filepath.Join(dir, name), payload, 0o600); err != nil {
@@ -30,7 +36,7 @@ func desktopDraft(t *testing.T) (string, string, func([]byte, string, string) []
 		}
 		inventory.Files = append(inventory.Files, desktopFile{Name: name, Size: int64(len(payload)), SHA256: hex.EncodeToString(sum[:])})
 	}
-	writeInventory(t, dir, inventory, sign, "v1.0.0")
+	writeInventory(t, dir, inventory, sign, "v"+version)
 	return trust, dir, sign
 }
 
@@ -197,9 +203,10 @@ func TestVerifyDesktopRejectsHostileReleases(t *testing.T) {
 	})
 	for _, version := range []string{"1.0.0-rc.1", "0.9.0", "1.0.0-nightly.1", "1.0.0+build"} {
 		t.Run("refuses "+version, func(t *testing.T) {
-			trust, dir, _ := desktopDraft(t)
-			if err := run(verifyDesktopArgs(trust, dir, version, commit()), &bytes.Buffer{}); err == nil {
-				t.Fatal("accepted a non-stable desktop version")
+			trust, dir, _ := desktopDraftAt(t, version)
+			err := run(verifyDesktopArgs(trust, dir, version, commit()), &bytes.Buffer{})
+			if err == nil || !strings.Contains(err.Error(), "stable versions") {
+				t.Fatalf("a complete signed draft at %s must fail the stable gate, got %v", version, err)
 			}
 		})
 	}

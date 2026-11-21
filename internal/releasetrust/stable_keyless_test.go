@@ -254,6 +254,10 @@ func TestVerifyStableWorkflowBlobBindsTagCommitAndPayload(t *testing.T) {
 		},
 		"empty signature": func() error { return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, nil, payload) },
 		"nightly version": func() error { return snapshot.VerifyStableWorkflowBlob("1.0.0-nightly.1", commit, good, payload) },
+		"oversize payload": func() error {
+			big := make([]byte, releasetrust.MaxDocumentBytes+1)
+			return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, sign(big, commit, "v1.0.0"), big)
+		},
 	} {
 		if call() == nil {
 			t.Fatalf("accepted %s", name)

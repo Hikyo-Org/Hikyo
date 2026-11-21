@@ -25,16 +25,11 @@ usage() {
 }
 
 entitlements=$repo_root/desktop/build/darwin/entitlements.plist
-forbidden_entitlements='com.apple.security.get-task-allow
-com.apple.security.cs.disable-library-validation
-com.apple.security.cs.allow-unsigned-executable-memory
-com.apple.security.cs.allow-dyld-environment-variables'
-
+# Allowlist: the app asks for no entitlement at all, so the signed set must be
+# exactly an empty dictionary. Anything else, or an unreadable file, fails.
 check_entitlements() {
 	[ -f "$1" ] && [ ! -L "$1" ] || fail 'entitlements file is not a regular file'
-	for key in $forbidden_entitlements; do
-		if grep -F "$key" "$1" >/dev/null; then fail "entitlement refused: $key"; fi
-	done
+	[ "$(plutil -convert json -o - "$1" 2>/dev/null)" = '{}' ] || fail 'entitlements must be exactly an empty dictionary'
 }
 
 # The desktop app ships in the stable channel only: never a prerelease or nightly.
@@ -181,7 +176,7 @@ case "$cmd" in
 		# The bundle has one executable and no nested code. Refuse anything else, so
 		# signing without --deep can never leave a nested binary unsigned.
 		new_scratch
-		find "$app" -type f | LC_ALL=C sort >"$scratch/files"
+		find "$app" ! -type d | LC_ALL=C sort >"$scratch/files"
 		printf '%s\n%s\n' "$app/Contents/Info.plist" "$app/Contents/MacOS/$app_executable" >"$scratch/expected"
 		cmp -s "$scratch/files" "$scratch/expected" || fail 'unexpected files in the app bundle'
 		import_identity
@@ -263,7 +258,7 @@ case "$cmd" in
 		new_scratch
 		import_identity
 		codesign --force --sign "$APPLE_SIGNING_IDENTITY" --keychain "$keychain" \
-			--identifier io.hikyo.desktop.dmg --timestamp "$dmg"
+			--identifier app.hikyo.desktop.dmg --timestamp "$dmg"
 		restore_keychain || fail 'cannot restore and delete signing Keychain'
 		codesign --verify --strict -R "$requirement" "$dmg"
 		printf 'desktop app: signed %s\n' "$(basename "$dmg")"
@@ -282,7 +277,7 @@ case "$cmd" in
 			codesign -dvv "$1" >"$scratch/describe" 2>&1
 			grep -E 'flags=0x[0-9a-f]+\(.*runtime' "$scratch/describe" >/dev/null || fail 'hardened runtime flag is absent'
 			if grep -F 'Signature=adhoc' "$scratch/describe" >/dev/null; then fail 'ad-hoc signature'; fi
-			codesign -d --entitlements - --xml "$1" >"$scratch/entitlements.xml" 2>/dev/null || : >"$scratch/entitlements.xml"
+			codesign -d --entitlements - --xml "$1" >"$scratch/entitlements.xml" 2>/dev/null || fail 'cannot read the signed entitlements'
 			check_entitlements "$scratch/entitlements.xml"
 			xcrun stapler validate "$1"
 			[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Contents/Info.plist")" = "$version" ] ||
