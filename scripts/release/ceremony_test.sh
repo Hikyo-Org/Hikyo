@@ -208,6 +208,12 @@ chmod +x "$fixture_dir/bin/fdesetup" "$fixture_dir/bin/hdiutil" \
 	fi
 
 	# The offline publish path gates on the staged desktop draft, stable versions only.
+	# ceremony.sh resets script_dir to its own directory when sourced; point the
+	# gate at a fixture directory so the real helper is never touched.
+	script_dir=$fixture_dir/gate/scripts/release
+	mkdir -p "$script_dir" "$fixture_dir/gate/scripts/lib"
+	cp "$source_dir/../lib/release.sh" "$fixture_dir/gate/scripts/lib/release.sh"
+	cp "$source_dir/release-channel.sh" "$script_dir/release-channel.sh"
 	cat >"$script_dir/publish-desktop-draft.sh" <<'SH'
 #!/bin/sh
 printf 'desktop helper %s\n' "$*" >>"$DESKTOP_LOG"

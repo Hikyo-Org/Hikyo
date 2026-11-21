@@ -20,16 +20,36 @@ usage() {
 		'       build-desktop-app.sh image VERSION ARCH APP DMG' \
 		'       build-desktop-app.sh sign-image DMG' \
 		'       build-desktop-app.sh verify VERSION ARCH APP DMG' \
+		'       build-desktop-app.sh check-bundle APP' \
 		'       build-desktop-app.sh check-entitlements PLIST' >&2
 	exit 2
 }
 
 entitlements=$repo_root/desktop/build/darwin/entitlements.plist
 # Allowlist: the app asks for no entitlement at all, so the signed set must be
-# exactly an empty dictionary. Anything else, or an unreadable file, fails.
+# exactly an empty dictionary. Anything else, or anything unparseable, fails.
+# plistlib keeps this check portable; only reading the signed set needs codesign.
 check_entitlements() {
 	[ -f "$1" ] && [ ! -L "$1" ] || fail 'entitlements file is not a regular file'
-	[ "$(plutil -convert json -o - "$1" 2>/dev/null)" = '{}' ] || fail 'entitlements must be exactly an empty dictionary'
+	python3 -I -c '
+import plistlib, sys
+with open(sys.argv[1], "rb") as f:
+    value = plistlib.load(f)
+sys.exit(0 if isinstance(value, dict) and not value else 1)
+' "$1" 2>/dev/null || fail 'entitlements must be exactly an empty dictionary'
+}
+
+# The bundle has one executable and no nested code. Refuse anything else (symlinks
+# and other non-directory entries included), so signing without --deep can never
+# leave a nested binary unsigned.
+check_bundle() {
+	[ -d "$1" ] && [ ! -L "$1" ] || fail 'app bundle required'
+	new_scratch
+	find "$1" ! -type d | LC_ALL=C sort >"$scratch/files"
+	printf '%s\n%s\n' "$1/Contents/Info.plist" "$1/Contents/MacOS/$app_executable" | LC_ALL=C sort >"$scratch/expected"
+	cmp -s "$scratch/files" "$scratch/expected" || fail 'unexpected files in the app bundle'
+	[ -f "$1/Contents/Info.plist" ] && [ ! -L "$1/Contents/Info.plist" ] && [ -f "$1/Contents/MacOS/$app_executable" ] &&
+		[ ! -L "$1/Contents/MacOS/$app_executable" ] || fail 'unexpected files in the app bundle'
 }
 
 # The desktop app ships in the stable channel only: never a prerelease or nightly.
@@ -131,10 +151,15 @@ cmd=${1:-}
 [ "$#" -ge 1 ] || usage
 shift
 case "$cmd" in
+	check-bundle)
+		[ "$#" -eq 1 ] || usage
+		check_bundle "$1"
+		printf 'desktop app: bundle holds exactly its plist and executable\n'
+		;;
 	check-entitlements)
 		[ "$#" -eq 1 ] || usage
 		check_entitlements "$1"
-		printf 'desktop app: entitlements contain no refused key\n'
+		printf 'desktop app: entitlements are exactly an empty dictionary\n'
 		;;
 	build)
 		[ "$#" -eq 3 ] || usage
@@ -172,13 +197,7 @@ case "$cmd" in
 		require_macos
 		require_identity
 		check_entitlements "$entitlements"
-		[ -d "$app" ] && [ ! -L "$app" ] || fail 'app bundle required'
-		# The bundle has one executable and no nested code. Refuse anything else, so
-		# signing without --deep can never leave a nested binary unsigned.
-		new_scratch
-		find "$app" ! -type d | LC_ALL=C sort >"$scratch/files"
-		printf '%s\n%s\n' "$app/Contents/Info.plist" "$app/Contents/MacOS/$app_executable" >"$scratch/expected"
-		cmp -s "$scratch/files" "$scratch/expected" || fail 'unexpected files in the app bundle'
+		check_bundle "$app"
 		import_identity
 		codesign --force --sign "$APPLE_SIGNING_IDENTITY" --keychain "$keychain" \
 			--options runtime --timestamp --entitlements "$entitlements" "$app"
