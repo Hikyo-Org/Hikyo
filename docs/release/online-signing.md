@@ -194,6 +194,8 @@ runs from main only, so no issue appears before a promotion has landed it.
    token cannot read that administration endpoint. It requires immutable
    releases, then redownloads and verifies the public result. Wait for the
    command to pass.
+   For stable versions it then publishes the staged `desktop-v<version>` draft
+   (see [Desktop app](#desktop-app-release)); it is never marked Latest.
 4. **Record published trust:** run
    `scripts/release/ceremony.sh sync-trust VERSION`. It re-verifies the public
    release and opens a PR containing its signed metadata and catalog. On that
@@ -297,3 +299,52 @@ binds source, producer and artifact hashes, but is not an independently isolated
 builder, reproducible-build proof or a certified SLSA level. See the
 [design decision](../adr/stable-workflow-signing.md) and
 [primary-source comparison](../research/release-signing-ceremonies.md).
+
+## Desktop app release
+
+Every stable tag run also stages a `desktop-v<version>` draft (see
+[Apple signing](apple-signing.md#desktop-app)). A desktop job failure fails the
+run and blocks CLI publication until the failed jobs are rerun. If a check says the
+draft is not ready, first make sure the run has finished, then rerun the failed
+jobs. If a partial rerun loses the other architecture's outputs (the draft job
+cannot find its artifact name or digest), use GitHub's **Re-run all jobs**
+instead. Re-running all jobs also re-runs `build-signed-draft`, which cannot
+create the `vX.Y.Z` draft while it exists, so first delete that draft as
+described under "A failed tag build" in [routine releases](#routine-releases).
+
+Once, before the first stable tag, an administrator runs
+`scripts/release/configure-repository.sh Hikyo-Org/Hikyo` to apply the
+`desktop-v*` tag creation and immutability rulesets. The desktop publisher
+refuses to run until both are active.
+
+`review` and `publish` both check the staged draft first
+(`publish-desktop-draft.sh --check-only`: the draft targets the same commit as
+the `v<version>` manifest, its inventory signature verifies, and the images match
+it). Either command refuses while that fails, and `publish` does so before
+anything is public.
+
+Before `publish`, download the staged draft's DMG and verify it as the
+[desktop app page](https://hikyo.app/docs/desktop-app/#verify-the-download)
+describes. `publish` retries are safe: if `v<version>` is already public it
+still publishes the desktop draft, and an already published matching desktop
+release is verified and left unchanged.
+
+Accepted residual risk: GitHub has no lock on a draft release, so an account
+with repository write access could replace a draft image in the single API
+round trip between the publisher's last draft re-check and the publish call.
+The CLI publisher accepts the same window. Such a swap is not silent:
+the publisher re-downloads the public release, runs `verify-desktop` again and
+fails, and the user verification step refuses an image that differs from the
+signed inventory. The release is already public and immutable by then, so treat
+that failure as an incident: do not announce the release, find the writer, and
+ship the app in the next version.
+
+The legacy `ceremony.sh --offline` publication runs the same check before
+`v<version>` can become public, but it does not publish the desktop draft. For a
+stable version it prints the follow-up (also when resuming an already published
+release), which you must run after it
+reports success, from the repository root:
+
+```sh
+scripts/release/publish-desktop-draft.sh Hikyo-Org/Hikyo VERSION release/trust
+```

@@ -16,6 +16,9 @@ permissions:
 
 jobs:
   resolve:
+    # The desktop series (desktop-v<version>) is not a hikyo release and has no
+    # SemVer v tag to validate. Skip it before any step; validate then skips too.
+    if: ${{ github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'desktop-v') }}
     runs-on: ubuntu-latest
     outputs:
       available: ${{ steps.resolve.outputs.available }}

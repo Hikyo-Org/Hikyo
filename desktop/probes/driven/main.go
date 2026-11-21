@@ -33,7 +33,7 @@ import (
 
 const (
 	fakeToken = "probe-token" // the secret probeSeed stores; pages must never see it
-	service   = "io.hikyo.desktop"
+	service   = "app.hikyo.desktop"
 )
 
 // pageScript runs in the window after every navigation. __ORIGIN__ is the fake

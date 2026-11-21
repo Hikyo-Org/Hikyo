@@ -1,9 +1,9 @@
 # #1215: Hikyo desktop app (macOS), handoff
 
-Status: **plan PRs 1, 2, 3, 4 and 6 merged to `dev`** (#1460 merges with this handoff). The
-owner authorized building the plan on 2026-11-19 ("go ahead, build everything") and merging the
-stack in order on 2026-11-20. That does not cover the release lane (plan PR 5), release or
-deployment. On 2026-11-20 the owner also chose to release the app from this repository as
+Status: **plan PRs 1, 2, 3, 4 and 6 merged to `dev`; plan PR 5 (release lane) is implemented and
+awaits review.** The owner authorized building the plan on 2026-11-19 ("go ahead, build
+everything") and merging the stack in order on 2026-11-20. Release and deployment are not
+authorized: nothing in the release lane has run against GitHub or Apple. On 2026-11-20 the owner also chose to release the app from this repository as
 `desktop-v<version>` releases instead of a separate `Hikyo-Org/hikyo-app` repository. Decisions come from
 the [ADR](../adr/desktop-app.md) (D1 to D15) and the
 [plan](../superpowers/plans/2026-11-04-desktop-app.md). Wire contract:
@@ -35,7 +35,7 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
 | system-architecture.md | yes (#1459) | #22 closed 2026-11-20 |
 | human-auth.md | yes (#1459) | #16 closed 2026-11-20 |
 | threat-model.md | yes (#1459) | #8 closed 2026-11-20 |
-| oss-mechanics.md | when plan PR 5 merges (revised 2026-11-20 to a `desktop-v*` series here) | #33 stays open until then |
+| oss-mechanics.md | when plan PR 5 merges (banner is owner-locked and unchanged here) | #33 closes when plan PR 5 merges |
 
 ## Evidence
 
@@ -82,15 +82,57 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
    same-name check refusal (PR gate). Not desktop code, but its major finding is a PR gate gap and
    needs a `hotfix/` to `main`.
 
+## Release lane (plan PR 5)
+
+Owner decisions of 2026-11-21: the desktop jobs run inside the stable tag's `release.yml` push run,
+so a desktop failure fails the run and blocks publication of the CLI release until the failed jobs
+are rerun. Hand acceptance uses the staged `desktop-v<version>` draft from the first stable tag
+before it is published; there is no extra preview or dispatch signing path.
+
+What exists:
+
+- `release.yml`: `build-artifacts` exports the channel from `release-channel.sh`. For stable
+  versions only (never 0.x, `-rc` or nightly), `desktop-app` (macOS 15, matrix arm64 and x86_64,
+  environment `apple-signing`) builds, signs (hardened runtime), notarizes and staples the app,
+  builds and signs the DMG, notarizes and staples it, then verifies it. `desktop-draft` signs
+  `desktop-inventory.json` with the stable workflow's keyless identity and stages the
+  `desktop-v<version>` draft. `build-signed-draft` depends on neither. GoReleaser's tag is pinned
+  with `GORELEASER_CURRENT_TAG`; nightly and CI use `--snapshot`, which needs no pin.
+- `scripts/release/`: `build-desktop-app.sh`, `stage-desktop-draft.sh`, `publish-desktop-draft.sh`
+  and `check-desktop-rulesets.sh`. `verify-desktop` in `scripts/release/stable` checks the bundle
+  against the pinned trust root and exact identity, then the closed file set and each DMG's size
+  and SHA-256. `stable-ceremony.sh review` and `publish` run the desktop check
+  (`publish-desktop-draft.sh --check-only`) first, and `publish` runs the publisher after
+  `publish-stable-draft.sh` for stable versions. The legacy `--offline` path prints
+  the follow-up command instead. Artifacts are named by run attempt, and each image's digest is
+  a job output that `stage-desktop-draft.sh` re-checks.
+- `latest-stable-version.sh` and `security-release.yml` skip `desktop-v*`.
+- `release/repository/desktop-tag-creation.json` and `desktop-tag-immutability.json`, upserted and
+  read back by `configure-repository.sh`. **They are not applied.** The owner runs
+  `scripts/release/configure-repository.sh Hikyo-Org/Hikyo` once before the first stable tag; the
+  publisher refuses to run without both active.
+- `desktop/build/darwin/entitlements.plist`: an empty dict (hardened runtime, not sandboxed).
+
+Never exercised, because they need a real stable tag, Developer ID secrets, Apple and GitHub: the
+macOS jobs end to end (the x86_64 build is cross-compiled on an arm64 runner and never launched),
+Apple notarization of an app and a DMG, `spctl` and `stapler` on those bytes, keyless signing of the
+inventory, creating the draft through the releases API without a tag, publishing a draft that creates the
+`desktop-v<version>` tag (and the creation ruleset admitting the publisher), the post-publication
+latest and tag checks, and the rerun path over an earlier draft. Exercised locally: the shell
+fixtures with fake `gh`, `go` and `cosign`, and the Go verifier with real fixture signatures.
+
+Hand acceptance, after the first stable tag run: download the staged draft's DMG, verify it as the
+[desktop app page](../site/src/content/docs/docs/desktop-app.mdx) describes, open it as a
+quarantined download, and run the plan's acceptance list. Publish with
+`scripts/release/ceremony.sh publish` only after that.
+
 ## Remaining work
 
-1. Build plan PR 5 (release lane): `desktop-v<version>` releases cut by the stable release
-   run with the existing Developer ID ([ADR D13](../adr/desktop-app.md#d13-repository-and-releases)).
-   No `Hikyo-Org/hikyo-app` repository or new identity is needed. Its list includes making
-   `latest-stable-version.sh` and `security-release.yml` skip `desktop-v*`. Close #33 when
-   plan PR 5 merges.
-2. Hand acceptance on a signed, notarized build: first launch from Downloads, move to
+1. Owner: run `configure-repository.sh` for the desktop rulesets before the first stable tag. Decide
+   whether one `apple-signing` approval per matrix job is acceptable.
+2. Review plan PR 5. Close #33 when it merges.
+3. Hand acceptance on the staged `desktop-v<version>` draft: first launch from Downloads, move to
    Applications, relaunch, connections still open; plus the plan's acceptance list and the two
    unexercised cases under Evidence.
-3. Fix [#1469](https://github.com/Hikyo-Org/Hikyo/issues/1469) through a `hotfix/` to `main`.
-4. Upload the screenshot sets to #1458, #1459 and #1460.
+4. Fix [#1469](https://github.com/Hikyo-Org/Hikyo/issues/1469) through a `hotfix/` to `main`.
+5. Upload the screenshot sets to #1458, #1459 and #1460.

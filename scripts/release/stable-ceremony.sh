@@ -118,6 +118,12 @@ download_verify() {
 }
 
 cd "$repo_root"
+# A stable version's staged desktop-v draft must verify before anything is public.
+desktop_gate() {
+	[ "$("$script_dir/release-channel.sh" "v$1")" = stable ] || return 0
+	"$script_dir/publish-desktop-draft.sh" --check-only "$repository" "$1" release/trust ||
+		fail "desktop-v$1 draft is not ready: its jobs may still be running (wait for the v$1 release run to finish), or failed (rerun the failed jobs; if their outputs are lost, delete the v$1 draft and use Re-run all jobs); then retry"
+}
 case "${1:-help}" in
 	help|--help|-h)
 		printf '%s\n' \
@@ -126,7 +132,7 @@ case "${1:-help}" in
 			'  setup                  Authorize stable CI once using local recovery custody; open PR' \
 			'  build VERSION          Push a signed tag from green main; CI stages a signed draft' \
 			'  review VERSION         Download and verify the draft; print its review hash' \
-			'  publish VERSION SHA256 Publish the reviewed draft using your local GitHub login' \
+			'  publish VERSION SHA256 Publish the reviewed draft, and for stable versions the desktop-v draft, using your local GitHub login' \
 			'  sync-trust VERSION     Verify public release and open the trust-update PR' \
 			'  homebrew VERSION       Verify public release and open the stable Homebrew tap PR' \
 			'  --offline              Explicit legacy removable-media ceremony'
@@ -188,6 +194,7 @@ case "${1:-help}" in
 	review)
 		[ "$#" -eq 2 ] || fail 'usage: ceremony.sh review VERSION'
 		download_verify "$2"
+		desktop_gate "$2"
 		printf 'Verified draft directory: %s\nManifest SHA-256: %s\n' "$download" "$manifest_sha"
 		printf 'Replace the draft placeholder with release notes on GitHub, review them and the acceptance evidence, then run:\n  scripts/release/ceremony.sh publish %s %s\n' "$2" "$manifest_sha"
 		;;
@@ -198,9 +205,16 @@ case "${1:-help}" in
 		clean_main
 		download_verify "$version"
 		[ "$manifest_sha" = "$reviewed" ] || fail 'draft changed since review'
+		desktop_gate "$version"
 		confirm "publish v$version $reviewed"
 		HIKYO_RELEASE_TRUST_STATE="$trust_state" "$script_dir/publish-stable-draft.sh" \
 			"$repository" "v$version" "$reviewed" release/trust
+		# A stable release also publishes its staged desktop-v draft, even when v was
+		# already public, so rerunning this command finishes an interrupted publish.
+		if [ "$("$script_dir/release-channel.sh" "v$version")" = stable ]; then
+			"$script_dir/publish-desktop-draft.sh" "$repository" "$version" release/trust ||
+				fail "v$version is public but desktop-v$version is not; rerun this publish command to finish"
+		fi
 		printf 'Public release verified. Next, run:\n  scripts/release/ceremony.sh sync-trust %s\n' "$version"
 		;;
 	sync-trust)
