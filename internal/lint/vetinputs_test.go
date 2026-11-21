@@ -19,11 +19,11 @@ import (
 // input-reading analyzer: the declared inputs under root, hashed.
 func inputFlags(t *testing.T, analyzer, root string) []string {
 	t.Helper()
-	specs, ok, err := InputDeclaration(analyzer, root)
+	specs, ok, err := inputDeclaration(analyzer, root)
 	if err != nil || !ok {
 		t.Fatalf("inputs of %s under %s: declared=%t err=%v", analyzer, root, ok, err)
 	}
-	digest, err := InputDigest(root, specs)
+	digest, err := inputDigest(root, specs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func inputFlags(t *testing.T, analyzer, root string) []string {
 func repoInputFlags(t *testing.T) []string {
 	t.Helper()
 	var flags []string
-	for _, name := range InputAnalyzers() {
+	for _, name := range inputAnalyzers() {
 		flags = append(flags, inputFlags(t, name, moduleRoot())...)
 	}
 	// jsonv1 reads no declared input; it needs the root its paths are relative to.
@@ -68,7 +68,7 @@ func TestInputsRefuseUndeclaredPathAndStaleDigest(t *testing.T) {
 	write("q/skip.txt", "ignored")
 	write("f.json", "{}")
 	specs := []InputSpec{{Dir: "q", Exts: []string{".sql"}}, {File: "f.json"}, {File: "absent.json"}}
-	digest, err := InputDigest(root, specs)
+	digest, err := inputDigest(root, specs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestInputsRefuseUndeclaredPathAndStaleDigest(t *testing.T) {
 		if _, err := OpenInputs(root, digest, specs); !errors.Is(err, ErrInputDigest) {
 			t.Errorf("%s: OpenInputs = %v, want ErrInputDigest", name, err)
 		}
-		fresh, err := InputDigest(root, specs)
+		fresh, err := inputDigest(root, specs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func TestInputsRefuseUndeclaredPathAndStaleDigest(t *testing.T) {
 	// An undeclared extension change does not move the digest: the file is not an input.
 	before := digest
 	write("q/skip.txt", "changed")
-	if after, _ := InputDigest(root, specs); after != before {
+	if after, _ := inputDigest(root, specs); after != before {
 		t.Error("a file outside the declaration changed the digest")
 	}
 	t.Run("directories", checkRefusedDirectories)
@@ -181,7 +181,7 @@ func analyzedGoFiles(out *vetOutcome) (files map[string]bool, exception bool) {
 
 // Every input-reading analyzer refuses a digest that does not match its
 // declared inputs, on its own fixture. The fixtures that declare an inputsRoot
-// must cover exactly InputAnalyzers(), so a new input analyzer without a
+// must cover exactly inputAnalyzers(), so a new input analyzer without a
 // fixture fails here.
 func TestVetDriverEveryInputAnalyzerRefusesStaleDigest(t *testing.T) {
 	bin := buildVetTool(t)
@@ -194,8 +194,8 @@ func TestVetDriverEveryInputAnalyzerRefusesStaleDigest(t *testing.T) {
 		}
 	}
 	slices.Sort(covered)
-	if want := InputAnalyzers(); !slices.Equal(covered, want) {
-		t.Fatalf("fixtures with inputs cover %v, InputAnalyzers() is %v", covered, want)
+	if want := inputAnalyzers(); !slices.Equal(covered, want) {
+		t.Fatalf("fixtures with inputs cover %v, inputAnalyzers() is %v", covered, want)
 	}
 	flags, patterns := fixtureFlagsAndPatterns(t, fixtures)
 	for i, flag := range flags {
@@ -275,7 +275,7 @@ func checkRefusedDirectories(t *testing.T) {
 				t.Errorf("%s directory: got %v, want a refusal (not-exist=%t)", name, err, tc.notExist)
 			}
 		}
-		// The disk reader of the old harness refuses the same states.
+		// The osSource disk reader refuses the same states.
 		if _, err := (osSource{}).ReadDir(dir); err == nil {
 			t.Errorf("%s directory: osSource.ReadDir returned no error", name)
 		}
@@ -373,12 +373,11 @@ func fakePass(a *analysis.Analyzer) (*analysis.Pass, *[]string) {
 }
 
 // With every declared directory absent, each input analyzer reports a finding,
-// never a clean pass or a refusal, whichever way it reads: the vet analyzer
-// through a verified snapshot, the same analyzer on the old harness's disk
-// reader, and the old Check* entry point.
+// never a clean pass or a refusal, and the per-package helpers fail whichever
+// way they read: through a verified snapshot or the osSource disk reader.
 func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 	root := t.TempDir()
-	builders := map[string]func(func(*analysis.Analyzer) inputProvider) *analysis.Analyzer{
+	builders := map[string]func() *analysis.Analyzer{
 		"appendonly":        newAuditAppendOnly,
 		"containmentgates":  newContainmentGates,
 		"reencryptcoverage": newReencryptCoverage,
@@ -394,37 +393,23 @@ func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 	}
 	for name, build := range builders {
 		t.Run(name, func(t *testing.T) {
-			vet := build(flagInputs)
+			vet := build()
 			for _, flag := range inputFlags(t, name, root) {
 				key, value, _ := strings.Cut(strings.TrimPrefix(flag, "-"+name+"."), "=")
 				if err := vet.Flags.Set(key, value); err != nil {
 					t.Fatal(err)
 				}
 			}
-			for source, a := range map[string]*analysis.Analyzer{"vet": vet, "disk": build(diskInputs(root))} {
-				findings := run(a)
-				if len(findings) == 0 {
-					t.Errorf("%s: no finding with every declared directory absent", source)
-				}
-				for _, f := range findings {
-					if strings.HasPrefix(f, "inputs refused:") {
-						t.Errorf("%s: refused instead of reporting the absent directories: %s", source, f)
-					}
+			findings := run(vet)
+			if len(findings) == 0 {
+				t.Error("no finding with every declared directory absent")
+			}
+			for _, f := range findings {
+				if strings.HasPrefix(f, "inputs refused:") {
+					t.Errorf("refused instead of reporting the absent directories: %s", f)
 				}
 			}
 		})
-	}
-	for name, check := range map[string]func() []string{
-		"appendonly":   func() []string { return CheckAuditAppendOnly(root) },
-		"sqlpredicate": func() []string { return CheckSQLPredicates(root) },
-		"reencryptcoverage": func() []string {
-			return CheckReencryptCoverage(filepath.Join(root, "internal", "store", "migrations", "sqlite"))
-		},
-		"stablecopies": func() []string { return CheckStableCopies(root) },
-	} {
-		if len(check()) == 0 {
-			t.Errorf("%s: the old entry point reports nothing with every declared directory absent", name)
-		}
 	}
 	// The per-package analyzers have no anchor: their helpers fail on the absent
 	// directories, through both readers.
@@ -459,7 +444,7 @@ func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	rawIn := snapshotAbsent(t, RawSQL.Name, rawRoot)
-	if _, err := rawSQLConfig(rawIn, rawRoot, "default"); err != nil {
+	if _, err := rawSQLConfig(rawIn, rawRoot, "default", "linux"); err != nil {
 		t.Errorf("rawsql: the pins with absent query directories were refused: %v", err)
 	}
 	path := filepath.Join(rawRoot, "internal", "store", "sqlitegen", "a.sql.go")
@@ -472,7 +457,7 @@ func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 
 func snapshotAbsent(t *testing.T, analyzer, root string) *Inputs {
 	t.Helper()
-	specs, ok, err := InputDeclaration(analyzer, root)
+	specs, ok, err := inputDeclaration(analyzer, root)
 	if err != nil || !ok {
 		t.Fatalf("%s: declared=%t err=%v", analyzer, ok, err)
 	}

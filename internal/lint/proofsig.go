@@ -5,28 +5,9 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
-// CheckProofSignatures is analyzer 1 (tenant-isolation ADR, invariant 7):
-// every store method reachable through the repository bundles takes a proof
-// as its first parameter after ctx, and no store-method signature — nor any
-// struct type reachable from its parameters, transitively — carries a
-// tenant-identifier-typed value (domain.OrgID / ProjectID / EnvID). Caller
-// arguments must be structurally unable to reach a chain predicate; the
-// stated limit is that a raw string can still smuggle an id, which never
-// reaches a chain column because only the proof binds those.
-//
-// The repository surface is discovered, not curated: starting from
-// store.Repos and store.ReadRepos, every interface reachable through method
-// results is part of the surface. A new aggregate wired into the bundles is
-// covered automatically; one not wired in is unreachable by services and
-// therefore dead code.
-func CheckProofSignatures(pkgs []*packages.Package, storePath string) []string {
-	return RunOver(Check{Analyzer: newProofSig(storePath), Targets: []string{storePath}}, pkgs).Findings
-}
-
-// ProofSig is CheckProofSignatures as an analyzer over the store package.
+// ProofSig is the proofsig analyzer over the store package.
 var ProofSig = newProofSig(Module + "/internal/store")
 
 func newProofSig(store string) *analysis.Analyzer {
@@ -171,27 +152,4 @@ func isNamed(t types.Type, pkg, name string) bool {
 	}
 	obj := n.Obj()
 	return obj.Name() == name && obj.Pkg() != nil && obj.Pkg().Name() == pkg
-}
-
-// flatten returns the load roots plus all their dependencies, deduplicated.
-func flatten(pkgs []*packages.Package) []*packages.Package {
-	seen := map[string]*packages.Package{}
-	var walk func(p *packages.Package)
-	walk = func(p *packages.Package) {
-		if seen[p.PkgPath] != nil {
-			return
-		}
-		seen[p.PkgPath] = p
-		for _, dep := range p.Imports {
-			walk(dep)
-		}
-	}
-	for _, p := range pkgs {
-		walk(p)
-	}
-	out := make([]*packages.Package, 0, len(seen))
-	for _, p := range seen {
-		out = append(out, p)
-	}
-	return out
 }

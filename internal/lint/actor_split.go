@@ -2,10 +2,8 @@ package lint
 
 import (
 	"go/ast"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // The transport may not name service.LocalPrincipal.
@@ -26,9 +24,7 @@ var ActorSplit = &analysis.Analyzer{
 	Name: "actorsplit",
 	Doc:  "internal/server never names service.LocalPrincipal",
 	Run: func(pass *analysis.Pass) (any, error) {
-		// The ".test" trim serves the old loader's test-main roots until PR 4.
-		path := strings.TrimSuffix(pass.Pkg.Path(), ".test")
-		if path != transportPath {
+		if pass.Pkg.Path() != transportPath {
 			return nil, nil
 		}
 		reportTarget(pass)
@@ -45,18 +41,11 @@ var ActorSplit = &analysis.Analyzer{
 				}
 				if obj.Pkg().Path() == Module+"/internal/service" {
 					pass.Reportf(sel.Pos(), "%s names service.%s — the transport must hand over the raw artifact and let the service resolve it in-transaction",
-						path, forbidden)
+						pass.Pkg.Path(), forbidden)
 				}
 				return true
 			})
 		}
 		return nil, nil
 	},
-}
-
-// CheckTransportLocalPrincipal is ActorSplit over the load roots, as the old
-// harness iterated them (including internal/server's test variant), until PR 4
-// removes the old loader.
-func CheckTransportLocalPrincipal(pkgs []*packages.Package) []string {
-	return runPackages(Check{Analyzer: ActorSplit, Targets: []string{transportPath}}, pkgs).Findings
 }

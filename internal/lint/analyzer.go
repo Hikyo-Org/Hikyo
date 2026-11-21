@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
-	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // SummaryCategory is the reserved diagnostic category for per-package facts an
@@ -36,8 +34,8 @@ const (
 // Summary is one decoded summary diagnostic.
 type Summary struct{ Kind, Subject string }
 
-// ParseSummary decodes a summary diagnostic message.
-func ParseSummary(message string) (Summary, error) {
+// parseSummary decodes a summary diagnostic message.
+func parseSummary(message string) (Summary, error) {
 	kind, subject, ok := strings.Cut(message, " ")
 	if !ok || kind == "" || subject == "" {
 		return Summary{}, fmt.Errorf("malformed summary diagnostic %q", message)
@@ -57,7 +55,7 @@ func (s Summary) validate(analyzer string) error {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, summaryPin, RedactPins.Name)
 		}
 		return nil
-	case summaryRawOwner, summaryRawCaller, summaryRawHelper, summaryRawUnreached:
+	case summaryRawOwner, summaryRawCaller, summaryRawHelper, summaryRawUnreached, summaryRawDump:
 		if analyzer != RawSQL.Name {
 			return fmt.Errorf("analyzer %s reported a %s summary; only %s may", analyzer, s.Kind, RawSQL.Name)
 		}
@@ -90,22 +88,10 @@ func packagePos(pass *analysis.Pass) token.Pos {
 type Check struct {
 	Analyzer *analysis.Analyzer
 	Targets  []string
-	// OnDisk builds the same analyzer reading its inputs straight from disk
-	// under a root, for the old harness: the registered analyzer refuses to run
-	// without the driver's input flags. Nil when the analyzer reads no inputs.
-	OnDisk func(root string) *analysis.Analyzer
 }
 
-// For returns the check with the analyzer an old-harness run under root uses.
-func (c Check) For(root string) Check {
-	if c.OnDisk != nil {
-		c.Analyzer = c.OnDisk(root)
-	}
-	return c
-}
-
-// MissingTargets renders a finding per required target no analyzer pass reported.
-func MissingTargets(analyzer string, required []string, seen map[string]bool) []string {
+// targetFindings renders a finding per required target no analyzer pass reported.
+func targetFindings(analyzer string, required []string, seen map[string]bool) []string {
 	var out []string
 	for _, path := range required {
 		if !seen[path] {
@@ -115,71 +101,9 @@ func MissingTargets(analyzer string, required []string, seen map[string]bool) []
 	return out
 }
 
-// FormatFinding is the one rendering both harnesses use, so their findings
-// compare by string.
-func FormatFinding(posn, analyzer, message string) string {
+// formatFinding renders a finding as position, analyzer and message.
+func formatFinding(posn, analyzer, message string) string {
 	return fmt.Sprintf("%s: %s: %s", posn, analyzer, message)
-}
-
-// Result is what one analyzer reported over a set of packages.
-type Result struct {
-	Findings  []string
-	Summaries []Summary
-}
-
-// RunOver runs one analyzer over the type-checked packages the old go/packages
-// loader produced and renders its diagnostics, so the legacy Check* entry
-// points share the analysis.Pass core with the vet tool. Like the old loader
-// walk it analyzes each package path once and skips packages without type
-// information (imports that are not load roots).
-func RunOver(c Check, pkgs []*packages.Package) Result { return runPackages(c, flatten(pkgs)) }
-
-// runPackages is RunOver over an explicit package list, so an entry point whose
-// old harness iterated the load roots keeps doing so.
-func runPackages(c Check, list []*packages.Package) Result {
-	var res Result
-	seenTargets := map[string]bool{}
-	for _, p := range list {
-		if p.TypesInfo == nil || p.Types == nil {
-			continue
-		}
-		pkg := p.Types
-		if pkg.Path() != p.PkgPath {
-			// Tests relocate a loaded package by rewriting PkgPath.
-			pkg = types.NewPackage(p.PkgPath, p.Name)
-		}
-		pass := &analysis.Pass{
-			Analyzer:  c.Analyzer,
-			Fset:      p.Fset,
-			Files:     p.Syntax,
-			Pkg:       pkg,
-			TypesInfo: p.TypesInfo,
-			Report: func(d analysis.Diagnostic) {
-				if d.Category != SummaryCategory {
-					res.Findings = append(res.Findings, FormatFinding(p.Fset.Position(d.Pos).String(), c.Analyzer.Name, d.Message))
-					return
-				}
-				summary, err := ParseSummary(d.Message)
-				if err == nil {
-					err = summary.validate(c.Analyzer.Name)
-				}
-				if err != nil {
-					res.Findings = append(res.Findings, FormatFinding("-", c.Analyzer.Name, err.Error()))
-					return
-				}
-				if summary.Kind == summaryTarget {
-					seenTargets[summary.Subject] = true
-				}
-				res.Summaries = append(res.Summaries, summary)
-			},
-		}
-		if _, err := c.Analyzer.Run(pass); err != nil {
-			res.Findings = append(res.Findings, FormatFinding(p.PkgPath, c.Analyzer.Name, "analyzer failed: "+err.Error()))
-		}
-	}
-	res.Findings = append(res.Findings, MissingTargets(c.Analyzer.Name, c.Targets, seenTargets)...)
-	slices.Sort(res.Findings)
-	return res
 }
 
 // findPackage returns the package with the given path among pkg and its
@@ -228,28 +152,21 @@ func Checks() []Check {
 		{Analyzer: ContainmentSetters, Targets: ruleTargets(ContainmentSetterRules)},
 		{Analyzer: ActorSplit, Targets: []string{Module + "/internal/server"}},
 		{Analyzer: RedactPins, Targets: []string{sensitiveOwner}},
-		{Analyzer: GrantLock, Targets: []string{Module + "/internal/store/authn"}, OnDisk: func(root string) *analysis.Analyzer { return newGrantLock(diskInputs(root), nil) }},
-		{Analyzer: DenialWriter, Targets: []string{denialSurface}, OnDisk: func(root string) *analysis.Analyzer { return newDenialWriter(diskInputs(root), nil) }},
-		{Analyzer: AuditAppendOnly, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newAuditAppendOnly(diskInputs(root)) }},
-		{Analyzer: ContainmentGates, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newContainmentGates(diskInputs(root)) }},
-		{Analyzer: ReencryptCoverage, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newReencryptCoverage(diskInputs(root)) }},
-		{Analyzer: SQLPredicates, Targets: []string{Module + "/internal/store"}, OnDisk: func(root string) *analysis.Analyzer { return newSQLPredicates(diskInputs(root)) }},
-		{Analyzer: JSONv1, OnDisk: func(root string) *analysis.Analyzer {
-			a := newJSONv1()
-			if err := a.Flags.Set("root", root); err != nil {
-				panic(err)
-			}
-			return a
-		}},
-		{Analyzer: StableCopies, Targets: []string{Module + "/internal/jsonwire"}, OnDisk: func(root string) *analysis.Analyzer { return newStableCopies(diskInputs(root)) }},
+		{Analyzer: GrantLock, Targets: []string{Module + "/internal/store/authn"}},
+		{Analyzer: DenialWriter, Targets: []string{denialSurface}},
+		{Analyzer: AuditAppendOnly, Targets: []string{Module + "/internal/store"}},
+		{Analyzer: ContainmentGates, Targets: []string{Module + "/internal/store"}},
+		{Analyzer: ReencryptCoverage, Targets: []string{Module + "/internal/store"}},
+		{Analyzer: SQLPredicates, Targets: []string{Module + "/internal/store"}},
+		{Analyzer: JSONv1},
+		{Analyzer: StableCopies, Targets: []string{Module + "/internal/jsonwire"}},
 	}
 }
 
 // Analyzers lists the analyzers the vet tool registers.
 //
-// RawSQL is registered here and not in Checks: it exports facts, which RunOver
-// (the old loader's pass runner) cannot supply, so its parity with the old
-// harness is checked by TestVetDriverRawSQLParity.
+// RawSQL is registered here and not in Checks: it has no target package, and
+// it exports facts and aggregates its own summaries (rawSQLSummaryFindings).
 func Analyzers() []*analysis.Analyzer {
 	checks := Checks()
 	out := make([]*analysis.Analyzer, len(checks), len(checks)+1)
@@ -263,7 +180,7 @@ func Analyzers() []*analysis.Analyzer {
 }
 
 // strictDeferred are the analyzers whose in-package test sites the vet driver
-// reports but does not yet gate: the old harness never saw those files, and
+// reports but does not yet gate: they were never gated before the vet driver, and
 // the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-pr1-deferred-test-sites.md).
 // Production files and external test packages stay strict.
 var strictDeferred = map[string]bool{"handles": true, "redactfmt": true}

@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
@@ -66,62 +67,56 @@ func TestUpdateReviewedPins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loaded := map[string][]*packages.Package{}
+	// The vet tool reports the actual hashes (-rawsql.dump). The canonical pins
+	// are linux's: the tool expands them for linux whatever the host (-rawsql.native),
+	// and the default and ui contexts are analyzed as linux.
+	bin := buildVetTool(t)
 	dependencies := map[string]map[string]map[string]string{}
+	bodies := map[string]string{} // owner and caller key -> hash, equal in every context
 	inventory.Helpers, inventory.BuildHelpers = map[string]string{}, map[string]map[string]string{}
 	for _, context := range Contexts {
-		// The canonical default/ui pins must not depend on the updater host.
-		// Native consumers select their OS's exact reviewed helper variants.
 		if context.GOOS == "" {
 			context.GOOS = "linux"
 		}
-		pkgs, err := LoadIn(context, Module+"/...")
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded[context.Name] = pkgs
 		active, err := rawSQLProtocolsInContext(protocols, context.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		declarations := rawSQLDeclarations(pkgs, root, Module)
+		dump, err := rawSQLDump(runVet(t, bin, context, rawSQLUpdaterFlags(t, "-rawsql.dump"), []string{Module + "/..."}))
+		if err != nil {
+			t.Fatal(err)
+		}
 		for owner, pin := range inventory.Protocols {
 			if _, applies := active[owner]; !applies {
 				continue
 			}
-			declaration, exists := declarations[owner]
-			if !exists {
-				t.Fatalf("protocol %s missing in %s", owner, context.Name)
-			}
-			hash, err := rawSQLBodyHash(declaration.pkg, declaration.fn)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(dependencies[owner]) == 0 {
-				pin.Hash = hash
-			} else if pin.Hash != hash {
-				t.Fatalf("protocol body differs across builds: %s", owner)
-			}
+			keys := []string{owner}
 			for caller := range pin.Callers {
-				declaration, exists := declarations[caller]
+				keys = append(keys, caller)
+			}
+			for _, key := range keys {
+				hash, exists := dump.bodies[key]
 				if !exists {
-					t.Fatalf("reviewed caller %s missing in %s", caller, context.Name)
+					t.Fatalf("protocol %s or reviewed caller %s missing in %s", owner, key, context.Name)
 				}
-				hash, err := rawSQLBodyHash(declaration.pkg, declaration.fn)
-				if err != nil {
-					t.Fatal(err)
+				if previous, seen := bodies[key]; seen && previous != hash {
+					t.Fatalf("protocol or caller body differs across builds: %s", key)
 				}
-				if len(dependencies[owner]) == 0 {
-					pin.Callers[caller] = hash
-				} else if pin.Callers[caller] != hash {
-					t.Fatalf("caller body differs across builds: %s", caller)
+				bodies[key] = hash
+				if key == owner {
+					pin.Hash = hash
+				} else {
+					pin.Callers[key] = hash
 				}
 			}
 			inventory.Protocols[owner] = pin
 			if dependencies[owner] == nil {
 				dependencies[owner] = map[string]map[string]string{}
 			}
-			deps := rawSQLDependencies(owner, declarations, active, root)
+			deps := dump.dependencies[owner]
+			if deps == nil {
+				deps = map[string]string{}
+			}
 			dependencies[owner][context.Name] = deps
 			for helper, hash := range deps {
 				if previous, exists := inventory.Helpers[helper]; !exists {
@@ -168,15 +163,6 @@ func TestUpdateReviewedPins(t *testing.T) {
 		}
 		inventory.Protocols[owner] = pin
 	}
-	protocols, err = inventory.rawProtocolsForGOOS("linux")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for context, pkgs := range loaded {
-		if findings := CheckRawSQL(pkgs, root, Module, protocols, context); len(findings) != 0 {
-			t.Fatalf("update refuses ownership drift in %s: %v", context, findings)
-		}
-	}
 	if err := checkReviewedPinAuthorities(reviewedPins, inventory); err != nil {
 		t.Fatal(err)
 	}
@@ -187,10 +173,106 @@ func TestUpdateReviewedPins(t *testing.T) {
 	if _, err := parseReviewedPins(source); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "internal/lint/testdata/reviewed_pins.json"), append(source, '\n'), 0644); err != nil {
+	pinsPath := filepath.Join(root, filepath.FromSlash(reviewedPinsPath))
+	// The vet tool reads the pins from disk, so the update is verified after the
+	// write and rolled back unless ownership held.
+	if err := writeVerifiedPins(pinsPath, append(source, '\n'), func() ([]string, error) {
+		return verifyUpdatedPins(t, bin), nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	t.Log("Existing hashes updated. Review the diff, then rerun normal CI without -update-reviewed-pins.")
+}
+
+// writeVerifiedPins writes the updated pins, runs verify against them, and
+// restores the original bytes unless verify passes cleanly. The restore runs on
+// every exit, including a t.Fatal inside verify (runtime.Goexit).
+func writeVerifiedPins(path string, updated []byte, verify func() ([]string, error)) (err error) {
+	original, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, updated, 0o644); err != nil {
+		return err
+	}
+	verified, returned := false, false
+	defer func() {
+		if verified {
+			return
+		}
+		if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
+			restoreErr = fmt.Errorf("restoring the reviewed pins: %w", restoreErr)
+			if !returned {
+				panic(restoreErr) // verify called t.Fatal or panicked: no return value carries the error
+			}
+			err = errors.Join(err, restoreErr)
+		}
+	}()
+	findings, err := verify()
+	returned = true
+	if err != nil {
+		return err
+	}
+	if len(findings) != 0 {
+		return fmt.Errorf("update refuses ownership drift: %v", findings)
+	}
+	verified = true
+	return nil
+}
+
+// rawSQLUpdaterFlags are the flags of a rawsql-only vet run for the updater.
+func rawSQLUpdaterFlags(t *testing.T, extra ...string) []string {
+	t.Helper()
+	return append(append(repoInputFlags(t), "-rawsql", "-rawsql.native=linux"), extra...)
+}
+
+// verifyUpdatedPins vets the repository under every context against the pins on
+// disk and returns what the per-package passes and the aggregate report.
+func verifyUpdatedPins(t *testing.T, bin string) []string {
+	t.Helper()
+	var findings []string
+	for _, context := range Contexts {
+		if context.GOOS == "" {
+			context.GOOS = "linux"
+		}
+		out := runVet(t, bin, context, rawSQLUpdaterFlags(t), []string{Module + "/..."})
+		aggregated, err := rawSQLAggregate(out, moduleRoot())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, finding := range append(findingMessages(out.Findings, RawSQL.Name), aggregated...) {
+			findings = append(findings, context.Name+": "+finding)
+		}
+	}
+	return findings
+}
+
+// rawSQLDumped are the actual hashes a -rawsql.dump run reported.
+type rawSQLDumped struct {
+	bodies       map[string]string            // key -> body hash
+	dependencies map[string]map[string]string // owner -> helper key -> hash
+}
+
+func rawSQLDump(out *vetOutcome) (rawSQLDumped, error) {
+	dump := rawSQLDumped{bodies: map[string]string{}, dependencies: map[string]map[string]string{}}
+	for _, s := range out.Summaries[RawSQL.Name] {
+		if s.Kind != summaryRawDump {
+			continue
+		}
+		fields := strings.Fields(s.Subject)
+		switch {
+		case len(fields) == 3 && fields[0] == "fn":
+			dump.bodies[fields[1]] = fields[2]
+		case len(fields) == 4 && fields[0] == "dep":
+			if dump.dependencies[fields[1]] == nil {
+				dump.dependencies[fields[1]] = map[string]string{}
+			}
+			dump.dependencies[fields[1]][fields[2]] = fields[3]
+		default:
+			return rawSQLDumped{}, fmt.Errorf("malformed %s summary %q", s.Kind, s.Subject)
+		}
+	}
+	return dump, nil
 }
 
 func cloneReviewedPins(original reviewedPinInventory) (reviewedPinInventory, error) {
@@ -337,5 +419,69 @@ func TestReviewedPinUpdatePreservesAuthorityAndOriginalMaps(t *testing.T) {
 				t.Fatal("authority widening accepted")
 			}
 		})
+	}
+}
+
+func TestWriteVerifiedPinsRestoresOriginalUnlessVerified(t *testing.T) {
+	const original, updated = "original\n", "updated\n"
+	cases := map[string]struct {
+		verify  func() ([]string, error)
+		wantErr bool
+		want    string
+	}{
+		"verified": {func() ([]string, error) { return nil, nil }, false, updated},
+		"findings": {func() ([]string, error) { return []string{"drift"}, nil }, true, original},
+		"error":    {func() ([]string, error) { return nil, errors.New("vet failed") }, true, original},
+		// t.Fatal inside verify ends the goroutine through runtime.Goexit.
+		"fatal": {func() ([]string, error) { runtime.Goexit(); return nil, nil }, false, original},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "reviewed_pins.json")
+			if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				err = writeVerifiedPins(path, []byte(updated), tc.verify)
+			}()
+			<-done
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, want error %t", err, tc.wantErr)
+			}
+			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tc.want {
+				t.Fatalf("pins on disk = %q (%v), want %q", got, readErr, tc.want)
+			}
+		})
+	}
+}
+
+// A restore that fails after verify ended the goroutine must not vanish.
+func TestWriteVerifiedPinsPanicsWhenRestoreFailsAfterFatal(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the read-only mode that makes the restore fail")
+	}
+	path := filepath.Join(t.TempDir(), "reviewed_pins.json")
+	if err := os.WriteFile(path, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var recovered any
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { recovered = recover() }()
+		_ = writeVerifiedPins(path, []byte("updated\n"), func() ([]string, error) {
+			if err := os.Chmod(path, 0o444); err != nil {
+				t.Error(err)
+			}
+			runtime.Goexit()
+			return nil, nil
+		})
+	}()
+	<-done
+	if err, ok := recovered.(error); !ok || !strings.Contains(err.Error(), "restoring the reviewed pins") {
+		t.Fatalf("recovered %v, want the restore error", recovered)
 	}
 }

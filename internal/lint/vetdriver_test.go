@@ -1,9 +1,7 @@
 package lint
 
 // The vet driver: the analyzers built into one go vet tool and run once per
-// analysis context (lint-analysis driver ADR, decision 1). The old go/packages
-// harness keeps running for the same analyzers until TestVetDriverParity shows
-// every old finding is also reported here.
+// analysis context (lint-analysis driver ADR, decision 1).
 
 import (
 	"bytes"
@@ -21,8 +19,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
@@ -130,14 +126,14 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 				}
 				for _, d := range result.Diagnostics {
 					if d.Category != SummaryCategory {
-						finding := FormatFinding(d.Posn, analyzer, d.Message)
+						finding := formatFinding(d.Posn, analyzer, d.Message)
 						out.Findings = append(out.Findings, finding)
 						if d.Category == deferredCategory {
 							out.Deferred[finding] = analyzer
 						}
 						continue
 					}
-					summary, err := ParseSummary(d.Message)
+					summary, err := parseSummary(d.Message)
 					if err == nil {
 						err = summary.validate(analyzer)
 					}
@@ -216,7 +212,7 @@ func excerpt(s string) string {
 func missingTargets(out *vetOutcome, checks []Check) []string {
 	var missing []string
 	for _, c := range checks {
-		missing = append(missing, MissingTargets(c.Analyzer.Name, c.Targets, out.Targets[c.Analyzer.Name])...)
+		missing = append(missing, targetFindings(c.Analyzer.Name, c.Targets, out.Targets[c.Analyzer.Name])...)
 	}
 	return missing
 }
@@ -369,7 +365,7 @@ func TestVetDriverRepo(t *testing.T) {
 	}
 	// Go files no context's packages contain are judged here, in the test process.
 	if ran == len(Contexts) {
-		for _, finding := range CheckUnanalyzedGoFiles(moduleRoot(), analyzed, exceptionSeen) {
+		for _, finding := range checkUnanalyzedGoFiles(moduleRoot(), analyzed, exceptionSeen) {
 			t.Error(finding)
 		}
 	} else {
@@ -389,27 +385,20 @@ func TestVetDriverRepo(t *testing.T) {
 	}
 }
 
-// vetFixture is one negative fixture: the analyzer it exercises, its flags, and
-// the old harness entry point it must stay in parity with.
+// vetFixture is one negative fixture: the analyzer it exercises and its flags.
 type vetFixture struct {
 	name     string
 	analyzer string
 	patterns []string
 	flags    []string
 	targets  []string
-	old      func(pkgs []*packages.Package) []string
 	// inputsRoot is the fixture's repository root, relative to the module root,
 	// for an analyzer that reads declared inputs; the driver adds its -root and
 	// -inputs flags.
 	inputsRoot string
-	// messages compares the old findings with the driver's messages alone: the
-	// old entry point has no positions.
-	messages bool
 	// aggregate returns the findings the test process adds to the vet run's
-	// (see CheckUnanalyzedGoFiles), in the old harness's wording.
+	// (see checkUnanalyzedGoFiles).
 	aggregate func(out *vetOutcome) []string
-	// oldIn is old for an entry point that depends on the context.
-	oldIn func(ctx BuildContext, pkgs []*packages.Package) []string
 	// wantAggregate, when set, is the exact aggregate the fixture must produce:
 	// findings with no source line to carry a want comment.
 	wantAggregate func(context string) []string

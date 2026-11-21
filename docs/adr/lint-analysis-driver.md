@@ -145,6 +145,8 @@ every context ran, and it runs in the test process, not as a vet result).
   and the old harness reads it by path, so one reader serves both. The cost is
   that an edit re-vets every package of the context; undeclared, an edit would
   re-vet only `jsonwire` and the packages whose export data changed.
+  (Superseded by the step 4 amendment in part: the old harness is removed, so
+  the fixture layout alone keeps the file declared.)
 - **A declared directory is absent, a directory, or irregular, and its state is
   hashed.** An absent directory reads as an error wrapping `fs.ErrNotExist`, a
   symlink or non-directory is refused, and none of the three hashes like an empty
@@ -157,13 +159,16 @@ every context ran, and it runs in the test process, not as a vet result).
   The old-harness reader
   (`osSource`) has no root to confine reads to, so it still follows a symlinked
   parent and skips a symlinked subdirectory; it goes with the old harness in PR 4.
+  (Superseded by the step 4 amendment: `osSource` is kept, for the exported
+  helpers outside the vet driver and `checkUnanalyzedGoFiles`.)
 - **`-root` must contain the anchor package's files, or the analyzer refuses**
   (file-input analyzers, checked by `os.SameFile` along each file's parent
   directories; test: `TestVetDriverRefusesBadInputs`, case "foreign root with a
   matching digest"). A directory that encloses the repository also contains the
   anchor and passes; its inputs are then read at its own paths, normally
   absent and so reported, unless that directory is itself a checkout (for
-  example one holding a nested worktree), which the driver never passes. `grantlock` and `denialwriter` have no anchor, so the tie
+  example one holding a nested worktree), which the driver never passes.
+  `grantlock` and `denialwriter` have no anchor, so the tie
   does not apply to them. Their `-root` is bound only by the digest: it must
   equal the hash of the declared query files under that root. A root other than
   the repository's with matching digest flags is analyzed as that root; the
@@ -189,7 +194,8 @@ every context ran, and it runs in the test process, not as a vet result).
   vet result. The check only runs when every context ran.
 - `Check.OnDisk` builds the same analyzer reading straight from disk, for the
   old harness and the parity leg; the registered analyzers refuse without the
-  driver's flags.
+  driver's flags. (Superseded by the step 4 amendment: `OnDisk`, the old harness
+  and the parity leg are removed.)
 
 ## Amendment: step 3 (RawSQL)
 
@@ -244,4 +250,76 @@ variant they are given) that the owner accepted for RawSQL only.
 - **Registration.** RawSQL is registered in `Analyzers()` but not in `Checks()`,
   because `RunOver` cannot supply facts. Its parity
   leg is inside `TestVetDriverParity` (`requireRawSQLParity` on the repository
-  and the `badrawsql` fixture's `oldIn`, under every context).
+  and the `badrawsql` fixture's `oldIn`, under every context). (Superseded by
+  the step 4 amendment: `RunOver` and the parity leg are removed.)
+
+## Amendment: step 4 (old harness removed)
+
+Proposed, not owner-accepted: this records what the removal changed. The rollout
+is complete once this step merges.
+
+- **Rollout.** Step 4 of the rollout (removal of `LoadRepo`, `flatten` and the old
+  harness, including the `internal/isolation` callers) is done, so the interim in
+  Decision 6 is over and the memory and wall-time reduction in Consequences has
+  landed; the old harness no longer loads the module through `go/packages`. The
+  stack (PRs 1 to 4) merges to `dev` together.
+- **Removed.** `LoadRepo`, `LoadRepoIn`, `Load`, `LoadIn`, the per-context caches,
+  `flatten`, `RunOver` and `Result`, every `Check*` entry point and its `OnDisk`
+  variant, `diskInputs`, `ProductionOnly` (nothing needs a production-only load any
+  more), and the parity legs
+  (`TestVetDriverParity` and `requireRawSQLParity`). `Check` is now an analyzer
+  and its required targets. `Contexts` and the `BuildContext` helpers stay: the
+  vet driver and the fixtures use them. `osSource` stays for the exported helpers
+  outside the vet driver and for `checkUnanalyzedGoFiles`, which runs in the test
+  process (see the step 2 amendment).
+- **Renamed.** With no caller outside the package left, two names the earlier
+  amendments use are unexported: `CheckUnanalyzedGoFiles` is
+  `checkUnanalyzedGoFiles` (step 2), and `RawSQLSummaryFindings` is merged into
+  `rawSQLSummaryFindings` (step 3).
+- **Tests.** The whole-repository tests were `Test*Repo` loops over the loaded
+  module; `TestVetDriverRepo` replaces them (every analyzer, every context, target
+  presence, deferred ceilings, the RawSQL aggregate, the redaction pins and the
+  unanalyzed Go files). Negative fixtures run through the vet driver with
+  `// want` lines. The jsonv1 and appendonly fixtures also assert the findings the
+  test process adds (`wantAggregate`), which only the parity leg compared before.
+  Tests that need a few type-checked packages (the typed driver-handle and RawSQL
+  protocol cases) load them with `go/packages` in test helpers only, never the
+  repository.
+- **`internal/isolation`.** The proofsig, sqlpredicate, handles, forgeguard,
+  txresult, appendonly and redaction invariants are asserted by `TestVetDriverRepo`
+  under every context, so their isolation wrappers are removed rather than
+  duplicated. The cache-discipline sweep (invariant 12) walks the module with
+  `go/parser`, over every file whatever its build constraints, so it no longer
+  loads packages.
+- **Reviewed-pin updater.** `TestUpdateReviewedPins` runs the vet tool with
+  `-rawsql.dump` and `-rawsql.native=linux` and reads the owner, caller and
+  helper hashes from `rawdump` summaries, then verifies the result with
+  `rawSQLSummaryFindings`. `checkReviewedPinAuthorities` and its refusal to widen
+  authority are unchanged.
+- **CI definitions.** The `race-analyzers` group in `reliability.yml` was the set
+  of isolation tests that called `LoadRepo`. Its members are now the tests that
+  reach `packageScopeNames`, directly or through the package's own functions,
+  which `scripts/ci/race_isolation_workflow_test.go` discovers with a
+  syntactic heuristic: the invariant 12 sweep and the sweep's own temp-tree
+  test, which is cheap, so listing it keeps the detector from missing a
+  whole-module sweep.
+  The race-shard exclusion for
+  `internal/lint` (the Consequences bullet that keeps it until the old harness is
+  removed) is not lifted here: it lives in `scripts/ci/analysis-shards-go/main.go`,
+  which dev admission refuses to take before `main` (`devPolicyPaths`), so lifting
+  it is a proposed follow-up through a `main` hotfix, as is retiring the
+  `race-analyzers` job for a sweep that no longer needs `GOMAXPROCS=1`.
+- **Measured memory.** The process tree of one queued
+  `go test -count=1 -timeout 40m -p 2 ./internal/lint/` was sampled every 0.5 s
+  and summed (peak tree RSS, largest single process). Cold means a freshly built
+  vet tool, so no cached vet result applied; the compiler cache was warm. At
+  `a16abc2bc`: cold 347 s, 826 MiB tree, 527 MiB largest (the vet tool); warm
+  90.7 s, 537 MiB tree, 472 MiB largest (the test binary). A first cold run at
+  `133567358` measured 897 MiB and an 825 MiB test binary, over the
+  single-process bound; one test cached five type-checked module slices and was
+  fixed (851 to 271 MiB). Re-measured at `e4459ab65` after the review fixes
+  (the cold run's vet tool carried a throwaway one-line nonce to defeat the vet
+  cache): cold 317.8 s, 781 MiB tree, 530 MiB largest (the vet tool); warm
+  75.0 s, 544 MiB tree, 470 MiB largest (the test binary). The acceptance bounds
+  (1.5 GB tree, 0.8 GB single process) are met. Method and per-run detail:
+  `docs/handoff/lint-vet-driver-pr4-cleanup.md`.

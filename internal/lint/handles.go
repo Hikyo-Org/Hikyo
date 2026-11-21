@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
 // driverHandles are the store's raw driver-handle accessors. They exist for
@@ -86,14 +85,7 @@ var generatedImporters = map[string]bool{
 	Module + "/internal/boundary":        true, // names them as strings only
 }
 
-// CheckDriverHandles enforces both allowlists across the module, test
-// packages included — a bypass in a test is still a bypass of the property
-// the tests exist to prove.
-func CheckDriverHandles(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: Handles}, pkgs).Findings
-}
-
-// Handles is CheckDriverHandles as an analyzer. Imports are judged from the
+// Handles is the handles analyzer. Imports are judged from the
 // files of the variant being analyzed.
 var Handles = &analysis.Analyzer{
 	Name: "handles",
@@ -108,8 +100,7 @@ var Handles = &analysis.Analyzer{
 }
 
 func runHandles(pass *analysis.Pass) {
-	// The ".test" trim serves the old loader's test-main roots until PR 4.
-	base := strings.TrimSuffix(pass.Pkg.Path(), ".test")
+	base := pass.Pkg.Path()
 	info := pass.TypesInfo
 	for ident, obj := range info.Uses {
 		if obj.Pkg() == nil || obj.Pkg().Path() != Module+"/internal/store" || obj.Name() != "openConfigured" {

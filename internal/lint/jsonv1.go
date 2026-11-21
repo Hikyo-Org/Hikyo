@@ -19,20 +19,6 @@ const jsonV1Exception = "api/apigen"
 
 const jsonV1Message = "jsonv1: %s imports encoding/json; use encoding/json/v2 and encoding/json/jsontext"
 
-// CheckJSONv1Imports reports encoding/json imports outside jsonV1Exception
-// and a stale exception when that directory stops importing it. It reads every .go file,
-// whatever its build tags, outside testdata, vendor and node_modules. This is
-// the old harness; the vet driver splits the same rule into the JSONv1
-// analyzer over the packages it analyzes and CheckUnanalyzedGoFiles over the
-// files it does not.
-func CheckJSONv1Imports(repoRoot string) []string {
-	findings, exceptionImports := walkJSONv1(repoRoot, nil)
-	if !exceptionImports {
-		findings = append(findings, staleJSONv1Exception())
-	}
-	return findings
-}
-
 func staleJSONv1Exception() string {
 	return fmt.Sprintf("jsonv1: %s no longer imports encoding/json; remove jsonV1Exception", jsonV1Exception)
 }
@@ -82,7 +68,7 @@ func walkJSONv1(repoRoot string, skip func(path string) bool) (findings []string
 	return findings, exceptionImports
 }
 
-// JSONv1 is the per-package part of CheckJSONv1Imports: every file of an
+// JSONv1 is the per-package jsonv1 analyzer: every file of an
 // analyzed package, test variants included, is judged by its imports, and each
 // file is reported as a gofile summary so the driver can tell which files of
 // the repository the vet run did not see. The package that is the exception
@@ -125,14 +111,14 @@ func newJSONv1() *analysis.Analyzer {
 	return a
 }
 
-// CheckUnanalyzedGoFiles is what the vet driver cannot see: the Go files of the
+// checkUnanalyzedGoFiles is what the vet driver cannot see: the Go files of the
 // repository that no analyzed package of any context contains (a file excluded
 // by build tags in every context, a lone program). analyzed holds the files
 // the contexts' jsonv1 passes reported, and exceptionSeen whether any of them
 // reported the exception importing encoding/json. It applies the jsonv1 rule
 // and the synchronous_commit ban to those files and finds the exception stale.
 // It runs in the test process on every run, so it is never a replayed result.
-func CheckUnanalyzedGoFiles(repoRoot string, analyzed map[string]bool, exceptionSeen bool) []string {
+func checkUnanalyzedGoFiles(repoRoot string, analyzed map[string]bool, exceptionSeen bool) []string {
 	skip := func(path string) bool { return analyzed[canonicalPath(path)] }
 	findings, exceptionImports := walkJSONv1(repoRoot, skip)
 	if !exceptionImports && !exceptionSeen {

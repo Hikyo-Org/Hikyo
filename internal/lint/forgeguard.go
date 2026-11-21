@@ -7,42 +7,9 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
-// CheckProofForgery is analyzer 3 (tenant-isolation ADR, invariant 9). The
-// concrete proof type is unexported, so it cannot be named outside
-// internal/authz at all — what remains expressible, and is flagged here:
-//
-//   - a nil literal in a Proof-typed position (call argument, variable
-//     initialisation, assignment, return, struct literal): the only
-//     forgeable Proof value. The store boundary already rejects nil at
-//     runtime; the guard removes the expression at build time.
-//
-//   - reflect or unsafe imported by a package that handles Proof values:
-//     conservative by design — the pair is how a forged proof would be
-//     assembled, and no package outside authz has business combining them.
-//
-//   - the same forgery spelled differently: a package-level authz.Proof
-//     variable with no initialiser (always nil), an authz.Proof(nil)
-//     conversion, and new(authz.Proof). A local declare-then-assign variable
-//     is not flagged: production code uses that pattern and assigns the proof
-//     before use.
-//
-// The authorization package itself (and its tests) are exempt: boundary
-// tests must construct exactly these invalid values.
-//
-// There is no inline exemption: a test that needs a nil proof lives in
-// internal/authz, and tests of the store boundary present a real but invalid
-// proof instead. Stated limits: an unassigned local Proof passed on, an omitted
-// Proof struct field, a naked named return and a generic zero value each still
-// yield a nil proof that this guard does not see; the store refuses it at
-// runtime, which is the enforcement.
-func CheckProofForgery(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: ForgeGuard}, pkgs).Findings
-}
-
-// ForgeGuard is CheckProofForgery as an analyzer. "Handles Proof values" is
+// ForgeGuard keeps proof values canonical outside the authz package. "Handles Proof values" is
 // decided from the files of the variant being analyzed, in-package tests
 // included.
 var ForgeGuard = &analysis.Analyzer{
@@ -80,11 +47,9 @@ var ForgeGuard = &analysis.Analyzer{
 
 // authzExempt is the exact set of package paths allowed to construct
 // non-canonical proof values: the authorization package (in-package tests
-// share its path), the test binary go/packages reports beside it, and the
-// external-test package path should one ever be added.
+// share its path) and the external-test package path should one ever be added.
 var authzExempt = map[string]bool{
 	Module + "/internal/authz":      true,
-	Module + "/internal/authz.test": true,
 	Module + "/internal/authz_test": true,
 }
 

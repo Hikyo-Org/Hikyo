@@ -2,29 +2,13 @@ package lint
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 func rawSQLFixtureRoot() string {
 	return filepath.Join(moduleRoot(), "internal/lint/testdata/badrawsql")
-}
-
-// rawSQLFixtureProtocols are the fixture's pins, read through the same decode
-// the analyzer uses.
-func rawSQLFixtureProtocols() (map[string]RawSQLProtocol, error) {
-	root := rawSQLFixtureRoot()
-	raw, err := osSource{}.ReadFile(filepath.Join(root, filepath.FromSlash(reviewedPinsPath)))
-	if err != nil {
-		return nil, err
-	}
-	inventory, err := parseReviewedPins(raw)
-	if err != nil {
-		return nil, err
-	}
-	return inventory.rawProtocols()
 }
 
 // flagValue is the value of the flag with the given "-name=" prefix.
@@ -41,7 +25,7 @@ func flagValue(flags []string, prefix string) string {
 // one run, judged against exactly the inputs the passes saw (the digest the run
 // passed).
 func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
-	specs, _, err := InputDeclaration(RawSQL.Name, root)
+	specs, _, err := inputDeclaration(RawSQL.Name, root)
 	if err != nil {
 		return nil, err
 	}
@@ -49,34 +33,18 @@ func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return RawSQLSummaryFindings(in, root, out.Context, out.Summaries[RawSQL.Name])
-}
-
-// requireRawSQLParity checks that every finding of the old RawSQL harness over
-// the repository is also reported by the driver, per-package diagnostics and
-// aggregate together.
-func requireRawSQLParity(t *testing.T, ctx BuildContext, repo *vetOutcome, pkgs []*packages.Package) {
-	t.Helper()
-	if reviewedPinsError != nil {
-		t.Fatal(reviewedPinsError)
+	native := flagValue(out.Flags, "-rawsql.native=")
+	if native == "" {
+		native = runtime.GOOS
 	}
-	protocols, err := reviewedPins.rawProtocols()
-	if err != nil {
-		t.Fatal(err)
-	}
-	aggregated, err := rawSQLAggregate(repo, moduleRoot())
-	if err != nil {
-		t.Fatal(err)
-	}
-	current := append(findingMessages(repo.Findings, RawSQL.Name), aggregated...)
-	requireSubset(t, "rawsql on the repository", CheckRawSQL(pkgs, moduleRoot(), Module, protocols, ctx.Name), current)
+	return rawSQLSummaryFindings(in, root, out.Context, native, out.Summaries[RawSQL.Name])
 }
 
 // The aggregate refuses a summary it cannot parse, a context it does not know
 // and an inventory it cannot read, instead of judging nothing.
 func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	root := rawSQLFixtureRoot()
-	specs, _, err := InputDeclaration(RawSQL.Name, root)
+	specs, _, err := inputDeclaration(RawSQL.Name, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +66,7 @@ func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := RawSQLSummaryFindings(in, root, tc.context, tc.summaries); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := rawSQLSummaryFindings(in, root, tc.context, runtime.GOOS, tc.summaries); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want one containing %q", err, tc.want)
 			}
 		})
@@ -109,7 +77,7 @@ func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RawSQLSummaryFindings(otherIn, other, "default", nil); err == nil {
+	if _, err := rawSQLSummaryFindings(otherIn, other, "default", runtime.GOOS, nil); err == nil {
 		t.Fatal("an absent inventory was accepted")
 	}
 }

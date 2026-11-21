@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 // fixtureRoot is relative to the module root, where vet runs: a wildcard
@@ -31,105 +29,61 @@ var vetFixtures = []vetFixture{
 		name: "proofsig", analyzer: "proofsig", patterns: []string{fixtureRoot + "badstore"},
 		flags:   []string{"-proofsig.store=" + fixtureImportRoot + "badstore"},
 		targets: []string{fixtureImportRoot + "badstore"},
-		old: func(pkgs []*packages.Package) []string {
-			return CheckProofSignatures(pkgs, fixtureImportRoot+"badstore")
-		},
 	},
 	{
 		name: "forgeguard", analyzer: "forgeguard", patterns: []string{fixtureRoot + "badnil"},
-		old: CheckProofForgery,
 	},
 	{
 		name: "txresult", analyzer: "txresult", patterns: []string{fixtureRoot + "badtxresult"},
-		old: CheckTransactionResults,
 	},
 	{
 		name: "fence", analyzer: "fence", patterns: []string{fixtureRoot + "badseal"},
 		flags:   []string{"-fence.service=" + fixtureImportRoot + "badseal"},
 		targets: []string{fixtureImportRoot + "badseal"},
-		old: func(pkgs []*packages.Package) []string {
-			return CheckFenceCompleteness(pkgs, fixtureImportRoot+"badseal")
-		},
 	},
 	{
 		name: "serviceseams", analyzer: "serviceseams", patterns: []string{fixtureRoot + "badseam"},
 		flags:   []string{"-serviceseams.service=" + fixtureImportRoot + "badseam", "-serviceseams.store=" + fixtureImportRoot + "badseam"},
 		targets: []string{fixtureImportRoot + "badseam"},
-		old: func(pkgs []*packages.Package) []string {
-			return CheckServiceSeams(pkgs, fixtureImportRoot+"badseam", fixtureImportRoot+"badseam")
-		},
 	},
 	{
 		name: "handles", analyzer: "handles", patterns: []string{fixtureRoot + "badhandle"},
-		old: CheckDriverHandles,
 	},
 	{
 		name: "redactfmt", analyzer: "redactfmt", patterns: []string{fixtureRoot + "badredact"},
-		old: CheckSensitiveFormatting,
 	},
 	{
 		name: "testobservers", analyzer: "testobservers", patterns: []string{fixtureRoot + "badobserver/..."},
 		flags:   []string{"-testobservers.installers=" + observerOwner + "=SetQueryObserver,SetMutationFailureObserver,SetSCIMPhaseObserver"},
 		targets: []string{observerOwner},
-		old: func(pkgs []*packages.Package) []string {
-			return checkTestObserversIn(pkgs, map[string][]string{observerOwner: {"SetQueryObserver", "SetMutationFailureObserver", "SetSCIMPhaseObserver"}})
-		},
 	},
 	{
 		name: "recoverylookup", analyzer: "recoverylookup", patterns: []string{fixtureRoot + "badrecovery"},
 		flags:   []string{"-recoverylookup.rules=" + rulesFlag(badRecoveryRules)},
 		targets: []string{fixtureImportRoot + "badrecovery"},
-		old: func(pkgs []*packages.Package) []string {
-			return CheckRecoveryLookup(pkgs, badRecoveryRules)
-		},
 	},
 	{
 		name: "containmentsetters", analyzer: "containmentsetters", patterns: []string{fixtureRoot + "badsetter"},
 		flags:   []string{"-containmentsetters.rules=" + rulesFlag(badSetterRules)},
 		targets: []string{fixtureImportRoot + "badsetter"},
-		old: func(pkgs []*packages.Package) []string {
-			return CheckContainmentSetters(pkgs, badSetterRules)
-		},
 	},
 	{
 		name: "grantlock", analyzer: "grantlock", patterns: []string{fixtureRoot + "badgrant"},
 		flags:      []string{"-grantlock.surface=" + fixtureImportRoot + "badgrant"},
 		targets:    []string{fixtureImportRoot + "badgrant"},
 		inputsRoot: ".",
-		old: func(pkgs []*packages.Package) []string {
-			writers, err := GrantWriters(moduleRoot())
-			if err != nil {
-				panic(err)
-			}
-			return CheckGrantLockIn(pkgs, fixtureImportRoot+"badgrant", writers)
-		},
 	},
 	{
 		name: "denialwriter", analyzer: "denialwriter", patterns: []string{fixtureRoot + "badauthn"},
 		flags:      []string{"-denialwriter.surface=" + fixtureImportRoot + "badauthn", "-denialwriter.writers=WriteDenial"},
 		targets:    []string{fixtureImportRoot + "badauthn"},
 		inputsRoot: ".",
-		old: func(pkgs []*packages.Package) []string {
-			mutating, _, err := MutatingQueries(moduleRoot())
-			if err != nil {
-				panic(err)
-			}
-			return CheckDenialWriterIn(pkgs, fixtureImportRoot+"badauthn", map[string]bool{"WriteDenial": true}, mutating)
-		},
 	},
 	{
 		name: "containmentgates", analyzer: "containmentgates", patterns: []string{fixtureRoot + "badcontainmentgates"},
 		flags:      []string{"-containmentgates.anchor=" + fixtureImportRoot + "badcontainmentgates", "-containmentgates.exempt=Exempted,ExemptedButGated,Vanished"},
 		targets:    []string{fixtureImportRoot + "badcontainmentgates"},
-		inputsRoot: "internal/lint/testdata/badcontainmentgates", messages: true,
-		old: func([]*packages.Package) []string {
-			root := filepath.Join(moduleRoot(), "internal/lint/testdata/badcontainmentgates")
-			queries, err := ParseQueries(filepath.Join(root, "internal/store/queries/sqlite"))
-			if err != nil {
-				panic(err)
-			}
-			return CheckContainmentGates(queries, map[string]string{"Exempted": "fixture", "ExemptedButGated": "fixture", "Vanished": "fixture"})
-		},
+		inputsRoot: "internal/lint/testdata/badcontainmentgates",
 	},
 	{
 		name: "reencryptcoverage", analyzer: "reencryptcoverage", patterns: []string{fixtureRoot + "badreencrypt"},
@@ -139,48 +93,38 @@ var vetFixtures = []vetFixture{
 			"-reencryptcoverage.exempt=sealed_things.wrapped_key,both_sets.ambiguous",
 		},
 		targets:    []string{fixtureImportRoot + "badreencrypt"},
-		inputsRoot: "internal/lint/testdata/badreencrypt", messages: true,
-		old: func([]*packages.Package) []string {
-			dir := filepath.Join(moduleRoot(), "internal/lint/testdata/badreencrypt/internal/store/migrations/sqlite")
-			return checkReencryptCoverage(osSource{}, dir,
-				map[string]string{"sealed_things.payload_sealed": "", "both_sets.ambiguous": "", "gone_table.gone_column": ""},
-				map[string]string{"sealed_things.wrapped_key": "", "both_sets.ambiguous": ""})
-		},
+		inputsRoot: "internal/lint/testdata/badreencrypt",
 	},
 	{
 		name: "sqlpredicate", analyzer: "sqlpredicate", patterns: []string{fixtureRoot + "badsqlpredicate"},
 		flags:      []string{"-sqlpredicate.anchor=" + fixtureImportRoot + "badsqlpredicate", "-sqlpredicate.nopins"},
 		targets:    []string{fixtureImportRoot + "badsqlpredicate"},
-		inputsRoot: "internal/lint/testdata/badsqlpredicate", messages: true,
-		old: func([]*packages.Package) []string {
-			return checkSQLPredicates(osSource{}, filepath.Join(moduleRoot(), "internal/lint/testdata/badsqlpredicate"), true)
-		},
+		inputsRoot: "internal/lint/testdata/badsqlpredicate",
 	},
 	{
 		// The fixture tree also holds an ignore-tagged file and a testdata
 		// directory: vet cannot see the first, which the driver's unanalyzed-file
 		// check finds, and neither tool reads the second. internal/store/.gitkeep
-		// keeps an empty internal/store: CheckUnanalyzedGoFiles also runs the
+		// keeps an empty internal/store: checkUnanalyzedGoFiles also runs the
 		// synchronous_commit walk, which refuses a missing internal/store.
 		name: "jsonv1", analyzer: "jsonv1", patterns: []string{fixtureRoot + "badjsonv1"},
-		flags:    []string{"-jsonv1.root=" + filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1")},
-		messages: true,
-		old: func([]*packages.Package) []string {
-			return CheckJSONv1Imports(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"))
-		},
+		flags: []string{"-jsonv1.root=" + filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1")},
 		aggregate: func(out *vetOutcome) []string {
 			files, exception := analyzedGoFiles(out)
-			return CheckUnanalyzedGoFiles(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"), files, exception)
+			return checkUnanalyzedGoFiles(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"), files, exception)
+		},
+		wantAggregate: func(string) []string {
+			return []string{
+				"jsonv1: api/apigen no longer imports encoding/json; remove jsonV1Exception",
+				"jsonv1: ignored/ignored.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext",
+			}
 		},
 	},
 	{
 		name: "stablecopies", analyzer: "stablecopies", patterns: []string{fixtureRoot + "badstablecopies"},
 		flags:      []string{"-stablecopies.anchor=" + fixtureImportRoot + "badstablecopies"},
 		targets:    []string{fixtureImportRoot + "badstablecopies"},
-		inputsRoot: "internal/lint/testdata/badstablecopies", messages: true,
-		old: func([]*packages.Package) []string {
-			return CheckStableCopies(filepath.Join(moduleRoot(), "internal/lint/testdata/badstablecopies"))
-		},
+		inputsRoot: "internal/lint/testdata/badstablecopies",
 	},
 	{
 		// The fixture tree holds an ignore-tagged Go file under internal/store,
@@ -188,13 +132,13 @@ var vetFixtures = []vetFixture{
 		name: "appendonly", analyzer: "appendonly", patterns: []string{fixtureRoot + "badappendonly"},
 		flags:      []string{"-appendonly.anchor=" + fixtureImportRoot + "badappendonly"},
 		targets:    []string{fixtureImportRoot + "badappendonly"},
-		inputsRoot: "internal/lint/testdata/badappendonly", messages: true,
-		old: func([]*packages.Package) []string {
-			return CheckAuditAppendOnly(filepath.Join(moduleRoot(), "internal/lint/testdata/badappendonly"))
-		},
+		inputsRoot: "internal/lint/testdata/badappendonly",
 		aggregate: func(out *vetOutcome) []string {
 			files, _ := analyzedGoFiles(out)
 			return unanalyzedSyncCommit(filepath.Join(moduleRoot(), "internal/lint/testdata/badappendonly"), func(path string) bool { return files[canonicalPath(path)] })
+		},
+		wantAggregate: func(string) []string {
+			return []string{"appendonly: internal/store/ignored.go issues SET synchronous_commit — durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)"}
 		},
 	},
 	{
@@ -202,14 +146,7 @@ var vetFixtures = []vetFixture{
 		// aggregated by the driver (wantAggregate).
 		name: "rawsql", analyzer: "rawsql", patterns: []string{fixtureRoot + "badrawsql/..."},
 		flags:      []string{"-rawsql.prefix=" + fixtureImportRoot + "badrawsql"},
-		inputsRoot: "internal/lint/testdata/badrawsql", messages: true,
-		oldIn: func(ctx BuildContext, pkgs []*packages.Package) []string {
-			protocols, err := rawSQLFixtureProtocols()
-			if err != nil {
-				panic(err)
-			}
-			return CheckRawSQL(pkgs, rawSQLFixtureRoot(), fixtureImportRoot+"badrawsql", protocols, ctx.Name)
-		},
+		inputsRoot: "internal/lint/testdata/badrawsql",
 		aggregate: func(out *vetOutcome) []string {
 			findings, err := rawSQLAggregate(out, rawSQLFixtureRoot())
 			if err != nil {
@@ -232,7 +169,6 @@ var vetFixtures = []vetFixture{
 	},
 	{
 		name: "upgradebuild", analyzer: "upgradebuild", patterns: []string{fixtureRoot + "badupgradebuild"},
-		old: UpgradeBuildAuthority,
 	},
 }
 
@@ -397,16 +333,6 @@ func checkWants(t *testing.T, f vetFixture, findings []string) {
 	}
 }
 
-// loadPatterns are the patterns relative to this package's directory, where the
-// old go/packages harness runs.
-func (f vetFixture) loadPatterns() []string {
-	out := make([]string, len(f.patterns))
-	for i, pattern := range f.patterns {
-		out[i] = "./" + strings.TrimPrefix(pattern, "./internal/lint/")
-	}
-	return out
-}
-
 func fixtureFlagsAndPatterns(t *testing.T, fixtures []vetFixture) (flags, patterns []string) {
 	t.Helper()
 	for _, f := range fixtures {
@@ -432,11 +358,15 @@ func TestVetDriverFixtures(t *testing.T) {
 			for _, f := range vetFixtures {
 				t.Run(f.name, func(t *testing.T) {
 					checkWants(t, f, out.Findings)
-					for _, finding := range MissingTargets(f.analyzer, f.targets, out.Targets[f.analyzer]) {
+					for _, finding := range targetFindings(f.analyzer, f.targets, out.Targets[f.analyzer]) {
 						t.Error(finding)
 					}
-					if f.wantAggregate != nil {
-						got, want := slices.Sorted(slices.Values(f.aggregate(out))), slices.Sorted(slices.Values(f.wantAggregate(ctx.Name)))
+					if f.aggregate != nil {
+						var want []string
+						if f.wantAggregate != nil {
+							want = f.wantAggregate(ctx.Name)
+						}
+						got, want := slices.Sorted(slices.Values(f.aggregate(out))), slices.Sorted(slices.Values(want))
 						if !slices.Equal(got, want) {
 							t.Errorf("aggregate findings = %q, want %q", got, want)
 						}
@@ -462,69 +392,11 @@ func TestVetDriverReportsMissingObserverTargets(t *testing.T) {
 			if want := "installer " + observerOwner + ".RenamedObserver not found"; !strings.Contains(joined, want) {
 				t.Errorf("findings do not contain %q:\n%s", want, joined)
 			}
-			missing := MissingTargets("testobservers", []string{observerOwner, observerOwner + "/missing"}, out.Targets["testobservers"])
+			missing := targetFindings("testobservers", []string{observerOwner, observerOwner + "/missing"}, out.Targets["testobservers"])
 			if len(missing) != 1 || !strings.Contains(missing[0], observerOwner+"/missing") {
 				t.Errorf("target aggregation = %v, want exactly the absent owner package", missing)
 			}
 		})
-	}
-}
-
-// Every old finding must also be reported by the vet driver, on the real
-// repository and on every negative fixture, under every context. The old
-// harness hides in-package test files, so the driver may report more.
-func TestVetDriverParity(t *testing.T) {
-	bin := buildVetTool(t)
-	flags, patterns := fixtureFlagsAndPatterns(t, vetFixtures)
-	for _, ctx := range Contexts {
-		t.Run(ctx.Name, func(t *testing.T) {
-			repo := runVet(t, bin, ctx, repoInputFlags(t), []string{Module + "/..."})
-			pkgs, err := LoadRepoIn(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, c := range Checks() {
-				requireSubset(t, c.Analyzer.Name+" on the repository", RunOver(c.For(moduleRoot()), pkgs).Findings, repo.Findings)
-			}
-			requireRawSQLParity(t, ctx, repo, pkgs)
-			fixtures := runVet(t, bin, ctx, flags, patterns)
-			for _, f := range vetFixtures {
-				loaded, err := LoadIn(ctx, f.loadPatterns()...)
-				if err != nil {
-					t.Fatal(err)
-				}
-				var old []string
-				if f.oldIn != nil {
-					old = f.oldIn(ctx, loaded)
-				} else {
-					old = f.old(loaded)
-				}
-				if len(old) == 0 {
-					t.Errorf("old harness found nothing in fixture %s: the parity check would be vacuous", f.name)
-				}
-				current := fixtures.Findings
-				if f.messages {
-					current = findingMessages(fixtures.Findings, f.analyzer)
-				}
-				if f.aggregate != nil {
-					current = append(slices.Clone(current), f.aggregate(fixtures)...)
-				}
-				requireSubset(t, "fixture "+f.name, old, current)
-			}
-		})
-	}
-}
-
-func requireSubset(t *testing.T, what string, old, current []string) {
-	t.Helper()
-	have := map[string]bool{}
-	for _, finding := range current {
-		have[finding] = true
-	}
-	for _, finding := range old {
-		if !have[finding] {
-			t.Errorf("%s: the old harness reports a finding the vet driver does not: %s", what, finding)
-		}
 	}
 }
 
@@ -549,5 +421,22 @@ func TestVetDriverIgnoresLineDirectives(t *testing.T) {
 				t.Errorf("a production file claiming a test name was deferred: %v", out.Deferred)
 			}
 		})
+	}
+}
+
+// The surface analyzers are silent when the fixture packages are not their
+// named surface: the same lockless and second-writer fixtures pass once the
+// surface points at the real authn store.
+func TestSurfaceAnalyzersStaySilentOutsideTheirSurface(t *testing.T) {
+	bin := buildVetTool(t)
+	authn := Module + "/internal/store/authn"
+	flags := []string{"-grantlock", "-grantlock.surface=" + authn, "-denialwriter", "-denialwriter.surface=" + authn, "-denialwriter.writers=WriteDenial"}
+	flags = append(flags, inputFlags(t, "grantlock", moduleRoot())...)
+	flags = append(flags, inputFlags(t, "denialwriter", moduleRoot())...)
+	out := runVet(t, bin, Contexts[0], flags, []string{fixtureRoot + "badgrant", fixtureRoot + "badauthn"})
+	for _, name := range []string{"grantlock", "denialwriter"} {
+		if got := findingMessages(out.Findings, name); len(got) != 0 {
+			t.Errorf("%s fired outside its named surface: %v", name, got)
+		}
 	}
 }

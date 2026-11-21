@@ -33,7 +33,7 @@ func TestRawDriverAuthorityIsExactFileScoped(t *testing.T) {
 	}
 	// Run the actual typed bypass fixture pretending it resides in store. A
 	// package-only allowlist would silently approve the injected writer.
-	pkgs, err := Load("./testdata/badhandle")
+	pkgs, err := loadDefault("./testdata/badhandle")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,14 +42,14 @@ func TestRawDriverAuthorityIsExactFileScoped(t *testing.T) {
 			pkg.PkgPath = Module + "/internal/store"
 		}
 	}
-	findings := CheckDriverHandles(pkgs)
+	findings := checkDriverHandles(pkgs)
 	assertFindings(t, findings, []string{"calls store.DB.PG", "names driver type database/sql.DB"})
 }
 
 func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 	const harness = Module + "/scripts/security/artifact-harness"
 	const runtimeFile = "/scripts/security/artifact-harness/runtime.go"
-	pkgs, err := Load("../../scripts/security/artifact-harness")
+	pkgs, err := loadDefault("../../scripts/security/artifact-harness")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 			if tt.generated {
 				addImport(&candidate, Module+"/internal/store/pggen")
 			}
-			findings := CheckDriverHandles([]*packages.Package{&candidate})
+			findings := checkDriverHandles([]*packages.Package{&candidate})
 			var driverFindings []string
 			for _, finding := range findings {
 				if strings.Contains(finding, "names driver type github.com/jackc/pgx/v5.Conn") {

@@ -5,24 +5,9 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
-// CheckTransactionResults keeps tx.WriteResult's generic result channel
-// detached from transaction-owned authority. Runtime reflection is forbidden
-// in packages that handle Proof values, so this repository-wide type walk is
-// the fail-closed enforcement point.
-//
-// Stated limit: this checks the result's type, not data flow. A proof can
-// still be carried out of its transaction through a closure, as realProof in
-// internal/service/stub_proof_test.go deliberately does; the stub repositories
-// never verify the proof's transaction. Production repositories do refuse it
-// (authz: "presented outside its transaction").
-func CheckTransactionResults(pkgs []*packages.Package) []string {
-	return RunOver(Check{Analyzer: TxResult}, pkgs).Findings
-}
-
-// TxResult is CheckTransactionResults as an analyzer.
+// TxResult is the txresult analyzer.
 var TxResult = &analysis.Analyzer{
 	Name: "txresult",
 	Doc:  "tx.WriteResult results must be detached data",

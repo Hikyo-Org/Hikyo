@@ -6,18 +6,9 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
-// CheckServiceSeams confines global reauthentication duration and schema-revision
-// advancement to their policy helpers. Type identity catches renamed receivers
-// and method values while allowing unrelated fields and methods with those names.
-// This checks the access boundary, not policy correctness inside the helpers.
-func CheckServiceSeams(pkgs []*packages.Package, servicePath, storePath string) []string {
-	return RunOver(Check{Analyzer: newServiceSeams(servicePath, storePath), Targets: []string{servicePath}}, pkgs).Findings
-}
-
-// ServiceSeams is CheckServiceSeams as an analyzer over the service package.
+// ServiceSeams is the serviceseams analyzer over the service package.
 var ServiceSeams = newServiceSeams(Module+"/internal/service", Module+"/internal/store")
 
 func newServiceSeams(service, store string) *analysis.Analyzer {

@@ -8,15 +8,7 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
-
-// CheckTestObservers prohibits production references to mutable acceptance-test
-// hook installers, including function values and uses in their defining files.
-// Type resolution recognizes import aliases and ignores unrelated names.
-func CheckTestObservers(pkgs []*packages.Package) []string {
-	return checkTestObserversIn(pkgs, defaultObserverInstallers())
-}
 
 func defaultObserverInstallers() map[string][]string {
 	return map[string][]string{
@@ -25,16 +17,7 @@ func defaultObserverInstallers() map[string][]string {
 	}
 }
 
-func checkTestObserversIn(pkgs []*packages.Package, installers map[string][]string) []string {
-	check := Check{Analyzer: newTestObservers(installers)}
-	for path := range installers {
-		check.Targets = append(check.Targets, path)
-	}
-	slices.Sort(check.Targets)
-	return RunOver(check, pkgs).Findings
-}
-
-// TestObservers is CheckTestObservers as an analyzer.
+// TestObservers is the testobservers analyzer.
 var TestObservers = newTestObservers(defaultObserverInstallers())
 
 func newTestObservers(installers map[string][]string) *analysis.Analyzer {

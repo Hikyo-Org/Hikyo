@@ -6,13 +6,17 @@ import (
 	"testing"
 )
 
-func TestJSONv1ImportsRepo(t *testing.T) {
-	for _, f := range CheckJSONv1Imports(repoRoot(t)) {
-		t.Error(f)
+// jsonV1Findings is the jsonv1 rule over every Go file under root, as
+// checkUnanalyzedGoFiles applies it to the files no vet pass saw.
+func jsonV1Findings(root string) []string {
+	findings, exceptionImports := walkJSONv1(root, nil)
+	if !exceptionImports {
+		findings = append(findings, staleJSONv1Exception())
 	}
+	return findings
 }
 
-func TestJSONv1ImportsCatchesViolations(t *testing.T) {
+func TestJSONv1WalkCatchesViolations(t *testing.T) {
 	root := t.TempDir()
 	write := func(rel, src string) {
 		t.Helper()
@@ -27,11 +31,11 @@ func TestJSONv1ImportsCatchesViolations(t *testing.T) {
 	write("fresh/new.go", "//go:build ignore\n\npackage fresh\n\nimport stdjson \"encoding/json\"\n\nvar _ = stdjson.Marshal\n")
 	write("fresh/v2.go", "package fresh\n\nimport \"encoding/json/v2\"\n\nvar _ = json.Marshal\n")
 	write("fresh/testdata/fixture.go", "package fixture\n\nimport \"encoding/json\"\n")
-	assertFindings(t, CheckJSONv1Imports(root), []string{
+	assertFindings(t, jsonV1Findings(root), []string{
 		"jsonv1: fresh/new.go imports encoding/json",
 		"jsonv1: api/apigen no longer imports encoding/json",
 	})
-	for _, f := range CheckJSONv1Imports(root) {
+	for _, f := range jsonV1Findings(root) {
 		if f == "jsonv1: fresh/v2.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext" ||
 			f == "jsonv1: fresh/testdata/fixture.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext" {
 			t.Errorf("unexpected finding: %s", f)
@@ -39,7 +43,7 @@ func TestJSONv1ImportsCatchesViolations(t *testing.T) {
 	}
 }
 
-func TestJSONv1ImportsAllowsOnlyGeneratedAPI(t *testing.T) {
+func TestJSONv1WalkAllowsOnlyGeneratedAPI(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "api", "apigen")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -48,7 +52,7 @@ func TestJSONv1ImportsAllowsOnlyGeneratedAPI(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gen.go"), []byte("package apigen\n\nimport \"encoding/json\"\n\nvar _ = json.Marshal\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := CheckJSONv1Imports(root); len(got) != 0 {
+	if got := jsonV1Findings(root); len(got) != 0 {
 		t.Fatalf("api/apigen must be allowed: %v", got)
 	}
 }

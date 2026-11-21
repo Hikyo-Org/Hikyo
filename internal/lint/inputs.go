@@ -46,7 +46,8 @@ var (
 )
 
 // source is how an input-reading analyzer reaches the disk: through a verified
-// Inputs under the vet driver, or straight from disk for the old harness.
+// Inputs under the vet driver, or straight from disk (osSource) for the helpers
+// that run outside it.
 type source interface {
 	// ReadFile reads a regular file.
 	ReadFile(path string) ([]byte, error)
@@ -56,12 +57,14 @@ type source interface {
 	WalkFiles(dir string, exts []string) ([]string, error)
 }
 
-// osSource reads the disk directly: the old harness and the helpers' tests.
+// osSource reads the disk directly, for the exported helpers outside the vet
+// driver (ParseQueries, ParseScopeDirectives) and
+// for checkUnanalyzedGoFiles, which runs in the test process.
 // shortcut: it has no root to confine reads to, so a symlinked parent directory
 // is followed (only the final directory component and the file's own directory
 // are checked), and a walk skips a symlinked subdirectory; Inputs, which has the
-// root, refuses both. The old harness goes in
-// PR 4, so this is not widened.
+// root, refuses both. Confine it with a root per caller if one of these helpers
+// ever reads a path it does not control.
 type osSource struct{}
 
 // ReadFile reads through a handle to the file's directory, so a symlink that
@@ -321,8 +324,8 @@ func listInputDir(root *os.Root, rootPath, rel string, spec InputSpec) ([]string
 	return out, err
 }
 
-// InputDigest is the digest the driver passes as the analyzer's -inputs flag.
-func InputDigest(root string, specs []InputSpec) (string, error) {
+// inputDigest is the digest the driver passes as the analyzer's -inputs flag.
+func inputDigest(root string, specs []InputSpec) (string, error) {
 	in, err := SnapshotInputs(root, specs)
 	if err != nil {
 		return "", err
@@ -432,9 +435,9 @@ var inputDeclarations = map[string]specsFunc{
 	"stablecopies":      stableCopiesSpecs,
 }
 
-// InputDeclaration returns an input-reading analyzer's declared inputs under
+// inputDeclaration returns an input-reading analyzer's declared inputs under
 // root, or false for an analyzer that reads none.
-func InputDeclaration(analyzer, root string) ([]InputSpec, bool, error) {
+func inputDeclaration(analyzer, root string) ([]InputSpec, bool, error) {
 	specs, ok := inputDeclarations[analyzer]
 	if !ok {
 		return nil, false, nil
@@ -443,8 +446,8 @@ func InputDeclaration(analyzer, root string) ([]InputSpec, bool, error) {
 	return out, true, err
 }
 
-// InputAnalyzers lists the analyzers that read declared inputs.
-func InputAnalyzers() []string {
+// inputAnalyzers lists the analyzers that read declared inputs.
+func inputAnalyzers() []string {
 	names := make([]string, 0, len(inputDeclarations))
 	for name := range inputDeclarations {
 		names = append(names, name)
@@ -480,13 +483,6 @@ func flagInputs(a *analysis.Analyzer) inputProvider {
 	}}
 }
 
-// diskInputs is the old harness's provider: the disk under root, unverified.
-func diskInputs(root string) func(*analysis.Analyzer) inputProvider {
-	return func(*analysis.Analyzer) inputProvider {
-		return inputProvider{root: func() string { return root }, open: func() (source, string, error) { return osSource{}, root, nil }}
-	}
-}
-
 // reportRefusal reports a refused input as a finding at the package clause, so
 // the driver test fails on it and a `// want` fixture can state it.
 func reportRefusal(pass *analysis.Pass, err error) {
@@ -499,8 +495,8 @@ func reportRefusal(pass *analysis.Pass, err error) {
 type fileCheck struct {
 	name, doc string
 	anchor    string
-	// run returns the findings, in the wording the old harness used, or a
-	// refusal (an undeclared input) that is not a finding about the code.
+	// run returns the findings, or a refusal (an undeclared input) that is not
+	// a finding about the code.
 	run func(src source, root string) ([]string, error)
 	// flags registers analyzer-specific flags run reads, if any.
 	flags func(a *analysis.Analyzer)
@@ -508,15 +504,15 @@ type fileCheck struct {
 	pkg func(pass *analysis.Pass, root string)
 }
 
-// analyzer builds the vet analyzer; provide chooses where its inputs come from.
-func (c fileCheck) analyzer(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+// analyzer builds the vet analyzer.
+func (c fileCheck) analyzer() *analysis.Analyzer {
 	a := &analysis.Analyzer{Name: c.name, Doc: c.doc}
 	anchor := c.anchor
 	a.Flags.StringVar(&anchor, "anchor", c.anchor, "package the file checks run on")
 	if c.flags != nil {
 		c.flags(a)
 	}
-	in := provide(a)
+	in := flagInputs(a)
 	a.Run = func(pass *analysis.Pass) (any, error) {
 		path := pass.Pkg.Path()
 		if c.pkg != nil && c.pkgApplies(anchor, path) {

@@ -113,7 +113,7 @@ func parseScopeDirectives(fsrc source, dir string) (map[string]TableRule, error)
 	return out, nil
 }
 
-// CollectTables replays the migration set's table statements in version order
+// collectTables replays the migration set's table statements in version order
 // and returns two sets: the tables that exist at rest (`live`), and every name
 // a CREATE ever mentioned (`named`).
 //
@@ -126,10 +126,6 @@ func parseScopeDirectives(fsrc source, dir string) (map[string]TableRule, error)
 // or it would demand a directive for a name that is gone by commit; "no
 // directive dangles" must ask about every name, or declaring the twin — which
 // 00006 does on both engines — would look like a stale entry.
-func CollectTables(dir string) (live, named []string, err error) {
-	return collectTables(osSource{}, dir)
-}
-
 func collectTables(fsrc source, dir string) (live, named []string, err error) {
 	alive := map[string]bool{}
 	seen := map[string]bool{}
@@ -244,12 +240,12 @@ func sqlPredicateSpecs(string) ([]InputSpec, error) {
 	return specs, nil
 }
 
-// SQLPredicates runs CheckSQLPredicates over the declared migrations, queries,
+// SQLPredicates runs the sqlpredicate check over the declared migrations, queries,
 // generated query APIs and the test files the reviewed pins cite, once, on
 // internal/store.
-var SQLPredicates = newSQLPredicates(flagInputs)
+var SQLPredicates = newSQLPredicates()
 
-func newSQLPredicates(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+func newSQLPredicates() *analysis.Analyzer {
 	var noPins bool
 	return fileCheck{
 		name: "sqlpredicate", doc: "tenant-chain predicates of every query, scope directives and cross-engine agreement",
@@ -258,14 +254,7 @@ func newSQLPredicates(provide func(*analysis.Analyzer) inputProvider) *analysis.
 			a.Flags.BoolVar(&noPins, "nopins", false, "hold the repository to no reviewed scoped queries and no legacy annotations (fixtures)")
 		},
 		run: func(src source, root string) ([]string, error) { return checkSQLPredicates(src, root, noPins), nil },
-	}.analyzer(provide)
-}
-
-// CheckSQLPredicates runs analyzer 2 over both engines' migration and query
-// directories under repoRoot, including the cross-engine agreement checks
-// (same tables, directives, and query contracts on both engines).
-func CheckSQLPredicates(repoRoot string) []string {
-	return checkSQLPredicates(osSource{}, repoRoot, false)
+	}.analyzer()
 }
 
 // checkSQLPredicates is the check; noPins holds the repository to no reviewed

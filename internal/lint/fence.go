@@ -6,55 +6,9 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
 )
 
-// CheckFenceCompleteness enforces the writer fence's coverage (encryption-model
-// ADR § Rotation, invariant 7): every ciphertext a service seals for storage
-// must be guarded, in its write transaction, by the writer fence — otherwise a
-// row sealed under a DEK version a concurrent rotate-dek is retiring can strand
-// under a key `reencrypt` has already walked past.
-//
-// The rule, per top-level function in internal/service: a function that calls
-// ProjectSealer.SealValue/SealField or InstanceSealer.SealField must also call
-// one of the fence helpers (fenceProject / fenceInstance / fenceInstanceVersion)
-// or the authentication-surface fence (TxAuthorizer.AssertActiveInstanceDEKVersion).
-// The granularity is the function, not the individual write, because the
-// FOR SHARE lock the fence takes is held to the transaction's commit and so
-// covers every sealed write committed in the same function.
-//
-// Two escape hatches, both explicit and reviewable — never silent:
-//
-//   - a `fence:delegated` marker in the function's doc comment: the function
-//     seals but returns the ciphertext and its DEK version to a caller that
-//     fences on that version before writing (the sealVerifier / sealSecret /
-//     generateSPKey helpers).
-//   - a `fence:exempt` marker: the sealed bytes are never written to any table
-//     (the recovery timing-equalisation dummy), so no row can be stranded.
-//
-// reencrypt.go is exempt wholesale: it IS the mover, re-sealing rows under the
-// new active version; fencing it against the version it is installing would be
-// circular.
-//
-// Stated limits, in the spirit of the other analyzers — each is a build-time
-// surfacing, not the enforcement, which is the runtime fence itself:
-//   - A function that seals on one path and fences on an unrelated path would
-//     pass. The service methods are one operation each, so this does not arise.
-//   - The analyzer proves a seal and a fence CO-OCCUR in a function; it does not
-//     prove the fence runs after the seal and inside the SAME transaction as the
-//     store write. A function that sealed, fenced-and-committed in transaction A,
-//     then wrote in a separate transaction B would pass while leaving the write
-//     unfenced. Proving transaction co-location needs dataflow this type-only
-//     pass does not attempt; all current sealing sites were verified in-tx by
-//     hand (each fences immediately before its write, in the write's own tx).
-//   - `fence:delegated` / `fence:exempt` markers are trusted, not verified: a
-//     reviewer owns that a delegated helper's version truly reaches a fencing
-//     caller, and that an exempt seal truly never reaches a table.
-func CheckFenceCompleteness(pkgs []*packages.Package, servicePath string) []string {
-	return RunOver(Check{Analyzer: newFence(servicePath), Targets: []string{servicePath}}, pkgs).Findings
-}
-
-// Fence is CheckFenceCompleteness as an analyzer over the service package.
+// Fence is the fence analyzer over the service package.
 var Fence = newFence(Module + "/internal/service")
 
 func newFence(service string) *analysis.Analyzer {
