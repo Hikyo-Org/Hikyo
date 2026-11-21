@@ -177,6 +177,17 @@ export const ReclassifyConfirm: Story = {
   },
 };
 
+// Tightening a config key: the confirm states what reclassification cannot undo.
+export const TightenConfirm: Story = {
+  parameters: app({ key: { body: { ...record, classification: 'config' } } }),
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reclassify as secret…' }));
+    const dialog = within(await canvas.findByRole('dialog', { name: 'Reclassify this key as secret?' }));
+    await expect(dialog.getByText(/Tightening cannot un-disclose/)).toBeVisible();
+    await expect(dialog.getByText(/Old values stay readable in history/)).toBeVisible();
+  },
+};
+
 // A Git-managed project: declarations read-only behind the notice and the
 // last-applied provenance labels, each fact after the actor joined by the
 // real `<Sep/>` separator (" · "), not three bare dots concatenated by hand.

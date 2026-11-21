@@ -2,6 +2,7 @@
 import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { TIGHTEN_ADVISORY } from '../api/matrix.ts';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
 
 const item: ScanWarnItem = {
@@ -42,6 +43,8 @@ describe('ScanWarnDialog', () => {
     // The close X is gone (ui/Dialog); the dialog gained a Close action and
     // the primary is last.
     expect(labels).toEqual(['Keep as config', 'Close', 'Reclassify API_KEY as secret']);
+    // Reclassifying here is a tighten, so the dialog states what it cannot undo.
+    expect(container.textContent).toContain(TIGHTEN_ADVISORY);
     await unmount();
   });
 
@@ -56,6 +59,7 @@ describe('ScanWarnDialog', () => {
     );
     const labels = [...container.querySelectorAll('button')].map((node) => node.textContent);
     expect(labels).toEqual(['Keep as config', 'Close']);
+    expect(container.textContent).not.toContain(TIGHTEN_ADVISORY);
     await unmount();
   });
 });
