@@ -199,7 +199,7 @@ func writeVerifiedPins(path string, updated []byte, verify func() ([]string, err
 	defer func() {
 		if !verified {
 			if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
-				err = fmt.Errorf("restoring the reviewed pins: %w (after: %v)", restoreErr, err)
+				err = errors.Join(err, fmt.Errorf("restoring the reviewed pins: %w", restoreErr))
 			}
 		}
 	}()

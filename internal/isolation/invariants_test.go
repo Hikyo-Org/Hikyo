@@ -718,6 +718,18 @@ func TestInvariant11SelfConfigGenericMintingDenied(t *testing.T) {
 	}
 }
 
+// sweepTempTree runs the sweep over a synthetic tree. It is a helper so that
+// the test above is not mistaken for a whole-module sweep (the race workflow
+// test discovers those by their direct call to packageScopeNames).
+func sweepTempTree(t *testing.T, root string) map[string][]string {
+	t.Helper()
+	got, err := packageScopeNames(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 // The sweep behaves like `go list ./...` about nested checkouts and modules,
 // yet still reads build-ignored files of a normal package.
 func TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles(t *testing.T) {
@@ -739,10 +751,7 @@ func TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles(t *testing.T) {
 	write("internal/normal/ignored.go", "//go:build ignore\n\npackage normal\n\ntype hiddenCache struct{}\n")
 	write("internal/normal/ext_test.go", "package normal_test\n\ntype extCache struct{}\n")
 
-	got, err := packageScopeNames(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := sweepTempTree(t, root)
 	if len(got) != 2 {
 		t.Fatalf("sweep saw %v, want only internal/normal and internal/normal_test", got)
 	}
