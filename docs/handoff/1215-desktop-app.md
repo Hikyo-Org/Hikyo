@@ -35,7 +35,7 @@ being saved (`OnShutdown`); the data directory lock is held for the whole run; r
 | system-architecture.md | yes (#1459) | #22 closed 2026-11-20 |
 | human-auth.md | yes (#1459) | #16 closed 2026-11-20 |
 | threat-model.md | yes (#1459) | #8 closed 2026-11-20 |
-| oss-mechanics.md | with plan PR 5 (revised 2026-11-20 to a `desktop-v*` series here) | #33 closes when plan PR 5 merges |
+| oss-mechanics.md | when plan PR 5 merges (banner is owner-locked and unchanged here) | #33 closes when plan PR 5 merges |
 
 ## Evidence
 
@@ -101,8 +101,11 @@ What exists:
 - `scripts/release/`: `build-desktop-app.sh`, `stage-desktop-draft.sh`, `publish-desktop-draft.sh`
   and `check-desktop-rulesets.sh`. `verify-desktop` in `scripts/release/stable` checks the bundle
   against the pinned trust root and exact identity, then the closed file set and each DMG's size
-  and SHA-256. `stable-ceremony.sh publish` runs the desktop publisher after
-  `publish-stable-draft.sh` for stable versions.
+  and SHA-256. `stable-ceremony.sh review` and `publish` run the desktop check
+  (`publish-desktop-draft.sh --check-only`) first, and `publish` runs the publisher after
+  `publish-stable-draft.sh` for stable versions. The legacy `--offline` path prints
+  the follow-up command instead. Artifacts are named by run attempt, and each image's digest is
+  a job output that `stage-desktop-draft.sh` re-checks.
 - `latest-stable-version.sh` and `security-release.yml` skip `desktop-v*`.
 - `release/repository/desktop-tag-creation.json` and `desktop-tag-immutability.json`, upserted and
   read back by `configure-repository.sh`. **They are not applied.** The owner runs
@@ -113,7 +116,7 @@ What exists:
 Never exercised, because they need a real stable tag, Developer ID secrets, Apple and GitHub: the
 macOS jobs end to end (the x86_64 build is cross-compiled on an arm64 runner and never launched),
 Apple notarization of an app and a DMG, `spctl` and `stapler` on those bytes, keyless signing of the
-inventory, `gh release create --draft` without a tag, publishing a draft that creates the
+inventory, creating the draft through the releases API without a tag, publishing a draft that creates the
 `desktop-v<version>` tag (and the creation ruleset admitting the publisher), the post-publication
 latest and tag checks, and the rerun path over an earlier draft. Exercised locally: the shell
 fixtures with fake `gh`, `go` and `cosign`, and the Go verifier with real fixture signatures.

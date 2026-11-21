@@ -311,8 +311,22 @@ Once, before the first stable tag, an administrator runs
 `desktop-v*` tag creation and immutability rulesets. The desktop publisher
 refuses to run until both are active.
 
+`review` and `publish` both check the staged draft first
+(`publish-desktop-draft.sh --check-only`: the draft targets the same commit as
+the `v<version>` manifest, its inventory signature verifies, and the images match
+it). Either command refuses while that fails, and `publish` does so before
+anything is public.
+
 Before `publish`, download the staged draft's DMG and verify it as the
 [desktop app page](https://hikyo.app/docs/desktop-app/#verify-the-download)
 describes. `publish` retries are safe: if `v<version>` is already public it
 still publishes the desktop draft, and an already published matching desktop
 release is verified and left unchanged.
+
+The legacy `ceremony.sh --offline` publication does not touch the desktop
+draft. For a stable version it prints the follow-up, which you must run after it
+reports success, from the repository root:
+
+```sh
+scripts/release/publish-desktop-draft.sh Hikyo-Org/Hikyo VERSION release/trust
+```

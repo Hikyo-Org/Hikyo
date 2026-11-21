@@ -325,7 +325,7 @@ CLI lane's separate jobs; the workflow test allows exactly those steps.
 The x86_64 app is cross-compiled on an arm64 runner and is signature-checked
 but not launched. Job `desktop-draft` signs `desktop-inventory.json` (file
 names, sizes and SHA-256 values) with the keyless stable workflow identity and
-stages the `desktop-v<version>` draft. The tag does not exist until
+stages the `desktop-v<version>` draft. Each architecture's DMG is handed over under an attempt-qualified artifact name, with its SHA-256 recorded as a job output that the staging step re-checks. The tag does not exist until
 `ceremony.sh publish` publishes that draft after the CLI release. Apple-service
 failures are handled as above: rerun the failed jobs; do not resubmit an
 uncertain notarization by hand.
