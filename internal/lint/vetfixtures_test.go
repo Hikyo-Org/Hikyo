@@ -105,13 +105,13 @@ var vetFixtures = []vetFixture{
 		// The fixture tree also holds an ignore-tagged file and a testdata
 		// directory: vet cannot see the first, which the driver's unanalyzed-file
 		// check finds, and neither tool reads the second. internal/store/.gitkeep
-		// keeps an empty internal/store: CheckUnanalyzedGoFiles also runs the
+		// keeps an empty internal/store: checkUnanalyzedGoFiles also runs the
 		// synchronous_commit walk, which refuses a missing internal/store.
 		name: "jsonv1", analyzer: "jsonv1", patterns: []string{fixtureRoot + "badjsonv1"},
 		flags: []string{"-jsonv1.root=" + filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1")},
 		aggregate: func(out *vetOutcome) []string {
 			files, exception := analyzedGoFiles(out)
-			return CheckUnanalyzedGoFiles(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"), files, exception)
+			return checkUnanalyzedGoFiles(filepath.Join(moduleRoot(), "internal/lint/testdata/badjsonv1"), files, exception)
 		},
 		wantAggregate: func(string) []string {
 			return []string{
@@ -358,7 +358,7 @@ func TestVetDriverFixtures(t *testing.T) {
 			for _, f := range vetFixtures {
 				t.Run(f.name, func(t *testing.T) {
 					checkWants(t, f, out.Findings)
-					for _, finding := range MissingTargets(f.analyzer, f.targets, out.Targets[f.analyzer]) {
+					for _, finding := range targetFindings(f.analyzer, f.targets, out.Targets[f.analyzer]) {
 						t.Error(finding)
 					}
 					if f.aggregate != nil {
@@ -392,7 +392,7 @@ func TestVetDriverReportsMissingObserverTargets(t *testing.T) {
 			if want := "installer " + observerOwner + ".RenamedObserver not found"; !strings.Contains(joined, want) {
 				t.Errorf("findings do not contain %q:\n%s", want, joined)
 			}
-			missing := MissingTargets("testobservers", []string{observerOwner, observerOwner + "/missing"}, out.Targets["testobservers"])
+			missing := targetFindings("testobservers", []string{observerOwner, observerOwner + "/missing"}, out.Targets["testobservers"])
 			if len(missing) != 1 || !strings.Contains(missing[0], observerOwner+"/missing") {
 				t.Errorf("target aggregation = %v, want exactly the absent owner package", missing)
 			}
@@ -421,5 +421,22 @@ func TestVetDriverIgnoresLineDirectives(t *testing.T) {
 				t.Errorf("a production file claiming a test name was deferred: %v", out.Deferred)
 			}
 		})
+	}
+}
+
+// The surface analyzers are silent when the fixture packages are not their
+// named surface: the same lockless and second-writer fixtures pass once the
+// surface points at the real authn store.
+func TestSurfaceAnalyzersStaySilentOutsideTheirSurface(t *testing.T) {
+	bin := buildVetTool(t)
+	authn := Module + "/internal/store/authn"
+	flags := []string{"-grantlock", "-grantlock.surface=" + authn, "-denialwriter", "-denialwriter.surface=" + authn, "-denialwriter.writers=WriteDenial"}
+	flags = append(flags, inputFlags(t, "grantlock", moduleRoot())...)
+	flags = append(flags, inputFlags(t, "denialwriter", moduleRoot())...)
+	out := runVet(t, bin, Contexts[0], flags, []string{fixtureRoot + "badgrant", fixtureRoot + "badauthn"})
+	for _, name := range []string{"grantlock", "denialwriter"} {
+		if got := findingMessages(out.Findings, name); len(got) != 0 {
+			t.Errorf("%s fired outside its named surface: %v", name, got)
+		}
 	}
 }

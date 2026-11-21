@@ -85,7 +85,7 @@ var generatedImporters = map[string]bool{
 	Module + "/internal/boundary":        true, // names them as strings only
 }
 
-// Handles is CheckDriverHandles as an analyzer. Imports are judged from the
+// Handles is the handles analyzer. Imports are judged from the
 // files of the variant being analyzed.
 var Handles = &analysis.Analyzer{
 	Name: "handles",
@@ -100,8 +100,7 @@ var Handles = &analysis.Analyzer{
 }
 
 func runHandles(pass *analysis.Pass) {
-	// The ".test" trim serves the old loader's test-main roots until PR 4.
-	base := strings.TrimSuffix(pass.Pkg.Path(), ".test")
+	base := pass.Pkg.Path()
 	info := pass.TypesInfo
 	for ident, obj := range info.Uses {
 		if obj.Pkg() == nil || obj.Pkg().Path() != Module+"/internal/store" || obj.Name() != "openConfigured" {

@@ -34,13 +34,13 @@ func stableCopiesSpecs(string) ([]InputSpec, error) {
 // StableCopies reads the declared jsonwire original and its copies, and runs
 // once on internal/jsonwire. The copies are programs outside the anchor's action
 // ID. The original is the anchor's own file, declared anyway: the fixture keeps
-// its original under its root, not in its anchor package, and the old harness
-// reads it by path, so one reader serves both. The cost: an edit re-vets every
+// its original under its root, not in its anchor package, so it is read by path.
+// The cost: an edit re-vets every
 // package of the context (the flag is in every action ID); undeclared, it would
 // re-vet only jsonwire and the packages whose export data changed.
-var StableCopies = newStableCopies(flagInputs)
+var StableCopies = newStableCopies()
 
-func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+func newStableCopies() *analysis.Analyzer {
 	copies := slices.Clone(stableCopies)
 	return fileCheck{
 		name: "stablecopies", doc: "reports a copy of jsonwire.Stable whose options drift from the original",
@@ -52,7 +52,7 @@ func newStableCopies(provide func(*analysis.Analyzer) inputProvider) *analysis.A
 			})
 		},
 		run: func(src source, root string) ([]string, error) { return checkStableCopies(src, root, copies) },
-	}.analyzer(provide)
+	}.analyzer()
 }
 
 func checkStableCopies(src source, repoRoot string, copies []string) ([]string, error) {

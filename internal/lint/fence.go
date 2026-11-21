@@ -8,7 +8,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Fence is CheckFenceCompleteness as an analyzer over the service package.
+// Fence is the fence analyzer over the service package.
 var Fence = newFence(Module + "/internal/service")
 
 func newFence(service string) *analysis.Analyzer {

@@ -17,7 +17,7 @@ func defaultObserverInstallers() map[string][]string {
 	}
 }
 
-// TestObservers is CheckTestObservers as an analyzer.
+// TestObservers is the testobservers analyzer.
 var TestObservers = newTestObservers(defaultObserverInstallers())
 
 func newTestObservers(installers map[string][]string) *analysis.Analyzer {

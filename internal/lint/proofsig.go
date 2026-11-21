@@ -7,7 +7,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// ProofSig is CheckProofSignatures as an analyzer over the store package.
+// ProofSig is the proofsig analyzer over the store package.
 var ProofSig = newProofSig(Module + "/internal/store")
 
 func newProofSig(store string) *analysis.Analyzer {

@@ -159,8 +159,8 @@ func TestForgeryExemptionIsNotPrefixMatched(t *testing.T) {
 			t.Errorf("%s is exempt from the forgery guard — exemption must be exact-path", p)
 		}
 	}
-	if !authzExempt[Module+"/internal/authz"] || !authzExempt[Module+"/internal/authz.test"] {
-		t.Error("the authorization package and its test binary must stay exempt")
+	if !authzExempt[Module+"/internal/authz"] {
+		t.Error("the authorization package must stay exempt")
 	}
 }
 
@@ -420,7 +420,7 @@ func TestContextEnvClearsAmbientGOFLAGS(t *testing.T) {
 // The grant-lock analyzer's writer set is derived from the query files, and must
 // name the grant writes it exists to guard.
 func TestGrantWritersIncludeInsertGrant(t *testing.T) {
-	writers, err := GrantWriters(repoRoot(t))
+	writers, err := grantWriters(osSource{}, repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ func TestGrantWritersIncludeInsertGrant(t *testing.T) {
 // prefix list would have guessed, which is how a previous version let three real
 // writers through.
 func TestMutatingQueriesClassifyByCommand(t *testing.T) {
-	mutating, unclassified, err := MutatingQueries(repoRoot(t))
+	mutating, unclassified, err := mutatingQueries(osSource{}, repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}

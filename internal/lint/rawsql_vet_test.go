@@ -25,7 +25,7 @@ func flagValue(flags []string, prefix string) string {
 // one run, judged against exactly the inputs the passes saw (the digest the run
 // passed).
 func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
-	specs, _, err := InputDeclaration(RawSQL.Name, root)
+	specs, _, err := inputDeclaration(RawSQL.Name, root)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func rawSQLAggregate(out *vetOutcome, root string) ([]string, error) {
 // and an inventory it cannot read, instead of judging nothing.
 func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	root := rawSQLFixtureRoot()
-	specs, _, err := InputDeclaration(RawSQL.Name, root)
+	specs, _, err := inputDeclaration(RawSQL.Name, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := RawSQLSummaryFindings(in, root, tc.context, tc.summaries); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := rawSQLSummaryFindings(in, root, tc.context, runtime.GOOS, tc.summaries); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want one containing %q", err, tc.want)
 			}
 		})
@@ -77,7 +77,7 @@ func TestRawSQLSummaryFindingsRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RawSQLSummaryFindings(otherIn, other, "default", nil); err == nil {
+	if _, err := rawSQLSummaryFindings(otherIn, other, "default", runtime.GOOS, nil); err == nil {
 		t.Fatal("an absent inventory was accepted")
 	}
 }

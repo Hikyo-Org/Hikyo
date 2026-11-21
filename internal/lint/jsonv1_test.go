@@ -7,7 +7,7 @@ import (
 )
 
 // jsonV1Findings is the jsonv1 rule over every Go file under root, as
-// CheckUnanalyzedGoFiles applies it to the files no vet pass saw.
+// checkUnanalyzedGoFiles applies it to the files no vet pass saw.
 func jsonV1Findings(root string) []string {
 	findings, exceptionImports := walkJSONv1(root, nil)
 	if !exceptionImports {

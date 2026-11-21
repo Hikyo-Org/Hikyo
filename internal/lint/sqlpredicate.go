@@ -240,12 +240,12 @@ func sqlPredicateSpecs(string) ([]InputSpec, error) {
 	return specs, nil
 }
 
-// SQLPredicates runs CheckSQLPredicates over the declared migrations, queries,
+// SQLPredicates runs the sqlpredicate check over the declared migrations, queries,
 // generated query APIs and the test files the reviewed pins cite, once, on
 // internal/store.
-var SQLPredicates = newSQLPredicates(flagInputs)
+var SQLPredicates = newSQLPredicates()
 
-func newSQLPredicates(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+func newSQLPredicates() *analysis.Analyzer {
 	var noPins bool
 	return fileCheck{
 		name: "sqlpredicate", doc: "tenant-chain predicates of every query, scope directives and cross-engine agreement",
@@ -254,7 +254,7 @@ func newSQLPredicates(provide func(*analysis.Analyzer) inputProvider) *analysis.
 			a.Flags.BoolVar(&noPins, "nopins", false, "hold the repository to no reviewed scoped queries and no legacy annotations (fixtures)")
 		},
 		run: func(src source, root string) ([]string, error) { return checkSQLPredicates(src, root, noPins), nil },
-	}.analyzer(provide)
+	}.analyzer()
 }
 
 // checkSQLPredicates is the check; noPins holds the repository to no reviewed

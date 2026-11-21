@@ -7,7 +7,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// TxResult is CheckTransactionResults as an analyzer.
+// TxResult is the txresult analyzer.
 var TxResult = &analysis.Analyzer{
 	Name: "txresult",
 	Doc:  "tx.WriteResult results must be detached data",

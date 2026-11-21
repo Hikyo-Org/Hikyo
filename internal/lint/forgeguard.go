@@ -9,7 +9,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// ForgeGuard is CheckProofForgery as an analyzer. "Handles Proof values" is
+// ForgeGuard keeps proof values canonical outside the authz package. "Handles Proof values" is
 // decided from the files of the variant being analyzed, in-package tests
 // included.
 var ForgeGuard = &analysis.Analyzer{
@@ -47,11 +47,9 @@ var ForgeGuard = &analysis.Analyzer{
 
 // authzExempt is the exact set of package paths allowed to construct
 // non-canonical proof values: the authorization package (in-package tests
-// share its path), the test binary go/packages reports beside it, and the
-// external-test package path should one ever be added.
+// share its path) and the external-test package path should one ever be added.
 var authzExempt = map[string]bool{
 	Module + "/internal/authz":      true,
-	Module + "/internal/authz.test": true,
 	Module + "/internal/authz_test": true,
 }
 

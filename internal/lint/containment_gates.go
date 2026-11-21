@@ -147,9 +147,9 @@ func CheckContainmentGates(queries []Query, exempt map[string]string) []string {
 
 // ContainmentGates runs CheckContainmentGates over both engines' declared query
 // files, once, on internal/store.
-var ContainmentGates = newContainmentGates(flagInputs)
+var ContainmentGates = newContainmentGates()
 
-func newContainmentGates(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+func newContainmentGates() *analysis.Analyzer {
 	exempt := ContainmentGateExemptions
 	return fileCheck{
 		name: "containmentgates", doc: "every privacy-active predicate in the query files is paired with the containment condition",
@@ -175,5 +175,5 @@ func newContainmentGates(provide func(*analysis.Analyzer) inputProvider) *analys
 			}
 			return findings, nil
 		},
-	}.analyzer(provide)
+	}.analyzer()
 }

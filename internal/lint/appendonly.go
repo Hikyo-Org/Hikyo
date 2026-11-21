@@ -41,9 +41,9 @@ func appendOnlySpecs(string) ([]InputSpec, error) {
 // both engines' query files and the `.sql` files under internal/store come from
 // the declared inputs. The Go files of internal/store are not declared (vet
 // keys on them already): each package of the subtree scans its own files.
-var AuditAppendOnly = newAuditAppendOnly(flagInputs)
+var AuditAppendOnly = newAuditAppendOnly()
 
-func newAuditAppendOnly(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+func newAuditAppendOnly() *analysis.Analyzer {
 	return fileCheck{
 		name: "appendonly", doc: "audit tables are append-only at the application layer and no code downgrades commit durability",
 		anchor: Module + "/internal/store",
@@ -64,7 +64,7 @@ func newAuditAppendOnly(provide func(*analysis.Analyzer) inputProvider) *analysi
 				}
 			}
 		},
-	}.analyzer(provide)
+	}.analyzer()
 }
 
 func checkAuditQueries(src source, repoRoot string) []string {
@@ -495,13 +495,11 @@ var ResolutionSurfaceWriters = map[string]bool{
 // test files included, must sit inside a function named in
 // ResolutionSurfaceWriters. The mutating set comes from the declared query
 // files.
-var DenialWriter = newDenialWriter(flagInputs, nil)
+var DenialWriter = newDenialWriter()
 
 const denialSurface = Module + "/internal/store/authn"
 
-// newDenialWriter builds the analyzer; a fixed mutating set replaces the
-// query-derived one for the old harness's scoped entry point.
-func newDenialWriter(provide func(*analysis.Analyzer) inputProvider, fixed map[string]bool) *analysis.Analyzer {
+func newDenialWriter() *analysis.Analyzer {
 	a := &analysis.Analyzer{Name: "denialwriter", Doc: "the resolution surface writes only from its enumerated writers"}
 	surface := denialSurface
 	writers := ResolutionSurfaceWriters
@@ -513,31 +511,28 @@ func newDenialWriter(provide func(*analysis.Analyzer) inputProvider, fixed map[s
 		}
 		return nil
 	})
-	in := provide(a)
+	in := flagInputs(a)
 	a.Run = func(pass *analysis.Pass) (any, error) {
 		if pass.Pkg.Path() != surface {
 			return nil, nil
 		}
 		reportTarget(pass)
-		mutating := fixed
-		if mutating == nil {
-			src, root, err := in.open()
-			if err != nil {
-				reportRefusal(pass, err)
-				return nil, nil
-			}
-			var findings []string
-			if mutating, findings, err = mutatingQueries(src, root); err != nil {
-				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
-				return nil, nil
-			}
-			for _, f := range findings {
-				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: f})
-			}
-			if len(mutating) == 0 {
-				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no mutating queries found — the analyzer would be vacuously green"})
-				return nil, nil
-			}
+		src, root, err := in.open()
+		if err != nil {
+			reportRefusal(pass, err)
+			return nil, nil
+		}
+		mutating, findings, err := mutatingQueries(src, root)
+		if err != nil {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
+			return nil, nil
+		}
+		for _, f := range findings {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: f})
+		}
+		if len(mutating) == 0 {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no mutating queries found — the analyzer would be vacuously green"})
+			return nil, nil
 		}
 		checkDenialWriterPass(pass, writers, mutating)
 		return nil, nil
@@ -584,7 +579,7 @@ func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]boo
 	}
 }
 
-// MutatingQueries derives the set of generated queries that write, from the
+// mutatingQueries derives the set of generated queries that write, from the
 // sqlc command annotation on each query rather than from its name.
 //
 // The previous version guessed from a prefix list, and that was FAIL-OPEN in
@@ -598,10 +593,6 @@ func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]boo
 // commands; `:one` and `:many` read. An unrecognised command is treated as
 // MUTATING — the fail-closed direction — and reported, so a sqlc release that
 // adds a command cannot silently widen the hole.
-func MutatingQueries(repoRoot string) (map[string]bool, []string, error) {
-	return mutatingQueries(osSource{}, repoRoot)
-}
-
 func mutatingQueries(src source, repoRoot string) (map[string]bool, []string, error) {
 	out := map[string]bool{}
 	var findings []string

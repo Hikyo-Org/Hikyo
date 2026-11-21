@@ -81,25 +81,25 @@ func runAnalyzer(c Check, pkgs []*packages.Package) []string {
 			TypesInfo: p.TypesInfo,
 			Report: func(d analysis.Diagnostic) {
 				if d.Category != SummaryCategory {
-					findings = append(findings, FormatFinding(p.Fset.Position(d.Pos).String(), c.Analyzer.Name, d.Message))
+					findings = append(findings, formatFinding(p.Fset.Position(d.Pos).String(), c.Analyzer.Name, d.Message))
 					return
 				}
-				summary, err := ParseSummary(d.Message)
+				summary, err := parseSummary(d.Message)
 				if err == nil {
 					err = summary.validate(c.Analyzer.Name)
 				}
 				if err != nil {
-					findings = append(findings, FormatFinding("-", c.Analyzer.Name, err.Error()))
+					findings = append(findings, formatFinding("-", c.Analyzer.Name, err.Error()))
 				} else if summary.Kind == summaryTarget {
 					seenTargets[summary.Subject] = true
 				}
 			},
 		}
 		if _, err := c.Analyzer.Run(pass); err != nil {
-			findings = append(findings, FormatFinding(p.PkgPath, c.Analyzer.Name, "analyzer failed: "+err.Error()))
+			findings = append(findings, formatFinding(p.PkgPath, c.Analyzer.Name, "analyzer failed: "+err.Error()))
 		}
 	}
-	findings = append(findings, MissingTargets(c.Analyzer.Name, c.Targets, seenTargets)...)
+	findings = append(findings, targetFindings(c.Analyzer.Name, c.Targets, seenTargets)...)
 	slices.Sort(findings)
 	return findings
 }
@@ -155,10 +155,10 @@ func checkRawSQL(pkgs []*packages.Package, root, prefix string, pins map[string]
 			TypesInfo: p.TypesInfo,
 			Report: func(d analysis.Diagnostic) {
 				if d.Category != SummaryCategory {
-					findings = append(findings, FormatFinding(p.Fset.Position(d.Pos).String(), RawSQL.Name, d.Message))
+					findings = append(findings, formatFinding(p.Fset.Position(d.Pos).String(), RawSQL.Name, d.Message))
 					return
 				}
-				summary, err := ParseSummary(d.Message)
+				summary, err := parseSummary(d.Message)
 				if err != nil {
 					findings = append(findings, err.Error())
 					return

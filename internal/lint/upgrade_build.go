@@ -7,7 +7,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// UpgradeBuild is UpgradeBuildAuthority as an analyzer.
+// UpgradeBuild is the upgradebuild analyzer.
 var UpgradeBuild = &analysis.Analyzer{
 	Name: "upgradebuild",
 	Doc:  "BuildScratchSchema is confined to app/releasecompat.go",

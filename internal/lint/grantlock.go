@@ -66,16 +66,12 @@ func queryInputs(string) ([]InputSpec, error) {
 	}, nil
 }
 
-// GrantWriters returns the mutating generated queries that target the grant
+// grantWriters returns the mutating generated queries that target the grant
 // table, derived from the query files rather than a curated list so a new grant
 // writer is covered the moment it is added. Classification is by SQL verb/target,
 // NOT the sqlc command annotation: an `INSERT ... RETURNING` is a `:one` yet
 // writes a grant row (the old cmd-based skip classified it as a read and let it
 // through). Only a SELECT on the grant table is a read.
-func GrantWriters(repoRoot string) (map[string]bool, error) {
-	return grantWriters(osSource{}, repoRoot)
-}
-
 func grantWriters(src source, repoRoot string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, engine := range []string{"sqlite", "postgres"} {
@@ -116,15 +112,13 @@ func reachesGenerated(pkg *types.Package) bool {
 // testdata fixtures are never loaded by the `module/...` pattern, so the
 // negative fixture does not false-positive the repo run. The writer set comes
 // from the declared query files.
-var GrantLock = newGrantLock(flagInputs, nil)
+var GrantLock = newGrantLock()
 
-// newGrantLock builds the analyzer. A fixed writers set replaces the
-// query-derived one for the old harness's scoped entry point.
-func newGrantLock(provide func(*analysis.Analyzer) inputProvider, fixed map[string]bool) *analysis.Analyzer {
+func newGrantLock() *analysis.Analyzer {
 	a := &analysis.Analyzer{Name: "grantlock", Doc: "every grant-table writer takes the principal-row lock"}
 	surface := ""
 	a.Flags.StringVar(&surface, "surface", "", "analyze only this package (default: every module package)")
-	in := provide(a)
+	in := flagInputs(a)
 	a.Run = func(pass *analysis.Pass) (any, error) {
 		path := pass.Pkg.Path()
 		if !inModule(path) || generatedPackages[path] || (surface != "" && path != surface) {
@@ -136,21 +130,19 @@ func newGrantLock(provide func(*analysis.Analyzer) inputProvider, fixed map[stri
 		if !reachesGenerated(pass.Pkg) {
 			return nil, nil
 		}
-		writers := fixed
-		if writers == nil {
-			src, root, err := in.open()
-			if err != nil {
-				reportRefusal(pass, err)
-				return nil, nil
-			}
-			if writers, err = grantWriters(src, root); err != nil {
-				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
-				return nil, nil
-			}
-			if len(writers) == 0 {
-				pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no grant-table writers found — the analyzer would be vacuously green"})
-				return nil, nil
-			}
+		src, root, err := in.open()
+		if err != nil {
+			reportRefusal(pass, err)
+			return nil, nil
+		}
+		writers, err := grantWriters(src, root)
+		if err != nil {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
+			return nil, nil
+		}
+		if len(writers) == 0 {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no grant-table writers found — the analyzer would be vacuously green"})
+			return nil, nil
 		}
 		checkGrantLockPass(pass, writers, lockName)
 		return nil, nil

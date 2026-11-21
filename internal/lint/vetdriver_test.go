@@ -126,14 +126,14 @@ func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 				}
 				for _, d := range result.Diagnostics {
 					if d.Category != SummaryCategory {
-						finding := FormatFinding(d.Posn, analyzer, d.Message)
+						finding := formatFinding(d.Posn, analyzer, d.Message)
 						out.Findings = append(out.Findings, finding)
 						if d.Category == deferredCategory {
 							out.Deferred[finding] = analyzer
 						}
 						continue
 					}
-					summary, err := ParseSummary(d.Message)
+					summary, err := parseSummary(d.Message)
 					if err == nil {
 						err = summary.validate(analyzer)
 					}
@@ -212,7 +212,7 @@ func excerpt(s string) string {
 func missingTargets(out *vetOutcome, checks []Check) []string {
 	var missing []string
 	for _, c := range checks {
-		missing = append(missing, MissingTargets(c.Analyzer.Name, c.Targets, out.Targets[c.Analyzer.Name])...)
+		missing = append(missing, targetFindings(c.Analyzer.Name, c.Targets, out.Targets[c.Analyzer.Name])...)
 	}
 	return missing
 }
@@ -365,7 +365,7 @@ func TestVetDriverRepo(t *testing.T) {
 	}
 	// Go files no context's packages contain are judged here, in the test process.
 	if ran == len(Contexts) {
-		for _, finding := range CheckUnanalyzedGoFiles(moduleRoot(), analyzed, exceptionSeen) {
+		for _, finding := range checkUnanalyzedGoFiles(moduleRoot(), analyzed, exceptionSeen) {
 			t.Error(finding)
 		}
 	} else {
@@ -397,7 +397,7 @@ type vetFixture struct {
 	// -inputs flags.
 	inputsRoot string
 	// aggregate returns the findings the test process adds to the vet run's
-	// (see CheckUnanalyzedGoFiles).
+	// (see checkUnanalyzedGoFiles).
 	aggregate func(out *vetOutcome) []string
 	// wantAggregate, when set, is the exact aggregate the fixture must produce:
 	// findings with no source line to carry a want comment.

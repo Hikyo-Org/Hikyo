@@ -34,8 +34,8 @@ const (
 // Summary is one decoded summary diagnostic.
 type Summary struct{ Kind, Subject string }
 
-// ParseSummary decodes a summary diagnostic message.
-func ParseSummary(message string) (Summary, error) {
+// parseSummary decodes a summary diagnostic message.
+func parseSummary(message string) (Summary, error) {
 	kind, subject, ok := strings.Cut(message, " ")
 	if !ok || kind == "" || subject == "" {
 		return Summary{}, fmt.Errorf("malformed summary diagnostic %q", message)
@@ -90,8 +90,8 @@ type Check struct {
 	Targets  []string
 }
 
-// MissingTargets renders a finding per required target no analyzer pass reported.
-func MissingTargets(analyzer string, required []string, seen map[string]bool) []string {
+// targetFindings renders a finding per required target no analyzer pass reported.
+func targetFindings(analyzer string, required []string, seen map[string]bool) []string {
 	var out []string
 	for _, path := range required {
 		if !seen[path] {
@@ -101,8 +101,8 @@ func MissingTargets(analyzer string, required []string, seen map[string]bool) []
 	return out
 }
 
-// FormatFinding renders a finding as position, analyzer and message.
-func FormatFinding(posn, analyzer, message string) string {
+// formatFinding renders a finding as position, analyzer and message.
+func formatFinding(posn, analyzer, message string) string {
 	return fmt.Sprintf("%s: %s: %s", posn, analyzer, message)
 }
 
@@ -166,7 +166,7 @@ func Checks() []Check {
 // Analyzers lists the analyzers the vet tool registers.
 //
 // RawSQL is registered here and not in Checks: it has no target package, and
-// it exports facts and aggregates its own summaries (RawSQLSummaryFindings).
+// it exports facts and aggregates its own summaries (rawSQLSummaryFindings).
 func Analyzers() []*analysis.Analyzer {
 	checks := Checks()
 	out := make([]*analysis.Analyzer, len(checks), len(checks)+1)
@@ -180,7 +180,7 @@ func Analyzers() []*analysis.Analyzer {
 }
 
 // strictDeferred are the analyzers whose in-package test sites the vet driver
-// reports but does not yet gate: the old harness never saw those files, and
+// reports but does not yet gate: they were never gated before the vet driver, and
 // the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-pr1-deferred-test-sites.md).
 // Production files and external test packages stay strict.
 var strictDeferred = map[string]bool{"handles": true, "redactfmt": true}

@@ -271,7 +271,7 @@ func (r *Resolver) AccountByPrincipal(ctx context.Context, p domain.PrincipalID)
 // lookup (incident-containment ADR, O1): the account gates minus the
 // containment condition, so credential reset and establishment can still reach
 // a contained account. Privacy restriction still hides it. They serve no
-// sign-in, MFA or SSO path, and lint.CheckRecoveryLookup confines their
+// sign-in, MFA or SSO path, and the lint recoverylookup analyzer confines their
 // callers to the reset and establishment flows.
 func (r *Resolver) RecoveryAccountByID(ctx context.Context, id string) (Account, error) {
 	return r.recoveryAccount(ctx, id, "")

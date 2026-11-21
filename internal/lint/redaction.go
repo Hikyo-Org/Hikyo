@@ -30,7 +30,7 @@ import (
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
-// documents internal-only exceptions; CheckRedactionSurfaces asserts this
+// documents internal-only exceptions; the redactsurface analyzer asserts this
 // list actually carries the five methods. Neither discovers unlisted holders.
 var SensitiveTypes = map[string]bool{
 	Module + "/internal/crypto.LocalKeys":      true,
@@ -72,7 +72,7 @@ var redactionSurfaceMethods = []string{
 	"String", "GoString", "LogValue", "MarshalText", "MarshalJSON",
 }
 
-// RedactSurfaces is CheckRedactionSurfaces as an analyzer over the crypto package.
+// RedactSurfaces is the redactsurface analyzer over the crypto package.
 var RedactSurfaces = &analysis.Analyzer{
 	Name: "redactsurface",
 	Doc:  "every pinned sensitive type implements the full redaction surface",
@@ -102,7 +102,7 @@ var RedactSurfaces = &analysis.Analyzer{
 	},
 }
 
-// RedactFormat is CheckSensitiveFormatting as an analyzer.
+// RedactFormat is the redactfmt analyzer.
 var RedactFormat = &analysis.Analyzer{
 	Name: "redactfmt",
 	Doc:  "sensitive types are not formatted outside crypto; audit content is not logged",
@@ -110,9 +110,7 @@ var RedactFormat = &analysis.Analyzer{
 		if !inModule(pass.Pkg.Path()) {
 			return nil, nil
 		}
-		// The ".test" trim serves the old loader's test-main roots until PR 4.
-		base := strings.TrimSuffix(pass.Pkg.Path(), ".test")
-		exemptSensitive := base == sensitiveOwner
+		exemptSensitive := pass.Pkg.Path() == sensitiveOwner
 		for _, file := range pass.Files {
 			ast.Inspect(file, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
@@ -142,14 +140,14 @@ var RedactFormat = &analysis.Analyzer{
 						if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
 							pass.Reportf(arg.Pos(),
 								"%s passes sensitive type %s to %s — formatting/marshaling sensitive types outside their owning package is banned",
-								base, name, calleePkg)
+								pass.Pkg.Path(), name, calleePkg)
 						}
 					}
 					if logCall {
 						if name := mentionsAny(argTypes, auditContentTypes); name != "" {
 							pass.Reportf(arg.Pos(),
 								"%s logs audit content %s — audit events are never mirrored to the ops log (audit-model ADR)",
-								base, name)
+								pass.Pkg.Path(), name)
 						}
 					}
 				}

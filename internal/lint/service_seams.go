@@ -8,7 +8,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// ServiceSeams is CheckServiceSeams as an analyzer over the service package.
+// ServiceSeams is the serviceseams analyzer over the service package.
 var ServiceSeams = newServiceSeams(Module+"/internal/service", Module+"/internal/store")
 
 func newServiceSeams(service, store string) *analysis.Analyzer {

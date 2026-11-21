@@ -14,11 +14,11 @@ func reencryptSpecs(string) ([]InputSpec, error) {
 	return []InputSpec{{Dir: "internal/store/migrations/sqlite", Exts: []string{".sql"}}}, nil
 }
 
-// ReencryptCoverage runs CheckReencryptCoverage over the declared sqlite
+// ReencryptCoverage runs the reencrypt coverage check over the declared sqlite
 // migrations, once, on internal/store.
-var ReencryptCoverage = newReencryptCoverage(flagInputs)
+var ReencryptCoverage = newReencryptCoverage()
 
-func newReencryptCoverage(provide func(*analysis.Analyzer) inputProvider) *analysis.Analyzer {
+func newReencryptCoverage() *analysis.Analyzer {
 	covered, exempt := reencryptCovered, reencryptExemptBlobs
 	list := func(set *map[string]string) func(string) error {
 		return func(v string) error {
@@ -39,7 +39,7 @@ func newReencryptCoverage(provide func(*analysis.Analyzer) inputProvider) *analy
 		run: func(src source, root string) ([]string, error) {
 			return checkReencryptCoverage(src, filepath.Join(root, "internal", "store", "migrations", "sqlite"), covered, exempt), nil
 		},
-	}.analyzer(provide)
+	}.analyzer()
 }
 
 func checkReencryptCoverage(src source, sqliteMigrationsDir string, reencryptCovered, reencryptExemptBlobs map[string]string) []string {

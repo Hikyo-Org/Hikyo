@@ -260,7 +260,7 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 // analyzers. They run in the vet driver over the whole module under every
 // build context (internal/lint TestVetDriverRepo), which fails on any finding
 // and on an analyzer whose target package was not analyzed. The binding-
-// provenance half of 08 — every chain parameter maps from proof fields and
+// provenance half of 08: every chain parameter maps from proof fields and
 // nothing else — is asserted empirically by the positive controls in the
 // engine suites: rows written through the store carry exactly the proof's
 // resolved chain.
@@ -508,7 +508,8 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		lint.Module + "/internal/hostupgrade.TestLinuxSecurityCacheRequiresPrivateRootOwnedStorage": "selfupdate.nightly-downloads",
 	}
 	for pkgPath, names := range declared {
-		base := strings.TrimSuffix(pkgPath, "_test")
+		// An external test package keeps its "_test" path: it is checked, not exempt.
+		base := pkgPath
 		if base == lint.Module+"/internal/isolation" || knownPkgs[base] {
 			continue // the harness names the invariant; crypto's cache is registered
 		}
@@ -531,7 +532,9 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 // the module under root, keyed by import path, an external test package under
 // its path plus "_test". It reads every file whatever its build constraints,
 // test files included, so a cache hidden behind a tag or in a test still trips
-// the sweep. Fixture, vendored and dependency trees are skipped.
+// the sweep. Like `go list ./...`, it skips fixture, vendored and dependency
+// trees, directories named with a leading "." or "_" (nested checkouts such as
+// .claude/worktrees), and nested modules.
 func packageScopeNames(root string) (map[string][]string, error) {
 	out := map[string][]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -539,8 +542,7 @@ func packageScopeNames(root string) (map[string][]string, error) {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "testdata", "vendor", "node_modules":
+			if skipSweepDir(root, path, d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -587,6 +589,21 @@ func packageScopeNames(root string) (map[string][]string, error) {
 		return nil
 	})
 	return out, err
+}
+
+func skipSweepDir(root, path, name string) bool {
+	switch name {
+	case "testdata", "vendor", "node_modules":
+		return true
+	}
+	if path == root {
+		return false
+	}
+	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(path, "go.mod"))
+	return err == nil
 }
 
 // TestInvariant13AllowlistPinning: the instance-scoped and authn-resolution
@@ -698,5 +715,41 @@ func TestInvariant11SelfConfigGenericMintingDenied(t *testing.T) {
 				t.Fatal("generic system authority bypassed the closed self-configuration resolver")
 			}
 		})
+	}
+}
+
+// The sweep behaves like `go list ./...` about nested checkouts and modules,
+// yet still reads build-ignored files of a normal package.
+func TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, src string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".claude/worktrees/probe/internal/crypto/keyring.go", "package crypto\ntype dekCache struct{}\n")
+	write("_scratch/x.go", "package x\ntype scratchCache struct{}\n")
+	write("nested/go.mod", "module example.test/nested\n")
+	write("nested/x.go", "package nested\ntype nestedCache struct{}\n")
+	write("internal/normal/ignored.go", "//go:build ignore\n\npackage normal\n\ntype hiddenCache struct{}\n")
+	write("internal/normal/ext_test.go", "package normal_test\n\ntype extCache struct{}\n")
+
+	got, err := packageScopeNames(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("sweep saw %v, want only internal/normal and internal/normal_test", got)
+	}
+	if names := got[lint.Module+"/internal/normal"]; len(names) != 1 || names[0] != "hiddenCache" {
+		t.Errorf("build-ignored file not swept: %v", got)
+	}
+	if names := got[lint.Module+"/internal/normal_test"]; len(names) != 1 || names[0] != "extCache" {
+		t.Errorf("external test package not swept under its _test path: %v", got)
 	}
 }

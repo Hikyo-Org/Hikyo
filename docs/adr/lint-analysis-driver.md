@@ -83,31 +83,29 @@ The spike also established that:
       RawSQL stays in step 3. See the step 2 amendment below;
    3. RawSQL with facts and summaries (see the step 3 amendment below);
    4. removal of `LoadRepo`, `flatten`, and the old harness, including the
-      `internal/isolation` callers (done; see the step 4 amendment below).
+      `internal/isolation` callers.
 
    Negative fixtures keep their packages under `testdata/` and run through the
    same vet driver, with expected diagnostics written as `// want "regexp"`
    comments. analysistest is not used, because it loads every dependency from
    source, which is the cost this decision removes.
 6. **Interim.** `flatten` is not changed on its own; the port closes the gap.
-   Step 4 removed it.
 
 ## Consequences
 
-- The old harness is gone: nothing loads the module through `go/packages` any
-  more, and the four contexts are analyzed by one vet tool run each. The
-  memory and wall-time reduction landed with step 4; the measured result is in
-  the step 4 amendment. PRs 1 to 3 had raised both while the two harnesses
-  coexisted. The stack (PRs 1 to 4) merges to `dev` together, once PR 4 is
-  green.
+- The memory and wall-time reduction lands when the old harness is removed
+  (PR 4 of the rollout). Until then `LoadRepoIn` still caches all four
+  contexts for the process and the vet driver runs on top of it, so PRs 1 to 3
+  raise the peak memory and wall time of `go test ./internal/lint` compared
+  with the base, and the CI budgets are sized for that interim cost. The stack
+  (PRs 1 to 4) merges to `dev` together, once PR 4 is green.
 - Acceptance for the final stack: the full `go test ./internal/lint` stays
   green, and its measured peak whole-tree RSS stays under 1.5 GB with no single
   process above 0.8 GB.
-- All four contexts analyze test files. `ProductionOnly` is removed: nothing
-  needs a production-only load any more.
-- The race shard exclusion for `internal/lint` is a CI definition and is not
-  changed by the stack; lifting it is a proposed follow-up (see the step 4
-  amendment).
+- All four contexts analyze test files. `ProductionOnly` stays only while the
+  boundary test or `prepare-lint-cache` need it.
+- The race shard exclusion for `internal/lint` stays until the old harness is
+  removed.
 - A changed vet tool binary invalidates every cached result, so analyzer
   changes still pay one full run.
 
@@ -159,6 +157,8 @@ every context ran, and it runs in the test process, not as a vet result).
   The old-harness reader
   (`osSource`) has no root to confine reads to, so it still follows a symlinked
   parent and skips a symlinked subdirectory; it goes with the old harness in PR 4.
+  (Superseded by the step 4 amendment: `osSource` is kept, for the exported
+  helpers outside the vet driver and `CheckUnanalyzedGoFiles`.)
 - **`-root` must contain the anchor package's files, or the analyzer refuses**
   (file-input analyzers, checked by `os.SameFile` along each file's parent
   directories; test: `TestVetDriverRefusesBadInputs`, case "foreign root with a
@@ -191,7 +191,8 @@ every context ran, and it runs in the test process, not as a vet result).
   vet result. The check only runs when every context ran.
 - `Check.OnDisk` builds the same analyzer reading straight from disk, for the
   old harness and the parity leg; the registered analyzers refuse without the
-  driver's flags.
+  driver's flags. (Superseded by the step 4 amendment: `OnDisk`, the old harness
+  and the parity leg are removed.)
 
 ## Amendment: step 3 (RawSQL)
 
@@ -246,16 +247,23 @@ variant they are given) that the owner accepted for RawSQL only.
 - **Registration.** RawSQL is registered in `Analyzers()` but not in `Checks()`,
   because `RunOver` cannot supply facts. Its parity
   leg is inside `TestVetDriverParity` (`requireRawSQLParity` on the repository
-  and the `badrawsql` fixture's `oldIn`, under every context).
+  and the `badrawsql` fixture's `oldIn`, under every context). (Superseded by
+  the step 4 amendment: `RunOver` and the parity leg are removed.)
 
 ## Amendment: step 4 (old harness removed)
 
 Proposed, not owner-accepted: this records what the removal changed. The rollout
 is complete once this step merges.
 
+- **Rollout.** Step 4 of the rollout (removal of `LoadRepo`, `flatten` and the old
+  harness, including the `internal/isolation` callers) is done, so the interim in
+  Decision 6 is over and the memory and wall-time reduction in Consequences has
+  landed; the old harness no longer loads the module through `go/packages`. The
+  stack (PRs 1 to 4) merges to `dev` together.
 - **Removed.** `LoadRepo`, `LoadRepoIn`, `Load`, `LoadIn`, the per-context caches,
   `flatten`, `RunOver` and `Result`, every `Check*` entry point and its `OnDisk`
-  variant, `diskInputs`, `ProductionOnly`, and the parity legs
+  variant, `diskInputs`, `ProductionOnly` (nothing needs a production-only load any
+  more), and the parity legs
   (`TestVetDriverParity` and `requireRawSQLParity`). `Check` is now an analyzer
   and its required targets. `Contexts` and the `BuildContext` helpers stay: the
   vet driver and the fixtures use them. `osSource` stays for the exported helpers
@@ -285,9 +293,11 @@ is complete once this step merges.
   of isolation tests that called `LoadRepo`. Its only remaining member is the
   invariant 12 sweep, and `scripts/ci/race_isolation_workflow_test.go` discovers
   members by their call to `packageScopeNames`. The race-shard exclusion for
-  `internal/lint` is not changed; lifting it is a proposed follow-up, as is
-  retiring the `race-analyzers` job for a sweep that no longer needs
-  `GOMAXPROCS=1`.
+  `internal/lint` (the Consequences bullet that keeps it until the old harness is
+  removed) is not lifted here: it lives in `scripts/ci/analysis-shards-go/main.go`,
+  which dev admission refuses to take before `main` (`devPolicyPaths`), so lifting
+  it is a proposed follow-up through a `main` hotfix, as is retiring the
+  `race-analyzers` job for a sweep that no longer needs `GOMAXPROCS=1`.
 - **Measured memory.** The process tree of one queued
   `go test -count=1 -timeout 40m -p 2 ./internal/lint/` was sampled every 0.5 s
   and summed (peak tree RSS, largest single process). Cold (a freshly built vet

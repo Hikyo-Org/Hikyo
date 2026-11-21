@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -172,18 +174,44 @@ func TestUpdateReviewedPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinsPath := filepath.Join(root, filepath.FromSlash(reviewedPinsPath))
-	if err := os.WriteFile(pinsPath, append(source, '\n'), 0644); err != nil {
+	// The vet tool reads the pins from disk, so the update is verified after the
+	// write and rolled back unless ownership held.
+	if err := writeVerifiedPins(pinsPath, append(source, '\n'), func() ([]string, error) {
+		return verifyUpdatedPins(t, bin), nil
+	}); err != nil {
 		t.Fatal(err)
 	}
-	// The vet tool reads the pins from disk, so the update is verified after the
-	// write and rolled back when ownership drifted.
-	if findings := verifyUpdatedPins(t, bin); len(findings) != 0 {
-		if err := os.WriteFile(pinsPath, reviewedPinsJSON, 0644); err != nil {
-			t.Error("restoring the reviewed pins:", err)
-		}
-		t.Fatalf("update refuses ownership drift: %v", findings)
-	}
 	t.Log("Existing hashes updated. Review the diff, then rerun normal CI without -update-reviewed-pins.")
+}
+
+// writeVerifiedPins writes the updated pins, runs verify against them, and
+// restores the original bytes unless verify passes cleanly. The restore runs on
+// every exit, including a t.Fatal inside verify (runtime.Goexit).
+func writeVerifiedPins(path string, updated []byte, verify func() ([]string, error)) (err error) {
+	original, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, updated, 0o644); err != nil {
+		return err
+	}
+	verified := false
+	defer func() {
+		if !verified {
+			if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
+				err = fmt.Errorf("restoring the reviewed pins: %w (after: %v)", restoreErr, err)
+			}
+		}
+	}()
+	findings, err := verify()
+	if err != nil {
+		return err
+	}
+	if len(findings) != 0 {
+		return fmt.Errorf("update refuses ownership drift: %v", findings)
+	}
+	verified = true
+	return nil
 }
 
 // rawSQLUpdaterFlags are the flags of a rawsql-only vet run for the updater.
@@ -383,6 +411,42 @@ func TestReviewedPinUpdatePreservesAuthorityAndOriginalMaps(t *testing.T) {
 			widen(&candidate)
 			if err := checkReviewedPinAuthorities(reviewedPins, candidate); err == nil {
 				t.Fatal("authority widening accepted")
+			}
+		})
+	}
+}
+
+func TestWriteVerifiedPinsRestoresOriginalUnlessVerified(t *testing.T) {
+	const original, updated = "original\n", "updated\n"
+	cases := map[string]struct {
+		verify  func() ([]string, error)
+		wantErr bool
+		want    string
+	}{
+		"verified": {func() ([]string, error) { return nil, nil }, false, updated},
+		"findings": {func() ([]string, error) { return []string{"drift"}, nil }, true, original},
+		"error":    {func() ([]string, error) { return nil, errors.New("vet failed") }, true, original},
+		// t.Fatal inside verify ends the goroutine through runtime.Goexit.
+		"fatal": {func() ([]string, error) { runtime.Goexit(); return nil, nil }, false, original},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "reviewed_pins.json")
+			if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				err = writeVerifiedPins(path, []byte(updated), tc.verify)
+			}()
+			<-done
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, want error %t", err, tc.wantErr)
+			}
+			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tc.want {
+				t.Fatalf("pins on disk = %q (%v), want %q", got, readErr, tc.want)
 			}
 		})
 	}
