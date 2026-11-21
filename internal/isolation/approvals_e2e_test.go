@@ -531,6 +531,12 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 		[]string{string(declareCovered.Env)}, "EDGE_DECLARE", "overwrite"); !errors.Is(err, service.ErrApprovalRequired) {
 		t.Fatalf("declare into a covered protected destination = %v, want approval required", err)
 	}
+	// Import checks coverage the same way, before the machine refusal.
+	if _, err := values.Import(ctx, service.LocalPrincipal(alice), declareCovered, service.ImportRequest{
+		Entries: []service.ImportEntry{{Key: "EDGE_DECLARE", Value: "imported"}}, Overwrite: []string{"EDGE_DECLARE"},
+	}); !errors.Is(err, service.ErrApprovalRequired) {
+		t.Fatalf("import into a covered protected destination = %v, want approval required", err)
+	}
 	// Coverage is checked for every destination first: a protected uncovered
 	// destination named before a covered one must not ask for its ceremony.
 	execRaw(t, db, "UPDATE environments SET protected = TRUE WHERE id = '"+open1.ID+"'")
