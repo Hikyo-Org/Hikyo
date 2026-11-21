@@ -126,7 +126,7 @@ case "${1:-help}" in
 			'  setup                  Authorize stable CI once using local recovery custody; open PR' \
 			'  build VERSION          Push a signed tag from green main; CI stages a signed draft' \
 			'  review VERSION         Download and verify the draft; print its review hash' \
-			'  publish VERSION SHA256 Publish the reviewed draft using your local GitHub login' \
+			'  publish VERSION SHA256 Publish the reviewed draft, and for stable versions the desktop-v draft, using your local GitHub login' \
 			'  sync-trust VERSION     Verify public release and open the trust-update PR' \
 			'  homebrew VERSION       Verify public release and open the stable Homebrew tap PR' \
 			'  --offline              Explicit legacy removable-media ceremony'
@@ -201,6 +201,12 @@ case "${1:-help}" in
 		confirm "publish v$version $reviewed"
 		HIKYO_RELEASE_TRUST_STATE="$trust_state" "$script_dir/publish-stable-draft.sh" \
 			"$repository" "v$version" "$reviewed" release/trust
+		# A stable release also publishes its staged desktop-v draft, even when v was
+		# already public, so rerunning this command finishes an interrupted publish.
+		if [ "$("$script_dir/release-channel.sh" "v$version")" = stable ]; then
+			"$script_dir/publish-desktop-draft.sh" "$repository" "$version" release/trust ||
+				fail "v$version is public but desktop-v$version is not; rerun this publish command to finish"
+		fi
 		printf 'Public release verified. Next, run:\n  scripts/release/ceremony.sh sync-trust %s\n' "$version"
 		;;
 	sync-trust)

@@ -1,0 +1,158 @@
+package ci_test
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Shell fixtures of the desktop release lane (ADR D13), run from the workflow-test
+// package because ci.yml is a protected CI definition.
+func TestDesktopReleaseFixtures(t *testing.T) {
+	for _, script := range []string{
+		"build-desktop-app_test.sh", "check-desktop-rulesets_test.sh",
+		"publish-desktop-draft_test.sh", "stage-desktop-draft_test.sh",
+	} {
+		t.Run(script, func(t *testing.T) {
+			cmd := exec.Command("sh", filepath.Join(repositoryRoot(t), "scripts", "release", script))
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%v\n%s", err, output)
+			}
+		})
+	}
+}
+
+type desktopStep struct {
+	Name string            `yaml:"name"`
+	Run  string            `yaml:"run"`
+	Uses string            `yaml:"uses"`
+	If   string            `yaml:"if"`
+	Env  map[string]string `yaml:"env"`
+	With map[string]string `yaml:"with"`
+}
+
+type desktopJob struct {
+	Needs       yaml.Node         `yaml:"needs"`
+	If          string            `yaml:"if"`
+	RunsOn      string            `yaml:"runs-on"`
+	Environment string            `yaml:"environment"`
+	Permissions map[string]string `yaml:"permissions"`
+	Steps       []desktopStep     `yaml:"steps"`
+}
+
+func readDesktopWorkflow(t *testing.T, name string) map[string]desktopJob {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]desktopJob `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	return workflow.Jobs
+}
+
+func needsOf(t *testing.T, job desktopJob) []string {
+	t.Helper()
+	var needs []string
+	if job.Needs.Kind == yaml.ScalarNode {
+		return []string{job.Needs.Value}
+	}
+	if err := job.Needs.Decode(&needs); err != nil {
+		t.Fatal(err)
+	}
+	return needs
+}
+
+// The desktop series has no SemVer v tag, so its release event is skipped before any step.
+func TestSecurityReleaseSkipsDesktopReleases(t *testing.T) {
+	resolve := readDesktopWorkflow(t, "security-release.yml")["resolve"]
+	for _, required := range []string{"github.event_name != 'release'", "!startsWith(github.event.release.tag_name, 'desktop-v')"} {
+		if !strings.Contains(resolve.If, required) {
+			t.Fatalf("security-release resolve job must skip desktop-v releases at job level, missing %q in %q", required, resolve.If)
+		}
+	}
+	validate := readDesktopWorkflow(t, "security-release.yml")["validate"]
+	if got := needsOf(t, validate); len(got) != 1 || got[0] != "resolve" {
+		t.Fatalf("validate must depend only on the guarded resolve job, got %v", got)
+	}
+}
+
+func TestDesktopReleaseLaneStaysStableOnlyAndCredentialScoped(t *testing.T) {
+	jobs := readDesktopWorkflow(t, "release.yml")
+	for name, job := range jobs {
+		for _, step := range job.Steps {
+			if strings.Contains(step.Uses, "goreleaser/goreleaser-action@") && step.Env["GORELEASER_CURRENT_TAG"] != "${{ github.ref_name }}" {
+				t.Fatalf("%s: GoReleaser must pin its tag, two tags share a commit", name)
+			}
+		}
+	}
+	app, draft := jobs["desktop-app"], jobs["desktop-draft"]
+	const stableOnly = "needs.build-artifacts.outputs.channel == 'stable'"
+	if app.If != stableOnly || draft.If != stableOnly {
+		t.Fatal("desktop jobs must run for the stable channel only")
+	}
+	if app.RunsOn != "macos-15" || app.Environment != "apple-signing" || len(app.Permissions) != 1 || app.Permissions["contents"] != "read" {
+		t.Fatal("desktop signing must use the apple-signing environment on macOS with read-only repository access")
+	}
+	if len(draft.Permissions) != 2 || draft.Permissions["contents"] != "write" || draft.Permissions["id-token"] != "write" {
+		t.Fatal("desktop draft needs exactly contents write and OIDC")
+	}
+	if !contains(needsOf(t, draft), "desktop-app") || !contains(needsOf(t, app), "build-artifacts") {
+		t.Fatal("desktop draft must wait for the desktop build, which waits for validation")
+	}
+	for _, dependent := range []string{"desktop-app", "desktop-draft"} {
+		if contains(needsOf(t, jobs["build-signed-draft"]), dependent) {
+			t.Fatalf("build-signed-draft must not depend on %s", dependent)
+		}
+	}
+	var run strings.Builder
+	for _, step := range app.Steps {
+		run.WriteString(step.Run + "\n")
+		_, signing := step.Env["APPLE_DEVELOPER_ID_P12_BASE64"]
+		_, notary := step.Env["APPLE_NOTARY_KEY_P8"]
+		if signing && notary {
+			t.Fatalf("step %q holds both signing and notary credentials", step.Name)
+		}
+		if step.If != "" && strings.Contains(step.Run, "build-desktop-app.sh") {
+			t.Fatalf("step %q makes a signing stage conditional", step.Name)
+		}
+	}
+	for _, forbidden := range []string{"--deep", "wails3", "task package", "codesign --force --sign -"} {
+		if strings.Contains(run.String(), forbidden) {
+			t.Fatalf("desktop release must not use %s", forbidden)
+		}
+	}
+	var stage strings.Builder
+	for _, step := range draft.Steps {
+		stage.WriteString(step.Run + "\n")
+	}
+	if !strings.Contains(stage.String(), "stage-desktop-draft.sh") || strings.Contains(stage.String(), "--verify-tag") {
+		t.Fatal("the draft job must stage through the script and must not require an existing tag")
+	}
+}
+
+// Publication of the desktop draft follows the CLI release in the ceremony.
+func TestCeremonyPublishesDesktopAfterTheCLIRelease(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "release", "stable-ceremony.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	start, end := strings.Index(text, "\n\tpublish)"), strings.Index(text, "\n\tsync-trust)")
+	if start < 0 || end <= start {
+		t.Fatal("publish ceremony is missing")
+	}
+	publish := text[start:end]
+	cli, desktop := strings.Index(publish, "publish-stable-draft.sh"), strings.Index(publish, "publish-desktop-draft.sh")
+	if cli < 0 || desktop < cli || !strings.Contains(publish, "release-channel.sh") {
+		t.Fatal("the desktop draft must be published after publish-stable-draft.sh, for the stable channel only")
+	}
+}

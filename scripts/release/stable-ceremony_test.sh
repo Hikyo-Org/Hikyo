@@ -7,6 +7,14 @@ mkdir -p "$fixture/repo/scripts/release" "$fixture/repo/scripts/lib" "$fixture/r
   "$fixture/repo/scripts/ci" "$fixture/repo/release/trust/nightly" "$fixture/bin" "$fixture/state"
 cp "$script_dir/stable-ceremony.sh" "$fixture/repo/scripts/release/"
 cp "$script_dir/../lib/release.sh" "$fixture/repo/scripts/lib/"
+cp "$script_dir/release-channel.sh" "$fixture/repo/scripts/release/"
+cat >"$fixture/repo/scripts/release/publish-desktop-draft.sh" <<'SH'
+#!/bin/sh
+set -eu
+printf 'desktop helper %s state=%s\n' "$*" "${HIKYO_RELEASE_TRUST_STATE:-unset}" >>"$FIXTURE_LOG"
+[ "$FIXTURE_MODE" != desktop-fails ]
+SH
+chmod +x "$fixture/repo/scripts/release/publish-desktop-draft.sh"
 cat >"$fixture/repo/scripts/release/publish-stable-draft.sh" <<'SH'
 #!/bin/sh
 set -eu
@@ -162,6 +170,27 @@ printf 'publish v1.0.0 %s\n' "$reviewed" | "$ceremony" publish 1.0.0 "$reviewed"
 grep -F "publication helper Hikyo-Org/Hikyo v1.0.0 $reviewed release/trust state=$HIKYO_RELEASE_TRUST_STATE" "$FIXTURE_LOG" >/dev/null
 if grep -E '^gh workflow|^signer|^git (tag|commit|push)' "$FIXTURE_LOG" >/dev/null; then
   printf 'ceremony fixture: local publication signed or dispatched CI\n' >&2; exit 1
+fi
+# Stable publication then publishes the desktop draft, strictly after the CLI release.
+grep -F 'desktop helper Hikyo-Org/Hikyo 1.0.0 release/trust' "$FIXTURE_LOG" >/dev/null
+[ "$(grep -n -F 'publication helper' "$FIXTURE_LOG" | head -1 | cut -d: -f1)" -lt "$(grep -n -F 'desktop helper' "$FIXTURE_LOG" | head -1 | cut -d: -f1)" ] || {
+  printf 'ceremony fixture: desktop publication preceded the CLI release\n' >&2; exit 1
+}
+# A prerelease publishes no desktop release.
+: >"$FIXTURE_LOG"
+printf 'publish v0.9.0 %s\n' "$reviewed" | "$ceremony" publish 0.9.0 "$reviewed" >"$fixture/output"
+grep -F 'publication helper Hikyo-Org/Hikyo v0.9.0' "$FIXTURE_LOG" >/dev/null
+if grep -F 'desktop helper' "$FIXTURE_LOG" >/dev/null; then
+  printf 'ceremony fixture: a prerelease reached desktop publication\n' >&2; exit 1
+fi
+# A desktop failure after the CLI release is public tells the maintainer to rerun.
+: >"$FIXTURE_LOG"
+if printf 'publish v1.0.0 %s\n' "$reviewed" | FIXTURE_MODE=desktop-fails "$ceremony" publish 1.0.0 "$reviewed" >"$fixture/output" 2>&1; then
+  printf 'ceremony fixture: desktop failure was ignored\n' >&2; exit 1
+fi
+grep -F 'rerun this publish command' "$fixture/output" >/dev/null
+if grep -F 'Public release verified' "$fixture/output" >/dev/null; then
+  printf 'ceremony fixture: success reported after a desktop failure\n' >&2; exit 1
 fi
 if printf 'decline\n' | "$ceremony" homebrew 1.0.0 >"$fixture/output" 2>&1; then exit 1; fi
 if grep -E '^gh (pr create|api --method)|^git (push|commit|tag)' "$FIXTURE_LOG" >/dev/null; then

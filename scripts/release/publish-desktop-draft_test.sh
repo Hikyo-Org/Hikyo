@@ -1,0 +1,169 @@
+#!/bin/sh
+# Fake gh and go: the desktop publisher's gates and its idempotent retry.
+set -eu
+script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
+policy=$repo_root/release/repository
+F=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-publish-desktop-test.XXXXXX")
+trap 'rm -rf "$F"' EXIT HUP INT TERM
+fail() { printf 'publish desktop fixture failed: %s\n' "$*" >&2; exit 1; }
+commit=1111111111111111111111111111111111111111
+mkdir "$F/bin"
+
+cat >"$F/bin/gh" <<'GH'
+#!/bin/sh
+set -eu
+printf 'gh %s\n' "$*" >>"$F/log"
+arg_after() { # value following flag $1
+	flag=$1
+	shift
+	while [ "$#" -gt 0 ]; do [ "$1" != "$flag" ] || { printf '%s' "$2"; return; }; shift; done
+}
+case "$1 $2" in
+	'release download')
+		tag=$3 dir=$(arg_after --dir "$@") pattern=$(arg_after --pattern "$@")
+		for file in "$F/assets/$tag"/*; do
+			[ -e "$file" ] || continue
+			[ -z "$pattern" ] || [ "$(basename "$file")" = "$pattern" ] || continue
+			cp "$file" "$dir/"
+		done
+		exit 0 ;;
+	'release edit')
+		[ "$FIXTURE_MODE" != edit-fails ] || exit 1
+		jq --arg tag "$3" '(.[] | select(.tag_name == $tag)) |= (.draft = false | .immutable = true)' "$F/releases.json" >"$F/releases.new"
+		mv "$F/releases.new" "$F/releases.json"
+		exit 0 ;;
+esac
+[ "$1" = api ] || exit 1
+shift
+if [ "$1" = --paginate ]; then jq -c '[.]' "$F/releases.json"; exit 0; fi
+case "$1" in
+	repos/example/repo/immutable-releases) cat "$F/immutable.json" ;;
+	repos/example/repo/releases/latest) cat "$F/latest.json" ;;
+	repos/example/repo/releases/*)
+		id=${1##*/}
+		n=$(($(cat "$F/reads-$id" 2>/dev/null || echo 0) + 1))
+		printf '%s' "$n" >"$F/reads-$id"
+		if [ "$FIXTURE_MODE" = changing ] && [ "$n" -ge 2 ] && [ "$id" = 20 ]; then
+			jq --argjson id "$id" '.[] | select(.id == $id) | .assets[0].digest = "sha256:changed"' "$F/releases.json"
+		else
+			jq --argjson id "$id" '.[] | select(.id == $id)' "$F/releases.json"
+		fi ;;
+	repos/example/repo/git/ref/tags/*) cat "$F/tagref.json" ;;
+	repos/example/repo/rulesets\?*) cat "$F/rulesets.json" ;;
+	repos/example/repo/rulesets/*) cat "$F/ruleset-${1##*/}.json" ;;
+	*) printf 'unexpected gh api %s\n' "$*" >&2; exit 1 ;;
+esac
+GH
+cat >"$F/bin/go" <<'GO'
+#!/bin/sh
+set -eu
+printf 'go %s\n' "$*" >>"$F/log"
+[ "$FIXTURE_MODE" != verify-fails ] || exit 1
+
+GO
+chmod +x "$F/bin/gh" "$F/bin/go"
+
+reset() {
+	FIXTURE_MODE=${1:-ok}
+	rm -rf "$F/assets" "$F/log" "$F"/reads-*
+	mkdir -p "$F/assets/v1.4.0" "$F/assets/desktop-v1.4.0"
+	printf '{"source_commit":"%s"}\n' "$commit" >"$F/assets/v1.4.0/release-manifest.json"
+	printf '{"source_commit":"%s"}\n' "$commit" >"$F/assets/desktop-v1.4.0/desktop-inventory.json"
+	printf 'dmg\n' >"$F/assets/desktop-v1.4.0/Hikyo-Desktop-1.4.0-arm64.dmg"
+	jq -n --arg commit "$commit" '[
+		{id: 10, tag_name: "v1.4.0", draft: false, prerelease: false, immutable: true, target_commitish: $commit, assets: []},
+		{id: 20, tag_name: "desktop-v1.4.0", draft: true, prerelease: false, immutable: false, target_commitish: $commit,
+		 assets: [{id: 1, name: "a.dmg", size: 4, updated_at: "2026-11-21T00:00:00Z", digest: "sha256:aa"}]}
+	]' >"$F/releases.json"
+	printf '{"enabled":true}\n' >"$F/immutable.json"
+	printf '{"tag_name":"v1.4.0"}\n' >"$F/latest.json"
+	jq -n --arg commit "$commit" '{ref: "refs/tags/desktop-v1.4.0", object: {type: "commit", sha: $commit}}' >"$F/tagref.json"
+	jq -c '{id: 11} + .' "$policy/desktop-tag-creation.json" >"$F/ruleset-11.json"
+	jq -c '{id: 12} + .' "$policy/desktop-tag-immutability.json" >"$F/ruleset-12.json"
+	jq -s '[.[] | {id, name, enforcement}]' "$F/ruleset-11.json" "$F/ruleset-12.json" >"$F/rulesets.json"
+	: >"$F/log"
+}
+mutate() { # FILE JQ-FILTER
+	jq -c "$2" "$F/$1" >"$F/mutated" && mv "$F/mutated" "$F/$1"
+}
+publish() {
+	env GH_BIN="$F/bin/gh" PATH="$F/bin:$PATH" F="$F" FIXTURE_MODE="$FIXTURE_MODE" "$script_dir/publish-desktop-draft.sh" "$@"
+}
+edited() { grep -F 'gh release edit' "$F/log" >/dev/null; }
+expect_refused() { # label, args...; refusal must happen before publication
+	label=$1
+	shift
+	if publish "$@" >"$F/out" 2>&1; then fail "$label accepted"; fi
+	if edited; then fail "$label published before refusing"; fi
+}
+
+reset
+publish example/repo 1.4.0 release/trust >"$F/out" || fail "valid draft refused: $(cat "$F/out")"
+grep -F 'gh release edit desktop-v1.4.0 --repo example/repo --draft=false --prerelease=false --latest=false' "$F/log" >/dev/null ||
+	fail 'publication lacks --draft=false --prerelease=false --latest=false'
+[ "$(grep -c 'verify-desktop' "$F/log")" -eq 2 ] || fail 'draft and public bytes were not both verified'
+grep -F -- "--version 1.4.0 --commit $commit" "$F/log" >/dev/null || fail 'verifier not bound to version and commit'
+if grep -F 'gh release edit v1.4.0' "$F/log" >/dev/null; then fail 'CLI release was edited'; fi
+
+# A rerun on an already public release verifies the bytes and publishes nothing.
+publish example/repo 1.4.0 release/trust >"$F/out" || fail 'already-public release refused'
+grep -F 'already public and immutable' "$F/out" >/dev/null || fail 'already-public path not reported'
+[ "$(grep -c 'gh release edit' "$F/log")" -eq 1 ] || fail 'retry edited the public release'
+
+reset
+for version in 1.4.0-rc.1 0.9.0 1.4.0-nightly.20261101.1.gabcdef12 nonsense; do
+	expect_refused "version $version" example/repo "$version" release/trust
+done
+expect_refused 'bad repository' not-a-repository 1.4.0 release/trust
+[ ! -s "$F/log" ] || fail 'a refused version reached GitHub'
+
+scenario() { # label, file, filter
+	reset
+	mutate "$2" "$3"
+	if [ "$2" = ruleset-11.json ] || [ "$2" = ruleset-12.json ]; then
+		jq -s '[.[] | {id, name, enforcement}]' "$F/ruleset-11.json" "$F/ruleset-12.json" >"$F/rulesets.json"
+	fi
+	expect_refused "$1" example/repo 1.4.0 release/trust
+}
+scenario 'immutable releases disabled' immutable.json '.enabled = false'
+scenario 'creation ruleset disabled' ruleset-11.json '.enforcement = "disabled"'
+scenario 'immutability ruleset weakened' ruleset-12.json '.rules = [{type: "update"}]'
+scenario 'CLI release still a draft' releases.json '(.[0].draft) = true'
+scenario 'CLI release not immutable' releases.json '(.[0].immutable) = false'
+scenario 'CLI release a prerelease' releases.json '(.[0].prerelease) = true'
+scenario 'desktop release absent' releases.json 'map(select(.id != 20))'
+scenario 'duplicate desktop drafts' releases.json '. + [.[1] + {id: 21}]'
+scenario 'desktop release marked prerelease' releases.json '(.[1].prerelease) = true'
+scenario 'public desktop release not immutable' releases.json '(.[1].draft) = false'
+scenario 'target commit differs' releases.json '(.[1].target_commitish) = "2222222222222222222222222222222222222222"'
+scenario 'target is a branch' releases.json '(.[1].target_commitish) = "main"'
+reset
+printf '{"source_commit":"2222222222222222222222222222222222222222"}\n' >"$F/assets/desktop-v1.4.0/desktop-inventory.json"
+expect_refused 'inventory commit differs from manifest' example/repo 1.4.0 release/trust
+reset
+printf '{"source_commit":"not-a-commit"}\n' >"$F/assets/v1.4.0/release-manifest.json"
+expect_refused 'invalid manifest commit' example/repo 1.4.0 release/trust
+reset verify-fails
+expect_refused 'verifier rejects the draft' example/repo 1.4.0 release/trust
+reset changing
+expect_refused 'draft changed during verification' example/repo 1.4.0 release/trust
+grep -F 'draft changed during verification' "$F/out" >/dev/null || fail 'change not reported'
+
+# Post-publication checks fail loudly once the release is public.
+reset
+mutate latest.json '.tag_name = "desktop-v1.4.0"'
+if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'moved latest accepted'; fi
+grep -F 'no longer the latest' "$F/out" >/dev/null || fail 'moved latest not reported'
+reset
+mutate tagref.json '.object.sha = "2222222222222222222222222222222222222222"'
+if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'wrong tag target accepted'; fi
+grep -F 'does not point at' "$F/out" >/dev/null || fail 'wrong tag target not reported'
+reset edit-fails
+if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'failed edit accepted'; fi
+# An already public release whose tag moved is refused too.
+reset
+mutate releases.json '(.[1].draft) = false | (.[1].immutable) = true'
+mutate tagref.json '.object.type = "tag"'
+if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'public release with a wrong tag accepted'; fi
+printf 'publish desktop fixture: gates, idempotent retry and post-publication checks hold\n'
