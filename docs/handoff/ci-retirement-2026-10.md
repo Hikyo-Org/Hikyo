@@ -253,19 +253,84 @@ the suite scan hit the old 3-minute deadline, so the discovery deadline is now
 5 minutes inside an 8-minute job. The `retirement_discovery_scan` record reports
 successful `suite_pages`.
 
-Review limits kept open:
+Resolved by #1397: `listOwnedChecks`, the queue's `groupChecks` and the queue
+reporter's `existing()` read per suite above 900 suites through the shared
+`scripts/ci/checksuites` reader (a GraphQL suite scan selected by check name,
+then one REST listing per holding suite), so discovery no longer refuses a
+synthetic target on an oversized commit and targeted dispatch no longer misses
+one. Every listing now costs one extra GraphQL count read, which the pinned
+admission read budgets include.
 
-- `listOwnedChecks` and the queue reporter's `existing()` still list by
-  commit, so discovery refuses, rather than routes, a synthetic target on a
-  commit with more than 900 suites, and targeted dispatch on a head with more
-  than 1,000 suites can miss one silently. No operator tool clears that
-  refusal. Teaching both owners the per-suite read removes both limits.
+Limits kept open:
+
 - The deadline, not the 5,000-suite cap, bounds oversized commits: suite pages
   cost about 2 s each and history pages run sequentially, leaving room for
-  about 40 more suite pages per window. On 2026-11-15 the window held four
-  commits over 1,000 suites (1,039, 1,147, 1,715 and 2,005), and `807d433`
-  gained 308 suites in one hour of queue retries.
-- A commit can still cross 1,000 suites after the 900-suite margin check but
-  before an owner lists it; the next hourly run then takes the suite path. Not verified: the
-suite query from hosted runner IPs against any organisation IP allow list; it
-filters by app ID and reads only counts, so it traverses no foreign app object.
+  about 40 more suite pages per window. A deadline spent on suite pages now says
+  so. On 2026-11-15 the window held four commits over 1,000 suites (1,039,
+  1,147, 1,715 and 2,005), and `807d433` gained 308 suites in one hour of queue
+  retries. Reading candidates across history pages concurrently is not done.
+- A commit can still cross 1,000 suites between discovery's REST inventory and
+  the history count that chose it; the next hourly run then takes the suite
+  path. The owners count suites immediately before each listing, so the only
+  residual race is a commit counted at 900 or fewer suites that passes 1,000
+  before the REST listing finishes.
+- Queue admission has a 60-second budget with a 15-second reserve, so 45 seconds
+  of reads, and it lists the owned checks at least three times on one head, each
+  past 900 suites repeating the whole scan. The owners' scan reads one named
+  count per suite and cost about 1.4 s per 100 suites live (27.6 s for 20 pages;
+  discovery's scan reads two counts and costs about 2 s). Three scans of a head
+  with 1,000 suites take about 42 s of the 45, leaving about 3 s for every other
+  read, so admission may time out from 900 suites on. Past that the work clock
+  ends the read, admission fails
+  closed and the run is retried up to `admissionMaxAttempts` against the same
+  scan time; the failure path lists twice more inside the 15-second reserve and
+  can fail to publish its own verdict, leaving the non-final record for
+  retirement to clean. A PR whose head stays that large remains stuck until a new
+  head is pushed. All four oversized commits seen on 2026-11-15 (1,039 to 2,005
+  suites) are past that point. Reusing one scan across the listings of an
+  admission would cut the cost to one scan, but a suite created or joined by the
+  controller's own write between listings would then be missed, so it is not done
+  here. Admission before this change did not time out on these heads; it listed
+  only the newest 1,000 suites and could report success while missing a check.
+- Each scan page spends one GraphQL point (counts only), so a listing on a
+  2,000-suite head spends about 20 points against the hourly limit shared with
+  every other CI client.
+- On a head past 900 suites the owners open only `github-actions` suites, so each
+  also lists the context's name by commit (one more REST read per listing) to see
+  other apps' records in REST's newest 1,000 suites. They refuse what a listing
+  by commit refused: the queue verdict refuses any same-name record of another
+  app, the retirement owner one that carries a controller external ID, and the
+  reporter one that carries its report's external ID. A forged record in an older
+  suite than REST's newest 1,000 is not seen on an oversized head. The main
+  ruleset's required `ci-queue-required` context is not bound to an
+  integration, unlike the dev ruleset's `ci-dev-required` (bound to 15368); the
+  owner may want to bind it, which this change does not touch.
+- An owner scan refuses when the head's `github-actions` suite total changes between pages, which
+  fails closed. `807d433` gained about one suite every 12 s while its queue
+  retried, and one scan took 47 s, so owner listings on a head that is still
+  gaining suites can refuse and succeed on a later try; discovery has the same
+  rule.
+- `scripts/release/nightly-promote.sh` lists `ci-queue-required` by commit for
+  its stuck check, which has the same cap. A miss there reads as "no check yet"
+  and never blocks a promotion, so it is tracked separately.
+- The release-admission policy (`scripts/ci/release-admission/spec/POLICY.md`)
+  pins the `pr-gate/main.go` and `queue.go` blobs but not the new
+  `scripts/ci/checksuites` reader they now call; the policy already states it is
+  not a complete transitive attestation.
+
+Not verified: the suite query from hosted runner IPs against any organisation IP
+allow list; it filters by app ID and reads only counts, so it traverses no
+foreign app object. The suite scan selected by check name was run read-only from a
+workstation against `807d433` (2,005 suites, 1,996 `github-actions`). It found
+`ci-queue-required` in 1 suite and `ci-required-next` in none, far under the
+100-suite selection cap, which counts every suite holding any record of a name.
+The GraphQL named count agreed with REST there: suite 113231756024 held run
+126431783532 of `ci-queue-required` (GraphQL count 1), `check-suites/113231756024/check-runs?check_name=ci-queue-required&filter=all&per_page=100&page=1`
+returned exactly that run, and the commit-wide REST listing returned none. The
+per-suite REST call returned 404 once without `per_page` and `page`; the owners
+always send both. Residual risk: GraphQL's named run count could lag the REST
+listing for a run created moments earlier. The listing by commit that owners also
+read shows such a run while it sits in REST's newest 1,000 suites, and a
+controller record it shows that the suite inventory lacks is refused rather than
+taken for absent, so a lagging count cannot make a publisher create a second
+record there. A lag on a run in an older suite is not caught.

@@ -115,7 +115,7 @@ jobs:
       - name: Check budget before runtime setup
         if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.node
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         timeout-minutes: 1
         if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.node
         with:

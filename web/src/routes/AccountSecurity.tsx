@@ -823,7 +823,9 @@ function sessionDetail(session: ActiveSession): string {
     return `Issued to ${session.requesting_origin}, ${seen}.`;
   }
   const where = session.source_ip === undefined ? '' : ` from ${session.source_ip}`;
-  return `Signed in with ${session.auth_method}${where}, ${seen}.`;
+  // A label the client sent, never a guarantee: it tells the desktop app's session from a CLI's.
+  const client = session.user_agent === undefined || session.user_agent === '' ? '' : ` in ${session.user_agent}`;
+  return `Signed in with ${session.auth_method}${client}${where}, ${seen}.`;
 }
 
 /** Reads as the session's own detail; the ID tail keeps two identical-looking sessions apart. */

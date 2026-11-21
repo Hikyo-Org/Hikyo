@@ -68,12 +68,15 @@ if [ "$1" = env ]; then
 	exit
 fi
 case "$1" in
+	# The nested desktop module (api/openapi.yaml feeds it) is compiled from inside it.
+	-C) [ "$2" = desktop ] && [ "$3" = test ] || exit 34; printf 'desktop-compile\n' >>"$FIXTURE_WORK/checks" ;;
 	test) printf 'go-compile\n' >>"$FIXTURE_WORK/checks" ;;
 	mod) printf 'go-mod-verify\n' >>"$FIXTURE_WORK/checks" ;;
 	*) exit 34 ;;
 esac
 printf 'go %s\n' "$*" >>"$FIXTURE_WORK/commands"
 [ "${FIXTURE_FAILURE:-}" != compile ] || exit 31
+[ "${FIXTURE_FAILURE:-}" != desktop-compile ] || [ "$1" != -C ] || exit 35
 STUB
 cat >"$work/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
@@ -212,4 +215,15 @@ git add .
 git -c commit.gpgsign=false commit -q --allow-empty -m 'chore: fixture' -m 'Docs-Impact: none - fixture contract'
 run_lane --lane=go --go-scope=application >/dev/null
 grep -F 'docs-impact: opted out' "$work/output" >/dev/null
+# Last, because every earlier case assumes no desktop module: once it exists, the
+# go lane compiles it from inside with exactly the production command.
+mkdir -p desktop
+printf 'module fixture.invalid/lanes/desktop\n\ngo 1.27.2\n' >desktop/go.mod
+commit_fixture
+bash "$script_dir/fast-feedback.sh" --plan | jq -e '.lanes.go.checks | map(.id) | index("desktop-compile") != null' >/dev/null
+run_lane --lane=go --go-scope=application >"$work/desktop"
+grep -Fxq 'desktop-compile' "$work/checks"
+grep -Fxq 'go -C desktop test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./...' "$work/desktop"
+# A desktop compile failure alone refuses the lane.
+FIXTURE_FAILURE=desktop-compile refuse --lane=go --go-scope=application
 printf 'fast-feedback lane fixtures: complete lane/scope unions, ownership, invalid selections and independent failure refusal passed\n'

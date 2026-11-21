@@ -71,6 +71,8 @@ never authorizes revealing a secret or linking and unlinking identities. `accoun
 provider-only account up front in the CLI and print where to continue;
 `account recovery-codes regenerate` leaves the decision to the server.
 Unlinking a provider is refused when it would leave no usable way to sign in.
+A successful unlink replaces the current session and revokes every other session
+of the account, including CLI and app sessions, so those sign in again.
 
 ## Enrol TOTP
 

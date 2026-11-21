@@ -10,6 +10,7 @@ import type {
   WorkspaceBearer,
 } from '../api/workspace.ts';
 import { WorkspaceStepUp } from './Ceremony.tsx';
+import { continueInBrowserReason, dismissContinueInBrowser } from '../app/shell.ts';
 import { Reconnect } from './WorkspaceScope.tsx';
 
 const workspace = vi.hoisted(() => ({
@@ -55,6 +56,8 @@ afterEach(() => {
   workspace.prepareWorkspace.mockReset();
   workspace.openPrepared.mockReset();
   document.body.replaceChildren();
+  dismissContinueInBrowser();
+  vi.unstubAllGlobals();
 });
 
 describe('workspace handoff consumers', () => {
@@ -111,6 +114,17 @@ describe('workspace handoff consumers', () => {
     expect(workspace.openPrepared).toHaveBeenCalledOnce();
 
     await act(async () => authorisation.resolve(undefined));
+    await mounted.unmount();
+  });
+
+  it('offers the browser, not a dead retry, when the desktop app refuses a workspace', async () => {
+    vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
+    const mounted = await render(<Reconnect origin={origin} name="remote" />);
+    await settle();
+    expect([...mounted.container.querySelectorAll('button')].some((b) => b.textContent === 'Try again')).toBe(false);
+    act(() => buttonNamed(mounted.container, 'Continue in browser').click());
+    expect(continueInBrowserReason()).toContain('Workspaces open in your browser');
+    expect(workspace.prepareWorkspace).not.toHaveBeenCalled();
     await mounted.unmount();
   });
 });

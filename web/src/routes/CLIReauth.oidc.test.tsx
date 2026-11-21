@@ -34,7 +34,7 @@ vi.mock('../api/account.ts', () => ({
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({
     state: { status: mocks.authStatus },
-    identity: { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } },
+    identity: { principal: { display_name: 'Ada' }, session: { assurance: { method: 'oidc:strict', provider: 'strict' } } },
     refreshSession: vi.fn(),
   }),
 }));
@@ -113,7 +113,7 @@ describe('CLI OIDC disclosure handoff', () => {
       expect(view.container.textContent).toContain('This needs a second factor');
       expect(view.container.querySelector('a')?.getAttribute('href')).toBe('/settings?tab=factors');
       expect(view.container.textContent).not.toContain('Re-authenticate with Corporate IdP');
-      const approve = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Authorize CLI');
+      const approve = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Authorize');
       expect(approve?.disabled).toBe(true);
     } finally { await view.unmount(); }
   });
@@ -137,7 +137,7 @@ describe('CLI OIDC disclosure handoff', () => {
     ]);
     try {
       expect(view.container.textContent).toContain('This policy requires an enrolled passkey');
-      const approvals = [...view.container.querySelectorAll('button')].filter((button) => button.textContent === 'Authorize CLI' || button.textContent === 'Re-authenticate with Corporate IdP');
+      const approvals = [...view.container.querySelectorAll('button')].filter((button) => button.textContent === 'Authorize' || button.textContent === 'Re-authenticate with Corporate IdP');
       expect(approvals.every((button) => button.disabled)).toBe(true);
     } finally { await view.unmount(); }
   });
@@ -186,7 +186,7 @@ describe('CLI OIDC disclosure handoff', () => {
       const { container, unmount } = await renderTransaction([]);
       const status = container.querySelector('.login__card [role="status"]');
       expect(status?.textContent).toBe('Loading…');
-      expect(container.querySelector('.login__card h1')?.textContent).toBe('Authorize CLI');
+      expect(container.querySelector('.login__card h1')?.textContent).toBe('Authorize this request');
       await unmount();
     } finally {
       mocks.authStatus = 'authenticated';
@@ -224,7 +224,7 @@ describe('CLI OIDC disclosure handoff', () => {
     ]);
 
     expect(view.container.textContent).not.toContain('Re-authenticate with');
-    expect(view.container.textContent).toContain('Authorize CLI');
+    expect(view.container.textContent).toContain('Authorize this request');
     await view.unmount();
   });
 

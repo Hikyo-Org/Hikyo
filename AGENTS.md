@@ -146,7 +146,9 @@ the feature page (`http-api.mdx` only for contract-wide API rules), and
 `upgrades.mdx` when operators must act.
 The `docs-impact` feedback check fails when `internal/cli/testdata/help.txt`,
 `api/openapi.yaml` or `internal/config/variables.go` changes without a change
-under `docs/site/src/content/docs/` or `docs/operations/`. When no docs change is
+under `docs/site/src/content/docs/` or `docs/operations/`. It also fails when
+`desktop/internal/shell/shellroutes.go` or `desktop/main_darwin.go` changes without
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`. When no docs change is
 needed, add a `Docs-Impact: none - <reason>` trailer to a commit in the PR, in
 the final trailer block next to `Signed-off-by`.
 

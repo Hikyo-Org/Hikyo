@@ -208,6 +208,9 @@ execute_check() {
 			# DWARF and dependency vet; full validation still runs go vet ./...
 			run go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null "${go_packages[@]}"
 			;;
+		# desktop/ is its own module. Its darwin-only files compile only on macOS;
+		# elsewhere this covers the shared shell logic and the stub main.
+		desktop-compile) run go -C desktop test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./... ;;
 		shellcheck) run shellcheck -x -- "${shell_files[@]}" ;;
 		actionlint)
 			# Run immutable tooling against source workflow paths as data.

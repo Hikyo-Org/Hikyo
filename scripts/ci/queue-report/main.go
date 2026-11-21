@@ -22,11 +22,12 @@ import (
 	"unicode"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
 const checkName = "Merge queue validation"
 const sourcePath = ".github/workflows/ci-merge-group.yml"
-const actionsAppID = 15368
+const actionsAppID = checksuites.AppID
 const maxPages = 10
 
 func reportName(r run) string {
@@ -94,6 +95,20 @@ type client struct {
 }
 
 func (c client) request(ctx context.Context, method, path string, body, result any) error {
+	endpoint := c.base + "/repos/" + c.repo
+	if path != "" {
+		endpoint += "/" + path
+	}
+	// Only idempotent reads are retried; check-run writes stay single-shot.
+	return c.send(ctx, method, path, endpoint, body, result, method == http.MethodGet)
+}
+
+// graphql runs a read-only query. It is a POST, so it opts into read retries.
+func (c client) graphql(ctx context.Context, query string, result any) error {
+	return c.send(ctx, http.MethodPost, "graphql", c.base+"/graphql", map[string]string{"query": query}, result, true)
+}
+
+func (c client) send(ctx context.Context, method, path, endpoint string, body, result any, retry bool) error {
 	var data []byte
 	if body != nil {
 		var err error
@@ -101,13 +116,8 @@ func (c client) request(ctx context.Context, method, path string, body, result a
 			return err
 		}
 	}
-	endpoint := c.base + "/repos/" + c.repo
-	if path != "" {
-		endpoint += "/" + path
-	}
-	// Only idempotent reads are retried; check-run writes stay single-shot.
 	attempts := 1
-	if method == http.MethodGet {
+	if retry {
 		attempts = maxReadAttempts
 	}
 	for attempt := 1; ; attempt++ {
@@ -226,7 +236,7 @@ func (c client) publishReport(ctx context.Context, e event, repair *reportWork) 
 	runURL := fmt.Sprintf("https://github.com/%s/actions/runs/%d/attempts/%d", c.repo, r.ID, r.Attempt)
 	external := fmt.Sprintf("hikyo-queue-report:v1:%d:%d:%d:%d:%s:%s", repo.ID, prNumber, r.ID, r.Attempt, r.HeadSHA, base)
 	name := reportName(r)
-	existing, err := c.existing(ctx, head, name, external, runURL)
+	existing, err := c.existing(ctx, repo.ID, head, name, external, runURL)
 	if err != nil {
 		return err
 	}
@@ -341,25 +351,62 @@ func (c client) publishReport(ctx context.Context, e event, repair *reportWork) 
 	return c.request(ctx, http.MethodPost, "check-runs", body, nil)
 }
 
-func (c client) existing(ctx context.Context, head, name, external, details string) (*check, error) {
+// existing finds this report's check on head. REST lists a commit's runs from
+// only its newest 1000 check suites, so a commit with more suites is read one
+// holding suite at a time, or a report already there would be created again.
+func (c client) existing(ctx context.Context, repoID int64, head, name, external, details string) (*check, error) {
+	owner, repoName, _ := strings.Cut(c.repo, "/")
+	source := checksuites.Source{
+		Owner: owner, Name: repoName, RepoID: repoID,
+		Read: c.graphql,
+	}
+	listings, err := checksuites.Listings(ctx, source, head, name)
+	if err != nil {
+		return nil, err
+	}
 	var found *check
-	total, seenCount := -1, 0
 	seen := map[int64]bool{}
+	for _, listing := range listings {
+		if err := c.existingAt(ctx, listing, head, name, external, details, seen, &found); err != nil {
+			return nil, err
+		}
+	}
+	if err := checksuites.Recheck(ctx, source, head, listings); err != nil {
+		return nil, err
+	}
+	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
+		return found, nil
+	}
+	// The suite reads open only github-actions suites. A listing by commit also
+	// shows what another app posted under this report's identity, which it
+	// refused before; anything it shows must be the record the suites found.
+	var recent *check
+	if err := c.existingAt(ctx, fmt.Sprintf("commits/%s/check-runs", head), head, name, external, details, map[int64]bool{}, &recent); err != nil {
+		return nil, err
+	}
+	if recent != nil && (found == nil || found.ID != recent.ID) {
+		return nil, errors.New("ambiguous or unauthenticated existing queue report")
+	}
+	return found, nil
+}
+
+func (c client) existingAt(ctx context.Context, listing, head, name, external, details string, seen map[int64]bool, found **check) error {
+	total, seenCount := -1, 0
 	for page := 1; page <= maxPages; page++ {
 		var result struct {
 			Checks []check `json:"check_runs"`
 			Total  *int    `json:"total_count"`
 		}
-		path := fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", head, url.QueryEscape(name), page)
+		path := fmt.Sprintf("%s?check_name=%s&filter=all&per_page=100&page=%d", listing, url.QueryEscape(name), page)
 		if err := c.read(ctx, path, &result); err != nil {
-			return nil, err
+			return err
 		}
 		if result.Checks == nil || !validPage(result.Total, &total, seenCount, len(result.Checks)) {
-			return nil, errors.New("incomplete or inconsistent queue report pagination")
+			return errors.New("incomplete or inconsistent queue report pagination")
 		}
 		for _, candidate := range result.Checks {
 			if candidate.ID <= 0 || candidate.Name != name || candidate.HeadSHA != head || candidate.App.ID <= 0 || seen[candidate.ID] {
-				return nil, errors.New("invalid or duplicate queue report identity")
+				return errors.New("invalid or duplicate queue report identity")
 			}
 			seen[candidate.ID] = true
 			if candidate.ExternalID != external {
@@ -369,17 +416,17 @@ func (c client) existing(ctx context.Context, head, name, external, details stri
 			// check's canonical run URL. Bind that form to this exact check ID;
 			// the app, source binding, head and name must still all match.
 			canonical := fmt.Sprintf("https://github.com/%s/runs/%d", c.repo, candidate.ID)
-			if candidate.ID <= 0 || candidate.Name != name || candidate.HeadSHA != head || candidate.App.ID != actionsAppID || (candidate.DetailsURL != details && candidate.DetailsURL != canonical) || found != nil {
-				return nil, errors.New("ambiguous or unauthenticated existing queue report")
+			if candidate.ID <= 0 || candidate.Name != name || candidate.HeadSHA != head || candidate.App.ID != actionsAppID || (candidate.DetailsURL != details && candidate.DetailsURL != canonical) || *found != nil {
+				return errors.New("ambiguous or unauthenticated existing queue report")
 			}
-			found = &candidate
+			*found = &candidate
 		}
 		seenCount += len(result.Checks)
 		if seenCount == total {
-			return found, nil
+			return nil
 		}
 	}
-	return nil, errors.New("queue report pagination limit reached")
+	return errors.New("queue report pagination limit reached")
 }
 
 func (c client) jobs(ctx context.Context, r run) ([]job, error) {

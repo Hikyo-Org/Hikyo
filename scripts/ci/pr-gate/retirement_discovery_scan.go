@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -29,6 +30,16 @@ type retirementDiscoveryScan struct {
 
 func newRetirementDiscoveryScan() *retirementDiscoveryScan {
 	return &retirementDiscoveryScan{started: time.Now()}
+}
+
+// Suite pages cost about 2 s each and history pages run sequentially, so the
+// commits of a window with many oversized suites, not the history, can spend the
+// whole deadline. Say so, with what was read, instead of a bare deadline error.
+func (s *retirementDiscoveryScan) deadlineDiagnostic(err error) error {
+	if pages := s.suitePages.Load(); pages == 0 || !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return fmt.Errorf("retirement discovery ran out of time after %d check suite pages and %d of its history pages; commits with many check suites may exhaust the deadline, operator review required: %w", s.suitePages.Load(), s.historyPages, err)
 }
 
 // Emit only bounded scan metadata after all candidate workers have joined.

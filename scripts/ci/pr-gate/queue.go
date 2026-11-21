@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
 const queueCheckName = "ci-queue-required"
@@ -1363,26 +1365,49 @@ func lagging(j job, head string) bool {
 }
 
 func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, error) {
-	var all struct {
-		Checks []check `json:"check_runs"`
-		Total  int     `json:"total_count"`
-	}
-	path := q.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=1", p.Head.SHA, q.checkName))
-	if err := q.api.read(ctx, path, &all); err != nil {
+	listings, err := checksuites.Listings(ctx, q.suiteSource(), p.Head.SHA, q.checkName)
+	if err != nil {
 		return nil, err
 	}
-	if all.Checks == nil || all.Total < 0 || all.Total > 100 || len(all.Checks) != all.Total {
-		return nil, errors.New("incomplete group check identities")
+	foreign, local, err := q.sameNameByCommit(ctx, p.Head.SHA, listings)
+	if err != nil {
+		return nil, err
 	}
+	if len(foreign) != 0 {
+		return nil, errors.New("foreign merge-group required-check identity")
+	}
+	checks := []check{}
 	seen := make(map[int64]bool)
-	for _, v := range all.Checks {
-		decoded, err := decodeBinding(v.ExternalID)
-		if err != nil || v.ID <= 0 || seen[v.ID] || v.HeadSHA != p.Head.SHA || v.App.ID != actionsAppID || v.App.Slug != "github-actions" || decoded.RepoID != q.repo.ID || decoded.Head != p.Head.SHA || v.Name != q.checkName {
-			return nil, errors.New("foreign merge-group required-check identity")
+	for _, listing := range listings {
+		var all struct {
+			Checks []check `json:"check_runs"`
+			Total  int     `json:"total_count"`
 		}
-		seen[v.ID] = true
+		path := q.endpoint(fmt.Sprintf("%s?check_name=%s&filter=all&per_page=100&page=1", listing, q.checkName))
+		if err := q.api.read(ctx, path, &all); err != nil {
+			return nil, err
+		}
+		if all.Checks == nil || all.Total < 0 || all.Total > 100 || len(all.Checks) != all.Total || len(checks)+all.Total > 100 {
+			return nil, errors.New("incomplete group check identities")
+		}
+		for _, v := range all.Checks {
+			decoded, err := decodeBinding(v.ExternalID)
+			if err != nil || v.ID <= 0 || seen[v.ID] || v.HeadSHA != p.Head.SHA || v.App.ID != actionsAppID || v.App.Slug != "github-actions" || decoded.RepoID != q.repo.ID || decoded.Head != p.Head.SHA || v.Name != q.checkName {
+				return nil, errors.New("foreign merge-group required-check identity")
+			}
+			seen[v.ID] = true
+		}
+		checks = append(checks, all.Checks...)
 	}
-	return all.Checks, nil
+	if err := checksuites.Recheck(ctx, q.suiteSource(), p.Head.SHA, listings); err != nil {
+		return nil, err
+	}
+	for _, v := range local {
+		if !seen[v.ID] {
+			return nil, errors.New("merge-group required check missing from the check suite inventory")
+		}
+	}
+	return checks, nil
 }
 
 // A pending canonical policy can accompany complete member identity, but never

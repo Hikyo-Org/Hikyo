@@ -176,6 +176,7 @@ describe('Values reveal accessibility', () => {
     mocks.revealOne.mockResolvedValueOnce({
       key_id: 'key-a',
       name: 'KEY_A',
+      classification: 'secret',
       value: 'revealed-value',
     });
     const { container, unmount } = await renderValues();
@@ -243,9 +244,9 @@ describe('Values ceremony task ownership', () => {
     const writeText = vi.fn((value: string) => value === 'pending-secret' ? pending.promise : Promise.resolve());
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
-    mocks.revealOne.mockResolvedValueOnce({ key_id: 'key-a', name: 'KEY_A', value: 'pending-secret' });
+    mocks.revealOne.mockResolvedValueOnce({ key_id: 'key-a', name: 'KEY_A', classification: 'secret', value: 'pending-secret' });
     const { container, unmount } = await renderValues();
-    await act(async () => button(container, 'Copy KEY_A (audited disclosure)').click());
+    await act(async () => button(container, 'Copy KEY_A (audited if still secret)').click());
     await settle();
     expect(writeText).toHaveBeenCalledExactlyOnceWith('pending-secret');
     await act(async () => button(container, 'Navigate').click());
@@ -253,6 +254,23 @@ describe('Values ceremony task ownership', () => {
     await settle();
     expect(writeText.mock.calls.map(([value]) => value)).toEqual(['pending-secret', '']);
     expect(container.textContent).not.toContain('Copied, and recorded');
+    await unmount();
+  });
+  it('claims no disclosure when the server answers that the key is now config', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    mocks.fetchRevealWindow.mockResolvedValue(revealWindow(true));
+    mocks.revealOne.mockResolvedValue({ key_id: 'key-a', name: 'KEY_A', classification: 'config', value: 'now-config' });
+    const { container, unmount } = await renderValues();
+    await act(async () => button(container, 'Copy KEY_A (audited if still secret)').click());
+    await settle();
+    expect(writeText).toHaveBeenCalledWith('now-config');
+    expect(container.textContent).toContain('Copied. This value is not a secret, so no disclosure was recorded.');
+    await act(async () => button(container, 'Reveal KEY_A').click());
+    await settle();
+    expect(container.textContent).toContain('now-config');
+    expect(container.textContent).not.toContain('Disclosure recorded');
+    expect(container.textContent).toContain('No disclosures yet.');
     await unmount();
   });
   it('ignores a guard completion from the environment visited before navigation', async () => {
@@ -316,7 +334,7 @@ describe('Values countdown lifecycle (#972)', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     mocks.guard = revealWindow(false);
     mocks.fetchRevealWindow.mockResolvedValue(revealWindow(true));
-    mocks.revealOne.mockResolvedValue({ key_id: 'key-a', name: 'KEY_A', value: 'clock-secret' });
+    mocks.revealOne.mockResolvedValue({ key_id: 'key-a', name: 'KEY_A', classification: 'secret', value: 'clock-secret' });
     mocks.revealAll.mockResolvedValue({ items: [
       { key_id: 'key-a', name: 'KEY_A', classification: 'secret', value: 'clock-secret' },
       { key_id: 'key-b', name: 'KEY_B', classification: 'secret', value: 'other-secret' },
