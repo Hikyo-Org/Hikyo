@@ -37,9 +37,10 @@ func ownerOf(fi os.FileInfo) (uid, gid int) {
 var effectiveUID = os.Geteuid
 
 // checkRuntimeCustody refuses a runtime dir another user could control: the
-// dir must be owned by the effective uid, and its parent must be owned by that
-// uid or root and not writable by group/other unless sticky. Otherwise a
-// foreign uid can pre-create or swap the dir and receive rendered plaintext.
+// dir must be owned by the effective uid, and its parent and every further
+// ancestor (checkRuntimeAncestors) must be owned by that uid or root and not
+// writable by group/other unless sticky. Otherwise a foreign uid can pre-create
+// or swap the dir and receive rendered plaintext.
 func checkRuntimeCustody(runtimeDir string, dir, parent os.FileInfo) error {
 	euid := effectiveUID()
 	if uid, _ := ownerOf(dir); uid != euid {
