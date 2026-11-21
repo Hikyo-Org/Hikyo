@@ -4,7 +4,7 @@ Work: PR 4 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-c
 
 ## Result
 
-- **Removed.** `LoadRepo`, `LoadRepoIn`, `Load`, `LoadIn`, the per-context caches, `flatten`, `RunOver` and `Result`, every old `Check*` entry point and `Check.OnDisk`, `diskInputs`, `ProductionOnly`, the `Test*Repo` loops, and the parity legs (`TestVetDriverParity`, `requireRawSQLParity`, the fixtures' `old`/`oldIn` legs). Line delta against the base branch `dunky13/lint-vettool-rawsql` (this PR's first commit is `a781d3389`): @@STAT@@.
+- **Removed.** `LoadRepo`, `LoadRepoIn`, `Load`, `LoadIn`, the per-context caches, `flatten`, `RunOver` and `Result`, every old `Check*` entry point and `Check.OnDisk`, `diskInputs`, `ProductionOnly`, the `Test*Repo` loops, and the parity legs (`TestVetDriverParity`, `requireRawSQLParity`, the fixtures' `old`/`oldIn` legs). Line delta against the base branch `dunky13/lint-vettool-rawsql` (this PR's first commit is `a781d3389`): 67 files, +1,225 and -2,156 lines (`git diff --shortstat origin/dunky13/lint-vettool-rawsql...HEAD` at `50e5d645b`, merge base `8100d4f20`; the review fixes touch comments in many files, and the base branch has since advanced with a dev merge, so a rebase may change the numbers). The first review measured 53 files, +861 -1,997 at `cab12f9e5`.
 - **Kept.** `Contexts` and the `BuildContext` helpers (`Env`, `Overlay`, `WriteOverlay`), because the vet driver and the fixtures use them. `osSource` (documented deviation from the ADR's step 2): the exported helpers outside the vet driver and `CheckUnanalyzedGoFiles`, which runs in the test process, still read the disk. A proposed amendment, not an accepted decision.
 - **`internal/isolation` callers.** `TestInvariant07`, `08`, `09a`, `09`, `09b`, `TestInvariantAuditAppendOnly` and `TestInvariantAuditRedaction` were thin wrappers over analyzers that `TestVetDriverRepo` already runs over the whole module under every context (it fails on any finding and on an unanalyzed target package). They are deleted, with a comment where each sat naming the analyzer that now owns the invariant. No invariant is dropped. `TestInvariant12CacheDiscipline` is not an analyzer: its sweep now walks the module with `go/parser` (`packageScopeNames`), over every file whatever its build constraints, test files included, so it reads more than the old default-context load did.
 - **Release record.** `docs/release/acceptance-1.0.md` row A6 named `TestSensitiveFormattingRepo` and `TestInvariantAuditRedaction`; both are replaced by `TestVetDriverRepo`, because `scripts/ci/qualification` refuses an acceptance row that names a missing test. The historical 2026-09-05 evidence is untouched; a dated 2026-11-21 note under the table says it ran the old tests and that `TestVetDriverRepo` runs in the `test` lane (the serial `internal/lint` step and `ci-invariants.yml`), not the `race` lane.
@@ -14,11 +14,13 @@ Work: PR 4 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-c
 
 ## Evidence
 
-- `go test -count=1 -timeout 40m -p 2 ./internal/lint/` passes at `e40452ed5` (336.6 s), and cold and warm at `a16abc2bc` (memory table below); the commits between them only delete unused test helpers and wrap one error. `scripts/ci/golangci-lint-new.sh origin/dev` reports 0 issues at `e40452ed5`, and `gofmt -l` is clean for the touched packages.
-- `go test ./internal/isolation/` passes (1,180.6 s). PostgreSQL-backed tests skip without a DSN here, so the engine-backed probes were not exercised locally.
-- `go build ./...` and `go vet ./...` pass at `133567358` (every package that imported a removed symbol is covered by the whole-module vet).
-- `go test ./internal/boundary/ ./scripts/ci/...` pass (`scripts/ci/qualification` after the A6 edit, `scripts/ci` in 598.9 s).
-- Negative fixtures: `TestVetDriverFixtures` under the four contexts; the jsonv1 and appendonly fixtures now assert their aggregate findings (`wantAggregate`), which only the parity leg compared before.
+At `50e5d645b` (later commits are docs only):
+
+- `go test -count=1 -timeout 40m -p 2 ./internal/lint/` passes (280.4 s); memory in the table below. `go test -count=1 -timeout 40m ./internal/isolation/` passes (906.6 s); PostgreSQL-backed tests skip without a DSN here, so the engine-backed probes were not exercised locally.
+- `go test -p 2 ./internal/boundary/ ./scripts/ci/...` passes, including `scripts/ci/qualification` and `scripts/ci` (449.1 s).
+- `go build ./...` and `go vet -p 2 ./...` pass. `scripts/ci/golangci-lint-new.sh origin/dev` reports 0 issues. Rerunning `sqlc generate`, `oapi-codegen`, `internal/scanning/gen` and `internal/authz/gen` produces no diff.
+- Review fixes (round 1): invariant 12 skips `.`/`_` directories and nested modules (`TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles`, which also keeps a `//go:build ignore` file and an external test package swept); `TestWriteVerifiedPinsRestoresOriginalUnlessVerified` covers the updater restore (verified, findings, error, `t.Fatal`); `TestSurfaceAnalyzersStaySilentOutsideTheirSurface` restores the grantlock and denialwriter scoping assertions; `TestNoPackagesConfigOverlay` guards `packages.Config.Overlay` (two source-mutation tests that overlay one small `scripts/security` package are the named exceptions).
+- Negative fixtures: `TestVetDriverFixtures` under the four contexts; the jsonv1 and appendonly fixtures assert their aggregate findings (`wantAggregate`), which only the parity leg compared before.
 
 ### Memory (process tree of the `go test` invocation only)
 
@@ -29,6 +31,8 @@ Method: the queued command is started, the `go test` PID is found by its command
 | Cold, before the fix (`133567358`) | 358.6 s | 897 MiB | 825 MiB (`lint.test`) | pass; largest process over 0.8 GB |
 | Cold, final (`a16abc2bc`) | 347.0 s | 826 MiB | 527 MiB (`lintvet`) | pass; target met |
 | Warm, final (`a16abc2bc`) | 90.7 s | 537 MiB | 472 MiB (`lint.test`) | pass; target met |
+| Cold, after review fixes (`e4459ab65`, vet tool with a throwaway nonce) | 317.8 s | 781 MiB | 530 MiB (`lintvet`) | pass; target met |
+| Warm, after review fixes (`e4459ab65`) | 75.0 s | 544 MiB | 470 MiB (`lint.test`) | pass; target met |
 
 What dominated: `TestMCPFixtureHelperPinsMatchTargetPlatform` cached five type-checked module slices keyed by (target, context), all distinct, and peaked at 851 MiB alone. Loading each row once and letting it go brings it to 271 MiB. The largest remaining processes are the vet tool (527 MiB) and `TestAlertCollectorSnapshotProtocolRejectsDrift` (466 MiB).
 

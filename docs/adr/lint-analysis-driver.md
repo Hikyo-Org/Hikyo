@@ -300,11 +300,15 @@ is complete once this step merges.
   `race-analyzers` job for a sweep that no longer needs `GOMAXPROCS=1`.
 - **Measured memory.** The process tree of one queued
   `go test -count=1 -timeout 40m -p 2 ./internal/lint/` was sampled every 0.5 s
-  and summed (peak tree RSS, largest single process). Cold (a freshly built vet
-  tool, so no cached vet result; the compiler cache was warm): 347 s, 826 MiB
-  tree, 527 MiB largest (the vet tool). Warm: 90.7 s, 537 MiB tree, 472 MiB
-  largest (the test binary). The acceptance bounds (1.5 GB tree, 0.8 GB single
-  process) are met. A first cold run measured 897 MiB and an 825 MiB test
-  binary, over the single-process bound; one test cached five type-checked
-  module slices and was fixed (851 to 271 MiB). Method and per-run detail:
+  and summed (peak tree RSS, largest single process). Cold means a freshly built
+  vet tool, so no cached vet result applied; the compiler cache was warm. At
+  `a16abc2bc`: cold 347 s, 826 MiB tree, 527 MiB largest (the vet tool); warm
+  90.7 s, 537 MiB tree, 472 MiB largest (the test binary). A first cold run at
+  `133567358` measured 897 MiB and an 825 MiB test binary, over the
+  single-process bound; one test cached five type-checked module slices and was
+  fixed (851 to 271 MiB). Re-measured at `e4459ab65` after the review fixes
+  (the cold run's vet tool carried a throwaway one-line nonce to defeat the vet
+  cache): cold 317.8 s, 781 MiB tree, 530 MiB largest (the vet tool); warm
+  75.0 s, 544 MiB tree, 470 MiB largest (the test binary). The acceptance bounds
+  (1.5 GB tree, 0.8 GB single process) are met. Method and per-run detail:
   `docs/handoff/lint-vet-driver-pr4-cleanup.md`.
