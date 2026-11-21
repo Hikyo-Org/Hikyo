@@ -226,3 +226,20 @@ revalidate it during construction. Fresh tag-bound floor/docs checks and actual
 artifact acceptance remain required. Missing or stale source proof blocks
 publication; full manual `ci-main` is the recovery route on selected main.
 Source proof does not establish signing, publication or native acceptance.
+
+## Stable security patches
+
+A Dependabot security update that lands on main releases itself as the next
+patch through `stable-release-reconciler`, with no promotion from dev. It
+queues proven security PRs, tags the newest fully green main commit, publishes
+the staged draft, and opens an App-signed `release/sync-trust-*` PR that a
+ruleset lets only the stable-release App and repository admins write, and that
+the PR gate admits for the App only when it changes just the four public trust
+files (and refuses any commit by the App in anyone else's pull request). Only the exact next patch can be released this way, and only when its
+generated upgrade compatibility is identical to the previous stable release's;
+minors, majors, the first release and any patch that changes a migration or
+schema stay on the
+[maintainer ceremony](../release/online-signing.md#unattended-security-patch-releases).
+A tag also needs trust to be synchronized first: every published release,
+prereleases included, is recorded in `release/trust` on main, and no stable
+draft is outstanding. Until the trust-sync PR merges, nothing else is tagged.

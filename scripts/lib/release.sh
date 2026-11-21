@@ -2,13 +2,9 @@
 
 # Source-owned declaration is generated before the binary; its enclosing
 # signed manifest supplies the nonrecursive artifact identity.
-validate_release_compatibility() {
-	compatibility_file=$1
-	compatibility_candidate=$2
-	jq -e --slurpfile candidate "$compatibility_candidate" '
+validate_compatibility_shape() {
+	jq -e '
 		.schema == "hikyo.dev/upgrade-compatibility/v1" and .profile == "stable/v1" and
-		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
-		.commit == $candidate[0].commit and
 		(.engines | type == "array" and length == 2) and
 		([.engines[].migrations.engine] | sort) == ["postgres", "sqlite"] and
 		all(.engines[];
@@ -17,6 +13,16 @@ validate_release_compatibility() {
 			all(.migrations.entries[]; (.version | type == "number") and .version > 0 and
 				(.version | floor) == .version and (.sha256 | test("^[0-9a-f]{64}$"))) and
 			(.sources | type == "array"))
+	' "$1" >/dev/null
+}
+
+validate_release_compatibility() {
+	compatibility_file=$1
+	compatibility_candidate=$2
+	validate_compatibility_shape "$compatibility_file" || return 1
+	jq -e --slurpfile candidate "$compatibility_candidate" '
+		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
+		.commit == $candidate[0].commit
 	' "$compatibility_file" >/dev/null
 }
 
@@ -36,6 +42,30 @@ verify_release_compatibility_artifact() {
 # Every release now carries native packages. Build metadata is excluded because
 # Arch package metadata cannot preserve +... as an independently checked identity.
 release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$'
+
+# One exact rule for "this Actions run is the release-build workflow". The run
+# path is the bare workflow file or the file with an @ref suffix; a different
+# file that merely shares the prefix is not the release build.
+# shellcheck disable=SC2016,SC2034
+release_run_jq='def release_run: .path == ".github/workflows/release.yml" or (.path | startswith(".github/workflows/release.yml@"));'
+
+# commit_has_actor_tag_authority REPOSITORY COMMIT: does require-signed-tag.sh at
+# COMMIT decide authority by who pushed the tag (it names the triggering actor
+# and the shared run-path rule)? 0 yes, 1 no, 2 the file could not be read. A
+# stable tag made at an older commit would run that commit's own release
+# workflow, which trusts an unsigned tag from anyone able to create one.
+commit_has_actor_tag_authority() {
+	hat_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-tag-authority-at.XXXXXX") || return 2
+	hat_rc=0
+	if "${GH_BIN:-gh}" api "repos/$1/contents/scripts/release/require-signed-tag.sh?ref=$2" --jq '.content' >"$hat_dir/content.b64" 2>/dev/null &&
+		base64 -d <"$hat_dir/content.b64" >"$hat_dir/script.sh" 2>/dev/null && [ -s "$hat_dir/script.sh" ]; then
+		if grep -F 'triggering_actor' "$hat_dir/script.sh" >/dev/null && grep -F 'release_run_jq' "$hat_dir/script.sh" >/dev/null; then hat_rc=0; else hat_rc=1; fi
+	else
+		hat_rc=2
+	fi
+	rm -rf "$hat_dir"
+	return "$hat_rc"
+}
 
 sha256_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
@@ -68,6 +98,31 @@ validate_binary_provenance() {
 	' "$1" >/dev/null
 }
 
+# github_rulesets REPOSITORY FILE: every ruleset of the repository, all pages, as one
+# JSON array in FILE. One unpaginated read returns only the first 30, so a policy on
+# a later page would look absent (created twice) or already deleted. A malformed
+# page, or more than 20 pages, stops the caller.
+github_rulesets() {
+	gr_page=1
+	printf '[]\n' >"$2"
+	while :; do
+		"${GH_BIN:-gh}" api "repos/$1/rulesets?per_page=100&page=$gr_page" >"$2.page" || return 1
+		gr_count=$(jq -ser '
+			if length != 1 or (.[0] | type) != "array" then error("invalid ruleset page") else .[0] end |
+			if length > 100 or any(.[]; type != "object" or (.name | type) != "string" or
+				(.id | type) != "number" or .id <= 0 or (.id | floor) != .id)
+			then error("invalid ruleset entry") else length end' "$2.page") || return 1
+		jq -s '.[0] + .[1]' "$2" "$2.page" >"$2.next" || return 1
+		mv "$2.next" "$2"
+		rm -f "$2.page"
+		[ "$gr_count" -eq 100 ] || return 0
+		[ "$gr_page" -lt 20 ] || {
+			printf 'repository policy: incomplete ruleset discovery after 20 pages\n' >&2
+			return 1
+		}
+		gr_page=$((gr_page + 1))
+	done
+}
 is_semver() {
 	printf '%s\n' "$1" | grep -Eq "$release_semver_pattern"
 }

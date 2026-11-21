@@ -96,6 +96,57 @@ func TestStableCandidateIsCanonicalAndCannotOverwrite(t *testing.T) {
 	}
 }
 
+func TestPatchOnlyCandidateAcceptsOnlyTheExactStableSuccessor(t *testing.T) {
+	trust, directory := fullDraft(t)
+	loaded, err := loadTrust(trust)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := strings.Repeat("a", 40)
+	// prepare must carry the flag through: the first-release draft is valid for the ordinary rule only.
+	err = run([]string{"prepare", "--patch-only", "--trust", trust, "--directory", directory}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "patch-only release needs a signed latest stable release") {
+		t.Fatalf("prepare --patch-only must refuse a first release for the patch-only reason: %v", err)
+	}
+	if err := run([]string{"candidate", "--patch-only", "--trust", trust, "--version", "1.0.1", "--commit", commit, "--out", filepath.Join(t.TempDir(), "candidate.json")}, &bytes.Buffer{}); err == nil {
+		t.Fatal("candidate --patch-only accepted a first release")
+	}
+	latest := func(version string, sequence int64) publicTrust {
+		next := loaded
+		next.metadata.HighestRelease, next.metadata.HighestReleaseSequence = &version, &sequence
+		return next
+	}
+	if _, err := nextCandidate(loaded, "1.0.1", commit, true); err == nil {
+		t.Fatal("patch-only accepted a first release without a signed latest")
+	}
+	if _, err := nextCandidate(loaded, "1.0.0", commit, false); err != nil {
+		t.Fatalf("ordinary first release must stay accepted: %v", err)
+	}
+	for name, test := range map[string]struct {
+		trust   publicTrust
+		version string
+		ok      bool
+	}{
+		"patch successor":      {latest("1.1.0", 2), "1.1.1", true},
+		"skipped patch":        {latest("1.1.0", 2), "1.1.2", false},
+		"minor":                {latest("1.1.0", 2), "1.2.0", false},
+		"major":                {latest("1.1.0", 2), "2.0.0", false},
+		"same version":         {latest("1.1.0", 2), "1.1.0", false},
+		"prerelease candidate": {latest("1.1.0", 2), "1.1.1-rc.1", false},
+		"prerelease latest":    {latest("1.1.0-rc.1", 2), "1.1.0", false},
+		"patch of prerelease":  {latest("1.1.0-rc.1", 2), "1.1.1", false},
+	} {
+		_, err := nextCandidate(test.trust, test.version, commit, true)
+		if test.ok != (err == nil) {
+			t.Errorf("%s: patch-only result = %v, want accepted %v", name, err, test.ok)
+		}
+	}
+	// The ordinary rule still admits a minor release for a human ceremony.
+	if _, err := nextCandidate(latest("1.1.0", 2), "1.2.0", commit, false); err != nil {
+		t.Fatalf("ordinary rule rejected a minor release: %v", err)
+	}
+}
+
 func TestIncompleteDelegationDoesNotFallBack(t *testing.T) {
 	trust, _ := fullDraft(t)
 	if err := os.Remove(filepath.Join(trust, "stable-policy.sigstore.json")); err != nil {

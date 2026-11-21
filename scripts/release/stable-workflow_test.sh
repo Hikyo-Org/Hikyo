@@ -37,8 +37,10 @@ case "$*" in
       exit 0
     fi
     case "$FIXTURE_MODE" in
+      list-failed) exit 1 ;;
       unsynced) printf '[[{"draft":false,"tag_name":"v1.0.0"}]]\n' ;;
       outstanding-draft) printf '[[{"draft":true,"tag_name":"v1.0.0"}]]\n' ;;
+      prerelease-published) printf '[[{"draft":false,"tag_name":"v1.2.0-rc.1"},{"draft":false,"tag_name":"v1.1.0"},{"draft":false,"tag_name":"v1.0.0"}]]\n' ;;
       *) printf '[[]]\n' ;;
     esac ;;
   'api repos/owner/repo/immutable-releases')
@@ -61,9 +63,19 @@ case "$*" in
   'api repos/owner/repo/actions/workflows/ci.yml/runs?'*)
     printf '{"total_count":0,"workflow_runs":[]}\n' ;;
   'api repos/owner/repo/actions/workflows/release.yml/runs?'*)
-    conclusion=success
+    # Lookup of the tag authority (a single page).
+    jq -nc --arg commit "$FIXTURE_COMMIT" '{workflow_runs:[{id:7,event:"push",head_sha:$commit,head_branch:"v1.0.0",status:"completed",conclusion:"success",run_number:1,run_attempt:1}]}' ;;
+  'api --paginate --slurp repos/owner/repo/actions/workflows/release.yml/runs?'*)
+    # Build lookup of the publication helper (all pages).
+    conclusion=success path=.github/workflows/release.yml
     [ "$FIXTURE_MODE" != red-release ] || conclusion=failure
-    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{workflow_runs:[{head_sha:$commit,head_branch:"v1.0.0",status:"completed",conclusion:$conclusion,run_number:1,run_attempt:1}]}' ;;
+    [ "$FIXTURE_MODE" != prefix-build-path ] || path=.github/workflows/release.yml.evil
+    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" --arg path "$path" '[{workflow_runs:[{id:7,path:$path,event:"push",head_sha:$commit,head_branch:"v1.0.0",status:"completed",conclusion:$conclusion,run_number:1,run_attempt:1}]}]' ;;
+  'api repos/owner/repo/actions/runs/7')
+    # The run a person pushed: the tag authority and a bound build check read this record.
+    conclusion=success
+    [ "$FIXTURE_MODE" != red-bound-run ] || conclusion=failure
+    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{id:7,path:".github/workflows/release.yml",event:"push",head_branch:"v1.0.0",head_sha:$commit,status:"completed",conclusion:$conclusion,repository:{full_name:"owner/repo"},actor:{id:1,type:"User",login:"maintainer"},triggering_actor:{id:1,type:"User",login:"maintainer"}}' ;;
   'api repos/owner/repo/releases/tags/v1.0.0')
     printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1 ;;
   'api repos/owner/repo/releases/1' | 'api repos/owner/repo/releases/2')
@@ -137,6 +149,24 @@ for mode in unsynced outstanding-draft; do
     printf 'stable fixture: conflicting release accepted: %s\n' "$mode" >&2; exit 1
   fi
 done
+# A person's prerelease that trust never recorded blocks the next candidate; once recorded, and
+# even as the trust's highest release while the latest stable is older, nothing is out of sync.
+printf '{"releases":[{"version":"1.0.0"},{"version":"1.1.0"}],"highest_release":"1.1.0"}\n' >"$scratch/prerelease-metadata.json"
+if FIXTURE_MODE=prerelease-published "$script_dir/require-synced-trust.sh" owner/repo "$scratch/prerelease-metadata.json" >"$scratch/error" 2>&1; then
+  printf 'stable fixture: an unsynchronized human prerelease was accepted\n' >&2; exit 1
+fi
+printf '{"releases":[{"version":"1.0.0"},{"version":"1.1.0"},{"version":"1.2.0-rc.1"}],"highest_release":"1.2.0-rc.1"}\n' >"$scratch/prerelease-metadata.json"
+FIXTURE_MODE=prerelease-published "$script_dir/require-synced-trust.sh" owner/repo "$scratch/prerelease-metadata.json" >/dev/null ||
+  { printf 'stable fixture: a synchronized prerelease as highest release was refused\n' >&2; exit 1; }
+# Trust that names a highest release nobody published is out of sync too.
+printf '{"releases":[{"version":"1.0.0"},{"version":"1.5.0"}],"highest_release":"1.5.0"}\n' >"$scratch/prerelease-metadata.json"
+if FIXTURE_MODE=unsynced "$script_dir/require-synced-trust.sh" owner/repo "$scratch/prerelease-metadata.json" >"$scratch/error" 2>&1; then
+  printf 'stable fixture: a trust highest release that is not published was accepted\n' >&2; exit 1
+fi
+# A failed listing is not "unsynchronized": it exits 4 so callers fail instead of deciding.
+rc=0
+FIXTURE_MODE=list-failed "$script_dir/require-synced-trust.sh" owner/repo "$scratch/metadata.json" >"$scratch/error" 2>&1 || rc=$?
+[ "$rc" = 4 ] || { printf 'stable fixture: a failed release listing exited %s, want 4\n' "$rc" >&2; exit 1; }
 jq -ncS --arg commit "$commit" '{version:"1.0.0",sequence:1,commit:$commit,key_id:"github-actions-stable",public_key:"stable-policy.json"}' >"$scratch/candidate.json"
 printf 'artifact\n' >"$scratch/dist/file.tar.gz"
 printf 'recovery signature\n' >"$scratch/dist/stable-policy.sigstore.json"
@@ -158,7 +188,7 @@ jq -nc --arg commit "$commit" '{version:"1.0.0",source_commit:$commit,artifacts:
 digest=$(sha256_file "$scratch/manifest.json")
 export PATH="$scratch/bin:$PATH"
 export FIXTURE_PUBLICATION=true
-for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable lookup-failed missing-release malformed-pages malformed-release-rows wrong-row-tag-type invalid-unrelated-id duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag; do
+for FIXTURE_MODE in bad-signature bad-oci red-release prefix-build-path changed-draft mutable lookup-failed missing-release malformed-pages malformed-release-rows wrong-row-tag-type invalid-unrelated-id duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag; do
   export FIXTURE_MODE
   rm -f "$scratch/downloaded" "$scratch/published"
   if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >"$scratch/error" 2>&1; then
@@ -166,6 +196,14 @@ for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable look
   fi
   [ ! -e "$scratch/published" ] || { printf 'stable fixture: failure published draft\n' >&2; exit 1; }
 done
+# A build bound by HIKYO_RELEASE_RUN_ID is judged on that run, not on the newest run of the tag.
+export FIXTURE_MODE=red-bound-run
+rm -f "$scratch/downloaded" "$scratch/published"
+if HIKYO_RELEASE_RUN_ID=7 "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >"$scratch/error" 2>&1; then
+  printf 'stable fixture: a failed bound run was published\n' >&2; exit 1
+fi
+grep -F 'exact tag build must succeed' "$scratch/error" >/dev/null || { cat "$scratch/error" >&2; printf 'stable fixture: bound run refused for the wrong reason\n' >&2; exit 1; }
+[ ! -e "$scratch/published" ] || { printf 'stable fixture: failed bound run published draft\n' >&2; exit 1; }
 export FIXTURE_MODE=valid
 rm -f "$scratch/downloaded"
 if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$(printf '%064d' 0)" "$scratch" >"$scratch/error" 2>&1; then
@@ -188,6 +226,7 @@ if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$(printf '%064d' 0)"
 fi
 "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >/dev/null
 [ ! -e "$scratch/edited" ] || { printf 'stable fixture: public retry edited release\n' >&2; exit 1; }
+HIKYO_RELEASE_RUN_ID=7 "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >/dev/null
 for FIXTURE_MODE in post-wrong-id post-wrong-tag post-draft post-mutable; do
   export FIXTURE_MODE
   rm -f "$scratch/downloaded" "$scratch/published" "$scratch/edited"

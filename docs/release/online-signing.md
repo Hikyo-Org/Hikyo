@@ -84,9 +84,171 @@ Do not run `build 1.0.0` until designs and final-candidate acceptance are done.
    refuses to start until this synchronization is complete, and it checks the
    same landing page link.
 
+   Once the stable-release App is provisioned, a ruleset lets only that App and
+   the repository admin role write `release/sync-trust-*`. This command's push
+   therefore still works for an admin; a non-admin maintainer's push is refused.
+   The [unattended reconciler](#unattended-security-patch-releases) syncs trust
+   itself after a human release too. If it has not, open the PR from a branch
+   with another name, or roll the App back (`configure-repository.sh` without
+   `HIKYO_STABLE_RELEASE_APP_ID` deletes that ruleset).
+
 There is one human review/publication boundary. With one maintainer it does not
 provide independent two-person approval. GitHub account security, protected
 workflow changes and careful source review remain part of release security.
+
+## Unattended security patch releases
+
+A merged Dependabot security update that targets `main` releases itself as the
+next PATCH version. Everything below is inert until the owner sets the
+`STABLE_RELEASE_APP_CLIENT_ID` and `STABLE_RELEASE_APP_BOT_ID` repository
+variables; until then every job in `stable-release-reconciler` is skipped.
+
+The two variables have different jobs. `STABLE_RELEASE_APP_BOT_ID` arms the PR
+gate: every job that runs `pr-gate` (the queue gate and worker, the dev gate and
+the check retirement) reads it, and it refuses every pull request authored by
+the App, and every commit by the App in anyone else's pull request, except the
+trust-sync shape. Set it before the App is installed or granted contents write.
+`STABLE_RELEASE_APP_CLIENT_ID` is the on/off switch of the reconciler and is
+set last. If the client id is set and the bot id is empty, the PR gate fails
+closed and the reconciler's `misconfigured` job fails every run, so a half
+configured App cannot go unnoticed. Never delete the bot id while the App is
+installed: that would disarm the gate for a key that still has contents write.
+
+**Accepted risk (owner, 2026-11-15).** An unattended patch has no
+administrator checkpoint: nobody pushes the tag or reviews the draft. It
+releases the newest green commit of `main` at or after the security merge, so
+it carries everything merged since the previous stable release. Main's required
+CI and merge queue are the only controls on what ships; main requires 0
+approvals and admits same-repo `hotfix/` and `release/` branches. See the
+[ADR](../adr/stable-workflow-signing.md).
+
+The reconciler runs on every push to `main`, after `release-build` and `docs`
+runs, hourly, and by hand. Each run reads live state and does only the next
+step, so a lost trigger or an overlapping run repeats idempotent work:
+
+1. **Queue:** Dependabot security PRs that GitHub's own alerts prove
+   (labels are not proof) are armed for auto-merge through the merge queue.
+   Every commit of the PR must be authored by Dependabot, committed by GitHub's
+   `web-flow` and verified by GitHub (the shape of a real Dependabot commit;
+   all bound by numeric user id, never by login), and the PR's last commit must
+   be the head the queue would merge. A security PR that fails this opens the
+   stall issue at once, naming the PR. Alerts are listed with explicit states,
+   and a fixed alert that no Dependabot PR is linked to opens the issue too, so
+   that "no pending merge" never hides a security fix.
+2. **Tag:** the newest main commit at or after the merged update that has
+   complete green source proof and already records the latest release in its
+   trust gets an annotated tag created by the App. The walk back from the tip
+   stops at the commit holding the security merge, and after 60 commits. The
+   planner runs every refusal the tag job runs (outstanding drafts, higher
+   tags, patch-only, unused version, and the compatibility gate below) first,
+   so it never plans a tag that would be refused. It also needs the docs live
+   and a current fallback channel test record.
+3. **Wait:** `release-build` stages a signed draft and uploads its manifest
+   SHA-256.
+4. **Publish:** the reconciler publishes that exact run's draft through the same
+   helper the ceremony uses, but only for a run whose actor and triggering
+   actor are the stable-release bot at the tag commit, whose own commit
+   carries the actor-based `require-signed-tag.sh` (an older commit's workflow
+   would trust an unsigned tag from anyone). Just before publishing it reads
+   the alerts again: the tag commit must contain at least one merged security
+   update missing from the previous release, and every one that was merged more
+   than five minutes before the build started. A merge that raced the tag is
+   not required, because the tag is immutable. A draft of a person's tag waits
+   for the ceremony.
+5. **Sync trust:** an App-signed `createCommitOnBranch` commit on
+   `release/sync-trust-VERSION` records the metadata and catalog in a PR with
+   auto-merge, re-armed for up to three hours if the queue rejects it. The
+   merged branch is deleted afterwards. Nothing waits for the docs here: the
+   next tag defers while a docs deployment runs or hikyo.app fails the live
+   docs gate, so a tag can never start on stale docs.
+6. **Homebrew:** the stable cask follows every latest stable release, human or
+   unattended, and its PR is merged once the newest `ci-required` run passes (a
+   later failure or a re-run in progress outranks an older success). The tap
+   commit and the squash commit carry the App's DCO sign-off.
+
+**The compatibility gate.** A patch is unattended only when it changes nothing
+about upgrade compatibility. The planner starts scratch PostgreSQL, generates the
+declaration of the commit it would tag with the real
+`scripts/release/compatibility` tool, and compares it with the declaration the
+previous stable release published, through `check-unattended-compatibility.sh`.
+Both documents are normalized with `jq -S`, only the version, sequence and
+source commit are removed, and the whole remaining `engines` subtree must be
+identical, so a new migration, a schema digest, a source edge or a new field
+all fail closed. The previous release is the highest stable version below the
+candidate in the authenticated trust (never a prerelease, never GitHub's
+"latest" flag) and is fetched through the signature-verified release path. A
+difference, a missing baseline or an unverifiable one gives no tag and the
+stall issue "a maintainer must release this version". `release-build` runs the
+same script again for every authority except a verified person.
+
+One issue titled "Unattended stable patch release is stalled" is opened and
+updated in place, and closed when the stall clears. It opens when a merged
+security update has waited over 24 hours in any stuck state (build not started
+or running, digest artifact missing, docs not live, stale fallback channel
+record, no commit with green proof or synchronized trust, a tag that would be
+refused), when a build fails, when a person re-ran the app's build, when any
+reconciler job fails, times out or is cancelled, when a security pull request
+carries a commit that is not Dependabot's or a fixed alert has no linked pull
+request (these two open it at once and a later "nothing to release" never
+closes it), and when a published release has waited more than 24
+hours for its trust sync, with or without a pending security merge. A trust
+pull request the queue keeps rejecting is re-armed for three hours counted from
+the first pull request ever opened from that branch, so closing and reopening
+it never restarts the clock; after that the sync fails visibly.
+
+Refusals the build can only find while it runs (the signing and notarization
+steps, a failing build input, a moved branch or an unavailable environment)
+cannot be pre-checked, so they can still burn a tag; the stall issue then
+carries the recovery below. Everything that depends only on repository state
+is checked by the planner first.
+
+Recovering a stall:
+
+- **A failed app build.** The tag is immutable and the app cannot rerun it. If
+  the build staged a draft, delete it first, or it blocks every later release:
+  `gh release delete vX.Y.Z --repo Hikyo-Org/Hikyo --yes`. Then release the next
+  patch by hand with the ceremony above. After a human release, the next
+  unattended patch builds on it automatically.
+- **A person re-ran the app's build.** GitHub then reports the person as the
+  triggering actor, and the tag authority refuses the draft for the reconciler
+  and for the ceremony alike. The planner says so at once (state "re-run by a
+  person", with the issue open). The tag is immutable: delete the draft with the
+  command above, then release the next patch with the ceremony. Do not re-run an
+  app build.
+- **A stray `v*` tag (for example `v99.0.0` made with a stolen App key).** Any
+  stable tag at or above the next version blocks every unattended release, and
+  the planner's stall message names this section. A repository admin deletes the
+  tag (admins can create `v*` tags, but the immutability ruleset forbids deleting
+  them, so temporarily disable "release tags are immutable", delete the tag and
+  re-enable it, then run `configure-repository.sh` to prove the policy is back),
+  and rotates the App key. Check `git log` and the draft list for anything the
+  key produced.
+- **Finishing an app-tagged draft by hand.** Export the bot id first
+  (`export STABLE_RELEASE_APP_BOT_ID=<numeric bot user id>`), then run the
+  ceremony `publish` as usual. The tag authority reads the build run, sees the
+  bot, and applies the unattended rules, which it would refuse for a minor.
+- **Fallback channel record expired.** Run and record a new fallback channel
+  test; the next run proceeds.
+- **Granting the App.** Order matters. Set `STABLE_RELEASE_APP_BOT_ID` first
+  (before the App is installed or granted contents write, so the PR gate is
+  armed from the first moment the key exists) and `STABLE_RELEASE_APP_CLIENT_ID`
+  last. `configure-repository.sh` refuses to give
+  the App its tag and trust-branch bypass until the highest stable tag's own
+  commit contains the actor-based `require-signed-tag.sh`; an older stable line
+  would accept the App's unsigned tag as a person's. So: merge this feature,
+  release a stable version from that main with the ceremony, then run
+  `HIKYO_STABLE_RELEASE_APP_ID=<id> scripts/release/configure-repository.sh`.
+  Rolling back (the variable unset) needs no marker.
+- **Rolling the whole feature back.** Unset `STABLE_RELEASE_APP_CLIENT_ID`,
+  which skips every job, and run `configure-repository.sh` without
+  `HIKYO_STABLE_RELEASE_APP_ID` so the tag policy is admin-only again and the
+  app-only trust branch ruleset is deleted. Keep `STABLE_RELEASE_APP_BOT_ID`
+  set until the App is uninstalled and its key revoked; deleting it earlier
+  disarms the PR gate for a key that still has contents write.
+
+Dry run: dispatch `stable-release-reconciler` with `dry_run` left on to print
+the next step without changing anything. The owner setup and live verification
+steps are in the pull request that introduced this section.
 
 ## Verification and retries
 

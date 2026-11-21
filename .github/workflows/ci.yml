@@ -409,6 +409,14 @@ jobs:
         run: ./scripts/release/stable-workflow_test.sh
       - name: Online stable ceremony refusal and retry fixture
         run: ./scripts/release/stable-ceremony_test.sh
+      - name: Unattended stable tag authority fixture
+        run: ./scripts/release/require-signed-tag_test.sh
+      - name: Unattended stable compatibility fixture
+        run: ./scripts/release/check-unattended-compatibility_test.sh
+      - name: Unattended stable reconciler fixture
+        run: ./scripts/release/stable-reconcile_test.sh
+      - name: Unattended stable repository policy rollback fixture
+        run: ./scripts/release/configure-stable-rollback_test.sh
       - name: Stable installer verifier routing fixture
         run: ./scripts/release/verify-bundle-stable_test.sh
       - name: Nightly release fixture

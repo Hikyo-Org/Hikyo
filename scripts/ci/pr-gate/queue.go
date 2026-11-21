@@ -1365,7 +1365,7 @@ func (q *queueController) groupMembers(ctx context.Context, s queueSnapshot) ([]
 		if p.State != "open" || p.Head.SHA != entry.PR.Head || p.Base.Ref != q.repo.DefaultBranch || p.Base.SHA == q.expectedHead || (len(members) > 0 && p.Base.SHA != members[0].Base.SHA) {
 			return nil, false, &staleQueueGroup{reason: "queue member or current base differs from tested group"}
 		}
-		decision, err := q.verify(ctx, p.Number, p.Head.SHA)
+		decision, err := q.verifyPR(ctx, p)
 		if err != nil {
 			return nil, false, err
 		}

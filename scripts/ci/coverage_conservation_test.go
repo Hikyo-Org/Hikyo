@@ -150,6 +150,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeGitOpsFixtureAddition(workflow.Jobs["supply-chain-checks"]); err != nil {
 		return err
 	}
+	if err := normalizeUnattendedReleaseFixtureAddition(workflow.Jobs["supply-chain-checks"]); err != nil {
+		return err
+	}
 	if err := normalizeWindowsVetAddition(workflow.Jobs["scan-xplat"]); err != nil {
 		return err
 	}

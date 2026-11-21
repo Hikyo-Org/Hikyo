@@ -103,6 +103,19 @@ jq -e '
 jq -e '.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]' \
 	"$repo_root/release/repository/release-tag-creation.json" >/dev/null || fail 'stable creation policy still captures nightlies'
 
+# The stable-release app id is owner-provisioned, so the checked-in policies
+# stay admin-only and the configure script injects the id from the environment.
+jq -e '
+	.target == "branch" and .enforcement == "active" and
+	.bypass_actors == [{actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"}] and
+	.conditions.ref_name.include == ["refs/heads/release/sync-trust-*"] and
+	([.rules[].type] | sort) == ["creation", "update"]
+' "$repo_root/release/repository/stable-trust-branches.json" >/dev/null || fail 'stable trust branch policy is wrong'
+jq -e '.bypass_actors | map(.actor_type) == ["RepositoryRole"]' \
+	"$repo_root/release/repository/release-tag-creation.json" >/dev/null || fail 'stable creation policy must stay admin-only until the app id is injected'
+grep -F 'HIKYO_STABLE_RELEASE_APP_ID' "$repo_root/scripts/release/configure-repository.sh" >/dev/null || fail 'stable app id is not injected by the configure script'
+grep -F 'release/repository/stable-trust-branches.json' "$repo_root/scripts/release/configure-repository.sh" >/dev/null || fail 'stable trust branch policy is not installed'
+
 if grep -E 'sign-bundle|bind-manifest|ceremony\.sh|COSIGN_PASSWORD|\.key\.age' "$workflow" >/dev/null; then
 	fail 'nightly workflow reaches offline signing ceremony material'
 fi
