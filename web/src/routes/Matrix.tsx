@@ -1808,16 +1808,19 @@ function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => b
     const keyColumn = el.closest('tr')?.querySelector(':scope > th');
     const clearLeft = keyColumn === null || keyColumn === undefined || keyColumn.contains(el) ? 0 : keyColumn.getBoundingClientRect().right;
     // Only the header's cells are sticky (the thead box scrolls away), and so is
-    // a group row's label once it has reached the header, over the key column
-    // alone: the value columns of a group row scroll.
+    // a group row's label once it has reached the header. The label's bar
+    // overruns its key-column cell to the visible width, opaque, so it is the
+    // bar's box that covers value cells, not the cell's.
     let clearTop = 0;
     if (el.closest('thead') === null) {
       const table = el.closest('table');
       clearTop = table?.querySelector('thead th')?.getBoundingClientRect().bottom ?? 0;
       const headerBottom = clearTop;
       for (const label of table?.querySelectorAll('tbody > tr.matrix__group-row > th') ?? []) {
-        const box = label.getBoundingClientRect();
-        if (!label.contains(el) && box.top <= headerBottom && box.left < rect.right && box.right > Math.max(rect.left, clearLeft)) clearTop = Math.max(clearTop, box.bottom);
+        // Stuck is read off the cell, which pins a pixel into the header; the bar's top only meets it.
+        const stuck = label.getBoundingClientRect().top <= headerBottom;
+        const box = (label.querySelector('.matrix__group-row-inner') ?? label).getBoundingClientRect();
+        if (!label.contains(el) && stuck && box.left < rect.right && box.right > Math.max(rect.left, clearLeft)) clearTop = Math.max(clearTop, box.bottom);
       }
     }
     const left = Math.max(rect.left, 0, well?.left ?? 0, clearLeft);
