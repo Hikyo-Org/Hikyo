@@ -86,13 +86,16 @@ for mutation in symlink extra-file missing-executable symlinked-plist; do
 		symlink) ln -s hikyo-desktop "$bundle/Contents/MacOS/alias" ;;
 		extra-file) : >"$bundle/Contents/Resources" ;;
 		missing-executable) rm "$bundle/Contents/MacOS/hikyo-desktop" ;;
-		symlinked-plist) rm "$bundle/Contents/Info.plist"; ln -s ../MacOS/hikyo-desktop "$bundle/Contents/Info.plist" ;;
+		symlinked-plist) rm "$bundle/Contents/Info.plist"; ln -s MacOS/hikyo-desktop "$bundle/Contents/Info.plist" ;;
 	esac
 	refuses_with "bundle with $mutation" 'unexpected files in the app bundle' check-bundle "$bundle"
 done
 ln -s "$good" "$work/linked.app"
 refuses_with 'symlinked bundle' 'app bundle required' check-bundle "$work/linked.app"
 
+# sign-app checks the bundle before any credential is imported or used.
+awk '/^\tsign-app\)/{f=1} f&&/check_bundle "\$app"/{if(!i)c=1} f&&/import_identity/{i=1} f&&/;;/{exit} END{exit !(c&&i)}' "$script" ||
+	fail 'sign-app must check the bundle before importing the signing identity'
 # The release script never re-introduces the ad-hoc, deep signing the Taskfile uses.
 if grep -E -e '--deep|--sign -( |$)' "$script" | grep -v '^[[:space:]]*#' >/dev/null; then fail 'script signs ad hoc or with --deep'; fi
 printf 'desktop app fixture: stable-only, argument, credential and entitlement refusals hold\n'

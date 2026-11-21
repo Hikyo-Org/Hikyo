@@ -61,6 +61,91 @@ func readDesktopWorkflow(t *testing.T, name string) map[string]desktopJob {
 	return workflow.Jobs
 }
 
+// rawDesktopJob returns one job's mapping node, so a scan sees every field,
+// not only those desktopJob decodes.
+func rawDesktopJob(t *testing.T, workflow, job string) *yaml.Node {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", workflow))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Jobs map[string]yaml.Node `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	node, ok := parsed.Jobs[job]
+	if !ok || node.Kind != yaml.MappingNode {
+		t.Fatalf("%s: job %s missing", workflow, job)
+	}
+	return &node
+}
+
+func mentionsSecrets(n *yaml.Node) bool {
+	if secretsWord.MatchString(n.Value) {
+		return true
+	}
+	for _, child := range n.Content {
+		if mentionsSecrets(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func mappingValue(n *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// desktopSecretMentions lists every place a job mentions the secrets context,
+// except a pinned credentialed step's env entry KEY: ${{ secrets.KEY }}.
+func desktopSecretMentions(t *testing.T, job *yaml.Node, allowPinned bool) []string {
+	t.Helper()
+	var problems []string
+	for i := 0; i+1 < len(job.Content); i += 2 {
+		key, value := job.Content[i], job.Content[i+1]
+		if key.Value != "steps" || value.Kind != yaml.SequenceNode {
+			if mentionsSecrets(key) || mentionsSecrets(value) {
+				problems = append(problems, "job field "+key.Value+" mentions secrets")
+			}
+			continue
+		}
+		for _, step := range value.Content {
+			name := ""
+			if n := mappingValue(step, "name"); n != nil {
+				name = n.Value
+			}
+			_, pinned := desktopCredentialSteps[name]
+			for j := 0; j+1 < len(step.Content); j += 2 {
+				field, body := step.Content[j], step.Content[j+1]
+				if field.Value != "env" || body.Kind != yaml.MappingNode {
+					if mentionsSecrets(field) || mentionsSecrets(body) {
+						problems = append(problems, "step "+name+" mentions secrets in "+field.Value)
+					}
+					continue
+				}
+				for k := 0; k+1 < len(body.Content); k += 2 {
+					envKey, envValue := body.Content[k], body.Content[k+1]
+					if !mentionsSecrets(envKey) && !mentionsSecrets(envValue) {
+						continue
+					}
+					match := ownSecret.FindStringSubmatch(envValue.Value)
+					if !allowPinned || !pinned || envValue.Kind != yaml.ScalarNode || match == nil || match[1] != envKey.Value {
+						problems = append(problems, "step "+name+" env "+envKey.Value+" must not carry secrets (only a pinned credentialed step's own named secret)")
+					}
+				}
+			}
+		}
+	}
+	return problems
+}
+
 func needsOf(t *testing.T, job desktopJob) []string {
 	t.Helper()
 	var needs []string
@@ -153,34 +238,12 @@ func TestDesktopReleaseLaneStaysStableOnlyAndCredentialScoped(t *testing.T) {
 			}
 		}
 	}
-	// Neither desktop job may mention secrets outside the pinned credentialed
-	// steps' env: not in run, if, with, other env, or the job condition.
+	// Neither desktop job may mention secrets anywhere in its raw YAML (any field,
+	// including working-directory, outputs, container or services) except as a
+	// pinned credentialed step's own, exactly named env value.
 	for _, name := range []string{"desktop-app", "desktop-draft"} {
-		if secretsWord.MatchString(jobs[name].If) {
-			t.Fatalf("%s: job condition mentions secrets", name)
-		}
-		for _, step := range jobs[name].Steps {
-			_, pinned := desktopCredentialSteps[step.Name]
-			pinned = pinned && name == "desktop-app"
-			for field, text := range map[string]string{"run": step.Run, "if": step.If, "name": step.Name, "uses": step.Uses} {
-				if secretsWord.MatchString(text) {
-					t.Fatalf("%s step %q mentions secrets in its %s", name, step.Name, field)
-				}
-			}
-			for key, value := range step.With {
-				if secretsWord.MatchString(value) {
-					t.Fatalf("%s step %q passes secrets through with: %s", name, step.Name, key)
-				}
-			}
-			for key, value := range step.Env {
-				if !secretsWord.MatchString(value) {
-					continue
-				}
-				match := ownSecret.FindStringSubmatch(value)
-				if !pinned || match == nil || match[1] != key {
-					t.Fatalf("%s step %q env %s must not carry secrets (only a pinned credentialed step's own named secret)", name, step.Name, key)
-				}
-			}
+		for _, problem := range desktopSecretMentions(t, rawDesktopJob(t, "release.yml", name), name == "desktop-app") {
+			t.Fatalf("%s: %s", name, problem)
 		}
 	}
 	var run strings.Builder
@@ -306,5 +369,37 @@ func TestCeremonyPublishesDesktopAfterTheCLIRelease(t *testing.T) {
 	}
 	if cli < 0 || desktop < cli || !strings.Contains(publish, "release-channel.sh") {
 		t.Fatal("the desktop draft must be published after publish-stable-draft.sh, for the stable channel only")
+	}
+}
+
+// The raw-YAML scan catches secrets in fields desktopJob does not decode.
+func TestDesktopSecretScanCoversEveryField(t *testing.T) {
+	const pinnedStep = "Sign the app with the hardened runtime"
+	parse := func(body string) *yaml.Node {
+		var node yaml.Node
+		if err := yaml.Unmarshal([]byte(body), &node); err != nil {
+			t.Fatal(err)
+		}
+		return node.Content[0]
+	}
+	allowed := parse("steps:\n  - name: " + pinnedStep + "\n    env:\n      APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}\n")
+	if problems := desktopSecretMentions(t, allowed, true); len(problems) != 0 {
+		t.Fatalf("pinned own-named secret refused: %v", problems)
+	}
+	if problems := desktopSecretMentions(t, allowed, false); len(problems) == 0 {
+		t.Fatal("pinned secret allowed in a job without credentialed steps")
+	}
+	for name, body := range map[string]string{
+		"working-directory": "steps:\n  - name: x\n    working-directory: ${{ secrets.X }}\n",
+		"continue-on-error": "steps:\n  - name: x\n    continue-on-error: ${{ secrets.X != '' }}\n",
+		"job outputs":       "outputs:\n  leak: ${{ secrets.X }}\nsteps: []\n",
+		"container":         "container:\n  image: x\n  credentials:\n    password: ${{ secrets.X }}\nsteps: []\n",
+		"renamed key":       "steps:\n  - name: " + pinnedStep + "\n    env:\n      OTHER: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}\n",
+		"unpinned step env": "steps:\n  - name: x\n    env:\n      X: ${{ secrets.X }}\n",
+		"toJSON":            "steps:\n  - name: " + pinnedStep + "\n    env:\n      ALL: ${{ toJSON(secrets) }}\n",
+	} {
+		if problems := desktopSecretMentions(t, parse(body), true); len(problems) == 0 {
+			t.Fatalf("%s: secret mention not refused", name)
+		}
 	}
 }
