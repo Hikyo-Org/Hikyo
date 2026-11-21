@@ -179,6 +179,29 @@ func TestRuntimeCustodyRefusesRuntimeDirMovedDuringCheck(t *testing.T) {
 	}
 }
 
+// The ancestor walk vets the cleaned path, but the kernel resolves `..` after
+// a symlink, so link/.. may traverse a hierarchy the walk never saw.
+func TestRuntimeCustodyRefusesUncleanRuntimeDir(t *testing.T) {
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "a", "run"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(base, "a"), filepath.Join(base, "link")); err != nil {
+		t.Fatal(err)
+	}
+	unclean := filepath.Join(base, "link") + "/../a/run"
+	root, err := openRuntimeRoot(unclean, false)
+	if err == nil {
+		_ = root.Close()
+	}
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "not a clean path") {
+		t.Fatalf("openRuntimeRoot(%s) err=%v, want a custody refusal", unclean, err)
+	}
+	if err := RuntimeDirCustody(unclean); !errors.Is(err, ErrRuntimeCustody) {
+		t.Fatalf("RuntimeDirCustody(%s) = %v, want a custody refusal", unclean, err)
+	}
+}
+
 func TestRuntimeCustodyMissingDirIsNotAFailure(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent")
 	if err := RuntimeDirCustody(missing); err != nil {
