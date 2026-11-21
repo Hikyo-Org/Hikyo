@@ -59,7 +59,7 @@ func TestKeychainPutReplacesAPlantedItem(t *testing.T) {
 	host := uniqueAccount(t)
 	t.Cleanup(func() { _ = k.Delete(host) })
 	// -A: any application may read it, as a planting process would arrange.
-	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", host, "-w", "planted", loginKeychain(t)).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "app.hikyo.desktop", "-a", host, "-w", "planted", loginKeychain(t)).CombinedOutput(); err != nil {
 		t.Fatalf("planting: %v %s", err, out)
 	}
 	// A reader must refuse the planted item outright, never return its token.
@@ -240,7 +240,7 @@ func TestKeychainSignedMatchesByRequirement(t *testing.T) {
 	adhoc.expect(t, "get", "untrusted")
 	// An item open to any application is refused even by the signed app.
 	a.expect(t, "delete", "ok")
-	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "io.hikyo.desktop", "-a", account, "-w", "planted", loginKeychain(t)).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "security", "add-generic-password", "-A", "-s", "app.hikyo.desktop", "-a", account, "-w", "planted", loginKeychain(t)).CombinedOutput(); err != nil {
 		t.Fatalf("planting: %v %s", err, out)
 	}
 	a.expect(t, "get", "untrusted")

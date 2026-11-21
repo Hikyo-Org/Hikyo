@@ -6,7 +6,7 @@
     <key>CFBundleName</key><string>Hikyo</string>
     <key>CFBundleDisplayName</key><string>Hikyo</string>
     <key>CFBundleExecutable</key><string>hikyo-desktop</string>
-    <key>CFBundleIdentifier</key><string>io.hikyo.desktop</string>
+    <key>CFBundleIdentifier</key><string>app.hikyo.desktop</string>
     <key>CFBundleVersion</key><string>0.0.0</string>
     <key>CFBundleShortVersionString</key><string>0.0.0</string>
     <key>LSMinimumSystemVersion</key><string>13.0.0</string>
