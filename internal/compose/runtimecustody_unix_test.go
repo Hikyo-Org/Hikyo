@@ -194,11 +194,13 @@ func TestRuntimeCustodyRefusesUncleanRuntimeDir(t *testing.T) {
 	if err == nil {
 		_ = root.Close()
 	}
-	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "not a clean path") {
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "not a clean absolute path") {
 		t.Fatalf("openRuntimeRoot(%s) err=%v, want a custody refusal", unclean, err)
 	}
-	if err := RuntimeDirCustody(unclean); !errors.Is(err, ErrRuntimeCustody) {
-		t.Fatalf("RuntimeDirCustody(%s) = %v, want a custody refusal", unclean, err)
+	for _, path := range []string{unclean, base + "/a/run/", base + "/a//run", base + "/a/./run", "../a/run"} {
+		if err := RuntimeDirCustody(path); !errors.Is(err, ErrRuntimeCustody) {
+			t.Fatalf("RuntimeDirCustody(%s) = %v, want a custody refusal", path, err)
+		}
 	}
 }
 

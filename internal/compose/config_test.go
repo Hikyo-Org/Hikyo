@@ -90,6 +90,8 @@ func TestParseConfigRejects(t *testing.T) {
 		"negative max_age":    strings.Replace(validConfig, "max_age: 24h", "max_age: -1h", 1),
 		"unclean runtime_dir": strings.Replace(validConfig, "/run/hikyo/acme-web-production", "/run/hikyo/link/../acme-web-production", 1),
 		"runtime_dir slash":   strings.Replace(validConfig, "/run/hikyo/acme-web-production", "/run/hikyo/acme-web-production/", 1),
+		"runtime_dir double":  strings.Replace(validConfig, "/run/hikyo/acme-web-production", "/run//hikyo/acme-web-production", 1),
+		"runtime_dir dot":     strings.Replace(validConfig, "/run/hikyo/acme-web-production", "/run/./hikyo/acme-web-production", 1),
 	}
 	for name, src := range cases {
 		if _, err := ParseConfig([]byte(src)); err == nil {

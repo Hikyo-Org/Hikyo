@@ -390,7 +390,7 @@ func (rl *RenderLock) WriteGeneration(runtimeDir string, keys *crypto.LocalKeys,
 }
 
 // openRuntimeRoot opens runtimeDir as an os.Root after verifying custody: it
-// is a clean path to a directory (not a symlink), the opened handle is the
+// is a clean absolute path to a directory (not a symlink), the opened handle is the
 // entry that was checked, it passes checkRuntimeCustody, and runtimeDir still
 // names the opened handle after that check. With create it makes the dir
 // first. A missing dir returns an error wrapping os.ErrNotExist. Every consumer
@@ -465,11 +465,12 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 	return root, nil
 }
 
-// refuseUncleanRuntimeDir refuses a path the custody check would vet in its
-// cleaned form while the kernel, and Compose, resolve `..` after a symlink.
+// refuseUncleanRuntimeDir refuses a path the custody check would vet in a
+// lexically cleaned or $PWD-joined form while the kernel, and Compose, resolve
+// `..` after a symlink physically.
 func refuseUncleanRuntimeDir(runtimeDir string) error {
-	if filepath.Clean(runtimeDir) != runtimeDir {
-		return fmt.Errorf("%w: runtime dir %s is not a clean path", ErrRuntimeCustody, runtimeDir)
+	if !filepath.IsAbs(runtimeDir) || filepath.Clean(runtimeDir) != runtimeDir {
+		return fmt.Errorf("%w: runtime dir %s is not a clean absolute path", ErrRuntimeCustody, runtimeDir)
 	}
 	return nil
 }
