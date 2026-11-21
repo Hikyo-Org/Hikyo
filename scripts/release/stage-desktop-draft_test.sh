@@ -20,42 +20,69 @@ SH
 cat >"$F/bin/gh" <<'SH'
 #!/bin/sh
 printf 'gh %s\n' "$*" >>"$F/log"
-case "$1 $2" in
-	'api --paginate') cat "$F/pages.json" ;;
-	'api --method') ;;
-	'release create'|'release upload') ;;
-	'release download')
-		while [ "$#" -gt 0 ]; do [ "$1" != --dir ] || cp "$F/dist/"* "$2/"; shift; done ;;
-	*) exit 1 ;;
+case "$*" in
+	'api --paginate --slurp repos/example/repo/releases?per_page=100') cat "$F/pages.json" ;;
+	'api --paginate --slurp repos/example/repo/releases/88/assets?per_page=100')
+		n=0
+		printf '[['
+		for f in "$F"/uploaded/*; do
+			n=$((n + 1))
+			[ "$n" -eq 1 ] || printf ','
+			printf '{"id":%s,"name":"%s"}' "$((100 + n))" "$(basename "$f")"
+		done
+		printf ']]\n' ;;
+	*'--method DELETE'*) ;;
+	'api --method POST repos/example/repo/releases '*)
+		[ -z "${FIXTURE_MODE:-}" ] || [ "$FIXTURE_MODE" != wrong-target ] || { printf '{"id":88,"tag_name":"desktop-v1.4.0","draft":true,"target_commitish":"main"}\n'; exit 0; }
+		printf '{"id":88,"tag_name":"desktop-v1.4.0","draft":true,"target_commitish":"%s"}\n' "$GITHUB_SHA" ;;
+	*'--method POST https://uploads.github.com/repos/example/repo/releases/88/assets?name='*)
+		name=${*##*name=}
+		name=${name%% *}
+		mkdir -p "$F/uploaded"
+		while [ "$#" -gt 0 ]; do [ "$1" != --input ] || cp "$2" "$F/uploaded/$name"; shift; done ;;
+	'api repos/example/repo/releases/88') printf '{"id":88,"tag_name":"desktop-v1.4.0","draft":true}\n' ;;
+	*'repos/example/repo/releases/assets/'*)
+		id=${*##*/}
+		n=0
+		for f in "$F"/uploaded/*; do n=$((n + 1)); [ "$((100 + n))" != "$id" ] || cat "$f"; done ;;
+	*) printf 'unexpected gh %s\n' "$*" >&2; exit 1 ;;
 esac
 SH
 chmod +x "$F/bin/"*
 reset() {
-	rm -rf "$F/dist" "$F/log" "$F/work"
+	rm -rf "$F/dist" "$F/log" "$F/work" "$F/uploaded"
 	mkdir -p "$F/dist" "$F/work"
 	printf 'arm\n' >"$F/dist/Hikyo-Desktop-1.4.0-arm64.dmg"
 	printf 'intel!\n' >"$F/dist/Hikyo-Desktop-1.4.0-x86_64.dmg"
 	printf '[[]]\n' >"$F/pages.json"
 	: >"$F/log"
+	ARM=$(shasum -a 256 "$F/dist/Hikyo-Desktop-1.4.0-arm64.dmg" | cut -d' ' -f1)
+	X86=$(shasum -a 256 "$F/dist/Hikyo-Desktop-1.4.0-x86_64.dmg" | cut -d' ' -f1)
 }
 stage() {
 	env PATH="$F/bin:$PATH" F="$F" COSIGN_BIN="$F/bin/cosign" GH_BIN="$F/bin/gh" RUNNER_TEMP="$F/work" \
 		GITHUB_ACTIONS=true GITHUB_REPOSITORY=example/repo GITHUB_SHA="$commit" \
+		DESKTOP_SHA256_ARM64="${ARM_RECORDED:-$ARM}" DESKTOP_SHA256_X86_64="${X86_RECORDED:-$X86}" FIXTURE_MODE="${FIXTURE_MODE:-}" \
 		GITHUB_REF="${REF:-refs/tags/v1.4.0}" GITHUB_WORKFLOW_REF="${WORKFLOW_REF:-example/repo/.github/workflows/release.yml@${REF:-refs/tags/v1.4.0}}" \
 		"$script_dir/stage-desktop-draft.sh" release/trust "${DIR:-$F/dist}"
 }
 refused() {
 	label=$1
 	if stage >"$F/out" 2>&1; then fail "$label accepted"; fi
-	if grep -E 'gh release (create|upload)' "$F/log" >/dev/null; then fail "$label reached release creation"; fi
+	if grep -E 'method POST' "$F/log" >/dev/null; then fail "$label reached release creation"; fi
 }
 
 reset
 stage >"$F/out" || fail "valid staging refused: $(cat "$F/out")"
 grep -F -- "cosign sign-blob --yes --use-signing-config=false --new-bundle-format=true --rekor-url=https://rekor.sigstore.dev --trusted-root=release/trust/stable-trusted-root.json --bundle" "$F/log" >/dev/null ||
 	fail 'cosign flags differ from sign-stable-draft.sh'
-grep -F -- "gh release create desktop-v1.4.0 --draft --target $commit --latest=false" "$F/log" >/dev/null || fail 'draft not created with --draft --target --latest=false'
-if grep -F -- '--verify-tag' "$F/log" >/dev/null; then fail 'run must not require an existing tag'; fi
+grep -F -- "gh api --method POST repos/example/repo/releases -f tag_name=desktop-v1.4.0 -f target_commitish=$commit" "$F/log" >/dev/null || fail 'draft not created at the commit'
+grep -F -- '-F draft=true' "$F/log" >/dev/null || fail 'created release is not a draft'
+grep -F -- 'make_latest=false' "$F/log" >/dev/null || fail 'created release may become Latest'
+if grep -E -- '--verify-tag|gh release' "$F/log" >/dev/null; then fail 'run must address the release by ID through the API, never by tag'; fi
+grep -F 'releases/88/assets?name=Hikyo-Desktop-1.4.0-arm64.dmg' "$F/log" >/dev/null || fail 'upload not bound to the release ID'
+grep -F 'releases/assets/101' "$F/log" >/dev/null || fail 'download not bound to asset IDs'
+grep -F 'staged and verified' "$F/out" >/dev/null || fail 'no completion line' 
 [ "$(grep -c 'verify-desktop' "$F/log")" -eq 2 ] || fail 'inventory not verified before and after staging'
 if grep -F 'gh api --method DELETE' "$F/log" >/dev/null; then fail 'deleted a release when none existed'; fi
 
@@ -73,6 +100,13 @@ printf '[[{"id":79,"tag_name":"v1.4.0","draft":true}]]\n' >"$F/pages.json"
 stage >"$F/out" || fail 'the CLI draft blocked desktop staging'
 if grep -F 'gh api --method DELETE' "$F/log" >/dev/null; then fail 'deleted the CLI draft'; fi
 
+reset; FIXTURE_MODE=wrong-target
+if stage >"$F/out" 2>&1; then fail 'release with another target accepted'; fi
+grep -F 'not the expected draft' "$F/out" >/dev/null || fail 'wrong target not reported'
+if grep -F 'uploads.github.com' "$F/log" >/dev/null; then fail 'uploaded into an unexpected release'; fi
+FIXTURE_MODE=
+reset; ARM_RECORDED=$(printf '%064d' 0) refused 'arm64 image differs from its recorded digest'
+reset; X86_RECORDED=nothex refused 'malformed recorded x86_64 digest'
 reset; REF=refs/tags/v1.4.0-rc.1 refused 'prerelease tag'
 reset; REF=refs/tags/v0.9.0 refused 'pre-1.0 tag'
 reset; REF=refs/heads/main refused 'branch ref'

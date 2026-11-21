@@ -201,12 +201,51 @@ func TestDesktopReleaseLaneStaysStableOnlyAndCredentialScoped(t *testing.T) {
 			t.Fatalf("desktop release must not use %s", forbidden)
 		}
 	}
+	// Artifacts are handed over by exact, attempt-qualified names with recorded digests.
+	for _, step := range app.Steps {
+		if strings.HasPrefix(step.Uses, "actions/upload-artifact@") && strings.HasPrefix(step.With["name"], "desktop-dmg-") &&
+			step.With["name"] != "desktop-dmg-${{ matrix.arch }}-${{ github.run_attempt }}" {
+			t.Fatalf("desktop disk images must be named by architecture and run attempt, got %q", step.With["name"])
+		}
+	}
+	downloads := 0
 	var stage strings.Builder
 	for _, step := range draft.Steps {
 		stage.WriteString(step.Run + "\n")
+		if strings.HasPrefix(step.Uses, "actions/download-artifact@") {
+			downloads++
+			if step.With["pattern"] != "" || !strings.HasPrefix(step.With["name"], "${{ needs.desktop-app.outputs.artifact_") {
+				t.Fatalf("desktop draft must download exact recorded artifact names, got %v", step.With)
+			}
+		}
+		if strings.Contains(step.Run, "stage-desktop-draft.sh") && (step.Env["DESKTOP_SHA256_ARM64"] == "" || step.Env["DESKTOP_SHA256_X86_64"] == "") {
+			t.Fatal("the staging step must receive both recorded disk image digests")
+		}
+	}
+	if downloads != 2 {
+		t.Fatalf("desktop draft must download exactly the two recorded artifacts, got %d", downloads)
 	}
 	if !strings.Contains(stage.String(), "stage-desktop-draft.sh") || strings.Contains(stage.String(), "--verify-tag") {
 		t.Fatal("the draft job must stage through the script and must not require an existing tag")
+	}
+}
+
+// GoReleaser ignores the desktop series in every run, snapshot or tagged.
+func TestGoReleaserIgnoresDesktopTags(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".goreleaser.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Git struct {
+			IgnoreTags []string `yaml:"ignore_tags"`
+		} `yaml:"git"`
+	}
+	if err := yaml.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	if !contains(config.Git.IgnoreTags, "desktop-v*") {
+		t.Fatalf("git.ignore_tags must hold desktop-v*, got %v", config.Git.IgnoreTags)
 	}
 }
 
@@ -222,7 +261,11 @@ func TestCeremonyPublishesDesktopAfterTheCLIRelease(t *testing.T) {
 		t.Fatal("publish ceremony is missing")
 	}
 	publish := text[start:end]
-	cli, desktop := strings.Index(publish, "publish-stable-draft.sh"), strings.Index(publish, "publish-desktop-draft.sh")
+	cli, desktop := strings.Index(publish, "publish-stable-draft.sh"), strings.LastIndex(publish, "publish-desktop-draft.sh")
+	gate := strings.Index(publish, "desktop_gate")
+	if gate < 0 || gate > cli || !strings.Contains(text, "publish-desktop-draft.sh\" --check-only") {
+		t.Fatal("the desktop draft must be checked before the CLI release is published")
+	}
 	if cli < 0 || desktop < cli || !strings.Contains(publish, "release-channel.sh") {
 		t.Fatal("the desktop draft must be published after publish-stable-draft.sh, for the stable channel only")
 	}

@@ -20,6 +20,8 @@ is_semver "$version" || fail 'invalid version'
 [ "$("$script_dir/release-channel.sh" "v$version")" = stable ] || fail 'the desktop app is released for stable versions only'
 printf '%s\n' "$GITHUB_SHA" | grep -Eq '^[0-9a-f]{40}$' || fail 'invalid commit'
 tag=desktop-v$version
+# The build jobs recorded each image's digest; the downloaded artifact must match.
+: "${DESKTOP_SHA256_ARM64:?}" "${DESKTOP_SHA256_X86_64:?}"
 
 # Exactly the two disk images, as regular files.
 want=$(printf 'Hikyo-Desktop-%s-arm64.dmg\nHikyo-Desktop-%s-x86_64.dmg\n' "$version" "$version")
@@ -27,6 +29,13 @@ have=$(ls -A "$directory")
 [ "$have" = "$want" ] || fail 'the directory must hold exactly the arm64 and x86_64 disk images'
 for name in $want; do
 	[ -f "$directory/$name" ] && [ ! -L "$directory/$name" ] && [ -s "$directory/$name" ] || fail "regular non-empty file required: $name"
+done
+
+for arch in arm64 x86_64; do
+	case $arch in arm64) recorded=$DESKTOP_SHA256_ARM64 ;; *) recorded=$DESKTOP_SHA256_X86_64 ;; esac
+	printf '%s\n' "$recorded" | grep -Eq '^[0-9a-f]{64}$' || fail "no recorded digest for $arch"
+	[ "$(sha256_file "$directory/Hikyo-Desktop-$version-$arch.dmg")" = "$recorded" ] ||
+		fail "the $arch disk image differs from the digest its build job recorded"
 done
 
 stage=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-desktop-draft.XXXXXX")
@@ -64,10 +73,31 @@ The disk images are signed with the maintainer's Developer ID and notarized by A
 
 This release holds only the app. The hikyo CLI and server are released separately as v$version.
 NOTES
-"$GH_BIN" release create "$tag" --draft --target "$GITHUB_SHA" --latest=false \
-	--title "Hikyo Desktop $version" --notes-file "$stage/notes.md"
-"$GH_BIN" release upload "$tag" "$stage/upload/"*
-"$GH_BIN" release download "$tag" --dir "$stage/downloaded"
+# Everything after creation is addressed by the release ID, never by tag, so a
+# release another actor creates under the same tag cannot be written to or read.
+"$GH_BIN" api --method POST "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" \
+	-f name="Hikyo Desktop $version" -F body=@"$stage/notes.md" -F draft=true -F prerelease=false -f make_latest=false >"$stage/created.json"
+release_id=$(jq -er --arg tag "$tag" --arg sha "$GITHUB_SHA" '
+	select(.tag_name == $tag and .draft == true and .target_commitish == $sha and (.id | type == "number" and . > 0 and . == floor)) | .id
+' "$stage/created.json") || fail 'the created release is not the expected draft'
+for name in $want; do
+	"$GH_BIN" api --method POST "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$name" \
+		-H 'Content-Type: application/octet-stream' --input "$stage/upload/$name" >/dev/null
+done
+for name in desktop-inventory.json desktop-inventory.sigstore.json; do
+	"$GH_BIN" api --method POST "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$name" \
+		-H 'Content-Type: application/octet-stream' --input "$stage/upload/$name" >/dev/null
+done
+"$GH_BIN" api "repos/$GITHUB_REPOSITORY/releases/$release_id" |
+	jq -e --argjson id "$release_id" --arg tag "$tag" '.id == $id and .tag_name == $tag and .draft == true' >/dev/null ||
+	fail 'the draft changed after upload'
+"$GH_BIN" api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" >"$stage/assets.json"
+jq -e 'all(.[][]; (.name | test("^[A-Za-z0-9._-]+$")) and (.id | type == "number"))' "$stage/assets.json" >/dev/null ||
+	fail 'invalid asset listing'
+jq -r '.[][] | "\(.id) \(.name)"' "$stage/assets.json" >"$stage/asset-ids"
+while read -r asset_id name; do
+	"$GH_BIN" api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" >"$stage/downloaded/$name"
+done <"$stage/asset-ids"
 go run ./scripts/release/stable verify-desktop --trust "$trust" --directory "$stage/downloaded" \
 	--version "$version" --commit "$GITHUB_SHA" >/dev/null
-printf 'desktop draft: %s staged and verified from its downloaded assets\n' "$tag"
+printf 'desktop draft: %s (release %s) staged and verified from its downloaded assets\n' "$tag" "$release_id"
