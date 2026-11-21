@@ -138,7 +138,7 @@ var vetFixtures = []vetFixture{
 			return unanalyzedSyncCommit(filepath.Join(moduleRoot(), "internal/lint/testdata/badappendonly"), func(path string) bool { return files[canonicalPath(path)] })
 		},
 		wantAggregate: func(string) []string {
-			return []string{"appendonly: internal/store/ignored.go issues SET synchronous_commit — durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)"}
+			return []string{"appendonly: internal/store/ignored.go issues SET synchronous_commit: durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)"}
 		},
 	},
 	{

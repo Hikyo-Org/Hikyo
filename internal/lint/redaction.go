@@ -17,16 +17,16 @@ import (
 //  1. Every pinned sensitive type implements the full redaction surface
 //     (String, GoString, LogValue, MarshalText, MarshalJSON).
 //  2. No formatting/marshaling/logging call takes a sensitive-typed
-//     argument outside the type's owning package — the marshal interfaces
+//     argument outside the type's owning package: the marshal interfaces
 //     redact, but a third-party serializer or a deliberate field walk would
 //     not, so the expression itself is banned at the boundary where it can
 //     be seen.
 //  3. Audit events are never mirrored to the ops log: no logging call
-//     (log, log/slog) takes an audit-content-typed argument anywhere — the
+//     (log, log/slog) takes an audit-content-typed argument anywhere: the
 //     ops log records audit-subsystem health, never event content.
 //
 // This is a guardrail with named evasion limits (reflection, in-package
-// extraction, custom serializers), per the ADR — never a proof.
+// extraction, custom serializers), per the ADR: never a proof.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
@@ -55,7 +55,7 @@ var auditContentTypes = map[string]bool{
 }
 
 // formattingPackages are where rule-2 calls live; loggingPackages the
-// stricter rule-3 set (fmt is allowed for audit content — wrapping an error
+// stricter rule-3 set (fmt is allowed for audit content: wrapping an error
 // with an event id is not mirroring the trail; log emission is).
 var formattingPackages = map[string]bool{
 	"fmt": true, "encoding/json": true, "encoding/json/v2": true,
@@ -93,7 +93,7 @@ var RedactSurfaces = &analysis.Analyzer{
 			for _, m := range redactionSurfaceMethods {
 				if ms.Lookup(nil, m) == nil {
 					pass.Reportf(obj.Pos(),
-						"sensitive type %s lacks %s() — the full formatting surface must redact (audit-model ADR CI invariant 8)",
+						"sensitive type %s lacks %s(): the full formatting surface must redact (audit-model ADR CI invariant 8)",
 						name, m)
 				}
 			}
@@ -139,14 +139,14 @@ var RedactFormat = &analysis.Analyzer{
 					if !exemptSensitive {
 						if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
 							pass.Reportf(arg.Pos(),
-								"%s passes sensitive type %s to %s — formatting/marshaling sensitive types outside their owning package is banned",
+								"%s passes sensitive type %s to %s: formatting/marshaling sensitive types outside their owning package is banned",
 								pass.Pkg.Path(), name, calleePkg)
 						}
 					}
 					if logCall {
 						if name := mentionsAny(argTypes, auditContentTypes); name != "" {
 							pass.Reportf(arg.Pos(),
-								"%s logs audit content %s — audit events are never mirrored to the ops log (audit-model ADR)",
+								"%s logs audit content %s: audit events are never mirrored to the ops log (audit-model ADR)",
 								pass.Pkg.Path(), name)
 						}
 					}
@@ -158,7 +158,7 @@ var RedactFormat = &analysis.Analyzer{
 	},
 }
 
-// calleePackage resolves the package path of a call's callee — a package
+// calleePackage resolves the package path of a call's callee: a package
 // function (fmt.Sprintf) or a method whose defining package matches
 // (slog.Logger.Info).
 func calleePackage(info *types.Info, call *ast.CallExpr) string {

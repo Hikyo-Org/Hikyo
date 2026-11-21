@@ -117,15 +117,15 @@ func parseScopeDirectives(fsrc source, dir string) (map[string]TableRule, error)
 // and returns two sets: the tables that exist at rest (`live`), and every name
 // a CREATE ever mentioned (`named`).
 //
-// They differ because of the sqlite rebuild — create a twin, copy, drop the
-// original, rename the twin over it — which is the only way that engine reaches
+// They differ because of the sqlite rebuild (create a twin, copy, drop the
+// original, rename the twin over it), which is the only way that engine reaches
 // a column with no default, since it can neither add a NOT NULL column without
 // one nor drop one afterwards (migration 00006 established the shape, 00009
 // reuses it). The two sets exist because the two checks that consume them want
 // opposite things: "every table is classified" must ask about live tables only,
 // or it would demand a directive for a name that is gone by commit; "no
-// directive dangles" must ask about every name, or declaring the twin — which
-// 00006 does on both engines — would look like a stale entry.
+// directive dangles" must ask about every name, or declaring the twin (which
+// 00006 does on both engines) would look like a stale entry.
 func collectTables(fsrc source, dir string) (live, named []string, err error) {
 	alive := map[string]bool{}
 	seen := map[string]bool{}
@@ -288,7 +288,7 @@ func checkSQLPredicates(src source, repoRoot string, noPins bool) []string {
 		}
 		for _, t := range live {
 			if _, ok := rules[t]; !ok {
-				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): table %q has no hikyo:table scope directive — the derived registry must be total", engine, t))
+				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): table %q has no hikyo:table scope directive: the derived registry must be total", engine, t))
 			}
 		}
 		everNamed := map[string]bool{}
@@ -378,7 +378,7 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 	// outright, forcing a provable rewrite.
 	for _, banned := range []string{" UNION ", "WITH ", " EXCEPT ", " INTERSECT ", "ON CONFLICT"} {
 		if strings.Contains(upper, banned) || strings.HasPrefix(upper, strings.TrimSpace(banned)+" ") {
-			return []string{fmt.Sprintf("%s: unprovable shape (%s) — rewrite into a form the analyzer accepts or annotate under review", label, strings.TrimSpace(banned))}
+			return []string{fmt.Sprintf("%s: unprovable shape (%s): rewrite into a form the analyzer accepts or annotate under review", label, strings.TrimSpace(banned))}
 		}
 	}
 	if findings, supported := checkScopedMembership(engine, q, sql, rules); supported {
@@ -403,7 +403,7 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 
 	table, kind, ok := statementTarget(upper)
 	if !ok {
-		return []string{label + ": unrecognised statement shape — the analyzer only accepts single-table SELECT/INSERT/UPDATE/DELETE"}
+		return []string{label + ": unrecognised statement shape: the analyzer only accepts single-table SELECT/INSERT/UPDATE/DELETE"}
 	}
 	tableName := strings.ToLower(table)
 	rule, known := rules[tableName]
@@ -413,9 +413,9 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 
 	switch rule.Class {
 	case "authn":
-		return []string{fmt.Sprintf("%s: table %q is the resolution surface — only hikyo:authn-resolution annotated queries may touch it", label, tableName)}
+		return []string{fmt.Sprintf("%s: table %q is the resolution surface: only hikyo:authn-resolution annotated queries may touch it", label, tableName)}
 	case "system":
-		return []string{fmt.Sprintf("%s: table %q is system-owned — store queries may not touch it", label, tableName)}
+		return []string{fmt.Sprintf("%s: table %q is system-owned: store queries may not touch it", label, tableName)}
 	case "instance":
 		// Instance-class tables (principals) hold no tenant chain; the
 		// authorization data around them is authn-class. Nothing to require.
@@ -504,12 +504,12 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 		if chain[col] && !boundParameterRe.MatchString(m[3]) {
 			return []string{fmt.Sprintf("%s: chain column %q must bind a parameter, never a literal", label, col)}
 		}
-		// Chain columns require equality — a range predicate on a chain
+		// Chain columns require equality: a range predicate on a chain
 		// column is not a tenant address. Non-chain columns may carry the
 		// comparison operators (cursor and time-range predicates on the
 		// audit trails); they only ever narrow within the chain conjunct.
 		if chain[col] && op != "=" {
-			return []string{fmt.Sprintf("%s: chain column %q used with %q — chain conjuncts must be equality", label, col, op)}
+			return []string{fmt.Sprintf("%s: chain column %q used with %q: chain conjuncts must be equality", label, col, op)}
 		}
 		if op == "=" {
 			present[col] = true
@@ -557,7 +557,7 @@ func checkSet(label, sql, upper string, chainCols []string) []string {
 	var out []string
 	for _, col := range immutable {
 		if setColRe(col).MatchString(set) {
-			out = append(out, fmt.Sprintf("%s: SET names immutable column %q — chain columns never mutate; re-parenting is a new row", label, col))
+			out = append(out, fmt.Sprintf("%s: SET names immutable column %q: chain columns never mutate; re-parenting is a new row", label, col))
 		}
 	}
 	return out

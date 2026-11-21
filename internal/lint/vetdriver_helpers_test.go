@@ -210,7 +210,7 @@ func TestConfinementFlagRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual([]RecoveryRule(got), normalizeRules(rules)) {
 		t.Fatalf("round trip = %v, want %v", got, rules)
 	}
-	for _, bad := range []string{"NoEquals", "=pkg:Fn", "Name=pkgWithoutColon"} {
+	for _, bad := range []string{"NoEquals", "=pkg:Fn", "Name=pkgWithoutColon", "Name=pkg:", "Name=pkg:Fn,"} {
 		if err := new(confinementFlag).Set(bad); err == nil {
 			t.Errorf("Set(%q) accepted a malformed rule", bad)
 		}

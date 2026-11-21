@@ -2,6 +2,7 @@ package lint
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
@@ -20,29 +21,39 @@ var RedactPins = &analysis.Analyzer{
 		}
 		reportTarget(pass)
 		for _, file := range pass.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				v, ok := n.(*ast.ValueSpec)
-				if !ok || v.Type == nil {
-					return true
+			// Only production package-level blank assertions are pins: a test
+			// file's or a local variable's would not hold the build.
+			if isTestFile(pass.Fset.PositionFor(file.Pos(), false).Filename) {
+				continue
+			}
+			for _, decl := range file.Decls {
+				gen, ok := decl.(*ast.GenDecl)
+				if !ok || gen.Tok != token.VAR {
+					continue
 				}
-				surface, ok := pass.TypesInfo.TypeOf(v.Type).(*types.Named)
-				if !ok || surface.Obj().Name() != "redactionSurface" || surface.Obj().Pkg().Path() != sensitiveOwner {
-					return true
-				}
-				for _, value := range v.Values {
-					typ := types.Unalias(pass.TypesInfo.TypeOf(value))
-					if pointer, ok := typ.(*types.Pointer); ok {
-						typ = types.Unalias(pointer.Elem())
-					}
-					named, ok := typ.(*types.Named)
-					if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != sensitiveOwner {
-						pass.Reportf(value.Pos(), "unexpected redaction pin")
+				for _, spec := range gen.Specs {
+					v, ok := spec.(*ast.ValueSpec)
+					if !ok || v.Type == nil || len(v.Names) != 1 || v.Names[0].Name != "_" {
 						continue
 					}
-					reportSummary(pass, summaryPin, namedKey(named))
+					surface, ok := pass.TypesInfo.TypeOf(v.Type).(*types.Named)
+					if !ok || surface.Obj().Name() != "redactionSurface" || surface.Obj().Pkg().Path() != sensitiveOwner {
+						continue
+					}
+					for _, value := range v.Values {
+						typ := types.Unalias(pass.TypesInfo.TypeOf(value))
+						if pointer, ok := typ.(*types.Pointer); ok {
+							typ = types.Unalias(pointer.Elem())
+						}
+						named, ok := typ.(*types.Named)
+						if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != sensitiveOwner {
+							pass.Reportf(value.Pos(), "unexpected redaction pin")
+							continue
+						}
+						reportSummary(pass, summaryPin, namedKey(named))
+					}
 				}
-				return false
-			})
+			}
 		}
 		return nil, nil
 	},

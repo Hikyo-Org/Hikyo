@@ -35,11 +35,24 @@ func runProofSig(pass *analysis.Pass, storePath string) {
 		return
 	}
 
-	proofType := authzPkg.Scope().Lookup("Proof").Type()
-	tenantTypes := map[types.Type]bool{
-		domainPkg.Scope().Lookup("OrgID").Type():     true,
-		domainPkg.Scope().Lookup("ProjectID").Type(): true,
-		domainPkg.Scope().Lookup("EnvID").Type():     true,
+	// The store may reach a package only through a helper's export data,
+	// whose scope holds just the declarations that helper's API references.
+	lookup := func(pkg *types.Package, name string) types.Type {
+		if obj := pkg.Scope().Lookup(name); obj != nil {
+			return obj.Type()
+		}
+		pass.Reportf(packagePos(pass), "%s.%s not visible from the store package", pkg.Path(), name)
+		return nil
+	}
+	proofType := lookup(authzPkg, "Proof")
+	tenantTypes := map[types.Type]bool{}
+	for _, name := range []string{"OrgID", "ProjectID", "EnvID"} {
+		if t := lookup(domainPkg, name); t != nil {
+			tenantTypes[t] = true
+		}
+	}
+	if proofType == nil || len(tenantTypes) != 3 {
+		return
 	}
 
 	scope := pass.Pkg.Scope()
@@ -123,7 +136,7 @@ func tenantTyped(report func(string), label string, t types.Type, tenant map[typ
 	}
 	visited[t] = true
 	if tenant[t] {
-		report(fmt.Sprintf("%s: tenant-identifier-typed parameter (%s) — chain values come from the proof only", label, t))
+		report(fmt.Sprintf("%s: tenant-identifier-typed parameter (%s): chain values come from the proof only", label, t))
 		return
 	}
 	switch u := t.(type) {

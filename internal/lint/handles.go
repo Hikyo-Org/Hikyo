@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -14,7 +15,7 @@ import (
 // driverHandles are the store's raw driver-handle accessors. They exist for
 // the transaction package (which must speak to the engine to open a
 // transaction) and the test harnesses (fixture seeding, query-count
-// instrumentation) — Go has no friend packages, so the accessors are
+// instrumentation): Go has no friend packages, so the accessors are
 // exported and this check is what keeps them narrow.
 //
 // Without it the whole chokepoint is bypassable in one line: any package
@@ -27,8 +28,8 @@ var driverHandles = map[string]bool{
 	"BeginSQLite": true, "BeginPostgres": true, "BeginPostgresSerialized": true,
 }
 
-// driverTypes are the concrete engine handles. Naming one at all — in a
-// signature, a field, a local, or a locally-declared interface method — is
+// driverTypes are the concrete engine handles. Naming one at all (in a
+// signature, a field, a local, or a locally-declared interface method) is
 // what the accessor check alone cannot see: a package can declare
 // `interface{ PG() *pgxpool.Pool }`, accept a *store.DB through it, and call
 // PG() on the LOCAL interface, so the selector never resolves to the store's
@@ -126,7 +127,7 @@ func runHandles(pass *analysis.Pass) {
 			continue
 		}
 		pass.Reportf(ident.Pos(),
-			"%s calls store.DB.%s — a raw driver handle bypasses the proof boundary entirely", base, fn.Name())
+			"%s calls store.DB.%s: a raw driver handle bypasses the proof boundary entirely", base, fn.Name())
 	}
 	// Naming a driver type at all: catches the structural-interface
 	// and type-assertion escapes, where the accessor call resolves to
@@ -170,24 +171,24 @@ func runHandles(pass *analysis.Pass) {
 		}
 		reported[key] = true
 		pass.Reportf(n.pos,
-			"%s names driver type %s — only the transaction boundary and the harnesses may hold engine handles", base, n.named)
+			"%s names driver type %s: only the transaction boundary and the harnesses may hold engine handles", base, n.named)
 	}
 	if generatedImporters[base] {
 		return
 	}
 	for _, file := range pass.Files {
 		for _, spec := range file.Imports {
-			if imp := strings.Trim(spec.Path.Value, "\"`"); generatedPackages[imp] {
+			if imp, _ := strconv.Unquote(spec.Path.Value); generatedPackages[imp] {
 				pass.Reportf(spec.Pos(),
-					"%s imports %s — generated queries take chain parameters as plain values; go through the store's binding layer", base, imp)
+					"%s imports %s: generated queries take chain parameters as plain values; go through the store's binding layer", base, imp)
 			}
 		}
 	}
 }
 
-// mentionsDriverType reports the first driver type reachable from t —
-// through signatures, interface methods, struct fields, and the usual
-// composite types — or "" if none is.
+// mentionsDriverType reports the first driver type reachable from t
+// (through signatures, interface methods, struct fields, and the usual
+// composite types), or "" if none is.
 func mentionsDriverType(t types.Type, seen map[types.Type]bool) string {
 	if t == nil || seen[t] {
 		return ""

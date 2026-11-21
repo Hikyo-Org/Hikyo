@@ -156,7 +156,7 @@ func TestForgeryExemptionIsNotPrefixMatched(t *testing.T) {
 	}
 	for _, p := range neighbours {
 		if authzExempt[p] {
-			t.Errorf("%s is exempt from the forgery guard — exemption must be exact-path", p)
+			t.Errorf("%s is exempt from the forgery guard: exemption must be exact-path", p)
 		}
 	}
 	if !authzExempt[Module+"/internal/authz"] {

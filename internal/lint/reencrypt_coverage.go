@@ -53,7 +53,7 @@ func checkReencryptCoverage(src source, sqliteMigrationsDir string, reencryptCov
 		_, exempt := reencryptExemptBlobs[tc]
 		switch {
 		case covered && exempt:
-			findings = append(findings, fmt.Sprintf("reencrypt-coverage: %s is in BOTH the covered and exempt sets — pick one", tc))
+			findings = append(findings, fmt.Sprintf("reencrypt-coverage: %s is in BOTH the covered and exempt sets: pick one", tc))
 		case !covered && !exempt:
 			findings = append(findings, fmt.Sprintf(
 				"reencrypt-coverage: %s is an unclassified BLOB column. If it holds tier-3-DEK-enveloped "+
@@ -61,7 +61,7 @@ func checkReencryptCoverage(src source, sqliteMigrationsDir string, reencryptCov
 					"reencryptExemptBlobs with a reason.", tc))
 		}
 	}
-	// Every covered pin must still exist in the schema — a renamed/dropped column
+	// Every covered pin must still exist in the schema: a renamed/dropped column
 	// left in the pin is a stale claim the walk can no longer honor.
 	present := map[string]bool{}
 	for _, tc := range found {
@@ -117,11 +117,11 @@ var reencryptExemptBlobs = map[string]string{
 	"projects.identity_image": "public avatar image bytes (not secret, not enveloped)",
 	// Transit (#156, #1129): an Ed25519 or ML-DSA-65 public key is public metadata, never sealed.
 	"transit_key_versions.public_key": "transit signing public key (public metadata, not enveloped)",
-	// Wrapped KEYS — a different tier, rotated by rotate-master-key / rotate-dek,
+	// Wrapped KEYS: a different tier, rotated by rotate-master-key / rotate-dek,
 	// never by reencrypt (which moves ciphertext, not keys).
 	"master_keys.blob": "master key wrapped by the root; rotate-root/master-key territory",
 	"tier3_keys.blob":  "tier-3 DEK wrapped by the master; rotate-dek/master-key territory",
-	// Hashed or single-use VERIFIERS — one-way, never envelope-decryptable.
+	// Hashed or single-use VERIFIERS: one-way, never envelope-decryptable.
 	"sessions.verifier":                   "session artifact verifier (hashed, not enveloped)",
 	"sessions.csrf_verifier":              "session CSRF verifier (hashed)",
 	"sessions_rebuilt.verifier":           "session verifier on a table-rebuild copy",
@@ -134,7 +134,7 @@ var reencryptExemptBlobs = map[string]string{
 	"credential_authorities.verifier":     "single-use credential-establishment authority (hashed)",
 	"credential_authorities_new.verifier": "credential authority verifier on a table-rebuild copy",
 	"registration_signups.token_verifier": "single-use sign-up verification token (hashed `su` artifact)",
-	// Short-lived FLOW artifacts — OAuth / SAML / WebAuthn transaction state,
+	// Short-lived FLOW artifacts: OAuth / SAML / WebAuthn transaction state,
 	// hashed or opaque, expired not rotated.
 	"oidc_transactions.browser_binding_verifier": "OIDC browser-binding verifier (flow)",
 	"oidc_transactions.state_verifier":           "OIDC state verifier (flow)",
@@ -161,7 +161,7 @@ var reencryptExemptBlobs = map[string]string{
 	"webauthn_ceremonies.session_data":               "WebAuthn ceremony session data (flow)",
 	"webauthn_ceremonies_rebuilt.challenge_verifier": "WebAuthn ceremony challenge verifier on a table-rebuild copy (#760)",
 	"webauthn_ceremonies_rebuilt.session_data":       "WebAuthn ceremony session data on a table-rebuild copy (#760)",
-	// PUBLIC material — certificates, public keys, opaque handles.
+	// PUBLIC material: certificates, public keys, opaque handles.
 	"saml_providers.signing_certificates":   "IdP signing certificates (public)",
 	"saml_sp_keys.certificate_der":          "SP certificate (public)",
 	"pki_issuers.certificate_der":           "CA certificate (public, #154)",

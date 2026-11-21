@@ -186,7 +186,12 @@ func (f *confinementFlag) Set(value string) error {
 			if !ok || path == "" {
 				return fmt.Errorf("confinement rule %q has no pkg:Func entry %q", entry, part)
 			}
-			rule.Allowed[path] = strings.Split(fns, ",")
+			names := strings.Split(fns, ",")
+			if slices.Contains(names, "") {
+				// "" is the key of package-level declarations, which no entry may allow.
+				return fmt.Errorf("confinement rule %q has an empty function name in %q", entry, part)
+			}
+			rule.Allowed[path] = names
 		}
 		parsed = append(parsed, rule)
 	}

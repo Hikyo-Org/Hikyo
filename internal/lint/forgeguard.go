@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"strings"
+	"strconv"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -19,7 +19,7 @@ var ForgeGuard = &analysis.Analyzer{
 		path := pass.Pkg.Path()
 		// The authorization package and its test variants are exempt:
 		// boundary tests construct exactly these invalid values on purpose.
-		// Exact paths only — a prefix match would silently exempt a
+		// Exact paths only: a prefix match would silently exempt a
 		// neighbouring `internal/authzforge` that reflects on proof values.
 		if !inModule(path) || authzExempt[path] {
 			return nil, nil
@@ -34,7 +34,7 @@ var ForgeGuard = &analysis.Analyzer{
 		if usesProof {
 			for _, file := range pass.Files {
 				for _, spec := range file.Imports {
-					if imp := strings.Trim(spec.Path.Value, "\"`"); imp == "reflect" || imp == "unsafe" {
+					if imp, _ := strconv.Unquote(spec.Path.Value); imp == "reflect" || imp == "unsafe" {
 						pass.Reportf(spec.Pos(), "%s imports %q while handling authz.Proof values", path, imp)
 					}
 				}
@@ -54,7 +54,7 @@ var authzExempt = map[string]bool{
 }
 
 func isAuthzProof(t types.Type) bool {
-	n, ok := t.(*types.Named)
+	n, ok := types.Unalias(t).(*types.Named)
 	if !ok {
 		return false
 	}
@@ -74,15 +74,15 @@ func isAuthzProof(t types.Type) bool {
 // earlier.
 func nilProofLiterals(p *analysis.Pass) {
 	report := func(n ast.Node) {
-		p.Reportf(n.Pos(), "nil in an authz.Proof position — the one forgeable value; get a proof from authorize()")
+		p.Reportf(n.Pos(), "nil in an authz.Proof position: the one forgeable value; get a proof from authorize()")
 	}
 	isNil := func(e ast.Expr) bool {
-		id, ok := e.(*ast.Ident)
+		id, ok := ast.Unparen(e).(*ast.Ident)
 		return ok && id.Name == "nil" && p.TypesInfo.Uses[id] == types.Universe.Lookup("nil")
 	}
 	for _, file := range p.Files {
-		// A package-level authz.Proof variable with no initialiser is nil for
-		// the life of the process.
+		// A package-level authz.Proof variable with no initialiser starts nil.
+		// The declaration itself is refused; a later assignment is not tracked.
 		for _, decl := range file.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.VAR {

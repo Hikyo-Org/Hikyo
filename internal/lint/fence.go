@@ -57,7 +57,7 @@ func runFence(pass *analysis.Pass, servicePath string) {
 			})
 			if seals && !fences {
 				pass.Reportf(fn.Pos(),
-					"%s seals ciphertext but never calls the writer fence (invariant 7) — "+
+					"%s seals ciphertext but never calls the writer fence (invariant 7): "+
 						"add fenceProject/fenceInstance(Version) or az.AssertActiveInstanceDEKVersion before the write, "+
 						"or mark the function fence:delegated / fence:exempt with a reason",
 					fn.Name.Name)

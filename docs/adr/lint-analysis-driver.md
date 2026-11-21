@@ -55,6 +55,13 @@ The spike also established that:
    package variant they are given, test files included. A rule such as "this
    package handles `authz.Proof`" is decided from those files. Violations that
    become visible are fixed in the port PRs, not allowlisted.
+   (Amended in step 1: `handles` and `redactfmt` diagnostics in the
+   `_test.go` files of in-package test variants are deferred under the
+   checked-in ceiling `internal/lint/testdata/deferred_sites.json`, tracked by
+   #1488 and #1468; see the
+   [deferred test sites handoff](../handoff/lint-vet-driver-pr1-deferred-test-sites.md).
+   Production files, external test packages and every other analyzer stay
+   strict.)
 
    Owner decision (2026-11-20): no inline exemption markers. A nil
    `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts

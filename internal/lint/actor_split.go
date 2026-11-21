@@ -8,7 +8,7 @@ import (
 
 // The transport may not name service.LocalPrincipal.
 //
-// That constructor bypasses session resolution by construction — it is for
+// That constructor bypasses session resolution by construction: it is for
 // callers already below the network boundary (the isolation harness, and
 // local-authority verbs running on the server's own host). A transport that
 // could build one could authorize as anybody, and the whole point of handing
@@ -40,7 +40,7 @@ var ActorSplit = &analysis.Analyzer{
 					return true
 				}
 				if obj.Pkg().Path() == Module+"/internal/service" {
-					pass.Reportf(sel.Pos(), "%s names service.%s — the transport must hand over the raw artifact and let the service resolve it in-transaction",
+					pass.Reportf(sel.Pos(), "%s names service.%s: the transport must hand over the raw artifact and let the service resolve it in-transaction",
 						pass.Pkg.Path(), forbidden)
 				}
 				return true

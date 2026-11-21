@@ -93,7 +93,7 @@ func checkAuditQueries(src source, repoRoot string) []string {
 				continue
 			}
 			findings = append(findings, fmt.Sprintf(
-				"appendonly(%s): %s: statement on an audit table is neither INSERT nor SELECT nor a content-pinned licensed deleter — the trails are append-only at the application layer (audit-model ADR CI invariant 3)",
+				"appendonly(%s): %s: statement on an audit table is neither INSERT nor SELECT nor a content-pinned licensed deleter: the trails are append-only at the application layer (audit-model ADR CI invariant 3)",
 				engine, q.Name))
 		}
 	}
@@ -101,11 +101,11 @@ func checkAuditQueries(src source, repoRoot string) []string {
 }
 
 // syncCommitRe catches any attempt to downgrade commit durability at
-// session or transaction level — the audit-model ADR's boot check verifies
+// session or transaction level: the audit-model ADR's boot check verifies
 // the server setting, and this ban keeps the store from quietly overriding
 // it (CI invariant 7).
 // The statement form requires the assignment (`= off` / `TO off`), so prose
-// merely naming the banned statement — like this comment — does not trip it.
+// merely naming the banned statement (like this comment) does not trip it.
 var syncCommitRe = regexp.MustCompile(`(?i)SET\s+(LOCAL\s+)?synchronous_commit\s*(=|TO\s)`)
 
 // syncCommitFinding is the finding for a file that issues the banned statement.
@@ -118,7 +118,7 @@ func syncCommitFinding(root, path string, body []byte) (string, bool) {
 		rel = path
 	}
 	return fmt.Sprintf(
-		"appendonly: %s issues SET synchronous_commit — durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)",
+		"appendonly: %s issues SET synchronous_commit: durability is a boot-verified server setting, never a session downgrade (audit-model ADR CI invariant 7)",
 		filepath.ToSlash(rel)), true
 }
 
@@ -159,7 +159,7 @@ func checkNoSyncCommitDowngrade(src source, repoRoot string, exts []string) []st
 //
 // Stated as a deviation rather than smuggled in: the ADR says "exactly one",
 // and this is more than one. What is preserved is the property the "exactly
-// one" was protecting — every proof-free write is named, in one place, with a
+// one" was protecting: every proof-free write is named, in one place, with a
 // build failure behind it. See docs/handoff/47-first-slice.md, which routes
 // the wording to human disposition.
 var ResolutionSurfaceWriters = map[string]bool{
@@ -183,7 +183,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"WriteDenial":         true,
 	"WriteAuthEvent":      true,
 	"writeProofFreeEvent": true,
-	// Bootstrap under local host authority (#47) — the closed local-authority
+	// Bootstrap under local host authority (#47): the closed local-authority
 	// exception set's boot/bootstrap member, never reachable over the network.
 	"CreatePrincipal":          true,
 	"CorrectPrivacyAccount":    true,
@@ -239,7 +239,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"retirePendingProofs": true,
 	// Factors (#54): TOTP enrolment/confirmation/removal, recovery-code batch
 	// writes, step-up session rotation, and the outstanding-authority sweep.
-	// None can hold a proof — they mutate the artifacts that decide how a
+	// None can hold a proof: they mutate the artifacts that decide how a
 	// caller authenticated, which is resolution, not authorization.
 	"CreateTOTP":                    true,
 	"ConfirmTOTP":                   true,
@@ -251,8 +251,8 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"RotateSessionFactors":          true,
 	"ConsumeOutstandingAuthorities": true,
 	// Login challenge (#760): the single-use authority that proves the password
-	// step passed before a session mints. Proof-free by design — no session
-	// exists yet — and part of how a caller authenticates, which is resolution.
+	// step passed before a session mints. Proof-free by design (no session
+	// exists yet) and part of how a caller authenticates, which is resolution.
 	"CreateLoginChallenge":  true,
 	"ConsumeLoginChallenge": true,
 	// OIDC (#54): the transaction, external-identity, federated-session-sweep
@@ -297,12 +297,12 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// caller is cannot itself be written under a proof. The two principal
 	// writers join them because the provisioning connection is created with its
 	// binding and retired with it by the ADR's §6 state machine, in the same
-	// transaction as the structural grant it holds — `principals` is
+	// transaction as the structural grant it holds: `principals` is
 	// instance-class and has no chain to bind a proof against.
 	// Only the two writes that genuinely cannot hold a proof remain here. A
 	// SCIM request presents its credential BEFORE any operation is authorized,
 	// so recording its use is part of authentication; and the provisioning
-	// principal is created with, and retired with, its binding — `principals`
+	// principal is created with, and retired with, its binding: `principals`
 	// is instance-class and has no chain for a proof to bind against.
 	//
 	// Credential MINT, LIST, SHOW, REVOKE and DELETE are deliberately NOT here:
@@ -329,7 +329,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"DeleteSessionsForSAMLProvider":      true,
 	"RebindSAMLExternalIdentityProvider": true,
 	// WebAuthn (#54): credential, ceremony and user-handle writers, plus the
-	// clone session sweep. None can hold a proof — they mutate the artifacts that
+	// clone session sweep. None can hold a proof: they mutate the artifacts that
 	// decide who a caller is and how strongly they authenticated, which is
 	// resolution, not authorization.
 	"CreateWebAuthnCredential":            true,
@@ -339,7 +339,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"DeleteSessionsForWebAuthnCredential": true,
 	"CreateWebAuthnCeremony":              true,
 	// Machine identities (#61): the service-account and credential lifecycle.
-	// None can hold a proof for the same reason the session writers cannot —
+	// None can hold a proof for the same reason the session writers cannot:
 	// they mutate the artifacts that decide WHO a machine caller is, and a
 	// machine credential resolves at the same chokepoint as authorize().
 	// Service-account creation/deprovisioning are aggregate writers.
@@ -372,7 +372,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// and runs in the SAME transaction as RemoveWorkspaceOrigin; it is named
 	// separately so removing the pairing is a visible change here.
 	// RevokeSessionForPrincipal is the self-scoped revoke behind the
-	// active-session listing (criterion 5) — its principal conjunct lives in
+	// active-session listing (criterion 5): its principal conjunct lives in
 	// the SQL, so it cannot reach another caller's row.
 	"AllowWorkspaceOrigin":             true,
 	"RemoveWorkspaceOrigin":            true,
@@ -442,7 +442,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// Reauth-window consumption at disclosure and the effective-window transition
 	// (#54): slide the sliding clock, claim a single-decision window once, and
 	// invalidate every window on an environment when its effective window is
-	// lowered. Proof-free like every other window writer — they mutate the
+	// lowered. Proof-free like every other window writer: they mutate the
 	// artifact that decides whether a disclosure may proceed.
 	"SlideReauthWindow":                 true,
 	"ConsumeSingleDecisionWindow":       true,
@@ -488,7 +488,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 }
 
 // DenialWriter enforces the enumerated-writer rule as a build failure,
-// not a comment. The import boundary alone cannot see this —
+// not a comment. The import boundary alone cannot see this:
 // internal/store/authn already holds the generated query handles, so a
 // mutating call inside it would be a proof-free writer that every other guard
 // admits. Every reference to a generated mutating query from that package, its
@@ -531,7 +531,7 @@ func newDenialWriter() *analysis.Analyzer {
 			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: f})
 		}
 		if len(mutating) == 0 {
-			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no mutating queries found — the analyzer would be vacuously green"})
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no mutating queries found: the analyzer would be vacuously green"})
 			return nil, nil
 		}
 		checkDenialWriterPass(pass, writers, mutating)
@@ -570,7 +570,7 @@ func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]boo
 					return true
 				}
 				pass.Report(analysis.Diagnostic{Pos: sel.Pos(), Message: fmt.Sprintf(
-					"%s names the mutating query %s, and %s is not in the pinned enumerated write list — every proof-free writer in the resolution surface must be named there (audit-model ADR amendment part 4, extended by #47)",
+					"%s names the mutating query %s, and %s is not in the pinned enumerated write list: every proof-free writer in the resolution surface must be named there (audit-model ADR amendment part 4, extended by #47)",
 					fn.Name.Name, f.Name(), fn.Name.Name)})
 				return true
 			})
@@ -591,7 +591,7 @@ func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]boo
 //
 // `:exec`, `:execrows`, `:execresult` and `:execlastid` are sqlc's write
 // commands; `:one` and `:many` read. An unrecognised command is treated as
-// MUTATING — the fail-closed direction — and reported, so a sqlc release that
+// MUTATING (the fail-closed direction) and reported, so a sqlc release that
 // adds a command cannot silently widen the hole.
 func mutatingQueries(src source, repoRoot string) (map[string]bool, []string, error) {
 	out := map[string]bool{}
@@ -610,7 +610,7 @@ func mutatingQueries(src source, repoRoot string) (map[string]bool, []string, er
 			default:
 				out[q.Name] = true
 				findings = append(findings, fmt.Sprintf(
-					"query %s has unrecognised sqlc command %q — treated as mutating (fail-closed); classify it deliberately",
+					"query %s has unrecognised sqlc command %q: treated as mutating (fail-closed); classify it deliberately",
 					q.Name, q.Cmd))
 			}
 		}

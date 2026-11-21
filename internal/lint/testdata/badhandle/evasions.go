@@ -7,8 +7,8 @@ import (
 )
 
 // pool is the alias escape: `*pool` is spelled without ever writing
-// pgxpool.Pool at the use site, so a String()-match on the written type —
-// and the module-scope guard — both miss it unless aliases are unwrapped.
+// pgxpool.Pool at the use site, so a String()-match on the written type
+// and the module-scope guard both miss it unless aliases are unwrapped.
 type pool = pgxpool.Pool // want "names driver type github\\.com/jackc/pgx/v5/pgxpool\\.Pool"
 
 type aliasHolder interface{ PG() *pool } // want "names driver type github\\.com/jackc/pgx/v5/pgxpool\\.Pool"

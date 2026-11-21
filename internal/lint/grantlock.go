@@ -16,17 +16,17 @@ import (
 // same lock and therefore serialize behind (or ahead of) the reset. That
 // guarantee holds only if EVERY grant writer takes the lock. The general grant
 // surface is #55's; this analyzer pins the obligation now so a future grant
-// writer cannot forget it — a grant writer that skips the lock is a build
+// writer cannot forget it: a grant writer that skips the lock is a build
 // failure, not a review miss.
 //
 // The check is structural, like the sole-writer analyzer it is modelled on: any
-// function — in ANY module package, not just the resolution surface — that names
+// function (in ANY module package, not just the resolution surface) that names
 // a grant-table-mutating generated query must also take the principal-row lock in
 // the same body, and the lock must type-resolve to the REAL LockPrincipalRow (the
 // generated query or the authn resolver wrapper that calls it), not merely any
 // selector spelled that way. Residual, stated so it is not mistaken for more:
 // the analyzer cannot prove the lock is taken on the RIGHT principal row, nor
-// that it precedes the write in execution order within the same transaction —
+// that it precedes the write in execution order within the same transaction:
 // that is review's job. Where it cannot be sure it errs toward flagging
 // (fail-closed): a grant writer with no resolvable lock at all is a build
 // failure, never a silent pass.
@@ -141,7 +141,7 @@ func newGrantLock() *analysis.Analyzer {
 			return nil, nil
 		}
 		if len(writers) == 0 {
-			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no grant-table writers found — the analyzer would be vacuously green"})
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no grant-table writers found: the analyzer would be vacuously green"})
 			return nil, nil
 		}
 		checkGrantLockPass(pass, writers, lockName)
@@ -176,7 +176,7 @@ func checkGrantLockPass(pass *analysis.Pass, writers map[string]bool, lock strin
 				}
 				pkgPath := f.Pkg().Path()
 				// The lock counts only when it type-resolves to the REAL
-				// LockPrincipalRow — the generated query or the authn wrapper —
+				// LockPrincipalRow (the generated query or the authn wrapper),
 				// not merely a selector spelled that way (a struct field or an
 				// unrelated method named LockPrincipalRow no longer satisfies it).
 				if f.Name() == lock && lockDefiners[pkgPath] {
@@ -189,7 +189,7 @@ func checkGrantLockPass(pass *analysis.Pass, writers map[string]bool, lock strin
 			})
 			if namesWriter && !namesLock {
 				pass.Report(analysis.Diagnostic{Pos: fn.Pos(), Message: fmt.Sprintf(
-					"%s writes a grant table but does not take the %s principal-row lock — every grant writer must hold it so credential-reset's org-bounded test is serializable (#54 B14)",
+					"%s writes a grant table but does not take the %s principal-row lock: every grant writer must hold it so credential-reset's org-bounded test is serializable (#54 B14)",
 					fn.Name.Name, lock)})
 			}
 			return true

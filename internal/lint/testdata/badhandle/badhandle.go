@@ -1,6 +1,6 @@
 // Package badhandle is a negative fixture for the driver-handle check: it
 // reaches the datastore the two ways that bypass the proof boundary in one
-// line — a raw driver handle, and the generated query package — with a
+// line (a raw driver handle, and the generated query package) with a
 // caller-controlled tenant chain and no proof anywhere.
 package badhandle
 

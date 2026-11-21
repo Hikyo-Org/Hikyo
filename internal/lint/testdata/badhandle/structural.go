@@ -11,7 +11,7 @@ import (
 
 // poolHolder is the structural-interface escape: *store.DB satisfies it
 // without this package importing anything privileged, and the PG() selector
-// below resolves to THIS interface's method, not the store's — so an
+// below resolves to THIS interface's method, not the store's: so an
 // accessor-call check alone never sees it.
 type poolHolder interface{ PG() *pgxpool.Pool } // want "names driver type github\\.com/jackc/pgx/v5/pgxpool\\.Pool"
 
