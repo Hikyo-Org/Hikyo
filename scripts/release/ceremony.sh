@@ -816,7 +816,7 @@ verify_published_release_and_prepare_tap() {
 desktop_gate() {
 	[ "$("$script_dir/release-channel.sh" "$tag")" = stable ] || return 0
 	"$script_dir/publish-desktop-draft.sh" --check-only "$repository" "$version" release/trust ||
-		fail "desktop-v$version draft is not ready; wait for or rerun the desktop jobs of the $tag release run, then retry"
+		fail "desktop-v$version draft is not ready: its jobs may still be running (wait for the $tag release run to finish), or failed (rerun the failed jobs; if their outputs are lost, delete the $tag draft and use Re-run all jobs); then retry"
 }
 
 # This legacy path never publishes the desktop-v draft; the maintainer must.
@@ -826,7 +826,7 @@ desktop_followup() {
 }
 
 phase_publish() {
-	for command_name in cosign gh jq route; do require_command "$command_name"; done
+	for command_name in cosign gh go jq route; do require_command "$command_name"; done
 	require_saved_phase signed signatures-staged published
 	require_online
 	signed_dir=$release_dir/signed

@@ -308,7 +308,9 @@ run and blocks CLI publication until the failed jobs are rerun. If a check says 
 draft is not ready, first make sure the run has finished, then rerun the failed
 jobs. If a partial rerun loses the other architecture's outputs (the draft job
 cannot find its artifact name or digest), use GitHub's **Re-run all jobs**
-instead.
+instead. Re-running all jobs also re-runs `build-signed-draft`, which cannot
+create the `vX.Y.Z` draft while it exists, so first delete that draft as
+described under "A failed tag build" in [routine releases](#routine-releases).
 
 Once, before the first stable tag, an administrator runs
 `scripts/release/configure-repository.sh Hikyo-Org/Hikyo` to apply the
