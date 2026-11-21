@@ -275,7 +275,7 @@ func checkRefusedDirectories(t *testing.T) {
 				t.Errorf("%s directory: got %v, want a refusal (not-exist=%t)", name, err, tc.notExist)
 			}
 		}
-		// The disk reader of the old harness refuses the same states.
+		// The osSource disk reader refuses the same states.
 		if _, err := (osSource{}).ReadDir(dir); err == nil {
 			t.Errorf("%s directory: osSource.ReadDir returned no error", name)
 		}
@@ -373,9 +373,8 @@ func fakePass(a *analysis.Analyzer) (*analysis.Pass, *[]string) {
 }
 
 // With every declared directory absent, each input analyzer reports a finding,
-// never a clean pass or a refusal, whichever way it reads: the vet analyzer
-// through a verified snapshot, the same analyzer on the old harness's disk
-// reader, and the old Check* entry point.
+// never a clean pass or a refusal, and the per-package helpers fail whichever
+// way they read: through a verified snapshot or the osSource disk reader.
 func TestInputAnalyzersReportAbsentDirectories(t *testing.T) {
 	root := t.TempDir()
 	builders := map[string]func() *analysis.Analyzer{

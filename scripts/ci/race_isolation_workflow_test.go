@@ -249,7 +249,7 @@ exit 0
 
 // Keep the serial group tied to source: a new whole-module static sweep must be
 // assigned to the analyzer job rather than quietly joining the runtime shards.
-// A sweep is an isolation test that calls packageScopeNames.
+// A sweep is an isolation test that calls moduleScopeNames.
 func raceIsolationAnalyzerTests(t *testing.T) []string {
 	t.Helper()
 	files, err := filepath.Glob("../../internal/isolation/*_test.go")
@@ -270,7 +270,7 @@ func raceIsolationAnalyzerTests(t *testing.T) []string {
 			sweeps := false
 			ast.Inspect(fn.Body, func(node ast.Node) bool {
 				if call, ok := node.(*ast.CallExpr); ok {
-					if fun, ok := call.Fun.(*ast.Ident); ok && fun.Name == "packageScopeNames" {
+					if fun, ok := call.Fun.(*ast.Ident); ok && fun.Name == "moduleScopeNames" {
 						sweeps = true
 					}
 				}

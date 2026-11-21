@@ -145,6 +145,8 @@ every context ran, and it runs in the test process, not as a vet result).
   and the old harness reads it by path, so one reader serves both. The cost is
   that an edit re-vets every package of the context; undeclared, an edit would
   re-vet only `jsonwire` and the packages whose export data changed.
+  (Superseded by the step 4 amendment in part: the old harness is removed, so
+  the fixture layout alone keeps the file declared.)
 - **A declared directory is absent, a directory, or irregular, and its state is
   hashed.** An absent directory reads as an error wrapping `fs.ErrNotExist`, a
   symlink or non-directory is refused, and none of the three hashes like an empty
@@ -158,7 +160,7 @@ every context ran, and it runs in the test process, not as a vet result).
   (`osSource`) has no root to confine reads to, so it still follows a symlinked
   parent and skips a symlinked subdirectory; it goes with the old harness in PR 4.
   (Superseded by the step 4 amendment: `osSource` is kept, for the exported
-  helpers outside the vet driver and `CheckUnanalyzedGoFiles`.)
+  helpers outside the vet driver and `checkUnanalyzedGoFiles`.)
 - **`-root` must contain the anchor package's files, or the analyzer refuses**
   (file-input analyzers, checked by `os.SameFile` along each file's parent
   directories; test: `TestVetDriverRefusesBadInputs`, case "foreign root with a
@@ -267,8 +269,12 @@ is complete once this step merges.
   (`TestVetDriverParity` and `requireRawSQLParity`). `Check` is now an analyzer
   and its required targets. `Contexts` and the `BuildContext` helpers stay: the
   vet driver and the fixtures use them. `osSource` stays for the exported helpers
-  outside the vet driver and for `CheckUnanalyzedGoFiles`, which runs in the test
+  outside the vet driver and for `checkUnanalyzedGoFiles`, which runs in the test
   process (see the step 2 amendment).
+- **Renamed.** With no caller outside the package left, two names the earlier
+  amendments use are unexported: `CheckUnanalyzedGoFiles` is
+  `checkUnanalyzedGoFiles` (step 2), and `RawSQLSummaryFindings` is merged into
+  `rawSQLSummaryFindings` (step 3).
 - **Tests.** The whole-repository tests were `Test*Repo` loops over the loaded
   module; `TestVetDriverRepo` replaces them (every analyzer, every context, target
   presence, deferred ceilings, the RawSQL aggregate, the redaction pins and the
@@ -292,7 +298,8 @@ is complete once this step merges.
 - **CI definitions.** The `race-analyzers` group in `reliability.yml` was the set
   of isolation tests that called `LoadRepo`. Its only remaining member is the
   invariant 12 sweep, and `scripts/ci/race_isolation_workflow_test.go` discovers
-  members by their call to `packageScopeNames`. The race-shard exclusion for
+  members by their call to `moduleScopeNames`, the whole-module form of
+  `packageScopeNames`. The race-shard exclusion for
   `internal/lint` (the Consequences bullet that keeps it until the old harness is
   removed) is not lifted here: it lives in `scripts/ci/analysis-shards-go/main.go`,
   which dev admission refuses to take before `main` (`devPolicyPaths`), so lifting

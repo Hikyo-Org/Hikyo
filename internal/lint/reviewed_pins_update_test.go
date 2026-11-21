@@ -195,15 +195,21 @@ func writeVerifiedPins(path string, updated []byte, verify func() ([]string, err
 	if err := os.WriteFile(path, updated, 0o644); err != nil {
 		return err
 	}
-	verified := false
+	verified, returned := false, false
 	defer func() {
-		if !verified {
-			if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
-				err = errors.Join(err, fmt.Errorf("restoring the reviewed pins: %w", restoreErr))
+		if verified {
+			return
+		}
+		if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
+			restoreErr = fmt.Errorf("restoring the reviewed pins: %w", restoreErr)
+			if !returned {
+				panic(restoreErr) // verify ended the goroutine (t.Fatal): no return value carries the error
 			}
+			err = errors.Join(err, restoreErr)
 		}
 	}()
 	findings, err := verify()
+	returned = true
 	if err != nil {
 		return err
 	}
@@ -449,5 +455,33 @@ func TestWriteVerifiedPinsRestoresOriginalUnlessVerified(t *testing.T) {
 				t.Fatalf("pins on disk = %q (%v), want %q", got, readErr, tc.want)
 			}
 		})
+	}
+}
+
+// A restore that fails after verify ended the goroutine must not vanish.
+func TestWriteVerifiedPinsPanicsWhenRestoreFailsAfterFatal(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the read-only mode that makes the restore fail")
+	}
+	path := filepath.Join(t.TempDir(), "reviewed_pins.json")
+	if err := os.WriteFile(path, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var recovered any
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { recovered = recover() }()
+		_ = writeVerifiedPins(path, []byte("updated\n"), func() ([]string, error) {
+			if err := os.Chmod(path, 0o444); err != nil {
+				t.Error(err)
+			}
+			runtime.Goexit()
+			return nil, nil
+		})
+	}()
+	<-done
+	if err, ok := recovered.(error); !ok || !strings.Contains(err.Error(), "restoring the reviewed pins") {
+		t.Fatalf("recovered %v, want the restore error", recovered)
 	}
 }

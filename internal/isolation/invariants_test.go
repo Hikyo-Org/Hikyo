@@ -9,6 +9,7 @@ package isolation
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -260,8 +261,8 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 // analyzers. They run in the vet driver over the whole module under every
 // build context (internal/lint TestVetDriverRepo), which fails on any finding
 // and on an analyzer whose target package was not analyzed. The binding-
-// provenance half of 08: every chain parameter maps from proof fields and
-// nothing else — is asserted empirically by the positive controls in the
+// provenance half of 08 (every chain parameter maps from proof fields and
+// nothing else) is asserted empirically by the positive controls in the
 // engine suites: rows written through the store carry exactly the proof's
 // resolved chain.
 
@@ -475,7 +476,7 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 	}
 
 	// Sweep: any cache-shaped declaration must belong to a registered cache.
-	declared, err := packageScopeNames(filepath.Join("..", ".."))
+	declared, err := moduleScopeNames()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,23 +508,49 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		// The Linux-only test of hostupgrade.PrepareCacheDirectory: that directory is a selfupdate installer cache.
 		lint.Module + "/internal/hostupgrade.TestLinuxSecurityCacheRequiresPrivateRootOwnedStorage": "selfupdate.nightly-downloads",
 	}
+	for _, finding := range cacheDeclarationFindings(declared, knownPkgs, registeredDeclarations, registered) {
+		t.Error(finding)
+	}
+}
+
+// moduleScopeNames is the whole-module sweep. The race workflow test finds the
+// isolation tests that need the serial analyzer job by their call to it.
+func moduleScopeNames() (map[string][]string, error) {
+	return packageScopeNames(filepath.Join("..", ".."))
+}
+
+// cacheDeclarationFindings reports each cache-shaped declaration that neither a
+// known package nor a registered declaration accounts for. An external test
+// package keeps its "_test" path, so it is checked, not exempt.
+func cacheDeclarationFindings(declared map[string][]string, knownPkgs map[string]bool, registeredDeclarations map[string]string, registered map[string]authz.Cache) []string {
+	var findings []string
 	for pkgPath, names := range declared {
-		// An external test package keeps its "_test" path: it is checked, not exempt.
-		base := pkgPath
-		if base == lint.Module+"/internal/isolation" || knownPkgs[base] {
+		if pkgPath == lint.Module+"/internal/isolation" || knownPkgs[pkgPath] {
 			continue // the harness names the invariant; crypto's cache is registered
 		}
 		for _, name := range names {
-			if key := registeredDeclarations[base+"."+name]; key != "" {
+			if key := registeredDeclarations[pkgPath+"."+name]; key != "" {
 				if _, ok := registered[key]; !ok {
-					t.Errorf("%s.%s references missing cache registry entry %q", base, name, key)
+					findings = append(findings, fmt.Sprintf("%s.%s references missing cache registry entry %q", pkgPath, name, key))
 				}
 				continue
 			}
 			if strings.Contains(strings.ToLower(name), "cache") {
-				t.Errorf("%s.%s: cache-shaped declaration with no entry in the cache registry — state its key constructor and proof-gating layer (invariant 12)", base, name)
+				findings = append(findings, fmt.Sprintf("%s.%s: cache-shaped declaration with no entry in the cache registry — state its key constructor and proof-gating layer (invariant 12)", pkgPath, name))
 			}
 		}
+	}
+	return findings
+}
+
+func TestCacheDeclarationFindingsChecksExternalTestPackages(t *testing.T) {
+	known := map[string]bool{lint.Module + "/internal/crypto": true}
+	got := cacheDeclarationFindings(map[string][]string{
+		lint.Module + "/internal/crypto":      {"dekCache"},
+		lint.Module + "/internal/crypto_test": {"probeCache"},
+	}, known, nil, nil)
+	if len(got) != 1 || !strings.HasPrefix(got[0], lint.Module+"/internal/crypto_test.probeCache:") {
+		t.Fatalf("findings = %q, want only the external test package's probeCache", got)
 	}
 }
 
@@ -718,18 +745,6 @@ func TestInvariant11SelfConfigGenericMintingDenied(t *testing.T) {
 	}
 }
 
-// sweepTempTree runs the sweep over a synthetic tree. It is a helper so that
-// the test above is not mistaken for a whole-module sweep (the race workflow
-// test discovers those by their direct call to packageScopeNames).
-func sweepTempTree(t *testing.T, root string) map[string][]string {
-	t.Helper()
-	got, err := packageScopeNames(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return got
-}
-
 // The sweep behaves like `go list ./...` about nested checkouts and modules,
 // yet still reads build-ignored files of a normal package.
 func TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles(t *testing.T) {
@@ -751,7 +766,10 @@ func TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles(t *testing.T) {
 	write("internal/normal/ignored.go", "//go:build ignore\n\npackage normal\n\ntype hiddenCache struct{}\n")
 	write("internal/normal/ext_test.go", "package normal_test\n\ntype extCache struct{}\n")
 
-	got := sweepTempTree(t, root)
+	got, err := packageScopeNames(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("sweep saw %v, want only internal/normal and internal/normal_test", got)
 	}

@@ -15,8 +15,12 @@ import (
 // Config.Overlay (the ui context's webui placeholder took one load's live heap
 // from ~1.1GB to ~2.5GB). Fixtures reach the placeholder through the
 // "-overlay" build flag instead, so no code in the module may set the field,
-// bar the two mutation tests that overlay in-memory source onto one small
-// scripts/security package (not a context placeholder) and load nothing else.
+// bar two source-mutation tests. They type-check in-memory edits of one
+// scripts/security package, which go/packages reads only from Config.Overlay
+// (the build flag changes what go list sees, not the source it parses), so
+// each subtest type-checks that package's dependency closure from source. The
+// alert collector's was measured at 466 MiB, inside the per-process budget; a
+// whole-context load is not.
 var overlayMutationTests = map[string]bool{
 	"internal/lint/alert_collector_protocol_test.go": true,
 	"internal/lint/rawsql_artifact_test.go":          true,
@@ -48,6 +52,15 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		local := ""
+		for _, imp := range file.Imports {
+			if imp.Path.Value == `"golang.org/x/tools/go/packages"` {
+				local = "packages"
+				if imp.Name != nil {
+					local = imp.Name.Name
+				}
+			}
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.CompositeLit:
@@ -55,7 +68,7 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 				if !ok || sel.Sel.Name != "Config" {
 					return true
 				}
-				if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "packages" {
+				if pkg, ok := sel.X.(*ast.Ident); !ok || local == "" || pkg.Name != local {
 					return true
 				}
 				for _, elt := range n.Elts {

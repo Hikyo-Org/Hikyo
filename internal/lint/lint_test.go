@@ -425,7 +425,7 @@ func TestGrantWritersIncludeInsertGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !writers["InsertGrant"] {
-		t.Fatal("GrantWriters omits InsertGrant: the analyzer would not enforce the grant surface")
+		t.Fatal("grantWriters omits InsertGrant: the analyzer would not enforce the grant surface")
 	}
 }
 
@@ -443,12 +443,12 @@ func TestMutatingQueriesClassifyByCommand(t *testing.T) {
 	}
 	for _, name := range []string{"ConsumeCredentialAuthority", "TouchSession", "AdvancePrincipalGeneration", "InsertTenantAuditEvent"} {
 		if !mutating[name] {
-			t.Errorf("MutatingQueries omits %q: a write the analyzer would not enforce", name)
+			t.Errorf("mutatingQueries omits %q: a write the analyzer would not enforce", name)
 		}
 	}
 	for _, name := range []string{"GetPrincipalKind", "ResolveOrgChain", "ListGrantsForPrincipal", "GetSessionByVerifier"} {
 		if mutating[name] {
-			t.Errorf("MutatingQueries includes %q: a read misclassified as a write", name)
+			t.Errorf("mutatingQueries includes %q: a read misclassified as a write", name)
 		}
 	}
 }
