@@ -108,7 +108,15 @@ for file in "$@"; do
 		nightly.yml | release.yml)
 			# Credential-isolated signing and native acceptance require macOS.
 			# Every other job in either release workflow remains Ubuntu-only.
-			for apple_job in apple-sign apple-notarize; do
+			desktop_app=false
+			apple_jobs='apple-sign apple-notarize'
+			if [ "$(basename "$file")" = release.yml ]; then
+				# The desktop app (#1215) is the one extra native job and gets the
+				# same runner, environment and cache checks as the signing jobs.
+				desktop_app=true
+				apple_jobs='apple-sign apple-notarize desktop-app'
+			fi
+			for apple_job in $apple_jobs; do
 				[ "$(grep -c "^  $apple_job:\$" "$file")" = 1 ] ||
 					fail "release workflows must declare exactly one $apple_job job"
 				apple=$(workflow_job_block "$file" "$apple_job")
@@ -138,23 +146,6 @@ for file in "$@"; do
 					END { validate(); if (bad) exit 1 }
 				' || fail 'Apple signing must disable setup action caches'
 			done
-			desktop_app=false
-			if [ "$(basename "$file")" = release.yml ]; then
-				# The desktop app (#1215) is the one extra native job: one pinned
-				# runner, its protected environment, no shared caches.
-				desktop_app=true
-				desktop=$(workflow_job_block "$file" desktop-app)
-				[ -n "$desktop" ] || fail 'release.yml has no desktop-app job'
-				printf '%s\n' "$desktop" | grep -Fx '    runs-on: macos-15' >/dev/null ||
-					fail 'desktop-app must run on the pinned macos-15 runner'
-				[ "$(printf '%s\n' "$desktop" | grep -c 'runs-on:')" = 1 ] ||
-					fail 'desktop-app must declare exactly one runner'
-				printf '%s\n' "$desktop" | grep -Fx '    environment: apple-signing' >/dev/null ||
-					fail 'desktop-app must bind its protected credential environment'
-				if printf '%s\n' "$desktop" | grep -E 'actions/cache(@|/)|cache: true|cache-dependency-path' >/dev/null; then
-					fail 'desktop-app must not use shared caches'
-				fi
-			fi
 			native_acceptance=false
 			if [ "$(basename "$file")" = nightly.yml ]; then
 				native_acceptance=true

@@ -36,6 +36,7 @@ type desktopStep struct {
 }
 
 type desktopJob struct {
+	Env         map[string]string `yaml:"env"`
 	Needs       yaml.Node         `yaml:"needs"`
 	If          string            `yaml:"if"`
 	RunsOn      string            `yaml:"runs-on"`
@@ -85,6 +86,30 @@ func TestSecurityReleaseSkipsDesktopReleases(t *testing.T) {
 	}
 }
 
+// The only desktop steps that may hold credentials, each pinned to its exact
+// command so a chained run: cannot add another stage (for example notarization)
+// to a signing step. Credential groups never share a step.
+var desktopCredentialSteps = map[string]string{
+	"Sign the app with the hardened runtime": `./scripts/release/build-desktop-app.sh sign-app "$RUNNER_TEMP/desktop/Hikyo.app"`,
+	"Notarize and staple the app":            `./scripts/release/with-apple-ticket-network.sh ./scripts/release/build-desktop-app.sh notarize "$RUNNER_TEMP/desktop/Hikyo.app"`,
+	"Sign the disk image":                    `./scripts/release/build-desktop-app.sh sign-image "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"`,
+	"Notarize and staple the disk image":     `./scripts/release/with-apple-ticket-network.sh ./scripts/release/build-desktop-app.sh notarize "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"`,
+}
+
+// Which credential group an env key belongs to, by name, so no key escapes by
+// being outside a hard-coded list.
+func credentialGroup(key, value string) string {
+	switch {
+	case strings.HasPrefix(key, "APPLE_NOTARY_KEY_P8"):
+		return "notary"
+	case strings.HasPrefix(key, "APPLE_DEVELOPER_ID_"):
+		return "signing"
+	case strings.Contains(value, "secrets."):
+		return "other"
+	}
+	return ""
+}
+
 func TestDesktopReleaseLaneStaysStableOnlyAndCredentialScoped(t *testing.T) {
 	jobs := readDesktopWorkflow(t, "release.yml")
 	for name, job := range jobs {
@@ -113,17 +138,63 @@ func TestDesktopReleaseLaneStaysStableOnlyAndCredentialScoped(t *testing.T) {
 			t.Fatalf("build-signed-draft must not depend on %s", dependent)
 		}
 	}
+	for name, job := range jobs {
+		for key, value := range job.Env {
+			if strings.Contains(value, "secrets.") {
+				t.Fatalf("%s: job-level env %s carries a secret to every step", name, key)
+			}
+		}
+	}
 	var run strings.Builder
 	for _, step := range app.Steps {
 		run.WriteString(step.Run + "\n")
-		_, signing := step.Env["APPLE_DEVELOPER_ID_P12_BASE64"]
-		_, notary := step.Env["APPLE_NOTARY_KEY_P8"]
-		if signing && notary {
-			t.Fatalf("step %q holds both signing and notary credentials", step.Name)
+		groups := map[string]bool{}
+		for key, value := range step.Env {
+			if group := credentialGroup(key, value); group != "" {
+				groups[group] = true
+			}
+		}
+		for _, value := range step.With {
+			if strings.Contains(value, "secrets.") {
+				t.Fatalf("step %q passes a secret through with:", step.Name)
+			}
+		}
+		if len(groups) > 1 {
+			t.Fatalf("step %q holds signing and notary credentials together", step.Name)
+		}
+		if len(groups) == 1 {
+			want, pinned := desktopCredentialSteps[step.Name]
+			if !pinned || step.Run != want || groups["other"] {
+				t.Fatalf("credentialed step %q is not one of the pinned credential steps with its exact command", step.Name)
+			}
+			if (strings.Contains(want, " notarize ") && !groups["notary"]) || (strings.Contains(want, " sign-") && !groups["signing"]) {
+				t.Fatalf("step %q holds the wrong credential group", step.Name)
+			}
 		}
 		if step.If != "" && strings.Contains(step.Run, "build-desktop-app.sh") {
 			t.Fatalf("step %q makes a signing stage conditional", step.Name)
 		}
+	}
+	for name, want := range desktopCredentialSteps {
+		found := false
+		for _, step := range app.Steps {
+			found = found || (step.Name == name && step.Run == want)
+		}
+		if !found {
+			t.Fatalf("pinned credential step %q is missing or changed", name)
+		}
+	}
+	// The stages run in this order, ending with the Gatekeeper verification.
+	order := []string{"Build the unsigned app", "Sign the app with the hardened runtime", "Notarize and staple the app",
+		"Build the disk image from the stapled app", "Sign the disk image", "Notarize and staple the disk image", "Verify signature, ticket and Gatekeeper"}
+	next := 0
+	for _, step := range app.Steps {
+		if next < len(order) && step.Name == order[next] {
+			next++
+		}
+	}
+	if next != len(order) {
+		t.Fatalf("desktop-app stages out of order or missing at %q", order[next])
 	}
 	for _, forbidden := range []string{"--deep", "wails3", "task package", "codesign --force --sign -"} {
 		if strings.Contains(run.String(), forbidden) {
