@@ -51,7 +51,7 @@ updates:
     groups:
       npm-zero-major:
         patterns:
-          - '@astrojs/check'
+          - '@astrojs/ts-content-mapper'
           - '@hey-api/openapi-ts'
           - '@modelcontextprotocol/conformance'
           - '@open-pencil/*'
@@ -74,8 +74,12 @@ updates:
       - dependency-name: playwright
       - dependency-name: playwright-core
       - dependency-name: '@playwright/test'
-      # docs/site stays on TypeScript 6 for Astro's compiler-API checker
-      # (docs/handoff/upgrade-typescript-7.md); a TS major is a deliberate,
-      # repo-wide migration. clients/ts's npm: aliases are skipped by Dependabot.
+      # A TypeScript major is a deliberate, repo-wide migration
+      # (docs/handoff/upgrade-typescript-7.md). clients/ts's npm: aliases are skipped by Dependabot.
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
+      # TypeScript is pinned to 7.1.0-beta until 7.1.0 stable. npm's `next` tag
+      # publishes nightly 7.1.0-dev builds, which semver ranks above beta; RCs
+      # and stable still update.
+      - dependency-name: typescript
+        versions: ['>= 7.1.0-dev.0 < 7.1.0-rc']

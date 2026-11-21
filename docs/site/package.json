@@ -6,7 +6,7 @@
   "scripts": {
     "prepare-content": "node scripts/prepare-content.mjs",
     "dev": "pnpm run prepare-content && astro dev",
-    "check": "pnpm run prepare-content && astro check",
+    "check": "pnpm run prepare-content && astro sync && tsc --noEmit --runExternalCode",
     "build": "pnpm run prepare-content && astro build",
     "test": "node --test scripts/test-prepare-content.mjs scripts/test-pwa-assets.mjs scripts/test-search-index.mjs && pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-posthog.mjs && node scripts/test-csp.mjs && node scripts/test-llms.mjs && node scripts/test-pwa-offline.mjs",
     "verify": "pnpm run check && pnpm run test"
@@ -49,12 +49,12 @@
     "zod": "4.6.6"
   },
   "devDependencies": {
-    "@astrojs/check": "0.9.12",
+    "@astrojs/ts-content-mapper": "0.2.0",
     "@playwright/test": "1.62.1",
     "@types/node": "26.2.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
-    "typescript": "6.0.3",
+    "typescript": "7.1.0-beta",
     "vite": "8.3.8",
     "workbox-build": "7.4.1",
     "yaml": "2.9.1"

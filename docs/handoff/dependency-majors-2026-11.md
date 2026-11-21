@@ -48,16 +48,33 @@ dependency was compared against its registry's latest release.
   `github.com/google/cel-go`, so moving the admission tests would evaluate CEL
   with a different library than the API server they model.
 - Node stays on 26.x (27 is alpha); Postgres stays 18 (19 is a release candidate).
-- `docs/site` stays on TypeScript 6.0.3 and `clients/ts` keeps the
-  `@typescript/typescript6` alias. Both were retested from scratch on TS 7.0.2:
-  - `astro check` refuses TS 7 by design ("astro check does not currently
-    support TypeScript 7.0"); `@astrojs/check` 0.9.12 and Volar 2.4.31 peer on
-    `<7`, and `verify-docs.sh` runs `pnpm peers check`. The successor,
-    `@astrojs/ts-content-mapper` 0.2.0, is experimental and needs TS 7.1.
-  - `@hey-api/openapi-ts` 0.99.0 (latest stable) crashes at `ts.SyntaxKind`
-    because TS 7.0 exposes no compiler API (hey-api/hey-api#4235). Only the `next`
-    prerelease drops the dependency, and it changes generated output: `baseUrl`
-    becomes `'/'` and 459 schemas become `z.strictObject`.
+- `clients/ts` keeps the `@typescript/typescript6` alias for `@hey-api/openapi-ts`
+  0.99.0, which crashes at `ts.SyntaxKind` without the TS 6 compiler API
+  (hey-api/hey-api#4235). Only the `next` prerelease drops the dependency, and it
+  changes generated output: `baseUrl` becomes `'/'` and 459 schemas become
+  `z.strictObject`.
+
+## TypeScript 7.1 and tsrs
+
+Adopted 2026-11-20 on `dunky13/ts71-tsrs-trial`, deliberately ahead of 7.1.0
+stable at the owner's request:
+
+- `web`, `docs/site` and `clients/ts` (`@typescript/native`) pin
+  `typescript` 7.1.0-beta exactly.
+- `docs/site` replaces `astro check`, which refuses TS 7, with `astro sync` and
+  `tsc --noEmit --runExternalCode` through `@astrojs/ts-content-mapper` 0.2.0.
+  `@astrojs/check` and TypeScript 6.0.3 are gone. On four seeded errors
+  (frontmatter, template expression, component prop, `<script>`), both checkers
+  reported the same codes and positions; the check takes 3.3 s instead of 6.6–7.8 s.
+- `web` adds tsrs 7.1.0-beta.tsrs3 for `node --run typecheck:fast` and the
+  VS Code language server (see CONTRIBUTING.md). `tsc` stays the CI gate: tsrs
+  `--fast` can, rarely, differ from the pinned compiler. tsrs packages carry
+  SLSA provenance from `oxc-project/tsrs` and have no install scripts.
+- Semver ranges exclude prereleases, so Storybook's and react-docgen-typescript's
+  `typescript >= 4.x` peers reject 7.1.0-beta. `web/pnpm-workspace.yaml` allows
+  exactly 7.1.0-beta through `peerDependencyRules`; `pnpm peers check` passes.
+- Dependabot ignores the nightly `7.1.0-dev.*` builds (`>= 7.1.0-dev.0 < 7.1.0-rc`),
+  which semver ranks above the beta. RCs and stable still update.
 
 ## Findings
 
@@ -76,11 +93,15 @@ dependency was compared against its registry's latest release.
 
 ## Next steps
 
-1. When TypeScript 7.1 is stable: move `web` to it, then trial `docs/site` with
-   `@astrojs/ts-content-mapper` and `tsc --runExternalCode`, and recheck whether
-   the hey-api stable release still needs the TS 6 alias.
-2. Optional local trial of tsrs for editor/`--watch` feedback; do not gate CI on
-   it while it is a beta tracking 7.1.
+1. When TypeScript 7.1.0 stable publishes (planned 2026-11-24; the RC slipped),
+   pin it in all three projects, move tsrs to `7.1.0-tsrs1`, and drop the
+   `peerDependencyRules` entry and the Dependabot `7.1.0-dev` ignore. Then
+   recheck whether a hey-api stable release still needs the TS 6 alias.
+2. Optional: enable oxlint type-aware rules with tsrs as the backend (oxlint
+   1.92+, rules in `.oxlintrc.json`, not CLI flags). A trial over `web` took
+   0.66 s and found 70 errors, including 39 `no-misused-promises` and 7
+   `no-floating-promises`. oxlint 1.94 also adds `react(purity)`, which flags
+   `src/routes/MachineAccess.tsx:243`.
 3. Decide whether Zod should enforce `additionalProperties: false`; if so, fix
    the `contract.test.ts:176` fixture first.
 4. Re-prove the MCP fixture on a newer Codex only with an authenticated client.

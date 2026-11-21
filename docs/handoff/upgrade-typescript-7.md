@@ -3,8 +3,10 @@
 Completed 2026-08-23 on `t3code/upgrade-node-26`, after the Node 26.7.0
 toolchain commit `22af0677`.
 
-Rechecked 2026-11-20 against TypeScript 7.0.2: both holds below still apply.
-See [the dependency sweep](./dependency-majors-2026-11.md#deliberately-not-changed).
+Updated 2026-11-20: all three projects pin TypeScript 7.1.0-beta, and `docs/site`
+checks `.astro` files through `@astrojs/ts-content-mapper`. Only the `clients/ts`
+hey-api alias below still applies. See
+[the dependency sweep](./dependency-majors-2026-11.md#typescript-71-and-tsrs).
 
 ## Changed
 
