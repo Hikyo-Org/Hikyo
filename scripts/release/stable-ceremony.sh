@@ -122,7 +122,7 @@ cd "$repo_root"
 desktop_gate() {
 	[ "$("$script_dir/release-channel.sh" "v$1")" = stable ] || return 0
 	"$script_dir/publish-desktop-draft.sh" --check-only "$repository" "$1" release/trust ||
-		fail "desktop-v$1 draft is not ready; rerun the failed jobs of the v$1 release run, then retry"
+		fail "desktop-v$1 draft is not ready: its jobs may still be running (wait for the v$1 release run to finish), or failed (rerun the failed jobs; if their outputs are lost, use Re-run all jobs); then retry"
 }
 case "${1:-help}" in
 	help|--help|-h)

@@ -304,7 +304,11 @@ builder, reproducible-build proof or a certified SLSA level. See the
 
 Every stable tag run also stages a `desktop-v<version>` draft (see
 [Apple signing](apple-signing.md#desktop-app)). A desktop job failure fails the
-run and blocks CLI publication until the failed jobs are rerun.
+run and blocks CLI publication until the failed jobs are rerun. If a check says the
+draft is not ready, first make sure the run has finished, then rerun the failed
+jobs. If a partial rerun loses the other architecture's outputs (the draft job
+cannot find its artifact name or digest), use GitHub's **Re-run all jobs**
+instead.
 
 Once, before the first stable tag, an administrator runs
 `scripts/release/configure-repository.sh Hikyo-Org/Hikyo` to apply the
@@ -323,8 +327,10 @@ describes. `publish` retries are safe: if `v<version>` is already public it
 still publishes the desktop draft, and an already published matching desktop
 release is verified and left unchanged.
 
-The legacy `ceremony.sh --offline` publication does not touch the desktop
-draft. For a stable version it prints the follow-up, which you must run after it
+The legacy `ceremony.sh --offline` publication runs the same check before
+`v<version>` can become public, but it does not publish the desktop draft. For a
+stable version it prints the follow-up (also when resuming an already published
+release), which you must run after it
 reports success, from the repository root:
 
 ```sh
