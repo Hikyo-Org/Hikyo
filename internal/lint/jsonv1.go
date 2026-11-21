@@ -87,21 +87,23 @@ func newJSONv1() *analysis.Analyzer {
 			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "inputs refused: the driver did not pass -root"})
 			return nil, nil
 		}
-		isException := strings.TrimSuffix(pass.Pkg.Path(), "_test") == exception
+		// The exception is decided by each file's directory, so a sibling
+		// package such as api/apigen_test is not exempt by its path.
+		exceptionDir := strings.TrimPrefix(exception, Module+"/")
 		for _, file := range pass.Files {
 			name := fileName(pass, file.Package)
 			reportSummary(pass, summaryGoFile, name)
+			rel, err := filepath.Rel(root, name)
+			if err != nil {
+				rel = name
+			}
 			for _, imp := range file.Imports {
 				if p, _ := strconv.Unquote(imp.Path.Value); p != "encoding/json" {
 					continue
 				}
-				if isException {
-					reportSummary(pass, summaryException, pass.Pkg.Path())
+				if filepath.ToSlash(filepath.Dir(rel)) == exceptionDir {
+					reportSummary(pass, summaryException, exception)
 					continue
-				}
-				rel, err := filepath.Rel(root, name)
-				if err != nil {
-					rel = name
 				}
 				pass.Report(analysis.Diagnostic{Pos: imp.Pos(), Message: fmt.Sprintf(jsonV1Message, filepath.ToSlash(rel))})
 			}

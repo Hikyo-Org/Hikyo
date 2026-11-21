@@ -158,7 +158,9 @@ func newContainmentGates() *analysis.Analyzer {
 			a.Flags.Func("exempt", "comma-separated exempted query names (default: ContainmentGateExemptions)", func(v string) error {
 				exempt = map[string]string{}
 				for _, name := range strings.Split(v, ",") {
-					exempt[name] = "set by -exempt"
+					if name != "" { // an empty value clears the default exemptions
+						exempt[name] = "set by -exempt"
+					}
 				}
 				return nil
 			})

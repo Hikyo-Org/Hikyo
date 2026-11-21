@@ -192,7 +192,7 @@ func writeVerifiedPins(path string, updated []byte, verify func() ([]string, err
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, updated, 0o644); err != nil {
+	if err := replaceFile(path, updated); err != nil {
 		return err
 	}
 	verified, returned := false, false
@@ -200,7 +200,7 @@ func writeVerifiedPins(path string, updated []byte, verify func() ([]string, err
 		if verified {
 			return
 		}
-		if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
+		if restoreErr := replaceFile(path, original); restoreErr != nil {
 			restoreErr = fmt.Errorf("restoring the reviewed pins: %w", restoreErr)
 			if !returned {
 				panic(restoreErr) // verify called t.Fatal or panicked: no return value carries the error
@@ -218,6 +218,22 @@ func writeVerifiedPins(path string, updated []byte, verify func() ([]string, err
 	}
 	verified = true
 	return nil
+}
+
+// replaceFile swaps data in through a sibling temporary file, so a failed
+// write never leaves path truncated or partially written.
+func replaceFile(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".pins-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }() // fails harmlessly after the rename
+	_, err = tmp.Write(data)
+	err = errors.Join(err, tmp.Chmod(0o644), tmp.Close())
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // rawSQLUpdaterFlags are the flags of a rawsql-only vet run for the updater.
@@ -463,7 +479,9 @@ func TestWriteVerifiedPinsPanicsWhenRestoreFailsAfterFatal(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores the read-only mode that makes the restore fail")
 	}
-	path := filepath.Join(t.TempDir(), "reviewed_pins.json")
+	dir := t.TempDir()
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) }) // let TempDir remove it
+	path := filepath.Join(dir, "reviewed_pins.json")
 	if err := os.WriteFile(path, []byte("original\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +491,9 @@ func TestWriteVerifiedPinsPanicsWhenRestoreFailsAfterFatal(t *testing.T) {
 		defer close(done)
 		defer func() { recovered = recover() }()
 		_ = writeVerifiedPins(path, []byte("updated\n"), func() ([]string, error) {
-			if err := os.Chmod(path, 0o444); err != nil {
+			// The restore swaps through a sibling temporary file, which a
+			// read-only directory refuses.
+			if err := os.Chmod(dir, 0o555); err != nil {
 				t.Error(err)
 			}
 			runtime.Goexit()
@@ -483,5 +503,29 @@ func TestWriteVerifiedPinsPanicsWhenRestoreFailsAfterFatal(t *testing.T) {
 	<-done
 	if err, ok := recovered.(error); !ok || !strings.Contains(err.Error(), "restoring the reviewed pins") {
 		t.Fatalf("recovered %v, want the restore error", recovered)
+	}
+}
+
+func TestWriteVerifiedPinsKeepsOriginalWhenTheWriteFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the read-only mode that makes the write fail")
+	}
+	dir := t.TempDir()
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	path := filepath.Join(dir, "reviewed_pins.json")
+	if err := os.WriteFile(path, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeVerifiedPins(path, []byte("updated\n"), func() ([]string, error) {
+		t.Fatal("verify ran after a failed write")
+		return nil, nil
+	}); err == nil {
+		t.Fatal("a failed write was not reported")
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "original\n" {
+		t.Fatalf("pins after a failed write = %q, %v; want the original", got, err)
 	}
 }

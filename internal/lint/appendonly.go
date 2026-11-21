@@ -542,10 +542,16 @@ func newDenialWriter() *analysis.Analyzer {
 
 func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]bool) {
 	for _, file := range pass.Files {
-		ast.Inspect(file, func(n ast.Node) bool {
-			fn, ok := n.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				return true
+		for _, decl := range file.Decls {
+			// A package-level declaration is never an approved writer, so a
+			// reference in an initializer is reported as well.
+			node := ast.Node(decl)
+			fn, _ := decl.(*ast.FuncDecl)
+			if fn != nil {
+				if fn.Body == nil {
+					continue
+				}
+				node = fn.Body
 			}
 			// Inspect every REFERENCE to a mutating generated query, not
 			// just calls. `x.InsertFoo(...)` and `f := x.InsertFoo` select
@@ -553,7 +559,7 @@ func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]boo
 			// smuggle the write past the guard (round-2 finding). Naming
 			// the method at all, in any position, must sit inside an
 			// approved writer.
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
+			ast.Inspect(node, func(n ast.Node) bool {
 				sel, ok := n.(*ast.SelectorExpr)
 				if !ok {
 					return true
@@ -566,16 +572,19 @@ func checkDenialWriterPass(pass *analysis.Pass, writers, mutating map[string]boo
 				if !ok || f.Pkg() == nil || !generatedPackages[f.Pkg().Path()] {
 					return true
 				}
-				if !mutating[f.Name()] || writers[fn.Name.Name] {
+				if !mutating[f.Name()] || (fn != nil && writers[fn.Name.Name]) {
 					return true
+				}
+				owner := "a package-level declaration"
+				if fn != nil {
+					owner = fn.Name.Name
 				}
 				pass.Report(analysis.Diagnostic{Pos: sel.Pos(), Message: fmt.Sprintf(
 					"%s names the mutating query %s, and %s is not in the pinned enumerated write list: every proof-free writer in the resolution surface must be named there (audit-model ADR amendment part 4, extended by #47)",
-					fn.Name.Name, f.Name(), fn.Name.Name)})
+					owner, f.Name(), owner)})
 				return true
 			})
-			return false
-		})
+		}
 	}
 }
 

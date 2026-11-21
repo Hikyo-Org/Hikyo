@@ -92,6 +92,9 @@ func generatedSQLSourceIn(src source, repoRoot, path string, file *ast.File) (bo
 			continue
 		}
 		contents, err := src.ReadFile(filepath.Join(dir, query))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // removed after the listing: absent, like a missing directory
+		}
 		if err != nil {
 			return false, err
 		}

@@ -33,3 +33,10 @@ func MethodValueWriter(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.In
 	write := q.InsertTenantAuditEvent // want "MethodValueWriter names the mutating query InsertTenantAuditEvent, and MethodValueWriter is not in the pinned enumerated write list"
 	return write(ctx, p)
 }
+
+// A package-level initializer is never an approved writer.
+var packageLevelWriter = (*sqlitegen.Queries).InsertTenantAuditEvent // want "a package-level declaration names the mutating query InsertTenantAuditEvent"
+
+var writeHook = func(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertTenantAuditEventParams) error {
+	return q.InsertTenantAuditEvent(ctx, p) // want "a package-level declaration names the mutating query InsertTenantAuditEvent"
+}
