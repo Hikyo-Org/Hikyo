@@ -172,6 +172,8 @@ case "$cmd" in
 		goarch=amd64
 		[ "$arch" != arm64 ] || goarch=arm64
 		mkdir -p "$app/Contents/MacOS"
+		# Absolute, so the go build below writes here and not under desktop/.
+		app=$(CDPATH='' cd -- "$app" && pwd)
 		# Plain go build: the Taskfile's ad-hoc codesign --deep must never reach a release.
 		(
 			cd "$repo_root/desktop"
@@ -291,14 +293,16 @@ case "$cmd" in
 		require_identity
 		[ -d "$app" ] && [ ! -L "$app" ] && [ -f "$dmg" ] && [ ! -L "$dmg" ] || fail 'app bundle and DMG required'
 		new_scratch
+		# check_app also runs as an if condition, where set -e does not apply, so
+		# every mandatory check returns its failure explicitly.
 		check_app() {
-			codesign --verify --strict --verbose=2 -R "$requirement" "$1"
-			codesign -dvv "$1" >"$scratch/describe" 2>&1
+			codesign --verify --strict --verbose=2 -R "$requirement" "$1" || return 1
+			codesign -dvv "$1" >"$scratch/describe" 2>&1 || return 1
 			grep -E 'flags=0x[0-9a-f]+\(.*runtime' "$scratch/describe" >/dev/null || fail 'hardened runtime flag is absent'
 			if grep -F 'Signature=adhoc' "$scratch/describe" >/dev/null; then fail 'ad-hoc signature'; fi
 			codesign -d --entitlements - --xml "$1" >"$scratch/entitlements.xml" 2>/dev/null || fail 'cannot read the signed entitlements'
-			check_entitlements "$scratch/entitlements.xml"
-			xcrun stapler validate "$1"
+			check_entitlements "$scratch/entitlements.xml" || return 1
+			xcrun stapler validate "$1" || return 1
 			[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Contents/Info.plist")" = "$version" ] ||
 				fail 'bundle version differs'
 			[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$1/Contents/Info.plist")" = "$version" ] ||

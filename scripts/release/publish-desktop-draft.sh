@@ -51,6 +51,21 @@ require_tag_commit() {
 		jq -e --arg sha "$commit" '.object.type == "commit" and .object.sha == $sha' >/dev/null ||
 		fail "refs/tags/$desktop_tag does not point at $commit"
 }
+# Before publication the tag may be absent (publishing creates it from the draft's
+# target) but never at another object: the immutable release could not move it.
+require_tag_absent_or_commit() {
+	if "$GH_BIN" api "repos/$repository/git/ref/tags/$desktop_tag" >"$scratch/tagref.json" 2>"$scratch/tagref.err"; then
+		jq -e --arg sha "$commit" '.object.type == "commit" and .object.sha == $sha' "$scratch/tagref.json" >/dev/null ||
+			fail "refs/tags/$desktop_tag already exists and does not point at $commit"
+	else
+		grep -F '(HTTP 404)' "$scratch/tagref.err" >/dev/null || { cat "$scratch/tagref.err" >&2; fail "cannot read refs/tags/$desktop_tag"; }
+	fi
+}
+# Finishing an older version is fine; the desktop series must simply never be Latest.
+require_not_latest() {
+	"$GH_BIN" api "repos/$repository/releases/latest" | jq -e '.tag_name | type == "string" and (startswith("desktop-v") | not)' >/dev/null ||
+		fail 'a desktop-v release became the latest release'
+}
 
 "$GH_BIN" api "repos/$repository/immutable-releases" | jq -e '.enabled == true' >/dev/null ||
 	fail 'immutable GitHub releases must be enabled'
@@ -87,9 +102,11 @@ jq -e --arg commit "$commit" '.source_commit == $commit' "$scratch/draft/desktop
 	fail 'inventory commit differs from the CLI release manifest'
 if [ "$already_public" = true ]; then
 	require_tag_commit
+	require_not_latest
 	printf 'desktop publication: %s already public and immutable; downloaded bytes verified\n' "$desktop_tag"
 	exit 0
 fi
+require_tag_absent_or_commit
 
 if [ "$check_only" = true ]; then
 	printf 'desktop publication: %s draft verified against %s (check only)\n' "$desktop_tag" "$cli_tag"
@@ -111,9 +128,7 @@ jq -e --slurpfile original "$scratch/release.json" '
 	.id == $original[0].id and .tag_name == $original[0].tag_name and
 	.draft == false and .prerelease == false and .immutable == true
 ' "$scratch/public-release.json" >/dev/null || fail 'public release identity or immutability differs'
-# Finishing an older version is fine; the desktop series must simply never be Latest.
-"$GH_BIN" api "repos/$repository/releases/latest" | jq -e '.tag_name | type == "string" and (startswith("desktop-v") | not)' >/dev/null ||
-	fail 'a desktop-v release became the latest release'
+require_not_latest
 require_tag_commit
 "$GH_BIN" release download "$desktop_tag" --repo "$repository" --dir "$scratch/public"
 go run ./scripts/release/stable verify-desktop --trust "$trust" --directory "$scratch/public" \

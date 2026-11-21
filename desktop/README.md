@@ -95,10 +95,13 @@ The instance must advertise `desktop-app/1` in `/api/v1/meta`.
 session needed): it checks that the Wails runtime stays inert in a window and
 that downloads save once, named and gated as the ADR requires.
 
-## Not shipped yet
+## Releases
 
-Code signing and notarization are later work (plan PR 5). v1 has no updater
-(ADR D13); adding one needs its own decision.
+Stable release builds are Developer ID signed and notarized by
+`scripts/release/build-desktop-app.sh` and published as a `desktop-v<version>`
+release; see [Apple signing](../docs/release/apple-signing.md#desktop-app). No
+desktop release exists until the first stable tag. v1 has no updater (ADR D13);
+adding one needs its own decision.
 
 ## CI
 

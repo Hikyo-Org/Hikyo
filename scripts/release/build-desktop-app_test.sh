@@ -93,6 +93,13 @@ done
 ln -s "$good" "$work/linked.app"
 refuses_with 'symlinked bundle' 'app bundle required' check-bundle "$work/linked.app"
 
+# check_app also runs as an if condition, where set -e is off: each mandatory
+# check must return its own failure.
+# shellcheck disable=SC2016 # literal source text to find, not expansions
+for check in 'codesign --verify' 'codesign -dvv' 'check_entitlements "$scratch' 'stapler validate "$1"'; do
+	awk -v c="$check" '/^\t\tcheck_app\(\) \{/{f=1} f&&index($0,c){found=1; if(index($0,"|| return 1"))ok=1} f&&/^\t\t\}/{exit} END{exit !(found&&ok)}' "$script" ||
+		fail "check_app must return the failure of: $check"
+done
 # sign-app checks the bundle before any credential is imported or used.
 awk '/^\tsign-app\)/{f=1} f&&/check_bundle "\$app"/{if(!i)c=1} f&&/import_identity/{i=1} f&&/;;/{exit} END{exit !(c&&i)}' "$script" ||
 	fail 'sign-app must check the bundle before importing the signing identity'

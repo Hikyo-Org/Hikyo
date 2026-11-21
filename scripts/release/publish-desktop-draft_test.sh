@@ -39,6 +39,7 @@ if [ "$1" = --method ] && [ "$2" = PATCH ]; then
 		*) printf 'wrong publication fields: %s\n' "$*" >&2; exit 1 ;;
 	esac
 	jq --argjson id "$id" '(.[] | select(.id == $id)) |= (.draft = false | .immutable = true)' "$F/releases.json" >"$F/releases.new"
+	[ -f "$F/tagref.json" ] || cp "$F/tagref.created" "$F/tagref.json"
 	mv "$F/releases.new" "$F/releases.json"
 	exit 0
 fi
@@ -55,7 +56,10 @@ case "$1" in
 		else
 			jq --argjson id "$id" '.[] | select(.id == $id)' "$F/releases.json"
 		fi ;;
-	repos/example/repo/git/ref/tags/*) cat "$F/tagref.json" ;;
+	repos/example/repo/git/ref/tags/*)
+		[ "$FIXTURE_MODE" != tag-error ] || { printf 'gh: Server Error (HTTP 502)\n' >&2; exit 1; }
+		[ -f "$F/tagref.json" ] || { printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; }
+		cat "$F/tagref.json" ;;
 	repos/example/repo/rulesets\?*) cat "$F/rulesets.json" ;;
 	repos/example/repo/rulesets/*) cat "$F/ruleset-${1##*/}.json" ;;
 	*) printf 'unexpected gh api %s\n' "$*" >&2; exit 1 ;;
@@ -84,7 +88,8 @@ reset() {
 	]' >"$F/releases.json"
 	printf '{"enabled":true}\n' >"$F/immutable.json"
 	printf '{"tag_name":"v1.4.0"}\n' >"$F/latest.json"
-	jq -n --arg commit "$commit" '{ref: "refs/tags/desktop-v1.4.0", object: {type: "commit", sha: $commit}}' >"$F/tagref.json"
+	jq -n --arg commit "$commit" '{ref: "refs/tags/desktop-v1.4.0", object: {type: "commit", sha: $commit}}' >"$F/tagref.created"
+	cp "$F/tagref.created" "$F/tagref.json"
 	jq -c '{id: 11} + .' "$policy/desktop-tag-creation.json" >"$F/ruleset-11.json"
 	jq -c '{id: 12} + .' "$policy/desktop-tag-immutability.json" >"$F/ruleset-12.json"
 	jq -s '[.[] | {id, name, enforcement}]' "$F/ruleset-11.json" "$F/ruleset-12.json" >"$F/rulesets.json"
@@ -166,12 +171,33 @@ grep -F 'desktop-v release became the latest' "$F/out" >/dev/null || fail 'deskt
 reset
 mutate latest.json '.tag_name = "v1.5.0"'
 publish example/repo 1.4.0 release/trust >"$F/out" 2>&1 || fail "newer Latest refused: $(cat "$F/out")"
+# A missing tag is normal before publication: publishing creates it from the target.
 reset
-mutate tagref.json '.object.sha = "2222222222222222222222222222222222222222"'
-if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'wrong tag target accepted'; fi
-grep -F 'does not point at' "$F/out" >/dev/null || fail 'wrong tag target not reported'
+rm "$F/tagref.json"
+publish example/repo 1.4.0 release/trust >"$F/out" 2>&1 || fail "draft without its tag refused: $(cat "$F/out")"
+# A tag that already exists elsewhere is refused before the release can go public.
+for target in sha type; do
+	reset
+	case $target in
+		sha) mutate tagref.json '.object.sha = "2222222222222222222222222222222222222222"' ;;
+		type) mutate tagref.json '.object.type = "tag"' ;;
+	esac
+	expect_refused "existing tag with a different $target" example/repo 1.4.0 release/trust
+	grep -F 'already exists and does not point at' "$F/out" >/dev/null || fail "conflicting tag ($target) not reported"
+	if publish --check-only example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail "check-only accepted a conflicting tag ($target)"; fi
+done
+# Any tag lookup failure other than 404 refuses too.
+reset tag-error
+expect_refused 'unreadable tag ref' example/repo 1.4.0 release/trust
+grep -F 'cannot read refs/tags/desktop-v1.4.0' "$F/out" >/dev/null || fail 'tag lookup failure not reported'
 reset edit-fails
 if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'failed edit accepted'; fi
+# An already public desktop release that became Latest is still refused on retry.
+reset
+mutate releases.json '(.[1].draft) = false | (.[1].immutable) = true'
+mutate latest.json '.tag_name = "desktop-v1.4.0"'
+if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'already-public desktop Latest accepted'; fi
+grep -F 'desktop-v release became the latest' "$F/out" >/dev/null || fail 'already-public desktop Latest not reported'
 # An already public release whose tag moved is refused too.
 reset
 mutate releases.json '(.[1].draft) = false | (.[1].immutable) = true'
