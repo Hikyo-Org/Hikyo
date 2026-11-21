@@ -167,7 +167,8 @@ every context ran, and it runs in the test process, not as a vet result).
   matching digest"). A directory that encloses the repository also contains the
   anchor and passes; its inputs are then read at its own paths, normally
   absent and so reported, unless that directory is itself a checkout (for
-  example one holding a nested worktree), which the driver never passes. `grantlock` and `denialwriter` have no anchor, so the tie
+  example one holding a nested worktree), which the driver never passes.
+  `grantlock` and `denialwriter` have no anchor, so the tie
   does not apply to them. Their `-root` is bound only by the digest: it must
   equal the hash of the declared query files under that root. A root other than
   the repository's with matching digest flags is analyzed as that root; the
@@ -298,8 +299,10 @@ is complete once this step merges.
 - **CI definitions.** The `race-analyzers` group in `reliability.yml` was the set
   of isolation tests that called `LoadRepo`. Its members are now the tests that
   reach `packageScopeNames`, directly or through the package's own functions,
-  which `scripts/ci/race_isolation_workflow_test.go` discovers: the invariant 12 sweep and the sweep's own temp-tree test, which
-  is cheap, so listing it keeps the detector from missing a whole-module sweep.
+  which `scripts/ci/race_isolation_workflow_test.go` discovers with a
+  syntactic heuristic: the invariant 12 sweep and the sweep's own temp-tree
+  test, which is cheap, so listing it keeps the detector from missing a
+  whole-module sweep.
   The race-shard exclusion for
   `internal/lint` (the Consequences bullet that keeps it until the old harness is
   removed) is not lifted here: it lives in `scripts/ci/analysis-shards-go/main.go`,

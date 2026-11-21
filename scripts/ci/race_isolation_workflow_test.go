@@ -259,8 +259,11 @@ func raceIsolationAnalyzerTests(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Names each function body or package-level value refers to; a method and a
-	// function sharing a name merge, which can only add tests to the serial group.
+	// Names each function body or package-level value refers to. Names merge
+	// by spelling (a method, a function and a local sharing one), which can only
+	// add tests to the serial group. This is a syntactic heuristic, not a proof:
+	// reflection or a sweep reached through another package's function value
+	// still escapes it.
 	calls := map[string]map[string]bool{}
 	refer := func(name string, node ast.Node) {
 		callees := calls[name]
@@ -269,11 +272,22 @@ func raceIsolationAnalyzerTests(t *testing.T) []string {
 			calls[name] = callees
 		}
 		ast.Inspect(node, func(node ast.Node) bool {
-			switch n := node.(type) {
-			case *ast.Ident:
+			if n, ok := node.(*ast.Ident); ok {
 				callees[n.Name] = true // a call or a reference, such as a func value
-			case *ast.SelectorExpr:
-				callees[n.Sel.Name] = true
+			}
+			return true
+		})
+	}
+	// An assignment such as `sweep = packageScopeNames` in init makes the
+	// assigned name refer to its value, wherever the assignment sits.
+	assignments := func(body ast.Node) {
+		ast.Inspect(body, func(node ast.Node) bool {
+			if a, ok := node.(*ast.AssignStmt); ok && len(a.Lhs) == len(a.Rhs) {
+				for i, lhs := range a.Lhs {
+					if id, ok := ast.Unparen(lhs).(*ast.Ident); ok {
+						refer(id.Name, a.Rhs[i])
+					}
+				}
 			}
 			return true
 		})
@@ -288,6 +302,7 @@ func raceIsolationAnalyzerTests(t *testing.T) []string {
 			case *ast.FuncDecl:
 				if d.Body != nil {
 					refer(d.Name.Name, d.Body)
+					assignments(d.Body)
 				}
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {

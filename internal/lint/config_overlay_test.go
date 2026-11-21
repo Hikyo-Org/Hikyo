@@ -19,8 +19,9 @@ import (
 // does not depend on how a file names the type: every file is checked, and any
 // Overlay field assignment or address, and any Overlay key whose value is not a
 // string literal (which a map[string][]byte never is), fails it. Aliases,
-// embedding, dot imports and elided types all reach one of those forms; a
-// positional literal or reflection would not.
+// embedding, dot imports and elided types all reach one of those forms. The
+// check is a heuristic, not a proof: a positional literal, reflection or a
+// copied Config would still escape it, and review covers those.
 func TestNoPackagesConfigOverlay(t *testing.T) {
 	root := moduleRoot()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -57,6 +58,10 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 						t.Errorf("%s assigns an Overlay field: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
 					}
 				}
+			case *ast.RangeStmt:
+				if isOverlayField(n.Key) || isOverlayField(n.Value) {
+					t.Errorf("%s assigns an Overlay field in a range clause: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
+				}
 			case *ast.UnaryExpr:
 				if n.Op == token.AND && isOverlayField(n.X) {
 					t.Errorf("%s takes an Overlay field's address: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
@@ -72,6 +77,9 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 }
 
 func isOverlayField(e ast.Expr) bool {
+	if e == nil {
+		return false
+	}
 	sel, ok := ast.Unparen(e).(*ast.SelectorExpr)
 	return ok && sel.Sel.Name == "Overlay"
 }
