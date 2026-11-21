@@ -1,48 +1,43 @@
 package lint
 
 import (
-	"fmt"
 	"go/ast"
 	"go/types"
-	"strings"
 
-	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/analysis"
 )
 
-// CheckTransactionResults keeps tx.WriteResult's generic result channel
-// detached from transaction-owned authority. Runtime reflection is forbidden
-// in packages that handle Proof values, so this repository-wide type walk is
-// the fail-closed enforcement point.
-func CheckTransactionResults(pkgs []*packages.Package) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if p.TypesInfo == nil || (!strings.HasPrefix(p.PkgPath, Module+"/") && p.PkgPath != Module) {
-			continue
+// TxResult is the txresult analyzer.
+var TxResult = &analysis.Analyzer{
+	Name: "txresult",
+	Doc:  "tx.WriteResult results must be detached data",
+	Run: func(pass *analysis.Pass) (any, error) {
+		if !inModule(pass.Pkg.Path()) {
+			return nil, nil
 		}
-		for _, file := range p.Syntax {
+		for _, file := range pass.Files {
 			ast.Inspect(file, func(node ast.Node) bool {
 				call, ok := node.(*ast.CallExpr)
-				if !ok || !isWriteResultCall(p, call.Fun) {
+				if !ok || !isWriteResultCall(pass.TypesInfo, call.Fun) {
 					return true
 				}
-				sig, _ := p.TypesInfo.TypeOf(call.Fun).(*types.Signature)
+				sig, _ := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature)
 				if sig == nil || sig.Results().Len() == 0 {
 					return true
 				}
 				resultType := sig.Results().At(0).Type()
 				if reason := detachedResultViolation(resultType, make(map[types.Type]bool)); reason != "" {
-					findings = append(findings, fmt.Sprintf(
-						"txresult: %s: tx.WriteResult result %s is not detached data: %s",
-						p.Fset.Position(call.Pos()), types.TypeString(resultType, nil), reason))
+					pass.Reportf(call.Pos(), "tx.WriteResult result %s is not detached data: %s",
+						types.TypeString(resultType, nil), reason)
 				}
 				return true
 			})
 		}
-	}
-	return findings
+		return nil, nil
+	},
 }
 
-func isWriteResultCall(p *packages.Package, expr ast.Expr) bool {
+func isWriteResultCall(info *types.Info, expr ast.Expr) bool {
 	for {
 		switch node := expr.(type) {
 		case *ast.IndexExpr:
@@ -57,9 +52,9 @@ func isWriteResultCall(p *packages.Package, expr ast.Expr) bool {
 	var obj types.Object
 	switch node := expr.(type) {
 	case *ast.Ident:
-		obj = p.TypesInfo.Uses[node]
+		obj = info.Uses[node]
 	case *ast.SelectorExpr:
-		obj = p.TypesInfo.Uses[node.Sel]
+		obj = info.Uses[node.Sel]
 	}
 	fn, ok := obj.(*types.Func)
 	return ok && fn.Name() == "WriteResult" && fn.Pkg() != nil && fn.Pkg().Path() == Module+"/internal/store/tx"

@@ -259,9 +259,9 @@ jobs:
         id: plan
         shell: bash
         run: |
-          # These invariants share lint.LoadRepo's process-local cache. Keep
-          # them together until golang/go#81122 is fixed in our toolchain.
-          analyzers='["TestInvariant07ProofSignatures","TestInvariant09ForgeryGuard","TestInvariant09aDriverHandleConfinement","TestInvariant09bTransactionResultsAreDetached","TestInvariant12CacheDiscipline","TestInvariantAuditRedaction"]'
+          # Whole-module static sweeps run serially in their own job, apart from
+          # the database-backed shards.
+          analyzers='["TestInvariant12CacheDiscipline","TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles"]'
           matrix='[]'
           for shard in $(seq 0 7); do
             targets=$(./scripts/ci/analysis-shards isolation-race --root . --shard "$shard" --shards 8 |

@@ -2,7 +2,6 @@ package lint
 
 import (
 	"go/token"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +13,7 @@ import (
 func TestAlertCollectorDriverAuthorityIsExactFileScoped(t *testing.T) {
 	const owner = Module + "/scripts/security/alert-route"
 	const sourceFile = "/" + alertCollectorSnapshotFile
-	pkgs, err := Load("../../scripts/security/alert-route")
+	pkgs, err := loadDefault("../../scripts/security/alert-route")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,10 +54,9 @@ func TestAlertCollectorDriverAuthorityIsExactFileScoped(t *testing.T) {
 			candidate.PkgPath = tc.pkg
 			candidate.Fset = files
 			if tc.generated {
-				candidate.Imports = maps.Clone(actual.Imports)
-				candidate.Imports[Module+"/internal/store/sqlitegen"] = &packages.Package{PkgPath: Module + "/internal/store/sqlitegen"}
+				addImport(&candidate, Module+"/internal/store/sqlitegen")
 			}
-			findings := CheckDriverHandles([]*packages.Package{&candidate})
+			findings := checkDriverHandles([]*packages.Package{&candidate})
 			driverFound := false
 			for _, finding := range findings {
 				driverFound = driverFound || strings.Contains(finding, "names driver type database/sql.")
@@ -112,27 +110,22 @@ func TestAlertCollectorSnapshotProtocolRejectsDrift(t *testing.T) {
 		{name: "scope helper drift", source: change(`b.Scope["project_id"] = s.Project`, `b.Scope["project_id"] = s.Org`), refusal: "changed reviewed helper dependency " + alertCollectorSnapshotFile + ":binding"},
 		{name: "unreviewed caller", source: source + "\nfunc anotherReader(s source, now time.Time) ([]byte,int,error) { return readCollectorSnapshot(s,now) }\n", refusal: "anotherReader references protocol"},
 		{name: "unreviewed SQL", source: source + "\nfunc otherSQL(db *sql.DB) { _, _ = db.Exec(\"DELETE FROM batches\") }\n", refusal: "otherSQL executes handwritten SQL outside a named engine protocol"},
-		{name: "neighboring file", source: source, alternate: filepath.Join(filepath.Dir(filename), "unreviewed_snapshot.go"), refusal: "unreviewed_snapshot.go:readCollectorSnapshot executes handwritten SQL outside a named engine protocol"},
+		{name: "neighboring file", source: source, alternate: filepath.Join(filepath.Dir(filename), "detect.go"), refusal: "detect.go:readCollectorSnapshot executes handwritten SQL outside a named engine protocol"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			overlay := map[string][]byte{filename: []byte(tc.source)}
+			sources := map[string][]byte{filename: []byte(tc.source)}
 			if tc.alternate != "" {
-				overlay[filename] = []byte("package main\n")
-				overlay[tc.alternate] = []byte(tc.source)
-			}
-			pkgs, err := packages.Load(&packages.Config{Dir: root, Overlay: overlay, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports}, Module+"/scripts/security/alert-route")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(pkgs) == 0 {
-				t.Fatal("no typed alert collector loaded")
-			}
-			for _, p := range pkgs {
-				for _, err := range p.Errors {
+				// Swap the reviewed file with a sibling: the protocol moves to an
+				// unreviewed file and every declaration stays defined.
+				sibling, err := os.ReadFile(tc.alternate)
+				if err != nil {
 					t.Fatal(err)
 				}
+				sources[filename] = sibling
+				sources[tc.alternate] = []byte(tc.source)
 			}
-			findings := CheckRawSQL(pkgs, root, Module, pins)
+			pkgs := loadWithSources(t, root, Module+"/scripts/security/alert-route", sources)
+			findings := checkRawSQL(pkgs, root, Module, pins)
 			if tc.refusal == "" {
 				if len(findings) != 0 {
 					t.Fatalf("reviewed external snapshot refused: %v", findings)

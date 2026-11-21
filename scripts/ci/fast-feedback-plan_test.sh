@@ -110,6 +110,18 @@ plan all app/deleted.go removed/final.go
 expect '.go and (.lanes.go.checks | map(.id)) == ["go-compile"]'
 feedback_plan_select go application
 [ "${#go_files[@]}" -eq 0 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./app ]
+# Packages go list ./... skips are formatted but never compiled by path.
+mkdir -p internal/lint/testdata/fixture .hidden/pkg _scratch
+printf '//go:build ignore\n\npackage fixture\n' >internal/lint/testdata/fixture/ignored.go
+printf 'package pkg\n' >.hidden/pkg/a.go
+printf 'package scratch\n' >_scratch/a.go
+plan all internal/lint/testdata/fixture/ignored.go .hidden/pkg/a.go _scratch/a.go
+expect '.go == false and (.lanes.go.checks | map(.id)) == ["go-format"]'
+feedback_plan_select go application
+[ "${#go_files[@]}" -eq 3 ] && [ "${#go_packages[@]}" -eq 0 ]
+plan all app/owner.go
+feedback_plan_select go application
+[ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./app ]
 # desktop/ is a nested module: its Go files are formatted from the root but compiled
 # only by the desktop check, never by the root go-compile, which cannot load them.
 mkdir -p desktop/internal/shell internal/crypto

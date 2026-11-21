@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -217,7 +216,7 @@ exit 0
 				}
 				sort.Strings(selected)
 				if strings.Join(selected, "\n") != strings.Join(analyzers, "\n") {
-					t.Fatalf("serial group must match every LoadRepo caller: got %v, want %v", selected, analyzers)
+					t.Fatalf("serial group must match every whole-module sweep: got %v, want %v", selected, analyzers)
 				}
 				var matrix struct {
 					Include []struct {
@@ -248,65 +247,100 @@ exit 0
 	}
 }
 
-// Keep the serial group tied to source: a new repository-loading invariant must
-// be assigned to the analyzer job rather than quietly reintroducing this race.
+// Keep the serial group tied to source: a new whole-module static sweep must be
+// assigned to the analyzer job rather than quietly joining the runtime shards.
+// A sweep is an isolation test that calls packageScopeNames, directly or through
+// any chain of the package's own functions. A test that sweeps only a temporary
+// tree is listed too: a cheap test in the serial job costs nothing, while a
+// whole-module sweep missed here would join the shards.
 func raceIsolationAnalyzerTests(t *testing.T) []string {
 	t.Helper()
-	files, err := filepath.Glob("../../internal/isolation/*_test.go")
+	files, err := filepath.Glob("../../internal/isolation/*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var names []string
+	// Names each function body or package-level value refers to. Names merge
+	// by spelling (a method, a function and a local sharing one), which can only
+	// add tests to the serial group. This is a syntactic heuristic, not a proof:
+	// reflection or a sweep reached through another package's function value
+	// still escapes it.
+	calls := map[string]map[string]bool{}
+	refer := func(name string, node ast.Node) {
+		callees := calls[name]
+		if callees == nil {
+			callees = map[string]bool{}
+			calls[name] = callees
+		}
+		ast.Inspect(node, func(node ast.Node) bool {
+			if n, ok := node.(*ast.Ident); ok {
+				callees[n.Name] = true // a call or a reference, such as a func value
+			}
+			return true
+		})
+	}
+	// An assignment such as `sweep = packageScopeNames` in init makes the
+	// assigned name refer to its value, wherever the assignment sits.
+	assignments := func(body ast.Node) {
+		ast.Inspect(body, func(node ast.Node) bool {
+			if a, ok := node.(*ast.AssignStmt); ok && len(a.Lhs) == len(a.Rhs) {
+				for i, lhs := range a.Lhs {
+					if id, ok := ast.Unparen(lhs).(*ast.Ident); ok {
+						refer(id.Name, a.Rhs[i])
+					}
+				}
+			}
+			return true
+		})
+	}
 	for _, path := range files {
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		lintName := ""
-		for _, spec := range file.Imports {
-			path, err := strconv.Unquote(spec.Path.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if path == "github.com/Hikyo-Org/hikyo/internal/lint" {
-				lintName = "lint"
-				if spec.Name != nil {
-					lintName = spec.Name.Name
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Body != nil {
+					refer(d.Name.Name, d.Body)
+					assignments(d.Body)
 				}
-				if lintName == "." {
-					t.Fatal("lint imports must be qualified for analyzer discovery")
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					if v, ok := spec.(*ast.ValueSpec); ok {
+						for _, name := range v.Names {
+							for _, value := range v.Values {
+								refer(name.Name, value)
+							}
+						}
+					}
 				}
 			}
 		}
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || !strings.HasPrefix(fn.Name.Name, "Test") {
+	}
+	sweeps := map[string]bool{"packageScopeNames": true}
+	for changed := true; changed; {
+		changed = false
+		for name, callees := range calls {
+			if sweeps[name] {
 				continue
 			}
-			loadsRepo := false
-			ast.Inspect(fn.Body, func(node ast.Node) bool {
-				call, ok := node.(*ast.CallExpr)
-				if !ok {
-					return true
+			for callee := range callees {
+				if sweeps[callee] {
+					sweeps[name], changed = true, true
+					break
 				}
-				selector, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				pkg, ok := selector.X.(*ast.Ident)
-				if ok && pkg.Name == lintName && (selector.Sel.Name == "LoadRepo" || selector.Sel.Name == "LoadRepoIn") {
-					loadsRepo = true
-				}
-				return true
-			})
-			if loadsRepo {
-				names = append(names, fn.Name.Name)
 			}
+		}
+	}
+	var names []string
+	for name := range calls {
+		if strings.HasPrefix(name, "Test") && sweeps[name] {
+			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
 	if len(names) == 0 {
-		t.Fatal("no repository-loading invariants found")
+		t.Fatal("no whole-module static sweeps found")
 	}
 	return names
 }

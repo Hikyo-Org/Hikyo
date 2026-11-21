@@ -4,8 +4,6 @@ import (
 	"go/token"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/tools/go/packages"
 )
 
 // Exact source-owned exceptions. Being inside store, a fixture package or the
@@ -147,13 +145,13 @@ var driverFiles = map[string]bool{
 	"internal/upgradegate/gate_test.go":                          true,
 }
 
-func permittedHandlePosition(p *packages.Package, base string, pos token.Pos) bool {
+func permittedHandlePosition(fset *token.FileSet, base string, pos token.Pos) bool {
 	// Generated DBTX definitions and outbound provider connections are distinct
 	// owned boundaries; neither is a Hikyo runtime repository caller.
 	if base == Module+"/internal/store/pggen" || base == Module+"/internal/store/sqlitegen" || base == Module+"/internal/dynamic/postgres" {
 		return true
 	}
-	filename := filepath.ToSlash(p.Fset.Position(pos).Filename)
+	filename := filepath.ToSlash(fset.PositionFor(pos, false).Filename)
 	if base == Module+"/scripts/security/artifact-harness" && strings.HasSuffix(filename, "/"+artifactHarnessRuntimeFile) {
 		return driverFiles[artifactHarnessRuntimeFile]
 	}
@@ -182,19 +180,19 @@ func permittedHandlePosition(p *packages.Package, base string, pos token.Pos) bo
 
 // Coordination SQL receives already admitted transaction wrappers, never a
 // pool or native connection. This exception does not grant raw driver access.
-func permittedGuardedTransaction(p *packages.Package, base string, pos token.Pos, named string) bool {
+func permittedGuardedTransaction(fset *token.FileSet, base string, pos token.Pos, named string) bool {
 	if named != Module+"/internal/store.SQLiteTransaction" && named != Module+"/internal/store.PostgresTransaction" {
 		return false
 	}
-	filename := filepath.ToSlash(p.Fset.Position(pos).Filename)
+	filename := filepath.ToSlash(fset.PositionFor(pos, false).Filename)
 	return base == Module+"/internal/store" && (strings.HasSuffix(filename, "/internal/store/coordination.go") || strings.HasSuffix(filename, "/internal/store/coordination_self_config.go"))
 }
 
-func permittedRawConstructor(p *packages.Package, base string, pos token.Pos) bool {
+func permittedRawConstructor(fset *token.FileSet, base string, pos token.Pos) bool {
 	if base != Module+"/internal/store" {
 		return false
 	}
-	filename := filepath.ToSlash(p.Fset.Position(pos).Filename)
+	filename := filepath.ToSlash(fset.PositionFor(pos, false).Filename)
 	for _, name := range []string{"store.go", "preparation.go", "recovery.go", "restore_destination.go", "pool_test.go"} {
 		if strings.HasSuffix(filename, "/internal/store/"+name) {
 			return true

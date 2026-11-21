@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +28,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // Vault/OpenBao KV v2 delivery (#162), end to end through the real service,
@@ -368,7 +368,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatal(err)
 	}
 	drain()
-	if !reflect.DeepEqual(before, metadata()) {
+	if !reflectx.Equal(before, metadata()) {
 		t.Fatal("restarted outbox inferred an unknown writer or changed held metadata")
 	}
 	if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
@@ -415,7 +415,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		}
 		drain()
 		afterSentinel := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"]
-		if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous || !reflect.DeepEqual(beforeKey, metadata()) || !reflect.DeepEqual(beforeSentinel, afterSentinel) {
+		if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous || !reflectx.Equal(beforeKey, metadata()) || !reflectx.Equal(beforeSentinel, afterSentinel) {
 			t.Fatal("held target retry changed metadata/history or lost attention status")
 		}
 	}
@@ -588,7 +588,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 			drain()
 		}
 		move, err := svc.Move(ctx, operator, scope, moveID)
-		if err != nil || move.State != "attention_required" || !reflect.DeepEqual(beforeHeld, metadata()) {
+		if err != nil || move.State != "attention_required" || !reflectx.Equal(beforeHeld, metadata()) {
 			t.Fatalf("review-held route lost old custody or cancellation: state=%s err=%v", move.State, err)
 		}
 		if queryInt(t, db, "SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id='"+moveID+"' AND kind='activate'") != 0 {
@@ -678,7 +678,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		if _, err := svc.Plan(ctx, operator, scope, retained.ID); err != nil {
 			t.Fatalf("held teardown cannot prepare version-bound review: %v", err)
 		}
-		if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+		if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflectx.Equal(retainedMetadata["data"], after["data"]) {
 			t.Fatal("review-held teardown changed provider metadata")
 		}
 		if !wholeAdapter {
@@ -693,7 +693,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 				t.Fatalf("adopt paused removal: %v", err)
 			}
 			drain()
-			if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+			if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflectx.Equal(retainedMetadata["data"], after["data"]) {
 				t.Fatal("adoption bypassed pause")
 			}
 			if _, err := svc.ResumeTarget(ctx, operator, scope, retained.ID); err != nil {
@@ -713,7 +713,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatalf("retain failed to name orphaned custody: %v", err)
 	}
 	drain()
-	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflectx.Equal(retainedMetadata["data"], after["data"]) {
 		t.Fatal("retain mutated provider version or metadata")
 	}
 	if got, ok := server.value(t, mount, "hikyo/retain/DATABASE_URL"); !ok || got != kvSecretOne {
@@ -746,7 +746,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if err != nil || legacyView.Target.State != "active" || legacyView.Target.PausedAt == nil || legacyView.Target.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
 		t.Fatalf("namespace refusal lost held teardown recovery: err=%v state=%s", err, legacyView.Target.State)
 	}
-	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/namespace-hold/DATABASE_URL", nil); !reflect.DeepEqual(legacyMetadata["data"], after["data"]) {
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/namespace-hold/DATABASE_URL", nil); !reflectx.Equal(legacyMetadata["data"], after["data"]) {
 		t.Fatal("namespace refusal mutated the root value history or markers")
 	}
 	if removed, err := svc.RemoveTarget(ctx, operator, scope, legacy.ID, true); err != nil || len(removed.Orphaned) == 0 {
@@ -815,7 +815,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if _, err := svc.Adopt(ctx, operator, otherScope, service.AdoptAdapterRequest{TargetID: contender.ID, ArtifactID: plan.ArtifactID, ExpectedGeneration: view.Target.Generation, ExpectedDestinationID: view.Target.DestinationID, ExpectedRepositoryID: view.Target.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "DATABASE_URL"}}}); !errors.Is(err, domain.ErrConflict) || !errors.Is(err, adapter.ErrOperatorReview) {
 		t.Fatalf("opposite-surface foreign adoption = %v, want conflict", err)
 	}
-	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/cross-surface/DATABASE_URL", nil)["data"]; !reflect.DeepEqual(foreignMetadata, after) {
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/cross-surface/DATABASE_URL", nil)["data"]; !reflectx.Equal(foreignMetadata, after) {
 		t.Fatal("foreign config custody was overwritten through secret adoption")
 	}
 	if _, err := svc.Delete(ctx, operator, otherScope, competing.Adapter.ID, true); err != nil {

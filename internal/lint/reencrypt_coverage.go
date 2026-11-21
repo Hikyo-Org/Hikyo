@@ -2,32 +2,48 @@ package lint
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+
+	"golang.org/x/tools/go/analysis"
 )
 
-// CheckReencryptCoverage is the reencrypt-coverage gate (encryption-model ADR
-// § Rotation, invariant 7 / #187). A DEK version is retired only once zero
-// ciphertexts reference it, and reencrypt proves that by walking every table
-// that holds tier-3-DEK-enveloped ciphertext. If a NEW enveloped column is added
-// to the schema but not to the walk, its rows are never moved and never scanned
-// by the retire's dryness gate (which scans only the walk's tables) — so the
-// retire would destroy a still-referenced key. This gate makes that impossible
-// to add silently: every BLOB/BYTEA column in the schema must be classified as
-// either reencrypt-covered or explicitly exempt, and an unclassified new column
-// fails the build until someone decides which it is.
-//
-// The covered set must equal reencrypt's walk (service.Reencrypt). The exempt
-// set is every other BLOB column, each a reviewed non-target: a wrapped KEY
-// (master/tier3 — a different tier, rotated by rotate-master-key/rotate-dek, not
-// reencrypt), a hashed/single-use VERIFIER (never envelope-decryptable), a
-// short-lived FLOW artifact (OAuth/SAML/WebAuthn transaction state), or PUBLIC
-// material (certificates, public keys, opaque handles).
-func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
-	found, err := scanBlobColumns(sqliteMigrationsDir)
+func reencryptSpecs(string) ([]InputSpec, error) {
+	return []InputSpec{{Dir: "internal/store/migrations/sqlite", Exts: []string{".sql"}}}, nil
+}
+
+// ReencryptCoverage runs the reencrypt coverage check over the declared sqlite
+// migrations, once, on internal/store.
+var ReencryptCoverage = newReencryptCoverage()
+
+func newReencryptCoverage() *analysis.Analyzer {
+	covered, exempt := reencryptCovered, reencryptExemptBlobs
+	list := func(set *map[string]string) func(string) error {
+		return func(v string) error {
+			*set = map[string]string{}
+			for _, tc := range strings.Split(v, ",") {
+				(*set)[tc] = "set by flag"
+			}
+			return nil
+		}
+	}
+	return fileCheck{
+		name: "reencryptcoverage", doc: "every BLOB column of the schema is classified as reencrypt-covered or exempt",
+		anchor: Module + "/internal/store",
+		flags: func(a *analysis.Analyzer) {
+			a.Flags.Func("covered", "comma-separated table.column covered set (default: reencryptCovered)", list(&covered))
+			a.Flags.Func("exempt", "comma-separated table.column exempt set (default: reencryptExemptBlobs)", list(&exempt))
+		},
+		run: func(src source, root string) ([]string, error) {
+			return checkReencryptCoverage(src, filepath.Join(root, "internal", "store", "migrations", "sqlite"), covered, exempt), nil
+		},
+	}.analyzer()
+}
+
+func checkReencryptCoverage(src source, sqliteMigrationsDir string, reencryptCovered, reencryptExemptBlobs map[string]string) []string {
+	found, err := scanBlobColumns(src, sqliteMigrationsDir)
 	if err != nil {
 		return []string{"reencrypt-coverage: " + err.Error()}
 	}
@@ -37,7 +53,7 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 		_, exempt := reencryptExemptBlobs[tc]
 		switch {
 		case covered && exempt:
-			findings = append(findings, fmt.Sprintf("reencrypt-coverage: %s is in BOTH the covered and exempt sets — pick one", tc))
+			findings = append(findings, fmt.Sprintf("reencrypt-coverage: %s is in BOTH the covered and exempt sets: pick one", tc))
 		case !covered && !exempt:
 			findings = append(findings, fmt.Sprintf(
 				"reencrypt-coverage: %s is an unclassified BLOB column. If it holds tier-3-DEK-enveloped "+
@@ -45,7 +61,7 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 					"reencryptExemptBlobs with a reason.", tc))
 		}
 	}
-	// Every covered pin must still exist in the schema — a renamed/dropped column
+	// Every covered pin must still exist in the schema: a renamed/dropped column
 	// left in the pin is a stale claim the walk can no longer honor.
 	present := map[string]bool{}
 	for _, tc := range found {
@@ -101,11 +117,11 @@ var reencryptExemptBlobs = map[string]string{
 	"projects.identity_image": "public avatar image bytes (not secret, not enveloped)",
 	// Transit (#156, #1129): an Ed25519 or ML-DSA-65 public key is public metadata, never sealed.
 	"transit_key_versions.public_key": "transit signing public key (public metadata, not enveloped)",
-	// Wrapped KEYS — a different tier, rotated by rotate-master-key / rotate-dek,
+	// Wrapped KEYS: a different tier, rotated by rotate-master-key / rotate-dek,
 	// never by reencrypt (which moves ciphertext, not keys).
 	"master_keys.blob": "master key wrapped by the root; rotate-root/master-key territory",
 	"tier3_keys.blob":  "tier-3 DEK wrapped by the master; rotate-dek/master-key territory",
-	// Hashed or single-use VERIFIERS — one-way, never envelope-decryptable.
+	// Hashed or single-use VERIFIERS: one-way, never envelope-decryptable.
 	"sessions.verifier":                   "session artifact verifier (hashed, not enveloped)",
 	"sessions.csrf_verifier":              "session CSRF verifier (hashed)",
 	"sessions_rebuilt.verifier":           "session verifier on a table-rebuild copy",
@@ -118,7 +134,7 @@ var reencryptExemptBlobs = map[string]string{
 	"credential_authorities.verifier":     "single-use credential-establishment authority (hashed)",
 	"credential_authorities_new.verifier": "credential authority verifier on a table-rebuild copy",
 	"registration_signups.token_verifier": "single-use sign-up verification token (hashed `su` artifact)",
-	// Short-lived FLOW artifacts — OAuth / SAML / WebAuthn transaction state,
+	// Short-lived FLOW artifacts: OAuth / SAML / WebAuthn transaction state,
 	// hashed or opaque, expired not rotated.
 	"oidc_transactions.browser_binding_verifier": "OIDC browser-binding verifier (flow)",
 	"oidc_transactions.state_verifier":           "OIDC state verifier (flow)",
@@ -145,7 +161,7 @@ var reencryptExemptBlobs = map[string]string{
 	"webauthn_ceremonies.session_data":               "WebAuthn ceremony session data (flow)",
 	"webauthn_ceremonies_rebuilt.challenge_verifier": "WebAuthn ceremony challenge verifier on a table-rebuild copy (#760)",
 	"webauthn_ceremonies_rebuilt.session_data":       "WebAuthn ceremony session data on a table-rebuild copy (#760)",
-	// PUBLIC material — certificates, public keys, opaque handles.
+	// PUBLIC material: certificates, public keys, opaque handles.
 	"saml_providers.signing_certificates":   "IdP signing certificates (public)",
 	"saml_sp_keys.certificate_der":          "SP certificate (public)",
 	"pki_issuers.certificate_der":           "CA certificate (public, #154)",
@@ -167,17 +183,17 @@ var (
 
 // scanBlobColumns returns the sorted, de-duplicated "table.column" list of every
 // BLOB/BYTEA column defined across the migration files.
-func scanBlobColumns(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+func scanBlobColumns(src source, dir string) ([]string, error) {
+	names, err := src.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read migrations: %w", err)
 	}
 	seen := map[string]bool{}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := src.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return nil, err
 		}

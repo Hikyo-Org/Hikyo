@@ -18,7 +18,6 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
-	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -30,6 +29,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/samlsp"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 type staticMetadataResolver []netip.Addr
@@ -378,10 +378,10 @@ func TestSAMLCeremonyAuditDetailsPreserveRefusalContext(t *testing.T) {
 				if gotType != test.wantType {
 					t.Errorf("event type = %q, want %q", gotType, test.wantType)
 				}
-				if !reflect.DeepEqual(gotObject, test.wantObject) {
+				if !reflectx.Equal(gotObject, test.wantObject) {
 					t.Errorf("object = %#v, want %#v", gotObject, test.wantObject)
 				}
-				if !reflect.DeepEqual(gotPayload, wantPayload) {
+				if !reflectx.Equal(gotPayload, wantPayload) {
 					t.Errorf("payload = %#v, want %#v", gotPayload, wantPayload)
 				}
 			})
@@ -512,7 +512,7 @@ func TestSAMLMetadataSlowResponseIsBounded(t *testing.T) {
 }
 
 func TestSAMLProvidersExposeNoHTTPClientOverride(t *testing.T) {
-	if _, exposed := reflect.TypeFor[SAMLProviders]().FieldByName("HTTPClient"); exposed {
+	if exposed := reflectx.HasField[SAMLProviders]("HTTPClient"); exposed {
 		t.Fatal("SAMLProviders exposes arbitrary HTTPClient replacement")
 	}
 }
