@@ -138,6 +138,23 @@ for file in "$@"; do
 					END { validate(); if (bad) exit 1 }
 				' || fail 'Apple signing must disable setup action caches'
 			done
+			desktop_app=false
+			if [ "$(basename "$file")" = release.yml ]; then
+				# The desktop app (#1215) is the one extra native job: one pinned
+				# runner, its protected environment, no shared caches.
+				desktop_app=true
+				desktop=$(workflow_job_block "$file" desktop-app)
+				[ -n "$desktop" ] || fail 'release.yml has no desktop-app job'
+				printf '%s\n' "$desktop" | grep -Fx '    runs-on: macos-15' >/dev/null ||
+					fail 'desktop-app must run on the pinned macos-15 runner'
+				[ "$(printf '%s\n' "$desktop" | grep -c 'runs-on:')" = 1 ] ||
+					fail 'desktop-app must declare exactly one runner'
+				printf '%s\n' "$desktop" | grep -Fx '    environment: apple-signing' >/dev/null ||
+					fail 'desktop-app must bind its protected credential environment'
+				if printf '%s\n' "$desktop" | grep -E 'actions/cache(@|/)|cache: true|cache-dependency-path' >/dev/null; then
+					fail 'desktop-app must not use shared caches'
+				fi
+			fi
 			native_acceptance=false
 			if [ "$(basename "$file")" = nightly.yml ]; then
 				native_acceptance=true
@@ -162,8 +179,8 @@ for file in "$@"; do
 				fi
 			fi
 			runner_source=$(mktemp)
-			awk -v native_acceptance="$native_acceptance" '
-				$0 == "  apple-sign:" || $0 == "  apple-notarize:" || (native_acceptance == "true" && $0 == "  apple-acceptance:") { skip = 1; next }
+			awk -v native_acceptance="$native_acceptance" -v desktop_app="$desktop_app" '
+				$0 == "  apple-sign:" || $0 == "  apple-notarize:" || (desktop_app == "true" && $0 == "  desktop-app:") || (native_acceptance == "true" && $0 == "  apple-acceptance:") { skip = 1; next }
 				skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 				!skip { print }
 			' "$file" >"$runner_source"

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <!-- Hardened runtime without the App Sandbox. The shell needs no exception:
+       it is pure Go plus WebKit, its keychain items use a file-based keychain
+       ACL bound to the app's designated requirement (no access-group
+       entitlement), and it loads no unsigned code. Never add
+       get-task-allow, disable-library-validation, allow-unsigned-executable-memory
+       or allow-dyld-environment-variables. -->
+  <dict/>
+</plist>
