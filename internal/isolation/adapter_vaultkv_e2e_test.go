@@ -297,7 +297,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	drain := func() {
 		t.Helper()
 		for range 8 {
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			worked, err := worker.RunOnce(ctx)
 			if err != nil {
 				t.Fatalf("worker: %v", err)
@@ -464,7 +464,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	// from its durable successful prefix without re-delivering the sentinel.
 	failMetadata, metadataReads = true, 0
 	publish(kvSecretTwo)
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); !worked || err != nil {
 		t.Fatalf("partial attempt: worked=%v err=%v", worked, err)
 	}
@@ -515,7 +515,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 			moveID = moving.MoveID
 			runtime := store.NewAdapterRuntime(db, authorizePush)
 			loader := kvLoader{runtime: runtime, keyring: kr, build: build}
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			jobs := make(map[string]adapter.Job)
 			for range 2 {
 				job, ok, err := runtime.ClaimDue(ctx, "concurrent-move", clock, clock.Add(adapter.LeaseTime))
@@ -627,7 +627,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	publish(kvSecretOne)
 	// A conflict retries with backoff until an operator acts, so run one
 	// attempt rather than draining.
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); !worked || err != nil {
 		t.Fatalf("conflicting attempt: worked=%v err=%v", worked, err)
 	}
@@ -864,7 +864,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); err != nil || !worked {
 		t.Fatalf("old-route scrub before revocation: worked=%t err=%v", worked, err)
 	}
@@ -878,7 +878,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	for i, capability := range []string{"manage-adapters", "reveal"} {
 		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_rescue_%d','%s','%s','%s','%s',NULL,%s)`, i, cAdmin, capability, cOrg, cPrj, ts))
 	}
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); err != nil || !worked {
 		t.Fatalf("revoked activation: worked=%t err=%v", worked, err)
 	}
