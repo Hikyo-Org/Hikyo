@@ -329,6 +329,16 @@ describes. `publish` retries are safe: if `v<version>` is already public it
 still publishes the desktop draft, and an already published matching desktop
 release is verified and left unchanged.
 
+Accepted residual risk: GitHub has no lock on a draft release, so an account
+with repository write access could replace a draft image in the single API
+round trip between the publisher's last draft re-check and the publish call.
+The CLI publisher accepts the same window. Such a swap is not silent:
+the publisher re-downloads the public release, runs `verify-desktop` again and
+fails, and the user verification step refuses an image that differs from the
+signed inventory. The release is already public and immutable by then, so treat
+that failure as an incident: do not announce the release, find the writer, and
+ship the app in the next version.
+
 The legacy `ceremony.sh --offline` publication runs the same check before
 `v<version>` can become public, but it does not publish the desktop draft. For a
 stable version it prints the follow-up (also when resuming an already published
