@@ -677,9 +677,11 @@ export const ValueTip: Story = {
     scroller.scrollTop = 0;
     flags.focus();
     await waitFor(() => expect(isOpen()).toBe(true));
-    // What stays pinned over a value cell: the header's cells (a group label
-    // pins only over the key column).
-    const covered = () => headCell.getBoundingClientRect().bottom;
+    // What stays pinned over a value cell: the header's cells, and under them
+    // the cell's stuck group bar, which spans the visible width.
+    const bar = canvasElement.querySelector<HTMLElement>('.matrix__group-row-inner');
+    if (bar === null) throw new Error('group bar missing');
+    const covered = () => headCell.getBoundingClientRect().bottom + bar.getBoundingClientRect().height;
     const under = flags.getBoundingClientRect();
     scroller.scrollTop += under.top - covered() + under.height * 0.8;
     await new Promise((resolve) => setTimeout(resolve, 100));
