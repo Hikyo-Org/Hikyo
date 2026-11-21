@@ -19,7 +19,7 @@ func TestDesktopReleaseFixtures(t *testing.T) {
 		"publish-desktop-draft_test.sh", "stage-desktop-draft_test.sh",
 	} {
 		t.Run(script, func(t *testing.T) {
-			cmd := exec.Command("sh", filepath.Join(repositoryRoot(t), "scripts", "release", script))
+			cmd := exec.CommandContext(t.Context(), "sh", filepath.Join(repositoryRoot(t), "scripts", "release", script))
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("%v\n%s", err, output)
 			}

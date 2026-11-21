@@ -125,7 +125,7 @@ func verifyDesktopImage(path string, file desktopFile) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a close error loses nothing
 	hash := sha256.New()
 	n, err := io.Copy(hash, io.LimitReader(f, file.Size+1))
 	if err != nil {
