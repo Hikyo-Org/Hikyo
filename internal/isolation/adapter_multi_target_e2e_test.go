@@ -241,7 +241,7 @@ func runMultiTargetSync(t *testing.T, db *store.DB) {
 	drain := func() {
 		t.Helper()
 		for range 8 {
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			worked, err := worker.RunOnce(ctx)
 			if err != nil {
 				t.Fatalf("worker: %v", err)
@@ -334,7 +334,7 @@ func runMultiTargetSync(t *testing.T, db *store.DB) {
 		Store: runtime, Loader: fanoutLoader{runtime: runtime, modules: modules}, ID: "fanout-node-crashed",
 		Now: func() time.Time { return clock }, Jitter: func(time.Duration) time.Duration { return 0 },
 	}
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := crashed.RunOnce(ctx); !worked || !errors.Is(err, adapter.ErrSuperseded) {
 		// The dying attempt cannot even record its retry: its provider-write
 		// lease is still held by the effect it never finished.
@@ -344,7 +344,7 @@ func runMultiTargetSync(t *testing.T, db *store.DB) {
 		t.Fatalf("open effects after crash = %d, want 1", open)
 	}
 	moduleA.set(false, false)
-	clock = clock.Add(2 * adapter.LeaseTime)
+	clock = stepWorkerClock(clock, 2*adapter.LeaseTime)
 	drain()
 	if a = inspect(targetA.ID); a.Health() != adapter.HealthConverged || *a.ConvergedRevision != 2 {
 		t.Fatalf("A after crash replay = health %q converged %v", a.Health(), a.ConvergedRevision)

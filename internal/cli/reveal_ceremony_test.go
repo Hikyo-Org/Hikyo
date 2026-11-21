@@ -377,7 +377,7 @@ func declareCeremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handl
 			_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"not permitted"}}`))
 			return
 		}
-		_ = jsonwire.Encode(w, apigen.ValueList{})
+		encodeOrFail(t, w, apigen.ValueList{})
 	}), seen
 }
 
@@ -420,5 +420,80 @@ func TestDeclareSkipsCeremonyOnUnprotectedEnvironment(t *testing.T) {
 	}
 	if code := cli.Run(t.Context(), ios, declareArgs(t)); code != cli.ExitRefused {
 		t.Fatalf("exit %d, want refused; stderr=%s", code, stderr.String())
+	}
+}
+
+// A protected declare that needs the browser binds the handoff to the declared
+// key's immutable id. The CLI names the key, and the key-read route takes only
+// an id, so the unit comes from the environment's non-revealing value list.
+func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
+	const rotated = "hik_1_cli_declare-rotated"
+	live := false
+	var callbackURI string
+	var startBody map[string]any
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
+			encodeOrFail(t, w, apigen.RevealWindow{CanReveal: false, Protected: true, EffectiveWindowSeconds: 0, Live: live})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
+			encodeOrFail(t, w, apigen.ValueList{Items: []apigen.ValueCell{
+				{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true},
+				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
+			if err := json.UnmarshalRead(r.Body, &startBody); err != nil {
+				t.Errorf("decode handoff start: %v", err)
+			}
+			callbackURI, _ = startBody["redirect_uri"].(string)
+			_, _ = w.Write([]byte(`{"state":"hik_1_hs_declare","expires_at":"2030-01-01T00:00:00Z"}`))
+		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/redeem"):
+			live = true
+			_, _ = w.Write([]byte(`{"session_id":"ses_declare","session_token":"` + rotated + `","windows":[{"environment_id":"env_70","session_id":"ses_declare","single_decision":true,"window_expires":"2030-01-01T00:00:00Z"}]}`))
+		case strings.HasSuffix(r.URL.Path, "/values/declare"):
+			if !live || !strings.Contains(r.Header.Get("Authorization"), rotated) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"not permitted"}}`))
+				return
+			}
+			encodeOrFail(t, w, apigen.ValueList{})
+		default:
+			// Includes GET keys/DATABASE_PASSWORD: the route matches ids only.
+			http.NotFound(w, r)
+		}
+	})
+	ios, _, stderr := definitionsTestIO(t, handler)
+	ios.ReadPassword = func(string) (string, error) { t.Fatal("a 0-window handoff must not prompt for a code"); return "", nil }
+	ios.OpenURL = func(string) error {
+		go func() {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, callbackURI+"?code=hik_1_hc_declare&state=hik_1_hs_declare", nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if resp, err := http.DefaultClient.Do(req); err == nil {
+				_ = resp.Body.Close()
+			}
+		}()
+		return nil
+	}
+	if code := cli.Run(t.Context(), ios, declareArgs(t)); code != cli.ExitOK {
+		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
+	}
+	if startBody["purpose"] != "publish" || startBody["operation"] != "value.copy-destination" {
+		t.Fatalf("handoff started with purpose=%v operation=%v", startBody["purpose"], startBody["operation"])
+	}
+	keys, _ := startBody["key_ids"].([]any)
+	if len(keys) != 1 || keys[0] != "key_pw" {
+		t.Fatalf("handoff bound key set %v, want the declared key's id", keys)
+	}
+}
+
+// encodeOrFail writes v as the stub's JSON reply and fails the test if it
+// cannot be encoded.
+func encodeOrFail(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	if err := jsonwire.Encode(w, v); err != nil {
+		t.Errorf("encode stub reply: %v", err)
 	}
 }
