@@ -476,7 +476,7 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 	}
 
 	// Sweep: any cache-shaped declaration must belong to a registered cache.
-	declared, err := moduleScopeNames()
+	declared, err := packageScopeNames(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,12 +513,6 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 	}
 }
 
-// moduleScopeNames is the whole-module sweep. The race workflow test finds the
-// isolation tests that need the serial analyzer job by their call to it.
-func moduleScopeNames() (map[string][]string, error) {
-	return packageScopeNames(filepath.Join("..", ".."))
-}
-
 // cacheDeclarationFindings reports each cache-shaped declaration that neither a
 // known package nor a registered declaration accounts for. An external test
 // package keeps its "_test" path, so it is checked, not exempt.
@@ -536,7 +530,7 @@ func cacheDeclarationFindings(declared map[string][]string, knownPkgs map[string
 				continue
 			}
 			if strings.Contains(strings.ToLower(name), "cache") {
-				findings = append(findings, fmt.Sprintf("%s.%s: cache-shaped declaration with no entry in the cache registry — state its key constructor and proof-gating layer (invariant 12)", pkgPath, name))
+				findings = append(findings, fmt.Sprintf("%s.%s: cache-shaped declaration with no entry in the cache registry; state its key constructor and proof-gating layer (invariant 12)", pkgPath, name))
 			}
 		}
 	}

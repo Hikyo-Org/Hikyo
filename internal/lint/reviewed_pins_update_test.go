@@ -203,7 +203,7 @@ func writeVerifiedPins(path string, updated []byte, verify func() ([]string, err
 		if restoreErr := os.WriteFile(path, original, 0o644); restoreErr != nil {
 			restoreErr = fmt.Errorf("restoring the reviewed pins: %w", restoreErr)
 			if !returned {
-				panic(restoreErr) // verify ended the goroutine (t.Fatal): no return value carries the error
+				panic(restoreErr) // verify called t.Fatal or panicked: no return value carries the error
 			}
 			err = errors.Join(err, restoreErr)
 		}

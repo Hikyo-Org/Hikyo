@@ -13,19 +13,11 @@ import (
 
 // go/packages abandons export data for every dependency when it is given
 // Config.Overlay (the ui context's webui placeholder took one load's live heap
-// from ~1.1GB to ~2.5GB). Fixtures reach the placeholder through the
-// "-overlay" build flag instead, so no code in the module may set the field,
-// bar two source-mutation tests. They type-check in-memory edits of one
-// scripts/security package, which go/packages reads only from Config.Overlay
-// (the build flag changes what go list sees, not the source it parses), so
-// each subtest type-checks that package's dependency closure from source. The
-// alert collector's was measured at 466 MiB, inside the per-process budget; a
-// whole-context load is not.
-var overlayMutationTests = map[string]bool{
-	"internal/lint/alert_collector_protocol_test.go": true,
-	"internal/lint/rawsql_artifact_test.go":          true,
-}
-
+// from ~1.1GB to ~2.5GB), so no code in the module may set the field. Fixtures
+// reach the placeholder through the "-overlay" build flag, and in-memory source
+// goes through Config.ParseFile (loadWithSources). A file that imports
+// go/packages, under any name, may use no Overlay key or field assignment at
+// all, so no aliased, dot-imported or elided type escapes the rule.
 func TestNoPackagesConfigOverlay(t *testing.T) {
 	root := moduleRoot()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -45,43 +37,27 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 		if filepath.Ext(path) != ".go" {
 			return nil
 		}
-		if rel, err := filepath.Rel(root, path); err == nil && overlayMutationTests[filepath.ToSlash(rel)] {
-			return nil
-		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
 		if err != nil {
 			return err
 		}
-		local := ""
+		importsPackages := false
 		for _, imp := range file.Imports {
-			if imp.Path.Value == `"golang.org/x/tools/go/packages"` {
-				local = "packages"
-				if imp.Name != nil {
-					local = imp.Name.Name
-				}
-			}
+			importsPackages = importsPackages || imp.Path.Value == `"golang.org/x/tools/go/packages"`
+		}
+		if !importsPackages {
+			return nil
 		}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch n := n.(type) {
-			case *ast.CompositeLit:
-				sel, ok := n.Type.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "Config" {
-					return true
-				}
-				if pkg, ok := sel.X.(*ast.Ident); !ok || local == "" || pkg.Name != local {
-					return true
-				}
-				for _, elt := range n.Elts {
-					if kv, ok := elt.(*ast.KeyValueExpr); ok {
-						if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Overlay" {
-							t.Errorf("%s sets packages.Config.Overlay", path)
-						}
-					}
+			case *ast.KeyValueExpr:
+				if key, ok := n.Key.(*ast.Ident); ok && key.Name == "Overlay" {
+					t.Errorf("%s sets an Overlay key: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
 				}
 			case *ast.AssignStmt:
 				for _, lhs := range n.Lhs {
 					if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "Overlay" {
-						t.Errorf("%s assigns an Overlay field: use the -overlay build flag, never packages.Config.Overlay", path)
+						t.Errorf("%s assigns an Overlay field: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
 					}
 				}
 			}

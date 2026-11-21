@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 func TestArtifactDisposableDatabaseProtocolsRejectDrift(t *testing.T) {
@@ -53,32 +51,23 @@ func TestArtifactDisposableDatabaseProtocolsRejectDrift(t *testing.T) {
 		{name: "unreviewed caller", source: source + "\nfunc anotherCaller(ctx context.Context, conn *pgx.Conn) error { return " + call + " }\n", refusal: "anotherCaller references protocol"},
 		{name: "unreviewed alias", source: source + "\nfunc aliasCaller(ctx context.Context, conn *pgx.Conn) error { create := createOwnedDisposableDatabase; return create(ctx, conn, \"hikyo_security_0123456789abcdef01234567\") }\n", refusal: "aliasCaller references protocol"},
 		{name: "wrong function owner", source: strings.ReplaceAll(source, "createOwnedDisposableDatabase", "anotherCreateOwner"), refusal: "anotherCreateOwner executes handwritten SQL outside a named engine protocol"},
-		{name: "neighboring file", source: source, alternateFilename: filepath.Join(filepath.Dir(filename), "unreviewed_runtime.go"), refusal: "unreviewed_runtime.go:createOwnedDisposableDatabase executes handwritten SQL outside a named engine protocol"},
+		{name: "neighboring file", source: source, alternateFilename: filepath.Join(filepath.Dir(filename), "oracles.go"), refusal: "oracles.go:createOwnedDisposableDatabase executes handwritten SQL outside a named engine protocol"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			overlay := map[string][]byte{filename: []byte(tt.source)}
+			sources := map[string][]byte{filename: []byte(tt.source)}
 			if tt.alternateFilename != "" {
-				overlay[filename] = []byte("package main\n")
-				overlay[tt.alternateFilename] = []byte(tt.source)
-			}
-			// Parse and typecheck the real harness with an in-memory source overlay.
-			// Mutation inputs remain valid Go and exercise the actual pinned boundary.
-			pkgs, err := packages.Load(&packages.Config{
-				Dir: root, Overlay: overlay,
-				Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
-					packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-			}, Module+"/scripts/security/artifact-harness")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(pkgs) == 0 {
-				t.Fatal("mutation loaded no typed harness")
-			}
-			for _, pkg := range pkgs {
-				for _, err := range pkg.Errors {
+				// Swap the reviewed file with a sibling: the protocol moves to an
+				// unreviewed file and every declaration stays defined.
+				sibling, err := os.ReadFile(tt.alternateFilename)
+				if err != nil {
 					t.Fatal(err)
 				}
+				sources[filename] = sibling
+				sources[tt.alternateFilename] = []byte(tt.source)
 			}
+			// Typecheck the real harness with the mutated source. Mutation inputs
+			// remain valid Go and exercise the actual pinned boundary.
+			pkgs := loadWithSources(t, root, Module+"/scripts/security/artifact-harness", sources)
 			findings := checkRawSQL(pkgs, root, Module, pins)
 			if tt.refusal == "" {
 				if len(findings) != 0 {

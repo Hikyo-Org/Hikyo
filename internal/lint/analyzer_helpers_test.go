@@ -8,12 +8,16 @@ package lint
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
+	"go/token"
 	"go/types"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
+	"testing"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
@@ -56,6 +60,48 @@ func loadFixture(ctx BuildContext, tests bool, patterns ...string) ([]*packages.
 		}
 	}
 	return pkgs, nil
+}
+
+// loadWithSources type-checks pattern under root with the contents of existing
+// files replaced in memory (absolute path to source). It swaps the parsed bytes
+// through Config.ParseFile, so dependencies keep their export data, which
+// Config.Overlay would discard. Every replaced file must be parsed.
+func loadWithSources(t *testing.T, root, pattern string, sources map[string][]byte) []*packages.Package {
+	t.Helper()
+	var mu sync.Mutex
+	parsed := map[string]bool{}
+	pkgs, err := packages.Load(&packages.Config{
+		Dir: root,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
+			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
+		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+			if replaced, ok := sources[filename]; ok {
+				src = replaced
+				mu.Lock()
+				parsed[filename] = true
+				mu.Unlock()
+			}
+			// go/packages' own default mode.
+			return parser.ParseFile(fset, filename, src, parser.AllErrors|parser.ParseComments)
+		},
+	}, pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) == 0 {
+		t.Fatalf("%s loaded no packages", pattern)
+	}
+	for _, p := range pkgs {
+		for _, err := range p.Errors {
+			t.Fatal(err)
+		}
+	}
+	for filename := range sources {
+		if !parsed[filename] {
+			t.Fatalf("replaced source %s was never parsed", filename)
+		}
+	}
+	return pkgs
 }
 
 // runAnalyzer runs c's analyzer over each package that has type information and

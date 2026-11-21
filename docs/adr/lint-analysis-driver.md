@@ -296,10 +296,11 @@ is complete once this step merges.
   `rawSQLSummaryFindings`. `checkReviewedPinAuthorities` and its refusal to widen
   authority are unchanged.
 - **CI definitions.** The `race-analyzers` group in `reliability.yml` was the set
-  of isolation tests that called `LoadRepo`. Its only remaining member is the
-  invariant 12 sweep, and `scripts/ci/race_isolation_workflow_test.go` discovers
-  members by their call to `moduleScopeNames`, the whole-module form of
-  `packageScopeNames`. The race-shard exclusion for
+  of isolation tests that called `LoadRepo`. Its members are now the tests that
+  call `packageScopeNames`, which `scripts/ci/race_isolation_workflow_test.go`
+  discovers: the invariant 12 sweep and the sweep's own temp-tree test, which
+  is cheap, so listing it keeps the detector from missing a whole-module sweep.
+  The race-shard exclusion for
   `internal/lint` (the Consequences bullet that keeps it until the old harness is
   removed) is not lifted here: it lives in `scripts/ci/analysis-shards-go/main.go`,
   which dev admission refuses to take before `main` (`devPolicyPaths`), so lifting

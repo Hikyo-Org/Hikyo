@@ -261,7 +261,7 @@ jobs:
         run: |
           # Whole-module static sweeps run serially in their own job, apart from
           # the database-backed shards.
-          analyzers='["TestInvariant12CacheDiscipline"]'
+          analyzers='["TestInvariant12CacheDiscipline","TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles"]'
           matrix='[]'
           for shard in $(seq 0 7); do
             targets=$(./scripts/ci/analysis-shards isolation-race --root . --shard "$shard" --shards 8 |
