@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -96,6 +97,13 @@ var desktopCredentialSteps = map[string]string{
 	"Notarize and staple the disk image":     `./scripts/release/with-apple-ticket-network.sh ./scripts/release/build-desktop-app.sh notarize "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"`,
 }
 
+// Any mention of the secrets context, however spelled (secrets.X, secrets['X'],
+// toJSON(secrets), format strings), anywhere an expression can appear.
+var secretsWord = regexp.MustCompile(`\bsecrets\b`)
+
+// A credentialed step may pass a secret only as its own, exactly named env value.
+var ownSecret = regexp.MustCompile(`^\$\{\{ secrets\.([A-Za-z0-9_]+) \}\}$`)
+
 // Which credential group an env key belongs to, by name, so no key escapes by
 // being outside a hard-coded list.
 func credentialGroup(key, value string) string {
@@ -104,7 +112,7 @@ func credentialGroup(key, value string) string {
 		return "notary"
 	case strings.HasPrefix(key, "APPLE_DEVELOPER_ID_"):
 		return "signing"
-	case strings.Contains(value, "secrets."):
+	case secretsWord.MatchString(value):
 		return "other"
 	}
 	return ""
@@ -140,8 +148,38 @@ func TestDesktopReleaseLaneStaysStableOnlyAndCredentialScoped(t *testing.T) {
 	}
 	for name, job := range jobs {
 		for key, value := range job.Env {
-			if strings.Contains(value, "secrets.") {
+			if secretsWord.MatchString(value) {
 				t.Fatalf("%s: job-level env %s carries a secret to every step", name, key)
+			}
+		}
+	}
+	// Neither desktop job may mention secrets outside the pinned credentialed
+	// steps' env: not in run, if, with, other env, or the job condition.
+	for _, name := range []string{"desktop-app", "desktop-draft"} {
+		if secretsWord.MatchString(jobs[name].If) {
+			t.Fatalf("%s: job condition mentions secrets", name)
+		}
+		for _, step := range jobs[name].Steps {
+			_, pinned := desktopCredentialSteps[step.Name]
+			pinned = pinned && name == "desktop-app"
+			for field, text := range map[string]string{"run": step.Run, "if": step.If, "name": step.Name, "uses": step.Uses} {
+				if secretsWord.MatchString(text) {
+					t.Fatalf("%s step %q mentions secrets in its %s", name, step.Name, field)
+				}
+			}
+			for key, value := range step.With {
+				if secretsWord.MatchString(value) {
+					t.Fatalf("%s step %q passes secrets through with: %s", name, step.Name, key)
+				}
+			}
+			for key, value := range step.Env {
+				if !secretsWord.MatchString(value) {
+					continue
+				}
+				match := ownSecret.FindStringSubmatch(value)
+				if !pinned || match == nil || match[1] != key {
+					t.Fatalf("%s step %q env %s must not carry secrets (only a pinned credentialed step's own named secret)", name, step.Name, key)
+				}
 			}
 		}
 	}
