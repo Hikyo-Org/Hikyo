@@ -148,6 +148,62 @@ func TestRuntimeCustodyRefusesForeignOwnedAncestor(t *testing.T) {
 	}
 }
 
+// A hierarchy moved between the open and the ancestor walk leaves the walk
+// vetting another directory, so the path must still name the opened root.
+func TestRuntimeCustodyRefusesRuntimeDirMovedDuringCheck(t *testing.T) {
+	base := t.TempDir()
+	runtime := filepath.Join(base, "a", "run")
+	if err := os.MkdirAll(runtime, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := openRuntimeRoot(runtime, false)
+	if err != nil {
+		t.Fatalf("unmoved runtime dir refused: %v", err)
+	}
+	_ = root.Close()
+	t.Cleanup(func() { runtimeOpened = func() {} })
+	runtimeOpened = func() {
+		if err := os.Rename(filepath.Join(base, "a"), filepath.Join(base, "old")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(runtime, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root, err = openRuntimeRoot(runtime, false)
+	if err == nil {
+		_ = root.Close()
+	}
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "moved during the custody check") {
+		t.Fatalf("runtime dir moved during the check: err=%v, want a custody refusal", err)
+	}
+}
+
+// The ancestor walk vets the cleaned path, but the kernel resolves `..` after
+// a symlink, so link/.. may traverse a hierarchy the walk never saw.
+func TestRuntimeCustodyRefusesUncleanRuntimeDir(t *testing.T) {
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "a", "run"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(base, "a"), filepath.Join(base, "link")); err != nil {
+		t.Fatal(err)
+	}
+	unclean := filepath.Join(base, "link") + "/../a/run"
+	root, err := openRuntimeRoot(unclean, false)
+	if err == nil {
+		_ = root.Close()
+	}
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "not a clean absolute path") {
+		t.Fatalf("openRuntimeRoot(%s) err=%v, want a custody refusal", unclean, err)
+	}
+	for _, path := range []string{unclean, base + "/a/run/", base + "/a//run", base + "/a/./run", "../a/run"} {
+		if err := RuntimeDirCustody(path); !errors.Is(err, ErrRuntimeCustody) {
+			t.Fatalf("RuntimeDirCustody(%s) = %v, want a custody refusal", path, err)
+		}
+	}
+}
+
 func TestRuntimeCustodyMissingDirIsNotAFailure(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent")
 	if err := RuntimeDirCustody(missing); err != nil {
