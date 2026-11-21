@@ -20,7 +20,6 @@ elif [[ "$1" == list ]]; then
   esac
 elif [[ "$1" == test && "$2" == -count=1 ]]; then
   shift 2
-  for arg in "$@"; do [[ "$arg" == -timeout=* ]] || printf '%s\n' "$arg"; done >>"$CORE_TEST_EXECUTED"
   printf 'call\n' >>"$CORE_TEST_CALLS"
   if [[ "$*" == *internal/app* || "$*" == *internal/lint* ]]; then
     [[ -f "$CORE_TEST_PREPARED" ]] || exit 96
@@ -28,12 +27,29 @@ elif [[ "$1" == test && "$2" == -count=1 ]]; then
     exit 97 # the pool must not pay for the lint cache
   fi
   if [[ "$*" == *internal/app* ]]; then
-    [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 1 ]] || exit 91
-    [[ "$CORE_TEST_FAIL" != app ]] || exit 92
+    # Two app invocations split one pattern: -skip it, then -run it, so every test runs once.
+    case $(($(wc -l <"$CORE_TEST_CALLS"))) in
+      1)
+        [[ "$#" == 3 && "$1" == -skip ]] || exit 91
+        # The pattern must pick both packaged alternatives and leave ordinary tests.
+        for name in TestAutomaticUpgradePackagedNightlyRoute TestActualDefaultDevCLIStartsAndRestarts; do
+          grep -Eq -- "$2" <<<"$name" || exit 91
+        done
+        ! grep -Eq -- "$2" <<<TestActualDefaultDevCLIStartsAndRestartsTwice || exit 91
+        ! grep -Eq -- "$2" <<<TestUnattendedEnrollment || exit 91
+        printf '%s\n' "$2" >"$CORE_TEST_PATTERN"
+        call=app-skip ;;
+      2) [[ "$#" == 3 && "$1" == -run && "$2" == "$(cat "$CORE_TEST_PATTERN")" ]] || exit 91; call=app-run ;;
+      *) exit 91 ;;
+    esac
+    printf '%s\n' "$3" >>"$CORE_TEST_EXECUTED"
+    [[ "$CORE_TEST_FAIL" != "$call" ]] || exit 92
   elif [[ "$*" == *internal/lint* ]]; then
-    [[ "$#" == 2 && "$1" == -timeout=20m && $(wc -l <"$CORE_TEST_CALLS") -eq 2 ]] || exit 95
+    [[ "$#" == 2 && "$1" == -timeout=20m && $(wc -l <"$CORE_TEST_CALLS") -eq 3 ]] || exit 95
+    printf '%s\n' "$2" >>"$CORE_TEST_EXECUTED"
     [[ "$CORE_TEST_FAIL" != lint ]] || exit 96
   else
+    printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"
     [[ "$CORE_TEST_FAIL" != concurrent ]] || exit 93
   fi
 else
@@ -47,13 +63,14 @@ export CORE_TEST_INVENTORY="$work/inventory"
 export CORE_TEST_EXECUTED="$work/executed"
 export CORE_TEST_CALLS="$work/calls"
 export CORE_TEST_PREPARED="$work/prepared"
+export CORE_TEST_PATTERN="$work/pattern"
 export CORE_TEST_FAIL=''
 printf '%s\n' example/internal/service example/internal/app example/internal/lint example/internal/isolation example/cmd/hikyo >"$CORE_TEST_INVENTORY"
 printf '%s\n' example/internal/service example/cmd/hikyo >"$work/expected-pool"
-printf '%s\n' example/internal/app example/internal/lint >"$work/expected-serial"
+printf '%s\n' example/internal/app example/internal/app example/internal/lint >"$work/expected-serial"
 # The frozen test_core step passes no mode; it must select the pool.
 for mode in '' pool serial; do
-  for failure in '' concurrent app lint; do
+  for failure in '' concurrent app-skip app-run lint; do
     rm -f "$CORE_TEST_PREPARED"
     : >"$CORE_TEST_EXECUTED"
     : >"$CORE_TEST_CALLS"
@@ -64,7 +81,7 @@ for mode in '' pool serial; do
     # A failure injected into the other mode's packages never runs there.
     failing=''
     case "${mode:-pool}:$failure" in
-      pool:concurrent | serial:app | serial:lint) failing=1 ;;
+      pool:concurrent | serial:app-skip | serial:app-run | serial:lint) failing=1 ;;
     esac
     if [[ -z "$failing" ]]; then [[ "$result" == 0 ]]; else [[ "$result" != 0 ]]; fi
     cmp "$expected" "$CORE_TEST_EXECUTED"

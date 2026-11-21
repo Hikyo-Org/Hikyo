@@ -29,7 +29,7 @@ feedback_plan_build() {
 	local path package existing duplicate
 	local remaining_go=()
 	web=false client=false workflows=false docs=false all_go=false
-	release_admission=false audit_collector=false docs_impact=false
+	release_admission=false audit_collector=false docs_impact=false desktop=false
 	feedback_go_files=() feedback_go_packages=() shell_files=()
 	while IFS= read -r -d '' path; do
 		case "$path" in
@@ -38,8 +38,16 @@ feedback_plan_build() {
 		case "$path" in
 			scripts/ops/audit-collector/* | docs/operations/audit-collector.md) audit_collector=true ;;
 		esac
+		# desktop/ is a nested module the root checks cannot load; it has its own compile
+		# check, only where the module exists. The root packages it imports are the same
+		# list as the desktop job in classify-changed-paths.sh (keep both in step by hand;
+		# check-desktop-deps.sh only checks the classifier).
+		case "$path" in
+			desktop/* | api/openapi.yaml | api/*.go | internal/audit/* | internal/clientauth/* | internal/clienterr/* | internal/clienttrust/* | internal/crypto/* | internal/delivery/* | internal/domain/* | internal/filedurability/* | internal/freetext/* | internal/jsonwire/* | internal/operation/* | internal/securefile/* | internal/tlspolicy/*) if [ -f desktop/go.mod ]; then desktop=true; fi ;;
+		esac
 		case "$path" in
 			internal/cli/testdata/help.txt | api/openapi.yaml | internal/config/variables.go) docs_impact=true ;;
+			desktop/main_darwin.go | desktop/internal/shell/shellroutes.go) docs_impact=true ;;
 		esac
 		case "$path" in
 			web/*) web=true ;;
@@ -65,7 +73,8 @@ feedback_plan_build() {
 					*/testdata/* | */.[!/]* | */_*) remaining_go=() ;;
 					*) remaining_go=("$package"/*.go) ;;
 				esac
-				if [ "${#remaining_go[@]}" -gt 0 ] && [ -f "${remaining_go[0]}" ]; then
+				# `go test -c ./desktop/...` from the root is an error: nested module.
+				if [ "${#remaining_go[@]}" -gt 0 ] && [ -f "${remaining_go[0]}" ] && [[ "$package" != ./desktop && "$package" != ./desktop/* ]]; then
 					duplicate=false
 					for existing in ${feedback_go_packages[@]+"${feedback_go_packages[@]}"}; do
 						if [ "$existing" = "$package" ]; then duplicate=true; break; fi
@@ -98,6 +107,7 @@ feedback_plan_select() {
 			if [ "${#go_files[@]}" -gt 0 ]; then feedback_checks+=(go-format); fi
 			if [ "$all_go" = true ] && [ "$scope" != tooling ]; then feedback_checks+=(go-mod-verify); fi
 			if [ "${#go_packages[@]}" -gt 0 ]; then feedback_checks+=(go-compile); fi
+			if [ "$desktop" = true ] && [ "$scope" != tooling ]; then feedback_checks+=(desktop-compile); fi
 			# After the Go checks, so a compile error is reported before missing docs.
 			if [ "$scope" != tooling ] && [ "$docs_impact" = true ]; then feedback_checks+=(docs-impact); fi
 			if [ "$scope" != application ]; then
@@ -125,7 +135,7 @@ feedback_check_prerequisites() {
 		audit-collector) feedback_check_needs=(python) ;;
 		docs-impact) feedback_check_needs=() ;;
 		release-admission) feedback_check_needs=(python releaseDependencies) ;;
-		go-format | go-mod-verify | go-compile) feedback_check_needs=(go) ;;
+		go-format | go-mod-verify | go-compile | desktop-compile) feedback_check_needs=(go) ;;
 		shellcheck) feedback_check_needs=(shellcheck) ;;
 		actionlint) feedback_check_needs=(go shellcheck) ;;
 		docs) feedback_check_needs=(node) ;;
@@ -186,8 +196,8 @@ feedback_plan_json() {
 	# scope reporting go=true even though that scope does not run mod verify.
 	if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then selected_go=true; fi
 	if [ "${#shell_files[@]}" -gt 0 ]; then selected_shell=true; fi
-	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s,"releaseAdmission":%s,"auditCollector":%s,"lanes":{' \
-		"$web" "$client" "$workflows" "$selected_go" "$selected_shell" "$docs" "$release_admission" "$audit_collector"
+	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s,"releaseAdmission":%s,"auditCollector":%s,"desktop":%s,"lanes":{' \
+		"$web" "$client" "$workflows" "$selected_go" "$selected_shell" "$docs" "$release_admission" "$audit_collector" "$desktop"
 	for hosted_lane in go tooling frontend; do
 		feedback_plan_hosted_lane "$hosted_lane"
 		printf '%s"%s":' "$separator" "$hosted_lane"

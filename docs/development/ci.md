@@ -8,7 +8,7 @@ one active run finishes, with only the newest pending run retained.
 
 Frozen release candidates target **main** and enter its mandatory single-entry
 queue. **ci-queue-required** admits the exact PR head and then requires complete
-current-base merge-group proof. Branches under `release/` always select all 16
+current-base merge-group proof. Branches under `release/` always select all 17
 domains. Dev movement never cancels a fixed candidate's validation.
 
 Stable consumers and signed nightlies can reuse authenticated complete proof for
@@ -29,8 +29,9 @@ for activation, promotion and operator commands.
 | Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, the golangci-lint config, workflows, Git hooks, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Run the Storybook suite before merge | `ci-advisory-storybook` | Advisory, per PR push touching `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, `docs/site/scripts/test-csp.mjs`, `scripts/ci/storybook-suite.sh` or the workflow's setup helpers (`install-corepack.sh`, `export-pnpm-cache.sh`). Runs the same commands as the `storybook` job in `ci.yml` (story tests in both palettes, production build, theme and docs checks, static demo) on the exact PR head in the Playwright container. The pre-push hook runs the same script locally. Not a required context; `ci-dev` and the queue still run the job. |
 | Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, noctx, staticcheck `SA*` except `SA4006`/`SA4009`, `QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline of those rules is not enforced. A second strict pass runs wastedassign, unused and staticcheck `SA4006`/`SA4009` (`.golangci-strict.yml`) on every whole changed package (a moved file counts for both packages), because those rules hold at zero across the repo. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
+| Lint the desktop module | `ci-advisory-golangci-desktop` | Advisory, per PR push touching `desktop/`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-version`, `scripts/ci/run-go-tool.sh` or the workflow itself. Pinned `golangci-lint` over the whole nested module on macOS; a Linux pre-job skips the macOS job where `desktop/go.mod` does not exist. The strict pass runs only where `.golangci-strict.yml` exists. |
 | Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
-| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
+| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 17 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
 | Validate all of main | `ci-main` | Weekly or manual full graph, including development snapshot artifacts. The schedule is the automatic writer of main-scoped compile caches. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
@@ -138,6 +139,51 @@ range opts out. On failure, the check names the page that usually needs the
 update. Feedback tooling comes from the PR's integration merge, so the check
 applies to a PR once the check is on that PR's base branch.
 
+The `docs-impact` check also covers the desktop shell: a change to
+`desktop/internal/shell/shellroutes.go` (the `/__shell` routes) or
+`desktop/main_darwin.go` (the launch environment) needs a change to
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`, or the same opt-out
+trailer. User docs under `docs/site/src/content/docs/` also satisfy it.
+
+### Desktop shell (macOS)
+
+`desktop/` is a nested Go module (the Wails shell, #1215). Wails, cgo and WebKit
+must never reach the root build, so the root lanes and the root module never load it; they cannot
+(`go list ./desktop/...` from the root is an error) and `golangci-lint-new.sh`
+lints it from inside `desktop/` instead. The registry domain `desktop` and the
+`desktop` job in `ci.yml` own it:
+
+1. The runner follows the tree. Where `desktop/go.mod` exists the job runs on a
+   pinned `macos-15` hosted runner (paid minutes), with no cache restored or
+   written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
+   Where it does not (main and dev before the shell lands) a full plan still needs
+   the job to report success, so it runs on `ubuntu-latest`, executes only step 2
+   and costs seconds. The `changes` job publishes `desktop_module` for this.
+2. `scripts/ci/check-desktop-deps.sh` keeps Wails and its platform bindings out of
+   the root `go.mod` and `go.sum` and refuses a `go.work` or a root requirement on
+   `desktop/`. Where `desktop/` exists it also requires `replace
+   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`, and lists every root
+   package `desktop/` compiles (`go list -deps`, darwin, probe tag) and fails when
+   the classifier would not select the desktop job for it.
+3. On macOS: `go test -race ./...`, a `-tags probe` build, a release build, and the
+   driven WKWebView lane, `go run ./probes/driven`, which opens the probe shell
+   against a fake instance (Playwright cannot drive WKWebView).
+4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
+   out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
+   over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
+   inside it, new code and then the strict rules on the whole module, for the
+   pre-push hook and `ci-advisory-golangci`.
+
+The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
+(the refusal list derives from it) and the root packages `desktop/` imports, and
+nothing else for `desktop/` changes: those paths do not select `test`, `race`,
+`fuzz` or the other Go domains. A root `go.mod` or `go.sum` change, a workflow
+change and every unknown path still select the full plan, including `desktop`.
+Fast feedback keeps `desktop/` out of the root compile (`go-compile`) and compiles
+it with its own `desktop-compile` check, `go -C desktop test -c`, only where
+`desktop/go.mod` exists. The frozen conservation baseline stays exact: `desktop` is
+the only domain beyond its list, and the baseline jobs are unchanged.
+
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
 base's [classifier](../../scripts/ci/classify-changed-paths.sh). All previous test,
@@ -243,7 +289,7 @@ in [run 38230781293](https://github.com/Hikyo-Org/Hikyo/actions/runs/38230781293
 That verifies the forced active-policy queue-read path, not populated membership
 or full-group merge acceptance. The legitimate policy/guide follow-up provides
 that first hosted acceptance; do not call queue delivery complete before its
-actual group, all 16 domains, trusted publication and landed tree are verified.
+actual group, all 17 domains, trusted publication and landed tree are verified.
 
 For an authorized main-only reconciliation with authenticated administrator
 access, run from the repository root:
@@ -626,23 +672,40 @@ suites added before REST reads it) is read differently: a GraphQL scan of its
 `github-actions` suites compares each suite's latest and finished run counts,
 and REST reads only the suites where they differ. Suite status is not used;
 GitHub reports a suite completed while a synthetic run in it is still queued.
-The retire and reporter owners list checks by commit under the same REST cap,
-so an unfinished synthetic context on a commit with more than 900 suites refuses
-all targets instead of being routed to an owner that may not see it. No operator
-tool clears that refusal: it lasts until the context completes, the commit's
-rollup turns `SUCCESS` or the commit leaves the window. Targeted dispatch on a
-head with more than 1,000 suites can likewise miss such a context and report
-success. API failures, incomplete pages, more
-than 5,000 `github-actions` suites or 100 unfinished suites on such a commit,
-more than 1,000 records in one suite's listing or more than 100 target heads
-refuse all targets. A suite-count refusal persists until the commit's rollup
-turns `SUCCESS` or it leaves the 1,000-commit window, about three weeks at the
-current merge rate. A commit still
-gaining checks, such as a busy main head, can change its totals mid-scan and
-refuse until the next run. A full window takes about three to four minutes, so
-discovery has a five-minute deadline. Each 100 suites scanned adds about 2 s and
-history pages run one after another, so the deadline, not the suite cap, bounds
-oversized commits: about 40 more suite pages per window than today's 36. Window completion is not
+The retire and reporter owners read the same way: past 900 suites (a count read
+before every listing) they list a check's runs only in the `github-actions`
+suites that hold runs of its name, one REST listing per suite, so a context on an
+oversized commit is routed, retired and found by the reporter like any other.
+Queue admission lists a head's checks at least three times inside its 45-second
+read budget and each listing repeats the scan (about 1.4 s per 100 suites for the
+owners' scan). Past 900 suites admission may time out; at 1,000 the scans alone
+take about 42 s. It then fails closed and the PR needs a new head.
+Because those reads open only `github-actions` suites, the owners also list the
+name by commit and refuse another app's same-name record there, as a listing by
+commit alone did, each by its own rule. The queue verdict refuses any other
+app's same-name record. Retirement refuses one only when its external ID carries
+the controller prefix. The reporter refuses one only when its external ID matches
+the report's. They refuse when the `github-actions` suite total changes during a
+scan, so a head still gaining suites can refuse until a later attempt. The
+controller and the queue verdict refuse a `github-actions` record the listing by
+commit shows but the suite inventory lacks, instead of treating it as absent,
+whether or not its external ID carries the controller prefix; the reporter
+compares only records with the report's external ID. At 900 suites or fewer each
+owner reads the commit listing, then counts every app's suites again and
+refuses if the count has passed 900, since REST could then have left an older
+suite out of the listing.
+Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
+cannot be completed, a run reported by two suites, or a check in more than 100
+suites refuses instead of listing partially. Discovery refuses all targets on
+API failures, incomplete pages, more than 5,000 `github-actions` suites or 100
+unfinished suites on a candidate, more than 1,000 records in one suite's listing
+or more than 100 target heads. A commit still gaining checks, such as a busy main
+head, can change its totals mid-scan and refuse until the next run. A full window
+takes about three to four minutes, so discovery has a five-minute deadline. Each
+100 suites scanned adds about 2 s and history pages run one after another, so the
+deadline, not the suite cap, bounds oversized commits: about 40 more suite pages
+per window than today's 36. Running out of time after suite pages reports how many
+pages and history pages were read. Window completion is not
 evidence that all history was cleaned.
 Legacy observer heads run in batches of at most ten unique heads concurrently
 under their one global lease and compiled executable. Every child is awaited,

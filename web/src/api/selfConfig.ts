@@ -10,6 +10,9 @@ import { forgetWorkspace } from './workspace.ts';
 import { useTransport, useWorkspaceContext, type TransportOptions } from './transport.tsx';
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import { requestOptions, toBase64URL } from './values.ts';
+import { isAppMode, shellFailureText, shellReauth } from '../app/shell.ts';
+
+const SELF_CONFIG_OPERATION = { adopt: 'self-config.adopt', apply: 'self-config.apply', 'mail-test': 'self-config.test', 'rollout-restore': 'self-config.apply' } as const;
 
 export type SelfConfigStatus = z.infer<typeof zInstanceConfigStatus>;
 export type SelfConfigIntent = z.infer<typeof zSelfConfigReauthIntent>;
@@ -94,6 +97,8 @@ export function useSelfConfigActions() {
 }
 
 export function selfConfigFailure(error: Error): string {
+  const shell = shellFailureText(error);
+  if (shell !== undefined) return shell;
   return statusText(
     error,
     {
@@ -123,6 +128,12 @@ export async function reauthenticateSelfConfig(intent: SelfConfigIntent, factor:
     const result = await parsed(reauthTotpOp, { body: { purpose: 'self-config', self_config: target, code: factor.code }, ...transport });
     assertSessionEpoch(epoch);
     return result;
+  }
+  if (isAppMode()) {
+    // The browser hop carries the whole decision; the shell redeems it for the app's session.
+    await shellReauth({ purpose: 'self-config', operation: SELF_CONFIG_OPERATION[intent.action], environment_ids: [], self_config: target });
+    assertSessionEpoch(epoch);
+    return undefined;
   }
   const options = await parsed(reauthPasskeyStartOp, { body: { operation: 'self-config', environment_id: `instance:${intent.owner_instance_id}`, key_ids: [], self_config: target }, ...transport });
   const assertion = await navigator.credentials.get({ publicKey: requestOptions(options) });

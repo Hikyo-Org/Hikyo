@@ -30,6 +30,8 @@
   --rake: oklch(0.48 0.05 258);
   /* Sub-pixel ramp per groove edge: gradients get no supersampling. */
   --rake-aa: 0.75px;
+  /* Tuned so the grooves sit at about 1.15:1 against --bg. */
+  --rake-opacity: 0.18;
   color-scheme: dark;
 }
 
@@ -51,6 +53,7 @@
   --rule-open: color-mix(in oklab, var(--accent) 55%, var(--line));
   /* Same navy on paper; the literal ink reads 15.20, darker than body text. */
   --rake: oklch(0.7 0.05 258);
+  --rake-opacity: 0.16;
   color-scheme: light;
 }
 
@@ -156,7 +159,7 @@ body::before {
   inset: 0;
   content: '';
   pointer-events: none;
-  opacity: 0.4;
+  opacity: var(--rake-opacity);
   background: repeating-radial-gradient(
     circle at var(--stone),
     transparent 0 calc(var(--rake-gap) - var(--rake-aa)),
@@ -417,7 +420,20 @@ body::before {
 }
 
 .hero-copy {
+  position: relative;
   min-width: 0;
+}
+
+/* The app's veil: a half page wash and a light blur mute the grooves behind the headline. */
+.hero-copy::before {
+  position: absolute;
+  z-index: -1;
+  inset: -1.5rem;
+  border-radius: 1.5rem;
+  background: color-mix(in oklab, var(--bg) 50%, transparent);
+  backdrop-filter: blur(2px);
+  content: '';
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -690,6 +706,7 @@ h1 span {
   font-family: var(--mono);
   font-size: 0.6875rem;
   line-height: 1.35;
+  white-space: nowrap;
 }
 
 .state.set {

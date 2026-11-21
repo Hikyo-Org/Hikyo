@@ -46,6 +46,7 @@ jobs:
       pull-requests: read
     outputs:
       plan: ${{ steps.classify.outputs.plan }}
+      desktop_module: ${{ steps.desktop-module.outputs.present }}
     steps:
       - &validate-revision
         name: Validate the immutable caller revision
@@ -153,6 +154,12 @@ jobs:
             exit 1
           fi
           printf 'plan=%s\n' "$plan" >>"$GITHUB_OUTPUT"
+      # Full plans select desktop on every branch, but the module only exists where
+      # the shell has landed; the desktop job needs macOS only then.
+      - name: Detect the desktop module
+        id: desktop-module
+        run: |
+          if [ -f desktop/go.mod ]; then echo present=true; else echo present=false; fi >>"$GITHUB_OUTPUT"
 
   lint:
     needs: changes
@@ -210,7 +217,7 @@ jobs:
       # Keep supervisor/refusal regressions mandatory without spending the
       # per-commit deadline testing the feedback harness itself.
       - name: Select pinned Node for feedback fixtures
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Fast feedback refusal and deadline fixtures
@@ -382,7 +389,7 @@ jobs:
           go test -count=1 ./scripts/ci -run '^(TestRequiredJobCannotSkipOnPullRequests|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
       - name: Staged impact CI fixtures
         run: |
-          go test -count=1 ./scripts/ci/queue-report
+          go test -count=1 ./scripts/ci/queue-report ./scripts/ci/checksuites
           go test -count=1 ./scripts/ci -run '^TestDocsQueue'
       - name: Docker daemon mirror and PostgreSQL startup fixtures
         run: |
@@ -458,7 +465,7 @@ jobs:
           key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
             go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -545,7 +552,7 @@ jobs:
           key: go-release-snapshot-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', '.goreleaser.yaml') }}
           restore-keys: |
             go-release-snapshot-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -737,7 +744,7 @@ jobs:
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
         run: ./scripts/ci/start-ci-postgres.sh
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -804,7 +811,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Typecheck, build, and assert O4-O6 policy content
@@ -925,7 +932,7 @@ jobs:
       # permission before the browser harness starts the downloaded binary.
       - name: Prepare prebuilt browser binaries
         run: chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp ci-artifacts/mail-sink
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -1030,7 +1037,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Download every leg's flow run log
@@ -1069,7 +1076,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -1347,6 +1354,58 @@ jobs:
           go test -count=1 -run FileSync ./internal/cli
           go test -count=1 -run '^TestFileSyncCLISQLite$' ./internal/isolation
 
+  # The native macOS shell (#1215) is its own Go module in desktop/: Wails, cgo and
+  # WebKit never reach the root module, and no Linux job can load or build it. This
+  # one job owns it end to end on a pinned macOS runner: the module boundary, race
+  # tests, the probe and release builds, and a driven
+  # WKWebView lane (Playwright cannot drive WKWebView). Root packages desktop/
+  # imports select it too (classify-changed-paths.sh). No cache is restored or
+  # written: the Wails module graph is small next to the shared Go caches.
+  desktop:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).desktop }}
+    # Paid macOS minutes only where the module exists; elsewhere the job still reports
+    # success for a full plan after the root-module boundary check on Linux.
+    runs-on: ${{ needs.changes.outputs.desktop_module == 'true' && 'macos-15' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    env:
+      # The shell supports macOS 13 and later (ADR D2); without this the linker warns
+      # per object that the runner's newer SDK default is higher than the target.
+      CGO_ENABLED: "1"
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
+    steps:
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
+          cache: false
+      - name: Desktop module boundary
+        run: |
+          ./scripts/ci/check-desktop-deps_test.sh
+          ./scripts/ci/check-desktop-deps.sh
+      - name: Desktop tests with the race detector
+        if: ${{ needs.changes.outputs.desktop_module == 'true' }}
+        working-directory: desktop
+        run: go test -race -count=1 -p 2 ./...
+      - name: Build the probe shell
+        if: ${{ needs.changes.outputs.desktop_module == 'true' }}
+        working-directory: desktop
+        run: go build -p 2 -tags probe -o "$RUNNER_TEMP/hikyo-desktop-probe" .
+      - name: Build the release shell
+        if: ${{ needs.changes.outputs.desktop_module == 'true' }}
+        working-directory: desktop
+        run: go build -p 2 -o "$RUNNER_TEMP/hikyo-desktop" .
+      - name: Driven WKWebView lane against a fake instance
+        if: ${{ needs.changes.outputs.desktop_module == 'true' }}
+        working-directory: desktop
+        run: go run ./probes/driven -app "$RUNNER_TEMP/hikyo-desktop-probe" -timeout 120s
+
   test_core:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
@@ -1365,7 +1424,7 @@ jobs:
         with:
           go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
           cache: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install pinned Corepack
@@ -2130,6 +2189,7 @@ jobs:
       - changes
       - client
       - compose-demo
+      - desktop
       - docs
       - floor-bench
       - fuzz_shard
@@ -2265,6 +2325,20 @@ jobs:
             (.path_classes.full | index("test") != null)
           ' "$trusted_registry" >/dev/null; then
             NEEDS_JSON=$(jq -ce 'del(.["test_core_serial"])' <<<"$NEEDS_JSON")
+          fi
+          # Candidate-local workflows can add the desktop job before the protected
+          # base registry and classifier own it (a base classifier emits no desktop
+          # plan key). Validate its live outcome in every mode, then adapt only
+          # this known addition for the older base. Delete this block and the
+          # predates-desktop test cases once the base registry contains desktop.
+          jq -e --argjson plan "$PLAN_JSON" '
+            (if $plan.desktop == true then "success"
+             elif $plan.desktop == false or $plan.desktop == null then "skipped"
+             else error("desktop plan must be boolean") end) as $expected |
+            type == "object" and has("desktop") and .desktop.result == $expected
+          ' <<<"$NEEDS_JSON" >/dev/null
+          if jq -e '.version == 2 and (.jobs | has("desktop") | not)' "$trusted_registry" >/dev/null; then
+            NEEDS_JSON=$(jq -ce 'del(.desktop)' <<<"$NEEDS_JSON")
           fi
           # Older bases enforced scan-xplat through test_core's dependency.
           # Check its live result before adapting only that known legacy shape;

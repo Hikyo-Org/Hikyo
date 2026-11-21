@@ -16,7 +16,11 @@ import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 const USER_CODE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
 const STATE = /^[A-Za-z0-9_-]{43}$/;
 
-/** Browser consent for a separate CLI session after any ordinary sign-in method. */
+/**
+ * Browser consent for a separate session after any ordinary sign-in method. The
+ * client may be the CLI or the desktop app, and the server cannot say which, so the
+ * wording names neither.
+ */
 export function CLILogin() {
   const auth = useAuth();
   const [query] = useSearchParams();
@@ -131,10 +135,10 @@ function CLILoginRequest() {
     return (
       <main className="login">
         <form className="login__card" onSubmit={submit}>
-          <h1 className="login__title">Sign in to the CLI</h1>
+          <h1 className="login__title">Approve a sign-in</h1>
           <p className="login__lede">
-            Enter the eight-character code shown in your terminal. Only continue for a CLI sign-in
-            you started.
+            Enter the eight-character code shown on the device or app you are signing in. Only
+            continue for a sign-in you started.
           </p>
           <Input
             label="Device code"
@@ -162,7 +166,7 @@ function CLILoginRequest() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">Nothing to authorize</h1>
-          <Alert>Start a sign-in from the CLI, then open the link it provides.</Alert>
+          <Alert>Start a sign-in from the Hikyo app or CLI, then open the link it provides.</Alert>
         </div>
       </main>
     );
@@ -180,10 +184,10 @@ function CLILoginRequest() {
     return (
       <main className="login">
         <div className="login__card">
-          <h1 className="login__title">CLI sign-in cancelled</h1>
+          <h1 className="login__title">Sign-in cancelled</h1>
           <p className="login__lede">
-            No approval was sent. Cancel the command in your terminal. Start a new CLI sign-in if
-            you want to try again.
+            No approval was sent. Cancel the sign-in on the app or terminal that started it. Start
+            a new sign-in if you want to try again.
           </p>
         </div>
       </main>
@@ -192,9 +196,9 @@ function CLILoginRequest() {
     return (
       <main className="login">
         <div className="login__card">
-          <h1 className="login__title">CLI sign-in approved</h1>
+          <h1 className="login__title">Sign-in approved</h1>
           <p className="login__lede">
-            Return to your terminal to continue. You remain signed in to this browser.
+            Return to the app or terminal that started it to continue. You remain signed in to this browser.
           </p>
         </div>
       </main>
@@ -212,7 +216,8 @@ function CLILoginRequest() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">Complete your sign-in</h1>
-          <Alert>{approve.error.detail}</Alert>
+          {/* The server's detail names `hikyo login` commands, which mean nothing to someone approving from the app. */}
+          <Alert>This sign-in needs an enrolled second factor. Sign out, sign in again here with a passkey or authenticator code, then approve the request again.</Alert>
           {logout.isError ? <Alert>Sign-out failed. Try again to continue signing in.</Alert> : null}
           <Button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}>
             {logout.isPending ? 'Signing out…' : 'Sign out and sign in again'}
@@ -228,9 +233,9 @@ function CLILoginRequest() {
     return (
       <main className="login">
         <div className="login__card">
-          <h1 className="login__title">CLI sign-in could not be completed</h1>
+          <h1 className="login__title">Sign-in could not be completed</h1>
           <Alert>
-            This request may have expired or already been used. Start again from the CLI.
+            This request may have expired, already been used, or belong to a different account than the one signed in here. Start again from the app or CLI.
           </Alert>
         </div>
       </main>
@@ -244,15 +249,15 @@ function CLILoginRequest() {
   return (
     <main className="login">
       <div className="login__card">
-        <h1 className="login__title">Authorize CLI sign-in</h1>
+        <h1 className="login__title">Authorize sign-in</h1>
         <p className="login__lede">
           Signed in as{' '}
           <strong><bdi>{auth.identity?.principal.display_name ?? auth.identity?.principal.id}</bdi></strong>.
-          Approve only a sign-in you started in your terminal.
+          Approve only a sign-in you started in the Hikyo app or terminal.
         </p>
         <dl>
           <dt>Client</dt>
-          <dd>Hikyo CLI</dd>
+          <dd>Hikyo app or CLI</dd>
           <dt>Instance</dt>
           <dd className="mono workspace-consent__origin">
             <bdi dir="ltr">{transaction.data.instance}</bdi>
@@ -260,7 +265,7 @@ function CLILoginRequest() {
           <dt>Purpose</dt>
           <dd>Login</dd>
           <dt>Session type</dt>
-          <dd>Separate CLI session</dd>
+          <dd>Separate session for that client</dd>
           {transaction.data.transport === 'device' ? (
             <>
               <dt>Device code</dt>
@@ -268,9 +273,15 @@ function CLILoginRequest() {
             </>
           ) : null}
         </dl>
+        {transaction.data.transport === 'device' ? (
+          <p className="login__lede" role="note">
+            You are approving a <strong>different device</strong>, not this browser. Approve only if
+            the code above is the one that device is showing.
+          </p>
+        ) : null}
         <p className="login__lede">
-          The CLI will act as you until its session expires or is revoked. Your browser stays signed
-          in.
+          That client will act as you until its session expires or is revoked. Your browser stays
+          signed in.
         </p>
         <Button
           variant="primary"
@@ -283,7 +294,7 @@ function CLILoginRequest() {
             })
           }
         >
-          {approve.isPending ? 'Authorizing…' : 'Authorize CLI sign-in'}
+          {approve.isPending ? 'Authorizing…' : 'Authorize sign-in'}
         </Button>
         <Button
           type="button"

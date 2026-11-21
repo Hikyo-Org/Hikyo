@@ -64,7 +64,7 @@ func TestDevAdmissionReusesCanonicalProofWithoutQueueAuthority(t *testing.T) {
 		t.Fatalf("dev did not compose independent current authority/DCO checks: policy=%d DCO=%d checks=%+v", f.verifyCalls, dcoCalls, f.api.checks)
 	}
 	for path := range f.api.reads {
-		if strings.HasPrefix(path, "graphql:") || strings.Contains(path, "/actions/workflows/ci-merge-group.yml") || strings.Contains(path, "/rulesets/20539346") {
+		if strings.HasPrefix(path, "graphql:") && (!strings.Contains(path, "checkSuites{totalCount}") || strings.Contains(path, "checkSuites(")) || strings.Contains(path, "/actions/workflows/ci-merge-group.yml") || strings.Contains(path, "/rulesets/20539346") {
 			t.Fatalf("dev admission borrowed full queue authority: %s", path)
 		}
 	}
