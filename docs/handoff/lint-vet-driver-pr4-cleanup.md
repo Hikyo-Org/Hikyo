@@ -14,7 +14,7 @@ Work: PR 4 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-c
 
 ## Evidence
 
-- `go test -count=1 -timeout 40m -p 2 ./internal/lint/` passes at `a16abc2bc`, cold and warm (memory table below).
+- `go test -count=1 -timeout 40m -p 2 ./internal/lint/` passes at `e40452ed5` (336.6 s), and cold and warm at `a16abc2bc` (memory table below); the commits between them only delete unused test helpers and wrap one error. `scripts/ci/golangci-lint-new.sh origin/dev` reports 0 issues at `e40452ed5`, and `gofmt -l` is clean for the touched packages.
 - `go test ./internal/isolation/` passes (1,180.6 s). PostgreSQL-backed tests skip without a DSN here, so the engine-backed probes were not exercised locally.
 - `go build ./...` and `go vet ./...` pass at `133567358` (every package that imported a removed symbol is covered by the whole-module vet).
 - `go test ./internal/boundary/ ./scripts/ci/...` pass (`scripts/ci/qualification` after the A6 edit, `scripts/ci` in 598.9 s).
