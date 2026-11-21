@@ -48,6 +48,10 @@ stable_publish_output=$(printf '5\n1.0.0\n' | env \
 	XDG_STATE_HOME="$fixture_dir/state" \
 	"$script_dir/ceremony.sh" --dry-run)
 printf '%s\n' "$stable_publish_output" | grep -F 'protected homebrew-tap PR only after public release verification' >/dev/null
+printf '%s\n' "$stable_publish_output" | grep -F 'publish-desktop-draft.sh' >/dev/null
+if printf '%s\n' "$publish_output" | grep -F 'publish-desktop-draft.sh' >/dev/null; then
+	printf 'release ceremony fixture: a prerelease mentions the desktop draft\n' >&2; exit 1
+fi
 
 tag_output=$(printf '3\n1.0.0-alpha.0\n' | env \
 	PATH="$fixture_dir/bin:$PATH" \

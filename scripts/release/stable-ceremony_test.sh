@@ -12,7 +12,8 @@ cat >"$fixture/repo/scripts/release/publish-desktop-draft.sh" <<'SH'
 #!/bin/sh
 set -eu
 printf 'desktop helper %s state=%s\n' "$*" "${HIKYO_RELEASE_TRUST_STATE:-unset}" >>"$FIXTURE_LOG"
-[ "$FIXTURE_MODE" != desktop-fails ]
+[ "$FIXTURE_MODE" != desktop-fails ] || [ "${1:-}" = --check-only ]
+[ "$FIXTURE_MODE" != desktop-check-fails ] || [ "${1:-}" != --check-only ]
 SH
 chmod +x "$fixture/repo/scripts/release/publish-desktop-draft.sh"
 cat >"$fixture/repo/scripts/release/publish-stable-draft.sh" <<'SH'
@@ -171,11 +172,28 @@ grep -F "publication helper Hikyo-Org/Hikyo v1.0.0 $reviewed release/trust state
 if grep -E '^gh workflow|^signer|^git (tag|commit|push)' "$FIXTURE_LOG" >/dev/null; then
   printf 'ceremony fixture: local publication signed or dispatched CI\n' >&2; exit 1
 fi
-# Stable publication then publishes the desktop draft, strictly after the CLI release.
+# The staged desktop draft is checked before the CLI release goes public, and
+# published strictly after it.
+grep -F 'desktop helper --check-only Hikyo-Org/Hikyo 1.0.0 release/trust' "$FIXTURE_LOG" >/dev/null
 grep -F 'desktop helper Hikyo-Org/Hikyo 1.0.0 release/trust' "$FIXTURE_LOG" >/dev/null
-[ "$(grep -n -F 'publication helper' "$FIXTURE_LOG" | head -1 | cut -d: -f1)" -lt "$(grep -n -F 'desktop helper' "$FIXTURE_LOG" | head -1 | cut -d: -f1)" ] || {
-  printf 'ceremony fixture: desktop publication preceded the CLI release\n' >&2; exit 1
+check_line=$(grep -n -F 'desktop helper --check-only' "$FIXTURE_LOG" | head -1 | cut -d: -f1)
+cli_line=$(grep -n -F 'publication helper' "$FIXTURE_LOG" | head -1 | cut -d: -f1)
+publish_line=$(grep -n -F 'desktop helper Hikyo-Org' "$FIXTURE_LOG" | head -1 | cut -d: -f1)
+[ "$check_line" -lt "$cli_line" ] && [ "$cli_line" -lt "$publish_line" ] || {
+  printf 'ceremony fixture: desktop check, CLI publication and desktop publication are out of order\n' >&2; exit 1
 }
+# An unready desktop draft stops publish before anything is public, and review too.
+: >"$FIXTURE_LOG"
+if printf 'publish v1.0.0 %s\n' "$reviewed" | FIXTURE_MODE=desktop-check-fails "$ceremony" publish 1.0.0 "$reviewed" >"$fixture/output" 2>&1; then
+  printf 'ceremony fixture: an unready desktop draft did not stop publish\n' >&2; exit 1
+fi
+grep -F 'draft is not ready' "$fixture/output" >/dev/null
+if grep -F 'publication helper' "$FIXTURE_LOG" >/dev/null; then
+  printf 'ceremony fixture: the CLI release was published with an unready desktop draft\n' >&2; exit 1
+fi
+if FIXTURE_MODE=desktop-check-fails "$ceremony" review 1.0.0 >"$fixture/output" 2>&1; then
+  printf 'ceremony fixture: review passed with an unready desktop draft\n' >&2; exit 1
+fi
 # A prerelease publishes no desktop release.
 : >"$FIXTURE_LOG"
 printf 'publish v0.9.0 %s\n' "$reviewed" | "$ceremony" publish 0.9.0 "$reviewed" >"$fixture/output"

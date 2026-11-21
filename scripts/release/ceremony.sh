@@ -466,6 +466,7 @@ dry_run_phase() {
 				printf '%s\n' 'Would skip the stable homebrew-tap for this prerelease.'
 			else
 				printf '%s\n' 'Would open or refresh a protected homebrew-tap PR only after public release verification.'
+				printf '%s\n' 'Would print that the desktop-v draft is published separately with publish-desktop-draft.sh.'
 			fi
 			printf '%s\n' "would require exact typed confirmation: publish $tag"
 			;;
@@ -889,6 +890,10 @@ EOF
 	validate_manifest_assets "$final_dir" published
 	verify_published_release_and_prepare_tap "$final_dir"
 	printf 'Published and externally reverified: %s\n' "$tag"
+	# This legacy path never touches the desktop-v draft; the maintainer must.
+	if [ "$("$script_dir/release-channel.sh" "$tag")" = stable ]; then
+		printf 'The desktop app is not published by this path. Now run, from the repository root:\n  scripts/release/publish-desktop-draft.sh %s %s release/trust\n' "$repository" "$version"
+	fi
 }
 
 if [ "${HIKYO_CEREMONY_SOURCE_ONLY:-}" != true ]; then

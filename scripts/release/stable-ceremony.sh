@@ -118,6 +118,12 @@ download_verify() {
 }
 
 cd "$repo_root"
+# A stable version's staged desktop-v draft must verify before anything is public.
+desktop_gate() {
+	[ "$("$script_dir/release-channel.sh" "v$1")" = stable ] || return 0
+	"$script_dir/publish-desktop-draft.sh" --check-only "$repository" "$1" release/trust ||
+		fail "desktop-v$1 draft is not ready; rerun the failed jobs of the v$1 release run, then retry"
+}
 case "${1:-help}" in
 	help|--help|-h)
 		printf '%s\n' \
@@ -188,6 +194,7 @@ case "${1:-help}" in
 	review)
 		[ "$#" -eq 2 ] || fail 'usage: ceremony.sh review VERSION'
 		download_verify "$2"
+		desktop_gate "$2"
 		printf 'Verified draft directory: %s\nManifest SHA-256: %s\n' "$download" "$manifest_sha"
 		printf 'Replace the draft placeholder with release notes on GitHub, review them and the acceptance evidence, then run:\n  scripts/release/ceremony.sh publish %s %s\n' "$2" "$manifest_sha"
 		;;
@@ -198,6 +205,7 @@ case "${1:-help}" in
 		clean_main
 		download_verify "$version"
 		[ "$manifest_sha" = "$reviewed" ] || fail 'draft changed since review'
+		desktop_gate "$version"
 		confirm "publish v$version $reviewed"
 		HIKYO_RELEASE_TRUST_STATE="$trust_state" "$script_dir/publish-stable-draft.sh" \
 			"$repository" "v$version" "$reviewed" release/trust

@@ -154,7 +154,11 @@ grep -F 'draft changed during verification' "$F/out" >/dev/null || fail 'change 
 reset
 mutate latest.json '.tag_name = "desktop-v1.4.0"'
 if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'moved latest accepted'; fi
-grep -F 'no longer the latest' "$F/out" >/dev/null || fail 'moved latest not reported'
+grep -F 'desktop-v release became the latest' "$F/out" >/dev/null || fail 'desktop Latest not reported'
+# Finishing an older version while a newer CLI release is Latest is fine.
+reset
+mutate latest.json '.tag_name = "v1.5.0"'
+publish example/repo 1.4.0 release/trust >"$F/out" 2>&1 || fail "newer Latest refused: $(cat "$F/out")"
 reset
 mutate tagref.json '.object.sha = "2222222222222222222222222222222222222222"'
 if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'wrong tag target accepted'; fi
@@ -166,4 +170,29 @@ reset
 mutate releases.json '(.[1].draft) = false | (.[1].immutable) = true'
 mutate tagref.json '.object.type = "tag"'
 if publish example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail 'public release with a wrong tag accepted'; fi
+
+# Check-only mode: verifies the staged draft against a still-draft v release and
+# publishes, edits and downloads nothing public.
+reset
+mutate releases.json '(.[0].draft) = true | (.[0].immutable) = false'
+publish --check-only example/repo 1.4.0 release/trust >"$F/out" 2>&1 || fail "check of a draft v release refused: $(cat "$F/out")"
+edited && fail 'check-only mode published'
+[ "$(grep -c 'verify-desktop' "$F/log")" -eq 1 ] || fail 'check-only did not verify the draft bytes'
+for case in 'target_commitish differs' 'inventory commit differs' 'verifier fails' 'no desktop draft' 'two desktop releases' 'v release is a prerelease' 'rulesets missing'; do
+	reset
+	mutate releases.json '(.[0].draft) = true | (.[0].immutable) = false'
+	case $case in
+		'target_commitish differs') mutate releases.json '(.[1].target_commitish) = "2222222222222222222222222222222222222222"' ;;
+		'inventory commit differs') printf '{"source_commit":"2222222222222222222222222222222222222222"}\n' >"$F/assets/desktop-v1.4.0/desktop-inventory.json" ;;
+		'verifier fails') FIXTURE_MODE=verify-fails ;;
+		'no desktop draft') mutate releases.json 'del(.[1])' ;;
+		'two desktop releases') mutate releases.json '. + [.[1] + {id: 21}]' ;;
+		'v release is a prerelease') mutate releases.json '(.[0].prerelease) = true' ;;
+		'rulesets missing') mutate rulesets.json '[]' ;;
+	esac
+	if publish --check-only example/repo 1.4.0 release/trust >"$F/out" 2>&1; then fail "check-only accepted: $case"; fi
+	edited && fail "check-only published while refusing: $case"
+done
+# A check still refuses prerelease versions.
+if publish --check-only example/repo 1.4.0-rc.1 release/trust >"$F/out" 2>&1; then fail 'check-only accepted a prerelease version'; fi
 printf 'publish desktop fixture: gates, idempotent retry and post-publication checks hold\n'

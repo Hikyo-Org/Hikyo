@@ -1,8 +1,12 @@
 #!/bin/sh
 # Publish the staged desktop-v<version> draft after v<version> is public. Run by
 # the maintainer's ceremony, from the repository root, after publish-stable-draft.sh.
+# With --check-only it verifies the staged draft without publishing anything and
+# without requiring v<version> to be public, so the ceremony can refuse early.
 set -eu
-[ "$#" -eq 3 ] || { printf 'usage: %s REPOSITORY VERSION TRUST\n' "$0" >&2; exit 2; }
+check_only=false
+if [ "${1:-}" = --check-only ]; then check_only=true; shift; fi
+[ "$#" -eq 3 ] || { printf 'usage: %s [--check-only] REPOSITORY VERSION TRUST\n' "$0" >&2; exit 2; }
 repository=$1 version=$2 trust=$3
 : "${GH_BIN:=gh}"
 export GH_BIN
@@ -52,10 +56,16 @@ require_tag_commit() {
 	fail 'immutable GitHub releases must be enabled'
 "$script_dir/check-desktop-rulesets.sh" "$repository"
 
-# The CLI release comes first: public, final and immutable, and it names the commit.
+# Publishing needs the CLI release first: public, final and immutable. A check
+# accepts its draft too. Either way it names the commit the desktop draft must target.
 read_release "$cli_tag" "$scratch/cli.json"
-jq -e '.draft == false and .prerelease == false and .immutable == true' "$scratch/cli.json" >/dev/null ||
-	fail "$cli_tag must be public, stable and immutable before the desktop release"
+if [ "$check_only" = true ]; then
+	jq -e '.prerelease == false and (.draft == true or .immutable == true)' "$scratch/cli.json" >/dev/null ||
+		fail "$cli_tag must be a stable draft or an immutable public release"
+else
+	jq -e '.draft == false and .prerelease == false and .immutable == true' "$scratch/cli.json" >/dev/null ||
+		fail "$cli_tag must be public, stable and immutable before the desktop release"
+fi
 "$GH_BIN" release download "$cli_tag" --repo "$repository" --pattern release-manifest.json --dir "$scratch/public"
 commit=$(jq -er '.source_commit' "$scratch/public/release-manifest.json")
 printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$' || fail 'invalid source commit in the CLI manifest'
@@ -81,6 +91,11 @@ if [ "$already_public" = true ]; then
 	exit 0
 fi
 
+if [ "$check_only" = true ]; then
+	printf 'desktop publication: %s draft verified against %s (check only)\n' "$desktop_tag" "$cli_tag"
+	exit 0
+fi
+
 # Re-fetch immediately before publication to reject asset replacement after verification.
 read_release "$desktop_tag" "$scratch/recheck.json"
 shape='[.id,.tag_name,.draft,.target_commitish,(.assets | sort_by(.id) | map({id,name,size,updated_at,digest}))]'
@@ -95,8 +110,9 @@ jq -e --slurpfile original "$scratch/release.json" '
 	.id == $original[0].id and .tag_name == $original[0].tag_name and
 	.draft == false and .prerelease == false and .immutable == true
 ' "$scratch/public-release.json" >/dev/null || fail 'public release identity or immutability differs'
-"$GH_BIN" api "repos/$repository/releases/latest" | jq -e --arg tag "$cli_tag" '.tag_name == $tag' >/dev/null ||
-	fail "$cli_tag is no longer the latest release"
+# Finishing an older version is fine; the desktop series must simply never be Latest.
+"$GH_BIN" api "repos/$repository/releases/latest" | jq -e '.tag_name | type == "string" and (startswith("desktop-v") | not)' >/dev/null ||
+	fail 'a desktop-v release became the latest release'
 require_tag_commit
 "$GH_BIN" release download "$desktop_tag" --repo "$repository" --dir "$scratch/public"
 go run ./scripts/release/stable verify-desktop --trust "$trust" --directory "$scratch/public" \
