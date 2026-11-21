@@ -35,7 +35,7 @@ const record: Parameters<typeof MatrixRowEditor>[0]['keyRecord'] = {
   presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } },
   group_id: '', created_at: '2026-10-09T00:00:00Z',
 };
-const revealed = { key_id: 'key-a', name: 'PASSWORD', value: 'focus-test-secret' };
+const revealed = { key_id: 'key-a', name: 'PASSWORD', classification: 'secret', value: 'focus-test-secret' };
 function click(container: HTMLElement, label: string) {
   const button = [...container.querySelectorAll('button')].find(b => b.textContent === label || b.getAttribute('aria-label') === label);
   if (!button) throw new Error(`Missing ${label}`);

@@ -26,7 +26,7 @@ import (
 // a newer server's export never applies silently truncated to an older one.
 const FormatVersion = 1
 
-// Bounds. A bundle is attacker-supplied request material (ops-spec row 15), so
+// Bounds. A bundle is attacker-supplied request material (ops-spec row 16), so
 // every ceiling is a named constant refused with a loud ErrLimitExceeded-class
 // refusal — the raw-byte cap before the parse where possible, the entry cap
 // after decode.

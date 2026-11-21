@@ -156,7 +156,7 @@ type Story = StoryObj<typeof meta>;
 export const Disclosure: Story = {
   beforeEach: withSearchParams({ transaction: STATE }),
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText(/the terminal asks to/i)).toBeVisible();
+    await expect(await canvas.findByText(/a hikyo client you started asks to/i)).toBeVisible();
     // Names come from the authorized reads; a key the catalogue lacks stays listed by its ID.
     await expect(await canvas.findByText('DATABASE_URL')).toBeVisible();
     await expect(canvas.getByText('key_01989abc-def0-7123-8123-000000000002')).toBeVisible();
@@ -170,7 +170,7 @@ export const Disclosure: Story = {
     await expect(
       canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
     ).not.toBeRequired();
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize' })).toBeEnabled());
   },
 };
 
@@ -197,7 +197,7 @@ export const Adapter: Story = {
     await expect(
       canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
     ).not.toBeRequired();
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize' })).toBeEnabled());
   },
 };
 
@@ -222,7 +222,7 @@ export const Loading: Story = {
   },
 };
 
-// An expired, spent or unknown transaction: one sentence, back to the terminal.
+// An expired, spent or unknown transaction: one sentence, back to where it started.
 export const Failed: Story = {
   beforeEach: withSearchParams({ transaction: STATE }),
   parameters: {
@@ -230,7 +230,7 @@ export const Failed: Story = {
   },
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByText(/this cli transaction is invalid, expired, or already used/i),
+      await canvas.findByText(/this request is invalid, expired, or already used/i),
     ).toBeVisible();
   },
 };
@@ -239,7 +239,7 @@ export const Failed: Story = {
 export const NothingToAuthorize: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'Nothing to authorize' })).toBeVisible();
-    await expect(canvas.getByText(/this page has no cli transaction/i)).toBeVisible();
+    await expect(canvas.getByText(/this page has no pending request/i)).toBeVisible();
   },
 };
 
@@ -255,7 +255,7 @@ export const DeveloperCredential: Story = {
     await expect(canvas.getByText(/2 keys exist now/i)).toBeVisible();
     await expect(canvas.getByText(/every key published to this environment later/i)).toBeVisible();
     await expect(canvas.getByText(/8 hours/)).toBeVisible();
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize' })).toBeEnabled());
     await expect(canvas.queryByRole('button', { name: /re-authenticate with/i })).not.toBeInTheDocument();
   },
 };

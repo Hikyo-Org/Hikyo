@@ -48,7 +48,7 @@ plan() {
 	"$real_jq" -e --argjson required '{
 		"audit-collector": ["python"], "docs-impact": [],
 		"release-admission": ["python", "releaseDependencies"],
-		"go-format": ["go"], "go-mod-verify": ["go"], "go-compile": ["go"],
+		"go-format": ["go"], "go-mod-verify": ["go"], "go-compile": ["go"], "desktop-compile": ["go"],
 		"shellcheck": ["shellcheck"], "actionlint": ["go", "shellcheck"],
 		"docs": ["node"],
 		"client-typecheck": ["clientDependencies", "node", "pnpm", "jq"],
@@ -86,13 +86,20 @@ expect '(.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "docs-impac
 plan tooling internal/cli/testdata/help.txt scripts/owner.go
 expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "docs"]'
 plan all api/openapi.yaml
-expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and .client and .web and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
+# desktop/ does not exist yet on this tree (main, dev before the shell lands): even
+# root packages the module imports select no desktop check.
+expect '.client and .web and (.desktop | not) and (.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
+# From here on the nested module exists.
+mkdir -p desktop
+: >desktop/go.mod
+plan all api/openapi.yaml
+expect '(.lanes.go.checks | map(.id)) == ["desktop-compile", "docs-impact"] and .desktop and .client and .web'
 plan all docs/operations/audit-collector.md scripts/ci/release-admission/test_release_records.py
 expect '.auditCollector and .releaseAdmission and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission"] and .lanes.tooling.prerequisites.python and .lanes.tooling.prerequisites.releaseDependencies'
 plan all app/owner.go scripts/tool/owner.go "scripts/tool/line
 break.go" go.sum '-space name.sh' "line
-break.sh" .github/workflows/check.yml scripts/ci/release-admission/run_checks.py docs/site/a.md clients/ts/a.ts docs/operations/audit-collector.md
-expect 'all(del(.lanes)[]; . == true) and (.lanes.go.checks | map(.id)) == ["go-format", "go-mod-verify", "go-compile"] and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission", "go-format", "go-compile", "shellcheck", "actionlint", "docs"]'
+break.sh" .github/workflows/check.yml scripts/ci/release-admission/run_checks.py docs/site/a.md clients/ts/a.ts docs/operations/audit-collector.md desktop/probes/driven/main.go
+expect 'all(del(.lanes)[]; . == true) and (.lanes.go.checks | map(.id)) == ["go-format", "go-mod-verify", "go-compile", "desktop-compile"] and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission", "go-format", "go-compile", "shellcheck", "actionlint", "docs"]'
 feedback_plan_select go tooling
 [ "${#go_files[@]}" -eq 2 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${#shell_files[@]}" -eq 2 ]
 [ "${go_files[1]}" = "./scripts/tool/line
@@ -103,6 +110,35 @@ plan all app/deleted.go removed/final.go
 expect '.go and (.lanes.go.checks | map(.id)) == ["go-compile"]'
 feedback_plan_select go application
 [ "${#go_files[@]}" -eq 0 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./app ]
+# desktop/ is a nested module: its Go files are formatted from the root but compiled
+# only by the desktop check, never by the root go-compile, which cannot load them.
+mkdir -p desktop/internal/shell internal/crypto
+printf 'package shell\n' >desktop/internal/shell/proxy.go
+printf 'package main\n' >desktop/main_darwin.go
+printf 'package shell\n' >desktop/internal/shell/shellroutes.go
+printf 'package crypto\n' >internal/crypto/seal.go
+plan all desktop/internal/shell/proxy.go
+expect '.desktop and (.go | not) and (.lanes.go.checks | map(.id)) == ["go-format", "desktop-compile"] and (.lanes.tooling.checks | length) == 0 and .lanes.go.prerequisites.go'
+feedback_plan_select go application
+[ "${#go_files[@]}" -eq 1 ] && [ "${#go_packages[@]}" -eq 0 ]
+# A root package the desktop module imports checks both modules.
+plan all internal/crypto/seal.go
+expect '.desktop and .go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "desktop-compile"]'
+plan all desktop/main_darwin.go
+expect '.desktop and (.lanes.go.checks | map(.id)) == ["go-format", "desktop-compile", "docs-impact"]'
+plan all desktop/README.md
+expect '.desktop and (.lanes.go.checks | map(.id)) == ["desktop-compile"]'
+plan all app/owner.go
+expect '(.desktop | not) and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"]'
+# Without desktop/go.mod (main before the shell lands) the same paths select nothing for it.
+rm desktop/go.mod
+plan all internal/crypto/seal.go
+expect '(.desktop | not) and .go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"]'
+# The desktop shell'"'"'s wire contract and launch environment are documented surfaces.
+plan all desktop/main_darwin.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
+plan all desktop/internal/shell/shellroutes.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
 # Unknown declarative identifiers must never become silent successful no-ops.
 if (feedback_check_prerequisites unknown) >"$work/output" 2>&1; then fail 'accepted unknown check'; fi
 if (feedback_plan_hosted_lane unknown) >"$work/output" 2>&1; then fail 'accepted unknown hosted lane'; fi

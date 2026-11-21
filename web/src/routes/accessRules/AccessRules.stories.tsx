@@ -332,10 +332,17 @@ export const KeyMoveCountOnly: Story = {
   name: 'Key move, count only',
   render: () => <KeyMoveConfirmDialog widening={{ count: 3 }} change="Move DB_PASSWORD from db/ to app/" envName={(id) => id} onCancel={fn()} onConfirm={fn()} />,
   play: async ({ canvas }) => {
-    const dialog = within(await canvas.findByRole('dialog', { name: 'This move gives people new access' }));
+    const dialogElement = await canvas.findByRole('dialog', { name: 'This move gives people new access' });
+    const dialog = within(dialogElement);
     await expect(dialog.getByText('Gains access: 3 people')).toBeVisible();
     await expect(dialog.getByText(/ask one of them to make this move/)).toBeVisible();
     await expect(dialog.queryByRole('button', { name: 'Move and give access' })).toBeNull();
+    // A short pinned body hugs its content: its minimum never adds empty space.
+    const body = dialogElement.querySelector<HTMLElement>('.dialog__body');
+    const last = body?.lastElementChild;
+    if (!body || !last) throw new Error('pinned dialog body not rendered');
+    const padding = Number.parseFloat(getComputedStyle(body).paddingBottom);
+    await expect(Math.abs(body.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom - padding)).toBeLessThanOrEqual(1);
   },
 };
 

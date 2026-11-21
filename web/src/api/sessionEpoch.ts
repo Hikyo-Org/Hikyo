@@ -132,19 +132,34 @@ export function isSessionStorageEvent(event: StorageEvent): boolean {
  * display-once result, whoami must prove the session is still the same owner.
  * New requests stay fenced during that check. No endpoint gets an exemption. */
 export async function reconcileSessionResponse(
-  captured: number, expected?: ExpectedSessionRotation,
+  captured: number, expected?: ExpectedSessionRotation, force = false,
 ): Promise<void> {
   if (captured !== epoch) throw new SessionChangedError();
   // Each account response owns its proof. Waiting for another response's
   // reconciliation must not authorize a different returned session identity.
   if (reconciliation !== undefined) await reconciliation;
   if (captured !== epoch) throw new SessionChangedError();
-  if (onRotation !== undefined && (expected !== undefined || cookie !== companion()) && !blocked) {
+  if (onRotation !== undefined && (force || expected !== undefined || cookie !== companion()) && !blocked) {
     blocked = true;
     reconciliation = onRotation(expected).finally(() => { reconciliation = undefined; });
     await reconciliation;
   }
   assertSessionEpoch(captured);
+}
+
+/**
+ * App mode has no companion cookie to watch: the shell holds the session, so the
+ * cookie fence above stays inert. The shell can still change the session during
+ * a hop (a reauth redeems for the app's session while the page waits), so the
+ * epoch is captured before the hop and, after it, the page proves with whoami that the owner is unchanged before it
+ * uses the result. A changed owner or a failed check blocks the epoch, and the
+ * caller's `assertSessionEpoch` then fails closed like the browser fence does.
+ * Anything the shell changes outside a hop is caught by the focus revalidation.
+ */
+export async function reconcileAfterShellHop(captured: number): Promise<void> {
+  // No identity check installed means no proof is possible: fail closed.
+  if (onRotation === undefined) throw new SessionChangedError();
+  await reconcileSessionResponse(captured, undefined, true);
 }
 
 export function isPeerSessionMessage(event: MessageEvent): boolean {

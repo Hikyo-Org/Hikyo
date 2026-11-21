@@ -27,7 +27,7 @@ the default-branch commit at dispatch time. Follow that run for the release
 result; a successful request alone does not mean publication succeeded.
 
 Manual releases run the same full CI, signing, startup and upgrade checks as the
-02:00 UTC schedule. When the source commit already has a nightly, they skip
+02:23 UTC schedule. When the source commit already has a nightly, they skip
 creating another immutable GitHub release. The downstream container job still
 runs: it can build or reuse the immutable image and promote its digest to
 `:nightly` if that release remains the latest published nightly. Selecting
@@ -308,8 +308,9 @@ Sequences only increase and the verification floor never moves back, so each ste
 needs a higher sequence than the last published metadata and catalog.
 
 Warning: plan a stable release alongside any re-authorization. The latest stable
-release's assets embed the trust sequences current when it was built (v1.0.0
-carries metadata 2 and catalog 4). Once main moves past them, `install.sh` runs
+release's assets embed the trust sequences current when it was built (for
+example, v1.0.0 carries metadata 2 and catalog 4). Once main moves past them,
+`install.sh` runs
 `stable verify --latest` against that older embedded state and refuses every new
 stable install with `metadata: trust rollback refused` until the next stable
 release is published with newer trust. Historical verification keeps passing.

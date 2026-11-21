@@ -2,7 +2,7 @@
 # Keep the app's database-drop checks out of concurrent package migrations:
 # DROP DATABASE waits for the shared PostgreSQL checkpoint/fsync queue.
 # Run repository analysis separately: its cross-platform compiler loads must
-# not compete with all runtime suites for CPU and memory. Every package runs once.
+# not compete with all runtime suites for CPU and memory. Every test runs once.
 # Only internal/lint needs the compiled lint matrix; internal/boundary just runs
 # `go list -json` (no export data) and internal/isolation is sharded elsewhere,
 # so the pool skips the multi-minute prepare-lint-cache compile.
@@ -50,7 +50,13 @@ if [[ "$mode" == pool ]]; then
   xargs go test -count=1 <"$work/concurrent" || status=1
 else
   # Run lint even if app failed, preserving useful coverage on red runs.
-  go test -count=1 "$app_package" || status=1
+  # internal/app's packaged-binary tests link cmd/hikyo or a signed coordinator
+  # about ten times (~20 s each), which together with the rest crossed Go's 10 m
+  # package alarm. -skip and -run take the same pattern, so every test runs
+  # exactly once; a renamed test falls into the first invocation, never out.
+  packaged='Packaged|^TestActualDefaultDevCLIStartsAndRestarts$'
+  go test -count=1 -skip "$packaged" "$app_package" || status=1
+  go test -count=1 -run "$packaged" "$app_package" || status=1
   # The vet driver compiles and analyzes every context; measured 331 s on a
   # hosted runner after the lint cache is prepared (invariants run
   # 44714758733, head 2ad5ad17f; 461 s in the earlier run 44694008741), so

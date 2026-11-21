@@ -18,10 +18,10 @@ import "time"
 // forgotten. One block, one review.
 const (
 	// Deadline bounds one remote's entire fetch, connect through body read.
-	// Rhymes with row 17's HTTP header/read timeout scale.
+	// Rhymes with row 18's HTTP header/read timeout scale.
 	Deadline = 10 * time.Second
 
-	// ResponseCap bounds the bytes read from one remote. Rhymes with row 19's
+	// ResponseCap bounds the bytes read from one remote. Rhymes with row 20's
 	// adapter response cap. A directory listing is org and project names and
 	// counts; a megabyte is already generous for it, which is the point — the
 	// cap exists to bound a hostile or broken peer, not to fit the payload.
@@ -33,7 +33,7 @@ const (
 	RemoteCount = 25
 
 	// FanOut caps parallel fetches, matching the four-concurrent-per-org
-	// pattern in rows 17 and 19. With RemoteCount at 25 this makes a full
+	// pattern in rows 18 and 20. With RemoteCount at 25 this makes a full
 	// directory view at most seven sequential rounds of a ten-second deadline
 	// in the pathological all-unreachable case.
 	FanOut = 4
@@ -53,7 +53,7 @@ const (
 	// actually protects the fleet. The ADR is explicit that per-viewer limiting
 	// alone does not bound many principals: fifty viewers each politely under
 	// their own limit is still fifty times the traffic at every remote. Rhymes
-	// with row 17's fail-closed default budget.
+	// with row 18's fail-closed default budget.
 	AggregateTriggerRate = 60 // per minute, instance-wide
 
 	// WorkspaceSessionIdle and WorkspaceSessionAbsolute are the ratified

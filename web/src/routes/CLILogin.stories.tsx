@@ -34,9 +34,9 @@ export const LoopbackApproval: Story = {
   },
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByRole('heading', { name: 'Authorize CLI sign-in' }),
+      await canvas.findByRole('heading', { name: 'Authorize sign-in' }),
     ).toBeVisible();
-    await expect(canvas.getByText('Separate CLI session')).toBeVisible();
+    await expect(canvas.getByText('Separate session for that client')).toBeVisible();
   },
 };
 export const DeviceApproval: Story = {
