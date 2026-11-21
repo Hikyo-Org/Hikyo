@@ -84,7 +84,7 @@ grep -F -- 'make_latest=false' "$F/log" >/dev/null || fail 'created release may 
 if grep -E -- '--verify-tag|gh release' "$F/log" >/dev/null; then fail 'run must address the release by ID through the API, never by tag'; fi
 grep -F 'releases/88/assets?name=Hikyo-Desktop-1.4.0-arm64.dmg' "$F/log" >/dev/null || fail 'upload not bound to the release ID'
 grep -F 'releases/assets/101' "$F/log" >/dev/null || fail 'download not bound to asset IDs'
-grep -F 'staged and verified' "$F/out" >/dev/null || fail 'no completion line' 
+grep -F 'staged and verified' "$F/out" >/dev/null || fail 'no completion line'
 [ "$(grep -c 'verify-desktop' "$F/log")" -eq 2 ] || fail 'inventory not verified before and after staging'
 if grep -F 'gh api --method DELETE' "$F/log" >/dev/null; then fail 'deleted a release when none existed'; fi
 
