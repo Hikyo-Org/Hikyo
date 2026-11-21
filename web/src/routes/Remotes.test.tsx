@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InstanceUpdateJob } from '../api/updates.ts';
 import { MemoryRouter } from 'react-router';
 import { forgetWorkspace, rememberWorkspace } from '../api/workspace.ts';
+import { continueInBrowserReason, dismissContinueInBrowser } from '../app/shell.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { AddRemote, Remotes, ThisInstance, UpdateJobStatus } from './Remotes.tsx';
 
@@ -16,6 +17,7 @@ afterEach(async () => {
     await cleanup();
   }
   vi.unstubAllGlobals();
+  dismissContinueInBrowser();
 });
 
 const peer = {
@@ -311,6 +313,17 @@ describe('RemoteCard', () => {
     expect(container.querySelector('.remote [role="alert"]')?.textContent).toContain(
       'The pinned credential was rejected. Mint a new connection credential on production and replace it here.',
     );
+  });
+
+  it('offers Continue in browser for a remote without a live workspace in the desktop app', async () => {
+    vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x', href: 'wails://x/instance/remotes' });
+    const container = await renderRemotes([{ ...peer, identity: 'inst-a' }]);
+    const offer = [...container.querySelectorAll('.remote button')].find(
+      (button) => button.textContent === 'Continue in browser',
+    );
+    if (!(offer instanceof HTMLButtonElement)) throw new Error('Continue in browser is missing');
+    act(() => offer.click());
+    expect(continueInBrowserReason()).toContain('Workspaces open in your browser');
   });
 
   it('marks both entries sharing an identity and refuses to open either', async () => {

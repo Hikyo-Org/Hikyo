@@ -11,7 +11,7 @@ out=$root/out
 calls=$root/calls
 
 fail() {
-	printf 'golangci-lint-new fixture failed: %s\n' "$*" >&2
+printf 'golangci-lint-new fixture failed: %s\n' "$*" >&2
 	[ ! -f "$out" ] || cat "$out" >&2
 	exit 1
 }
@@ -39,11 +39,15 @@ cd "$repo"
 git config user.name 'Fixture Author'
 git config user.email 'fixture@example.com'
 git config commit.gpgsign false
-mkdir -p scripts/ci a b gone testdata/x docs-only ignored "with space" "café"
+mkdir -p scripts/ci a b gone testdata/x docs-only ignored "with space" "café" desktop/internal/shell
 cp "$script" scripts/ci/golangci-lint-new.sh
 cat >scripts/ci/run-go-tool.sh <<STUB
 #!/bin/sh
-echo "\$*" >>"$calls"
+# The desktop module passes run from inside desktop/; mark those calls.
+case "\$PWD" in
+	*/desktop) echo "desktop: \$*" >>"$calls"; [ ! -f "$root/tool-fail-desktop" ] || exit 5 ;;
+	*) echo "\$*" >>"$calls" ;;
+esac
 [ ! -f "$root/tool-fail" ] || exit 7
 case "\$*" in
 	*--new-from-merge-base*) [ ! -f "$root/tool-fail-new" ] || exit 7 ;;
@@ -62,6 +66,11 @@ echo 'package c' >"café/c.go"
 echo 'package gone' >gone/g.go
 echo 'package x' >testdata/x/x.go
 echo 'package main' >main.go
+echo 'package main' >desktop/main.go
+echo 'package shell' >desktop/internal/shell/s.go
+echo 'module desktop' >desktop/go.mod
+echo sum >desktop/go.sum
+echo doc >desktop/README.md
 echo module >go.mod
 echo sum >go.sum
 echo cfg >.golangci.yml
@@ -72,7 +81,8 @@ git add -A
 git commit -q -m base
 
 change() { # FILE...: commit a change to each file on a fresh branch off main
-	branch=b$$-$(git rev-list --count --all)
+	change_count=$((${change_count:-0} + 1))
+	branch=b$$-$change_count
 	git switch -q -c "$branch" main
 	for f in "$@"; do
 		mkdir -p "$(dirname "$f")"
@@ -89,11 +99,20 @@ run() { # exit status of the script against main, output in $out, args in $calls
 	set -e
 	return "$status"
 }
+desktop_new="desktop: golangci-lint run -j 2 --config ../.golangci.yml --new-from-merge-base=main ./..."
+# The desktop module gets the same two passes as the root: new code, then strict.
+desktop_calls="$desktop_new
+desktop: golangci-lint run -j 2 --config ../.golangci-strict.yml ./..."
 expect_call() {
 	# Two passes over the same packages: new code only, then the strict rules on whole packages.
 	want="golangci-lint run -j 2 --new-from-merge-base=main $1
 golangci-lint run -j 2 --config .golangci-strict.yml $1"
-	[ "$(cat "$calls")" = "$want" ] || fail "run-go-tool got '$(cat "$calls")', want '$want'"
+	# The root passes come first; the desktop pass, when any, follows them.
+	[ "$(grep -v '^desktop: ' "$calls")" = "$want" ] || fail "run-go-tool got '$(cat "$calls")', want '$want'"
+}
+expect_desktop_calls() {
+	[ "$(grep '^desktop: ' "$calls")" = "$desktop_calls" ] || fail "desktop pass was '$(grep '^desktop: ' "$calls")', want '$desktop_calls'"
+	[ "$(tail -n 2 "$calls")" = "$desktop_calls" ] || fail 'desktop passes did not follow the root passes'
 }
 
 # 1. No Go inputs: nothing runs, exit 0.
@@ -162,7 +181,7 @@ rm "$GO_LIST_FAIL"
 for f in go.mod go.sum .golangci.yml .golangci-strict.yml scripts/ci/golangci-lint-version scripts/ci/golangci-lint-new.sh scripts/ci/run-go-tool.sh; do
 	change "$f"
 	run || fail "$f change failed"
-	expect_call './...'
+	expect_call './...' && expect_desktop_calls
 done
 
 # 6. The linter's failure status is the script's.
@@ -219,7 +238,10 @@ echo '# x' >>a/a.go
 git add a/a.go
 git commit -q -m 'no strict config'
 run || fail 'strict-config-less tree failed'
-[ "$(cat "$calls")" = 'golangci-lint run -j 2 --new-from-merge-base=main ./...' ] || fail "strict-config-less run-go-tool got '$(cat "$calls")'"
+# Removing the strict config is itself a lint input change, so desktop is linted
+# too, and without the config its strict pass is skipped as well.
+[ "$(cat "$calls")" = "golangci-lint run -j 2 --new-from-merge-base=main ./...
+$desktop_new" ] || fail "strict-config-less run-go-tool got '$(cat "$calls")'"
 grep -F 'no .golangci-strict.yml in this tree; skipping the strict pass' "$out" >/dev/null || fail 'strict skip note missing'
 
 # 9. A failing `git diff` is a setup failure (64), never "nothing to lint":
@@ -239,7 +261,7 @@ exec "$real_git" "\$@"
 STUB
 chmod +x "$root/shim/git"
 change a/a.go
-for nth in 1 2; do
+for nth in 1 2 3; do
 	: >"$calls"
 	rm -f "$root/diff-calls"
 	set +e
@@ -251,5 +273,68 @@ for nth in 1 2; do
 	[ ! -s "$calls" ] || fail "failing git diff #$nth still ran the linter"
 	grep -F 'nothing to lint' "$out" >/dev/null && fail "failing git diff #$nth read as nothing to lint"
 done
+
+# 10. A change inside the nested desktop module never reaches `go list` or the root
+# pass (both fail on a path outside the root module); desktop is linted from inside it.
+change desktop/internal/shell/s.go desktop/main.go
+: >"$GO_LIST_FAIL"
+run || fail 'desktop-only change failed'
+rm "$GO_LIST_FAIL"
+[ "$(cat "$calls")" = "$desktop_calls" ] || fail "desktop-only change ran '$(cat "$calls")'"
+grep -F 'golangci-lint-new: linting new code since main (desktop/...)' "$out" >/dev/null || fail 'desktop label missing'
+
+# 10b. Only desktop/go.mod or desktop/go.sum changing still lints desktop.
+for f in desktop/go.mod desktop/go.sum; do
+	change "$f"
+	run || fail "$f change failed"
+	[ "$(cat "$calls")" = "$desktop_calls" ] || fail "$f change ran '$(cat "$calls")'"
+done
+
+# 10c. A docs file under desktop/ lints nothing.
+change desktop/README.md
+run || fail 'desktop doc change failed'
+[ ! -s "$calls" ] || fail 'desktop doc change ran the linter'
+
+# 10d. Root and desktop changes together: root pass first, then desktop's.
+change a/a.go desktop/main.go
+run || fail 'mixed root and desktop change failed'
+expect_call './a'
+expect_desktop_calls
+
+# 10e. A desktop failure fails the script, and a root failure is reported first.
+change desktop/main.go
+: >"$root/tool-fail-desktop"
+if run; then fail 'desktop lint failure was swallowed'; fi
+[ "$status" = 5 ] || fail "desktop lint failure exited $status, want 5"
+change a/a.go desktop/main.go
+: >"$root/tool-fail"
+if run; then fail 'root failure was swallowed beside desktop'; fi
+[ "$status" = 7 ] || fail "root failure exited $status, want 7"
+# Root new code and strict, then desktop's two: a failing root pass skips none of them.
+[ "$(wc -l <"$calls" | tr -d ' ')" = 4 ] || fail 'a failing root pass skipped the desktop pass'
+rm "$root/tool-fail-desktop" "$root/tool-fail"
+# A strict finding in desktop alone fails the script.
+change desktop/main.go
+: >"$root/tool-fail-strict"
+if run; then fail 'desktop strict failure was swallowed'; fi
+[ "$status" = 9 ] || fail "desktop strict failure exited $status, want 9"
+rm "$root/tool-fail-strict"
+
+# 10f. Where desktop/ does not exist (main, dev before the shell lands) a lint-input
+# change lints the root only, and a deleted desktop file selects nothing.
+git switch -q -c nodesktop main
+git rm -q -r desktop
+echo '# x' >>go.mod
+git add go.mod
+git commit -q -m 'no desktop'
+run || fail 'desktop-less tree failed'
+expect_call './...'
+[ "$(grep -c '^desktop: ' "$calls")" = 0 ] || fail 'linted a desktop/ that does not exist'
+git switch -q -c nodesktop-only main
+git rm -q -r desktop
+git commit -q -m 'drop desktop only'
+run || fail 'desktop-only deletion failed'
+[ ! -s "$calls" ] || fail "desktop deletion ran '$(cat "$calls")'"
+grep -F 'nothing to lint' "$out" >/dev/null || fail 'desktop deletion message missing'
 
 printf 'golangci-lint-new fixture: selects changed package directories, lints everything for config changes, skips deletions and testdata, propagates failure\n'

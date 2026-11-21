@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hikyo</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Hikyo</h1>
+    <p class="lede">Your Hikyo instances. Each one opens in its own window and signs in through your browser.</p>
+  </header>
+
+  <section aria-labelledby="connections-title">
+    <h2 id="connections-title">Connections</h2>
+    <ul id="connections" class="cards"></ul>
+    <p id="empty" class="hint" hidden>No connections yet. Add an instance below.</p>
+  </section>
+
+  <section aria-labelledby="add-title">
+    <h2 id="add-title">Add a connection</h2>
+    <form id="add" autocomplete="off">
+      <label for="origin">Instance address</label>
+      <input id="origin" name="origin" type="url" inputmode="url" placeholder="https://hikyo.example.com" required>
+      <label for="name">Name <span class="hint">(optional)</span></label>
+      <input id="name" name="name" type="text" maxlength="80">
+      <fieldset>
+        <legend>How to trust this instance</legend>
+        <label class="choice"><input type="radio" name="trust" value="system-ca" checked>
+          <span><strong>System certificate authorities.</strong> Right for instances with a public certificate.</span></label>
+        <label class="choice"><input type="radio" name="trust" value="spki">
+          <span><strong>Pin its key.</strong> Right for a certificate your own authority issued. You confirm the fingerprint.</span></label>
+      </fieldset>
+      <label class="choice"><input type="checkbox" name="device">
+        <span>Sign in with a code on another device instead of this Mac's browser</span></label>
+      <div class="actions">
+        <button type="submit" id="add-button">Add connection</button>
+        <button type="button" id="cancel" class="secondary" hidden>Cancel</button>
+      </div>
+    </form>
+    <p id="status" class="hint" role="status"></p>
+    <div id="error" role="alert" hidden>
+      <p id="error-text"></p>
+      <button type="button" id="open-browser" class="secondary" hidden>Open in browser</button>
+    </div>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

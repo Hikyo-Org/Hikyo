@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
 // stableJSON reproduces encoding/json (v1) output bytes. The publisher is built
@@ -42,7 +44,7 @@ var stableJSON = json.JoinOptions(
 const externalPrefix = "hikyo-pr-gate:v2:"
 const legacyExternalPrefix = "hikyo-pr-gate:v1:"
 const externalIDLimit = 255
-const actionsAppID = 15368
+const actionsAppID = checksuites.AppID
 
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 var repoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
@@ -828,8 +830,58 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, e
 	return c.listOwnedChecks(ctx, p.Head.SHA)
 }
 
+// listOwnedChecks lists this context's controller checks on head. REST lists a
+// commit's runs from only its newest 1000 check suites, so a commit with more
+// suites is read one holding suite at a time.
 func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check, error) {
+	listings, err := checksuites.Listings(ctx, c.suiteSource(), head, c.checkName)
+	if err != nil {
+		return nil, err
+	}
+	foreign, local, err := c.sameNameByCommit(ctx, head, listings)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range foreign {
+		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
+			return nil, errors.New("untrusted controller check identity")
+		}
+	}
 	var own []check
+	seen := make(map[int64]bool)
+	for _, listing := range listings {
+		part, err := c.listOwnedChecksAt(ctx, head, listing, seen)
+		if err != nil {
+			return nil, err
+		}
+		own = append(own, part...)
+	}
+	if err := checksuites.Recheck(ctx, c.suiteSource(), head, listings); err != nil {
+		return nil, err
+	}
+	for _, v := range local {
+		if seen[v.ID] {
+			continue
+		}
+		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
+			return nil, errors.New("controller check missing from the check suite inventory")
+		}
+		return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
+	}
+	return own, nil
+}
+
+// sameNameByCommit lists this context's name by commit when owners read by suite,
+// which sees REST's newest 1000 suites of every app. It returns the records of
+// other apps, so the refusal a listing by commit gave still holds, and those of
+// github-actions, so a fresh record the suite inventory has not indexed yet is
+// refused rather than taken for absent. A record another app adds to an older
+// suite of its own, or one older than the newest 1000 suites that the inventory
+// lacks, is not visible here, as it was not before.
+func (c *controller) sameNameByCommit(ctx context.Context, head string, listings []string) (foreign, local []check, err error) {
+	if len(listings) == 1 && strings.HasPrefix(listings[0], "commits/") {
+		return nil, nil, nil
+	}
 	listed := 0
 	seen := make(map[int64]bool)
 	for page := 1; page <= 10; page++ {
@@ -838,6 +890,47 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 			Checks []check `json:"check_runs"`
 		}
 		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", head, c.checkName, page)), &list); err != nil {
+			return nil, nil, err
+		}
+		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {
+			return nil, nil, errors.New("invalid check list")
+		}
+		for _, v := range list.Checks {
+			if v.ID <= 0 || seen[v.ID] {
+				return nil, nil, errors.New("invalid or duplicate current check identity")
+			}
+			seen[v.ID] = true
+			listed++
+			if v.Name != c.checkName {
+				continue
+			}
+			if v.App.ID != actionsAppID || v.App.Slug != "github-actions" {
+				foreign = append(foreign, v)
+			} else {
+				local = append(local, v)
+			}
+		}
+		if listed == list.Total {
+			return foreign, local, nil
+		}
+		if len(list.Checks) < 100 || listed > list.Total {
+			return nil, nil, errors.New("incomplete current check listing")
+		}
+	}
+	return nil, nil, errors.New("check pagination limit reached")
+}
+
+// listOwnedChecksAt pages through one check-runs listing. seen spans listings, so
+// a run reported twice, by two suites, is refused.
+func (c *controller) listOwnedChecksAt(ctx context.Context, head, listing string, seen map[int64]bool) ([]check, error) {
+	var own []check
+	listed := 0
+	for page := 1; page <= 10; page++ {
+		var list struct {
+			Total  int     `json:"total_count"`
+			Checks []check `json:"check_runs"`
+		}
+		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("%s?check_name=%s&filter=all&per_page=100&page=%d", listing, c.checkName, page)), &list); err != nil {
 			return nil, err
 		}
 		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {

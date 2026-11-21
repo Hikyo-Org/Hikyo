@@ -27,6 +27,12 @@ add_hint() {
 add_hint internal/cli/testdata/help.txt 'docs/site/src/content/docs/docs/cli-reference.mdx and the page for the feature'
 add_hint api/openapi.yaml 'the page for the feature (docs/site/src/content/docs/docs/http-api.mdx only for contract-wide rules)'
 add_hint internal/config/variables.go 'docs/site/src/content/docs/docs/configuration.mdx'
+# The desktop shell documents itself: its wire routes in the protocol spec, its
+# launch environment in its README. A change to either document satisfies these two.
+if ! printf '%s\n' "$changed" | grep -Eq '^(desktop/README\.md|docs/spec/desktop-shell-protocol\.md)$'; then
+	add_hint desktop/internal/shell/shellroutes.go 'docs/spec/desktop-shell-protocol.md (the /__shell routes and their errors)'
+	add_hint desktop/main_darwin.go 'desktop/README.md (the launch environment and build)'
+fi
 
 if [ -z "$hints" ]; then
 	printf 'docs-impact: no user-visible surface changed\n'

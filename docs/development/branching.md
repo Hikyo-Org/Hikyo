@@ -151,7 +151,7 @@ existing merge queue. `nightly.yml` then builds and signs that main commit exact
 as it did before. There is no bridge, no second trust policy and no recovery
 signing, and installed clients need no change.
 
-Promotion runs daily at 22:17 UTC, well before the 02:00 UTC nightly, and on demand:
+Promotion runs daily at 22:17 UTC, well before the 02:23 UTC nightly, and on demand:
 
 ```sh
 gh workflow run nightly-promote.yml --repo Hikyo-Org/Hikyo --ref main
@@ -177,7 +177,7 @@ It does the following:
    current-base result.
 
 When the promotion merges, a second job in the same workflow starts the nightly at
-once and deletes the branch. The 02:00 run covers any miss. `nightly.yml` verifies
+once and deletes the branch. The 02:23 run covers any miss. `nightly.yml` verifies
 the complete queue proof of its own main commit instead of running the graph a
 second time, and its existing identity step skips a commit that is already
 published, so a day without a newer main commit publishes nothing.

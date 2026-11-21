@@ -39,6 +39,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { instanceOrigin } from '../app/shell.ts';
 import { useCeremonyTask } from './useCeremonyTask.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
@@ -634,7 +635,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             <OpenRegistrationPanel
               scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
               scopeName={scopeName}
-              origin={window.location.origin}
+              origin={instanceOrigin()}
               authorityName={(principal) =>
                 principal === '' ? 'no one' : principal === me ? 'you' : principalLabel(principal, lines)}
               onChanged={(text) => {
@@ -769,7 +770,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         <InviteDialog
           scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
           scopeName={scopeName}
-          origin={window.location.origin}
+          origin={instanceOrigin()}
           onDone={(text) => {
             feedback.ok(text);
             setModal('none');
@@ -795,7 +796,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           username={null}
           principalId={resetIssued.principal}
           issued={resetIssued.issued}
-          origin={window.location.origin}
+          origin={instanceOrigin()}
           onClose={() => {
             feedback.ok(
               `Reset the credential for ${principalLabel(resetIssued.principal, lines)}. The authority was shown once.`,

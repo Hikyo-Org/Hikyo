@@ -12,6 +12,7 @@ import {
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { requireBrowser } from '../app/shell.ts';
 import { ApiError, parsed } from './client.ts';
 import type { WhoAmI } from './session.ts';
 import { requestOptions, toBase64URL } from './values.ts';
@@ -103,6 +104,7 @@ export function useStepUpPasskey() {
   return useSensitiveMutation({
     onMutate: auth.captureTransition,
     mutationFn: async () => {
+      requireBrowser('Confirming with a passkey needs your browser.');
       const epoch = captureSessionEpoch();
       const options = await parsed(stepUpPasskeyStartOp, {});
       const body = await assert(options);

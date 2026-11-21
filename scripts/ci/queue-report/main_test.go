@@ -9,6 +9,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +37,18 @@ type fixture struct {
 	writeMutate  func(check) check
 	// inject answers a request with that status instead of serving it; 0 serves normally.
 	inject func(method, path string) int
+	// suites is how many check suites the head holds (1 when zero). Beyond REST's
+	// cap its commit listing shows no reports; only the suites in holding do.
+	suites  int
+	holding []int64
+	// graphqlFault, when set, fails the suite queries with this GraphQL error.
+	graphqlFault string
+	// recent makes a listing by commit show this head's records from every app,
+	// as for a record newer than the suite scan.
+	recent bool
+	// grown, when set, becomes the suite total once a listing by commit is read,
+	// as if suites were added during that read.
+	grown int
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -56,6 +71,10 @@ func newFixture(t *testing.T) *fixture {
 		if req.URL.Path == "/repos/owner/repo/" {
 			t.Error("repository endpoint must not have a trailing slash")
 			http.NotFound(w, req)
+			return
+		}
+		if req.URL.Path == "/graphql" {
+			f.serveGraphQL(t, w, req)
 			return
 		}
 		path := strings.TrimPrefix(strings.TrimPrefix(req.URL.Path, "/repos/owner/repo"), "/")
@@ -114,10 +133,13 @@ func newFixture(t *testing.T) *fixture {
 			result = f.checks[0]
 		case path == "git/commits/"+f.r.HeadSHA:
 			result = map[string]any{"sha": f.r.HeadSHA, "parents": f.parents}
-		case strings.HasPrefix(path, "commits/"):
+		case strings.HasPrefix(path, "commits/"), strings.HasPrefix(path, "check-suites/"):
+			if f.grown > 0 && strings.HasPrefix(path, "commits/") {
+				f.suites = f.grown
+			}
 			checks := []check{}
 			for _, c := range f.checks {
-				if c.Name == req.URL.Query().Get("check_name") {
+				if c.Name == req.URL.Query().Get("check_name") && f.listed(path, c) {
 					checks = append(checks, c)
 				}
 			}
@@ -141,6 +163,65 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(server.Close)
 	f.c = client{http: server.Client(), base: server.URL, token: "test", repo: repo.FullName}
 	return f
+}
+
+// listed reports whether the listing at path shows c. Past REST's cap a listing
+// by commit hides the records of the suites it no longer reaches, but still shows
+// those of other apps, which sit in suites no github-actions read opens.
+func (f *fixture) listed(path string, c check) bool {
+	if strings.HasPrefix(path, "commits/") {
+		return f.suites <= 1000 || f.recent || c.App.ID != actionsAppID
+	}
+	for _, id := range f.holding {
+		if strings.HasPrefix(path, fmt.Sprintf("check-suites/%d/check-runs", id)) {
+			return c.App.ID == actionsAppID
+		}
+	}
+	return false
+}
+
+var suiteHead = regexp.MustCompile(`object\(oid:"([0-9a-f]{40})"\)`)
+var suitePage = regexp.MustCompile(`after:"p(\d+)"`)
+
+func (f *fixture) serveGraphQL(t *testing.T, w http.ResponseWriter, req *http.Request) {
+	t.Helper()
+	var body struct {
+		Query string `json:"query"`
+	}
+	if req.Method != http.MethodPost || json.UnmarshalRead(req.Body, &body) != nil {
+		t.Error("GraphQL must be a POST with a query")
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	f.requests = append(f.requests, "graphql")
+	suites := max(f.suites, 1)
+	object := map[string]any{"oid": suiteHead.FindStringSubmatch(body.Query)[1], "checkSuites": map[string]any{"totalCount": suites}}
+	if strings.Contains(body.Query, "checkSuites(") {
+		if !strings.Contains(body.Query, fmt.Sprintf("checkName:%q", reportName(f.r))) {
+			t.Errorf("suite scan does not select by the report's name: %s", body.Query)
+		}
+		page := 0
+		if m := suitePage.FindStringSubmatch(body.Query); m != nil {
+			page, _ = strconv.Atoi(m[1])
+		}
+		nodes := []map[string]any{}
+		for id := int64(page*100 + 1); id <= int64(min(page*100+100, suites)); id++ {
+			named := 0
+			if slices.Contains(f.holding, id) {
+				named = 1
+			}
+			nodes = append(nodes, map[string]any{"databaseId": id, "named": map[string]any{"totalCount": named}})
+		}
+		object["every"] = map[string]any{"totalCount": suites}
+		object["checkSuites"] = map[string]any{"totalCount": suites, "nodes": nodes, "pageInfo": map[string]any{"hasNextPage": (page+1)*100 < suites, "endCursor": fmt.Sprintf("p%d", page+1)}}
+	}
+	response := map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": 123, "object": object}}}
+	if f.graphqlFault != "" {
+		response["errors"] = []map[string]string{{"message": f.graphqlFault}}
+	}
+	if err := jsonwire.Encode(w, response); err != nil {
+		t.Error(err)
+	}
 }
 
 func (f *fixture) existing(status string) {
