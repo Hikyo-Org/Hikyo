@@ -105,7 +105,9 @@ type vetOutcome struct {
 func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 	var kept []byte
 	for line := range bytes.Lines(raw) {
-		if bytes.HasPrefix(line, []byte("# ")) {
+		// cmd/go adds package headers and, for a symlinked directory under the
+		// pattern (such as pnpm's node_modules), a warning that it skipped it.
+		if bytes.HasPrefix(line, []byte("# ")) || bytes.HasPrefix(line, []byte("warning: ignoring symlink ")) {
 			continue
 		}
 		kept = append(kept, line...)
