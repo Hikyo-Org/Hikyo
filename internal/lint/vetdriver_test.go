@@ -100,13 +100,12 @@ type vetOutcome struct {
 }
 
 // decodeVetOutput parses vet's concatenated JSON trees. go prefixes a package's
-// output with a "# pkg" header line; anything else that is not JSON is a tool
-// failure and fails the decode.
+// output with a "# pkg" header line, and warns "ignoring symlink" for each
+// symlinked directory under the pattern (such as pnpm's node_modules); anything
+// else that is not JSON is a tool failure and fails the decode.
 func decodeVetOutput(raw []byte) (*vetOutcome, error) {
 	var kept []byte
 	for line := range bytes.Lines(raw) {
-		// cmd/go adds package headers and, for a symlinked directory under the
-		// pattern (such as pnpm's node_modules), a warning that it skipped it.
 		if bytes.HasPrefix(line, []byte("# ")) || bytes.HasPrefix(line, []byte("warning: ignoring symlink ")) {
 			continue
 		}
