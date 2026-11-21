@@ -14,7 +14,11 @@ Work: PR 4 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-c
 
 ## Evidence
 
-At `50e5d645b` (later commits are docs only):
+At `b17ca2f5b` (the round 3 fixes on the base merge `388d7fb99`):
+
+- `go test -count=1 -timeout 40m -p 2 ./internal/lint/` passes (272.4 s). `go test -count=1 -timeout 40m ./internal/isolation/` passes (935.0 s); PostgreSQL-backed tests skip without a DSN. `go test -p 2 ./internal/boundary/ ./scripts/ci/...` passes. `go build ./...` and `go vet -p 2 ./...` pass. `scripts/ci/golangci-lint-new.sh origin/dev` reports 0 issues.
+
+Earlier, at `50e5d645b` (the memory table's runs used `e4459ab65`):
 
 - `go test -count=1 -timeout 40m -p 2 ./internal/lint/` passes (280.4 s); memory in the table below. `go test -count=1 -timeout 40m ./internal/isolation/` passes (906.6 s); PostgreSQL-backed tests skip without a DSN here, so the engine-backed probes were not exercised locally.
 - `go test -p 2 ./internal/boundary/ ./scripts/ci/...` passes, including `scripts/ci/qualification` and `scripts/ci` (449.1 s).
