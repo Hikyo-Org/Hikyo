@@ -102,9 +102,10 @@ shape='[.id,.tag_name,.draft,.target_commitish,(.assets | sort_by(.id) | map({id
 jq -S "$shape" "$scratch/release.json" >"$scratch/before"
 jq -S "$shape" "$scratch/recheck.json" >"$scratch/after"
 cmp -s "$scratch/before" "$scratch/after" || fail 'draft changed during verification'
-"$GH_BIN" release edit "$desktop_tag" --repo "$repository" --draft=false --prerelease=false --latest=false
-
+# Publish by the verified release's ID, never by tag, so a release another actor
+# creates under the same tag cannot be the one that goes public.
 original_id=$(jq -er '.id' "$scratch/release.json")
+"$GH_BIN" api --method PATCH "repos/$repository/releases/$original_id" -F draft=false -F prerelease=false -f make_latest=false >/dev/null
 "$GH_BIN" api "repos/$repository/releases/$original_id" >"$scratch/public-release.json"
 jq -e --slurpfile original "$scratch/release.json" '
 	.id == $original[0].id and .tag_name == $original[0].tag_name and

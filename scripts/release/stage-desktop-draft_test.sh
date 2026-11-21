@@ -36,12 +36,14 @@ case "$*" in
 		[ -z "${FIXTURE_MODE:-}" ] || [ "$FIXTURE_MODE" != wrong-target ] || { printf '{"id":88,"tag_name":"desktop-v1.4.0","draft":true,"target_commitish":"main"}\n'; exit 0; }
 		printf '{"id":88,"tag_name":"desktop-v1.4.0","draft":true,"target_commitish":"%s"}\n' "$GITHUB_SHA" ;;
 	*'--method POST https://uploads.github.com/repos/example/repo/releases/88/assets?name='*)
+		case " $* " in *' -H Content-Type: application/octet-stream '*) ;; *) printf 'upload lacks the octet-stream Content-Type\n' >&2; exit 1 ;; esac
 		name=${*##*name=}
 		name=${name%% *}
 		mkdir -p "$F/uploaded"
 		while [ "$#" -gt 0 ]; do [ "$1" != --input ] || cp "$2" "$F/uploaded/$name"; shift; done ;;
 	'api repos/example/repo/releases/88') printf '{"id":88,"tag_name":"desktop-v1.4.0","draft":true}\n' ;;
 	*'repos/example/repo/releases/assets/'*)
+		case " $* " in *' -H Accept: application/octet-stream '*) ;; *) printf 'download lacks the octet-stream Accept\n' >&2; exit 1 ;; esac
 		id=${*##*/}
 		n=0
 		for f in "$F"/uploaded/*; do n=$((n + 1)); [ "$((100 + n))" != "$id" ] || cat "$f"; done ;;

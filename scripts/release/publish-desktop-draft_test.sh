@@ -28,14 +28,20 @@ case "$1 $2" in
 			cp "$file" "$dir/"
 		done
 		exit 0 ;;
-	'release edit')
-		[ "$FIXTURE_MODE" != edit-fails ] || exit 1
-		jq --arg tag "$3" '(.[] | select(.tag_name == $tag)) |= (.draft = false | .immutable = true)' "$F/releases.json" >"$F/releases.new"
-		mv "$F/releases.new" "$F/releases.json"
-		exit 0 ;;
 esac
 [ "$1" = api ] || exit 1
 shift
+if [ "$1" = --method ] && [ "$2" = PATCH ]; then
+	[ "$FIXTURE_MODE" != edit-fails ] || exit 1
+	id=${3##*/}
+	case " $* " in
+		*' -F draft=false '*'-F prerelease=false '*'-f make_latest=false '*) ;;
+		*) printf 'wrong publication fields: %s\n' "$*" >&2; exit 1 ;;
+	esac
+	jq --argjson id "$id" '(.[] | select(.id == $id)) |= (.draft = false | .immutable = true)' "$F/releases.json" >"$F/releases.new"
+	mv "$F/releases.new" "$F/releases.json"
+	exit 0
+fi
 if [ "$1" = --paginate ]; then jq -c '[.]' "$F/releases.json"; exit 0; fi
 case "$1" in
 	repos/example/repo/immutable-releases) cat "$F/immutable.json" ;;
@@ -90,7 +96,7 @@ mutate() { # FILE JQ-FILTER
 publish() {
 	env GH_BIN="$F/bin/gh" PATH="$F/bin:$PATH" F="$F" FIXTURE_MODE="$FIXTURE_MODE" "$script_dir/publish-desktop-draft.sh" "$@"
 }
-edited() { grep -F 'gh release edit' "$F/log" >/dev/null; }
+edited() { grep -F 'gh api --method PATCH' "$F/log" >/dev/null; }
 expect_refused() { # label, args...; refusal must happen before publication
 	label=$1
 	shift
@@ -100,16 +106,17 @@ expect_refused() { # label, args...; refusal must happen before publication
 
 reset
 publish example/repo 1.4.0 release/trust >"$F/out" || fail "valid draft refused: $(cat "$F/out")"
-grep -F 'gh release edit desktop-v1.4.0 --repo example/repo --draft=false --prerelease=false --latest=false' "$F/log" >/dev/null ||
-	fail 'publication lacks --draft=false --prerelease=false --latest=false'
+grep -F 'gh api --method PATCH repos/example/repo/releases/20 -F draft=false -F prerelease=false -f make_latest=false' "$F/log" >/dev/null ||
+	fail 'publication is not by release ID with draft=false prerelease=false make_latest=false'
+if grep -F 'gh release edit' "$F/log" >/dev/null; then fail 'publication addressed the release by tag'; fi
 [ "$(grep -c 'verify-desktop' "$F/log")" -eq 2 ] || fail 'draft and public bytes were not both verified'
 grep -F -- "--version 1.4.0 --commit $commit" "$F/log" >/dev/null || fail 'verifier not bound to version and commit'
-if grep -F 'gh release edit v1.4.0' "$F/log" >/dev/null; then fail 'CLI release was edited'; fi
+if grep -F 'releases/10 ' "$F/log" | grep -F PATCH >/dev/null; then fail 'CLI release was edited'; fi
 
 # A rerun on an already public release verifies the bytes and publishes nothing.
 publish example/repo 1.4.0 release/trust >"$F/out" || fail 'already-public release refused'
 grep -F 'already public and immutable' "$F/out" >/dev/null || fail 'already-public path not reported'
-[ "$(grep -c 'gh release edit' "$F/log")" -eq 1 ] || fail 'retry edited the public release'
+[ "$(grep -c 'method PATCH' "$F/log")" -eq 1 ] || fail 'retry edited the public release'
 
 reset
 for version in 1.4.0-rc.1 0.9.0 1.4.0-nightly.20261101.1.gabcdef12 nonsense; do
