@@ -130,10 +130,14 @@ directory's lock.
 The `.hikyo-gen` directory must be owned by the user running the client and
 closed to group and others. An existing one owned by another user (a changed
 publishing user, or NFS `root_squash`) or writable by group or others is
-refused as foreign: fix its mode and the owner of it and everything in it in
-place (`chown -R`; the old user's `binding` record is mode 0600, so the new
-user cannot read it otherwise), or move it away and publish again. Prefer fixing it in place when `on_removed: retain` applies:
-retaining a dropped file copies it from the current generation, so moving
+refused as foreign: fix it in place, or move it away and publish again. To
+fix it, restore its mode and change the owner of `.hikyo-gen` and of
+`.hikyo-gen/binding` (mode 0600, so the new user cannot read it otherwise) to
+the new user. Without `owner`, generations belong to the publishing user, so
+change those too; with `owner`, leave them alone, because published files
+carry the configured owner. Prefer fixing it in place when `on_removed:
+retain` applies: retaining a dropped file copies it from the current
+generation, so moving
 `.hikyo-gen` away removes that source, and every publication that drops a file
 then fails until the file is configured again, `on_removed` changes, or the
 moved directory is restored.
