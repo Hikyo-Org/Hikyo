@@ -1817,8 +1817,10 @@ function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => b
       clearTop = table?.querySelector('thead th')?.getBoundingClientRect().bottom ?? 0;
       const headerBottom = clearTop;
       for (const label of table?.querySelectorAll('tbody > tr.matrix__group-row > th') ?? []) {
+        // Stuck is read off the cell, which pins a pixel into the header; the bar's top only meets it.
+        const stuck = label.getBoundingClientRect().top <= headerBottom;
         const box = (label.querySelector('.matrix__group-row-inner') ?? label).getBoundingClientRect();
-        if (!label.contains(el) && box.top <= headerBottom && box.left < rect.right && box.right > Math.max(rect.left, clearLeft)) clearTop = Math.max(clearTop, box.bottom);
+        if (!label.contains(el) && stuck && box.left < rect.right && box.right > Math.max(rect.left, clearLeft)) clearTop = Math.max(clearTop, box.bottom);
       }
     }
     const left = Math.max(rect.left, 0, well?.left ?? 0, clearLeft);

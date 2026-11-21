@@ -679,6 +679,7 @@ export const ValueTip: Story = {
     await waitFor(() => expect(isOpen()).toBe(true));
     // What stays pinned over a value cell: the header's cells, and under them
     // the cell's stuck group bar, which spans the visible width.
+    // Every group bar is one height; FEATURE_FLAGS sits under the first.
     const bar = canvasElement.querySelector<HTMLElement>('.matrix__group-row-inner');
     if (bar === null) throw new Error('group bar missing');
     const covered = () => headCell.getBoundingClientRect().bottom + bar.getBoundingClientRect().height;
