@@ -21,6 +21,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -345,10 +346,10 @@ func runRawSQLWith(pass *analysis.Pass, src source, root, prefix, context string
 			}
 			owner := f.rel + ":" + rawSQLFunctionName(fn)
 			if _, reviewed := protocols[owner]; reviewed {
-				reportSummary(pass, summaryRawOwner, owner)
+				reportSummary(pass, summaryRawOwner, rawFields(owner))
 			}
 			if pinnedHelpers[owner] {
-				reportSummary(pass, summaryRawHelper, owner)
+				reportSummary(pass, summaryRawHelper, rawFields(owner))
 			}
 			self := nodes[fn]
 			actual := self.hash
@@ -359,18 +360,18 @@ func runRawSQLWith(pass *analysis.Pass, src source, root, prefix, context string
 			if dump {
 				_, isOwner := protocols[owner]
 				if isOwner || reviewedCallers[owner] {
-					reportSummary(pass, summaryRawDump, "fn "+owner+" "+actual)
+					reportSummary(pass, summaryRawDump, rawFields("fn", owner, actual))
 				}
 				if isOwner {
 					for dependency, hash := range reach(self) {
-						reportSummary(pass, summaryRawDump, "dep "+owner+" "+dependency+" "+hash)
+						reportSummary(pass, summaryRawDump, rawFields("dep", owner, dependency, hash))
 					}
 				}
 			}
 			var sites []token.Pos
 			ast.Inspect(fn.Body, func(node ast.Node) bool {
 				if target := restricted(node); target != "" {
-					reportSummary(pass, summaryRawCaller, target+" "+owner)
+					reportSummary(pass, summaryRawCaller, rawFields(target, owner))
 					if protocols[target].Callers[owner] != actual {
 						report(node.Pos(), "%s references protocol %s outside its reviewed caller body", owner, target)
 					}
@@ -414,7 +415,7 @@ func runRawSQLWith(pass *analysis.Pass, src source, root, prefix, context string
 			}
 			for dependency := range expected {
 				if _, reachable := actualDependencies[dependency]; !reachable {
-					reportSummary(pass, summaryRawUnreached, owner+" "+dependency)
+					reportSummary(pass, summaryRawUnreached, rawFields(owner, dependency))
 				}
 			}
 			if protocol.Hash != actual {
@@ -472,16 +473,19 @@ func rawSQLProtocolSummaryFindings(protocols map[string]RawSQLProtocol, summarie
 	callers := map[string]map[string]bool{}
 	var unreached [][2]string
 	for _, s := range summaries {
-		fields := strings.Fields(s.Subject)
+		fields, err := splitRawFields(s.Subject)
+		if err != nil {
+			return nil, fmt.Errorf("malformed %s summary %q: %w", s.Kind, s.Subject, err)
+		}
 		switch s.Kind {
 		case summaryRawOwner, summaryRawHelper:
 			if len(fields) != 1 {
 				return nil, fmt.Errorf("malformed %s summary %q", s.Kind, s.Subject)
 			}
 			if s.Kind == summaryRawOwner {
-				owners[s.Subject] = true
+				owners[fields[0]] = true
 			} else {
-				helpers[s.Subject] = true
+				helpers[fields[0]] = true
 			}
 		case summaryRawCaller, summaryRawUnreached:
 			if len(fields) != 2 {
@@ -519,4 +523,28 @@ func rawSQLProtocolSummaryFindings(protocols map[string]RawSQLProtocol, summarie
 	}
 	slices.Sort(findings)
 	return slices.Compact(findings), nil
+}
+
+// rawKeyEscaper keeps each owner, helper and hash one space-separated field: a
+// Go file name may contain a space.
+var rawKeyEscaper = strings.NewReplacer("%", "%25", " ", "%20", "\t", "%09", "\n", "%0A", "\r", "%0D")
+
+// rawFields encodes a rawsql summary subject; splitRawFields decodes it.
+func rawFields(parts ...string) string {
+	for i, part := range parts {
+		parts[i] = rawKeyEscaper.Replace(part)
+	}
+	return strings.Join(parts, " ")
+}
+
+func splitRawFields(subject string) ([]string, error) {
+	fields := strings.Fields(subject)
+	for i, field := range fields {
+		decoded, err := url.PathUnescape(field)
+		if err != nil {
+			return nil, err
+		}
+		fields[i] = decoded
+	}
+	return fields, nil
 }

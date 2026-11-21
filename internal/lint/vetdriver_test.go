@@ -173,7 +173,35 @@ func buildVetTool(t *testing.T) string {
 // failure, never findings.
 func runVet(t *testing.T, bin string, ctx BuildContext, flags, patterns []string) *vetOutcome {
 	t.Helper()
-	args := []string{"vet", "-vettool=" + bin, "-json", "-p", "2"}
+	return runVetArgs(t, bin, ctx, nil, flags, patterns)
+}
+
+// runRepoVet vets with the digests of the declared inputs as they are now.
+// go vet caches a -json run's output even when it carries a refusal, so an
+// input edited while a run read it would replay that digest-mismatch refusal
+// after the edit is undone. If the inputs still hash to the digests passed,
+// such a refusal is stale: one rerun with -a re-vets and replaces the cached
+// entry. Inputs that changed during the run fail instead of retrying.
+func runRepoVet(t *testing.T, bin string, ctx BuildContext, flags func() []string, patterns []string) *vetOutcome {
+	t.Helper()
+	passed := flags()
+	out := runVet(t, bin, ctx, passed, patterns)
+	if !hasDigestRefusal(out.Findings) {
+		return out
+	}
+	if !slices.Equal(flags(), passed) {
+		t.Fatalf("declared inputs changed during the vet run under %s; rerun the test", ctx.Name)
+	}
+	return runVetArgs(t, bin, ctx, []string{"-a"}, passed, patterns)
+}
+
+func hasDigestRefusal(findings []string) bool {
+	return slices.ContainsFunc(findings, func(f string) bool { return strings.Contains(f, "inputs refused: "+ErrInputDigest.Error()) })
+}
+
+func runVetArgs(t *testing.T, bin string, ctx BuildContext, goFlags, flags, patterns []string) *vetOutcome {
+	t.Helper()
+	args := append([]string{"vet", "-vettool=" + bin, "-json", "-p", "2"}, goFlags...)
 	args = append(args, ctx.BuildFlags...)
 	overlay, err := ctx.WriteOverlay(t.TempDir())
 	if err != nil {
@@ -325,7 +353,7 @@ func TestVetDriverRepo(t *testing.T) {
 	bin := buildVetTool(t)
 	for _, ctx := range Contexts {
 		t.Run(ctx.Name, func(t *testing.T) {
-			out := runVet(t, bin, ctx, repoInputFlags(t), []string{Module + "/..."})
+			out := runRepoVet(t, bin, ctx, func() []string { return repoInputFlags(t) }, []string{Module + "/..."})
 			for _, finding := range out.Findings {
 				if _, deferred := out.Deferred[finding]; !deferred {
 					t.Error(finding)

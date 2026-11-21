@@ -82,7 +82,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dump, err := rawSQLDump(runVet(t, bin, context, rawSQLUpdaterFlags(t, "-rawsql.dump"), []string{Module + "/..."}))
+		dump, err := rawSQLDump(runRepoVet(t, bin, context, func() []string { return rawSQLUpdaterFlags(t, "-rawsql.dump") }, []string{Module + "/..."}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,7 +251,7 @@ func verifyUpdatedPins(t *testing.T, bin string) []string {
 		if context.GOOS == "" {
 			context.GOOS = "linux"
 		}
-		out := runVet(t, bin, context, rawSQLUpdaterFlags(t), []string{Module + "/..."})
+		out := runRepoVet(t, bin, context, func() []string { return rawSQLUpdaterFlags(t) }, []string{Module + "/..."})
 		aggregated, err := rawSQLAggregate(out, moduleRoot())
 		if err != nil {
 			t.Fatal(err)
@@ -275,7 +275,10 @@ func rawSQLDump(out *vetOutcome) (rawSQLDumped, error) {
 		if s.Kind != summaryRawDump {
 			continue
 		}
-		fields := strings.Fields(s.Subject)
+		fields, err := splitRawFields(s.Subject)
+		if err != nil {
+			return rawSQLDumped{}, fmt.Errorf("malformed %s summary %q: %w", s.Kind, s.Subject, err)
+		}
 		switch {
 		case len(fields) == 3 && fields[0] == "fn":
 			dump.bodies[fields[1]] = fields[2]

@@ -467,3 +467,52 @@ func snapshotAbsent(t *testing.T, analyzer, root string) *Inputs {
 	}
 	return in
 }
+
+// An input edited while vet read it caches a digest-mismatch refusal under the
+// digest of the restored input; runRepoVet must not replay it.
+func TestRunRepoVetHealsACachedStaleRefusal(t *testing.T) {
+	bin := buildVetTool(t)
+	// A fresh copy of the stablecopies fixture gets cache keys of its own.
+	root, err := os.MkdirTemp(filepath.Join(moduleRoot(), "internal/lint/testdata"), "refusalcache-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	if err := os.CopyFS(root, os.DirFS(filepath.Join(moduleRoot(), "internal/lint/testdata/badstablecopies"))); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(moduleRoot(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := Module + "/" + filepath.ToSlash(rel)
+	flags := func() []string {
+		return append([]string{"-stablecopies", "-stablecopies.anchor=" + pkg}, inputFlags(t, "stablecopies", root)...)
+	}
+	patterns := []string{"./" + filepath.ToSlash(rel)}
+	input := filepath.Join(root, "internal/jsonwire/jsonwire.go")
+	original, err := os.ReadFile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	passed := flags()
+	if err := os.WriteFile(input, append(slices.Clone(original), "// edited\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := Contexts[0]
+	if !hasDigestRefusal(runVet(t, bin, ctx, passed, patterns).Findings) {
+		t.Fatal("an edited input was not refused")
+	}
+	if err := os.WriteFile(input, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !hasDigestRefusal(runVet(t, bin, ctx, passed, patterns).Findings) {
+		t.Skip("go vet no longer replays the cached refusal; runRepoVet's retry is unneeded")
+	}
+	if out := runRepoVet(t, bin, ctx, flags, patterns); hasDigestRefusal(out.Findings) {
+		t.Fatalf("runRepoVet replayed the stale refusal: %v", out.Findings)
+	}
+	if hasDigestRefusal(runVet(t, bin, ctx, passed, patterns).Findings) {
+		t.Fatal("the rerun did not replace the cached refusal")
+	}
+}

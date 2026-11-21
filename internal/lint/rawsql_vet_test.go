@@ -3,6 +3,7 @@ package lint
 import (
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -97,5 +98,24 @@ func TestParseReviewedPinsStrict(t *testing.T) {
 	}
 	if _, err := parseReviewedPins([]byte(`{"protocols":{}}`)); err != nil {
 		t.Errorf("an empty inventory was refused: %v", err)
+	}
+}
+
+// An owner or helper key from a file name with a space stays one field.
+func TestRawFieldsRoundTripKeysWithSpaces(t *testing.T) {
+	const owner, helper = "/write protocol.go:Write", "/a%b c.go:help"
+	protocols := map[string]RawSQLProtocol{owner: {Callers: map[string]string{"/x y.go:Call": "h"}, Dependencies: map[string]string{helper: "h"}}}
+	summaries := []Summary{
+		{Kind: summaryRawOwner, Subject: rawFields(owner)},
+		{Kind: summaryRawHelper, Subject: rawFields(helper)},
+		{Kind: summaryRawCaller, Subject: rawFields(owner, "/x y.go:Call")},
+	}
+	findings, err := rawSQLProtocolSummaryFindings(protocols, summaries)
+	if err != nil || len(findings) != 0 {
+		t.Fatalf("findings %v, error %v; want none", findings, err)
+	}
+	fields, err := splitRawFields(rawFields("dep", owner, helper, "hash"))
+	if err != nil || !slices.Equal(fields, []string{"dep", owner, helper, "hash"}) {
+		t.Fatalf("dump fields %q, error %v", fields, err)
 	}
 }
