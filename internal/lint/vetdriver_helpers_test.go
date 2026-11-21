@@ -57,6 +57,14 @@ func TestDecodeVetOutput(t *testing.T) {
 			},
 		},
 		{
+			name: "a skipped-symlink warning is not output", raw: "warning: ignoring symlink /r/docs/site/node_modules/x\n" + tree("handles", diag("")),
+			check: func(t *testing.T, out *vetOutcome) {
+				if len(out.Findings) != 1 {
+					t.Fatalf("findings = %v", out.Findings)
+				}
+			},
+		},
+		{
 			name: "a test-file position without the category stays strict", raw: tree("handles", diag("")),
 			check: func(t *testing.T, out *vetOutcome) {
 				if len(out.Findings) != 1 || len(out.Deferred) != 0 {
