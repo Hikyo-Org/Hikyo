@@ -297,8 +297,8 @@ is complete once this step merges.
   authority are unchanged.
 - **CI definitions.** The `race-analyzers` group in `reliability.yml` was the set
   of isolation tests that called `LoadRepo`. Its members are now the tests that
-  call `packageScopeNames`, which `scripts/ci/race_isolation_workflow_test.go`
-  discovers: the invariant 12 sweep and the sweep's own temp-tree test, which
+  reach `packageScopeNames`, directly or through the package's own functions,
+  which `scripts/ci/race_isolation_workflow_test.go` discovers: the invariant 12 sweep and the sweep's own temp-tree test, which
   is cheap, so listing it keeps the detector from missing a whole-module sweep.
   The race-shard exclusion for
   `internal/lint` (the Consequences bullet that keeps it until the old harness is

@@ -15,9 +15,12 @@ import (
 // Config.Overlay (the ui context's webui placeholder took one load's live heap
 // from ~1.1GB to ~2.5GB), so no code in the module may set the field. Fixtures
 // reach the placeholder through the "-overlay" build flag, and in-memory source
-// goes through Config.ParseFile (loadWithSources). A file that imports
-// go/packages, under any name, may use no Overlay key or field assignment at
-// all, so no aliased, dot-imported or elided type escapes the rule.
+// goes through Config.ParseFile (loadWithSources). The rule is syntactic, so it
+// does not depend on how a file names the type: every file is checked, and any
+// Overlay field assignment or address, and any Overlay key whose value is not a
+// string literal (which a map[string][]byte never is), fails it. Aliases,
+// embedding, dot imports and elided types all reach one of those forms; a
+// positional literal or reflection would not.
 func TestNoPackagesConfigOverlay(t *testing.T) {
 	root := moduleRoot()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -41,24 +44,22 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		importsPackages := false
-		for _, imp := range file.Imports {
-			importsPackages = importsPackages || imp.Path.Value == `"golang.org/x/tools/go/packages"`
-		}
-		if !importsPackages {
-			return nil
-		}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.KeyValueExpr:
-				if key, ok := n.Key.(*ast.Ident); ok && key.Name == "Overlay" {
+				key, ok := n.Key.(*ast.Ident)
+				if lit, isString := n.Value.(*ast.BasicLit); ok && key.Name == "Overlay" && (!isString || lit.Kind != token.STRING) {
 					t.Errorf("%s sets an Overlay key: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
 				}
 			case *ast.AssignStmt:
 				for _, lhs := range n.Lhs {
-					if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "Overlay" {
+					if isOverlayField(lhs) {
 						t.Errorf("%s assigns an Overlay field: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
 					}
+				}
+			case *ast.UnaryExpr:
+				if n.Op == token.AND && isOverlayField(n.X) {
+					t.Errorf("%s takes an Overlay field's address: use the -overlay build flag or loadWithSources, never packages.Config.Overlay", path)
 				}
 			}
 			return true
@@ -68,4 +69,9 @@ func TestNoPackagesConfigOverlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func isOverlayField(e ast.Expr) bool {
+	sel, ok := ast.Unparen(e).(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "Overlay"
 }
