@@ -134,6 +134,16 @@ export const DialogOwnsDismissal: Story = {
     await expect(canvas.getByRole('complementary', { name: 'DATABASE_URL' })).toBeVisible();
     if (!(sheet instanceof HTMLDialogElement)) throw new Error('sheet is not a dialog');
     sheet.close();
+    // A refused Dialog the platform closed is `data-reopening` until it
+    // reopens: still the dialog's moment, so neither Escape nor an outside
+    // press collapses the panel (#1470).
+    sheet.setAttribute('data-reopening', '');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.pointer({ keys: '[MouseLeft]', target: document.body });
+    // A close would unmount on the next render: let it land before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect(canvas.getByRole('complementary', { name: 'DATABASE_URL' })).toBeVisible();
+    sheet.removeAttribute('data-reopening');
     await userEvent.keyboard('{Escape}');
     await expect(canvas.queryByRole('complementary', { name: 'DATABASE_URL' })).toBeNull();
   },
