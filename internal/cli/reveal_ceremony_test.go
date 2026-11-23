@@ -133,19 +133,33 @@ func TestRevealCeremonyRefusesZeroWindowNamingTheBrowserPath(t *testing.T) {
 	// Raising the window is offered only where it can help: the server caps a
 	// protected environment's window at 0 (ErrProtectedWindowCap).
 	for _, tc := range []struct {
-		name      string
-		protected bool
-		want      []string
-		lacks     []string
+		name   string
+		window apigen.RevealWindow
+		want   []string
+		lacks  []string
 	}{
-		{"protected", true, []string{"protected environment", "ceremony is the browser's"}, []string{"reauth-window-seconds"}},
-		{"zero_window", false, []string{"reveal window is 0", "ceremony is the browser's", "project-settings set --env env_70 --reauth-window-seconds"}, nil},
+		{"protected", apigen.RevealWindow{CanReveal: true, Protected: true},
+			[]string{"protected environment", "ceremony is the browser's"}, []string{"reauth-window-seconds", "enrol"}},
+		{"zero_window", apigen.RevealWindow{CanReveal: true},
+			[]string{"reveal window is 0", "ceremony is the browser's", "project-settings set --env env_70 --reauth-window-seconds"}, []string{"enrol"}},
+		// A window above 0 is offered with TOTP; with no confirmed authenticator
+		// the remedy is enrolling one, never raising a window that is already open.
+		{"no_authenticator", apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true},
+			[]string{"no authenticator is enrolled", "hikyo account factor enrol-totp", "/settings?tab=factors"}, []string{"reauth-window-seconds"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			handler, _ := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 0, Protected: tc.protected})
+			ceremony, _ := ceremonyServer(t, tc.window)
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/auth/totp") {
+					w.Header().Set("Content-Type", "application/json")
+					_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
+					return
+				}
+				ceremony.ServeHTTP(w, r)
+			})
 			ios, _, stderr := definitionsTestIO(t, handler)
 			ios.ReadPassword = func(string) (string, error) {
-				t.Fatal("a 0-window environment must not prompt for a code")
+				t.Fatal("an environment without a usable window must not prompt for a code")
 				return "", nil
 			}
 			if code := cli.Run(t.Context(), ios, revealArgs()); code != cli.ExitAuth {

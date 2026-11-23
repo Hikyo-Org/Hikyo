@@ -185,7 +185,7 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 		// With no window and no inline TOTP, the CLI names the one step that can
 		// open a window for this cause, never a reveal or a browser rule editor.
 		{"asks_to_raise_a_zero_window", 1, ExitAuth, 1, false, apigen.RevealWindow{}, "--reauth-window-seconds 300`, then retry"},
-		{"asks_to_enroll_without_an_authenticator", 1, ExitAuth, 1, false, apigen.RevealWindow{EffectiveWindowSeconds: 300}, "enroll an authenticator in the browser, then retry"},
+		{"asks_to_enroll_without_an_authenticator", 1, ExitAuth, 1, false, apigen.RevealWindow{EffectiveWindowSeconds: 300, TotpOffered: true}, "enroll an authenticator with `hikyo account factor enrol-totp`"},
 		{"says_a_protected_environment_cannot_widen_yet", 1, ExitAuth, 1, false, apigen.RevealWindow{Protected: true}, "cannot be made yet"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -200,6 +200,9 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 					window := tc.window
 					window.CanReveal = !tc.noReveal
 					_ = jsonwire.Encode(w, window)
+				case r.URL.Path == api.PathPrefix+"/auth/totp":
+					// A window above 0 offers TOTP; no authenticator is confirmed here.
+					_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {

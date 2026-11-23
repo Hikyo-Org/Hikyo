@@ -164,16 +164,17 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		case window.Protected:
 			why, remedy = "it is a protected environment", ""
 		case window.EffectiveWindowSeconds > 0:
-			why, remedy = "no authenticator is enrolled on this account", "enroll an authenticator in the browser"
+			why, remedy = "no authenticator is enrolled on this account",
+				fmt.Sprintf("enroll an authenticator with `hikyo account factor enrol-totp` or at %s", accountSecurityURL(client))
 		}
 		if d.purpose == "access" {
 			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
 		}
 		if d.authorized && d.purpose == "" {
-			// The browser has no machine rule editor yet (#1541), so only a window helps.
+			// The browser has no machine rule editor yet (issue 1541), so only a window helps.
 			if remedy == "" {
 				return failf(ExitAuth, "a rule change that widens a machine into the protected environment %s cannot be made yet: "+
-					"a protected environment has no reauthentication window, and the browser cannot edit machine rules yet (#1541)", env)
+					"a protected environment has no reauthentication window, and the browser cannot edit machine rules yet", env)
 			}
 			return failf(ExitAuth, "a rule change that widens a machine in %s needs a reauthentication window and %s; %s, then retry", env, why, remedy)
 		}
