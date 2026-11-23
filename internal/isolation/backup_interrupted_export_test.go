@@ -15,9 +15,10 @@ import (
 )
 
 // #1126: a process killed in the middle of an export leaves a staged
-// `.hikyo-export-*.partial` file and an `.export-*` work directory. The next
-// export, a fresh run of the real verb, must succeed beside that debris and
-// the prefix must refuse to restore. The next export sweeps the dead work directory and spares a live one (#1412).
+// `.hikyo-export-*.partial` file and a work directory. The next export, a
+// fresh run of the real verb, must succeed beside that debris and the prefix
+// must refuse to restore. The same export sweeps dead work directories and
+// spares a live one and look-alikes (#1412).
 // Run for both backup identity classes on both engines.
 func TestExportAfterInterruptedExportSQLite(t *testing.T) {
 	for name, generate := range map[string]func() (string, string, error){"x25519": backup.GenerateIdentity, "hybrid": backup.GenerateHybridIdentity} {
@@ -52,29 +53,40 @@ func runExportAfterInterruptedExport(t *testing.T, target drillTarget, c custody
 		t.Fatal(err)
 	}
 	prefix := raw[:ageStreamBoundary(t, raw)]
-	// The work directory of a killed export holds an unencrypted datastore
-	// copy (snapshot.db or COPY output) plus the staged prefix. Its liveness
-	// lock is free because the kernel dropped it with the process (#1412).
-	deadWork := filepath.Join(target.cfg.BackupDir, ".export-killed")
-	if err := os.MkdirAll(deadWork, 0o700); err != nil {
-		t.Fatal(err)
+	dir := target.cfg.BackupDir
+	mk := func(rel, content string) string {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
 	}
-	if err := os.WriteFile(filepath.Join(deadWork, "snapshot.db"), []byte("stand-in for an unencrypted snapshot"), 0o600); err != nil {
-		t.Fatal(err)
+	// Debris a killed export leaves (#1412). The work directory holds an
+	// unencrypted datastore copy plus the staged prefix; the kernel dropped
+	// its liveness lock with the process, leaving a stale marker file.
+	mk(".hikyo-export-work-111/snapshot.db", "stand-in for an unencrypted snapshot")
+	mk(".hikyo-export-work-111/.live", "")
+	mk(".hikyo-export-work-111/.hikyo-export-1.partial", string(prefix))
+	// Pre-#1412 shapes: work directory without a marker, top-level partial.
+	mk(".export-222/snapshot.db", "stand-in for an unencrypted snapshot")
+	mk(".hikyo-export-333.partial", string(prefix))
+	dead := []string{".hikyo-export-work-111", ".export-222", ".hikyo-export-333.partial"}
+	// Not Hikyo's: the operator may point --out at a folder with their own
+	// files. None of these may be touched, and a stray partial must not block
+	// the export.
+	survivors := []string{
+		mk(".export-notours/photo.jpg", "user data"),
+		mk(".export-444/photo.jpg", "user data under the legacy name shape"),
+		mk(".hikyo-export-work-555/photo.jpg", "prefix-matching directory without a marker"),
+		mk(".hikyo-export-killed.partial", string(prefix)),
 	}
-	if err := os.WriteFile(filepath.Join(deadWork, ".hikyo-export-killed.partial"), prefix, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// A concurrent live export: same shape, liveness lock held.
-	liveWork := filepath.Join(target.cfg.BackupDir, ".export-live")
-	if err := os.MkdirAll(liveWork, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	liveFile := filepath.Join(liveWork, "snapshot.db")
-	if err := os.WriteFile(liveFile, []byte("live export staging"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	live := flock.New(filepath.Join(liveWork, ".live"))
+	// A concurrent live export: marker lock held.
+	liveFile := mk(".hikyo-export-work-666/snapshot.db", "live export staging")
+	live := flock.New(filepath.Join(dir, ".hikyo-export-work-666", ".live"))
 	if ok, err := live.TryLock(); err != nil || !ok {
 		t.Fatalf("hold live export lock: %v %v", ok, err)
 	}
@@ -89,11 +101,15 @@ func runExportAfterInterruptedExport(t *testing.T, target drillTarget, c custody
 	if !strings.HasSuffix(archive, ".age") {
 		t.Fatalf("export after an interruption published %q", archive)
 	}
-	if _, err := os.Lstat(deadWork); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("plaintext debris of the killed export survived the next export: %v", err)
+	for _, name := range dead {
+		if _, err := os.Lstat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("debris %s of the killed export survived the next export: %v", name, err)
+		}
 	}
-	if _, err := os.Stat(liveFile); err != nil {
-		t.Fatalf("a concurrent live export's staging was swept: %v", err)
+	for _, path := range append(survivors, liveFile) {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("%s was swept: %v", path, err)
+		}
 	}
 
 	t.Run("the_interrupted_prefix_refuses_to_restore", func(t *testing.T) {

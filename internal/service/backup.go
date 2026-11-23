@@ -27,12 +27,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
-
-	"github.com/gofrs/flock"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -69,6 +67,8 @@ type Backup struct {
 	// unlink without needing an unwritable directory (which fails every
 	// unlink and cannot distinguish stop-on-first from delete-all-fail).
 	removeFile func(string) error
+	// Log receives sweep warnings; nil uses slog.Default.
+	Log *slog.Logger
 	// syncDirectory defaults to filedurability.SyncDirectory. The seam lets tests fail
 	// after publication, proving the recoverable artifact is retained without
 	// reporting success when its directory entry may not survive a crash.
@@ -116,7 +116,12 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	if dir == "" {
 		return ExportResult{}, errors.New("backup export needs a destination directory")
 	}
-	// Recipient policy first: refusing before a temp file exists keeps a
+	// Debris of a killed export is swept before anything can fail early.
+	// Best effort: a sweep problem must not block a backup, but it is loud.
+	if err := s.SweepExportDebris(ctx, dir); err != nil {
+		s.logger().Warn("backup export debris sweep failed", "dir", dir, "error", err)
+	}
+	// Recipient policy: refusing before a temp file exists keeps a
 	// zero-recipient refusal from leaving debris behind.
 	if err := s.Options.Validate(); err != nil {
 		return ExportResult{}, err
@@ -132,10 +137,8 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	if err != nil {
 		return ExportResult{}, err
 	}
-	// RemoveAll runs before the liveness lock drops (defers are LIFO), so a
-	// sweep never sees a half-deleted live directory as stale.
+	// Removes the plaintext, then drops the liveness lock, then the directory.
 	defer releaseWork()
-	defer os.RemoveAll(work)
 
 	// The staging file is unique per export (CreateTemp), never a fixed
 	// `<final>.partial`: two exports in the same second — an operator export
@@ -205,61 +208,6 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 		}
 	}
 	return result, nil
-}
-
-const (
-	exportWorkPrefix = ".export-"
-	exportLiveLock   = ".live"
-)
-
-// stageExportWork creates the export's private work directory (0700 from
-// MkdirTemp) and holds an flock on `<work>/.live` until release. The kernel
-// drops that lock when the process dies, SIGKILL included, so "lock is free"
-// means "owner is dead" with no age threshold to tune. Sweeping and creation
-// both run under the directory lock, so a sweep can never see a new directory
-// before its lock is held.
-func stageExportWork(ctx context.Context, dir string) (string, func(), error) {
-	unlock, err := lockBackupDirectory(ctx, dir)
-	if err != nil {
-		return "", nil, err
-	}
-	defer unlock()
-	sweepExportDebris(dir)
-	work, err := os.MkdirTemp(dir, exportWorkPrefix)
-	if err != nil {
-		return "", nil, fmt.Errorf("backup staging directory: %w", err)
-	}
-	live := flock.New(filepath.Join(work, exportLiveLock))
-	ok, err := live.TryLock()
-	if err != nil || !ok {
-		os.RemoveAll(work)
-		return "", nil, fmt.Errorf("backup staging lock: %w", errors.Join(err, errors.New("not acquired")))
-	}
-	return work, func() { _ = live.Unlock() }, nil
-}
-
-// sweepExportDebris removes work directories whose owner is dead: the
-// unencrypted datastore copy a killed export leaves behind. A directory whose
-// liveness lock is held belongs to a running export and is skipped. Removal is
-// best effort; a failure leaves the debris for the next sweep. Caller holds the
-// directory lock.
-func sweepExportDebris(dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), exportWorkPrefix) || !e.IsDir() {
-			continue
-		}
-		work := filepath.Join(dir, e.Name())
-		live := flock.New(filepath.Join(work, exportLiveLock))
-		if ok, err := live.TryLock(); err != nil || !ok {
-			continue
-		}
-		_ = os.RemoveAll(work)
-		_ = live.Unlock()
-	}
 }
 
 // publish gives the staged artifact its final name without ever replacing an

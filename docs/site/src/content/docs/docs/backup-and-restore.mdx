@@ -184,10 +184,20 @@ is younger than `HIKYO_BACKUP_RPO`, health reports the breach and `hikyo doctor`
 returns an error.
 
 The retention prune manages complete `hikyo-<engine>-<timestamp>.age` archives
-for this engine, including numeric collision suffixes. It leaves `.partial`
-staging files, other engines and unrecognized files alone. Scheduled, manual and
+for this engine, including numeric collision suffixes. It leaves other engines'
+archives and unrecognized files alone; the only other things it removes are dead
+export work directories and orphaned staging files of the exact Hikyo shape.
+Scheduled, manual and
 pre-migration archives in `HIKYO_BACKUP_DIR` share one policy; there is no separate
 pre-migration count-three limit. Scheduled pruning scans only that directory.
+
+While an export runs it stages an unencrypted copy of the datastore in a
+`.hikyo-export-work-*` directory inside `HIKYO_BACKUP_DIR` (mode 0700, files
+0600). Exclude those directories from any off-host sync. If the process is
+killed, the directory is left behind; the next export or retention prune removes
+a dead one, and never one whose export is still running. Until then the
+plaintext stays on that disk, so delete a stale directory by hand if no export
+is running and you cannot wait.
 
 Within an independent 180-day ceiling, the newest
 `HIKYO_BACKUP_RETAIN_COUNT` are protected from the earlier
