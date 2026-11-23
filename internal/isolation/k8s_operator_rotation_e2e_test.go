@@ -4,6 +4,7 @@ package isolation
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,10 +15,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
-	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
-	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // testCredentialRotationRollout (#148): a scheduled credential rotation runs
@@ -41,25 +39,9 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 	// it rotates SECRET_ONE (password) and CONFIG_ONE (username).
 	execRaw(t, e.db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_rotation_authority_reveal', '"+
 		string(identAdmin)+"', 'reveal', '"+e2eOrg+"', '"+e2ePrj+"', NULL, "+ts+")")
-	f := &rotationFixture{t: t, db: e.db, env: domain.EnvID(e2eEnv), scope: e2eScopeEnv(), now: time.Now().UTC().Truncate(time.Second)}
-	f.dyn = &service.Dynamic{
-		DB: e.db, Keyring: probeKeyring(t, e.db), Runtime: store.NewDynamicRuntime(e.db),
-		LeaseDeadline: 5 * time.Second,
-		ProviderFactory: func(dynamic.Kind, string, string, string) (dynamic.Provider, error) {
-			return fakeDynamicProvider{ctl: &fakeDynamicControl{}}, nil
-		},
-	}
-	provider, err := f.dyn.Configure(e.ctx, service.LocalPrincipal(identAdmin), e2eScopePrj(), service.CreateDynamicProviderRequest{
-		Kind: string(dynamic.KindPostgres), Origin: "postgres://admin@db.rotation.example:5432/app",
-		GrantRole: "app_rw", Credential: []byte(rotAdminSecret),
-	})
-	must(t, err)
-	f.provider = provider.ID
-	auth := authService(t, e.db)
-	auth.ReauthWindow = 15 * time.Minute
-	f.svc = &service.CredentialRotations{DB: e.db, Auth: auth, Now: func() time.Time { return f.now }}
-	f.actor = f.session(identAdmin, true)
-	x := newRotExecOn(t, e.db, f)
+	f := (&rotationFixture{t: t, db: e.db, env: domain.EnvID(e2eEnv), scope: e2eScopeEnv(), now: time.Now().UTC().Truncate(time.Second)}).
+		configure(e2eScopePrj(), identAdmin)
+	x := newRotExecOn(t, f)
 	rot := x.create("key_e2e_sec1", "key_e2e_cfg1")
 
 	// 30s is the operator's minimum resync, which bounds how soon it sees the publish.
@@ -122,12 +104,20 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 // secret is set and differs from notStamp.
 func waitRolled(t *testing.T, e *opEnv, deployment, secret, notStamp string) {
 	t.Helper()
+	last := "no observation"
+	defer func() {
+		if t.Failed() {
+			t.Logf("rollout wait: %s; CR conditions: %s", last, dumpConds(e.getCR("cr-rotation")))
+		}
+	}()
 	poll(t, e.ctx, func(ctx context.Context) (bool, error) {
 		var d appsv1.Deployment
 		if err := e.cl.Get(ctx, types.NamespacedName{Namespace: e.ns, Name: deployment}, &d); err != nil {
 			return false, err
 		}
 		stamp := stampOf(&d, secret)
+		last = fmt.Sprintf("deployment generation=%d observed=%d replicas=%d updated=%d available=%d stamp=%q (baseline %q)",
+			d.Generation, d.Status.ObservedGeneration, d.Status.Replicas, d.Status.UpdatedReplicas, d.Status.AvailableReplicas, stamp, notStamp)
 		return stamp != "" && stamp != notStamp && d.Status.ObservedGeneration >= d.Generation &&
 			d.Status.Replicas == 1 && d.Status.UpdatedReplicas == 1 && d.Status.AvailableReplicas == 1, nil
 	})
