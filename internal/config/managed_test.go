@@ -46,6 +46,7 @@ func TestManagedSeedTrimsEveryValue(t *testing.T) {
 		"HIKYO_MAIL_FROM":      "\tHikyo <hikyo@example.com> ",
 		"HIKYO_MAIL_EHLO":      " mail.example.com\r\n",
 		"HIKYO_MAIL_CA_FILE":   ca,
+		"HIKYO_ARGON2_TIME":    " 3 ",
 	}}
 	values, err := cfg.ManagedSeed()
 	if err != nil {
@@ -57,10 +58,21 @@ func TestManagedSeedTrimsEveryValue(t *testing.T) {
 		"HIKYO_MAIL_FROM":      "Hikyo <hikyo@example.com>",
 		"HIKYO_MAIL_EHLO":      "mail.example.com",
 		"HIKYO_MAIL_CA_PEM":    "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----",
+		"HIKYO_ARGON2_TIME":    "3",
 	}
 	for key, value := range want {
 		if values[key] != value {
 			t.Errorf("%s = %q, want %q", key, values[key], value)
+		}
+	}
+}
+
+// A whitespace-only input trims to empty and is refused, never defaulted (#1492).
+func TestManagedSeedRefusesWhitespaceOnlyValues(t *testing.T) {
+	for _, key := range []string{"HIKYO_UPDATE_CHANNEL", "HIKYO_MAIL_PASSWORD", "HIKYO_MAIL_USER"} {
+		cfg := &Config{ManagedInputs: map[string]string{key: " \t\n"}}
+		if _, err := cfg.ManagedSeed(); err == nil || !strings.Contains(err.Error(), key) {
+			t.Errorf("%s whitespace-only: err = %v, want a refusal naming the key", key, err)
 		}
 	}
 }

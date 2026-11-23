@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -80,8 +81,15 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 	// schema-model.md trims every write path before validation; the seed is
 	// the bootstrap write path for these project cells (#1492).
 	values := make(map[string]string, len(c.ManagedInputs))
+	// File paths are not project values, so only their imported contents trim.
 	for key, value := range c.ManagedInputs {
-		values[key] = schema.Normalize(value)
+		if !strings.HasSuffix(key, "_FILE") {
+			value = schema.Normalize(value)
+		}
+		if value == "" {
+			return nil, fmt.Errorf("%s must be absent or nonempty", key)
+		}
+		values[key] = value
 	}
 	delete(values, "HIKYO_TRUSTED_PROXY_CIDRS")
 	if values["HIKYO_UPDATE_CHANNEL"] == "" {
