@@ -24,6 +24,64 @@ validated gate control tables are excluded; unknown extra objects remain drift.
 initial edges name only the explicit empty and pinned pre-ledger genesis states.
 It does not invent a previous release or infer compatibility from SemVer.
 
+### Release-source edges
+
+An installed stable release is recorded under its release identity, and the
+planner routes it only through an edge whose `source.release` is that exact
+identity. The `fresh/v1` and `legacy/v1` genesis edges never match it. The edge
+lives in the declaration of the release that is the **target** of the upgrade,
+and that declaration is signed with the target release. A shipped release
+therefore cannot gain an edge afterwards: v1.1.0 declares none, so an installed
+v1.0.0 has no ordinary route to v1.1.0 (`no authenticated upgrade route`,
+[#1422](https://github.com/Hikyo-Org/Hikyo/issues/1422)). Three things can
+route a stranded release. None is automatic, and each needs an owner decision:
+
+- **Nothing.** The installation stays on its release until it is restored into
+  a newer one.
+- **A recovery-signed bridge** (`hikyo.dev/recovery-bridge/v1`) per engine from
+  the stranded release to its successor, authorized by a new offline-signed
+  catalog and passed to `assemble-upgrade --bridge`. It needs the recovery-key
+  ceremony and operator attestation at upgrade time. See
+  [bridges](../../release/trust/BRIDGES.md), which documents only legacy bridges.
+- **An extra edge in a later release.** That release's `sources.json` also
+  names the stranded release. The planner accepts it when both releases were
+  signed under the same policy (v1.0.0 and v1.1.0 both use
+  `github-actions-stable`, so the policy skip in `plan.go` does not apply). The
+  `--edges-only` check ignores it. The full check (without `--edges-only`)
+  removes only the baseline's edge before comparing, so it reports the extra
+  edge as a difference for a maintainer to confirm. The patch planner
+  (`security-patch-plan.sh`) refuses a patch whose `sources.json` gains more than
+  the baseline edge, so such a release must be a minor one.
+
+Every stable release after v1.0.0 must carry, per engine, one edge from the
+highest earlier stable release (the baseline). Author it by hand, in
+`release/compatibility/sources.json`, before tagging:
+
+1. Download the baseline's release assets and verify them with
+   `go run ./scripts/release/stable verify --trust release/trust --directory DIR --version X.Y.Z --commit COMMIT --historical --published`,
+   where `COMMIT` is `.source_commit` in the baseline's `release-manifest.json`.
+   It prints the `identity` object.
+2. For each engine add `{"source": {"release": IDENTITY}, "migrations": M,
+   "schema_sha256": S, "mode": "maintenance"}`. `IDENTITY` is the printed object
+   verbatim; `M` and `S` are that engine's `migrations` and `schema_sha256` from
+   the baseline's own `upgrade-compatibility.json`. Use `restart` only when the
+   target's migrations and schema digest equal the baseline's.
+3. Run `scripts/release/check-compatibility-unchanged.sh --edges-only
+   Hikyo-Org/Hikyo release/trust VERSION release/compatibility/sources.json`.
+   It fails when an edge is missing or differs from what the baseline published.
+   After the generator runs, the same script without `--edges-only` compares the
+   whole declaration with the baseline's.
+
+`scripts/release/nightly sources` drops these stable edges, because a nightly
+declaration cannot name a stable source. The generator itself refuses an edge
+whose sequence is not below the candidate's.
+
+The tag workflow (`release.yml`) runs no edge check. A stable release built from
+a commit that lacks the edge ships without it, so the edge must be on the tagged
+commit: either promote `dev` to `main` or merge a same-repository `hotfix/`
+branch that adds it. Only the release planner (`security-patch-plan.sh`) checks the
+edge before offering a tag.
+
 Build the artifact before building any release binary:
 
 ```sh
