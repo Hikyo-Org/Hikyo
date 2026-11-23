@@ -74,6 +74,11 @@ func TestPKIParentDeletionRetainsCertificateHistory(t *testing.T) {
 				},
 				"service account": func() error { return ident.DeleteServiceAccount(ctx, human, prjScope(), sa.ID) },
 			} {
+				if expired && name == "environment" {
+					// Terminal history is purged with the environment (#1420,
+					// owner decision B); TestEnvironmentDeleteCertificates covers it.
+					continue
+				}
 				err := remove()
 				if !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) {
 					t.Fatalf("%s deletion (expired=%v): %v", name, expired, err)

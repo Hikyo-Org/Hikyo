@@ -212,12 +212,12 @@ type PKIRepo interface {
 	ReleaseRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error)
 	RevokeCertificate(ctx context.Context, p authz.Proof, id, reason string, at time.Time) (bool, error)
 	IssuerForSigning(ctx context.Context, p authz.Proof, id string) (PKIIssuer, []byte, uint32, error)
-	// GuardEnvironmentDelete refuses an environment delete while the proof's
-	// environment has any certificate row: a *LiveRowsError wrapping
-	// ErrPKILiveCertificate while one is live (the CountLiveCertificates
-	// definition), else ErrPKICertificateHistory. Issuance history is retained
-	// (#825), so nothing is purged.
-	GuardEnvironmentDelete(ctx context.Context, p authz.Proof, now time.Time) error
+	// PurgeEnvironment deletes the proof's environment's terminal certificate
+	// history (failed, expired, or past not_after) as part of the environment
+	// delete and returns how many rows it removed. It is a *LiveRowsError
+	// wrapping ErrPKILiveCertificate while a certificate is live (the
+	// CountLiveCertificates definition), which keeps its CRL entry.
+	PurgeEnvironment(ctx context.Context, p authz.Proof, now time.Time) (int, error)
 }
 
 // PKIRevokedEntry is one serial a CRL lists.
@@ -679,35 +679,26 @@ func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, re
 }
 
 // ErrPKILiveCertificate refuses an environment delete while a certificate in it
-// is still live: its row backs the CRL entry of a revoked serial.
+// is still live: its row backs the CRL entry of a revoked serial. Terminal
+// history is purged instead (#1420, owner decision B 2026-11-23).
 var ErrPKILiveCertificate = fmt.Errorf("%w: the environment still has a live certificate; revoke it and let it expire first", domain.ErrPKICertificateRetention)
 
-// ErrPKICertificateHistory refuses an environment delete while it holds only
-// terminal certificate history, which is retained (#825).
-var ErrPKICertificateHistory = fmt.Errorf("%w: the environment still has certificate issuance history, which is retained", domain.ErrPKICertificateRetention)
-
-func (r pkiQueries) GuardEnvironmentDelete(ctx context.Context, p authz.Proof, now time.Time) error {
-	chain, err := authz.Verify(p, authz.StorePKICertificatesGuardEnvironmentDelete, r.tok)
+func (r pkiQueries) PurgeEnvironment(ctx context.Context, p authz.Proof, now time.Time) (int, error) {
+	chain, err := authz.Verify(p, authz.StorePKICertificatesPurgeEnvironment, r.tok)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if chain.Env == "" {
-		return ErrNotFound
+		return 0, ErrNotFound
 	}
 	q := r.db.pkiStoreQueries()
 	live, err := q.pkiListLiveEnvironmentCertificateIDs(ctx, chain, now, LiveRowsLimit+1)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if len(live) > 0 {
-		return newLiveRowsError(ErrPKILiveCertificate, live)
+		return 0, newLiveRowsError(ErrPKILiveCertificate, live)
 	}
-	all, err := q.pkiListEnvironmentCertificateIDs(ctx, chain, LiveRowsLimit+1)
-	if err != nil {
-		return err
-	}
-	if len(all) > 0 {
-		return newLiveRowsError(ErrPKICertificateHistory, all)
-	}
-	return nil
+	n, err := q.pkiPurgeTerminalEnvironmentCertificates(ctx, chain, now)
+	return int(n), err
 }

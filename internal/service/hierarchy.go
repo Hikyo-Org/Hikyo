@@ -1146,7 +1146,8 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		if err := purgeEnvironmentRotations(ctx, r, p); err != nil {
 			return err
 		}
-		if err := purgeEnvironmentLiveRows(ctx, r, p); err != nil {
+		purgedCerts, err := purgeEnvironmentLiveRows(ctx, r, p)
+		if err != nil {
 			return err
 		}
 		if err := r.SSH().PurgeEnvironment(ctx, p); err != nil {
@@ -1170,9 +1171,12 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
+		payload := audit.Payload{"name": audit.SanitizeFreeText(before.Name)}
+		if purgedCerts > 0 {
+			payload["purged_certificates"] = purgedCerts
+		}
 		ev, err := domainEvent(ctx, audit.EventEnvDeleted, caller.Principal,
-			audit.Object{Type: "environment", ID: before.ID},
-			audit.Payload{"name": audit.SanitizeFreeText(before.Name)})
+			audit.Object{Type: "environment", ID: before.ID}, payload)
 		if err != nil {
 			return err
 		}

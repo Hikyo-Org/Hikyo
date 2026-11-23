@@ -719,7 +719,7 @@ func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *
 	if err := purgeEnvironmentRotations(ctx, r, ep); err != nil {
 		return err
 	}
-	if err := purgeEnvironmentLiveRows(ctx, r, ep); err != nil {
+	if _, err := purgeEnvironmentLiveRows(ctx, r, ep); err != nil {
 		return err
 	}
 	if err := r.SSH().PurgeEnvironment(ctx, ep); err != nil {

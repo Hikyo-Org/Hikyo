@@ -1128,9 +1128,9 @@ const (
 	StorePKICertificatesCountLive       StoreOp = "pki.CountLiveCertificates"
 	StorePKICertificatesRevokeLive      StoreOp = "pki.RevokeLiveCertificates"
 	StorePKICertificatesRevokedEntries  StoreOp = "pki.RevokedEntries"
-	// StorePKICertificatesGuardEnvironmentDelete refuses an environment delete
-	// while it holds certificate rows (#1420); nothing is purged.
-	StorePKICertificatesGuardEnvironmentDelete StoreOp = "pki.GuardEnvironmentDelete"
+	// StorePKICertificatesPurgeEnvironment purges an environment's terminal
+	// certificate history with its delete, refusing while one is live (#1420).
+	StorePKICertificatesPurgeEnvironment StoreOp = "pki.PurgeEnvironment"
 	// StoreAdaptersGuardEnvironmentDelete refuses an environment delete while it
 	// holds adapter targets or configure fences (#1420).
 	StoreAdaptersGuardEnvironmentDelete StoreOp = "adapters.GuardEnvironmentDelete"
@@ -2651,7 +2651,7 @@ var operationTable = map[Operation]opSpec{
 			// Terminal dynamic leases go with it (#1420); a live lease, any
 			// certificate row or any adapter target or configure fence refuses.
 			StoreDynamicLeasesPurgeEnvironment:         true,
-			StorePKICertificatesGuardEnvironmentDelete: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
@@ -3006,7 +3006,7 @@ var operationTable = map[Operation]opSpec{
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
 			StoreRotationsPurgeEnvironment:             true,
 			StoreDynamicLeasesPurgeEnvironment:         true,
-			StorePKICertificatesGuardEnvironmentDelete: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},

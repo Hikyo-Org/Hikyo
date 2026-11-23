@@ -14,8 +14,9 @@ import (
 
 // #1420: a minted lease, an issued certificate, an adapter target or a dynamic
 // provider pins its scope through a restrict foreign key. Each refuses the
-// delete by name; terminal leases and tombstoned providers are purged with
-// their scope. Certificate and adapter history is retained, never purged.
+// delete by name; terminal leases, terminal certificate history (owner decision
+// B on #1420, 2026-11-23) and tombstoned providers are purged with their scope.
+// Adapter history is retained, never purged.
 
 func seedLeaseRows(t *testing.T, db *store.DB, f definitionsFixture) {
 	t.Helper()
@@ -108,10 +109,10 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	seedCertificateRows(t, db, f, now)
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	project := string(f.project)
-	refused := func(want error, label, id string) {
+	refused := func(label, id string) {
 		t.Helper()
 		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
-		if !errors.Is(err, want) || !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
+		if !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
 			t.Fatalf("delete with %s = %v (%q)", label, err, safeError(err))
 		}
 		if got := count(t, db, "pki_certificates", f); got != 6 {
@@ -124,20 +125,34 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 
 	// Each live state refuses by name, one after the other as it lapses; a revoked
 	// certificate stays live until it expires because it keeps its CRL entry.
-	refused(service.ErrEnvironmentHasLiveCertificate, "an issued certificate", project+"_issued")
+	refused("an issued certificate", project+"_issued")
 	execRaw(t, db, `UPDATE pki_certificates SET state='unknown' WHERE id='`+project+`_issued'`)
-	refused(service.ErrEnvironmentHasLiveCertificate, "an unknown certificate", project+"_issued")
+	refused("an unknown certificate", project+"_issued")
 	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_issued'`)
-	refused(service.ErrEnvironmentHasLiveCertificate, "an issuing certificate", project+"_issuing")
+	refused("an issuing certificate", project+"_issuing")
 	execRaw(t, db, `UPDATE pki_certificates SET state='failed' WHERE id='`+project+`_issuing'`)
-	refused(service.ErrEnvironmentHasLiveCertificate, "a renewed certificate", project+"_renewed")
+	refused("a renewed certificate", project+"_renewed")
 	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_renewed'`)
-	refused(service.ErrEnvironmentHasLiveCertificate, "an unexpired revoked certificate", project+"_revoked")
+	refused("an unexpired revoked certificate", project+"_revoked")
 
-	// Terminal history is retained, so it refuses under its own name instead of
-	// the raw foreign-key conflict, and nothing is purged.
+	// Only terminal history is left: it is purged with the environment, the
+	// issuer survives, and the delete audit event records the purge count.
 	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE id='`+project+`_revoked'`)
-	refused(service.ErrEnvironmentHasCertificateHistory, "only certificate history", project+"_expired")
+	if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()); err != nil {
+		t.Fatalf("delete with only terminal certificate history: %v", err)
+	}
+	if got := count(t, db, "pki_certificates", f); got != 0 {
+		t.Errorf("%d certificates outlived the environment", got)
+	}
+	if got := count(t, db, "environments", f); got != 0 {
+		t.Errorf("environment survived the delete: %d", got)
+	}
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_issuers WHERE id='pki_iss_"+project+"'"); got != 1 {
+		t.Errorf("issuer rows = %d, want the issuer kept", got)
+	}
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.environment_deleted' AND project_id='"+project+"' AND CAST(payload AS TEXT) LIKE '%\"purged_certificates\":6%'"); got != 1 {
+		t.Errorf("environment_deleted events recording 6 purged certificates = %d, want 1", got)
+	}
 }
 
 func TestEnvironmentDeleteAdapterTargets(t *testing.T) {
@@ -265,9 +280,6 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 	}
 	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed')`)
 	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE state='revoked'`)
-	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasCertificateHistory) {
-		t.Fatalf("apply with certificate history = %v (%q)", err, safeError(err))
-	}
 	if got := count(t, db, "environments", f); got != 1 {
 		t.Fatalf("environments after the refusals = %d", got)
 	}
@@ -275,12 +287,11 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 		t.Fatalf("leases after the refusals = %d, want 4", got)
 	}
 
-	// With the retained history gone, terminal leases and effects are purged.
-	execRaw(t, db, `DELETE FROM pki_certificates WHERE project_id='`+project+`'`)
+	// With only terminal rows left, leases, effects and certificate history are purged.
 	if err := apply(); err != nil {
-		t.Fatalf("apply with only terminal leases: %v", err)
+		t.Fatalf("apply with only terminal leases and certificates: %v", err)
 	}
-	for _, table := range []string{"dynamic_leases", "dynamic_effects", "environments"} {
+	for _, table := range []string{"dynamic_leases", "dynamic_effects", "pki_certificates", "environments"} {
 		if got := count(t, db, table, f); got != 0 {
 			t.Errorf("%s still has %d rows after the apply deleted the environment", table, got)
 		}
