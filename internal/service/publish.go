@@ -1634,7 +1634,7 @@ func putCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.P
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
 	}
-	sealed, err := sealer.SealValue(valueAAD(entry), []byte(normalizeStoredValue(p, key, value)))
+	sealed, err := sealer.SealValue(valueAAD(entry), []byte(schema.Normalize(value)))
 	if err != nil {
 		return "", err
 	}

@@ -95,3 +95,48 @@ func TestSelfConfigTestMailChargesFivePerPrincipalPerHour(t *testing.T) {
 		t.Fatalf("relay received %d messages", len(sink.Messages()))
 	}
 }
+
+// schema-model.md trims every write path; the SMTP password has no exemption (#1492).
+func TestSelfConfigTrimsAStagedMailPassword(t *testing.T) {
+	t.Parallel()
+	sink := mailtest.New(t, "implicit")
+	s, local := selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "mail-trim.db")}, mailTestSeed(sink))
+	if err := s.LoadRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	actor, sessionID := selfConfigSession(t, s, local)
+	status, err := s.Status(t.Context(), actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
+	values := &Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
+	staged, err := values.Set(t.Context(), local, scope, "HIKYO_MAIL_PASSWORD", "\t rotated secret \r\n", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisions := &Revisions{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
+	if _, err := revisions.PublishPlanned(t.Context(), local, scope, PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
+		t.Fatal(err)
+	}
+	runSelfConfig(t, s)
+	req := SelfConfigApplyRequest{Revision: 2, ExpectedGeneration: 1, SchemaVersion: runtimeconfig.SchemaVersion, IdempotencyKey: "trim-apply"}
+	selfConfigReauthenticate(t, s, sessionID, SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: status.OwnerInstanceID, Revision: 2, SchemaVersion: runtimeconfig.SchemaVersion, ExpectedGeneration: 1})
+	if _, err := s.Apply(t.Context(), actor, req); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReconcileRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := s.Capture(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bundle.Send(t.Context(), "owner@example.com", "trim", "body"); err != nil {
+		t.Fatal(err)
+	}
+	messages := sink.Messages()
+	if len(messages) != 1 || messages[0].Password != "rotated secret" {
+		t.Fatalf("SMTP AUTH password = %+v, want the trimmed value", messages)
+	}
+}
