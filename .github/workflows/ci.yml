@@ -543,15 +543,9 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
-      - *prepare-go-cache-disk
-      - name: Restore release-snapshot Go cache
-        id: release-snapshot-go-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/go-build
-          key: go-release-snapshot-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', '.goreleaser.yaml') }}
-          restore-keys: |
-            go-release-snapshot-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      # No Go build cache: a warm 2.71 GB entry cut GoReleaser by about 4 to 11
+      # minutes, but the 10 GB Actions budget now holds the lint driver seed
+      # (ci-lint-cache.yml), which saves more time across more jobs.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -629,14 +623,6 @@ jobs:
             dist/DEVELOPMENT-SNAPSHOT.txt
           if-no-files-found: error
           retention-days: 14
-      - name: Save release-snapshot Go cache
-        if: >-
-          success() && steps.release-snapshot-go-cache.outputs.cache-hit != 'true' &&
-          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/go-build
-          key: ${{ steps.release-snapshot-go-cache.outputs.cache-primary-key }}
 
   # The short repository checks share one runner: the API freeze guard and
   # generated-code freshness each take under a minute, so
@@ -1592,6 +1578,16 @@ jobs:
           key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
             go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      # Read only: ci-lint-cache.yml is the single writer of the lint matrix's
+      # compiler and vet entries. Both restores share one content-addressed cache.
+      # The seed rotates weekly, so the key is a prefix: actions/cache restores
+      # the newest seed for these modules, then any seed for this runner ABI.
+      - name: Restore lint driver Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-
+          restore-keys: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Populate Go module cache
         run: go mod download
       # Never replays results: PostgreSQL conformance must exercise this run's
