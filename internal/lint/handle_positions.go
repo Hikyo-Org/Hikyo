@@ -269,10 +269,27 @@ func permittedHandlePosition(fset *token.FileSet, base string, pos token.Pos) bo
 	}
 	relative := filename[index+1:]
 	expected := Module + "/" + filepath.ToSlash(filepath.Dir(relative))
-	if base != expected && base != expected+"_test" {
+	if base != expected && !(base == expected+"_test" && externalTestFiles[relative]) {
 		return false
 	}
 	return driverFiles[relative]
+}
+
+// externalTestFiles are the inventoried files whose package clause is the
+// external "<pkg>_test" package. Only these may use the inventory under that
+// package path; an in-package-only entry is refused there, so the _test
+// package cannot borrow authority reviewed for a different compilation unit.
+var externalTestFiles = map[string]bool{
+	"internal/store/self_config_test.go":                  true,
+	"internal/store/timestamps_postgres_test.go":          true,
+	"internal/store/adapter_bug744_test.go":               true,
+	"internal/store/adapter_control_test.go":              true,
+	"internal/store/adapter_runtime_test.go":              true,
+	"internal/store/coordination_test.go":                 true,
+	"internal/store/keys_test.go":                         true,
+	"internal/store/upgrade/archive_fixture_test.go":      true,
+	"internal/store/upgrade/restore_test.go":              true,
+	"internal/upgradegate/gate_populated_process_test.go": true,
 }
 
 // Coordination SQL receives already admitted transaction wrappers, never a

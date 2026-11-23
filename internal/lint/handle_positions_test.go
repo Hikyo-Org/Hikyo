@@ -2,6 +2,7 @@ package lint
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"maps"
 	"os"
@@ -140,6 +141,40 @@ func TestDriverFilesExist(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(moduleRoot(), filepath.FromSlash(file))); err != nil {
 			t.Errorf("driverFiles entry %s: %v", file, err)
 		}
+	}
+}
+
+// externalTestFiles must match the package clauses on disk, and the file
+// scoping must accept the external package only for those entries.
+func TestExternalTestFilesMatchPackageClauses(t *testing.T) {
+	for file := range driverFiles {
+		if !strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(), filepath.FromSlash(file)), nil, parser.PackageClauseOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if external := strings.HasSuffix(parsed.Name.Name, "_test"); external != externalTestFiles[file] {
+			t.Errorf("%s: package %s but externalTestFiles=%v", file, parsed.Name.Name, externalTestFiles[file])
+		}
+	}
+	for file := range externalTestFiles {
+		if !driverFiles[file] {
+			t.Errorf("externalTestFiles entry %s is not inventoried", file)
+		}
+	}
+	files := token.NewFileSet()
+	external := files.AddFile("/owned/internal/store/keys_test.go", -1, 100)
+	inPackage := files.AddFile("/owned/internal/upgradegate/gate_test.go", -1, 100)
+	if !permittedHandlePosition(files, Module+"/internal/store_test", external.Pos(1)) {
+		t.Fatal("an external test entry was refused under its _test package")
+	}
+	if permittedHandlePosition(files, Module+"/internal/upgradegate_test", inPackage.Pos(1)) {
+		t.Fatal("an in-package-only entry was accepted under the external _test package")
+	}
+	if !permittedHandlePosition(files, Module+"/internal/upgradegate", inPackage.Pos(1)) {
+		t.Fatal("an in-package entry was refused under its own package")
 	}
 }
 
