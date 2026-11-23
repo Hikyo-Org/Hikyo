@@ -378,7 +378,7 @@ run
 
 # A listing by commit is only trusted for a head within checksuites.Margin; a head
 # that cannot be trusted is a stuck reason, so the superseded promotion is still replaced.
-margin=$(sed -n 's/^const Margin = \([0-9]*\)$/\1/p' "$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/../ci/checksuites/checksuites.go")
+margin=$(sed -n 's/^const Margin = \([0-9]*\)$/\1/p' "$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/../ci/checksuites/checksuites.go") || margin=
 [ "$margin" = 900 ] || fail "nightly-promote.sh margin 900 no longer matches checksuites.Margin ($margin)"
 stuck_pull() {
 	reset
