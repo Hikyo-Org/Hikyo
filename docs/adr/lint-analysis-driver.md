@@ -63,13 +63,16 @@ The spike also established that:
    Production files, external test packages and every other analyzer stay
    strict.)
    (Amended by #1468: `redactfmt` no longer reads the receiver of a selection
-   that yields plain data, so a field or method of a harness struct that holds a
-   `crypto.Keyring` is not flagged when only an int or string is formatted. The
-   rule was narrowed, not exempted: a pinned receiver, an `any`/func-typed
-   field or method result, a method returning a string, `[]byte` or byte array
-   (a holder method such as `h.reveal()` may build text from the key material it
-   holds), a selection promoted from an embedded pinned type and a receiver's
-   call arguments or literal elements stay flagged. The differential test
+   whose result is plain data, so a field or method of a harness struct that
+   holds a `crypto.Keyring` is not flagged when only an int or similar is
+   formatted. The rule was narrowed, not exempted. Still flagged: a pinned
+   receiver; an `any`, interface or func-typed field or method result; a
+   selection promoted from an embedded pinned type; a receiver's call
+   arguments and literal elements; and any method whose result carries text or
+   bytes at any depth (`string`, `[]byte`, a byte array, `[]string`, `*string`,
+   a map, a struct with a string field), because a holder method such as
+   `h.reveal()` may build that text from the key material it holds.
+   `time.Time` is the one exception. The differential test
    `TestRedactFormatNarrowingDifferential` pins every dropped diagnostic.
    `redactfmt` left `strictDeferred` and its ceiling entries were removed.
    Named limits that remain: reflection and custom serializers are not seen;

@@ -88,7 +88,14 @@ func (h holder) anyKey() any { return h.keyring }
 func (h holder) reveal() string       { return h.keyring.String() }
 func (h holder) revealBytes() []byte  { return []byte(h.keyring.String()) }
 func (h holder) revealArray() [4]byte { return [4]byte{} }
-func (h holder) evAny() any           { return h.ev }
+
+type pair struct{ Key string }
+
+func (h holder) revealAll() []string       { return []string{h.keyring.String()} }
+func (h holder) revealPtr() *string        { s := h.keyring.String(); return &s }
+func (h holder) revealMap() map[string]int { return map[string]int{h.keyring.String(): 1} }
+func (h holder) revealPair() pair          { return pair{Key: h.keyring.String()} }
+func (h holder) evAny() any                { return h.ev }
 
 type anybox struct{ v any }
 
@@ -105,6 +112,11 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%s", h.reveal())                            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%x", h.revealBytes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%x", h.revealArray())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealAll())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", *h.revealPtr())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealMap())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealPair())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealPair().Key)                    // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.get())                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.box.v)                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "id", ev.Actor.ID)                        // want "logs audit content .*internal/audit\\.Event"

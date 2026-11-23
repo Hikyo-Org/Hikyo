@@ -29,10 +29,12 @@ import (
 // Reflection and custom serializers are not seen. In-package extraction is not
 // seen. Rule 2's walk skips the receiver of a field selection or a method call
 // whose result is plain data (readsPlainData): a holder field of an int, or a
-// method returning an int or time.Time, is not a leak. A holder method that
-// returns an interface, func, string or byte slice keeps the holder flagged,
-// but a plain-typed field the holder fills from key material is not seen, and
-// neither is an indexed holder (h.items[0].seq), which stays flagged.
+// method returning an int or time.Time, is not a leak. A holder method whose
+// result is an interface, a func, or carries a string or byte at any depth
+// ([]string, *string, map[string]int, a struct with a string field) keeps the
+// holder flagged. Not seen: a plain-typed field the holder fills from key
+// material (h.text of type string is read as plain data). An indexed holder
+// (h.items[0].seq) stays flagged, which only over-reports.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
@@ -301,9 +303,10 @@ func readsPlainData(sel *types.Selection) bool {
 			return false
 		}
 		for v := range sig.Results().Variables() {
-			// A string or byte result can carry key material a holder method
-			// built from what it holds (h.reveal()), which the type cannot show.
-			if textOrBytes(v.Type()) {
+			// A text or byte result, however nested, can carry key material a
+			// holder method built from what it holds (h.reveal()), which the
+			// type cannot show.
+			if carriesText(v.Type(), map[types.Type]bool{}) {
 				return false
 			}
 			result = append(result, v.Type())
@@ -325,22 +328,39 @@ func readsPlainData(sel *types.Selection) bool {
 	return !slices.ContainsFunc(result, func(t types.Type) bool { return !plainData(t, map[types.Type]bool{}) })
 }
 
-// textOrBytes reports whether t is a string, []byte or [N]byte (named or not).
-func textOrBytes(t types.Type) bool {
-	switch u := types.Unalias(t).Underlying().(type) {
+// carriesText reports whether a value of type t can carry text or bytes that a
+// holder method built from what it holds: a string or byte reachable through
+// pointers, slices, arrays, maps and struct fields, however deep. time.Time is
+// the one deliberate exception: it reaches a string only through *Location (a
+// zone name), never through the instant a method derives from held state.
+func carriesText(t types.Type, seen map[types.Type]bool) bool {
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	t = types.Unalias(t)
+	if n, ok := t.(*types.Named); ok && namedKey(n) == "time.Time" {
+		return false
+	}
+	switch u := t.Underlying().(type) {
 	case *types.Basic:
-		return u.Info()&types.IsString != 0
+		return u.Info()&types.IsString != 0 || u.Kind() == types.Uint8
+	case *types.Pointer:
+		return carriesText(u.Elem(), seen)
 	case *types.Slice:
-		return isByte(u.Elem())
+		return carriesText(u.Elem(), seen)
 	case *types.Array:
-		return isByte(u.Elem())
+		return carriesText(u.Elem(), seen)
+	case *types.Map:
+		return carriesText(u.Key(), seen) || carriesText(u.Elem(), seen)
+	case *types.Struct:
+		for f := range u.Fields() {
+			if carriesText(f.Type(), seen) {
+				return true
+			}
+		}
 	}
 	return false
-}
-
-func isByte(t types.Type) bool {
-	b, ok := types.Unalias(t).Underlying().(*types.Basic)
-	return ok && b.Kind() == types.Uint8
 }
 
 func derefStruct(t types.Type) (*types.Struct, bool) {
