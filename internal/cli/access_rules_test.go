@@ -181,10 +181,10 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
 				case r.URL.Path == api.PathPrefix+"/meta":
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 				case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_dev/reveal-window":
 					windows++
-					_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: true, CanReveal: true})
+					_ = jsonwire.Encode(w, apigen.RevealWindow{Live: true, CanReveal: true})
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {
@@ -194,11 +194,11 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 						body.Error.Message = "conflict"
 						body.Error.Detail = &detail
 						w.WriteHeader(http.StatusConflict)
-						_ = json.NewEncoder(w).Encode(body)
+						_ = jsonwire.Encode(w, body)
 						return
 					}
 					w.WriteHeader(http.StatusCreated)
-					_ = json.NewEncoder(w).Encode(apigen.Rule{Id: "rul_1", PrincipalId: "mch_one", Capability: "read"})
+					_ = jsonwire.Encode(w, apigen.Rule{Id: "rul_1", PrincipalId: "mch_one", Capability: "read"})
 				default:
 					http.NotFound(w, r)
 				}
