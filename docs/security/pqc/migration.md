@@ -179,7 +179,8 @@ a classical chain unless the operator supplies an override
 (`internal/remotefetch/pairing_identity.go:58`), so a read pin is only as authentic
 as that chain. No quantum-safe answer exists; claim limited: no PQ
 authenticity, pin or password-exchange claim for pairing. Not recommended: a
-KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now (Hikyo refuses ML-DSA keys).
+KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now
+(Hikyo refuses ML-DSA keys).
 
 ### Release trust and install paths
 
