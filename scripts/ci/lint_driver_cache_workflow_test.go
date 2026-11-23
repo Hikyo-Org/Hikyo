@@ -25,7 +25,7 @@ const (
 	lintDriverSerialLintTest = `go test -count=1 -timeout=20m "$lint_package" || status=1`
 )
 
-var lintDriverSeedSpec = cacheSeedSpec{
+var lintDriverSeedSpec = reuseSeedSpec{
 	label:        "lint driver seed",
 	group:        "ci-lint-cache-main",
 	bootstrap:    "${{ runner.temp }}/lint-bootstrap",
@@ -47,7 +47,7 @@ var lintDriverSeedSpec = cacheSeedSpec{
 
 func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 	workflow, raw := readWorkflowFile(t, "ci-lint-cache.yml")
-	if err := requireCacheSeed(workflow, lintDriverSeedSpec); err != nil {
+	if err := requireReuseSeed(workflow, lintDriverSeedSpec); err != nil {
 		t.Fatal(err)
 	}
 	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["seed"].(map[string]any) }
@@ -135,7 +135,7 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 				t.Fatal(err)
 			}
 			mutation(changed)
-			if requireCacheSeed(changed, lintDriverSeedSpec) == nil {
+			if requireReuseSeed(changed, lintDriverSeedSpec) == nil {
 				t.Fatal("accepted unsafe lint driver seed publisher")
 			}
 		})

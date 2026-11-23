@@ -132,7 +132,7 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeGoReuseDiskPreparation(workflow.Jobs); err != nil {
 		return err
 	}
-	if err := normalizeReleaseSnapshotGoCacheRemoval(workflow.Jobs["release-snapshot"]); err != nil {
+	if err := normalizeReleaseSnapshotReuseRemoval(workflow.Jobs["release-snapshot"]); err != nil {
 		return err
 	}
 	if err := normalizeAWSSandboxShellcheck(workflow.Jobs["lint"]); err != nil {

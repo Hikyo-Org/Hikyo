@@ -153,7 +153,7 @@ require_line "$spa_builder" 'pnpm run test'
 require_line "$spa_builder" 'pnpm run build'
 
 require_line "$workflow" 'name: Upload unsigned development snapshot'
-# The upload is the job's last step (normalizeReleaseSnapshotGoCacheRemoval in
+# The upload is the job's last step (normalizeReleaseSnapshotReuseRemoval in
 # coverage_conservation_test.go enforces that); the job block bounds the range.
 upload_block=$(printf '%s\n' "$release_block" |
 	sed -n '/name: Upload unsigned development snapshot/,$p')

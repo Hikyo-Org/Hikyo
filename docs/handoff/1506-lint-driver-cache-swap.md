@@ -18,10 +18,10 @@ is source-proof policy, so a `main` into `dev` backmerge must follow).
   after the `go-test-v2` restore. Invariants now reserves disk first.
 - Policy: `check-cache-policy_test.sh` and the Go workflow tests pin the seed,
   the readers, the weekly generation and the key's first `-vN-` segment.
-  `requireCacheSeed` also limits seed workflows to `name`, `on`,
+  `requireReuseSeed` also limits seed workflows to `name`, `on`,
   `permissions`, `concurrency` and `jobs`. The snapshot upload check is now
   bounded by its job. Frozen coverage hashes are unchanged; the normalizer
-  `normalizeReleaseSnapshotGoCacheRemoval` maps the new shape back.
+  `normalizeReleaseSnapshotReuseRemoval` maps the new shape back.
 
 ## Evidence
 

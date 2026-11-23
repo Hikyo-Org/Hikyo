@@ -160,9 +160,9 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 }
 
-// cacheSeedSpec names what differs between the trusted-main build cache seeds;
-// requireCacheSeed holds the trust rules they share.
-type cacheSeedSpec struct {
+// reuseSeedSpec names what differs between the trusted-main build cache seeds;
+// requireReuseSeed holds the trust rules they share.
+type reuseSeedSpec struct {
 	label, group, bootstrap, lookupID, key, restoreKeys, compile string
 	// generationID and generation, when set, pin a step between the ABI and
 	// the lookup whose output rotates the key.
@@ -170,7 +170,7 @@ type cacheSeedSpec struct {
 	maxTimeout               int
 }
 
-var raceSeedSpec = cacheSeedSpec{
+var raceSeedSpec = reuseSeedSpec{
 	label:       "race seed",
 	group:       "ci-race-cache-main",
 	bootstrap:   "${{ runner.temp }}/race-bootstrap",
@@ -181,9 +181,9 @@ var raceSeedSpec = cacheSeedSpec{
 	maxTimeout:  30,
 }
 
-func requireRaceSeed(workflow map[string]any) error { return requireCacheSeed(workflow, raceSeedSpec) }
+func requireRaceSeed(workflow map[string]any) error { return requireReuseSeed(workflow, raceSeedSpec) }
 
-func requireCacheSeed(workflow map[string]any, spec cacheSeedSpec) error {
+func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	// No top-level env or defaults: either would change what the seed compiles
 	// without touching the reviewed steps.
 	top := make([]string, 0, len(workflow))

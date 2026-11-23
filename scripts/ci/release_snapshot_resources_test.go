@@ -145,8 +145,8 @@ func TestSnapshotResourceBoundsPreserveCoverage(t *testing.T) {
 }
 
 const (
-	snapshotGoCacheRestore = "Restore release-snapshot Go cache"
-	snapshotGoCacheSave    = "Save release-snapshot Go cache"
+	snapshotReuseRestore = "Restore release-snapshot Go cache"
+	snapshotReuseSave    = "Save release-snapshot Go cache"
 )
 
 // The release snapshot's 2.71 GB Go build cache moved to the lint driver seed.
@@ -154,13 +154,13 @@ const (
 // build cache, then reinsert the frozen restore and save so any other
 // release-snapshot change still moves its digest. Run after the shared disk
 // normalizer, which already removed the frozen disk step from the digest shape.
-func normalizeReleaseSnapshotGoCacheRemoval(job map[string]any) error {
+func normalizeReleaseSnapshotReuseRemoval(job map[string]any) error {
 	steps, ok := job["steps"].([]any)
 	if !ok {
 		return fmt.Errorf("snapshot lost its build steps")
 	}
 	frozenRestore := map[string]any{
-		"name": snapshotGoCacheRestore,
+		"name": snapshotReuseRestore,
 		"id":   "release-snapshot-go-cache",
 		"uses": reuseRestoreAction,
 		"with": map[string]any{
@@ -170,7 +170,7 @@ func normalizeReleaseSnapshotGoCacheRemoval(job map[string]any) error {
 		},
 	}
 	frozenSave := map[string]any{
-		"name": snapshotGoCacheSave,
+		"name": snapshotReuseSave,
 		"if":   "success() && steps.release-snapshot-go-cache.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'",
 		"uses": reuseSaveAction,
 		"with": map[string]any{
@@ -188,7 +188,7 @@ func normalizeReleaseSnapshotGoCacheRemoval(job map[string]any) error {
 		uses, _ := step["uses"].(string)
 		run, _ := step["run"].(string)
 		with, _ := step["with"].(map[string]any)
-		if step["name"] == snapshotGoCacheRestore || step["name"] == snapshotGoCacheSave || step["name"] == goReuseDiskStep ||
+		if step["name"] == snapshotReuseRestore || step["name"] == snapshotReuseSave || step["name"] == goReuseDiskStep ||
 			strings.Contains(run, goReuseDiskScript) || with["path"] == "~/.cache/go-build" ||
 			strings.HasPrefix(uses, "actions/cache/save@") || strings.HasPrefix(uses, "actions/cache@") {
 			return fmt.Errorf("release-snapshot must not prepare, restore or write a Go build cache")
@@ -212,7 +212,7 @@ func normalizeReleaseSnapshotGoCacheRemoval(job map[string]any) error {
 	return nil
 }
 
-func TestReleaseSnapshotGoCacheRemovalPreservesCoverage(t *testing.T) {
+func TestReleaseSnapshotReuseRemovalPreservesCoverage(t *testing.T) {
 	baseline, original := readCoverageBaseline(t)
 	for _, mutation := range []string{"unchanged", "restore", "save", "disk", "combined", "removed abi", "extra step"} {
 		t.Run(mutation, func(t *testing.T) {
