@@ -7,8 +7,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-
-	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
 // bootstrapManagedKeys includes startup file references as well as the
@@ -79,12 +77,13 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 	}
 
 	// schema-model.md trims every write path before validation; the seed is
-	// the bootstrap write path for these project cells (#1492).
+	// the bootstrap write path for these project cells (#1492). config is a
+	// leaf package, so strings.TrimSpace stands in for schema.Normalize.
 	values := make(map[string]string, len(c.ManagedInputs))
 	// File paths are not project values, so only their imported contents trim.
 	for key, value := range c.ManagedInputs {
 		if !strings.HasSuffix(key, "_FILE") {
-			value = schema.Normalize(value)
+			value = strings.TrimSpace(value)
 		}
 		if value == "" {
 			return nil, fmt.Errorf("%s must be absent or nonempty", key)
@@ -146,7 +145,7 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 		if err != nil {
 			return nil, fmt.Errorf("%s: cannot import a regular file of at most 65536 bytes", source.file)
 		}
-		content = schema.Normalize(content)
+		content = strings.TrimSpace(content)
 		if content == "" {
 			return nil, fmt.Errorf("%s must name a nonempty file", source.file)
 		}
