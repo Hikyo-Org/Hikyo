@@ -111,6 +111,9 @@ type probeWords [4]uint64
 func (h holder) revealWords() probeWords { return probeWords{uint64(len(h.keyring.String()))} }
 func (h holder) revealBig() *big.Int     { return new(big.Int).SetBytes([]byte(h.keyring.String())) }
 func (h holder) revealUTF16() []uint16   { return utf16.Encode([]rune(h.keyring.String())) }
+func (h holder) revealSet() map[uint64]bool {
+	return map[uint64]bool{uint64(len(h.keyring.String())): true}
+}
 func (h holder) revealFloats() []float64 { return []float64{float64(len(h.keyring.String()))} }
 
 // when sets the zone name from held state; the zone name and instant of a
@@ -140,6 +143,7 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%v", h.revealWords())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealBig())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealUTF16())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealSet())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealFloats())                      // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealAll())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", *h.revealPtr())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"

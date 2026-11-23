@@ -32,15 +32,18 @@ import (
 // whose result is plain data (readsPlainData): a holder field of an int, or a
 // method returning an int or time.Time, is not a leak. A holder method whose
 // result is an interface, a func, a chan or a type parameter, or carries a
-// string, byte, rune or a number slice/array/map at any depth ([]string,
-// []rune, []uint16, [4]uint64, *string, a map with text keys or values, a
-// struct with a string field, a math/big value) keeps the holder flagged.
-// Not seen: a plain-typed field the holder fills from key material (h.text of
-// type string is read as plain data), a scalar numeric result (a uint64 derived
-// from key material), and the zone name and instant of a time.Time result. An
-// indexed holder (h.items[0].seq) stays flagged, which only over-reports.
-// A named type whose underlying struct is identical to a pinned type's is
-// treated as that pinned type, so a conversion cannot rename it away.
+// string, byte, rune or a number slice, array or map at any depth ([]string,
+// []rune, []uint16, [4]uint64, *string, a map with text keys or values, a map
+// with number keys or elements, a struct with a string field, a math/big
+// value) keeps the holder flagged. Not seen: a plain-typed field the holder
+// fills from key material (h.text of type string is read as plain data), a
+// scalar numeric result (a uint64 derived from key material), a struct of
+// numeric fields, a []bool, the zone name and instant of a time.Time result,
+// and a renamed audit.Payload (type payAlias audit.Payload: a map type, not a
+// struct). An indexed holder (h.items[0].seq) stays flagged, which only
+// over-reports. A named struct type whose underlying struct is identical to a
+// pinned struct's is treated as that pinned type, so a conversion cannot
+// rename it away.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
@@ -367,7 +370,7 @@ func carriesText(t types.Type, seen map[types.Type]bool) bool {
 	case *types.Array:
 		return numeric(u.Elem()) || carriesText(u.Elem(), seen)
 	case *types.Map:
-		return numeric(u.Elem()) || carriesText(u.Key(), seen) || carriesText(u.Elem(), seen)
+		return numeric(u.Key()) || numeric(u.Elem()) || carriesText(u.Key(), seen) || carriesText(u.Elem(), seen)
 	case *types.Struct:
 		for f := range u.Fields() {
 			if carriesText(f.Type(), seen) {
@@ -451,7 +454,7 @@ func pinnedDirectly(t types.Type) string {
 }
 
 // pinnedKey is the key of the pinned type n is, or "". A named struct whose
-// underlying type is identical to a pinned type's counts as that type, so
+// underlying type is identical to a pinned struct's counts as that type, so
 // `type evAlias audit.Event` and a conversion cannot rename it away.
 func pinnedKey(n *types.Named, pinned map[string]bool) string {
 	if key := namedKey(n); pinned[key] {
