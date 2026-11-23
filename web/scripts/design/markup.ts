@@ -35,8 +35,12 @@ export type MarkupHit = { line: number; text: string } & (
   | { atom?: undefined; note: string }
 );
 
-/** A whole class token inside a className literal: `"notice machine__policy"` is a notice. */
-const cls = (name: string) => new RegExp(`className="(?:[^"]*\\s)?${name}(?:[\\s-][^"]*)?"`);
+/** A whole class token inside a className string literal (double, single, or braced): `"notice machine__policy"` is a notice. */
+const cls = (name: string) => {
+  const token = (quote: string) => `${quote}(?:[^${quote}]*\\s)?${name}(?:[\\s-][^${quote}]*)?${quote}`;
+  // "x", 'x', {"x"} and {'x'}; template literals and cx(...) stay out of scope.
+  return new RegExp(`className=(?:${token('"')}|${token("'")}|\\{\\s*${token('"')}\\s*\\}|\\{\\s*${token("'")}\\s*\\})`);
+};
 
 const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: cls('alert'), atom: 'ui/Alert' },
