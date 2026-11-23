@@ -11,16 +11,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
 
+// RefusalDeadlineError reports a server-side lock/statement timeout (55P03,
+// 57014) as a deadline error that still wraps the PgError. The server bound
+// starts one round trip after the client deadline was read, so it can fire
+// first; callers classify both the same way.
+func RefusalDeadlineError(err error) error {
+	var pgErr *pgconn.PgError
+	if err == nil || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pgErr) || (pgErr.Code != "55P03" && pgErr.Code != "57014") {
+		return err
+	}
+	return fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+}
+
 // UpdateRequestRefusals is the #1034-only enumerated writer. A nil sample is
 // the system sealer. The caller owns a write transaction and commits every
 // event, staging reset and increment together, or none of them.
-func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.RefusalSample) (int64, error) {
+func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.RefusalSample) (n int64, err error) {
+	defer func() { err = RefusalDeadlineError(err) }()
 	var start, now int64
 	var encoded string
 	if r.sq != nil {

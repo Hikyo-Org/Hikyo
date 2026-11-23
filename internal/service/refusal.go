@@ -8,6 +8,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
@@ -91,6 +92,7 @@ func (s *RefusalSignals) update(ctx context.Context, sample *audit.RefusalSample
 		pending, err = az.UpdateRequestRefusals(ctx, sample)
 		return err
 	})
+	err = authn.RefusalDeadlineError(err) // also covers a COMMIT the server timed out
 	if err == nil {
 		s.pending.Store(pending)
 		s.healthy.Store(true)

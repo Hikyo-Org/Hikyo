@@ -521,7 +521,7 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	db := seededDB(t, openPostgres)
 	release := holdRefusalWriter(t, db)
 	sample := refusalStorageSample(t)
-	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(300 * time.Millisecond)}
+	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(time.Second)}
 	start := time.Now()
 	done := make(chan error, 1)
 	go func() {
@@ -530,6 +530,17 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 			return err
 		})
 	}()
+	// Row-lock waiters wait on a transactionid lock, so look for blocked backends.
+	// Scoped to this database: other tests share the server and block deliberately.
+	const blocked = "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND cardinality(pg_blocking_pids(pid))>0"
+	for seen := false; !seen; {
+		select {
+		case <-done:
+			t.Fatal("attempt finished without ever blocking behind the held writer")
+		case <-time.After(10 * time.Millisecond):
+			seen = queryInt(t, db, blocked) > 0
+		}
+	}
 	var err error
 	select {
 	case err = <-done:
@@ -539,14 +550,11 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 		t.Fatal("server never aborted the lock-blocked attempt: no server-side bound")
 	}
 	var timedOut *pgconn.PgError
-	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") {
-		t.Fatalf("server did not abort the lock wait at the deadline: %v after %s", err, time.Since(start))
+	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("server did not abort the lock wait as a deadline error: %v after %s", err, time.Since(start))
 	}
-	// Scoped to this database and row: other tests share the server and wait on locks deliberately.
-	const waiters = "SELECT count(*) FROM pg_locks WHERE NOT granted AND relation='auth_refusal_window'::regclass " +
-		"AND database=(SELECT oid FROM pg_database WHERE datname=current_database())"
-	if waiting := queryInt(t, db, waiters); waiting != 0 {
-		t.Fatalf("aborted attempt left %d lock waiters", waiting)
+	if waiting := queryInt(t, db, blocked); waiting != 0 {
+		t.Fatalf("aborted attempt left %d blocked backends", waiting)
 	}
 	release()
 	signals := service.NewRefusalSignals(db)
