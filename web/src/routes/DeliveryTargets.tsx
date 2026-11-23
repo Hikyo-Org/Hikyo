@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 
 import {
   groupTargets,
+  type TargetGroup,
   type DeliveryTarget,
   type DeliveryTargetsView,
 } from '../api/deliveryTargets.ts';
@@ -80,6 +81,81 @@ export function stateSentence(target: DeliveryTarget, now: Date): string {
   }
 }
 
+function TargetGroupTable({
+  group,
+  nameOf,
+  keysPath,
+  now,
+}: {
+  group: TargetGroup;
+  nameOf: (principal: string) => string;
+  keysPath: (environment: string) => string;
+  now: Date;
+}) {
+  const captionId = useId();
+  return (
+    <section className="delivery-targets__group">
+      <h4 className="machine__subhead">
+        {'Cluster '}
+        <code className="mono">{group.cluster}</code>
+        {', namespace '}
+        <code className="mono">{group.namespace}</code>
+      </h4>
+      <TableScroll aria-labelledby={captionId}>
+        <table className="values__table machine__table">
+          <caption id={captionId} className="visually-hidden">
+            {`Delivery targets in cluster ${group.cluster}, namespace ${group.namespace}, as their controller reported them.`}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Target</th>
+              <th scope="col">Environment</th>
+              <th scope="col">Reported by</th>
+              <th scope="col">State</th>
+              <th scope="col">Conditions (as asserted)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.rows.map(({ environment, target }) => (
+              <tr key={target.id} data-state={target.state}>
+                <td className="mono">{target.target.name}</td>
+                <td>{environment.name}</td>
+                <td>{nameOf(target.principal_id)}</td>
+                <td>
+                  <span className="machine__chips">
+                    <StateBadge state={target.state} />
+                    <span>{stateSentence(target, now)}</span>
+                  </span>
+                </td>
+                <td>
+                  <ul className="delivery-targets__conditions">
+                    <li className="mono">{`lifecycle=${target.lifecycle}`}</li>
+                    {target.conditions.map((condition) => (
+                      <li className="mono" key={condition.type}>
+                        {`${condition.type}=${condition.status}/`}
+                        {KEY_REASONS.has(condition.reason) ? (
+                          <Link
+                            to={keysPath(environment.id)}
+                            aria-label={`${condition.reason}: open the ${environment.name} keys`}
+                          >
+                            {condition.reason}
+                          </Link>
+                        ) : (
+                          condition.reason
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableScroll>
+    </section>
+  );
+}
+
 export function DeliveryTargetsPanel({
   project,
   view,
@@ -99,7 +175,6 @@ export function DeliveryTargetsPanel({
   now: Date;
 }) {
   const reportersCaptionId = useId();
-  const targetsCaptionId = useId();
   const nameOf = (principal: string) =>
     accounts.find((account) => account.principal_id === principal)?.name ?? principal;
   const groups = groupTargets(view.reports);
@@ -218,65 +293,13 @@ export function DeliveryTargetsPanel({
         </p>
       ) : (
         groups.map((group) => (
-          <section key={`${group.cluster} ${group.namespace}`} className="delivery-targets__group">
-            <h4 className="machine__subhead">
-              {'Cluster '}
-              <code className="mono">{group.cluster}</code>
-              {', namespace '}
-              <code className="mono">{group.namespace}</code>
-            </h4>
-            <TableScroll aria-labelledby={`${targetsCaptionId}-${group.namespace}`}>
-              <table className="values__table machine__table">
-                <caption id={`${targetsCaptionId}-${group.namespace}`} className="visually-hidden">
-                  {`Delivery targets in namespace ${group.namespace}, as their controller reported them.`}
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Target</th>
-                    <th scope="col">Environment</th>
-                    <th scope="col">Reported by</th>
-                    <th scope="col">State</th>
-                    <th scope="col">Conditions (as asserted)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.rows.map(({ environment, target }) => (
-                    <tr key={target.id} data-state={target.state}>
-                      <td className="mono">{target.target.name}</td>
-                      <td>{environment.name}</td>
-                      <td>{nameOf(target.principal_id)}</td>
-                      <td>
-                        <span className="machine__chips">
-                          <StateBadge state={target.state} />
-                          <span>{stateSentence(target, now)}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <ul className="delivery-targets__conditions">
-                          <li className="mono">{`lifecycle=${target.lifecycle}`}</li>
-                          {target.conditions.map((condition) => (
-                            <li className="mono" key={condition.type}>
-                              {`${condition.type}=${condition.status}/`}
-                              {KEY_REASONS.has(condition.reason) ? (
-                                <Link
-                                  to={keysPath(environment.id)}
-                                  aria-label={`${condition.reason}: open the ${environment.name} keys`}
-                                >
-                                  {condition.reason}
-                                </Link>
-                              ) : (
-                                condition.reason
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
-          </section>
+          <TargetGroupTable
+            key={`${group.cluster} ${group.namespace}`}
+            group={group}
+            nameOf={nameOf}
+            keysPath={keysPath}
+            now={now}
+          />
         ))
       )}
     </section>

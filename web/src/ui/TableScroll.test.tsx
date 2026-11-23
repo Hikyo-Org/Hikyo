@@ -22,3 +22,19 @@ it('renders a focusable region named by its caption', async () => {
     await view.unmount();
   }
 });
+
+it('takes its name from aria-label when the table has no caption', async () => {
+  const view = await renderForm(
+    <TableScroll aria-label="Policies">
+      <table />
+    </TableScroll>,
+  );
+  try {
+    const region = view.container.querySelector('.table-scroll');
+    expect(region?.getAttribute('aria-label')).toBe('Policies');
+    expect(region?.hasAttribute('aria-labelledby')).toBe(false);
+    expect(region?.getAttribute('tabindex')).toBe('0');
+  } finally {
+    await view.unmount();
+  }
+});

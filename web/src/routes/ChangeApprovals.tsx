@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -100,6 +100,7 @@ export function ChangeApprovals() {
 }
 
 function ScopedChangeApprovals({ org, project }: { org: string; project: string }) {
+  const policiesCaptionId = useId();
   const ref = { org, project };
 
   const environments = useEnvironments(org, project);
@@ -236,8 +237,9 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                 <p>No approval policies. Changes in every environment publish directly.</p>
               ) : null}
               {policies.data !== undefined && policies.data.items.length > 0 ? (
-                <TableScroll aria-label="Approval policies">
+                <TableScroll aria-labelledby={policiesCaptionId}>
                   <table className="change-approvals__policies">
+                    <caption id={policiesCaptionId} className="visually-hidden">Approval policies for this project</caption>
                     <thead>
                       <tr>
                         <th>Environment</th>

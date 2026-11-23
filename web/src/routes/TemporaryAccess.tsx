@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -132,6 +132,7 @@ export function TemporaryAccess() {
 }
 
 function ScopedTemporaryAccess({ org, project }: { org: string; project: string }) {
+  const policiesCaptionId = useId();
   const ref = { org, project };
   const me = useAuth().identity?.principal.id ?? '';
 
@@ -439,8 +440,9 @@ function ScopedTemporaryAccess({ org, project }: { org: string; project: string 
                 <p>No access policies. Nothing is requestable in this project yet.</p>
               ) : null}
               {isManager && policies.data.items.length > 0 ? (
-                <TableScroll aria-label="Access policies">
+                <TableScroll aria-labelledby={policiesCaptionId}>
                 <table className="temporary-access__policies">
+                  <caption id={policiesCaptionId} className="visually-hidden">Access policies for this project</caption>
                   <thead>
                     <tr>
                       <th>Environment</th>
