@@ -11015,8 +11015,9 @@ type RotateSSHCARequest struct {
 // is gone. `gate_failed`: a pre-publish gate refused, for example the
 // environment became protected, a key changed or a draft appeared.
 // `incident_contained`: an incident opened on the recorded person halted it,
-// and a release never resumes it. `unknown`: the stored reason is not one of the words the
-// server writes (a legacy or restored value). OPEN enum: a later release may
+// and a release never resumes it. `unknown`: the stored reason is not one of
+// the words the server writes (a legacy or restored value). OPEN enum: a later
+// release may
 // add a word, so a client keeps an unrecognised one and says only that the
 // rotation is halted.
 type RotationHaltReason = string

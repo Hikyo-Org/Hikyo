@@ -101,14 +101,14 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 		// One sorted lock pass, shared with incident containment, so the two never
 		// take the target and the managers in opposite orders; the grants it returns
 		// were read under the locks. A release only needs the target.
-		var grants []domain.Grant
+		var holders map[string][]domain.PrincipalID
 		if action == "release" {
 			if err := az.LockTargetPrincipal(ctx, domain.PrincipalID(principal)); err != nil {
 				return err
 			}
 		} else {
 			var err error
-			if grants, err = lockTargetAndManagers(ctx, az, domain.PrincipalID(principal)); err != nil {
+			if _, holders, err = lockTargetAndManagers(ctx, az, domain.PrincipalID(principal)); err != nil {
 				return err
 			}
 		}
@@ -123,9 +123,7 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 			return errors.New("privacy: erased accounts cannot be released")
 		}
 		if a.State == "active" && action != "release" {
-			if ok, err := hasAlternativeManager(ctx, az, domain.PrincipalID(principal), grants); err != nil {
-				return err
-			} else if !ok {
+			if !hasAlternativeManager(domain.PrincipalID(principal), holders) {
 				return ErrPrivacyLastManager
 			}
 		}
@@ -288,71 +286,64 @@ func managerOrgs(grants []domain.Grant) []string {
 	return orgs
 }
 
-// maxLockPasses bounds the lock-and-verify loop of lockTargetAndManagers.
-const maxLockPasses = 4
-
 // lockTargetAndManagers locks the target and every manage-members holder of each
 // org the target manages, in one sorted pass, so two concurrent batches that touch
 // the last managers of an org take their locks in the same order and cannot
-// deadlock. It reads the target's grants and the holders itself and then reads
-// both again under the locks: the pass is done only when the set read under the
-// lock is already locked. A grant or holder that changed in between adds its
-// principal and the pass repeats; after maxLockPasses it fails closed with a
-// conflict. It returns the grants read under the locks, which the caller's census
-// (hasAlternativeManager) then uses.
-// shortcut: a retry pass locks the added principals in sorted order among
-// themselves, not among the first pass's, so a deadlock stays possible then; the
-// database aborts one transaction and the caller fails closed.
-func lockTargetAndManagers(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID) ([]domain.Grant, error) {
-	locked := map[domain.PrincipalID]bool{}
-	for pass := 0; pass < maxLockPasses; pass++ {
-		grants, err := az.GrantsForResetTarget(ctx, target)
-		if err != nil {
-			return nil, err
-		}
-		need := map[domain.PrincipalID]bool{target: true}
-		for _, org := range managerOrgs(grants) {
-			holders, err := az.ManageMembersHolders(ctx, org)
-			if err != nil {
-				return nil, err
-			}
-			for _, h := range holders {
-				need[h] = true
-			}
-		}
-		var fresh []domain.PrincipalID
-		for p := range need {
-			if !locked[p] {
-				fresh = append(fresh, p)
-			}
-		}
-		if len(fresh) == 0 {
-			return grants, nil // everything read under the locks was already locked
-		}
-		slices.Sort(fresh)
-		for _, p := range fresh {
-			if err := az.LockTargetPrincipal(ctx, p); err != nil {
-				return nil, err
-			}
-			locked[p] = true
-		}
+// deadlock. It returns the grants and per-org holders it locked, which the caller's
+// census (hasAlternativeManager) uses instead of reading again.
+//
+// Why the read before the lock is safe: write transactions run SERIALIZABLE on
+// PostgreSQL (internal/store/tx) and serialized on SQLite. A grant or holder change
+// committed after this transaction's snapshot cannot be observed by reading again
+// under the lock (the snapshot is fixed); instead the read-write conflict with that
+// writer aborts one of the two transactions, and tx.Write reruns the whole closure
+// on a fresh snapshot. A stale census therefore never commits: the unsafe direction
+// (a manager removed concurrently) fails serialization, and the other direction
+// (a manager added concurrently) fails closed as a last-manager refusal.
+// TestPrivacyConcurrentLastManagers exercises two concurrent last-manager restrictions.
+func lockTargetAndManagers(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID) ([]domain.Grant, map[string][]domain.PrincipalID, error) {
+	grants, err := az.GrantsForResetTarget(ctx, target)
+	if err != nil {
+		return nil, nil, err
 	}
-	return nil, fmt.Errorf("%w: the managers of the target kept changing", domain.ErrConflict)
-}
-
-// hasAlternativeManager reports whether every org the target manages keeps another
-// manage-members holder. Contained and restricted principals are not holders (the
-// reader excludes them), so the census is the one privacy restriction and incident
-// containment share.
-func hasAlternativeManager(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID, grants []domain.Grant) (bool, error) {
+	need := map[domain.PrincipalID]bool{target: true}
+	byOrg := map[string][]domain.PrincipalID{}
 	for _, org := range managerOrgs(grants) {
 		holders, err := az.ManageMembersHolders(ctx, org)
 		if err != nil {
-			return false, err
+			return nil, nil, err
 		}
-		if !slices.ContainsFunc(holders, func(p domain.PrincipalID) bool { return p != target }) {
-			return false, nil
+		byOrg[org] = holders
+		for _, h := range holders {
+			need[h] = true
 		}
 	}
-	return true, nil
+	set := make([]domain.PrincipalID, 0, len(need))
+	for p := range need {
+		set = append(set, p)
+	}
+	slices.Sort(set)
+	for _, p := range set {
+		// A holder whose principal row went away holds nothing (as in
+		// remainingMemberManagers); the target itself must exist.
+		if err := az.LockTargetPrincipal(ctx, p); errors.Is(err, domain.ErrNotFound) && p != target {
+			continue
+		} else if err != nil {
+			return nil, nil, err
+		}
+	}
+	return grants, byOrg, nil
+}
+
+// hasAlternativeManager reports whether every org the target manages keeps another
+// manage-members holder in the locked census lockTargetAndManagers returned.
+// Contained and restricted principals are not holders (the reader excludes them),
+// so the census is the one privacy restriction and incident containment share.
+func hasAlternativeManager(target domain.PrincipalID, holdersByOrg map[string][]domain.PrincipalID) bool {
+	for _, holders := range holdersByOrg {
+		if !slices.ContainsFunc(holders, func(p domain.PrincipalID) bool { return p != target }) {
+			return false
+		}
+	}
+	return true
 }

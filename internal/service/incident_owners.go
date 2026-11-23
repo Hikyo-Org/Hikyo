@@ -205,7 +205,7 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	// The target and the managers of every org it manages are locked in one sorted
 	// pass, so two concurrent containments of the last two managers cannot deadlock.
 	// The grants it returns were read under those locks.
-	grants, err := lockTargetAndManagers(ctx, w.az, target)
+	grants, holders, err := lockTargetAndManagers(ctx, w.az, target)
 	if err != nil {
 		return OwnerUnconfirmed, err
 	}
@@ -236,9 +236,7 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	if _, err := authorizeIncidentOp(ctx, w.az, w.caller, owning); err != nil {
 		return OwnerUnconfirmed, err
 	}
-	if ok, err := hasAlternativeManager(ctx, w.az, target, grants); err != nil {
-		return OwnerUnconfirmed, err
-	} else if !ok {
+	if !hasAlternativeManager(target, holders) {
 		return OwnerUnconfirmed, ErrIncidentLastManager
 	}
 	if err := w.az.ContainPrincipal(ctx, target, w.now, w.inc.ID); err != nil {
