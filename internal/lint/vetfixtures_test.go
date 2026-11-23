@@ -400,8 +400,8 @@ func TestVetDriverReportsMissingObserverTargets(t *testing.T) {
 	}
 }
 
-// A `//line` directive cannot move a production file into the test-file
-// deferral or into fence's wholesale reencrypt.go exemption.
+// A `//line` directive cannot move a production file into a test-file
+// allowance or into fence's wholesale reencrypt.go exemption.
 func TestVetDriverIgnoresLineDirectives(t *testing.T) {
 	bin := buildVetTool(t)
 	flags := []string{"-fence", "-fence.service=" + fixtureImportRoot + "badline", "-handles"}
@@ -416,9 +416,6 @@ func TestVetDriverIgnoresLineDirectives(t *testing.T) {
 				if !strings.Contains(joined, want) {
 					t.Errorf("findings lack %q:\n%s", want, joined)
 				}
-			}
-			if len(out.Deferred) != 0 {
-				t.Errorf("a production file claiming a test name was deferred: %v", out.Deferred)
 			}
 		})
 	}

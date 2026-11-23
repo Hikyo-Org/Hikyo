@@ -3,6 +3,7 @@ package lint
 import (
 	"go/ast"
 	"go/token"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -128,4 +129,15 @@ func addImport(p *packages.Package, path string) {
 	})
 	p.Syntax = slices.Clone(p.Syntax)
 	p.Syntax[0] = &file
+}
+
+// Every inventoried file exists: a renamed or deleted harness file must leave
+// the inventory instead of silently keeping its authority for a same-named
+// successor.
+func TestDriverFilesExist(t *testing.T) {
+	for file := range driverFiles {
+		if _, err := os.Stat(filepath.Join(moduleRoot(), filepath.FromSlash(file))); err != nil {
+			t.Errorf("driverFiles entry %s: %v", file, err)
+		}
+	}
 }

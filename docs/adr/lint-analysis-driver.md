@@ -77,7 +77,7 @@ The spike also established that:
    number keys or elements, a `math/big` value), because a holder method such as `h.reveal()` may build that value
    from the key material it holds. The differential test
    `TestRedactFormatNarrowingDifferential` pins every dropped diagnostic.
-   `redactfmt` left `strictDeferred` and its ceiling entries were removed.
+   `redactfmt` left `strictDeferred` (#1468).
    Named limits that remain: reflection and custom serializers are not seen;
    in-package extraction is not seen; a plain-typed field a holder fills from
    key material (`h.secretText` of type string) is read as plain data; a
@@ -87,6 +87,15 @@ The spike also established that:
    the zone name and instant of a `time.Time` result are not inspected
    (`time.FixedZone(h.keyring.String(), 0)`); an indexed holder
    (`h.items[0].seq`) stays flagged, which only over-reports.)
+   (Amended by #1488, owner decision 2026-11-23, option 1: the in-package
+   `_test.go` sites of `handles` are covered by a reviewed per-file inventory of
+   harness test files, the `driverFiles` allowlist in
+   `internal/lint/handle_positions.go`, each entry with a one-line
+   justification and no inline exemption markers. A test file outside the
+   inventory is reported like a production file; the `badhandle` fixture
+   (`harness_test.go`) pins that. With both analyzers clean, `strictDeferred`,
+   the driver test's deferred-site bookkeeping and `deferred_sites.json` were
+   removed: every diagnostic in every file is now strict.)
 
    Owner decision (2026-11-20): no inline exemption markers. A nil
    `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts
