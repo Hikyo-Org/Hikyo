@@ -78,13 +78,13 @@ repos/o/r/compare/main...*)
 	json=$COMPARE
 	;;
 repos/o/r/commits/*/check-runs\?*)
-	[ "${CHECKS_FAIL:-}" != 1 ] || fail_with 'Bad Gateway (HTTP 502)'
+	[ "${CHECKS_FAIL:-}" != 1 ] || fail_with 'x ##[error]forged'
 	json=$CHECKS
 	if [ -n "${CHECKS2:-}" ]; then
 		# A second page: the filter runs on each page, as the paginated read does.
 		printf '%s' "$CHECKS" | jq -r "$filter"
 		json=$CHECKS2
-		[ "$CHECKS2" != fail ] || fail_with 'Bad Gateway (HTTP 502)'
+		[ "$CHECKS2" != fail ] || fail_with 'x ##[error]forged'
 	fi
 	;;
 graphql)
@@ -454,13 +454,14 @@ CHECKS_FAIL=1
 export CHECKS_FAIL
 run
 replaced 'failed check run read on page one'
-grep -F 'the check runs cannot be read: gh: Bad Gateway (HTTP 502)' "$work/err" >/dev/null || fail "failed check run read gave no reason: $(cat "$work/err")"
+grep -F 'the check runs cannot be read: gh: x ## [error]forged' "$work/err" >/dev/null || fail "failed check run read gave no reason: $(cat "$work/err")"
+if grep -F '##[' "$work/err" >/dev/null; then fail 'a forged workflow command reached the log'; fi
 stuck_pull
 CHECKS2=fail
 export CHECKS2
 run
 replaced 'failed check run read after page one'
-grep -F 'the check runs cannot be read: gh: Bad Gateway (HTTP 502)' "$work/err" >/dev/null || fail 'failure after page one gave no reason'
+grep -F 'the check runs cannot be read: gh: x ## [error]forged' "$work/err" >/dev/null || fail 'failure after page one gave no reason'
 
 # The suite count failure carries its error.
 stuck_pull
@@ -490,6 +491,17 @@ run
 replaced 'malformed head commit'
 grep -F 'its head commit or age is invalid' "$work/err" >/dev/null || fail 'malformed head commit gave no reason'
 if grep -F 'check-runs' "$work/reads" >/dev/null; then fail 'malformed head commit was still read'; fi
+
+# Missing or malformed fields on one promotion are a stuck reason: it is still replaced.
+for broken in 's/"sha":"[^"]*"/"sha":null/' 's/"sha":"[^"]*"/"sha":""/' 's/"created_at":"[^"]*"/"created_at":null/' 's/"created_at":"[^"]*"/"created_at":"garbage"/'; do
+	stuck_pull
+	PULLS=$(printf '%s' "$PULLS" | sed "$broken")
+	export PULLS
+	run
+	replaced "promotion with broken field $broken"
+	grep -F 'its head commit or age is invalid' "$work/err" >/dev/null || fail "broken field $broken gave no reason: $(cat "$work/err")"
+	if grep -F 'check-runs' "$work/reads" >/dev/null; then fail "broken field $broken was still read"; fi
+done
 
 # The queued promotion of the same commit on an oversized head is reported, not skipped.
 reset

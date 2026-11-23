@@ -86,7 +86,7 @@ fi
 
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" --jq \
-	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null), (.created_at | fromdateiso8601)] | @tsv")
+	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, ((.head.sha // \"\") | if . == \"\" then \"-\" else . end), .head.ref, (.auto_merge != null), ((.created_at | fromdateiso8601?) // \"-\")] | @tsv")
 # Sets suites_problem to why commit $1's check suite count cannot vouch for a
 # listing by commit: unreadable, foreign, or above the margin. Empty means usable.
 # It never stops the run: a head that cannot be read is a stuck reason, so a
@@ -113,7 +113,7 @@ stuck_reason() {
 	check='{}'
 	reason=
 	# Bad data on one promotion must not stop the run before it is closed and replaced.
-	if ! printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$' || ! printf '%s\n' "$2" | grep -Eq '^[0-9]{1,12}$'; then
+	if ! printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$' || ! printf '%s\n' "$2" | grep -Eq '^(0|[1-9][0-9]{0,11})$'; then
 		reason='its head commit or age is invalid, so its ci-queue-required check cannot be read'
 		return 0
 	fi
