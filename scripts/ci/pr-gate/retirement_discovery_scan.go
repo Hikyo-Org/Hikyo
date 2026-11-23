@@ -119,7 +119,8 @@ func (a retirementDiscoveryReadAPI) read(ctx context.Context, path string, out a
 		a.scan.suitePages.Add(1)
 	}
 	// The recount after each commit listing is a serial GraphQL read too.
-	if err == nil && strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuites{totalCount}") && !strings.Contains(path, "checkSuites(") {
+	// The history query also selects checkSuites{totalCount}, but not straight off the commit.
+	if err == nil && strings.HasPrefix(path, "graphql:") && strings.Contains(path, "... on Commit{oid checkSuites{totalCount}}") {
 		a.scan.suiteCounts.Add(1)
 	}
 	return err
