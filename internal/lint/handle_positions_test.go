@@ -178,9 +178,16 @@ func TestDriverFilesAreAllUsed(t *testing.T) {
 	used := map[string]bool{}
 	root := filepath.ToSlash(moduleRoot()) + "/"
 	for _, ctx := range Contexts {
-		pkgs, err := loadFixture(ctx, true, patterns...)
-		if err != nil {
-			t.Fatal(err)
+		var pkgs []*packages.Package
+		for _, pattern := range patterns {
+			loaded, err := loadFixture(ctx, true, pattern)
+			if err != nil && strings.Contains(err.Error(), "build constraints exclude all Go files") {
+				continue // a package that does not build under this context
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			pkgs = append(pkgs, loaded...)
 		}
 		for _, finding := range checkDriverHandles(pkgs) {
 			posn, _, _ := strings.Cut(finding, ": handles: ")
