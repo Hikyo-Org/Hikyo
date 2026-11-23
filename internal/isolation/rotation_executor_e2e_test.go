@@ -171,7 +171,12 @@ type rotExec struct {
 
 func newRotExec(t *testing.T, db *store.DB) *rotExec {
 	t.Helper()
-	f := newRotationFixture(t, db)
+	return newRotExecOn(t, db, newRotationFixture(t, db))
+}
+
+// newRotExecOn builds the executor double over an existing rotation fixture.
+func newRotExecOn(t *testing.T, db *store.DB, f *rotationFixture) *rotExec {
+	t.Helper()
 	x := &rotExec{rotationFixture: f, ctl: &rotProviderCtl{roles: map[string]rotRole{}}, clock: f.now, worker: "wrk_a"}
 	kr := probeKeyring(t, db)
 	auth := authService(t, db)
