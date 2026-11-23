@@ -13,6 +13,9 @@ GH_BIN=${GH_BIN:-gh}
 GO_BIN=${GO_BIN:-go}
 server=${GITHUB_SERVER_URL:-https://github.com}
 max_age=10800
+# REST lists a commit's check runs from its newest 1,000 suites only. Keep this equal
+# to checksuites.Margin so suites added during a read cannot push a head over unnoticed.
+suite_margin=900
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-promote.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
@@ -83,12 +86,24 @@ fi
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" --jq \
 	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null), (.created_at | fromdateiso8601)] | @tsv")
+# Every app's check suites on commit $1, read through GraphQL like checksuites.Count.
+suite_count() {
+	# shellcheck disable=SC2016 # GraphQL variables, not shell ones.
+	count=$("$GH_BIN" api graphql -f 'query=query($o:String!,$n:String!,$c:GitObjectID!){repository(owner:$o,name:$n){object(oid:$c){... on Commit{oid checkSuites{totalCount}}}}}' \
+		-f "o=${GH_REPO%%/*}" -f "n=${GH_REPO#*/}" -f "c=$1" \
+		--jq ".data.repository.object | select(.oid == \"$1\") | .checkSuites.totalCount") || die "cannot count check suites on $1"
+	printf '%s\n' "$count" | grep -Eq '^[0-9]+$' || die "incomplete check suite count for $1"
+	[ "$count" -le "$suite_margin" ] ||
+		die "$1 has $count check suites, above $suite_margin, so its ci-queue-required run cannot be listed reliably; operator review required"
+}
 # A refused or failed admission, or a PR that has sat for hours, means this promotion
 # cannot land.
 stuck_reason() {
 	printf '%s\n' "$2" | grep -Eq '^[0-9]+$' || die 'invalid pull request age'
+	suite_count "$1"
 	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
 		--jq '[.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")] | max_by(.id) // {}')
+	suite_count "$1" # suites only grow, so a count within the margin now bounds the listing above
 	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
 	reason=
 	case "$state" in

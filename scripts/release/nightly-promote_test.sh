@@ -78,6 +78,13 @@ repos/o/r/compare/main...*)
 	json=$COMPARE
 	;;
 repos/o/r/commits/*/check-runs\?*) json=$CHECKS ;;
+graphql)
+	# SUITES lists one count per read; the last repeats.
+	n=$(sed -n 1p "$SUITES_FILE")
+	[ "$(wc -l <"$SUITES_FILE")" -le 1 ] || sed -i.bak 1d "$SUITES_FILE"
+	[ "$n" != error ] || fail_with 'Bad Gateway (HTTP 502)'
+	json="{\"data\":{\"repository\":{\"object\":{\"oid\":\"${SUITES_OID:-$(printf '%s' "$fields" | sed 's/.* c=\([0-9a-f]*\).*/\1/')}\",\"checkSuites\":{\"totalCount\":$n}}}}}"
+	;;
 repos/o/r/pulls\?*) json=$PULLS ;;
 *) exit 8 ;;
 esac
@@ -103,8 +110,12 @@ fail() {
 reset() {
 	DEV_REF=$main COMPARE=$content PULLS='[]' CHECKS='{"check_runs":[]}' BRANCH_REF=404
 	DEV_COMMIT=$dev PROOF_FAIL='' MERGE_FAIL='' DELETE_MISSING=''
-	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING
+	SUITES_FILE=$work/suites SUITES_OID=''
+	printf '10\n' >"$SUITES_FILE"
+	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING SUITES_FILE SUITES_OID
 }
+# Sets the suite counts the stub reports, one per read; the last repeats.
+suites() { printf '%s\n' "$@" >"$work/suites"; }
 run() {
 	for log in calls reads proof; do : >"$work/$log"; done
 	status=0
