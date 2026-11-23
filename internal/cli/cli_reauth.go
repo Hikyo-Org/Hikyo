@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"cmp"
 	"context"
+	"fmt"
+	"runtime"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/clientauth"
@@ -46,6 +49,69 @@ func runCLIReauthHandoffIntents(ctx context.Context, client *Client, state *Stat
 
 // OpenBrowser launches the platform browser for the CLI front channel.
 func OpenBrowser(target string) error { return clientauth.OpenBrowser(target) }
+
+// noGraphicalSession reports a host where a browser cannot be shown: any OS but
+// macOS and Windows with none of DISPLAY, WAYLAND_DISPLAY and BROWSER. Launchers such as xdg-open start
+// fine there and then never show anything, so the handoff would wait out its
+// five minutes. macOS and Windows are not checked: `open` over SSH still targets
+// the GUI session. A set BROWSER is honoured by xdg-open and VS Code Remote, so
+// a host with it can complete the handoff without a display.
+func noGraphicalSession(goos string, getenv func(string) string) bool {
+	switch goos {
+	case "darwin", "windows":
+		return false
+	}
+	return getenv("DISPLAY") == "" && getenv("WAYLAND_DISPLAY") == "" && getenv("BROWSER") == ""
+}
+
+// browserChoice says which control made the browser the ceremony and what undoes
+// it. The remedy is conditional because a window above 0 only offers a code;
+// it does not prove an authenticator is enrolled. Every chosen-browser message
+// is built from it.
+func (s *State) browserChoice(instance string) (cause, remedy string, err error) {
+	m, err := s.ReauthMethodFor(instance)
+	if err != nil {
+		return "", "", err
+	}
+	setting := m == ReauthBrowser
+	config := "`hikyo config set reauth.method auto --instance " + instance + "`"
+	switch {
+	case s.forceBrowser && setting:
+		return "--approve-in-browser and reauth.method", "drop --approve-in-browser and run " + config, nil
+	case setting:
+		return "reauth.method", "run " + config, nil
+	default:
+		return "--approve-in-browser", "drop --approve-in-browser", nil
+	}
+}
+
+// chosenBrowserOpener is the opener for a ceremony the account picked with
+// reauth.method or --approve-in-browser although a typed code was offered. It
+// refuses before the handoff starts on a host with no graphical session, says so
+// before the handoff waits, and names the remedy when no browser can be opened.
+// The handoff URL is not printed: it carries the opaque transaction state (see
+// OpenBrowser).
+func chosenBrowserOpener(ios IO, st *State, instance string) (func(string) error, error) {
+	cause, remedy, err := st.browserChoice(instance)
+	if err != nil {
+		return nil, err
+	}
+	tail := remedy + " to enter an authenticator code here, if one is enrolled"
+	if noGraphicalSession(cmp.Or(ios.HostOS, runtime.GOOS), ios.Env.Getenv) {
+		return nil, failf(ExitAuth, "you chose the browser approval (%s), but this host has no graphical session (DISPLAY, WAYLAND_DISPLAY and BROWSER are all empty); %s", cause, tail)
+	}
+	open := ios.OpenURL
+	if open == nil {
+		open = OpenBrowser
+	}
+	return func(target string) error {
+		fmt.Fprintf(ios.Stderr, "You chose the browser approval (%s); waiting for it. With no browser here, press Ctrl-C and %s.\n", cause, tail)
+		if err := open(target); err != nil {
+			return fmt.Errorf("%w; you chose the browser approval (%s), so no code prompt was offered: %s", err, cause, tail)
+		}
+		return nil
+	}, nil
+}
 
 // redeemCLIReauth completes a browser-approved handoff and replaces the local
 // bearer without returning it to any rendering or logging path.

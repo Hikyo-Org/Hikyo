@@ -1900,11 +1900,11 @@ export type CliReauthStartRequest = ({
 }) & {
     developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'self-config' | 'developer-credential';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'access' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'access.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environment_ids: Array<Id>;
     /**
-     * The enumerated unit of a non-adapter purpose; absent or empty for `adapter` and `mint`.
+     * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
      */
     key_ids?: Array<Id>;
     pkce_challenge: string;
@@ -1953,11 +1953,11 @@ export type CliReauthTransaction = {
     developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
     state: string;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'self-config' | 'developer-credential';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'access' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'access.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environments: Array<CliReauthEnvironmentPolicy>;
     /**
-     * The enumerated unit the ceremony binds; empty for `adapter` and `mint`.
+     * The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
      */
     key_ids: Array<Id>;
     redirect_uri: string;

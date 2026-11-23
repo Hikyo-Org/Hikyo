@@ -141,6 +141,17 @@ describe('CLI authorization names', () => {
     } finally { await unmount(); }
   });
 
+  it('words an emergency access handoff as a time-bound decision and lists no keys', async () => {
+    route({ purpose: 'access', operation: 'access.bypass', key_ids: [] });
+    const { container, unmount } = await render();
+    try {
+      expect(container.textContent).toContain('take emergency temporary access');
+      expect(container.textContent).toContain('without the approval its policy normally requires');
+      expect(container.querySelector('.ceremony__keys')).toBeNull();
+      expect(authorize(container).disabled).toBe(false);
+    } finally { await unmount(); }
+  });
+
   it('looks names up once per project when the environments span projects, and still allows approval', async () => {
     route({ environments: [policy(consentIds.environment), policy('env_00000000-0000-4000-8000-0000000000ff', consentIds.org, 'prj_00000000-0000-4000-8000-0000000000ee')] });
     const { container, unmount } = await render();
