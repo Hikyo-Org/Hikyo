@@ -1,7 +1,11 @@
 # Handoff: stable installs have no upgrade route to the next release (#1422)
 
-**Do not merge before the owner answers the question below.** The change is
-safe on its own, but it does not by itself give v1.0.0 installs a route.
+**Owner decision (2026-11-23): option B.** This change is the forward
+v1.1.0 -> next edge only and does not give v1.0.0 installs a route. They get a
+separate recovery-signed bridge v1.0.0 -> v1.1.0, designed in
+[#1422 (comment)](https://github.com/Hikyo-Org/Hikyo/issues/1422#issuecomment-7115533447)
+and implemented in a later PR after the owner answers key custody. This PR does
+not close #1422 (`Refs #1422`).
 
 ## Result
 
@@ -49,10 +53,17 @@ the real v1.1.0 baseline passes with the edge and names both engines without it;
 the stable generator (candidate 1.1.1) and the nightly generator both succeed
 with the edge present.
 
-## Owner question: how should v1.0.0 installs reach later releases?
+## Restore finding
 
-- **A. Nothing.** v1.0.0 installs stay on v1.0.0 until restored into a newer
-  release. No cost; v1.1.0 installs are unaffected.
+Restoring a v1.0.0 archive into v1.1.0 is refused:
+`archive source has no authenticated embedded schema route`. Option A
+("nothing, restore into a newer release") therefore strands v1.0.0 data
+entirely and is not a fallback.
+
+## Owner question (answered 2026-11-23: B): how should v1.0.0 installs reach later releases?
+
+- **A. Nothing.** v1.0.0 installs stay on v1.0.0. Restore into a newer release
+  is refused (see above). Rejected.
 - **B. Recovery-signed bridge v1.0.0 → v1.1.0**, one statement per engine, in a
   new offline-signed catalog (`hikyo.dev/recovery-bridge/v1`). It reaches
   exactly the missing hop, changes no release check, and needs the recovery-key
@@ -85,7 +96,7 @@ workflow (full `check-compatibility-unchanged.sh`).
 
 ## Remaining work
 
-- Owner decision above; B or C are not implemented here.
+- Bridge for v1.0.0 (option B): separate PR after key custody is decided; not implemented here.
 - No supported command writes a stable release edge; it is still authored by
   hand (documented in `docs/operations/upgrade-artifacts.md`).
 - PostgreSQL 17 fails first migrate with `upgrade: corrupt control state`
