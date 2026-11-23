@@ -200,10 +200,14 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    `sntrup761x25519-sha512` alias arrived in 9.9). It is a different hybrid
    (Streamlined NTRU Prime with X25519), so it widens what the operator
    accepts beyond the selected profile.
-3. Validate before reload: `sshd -t`, then `sshd -T | grep -i '^kexalgorithms'`
-   and confirm the printed list contains only the hybrid names. Keep an
-   existing session open until a new login (`ssh -o ControlPath=none ...`)
-   succeeds.
+3. Validate before reload with the target daemon's own startup options
+   (its `-f` config file and any `-o KexAlgorithms` override; a reload keeps
+   them): `sshd -t -f FILE`, then `sshd -T -f FILE | grep -i '^kexalgorithms'`.
+   Confirm the printed list contains only the hybrid names. Then reload,
+   keep the existing session open, and test a fresh login
+   (`ssh -o ControlPath=none ...`); the old daemon configuration answers
+   logins until the reload. If it fails, restore the previous configuration
+   and reload from the existing session.
 4. Expected result: a client offering only classical algorithms (for example
    `ssh -o ControlPath=none -o KexAlgorithms=curve25519-sha256`) is refused
    with no matching key exchange method. This was observed with
@@ -216,7 +220,8 @@ refused: OpenSSH before 9.9 (including 8.9 to 9.8, whose only default hybrid is
 sntrup761) and other SSH libraries without it. The sntrup761 option widens
 access back to 8.5 and later clients that offer
 `sntrup761x25519-sha512@openssh.com`. Check the algorithms clients actually
-offer (`ssh -Q kex` on the client, server logs), not the version, before
+offer (`ssh -G HOST` shows a client's effective `kexalgorithms`, which
+`ssh -Q kex` does not, and the server logs), not the version, before
 applying either line. The list syntax and the `+`, `-` and `^`
 prefixes are in [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms),
 read 2026-11-23. A hybrid key exchange protects session confidentiality only;
