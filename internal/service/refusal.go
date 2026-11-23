@@ -92,7 +92,7 @@ func (s *RefusalSignals) update(ctx context.Context, sample *audit.RefusalSample
 		pending, err = az.UpdateRequestRefusals(ctx, sample)
 		return err
 	})
-	err = authn.RefusalDeadlineError(err) // also covers a COMMIT the server timed out
+	err = authn.RefusalDeadlineError(err) // also covers a COMMIT the server cancelled before committing
 	if err == nil {
 		s.pending.Store(pending)
 		s.healthy.Store(true)

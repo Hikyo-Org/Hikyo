@@ -20,9 +20,12 @@ import (
 )
 
 // RefusalDeadlineError reports a server-side lock/statement timeout (55P03,
-// 57014) as a deadline error that still wraps the PgError. The server bound
-// starts one round trip after the client deadline was read, so it can fire
-// first; callers classify both the same way.
+// 57014) as a deadline error that still wraps the PgError. The server bound is
+// the remaining time rounded down to whole milliseconds (up to ~1 ms short) and
+// the Go context timer can fire late on a loaded runner, so the server may
+// report first; callers classify both the same way. An administrator's
+// pg_cancel_backend also yields 57014 and is labelled a deadline too; harmless,
+// because the production caller discards the error.
 func RefusalDeadlineError(err error) error {
 	var pgErr *pgconn.PgError
 	if err == nil || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pgErr) || (pgErr.Code != "55P03" && pgErr.Code != "57014") {

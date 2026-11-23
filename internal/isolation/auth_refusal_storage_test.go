@@ -521,6 +521,7 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	db := seededDB(t, openPostgres)
 	release := holdRefusalWriter(t, db)
 	sample := refusalStorageSample(t)
+	// One second leaves time for the polling positive control below to see the waiter.
 	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(time.Second)}
 	start := time.Now()
 	done := make(chan error, 1)
