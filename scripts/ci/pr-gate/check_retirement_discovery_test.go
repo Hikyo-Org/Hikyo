@@ -441,7 +441,7 @@ func TestReporterDiscoveryReusesSameHistoryAndCheckReads(t *testing.T) {
 	for _, n := range f.api.reads {
 		requests += n
 	}
-	if requests != 4 || len(f.api.writes) != 0 {
+	if requests != 5 || len(f.api.writes) != 0 {
 		t.Fatalf("reporter hints added reads or mutation: reads=%d writes=%d", requests, len(f.api.writes))
 	}
 }
@@ -669,6 +669,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 		{fault: "many suites, few records"},
 		{fault: "many suites, all finished"},
 		{fault: "suites grew past margin"},
+		{fault: "suites grew during the commit read"},
 		{fault: "foreign suites grew past margin"},
 		{fault: "missing every-app suite count", wantErr: "incomplete check suite count"},
 		{fault: "fewer suites than github-actions", wantErr: "incomplete check suite count"},
@@ -718,6 +719,11 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				// REST would show these 100 records as complete; the suite count must win.
 				node["checkSuites"] = map[string]any{"totalCount": checksuites.Margin + 1}
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
+			case "suites grew during the commit read":
+				// History counted one suite and the listing is complete, but the recount
+				// after reading it passes the margin, so that listing cannot be trusted.
+				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
+				f.api.responses["graphql:"+fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid checkSuites{totalCount}}}}}`, f.c.suiteSource().Owner, f.c.suiteSource().Name, head)] = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "checkSuites": map[string]any{"totalCount": checksuites.Margin + 1}}}}}
 			case "suites at margin stay on REST":
 				node["checkSuites"] = map[string]any{"totalCount": checksuites.Margin}
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
@@ -875,7 +881,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				if err != nil || !noTargets || f.api.reads["graphql:"+retirementSuitesQuery(f, head, "")] != 0 {
 					t.Fatalf("commit at the suite margin = %+v/%v, want a REST-only inventory", got, err)
 				}
-			case "many suites, few records", "suites grew past margin", "foreign suites grew past margin":
+			case "many suites, few records", "suites grew during the commit read", "suites grew past margin", "foreign suites grew past margin":
 				// These once refused, because the owners that retire a target listed by
 				// commit; they read per suite now, so the target is routed instead.
 				wantReporters := []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}}
@@ -911,6 +917,9 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			}
 			if strings.HasPrefix(tc.fault, "many suites") && f.api.reads[retirementChecksPath(f, head, 1)] != 0 {
 				t.Fatal("commit beyond the suite margin was read through its partial REST listing")
+			}
+			if tc.fault == "suites grew during the commit read" && f.api.reads[retirementChecksPath(f, head, 1)] != 1 {
+				t.Fatal("the commit listing was not read once before the recount refused it")
 			}
 			if tc.fault == "too many suites" && f.api.reads["graphql:"+retirementSuitesQuery(f, head, "c1")] != 0 {
 				t.Fatal("suite scan read past a refused first page")
