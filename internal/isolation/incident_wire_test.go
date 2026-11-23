@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -33,6 +34,7 @@ const (
 	wireResponder = domain.PrincipalID("usr_00000000-0000-7000-8000-0000000000a1")
 	wireForeign   = domain.PrincipalID("usr_00000000-0000-7000-8000-0000000000a2")
 	wireNobody    = domain.PrincipalID("usr_00000000-0000-7000-8000-0000000000a3")
+	wireMember    = domain.PrincipalID("usr_00000000-0000-7000-8000-0000000000a4")
 	wireTarget    = domain.PrincipalID("usr_00000000-0000-7000-8000-0000000000b1")
 	wireGhost     = domain.PrincipalID("usr_00000000-0000-7000-8000-0000000000b2")
 	wireNoIncId   = "inc_00000000-0000-7000-8000-000000000000"
@@ -47,7 +49,7 @@ type incidentWire struct {
 func newIncidentWire(t *testing.T, db *store.DB) incidentWire {
 	t.Helper()
 	w := newIncidentWorld(t, db)
-	for _, p := range []domain.PrincipalID{wireResponder, wireForeign, wireNobody, wireTarget} {
+	for _, p := range []domain.PrincipalID{wireResponder, wireForeign, wireNobody, wireMember, wireTarget} {
 		execRaw(t, db, `INSERT INTO principals (id, kind, created_at) VALUES ('`+string(p)+`', 'human', `+ts+`)`)
 	}
 	for i, g := range []struct {
@@ -56,7 +58,7 @@ func newIncidentWire(t *testing.T, db *store.DB) incidentWire {
 	}{
 		{wireResponder, "credential-reset", "org_a"}, {wireResponder, "manage-members", "org_a"},
 		{wireResponder, "manage-identities", "org_a"}, {wireResponder, "manage-adapters", "org_a"},
-		{wireResponder, "read", "org_a"}, {wireForeign, "credential-reset", "org_b"}, {wireTarget, "read", "org_a"},
+		{wireResponder, "read", "org_a"}, {wireForeign, "credential-reset", "org_b"}, {wireMember, "edit", "org_a"}, {wireTarget, "read", "org_a"},
 	} {
 		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_wire_%02d', '%s', '%s', '%s', %s)`, i, g.p, g.cap, g.org, ts))
 	}
@@ -219,9 +221,11 @@ func TestIncidentWireLifecycle(t *testing.T) {
 	})
 }
 
-// An operator of another org, a member with no incident capability and a caller
-// who is signed in but holds nothing all get the answer a nonexistent incident
-// gets, byte for byte, on all six routes, and the ledger does not move.
+// An operator of another org, a member of the same org without the incident
+// capability and a caller who is signed in but holds nothing all get the answer a
+// nonexistent incident gets, byte for byte, on all six routes, and nothing moves:
+// no item or incident changes and the only audit rows added are the denials
+// themselves (grant.denied, the security trail's record of a refusal).
 func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		iw := newIncidentWire(t, db)
@@ -235,7 +239,23 @@ func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 		if itemID == "" {
 			t.Fatal("the account incident listed no items")
 		}
-		before := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE outcome <> 'pending'`)
+		ledger := func() string {
+			items := iw.w.itemMap(t, wireResponder, real.Id)
+			keys := make([]string, 0, len(items))
+			for k, v := range items {
+				keys = append(keys, k+"="+v)
+			}
+			slices.Sort(keys)
+			return fmt.Sprintf("%v incidents=%d closed=%d audit=%s", keys,
+				queryInt(t, db, `SELECT COUNT(*) FROM incidents`), queryInt(t, db, `SELECT COUNT(*) FROM incidents WHERE status <> 'open'`),
+				queryStrings(t, db, `SELECT type || ' ' FROM (SELECT type FROM audit_tenant_events UNION ALL SELECT type FROM audit_instance_events) AS e WHERE type <> 'grant.denied' ORDER BY type`))
+		}
+		callers := []domain.PrincipalID{wireForeign, wireMember, wireNobody}
+		tokens := map[domain.PrincipalID]string{}
+		for _, p := range callers {
+			tokens[p] = iw.session(t, p) // minted first: a session is not a ledger change
+		}
+		before := ledger()
 		ghost := wireNoIncId
 
 		type probe struct {
@@ -251,8 +271,8 @@ func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 				{"close", http.MethodPost, id + "/close", map[string]bool{"with_residuals": true}},
 			}
 		}
-		for _, p := range []domain.PrincipalID{wireForeign, wireNobody} {
-			tok := iw.session(t, p)
+		for _, p := range callers {
+			tok := tokens[p]
 			ghosts := probes(ghost)
 			for i, pr := range probes(real.Id) {
 				gc, gb := iw.call(t, tok, ghosts[i].method, "/incidents/"+ghosts[i].suffix, ghosts[i].body)
@@ -272,11 +292,8 @@ func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 				t.Errorf("open an account as %s answered %d %q, a missing account %d %q", p, gotC, gotB, wantC, wantB)
 			}
 		}
-		if after := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE outcome <> 'pending'`); after != before {
-			t.Fatalf("refused probes moved %d items", after-before)
-		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM incidents WHERE status <> 'open'`); n != 0 {
-			t.Fatalf("a refused close changed %d incidents", n)
+		if after := ledger(); after != before {
+			t.Fatalf("refused probes moved the ledger:\n before %s\n after  %s", before, after)
 		}
 	})
 }

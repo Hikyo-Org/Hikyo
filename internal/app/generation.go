@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -287,11 +288,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	// The incident ledger resumes through owner functions that reuse the same
 	// tenant services, so a containment cannot run on a second configuration.
-	incidentsSvc := &service.Incidents{DB: db, Adapters: adapterService, Dynamic: dynamicService, SCIM: scimSvc, Log: log}
-	incidentsSvc.Owners = service.NewIncidentOwners(incidentsSvc, service.IncidentOwnerServices{
-		Identities: &service.Identities{DB: db, Auth: authSvc}, Invites: emailInvitationsSvc, SCIM: scimSvc,
-		Dynamic: dynamicService, Adapters: adapterService,
-	})
+	incidentsSvc := newIncidents(db, log, authSvc, adapterService, dynamicService, scimSvc, emailInvitationsSvc)
 	api := &server.API{
 		Mail:     &service.InstanceMail{DB: db, Auth: authSvc, Capture: selfConfig.Capture},
 		Runtime:  &service.System{DB: db, Store: sc},
@@ -590,4 +587,15 @@ func (s *configurationAdapterStore) ClaimDue(ctx context.Context, worker string,
 		return adapter.Job{}, false, err
 	}
 	return s.AdapterRuntime.ClaimDue(ctx, worker, now, deadline)
+}
+
+// newIncidents builds the incident ledger service with its owner map installed,
+// so a production Resume finds the owner of every item it enumerates.
+func newIncidents(db *store.DB, log *slog.Logger, auth *service.Auth, adapters *service.Adapters, dynamic *service.Dynamic, scim *service.SCIM, invites *service.EmailInvitations) *service.Incidents {
+	svc := &service.Incidents{DB: db, Adapters: adapters, Dynamic: dynamic, SCIM: scim, Log: log}
+	svc.Owners = service.NewIncidentOwners(svc, service.IncidentOwnerServices{
+		Identities: &service.Identities{DB: db, Auth: auth}, Invites: invites, SCIM: scim,
+		Dynamic: dynamic, Adapters: adapters,
+	})
+	return svc
 }

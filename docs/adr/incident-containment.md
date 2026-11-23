@@ -538,3 +538,8 @@ Independent Spec review ran in two rounds against issue #1039; its findings were
 addressed in the text. Independent Standards review is recorded on the pull request.
 Cross-provider review did not run and is not CLEAN. Maintainer security review and the
 human merge gate remain required.
+
+Pending, maintainer security review (slice 4, #1549): the human security review must
+explicitly cover the `unauthenticated`-class exception for the six incident routes (the
+credential-reset precedent, recorded under the tenant-isolation ADR's dynamic-authority
+exception). Not done; the exception is not accepted until that review records it.
