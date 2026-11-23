@@ -32,6 +32,7 @@ for its ripple register.
 
 | Cited as | File |
 | --- | --- |
+| action-approval ADR (proposed) | [action-approval.md](./action-approval.md) |
 | api-cli-surface ADR | [api-cli-surface.md](./api-cli-surface.md) |
 | audit-model ADR | [audit-model.md](./audit-model.md) |
 | compose-integration ADR | [compose-integration.md](./compose-integration.md) |
