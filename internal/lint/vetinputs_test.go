@@ -470,7 +470,7 @@ func snapshotAbsent(t *testing.T, analyzer, root string) *Inputs {
 
 // An input edited while vet read it caches a digest-mismatch refusal under the
 // digest of the restored input; runRepoVet must not replay it.
-func TestRunRepoVetHealsACachedStaleRefusal(t *testing.T) {
+func TestRunRepoVetHealsAReplayedStaleRefusal(t *testing.T) {
 	bin := buildVetTool(t)
 	// A fresh copy of the stablecopies fixture gets cache keys of its own.
 	root, err := os.MkdirTemp(filepath.Join(moduleRoot(), "internal/lint/testdata"), "refusalcache-")
