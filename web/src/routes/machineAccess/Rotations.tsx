@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
@@ -558,7 +558,7 @@ function RotationActDialog({
   const [reconciled, setReconciled] = useState(false);
   // The ceremony can outlast a re-read: the act checks the latest staleness, not the one at submit.
   const staleNow = useRef(stale);
-  useEffect(() => {
+  useLayoutEffect(() => {
     staleNow.current = stale;
   }, [stale]);
   const busy = mutation.isPending || guard.pending;
