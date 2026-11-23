@@ -206,10 +206,11 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    not needed because `KexAlgorithms` is not allowed inside `Match`. Confirm
    the printed list contains only the hybrid names.
    Before editing, save copies of every sshd configuration file you will
-   change (the main file and any drop-ins), so the previous configuration can
-   be restored. Before reloading, open a session and keep it open. Reload, then test a
-   fresh login (`ssh -o ControlPath=none ...`). If that login fails, restore
-   the previous configuration and reload from the kept session.
+   change (the main file and any drop-ins), and note any drop-in you create,
+   so the previous configuration can be restored. Before reloading, open a
+   session and keep it open. Reload, then test a fresh login
+   (`ssh -o ControlPath=none ...`). If that login fails, restore the saved
+   copies, remove any drop-in you created, and reload from the kept session.
 4. Expected result: a client offering only classical algorithms (for example
    `ssh -o ControlPath=none -o KexAlgorithms=curve25519-sha256`) is refused
    with no matching key exchange method. This was observed with
@@ -226,7 +227,9 @@ offer, not their version: `ssh -G HOST | grep -i '^kexalgorithms'` on OpenSSH
 clients (`ssh -Q kex` lists only what the build supports). sshd does not
 log a client's KEX proposal at the default `LogLevel INFO`, so for other
 clients either run a test sshd on another port with the hybrid-only line
-(`sshd -f TESTFILE -p PORT`) and have those clients connect to it, or
+(`sshd -f TESTFILE -p PORT`; a `ListenAddress` with a port in `TESTFILE`
+overrides `-p`, so give the test configuration its own listen address and
+port) and have those clients connect to it, or
 temporarily raise `LogLevel` to `DEBUG2` (the level that records the proposal;
 `INFO` and `VERBOSE` should not be relied on). sshd_config(5) says logging at a
 `DEBUG` level violates users' privacy and is not recommended, and it is
