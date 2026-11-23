@@ -4165,7 +4165,12 @@ fieldset.field > legend {
   white-space: normal;
 }
 
+/* The row's buttons wrap inline, spaced like the shared `.actions` row; that
+   class is not used here because the card table stacks it into one column. */
 .rotations__runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-block-start: var(--space-2);
 }
 
