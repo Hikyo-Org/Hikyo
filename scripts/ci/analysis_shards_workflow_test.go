@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -200,9 +201,51 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			actual := runScenario(t, scenario)
-			if scenario.wantSuccess && !reflect.DeepEqual(actual, expected) {
+			if !scenario.wantSuccess {
+				return
+			}
+			// Recalibrated race weights move the new planner's targets between
+			// shards; the legacy reference still pins every race target and all
+			// other outputs, and the legacy source must reproduce itself exactly.
+			if !bytes.Equal(scenario.source, oldSource) {
+				if !reflect.DeepEqual(raceTargetUnion(t, actual["race_plan"]), raceTargetUnion(t, expected["race_plan"])) {
+					t.Fatal("legacy and bulk race plans cover different targets on the same candidate inventory")
+				}
+				actual["race_plan"] = expected["race_plan"]
+			}
+			if !reflect.DeepEqual(actual, expected) {
 				t.Fatal("legacy and bulk outputs differ on the same candidate inventory")
 			}
 		})
 	}
+}
+
+// raceTargetUnion lists every package and filtered target a race plan runs, one
+// entry per occurrence, so duplicates and omissions both change the result.
+func raceTargetUnion(t *testing.T, plan json.RawMessage) []string {
+	t.Helper()
+	var shards [][]string
+	if err := json.Unmarshal(plan, &shards); err != nil {
+		t.Fatal(err)
+	}
+	var union []string
+	for _, shard := range shards {
+		for _, line := range shard {
+			pkg, filter, split := strings.Cut(line, "\t")
+			if !split {
+				union = append(union, pkg)
+				continue
+			}
+			names, ok := strings.CutPrefix(filter, "^(")
+			names, closed := strings.CutSuffix(names, ")$")
+			if !ok || !closed {
+				t.Fatalf("malformed race filter %q", line)
+			}
+			for _, name := range strings.Split(names, "|") {
+				union = append(union, pkg+"\t"+name)
+			}
+		}
+	}
+	sort.Strings(union)
+	return union
 }

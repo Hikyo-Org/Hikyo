@@ -154,6 +154,13 @@ func TestRacePlanBalancesRepository(t *testing.T) {
 			index, shard.cost(), shard.sequential, shard.pool, shard.longest)
 		total += shard.cost()
 		longest = max(longest, shard.cost())
+		// The budget fallback is silent; fail here so a recalibration that
+		// saturates it raises the race shard count instead.
+		for path, seconds := range shard.seconds {
+			if seconds+raceProcessSetupSeconds > raceInvocationBudgetSeconds {
+				t.Errorf("shard %d plans %.0fs for %s, over the %.0fs invocation budget", index, seconds+raceProcessSetupSeconds, path, raceInvocationBudgetSeconds)
+			}
+		}
 	}
 	if mean := total / float64(len(shards)); longest > mean*1.1 {
 		t.Fatalf("longest shard predicts %.0fs, over 110%% of the %.0fs mean", longest, mean)
@@ -191,5 +198,26 @@ func TestRacePlanChargesSetupInPool(t *testing.T) {
 	shard = shard.with(raceUnit{pkg: peer, seconds: 100})
 	if want := 250 + 2*raceProcessSetupSeconds; shard.pool != want {
 		t.Fatalf("pooled work = %v, want %v", shard.pool, want)
+	}
+}
+
+// A split target leaves the cheapest shard when it would push that shard's
+// invocation past the budget, and falls back to cost when no shard fits.
+func TestRacePlanKeepsInvocationsWithinBudget(t *testing.T) {
+	app := &packageInfo{ImportPath: "example/internal/app", relativePath: "internal/app"}
+	peer := &packageInfo{ImportPath: "example/peer", relativePath: "peer"}
+	full := raceShard{seconds: map[string]float64{app.ImportPath: raceInvocationBudgetSeconds - 50}}
+	full = full.with(raceUnit{pkg: app, seconds: raceInvocationBudgetSeconds - 50})
+	busy := raceShard{seconds: map[string]float64{peer.ImportPath: 2000}}
+	busy = busy.with(raceUnit{pkg: peer, seconds: 2000})
+	shards := []raceShard{full, busy}
+	if got := bestRaceShard(shards, raceUnit{pkg: app, seconds: 100}); got != 1 {
+		t.Fatalf("over-budget target went to shard %d, want 1", got)
+	}
+	if got := bestRaceShard(shards, raceUnit{pkg: app, seconds: 10}); got != 0 {
+		t.Fatalf("in-budget target went to shard %d, want 0", got)
+	}
+	if got := bestRaceShard(shards, raceUnit{pkg: peer, seconds: raceInvocationBudgetSeconds}); got != 0 {
+		t.Fatalf("oversized unit went to shard %d, want the cheapest shard 0", got)
 	}
 }
