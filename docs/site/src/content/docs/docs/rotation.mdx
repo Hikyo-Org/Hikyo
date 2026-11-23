@@ -335,11 +335,12 @@ same authorization and refusals:
   holds it. A deleted rotation takes no act.
 - Create, resume, run-now and release-hold then ask you to confirm the publish over
   the environment and both keys with a passkey, a code or your identity provider,
-  even in an unprotected environment; any live re-authentication window in this
-  environment covers it. Pause and delete need no confirmation step beyond their dialog.
+  even in an unprotected environment; a live re-authentication window you opened in
+  this browser session covers it, unless it was a one-time passkey confirmation. Pause and delete need no confirmation step beyond their dialog.
 - **Release hold** shows the reconcile-then-release instruction first, and its button
   stays disabled until you tick that you have reconciled the grants and the provider
-  credential and read the runs. It never resumes the rotation.
+  credential and read the runs. It never resumes a paused or halted rotation; an
+  active one publishes on its schedule again.
 - **Run now** can skip the overlap, which revokes the superseded credential as soon as
   the new one is published. **Delete** can close the rotation's unsettled runs instead
   of refusing while one is in flight; that revokes nothing.

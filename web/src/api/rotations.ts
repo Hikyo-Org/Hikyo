@@ -165,6 +165,13 @@ export function useCreateRotation(env: EnvironmentRef) {
  * (409) instead of overwritten. Resume, release-hold and run-now consume the
  * publish ceremony the caller ran; pause and delete need none.
  */
+/** GenerationRangeError is a fence the browser cannot send exactly; nothing was sent. */
+class GenerationRangeError extends Error {
+  constructor(generation: bigint) {
+    super(`its generation ${String(generation)} is beyond what this page can send exactly, so nothing was sent`);
+  }
+}
+
 export function useRotationAct(env: EnvironmentRef) {
   const transport = useTransport();
   const refresh = useRefreshEnvironment(env);
@@ -173,7 +180,7 @@ export function useRotationAct(env: EnvironmentRef) {
       const path = { org: env.org, project: env.project, environment: env.environment, rotation: act.rotation.id };
       // The generated client types the fence as number: refuse one it cannot carry exactly.
       if (act.rotation.generation > BigInt(Number.MAX_SAFE_INTEGER)) {
-        throw new Error(`rotation ${act.rotation.id} generation ${String(act.rotation.generation)} exceeds the browser's exact integer range`);
+        throw new GenerationRangeError(act.rotation.generation);
       }
       const expected_generation = Number(act.rotation.generation);
       const options = { path, ...transport };
@@ -209,6 +216,7 @@ export function useRotationAct(env: EnvironmentRef) {
  */
 export function rotationActRefusalText(error: unknown, verb: RotationVerb): string {
   const subject = verb === 'create' ? 'The rotation was not created' : `The ${verb} was refused`;
+  if (error instanceof GenerationRangeError) return `${subject}: ${error.message}. Use hikyo rotation instead.`;
   return statusText(
     error,
     {

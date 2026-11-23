@@ -563,7 +563,10 @@ function RotationActDialog({
   const DONE: Record<ActVerb, string> = {
     pause: `Rotation ${rotation.id} paused. ${expiryNote(rotation)}`,
     resume: `Rotation ${rotation.id} resumed; its next run is scheduled again.`,
-    'release-hold': `Rotation ${rotation.id} released: the executor may now settle the runs the hold left alone. It was not resumed.`,
+    'release-hold':
+      rotation.state === 'active'
+        ? `Rotation ${rotation.id} released: the executor may now settle the runs the hold left alone, and its schedule publishes again.`
+        : `Rotation ${rotation.id} released: the executor may now settle the runs the hold left alone. It was not resumed.`,
     'run-now': `A run of rotation ${rotation.id} was requested; the executor starts it shortly. Show its runs to follow it.`,
     delete: `Rotation ${rotation.id} deleted. ${expiryNote(rotation)}`,
   };
@@ -632,7 +635,10 @@ function RotationActDialog({
             <p>
               Before you release it: reconcile the rotation&apos;s grants and its provider credential, and read its runs.
               Releasing lets the executor roll back or reconcile the runs held before their publish and drop their
-              unpublished candidate roles. It changes nothing else: it never resumes a paused or halted rotation.
+              unpublished candidate roles.{' '}
+              {rotation.state === 'active'
+                ? 'This rotation is active, so its next scheduled run mints and publishes unattended again.'
+                : 'It never resumes a paused or halted rotation: this one stays stopped until a person resumes it.'}
             </p>
             <Checkbox
               label="I have reconciled the grants and the provider credential and read the runs"

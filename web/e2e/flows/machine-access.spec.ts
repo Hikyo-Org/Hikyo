@@ -353,7 +353,7 @@ test.describe('machine access', () => {
       const text = request.postData();
       sent.push({ method: request.method(), path: `${url.pathname.replace(/^.*\/rotations/, '')}${url.search}`, body: rotationRequestBody(request.method(), url.pathname, text) });
       if (url.pathname.endsWith('/resume')) return route.fulfill(json({ ...halted, state: 'active', generation: 2 }));
-      if (url.pathname.endsWith('/release-hold')) return route.fulfill(json({ ...held, restore_hold: false, generation: 2 }));
+      if (url.pathname.endsWith('/release-hold')) return route.fulfill(json({ ...held, restore_hold: false, generation: 1 }));
       if (url.pathname.endsWith('/pause')) return route.fulfill(json({ ...active, state: 'paused', generation: 2 }));
       if (request.method() === 'DELETE') {
         return route.fulfill(json({ error: { code: 'conflict', message: 'Conflict', detail: 'the rotation has a run in flight; let it finish first' } }, 409));
@@ -388,7 +388,7 @@ test.describe('machine access', () => {
       expect(sent).toEqual([{ method: 'POST', path: `/${HALTED_ROTATION}/resume`, body: { expected_generation: 1n } }]);
 
       // Release hold: the reconcile instruction comes first and gates the button. The
-      // stubbed reveal-window now reads live, so the client skips a second prompt; that
+      // real reveal-window now reads live, so the client skips a second prompt; that
       // the server accepts that window is the Go service tests' to prove, not this stub's.
       await page.getByRole('button', { name: 'Release hold REPORTING_PASSWORD' }).click();
       const release = page.getByRole('dialog', { name: 'Release hold rotation · REPORTING_PASSWORD' });
@@ -396,7 +396,7 @@ test.describe('machine access', () => {
       await expect(release.getByRole('button', { name: 'Release hold' })).toBeDisabled();
       await release.getByRole('checkbox').check();
       await release.getByRole('button', { name: 'Release hold' }).click();
-      await expect(page.locator('.rotations__done')).toContainText('It was not resumed.');
+      await expect(page.locator('.rotations__done')).toContainText(`Rotation ${HELD_ROTATION} released`);
       expect(sent.at(-1)).toEqual({ method: 'POST', path: `/${HELD_ROTATION}/release-hold`, body: { expected_generation: 1n } });
 
       // Pause needs no ceremony and says the delivered credential stays valid.
@@ -407,7 +407,7 @@ test.describe('machine access', () => {
       await expect(page.locator('.rotations__done')).toContainText(`Rotation ${ROTATION} paused.`);
       expect(sent.at(-1)).toEqual({ method: 'POST', path: `/${ROTATION}/pause`, body: { expected_generation: 1n } });
 
-      // Delete: a run in flight is refused by name, in the server's words, and the dialog stays.
+      // Delete: a run in flight is refused by name, with the server's named reason, and the dialog stays.
       await page.getByRole('button', { name: 'Delete DATABASE_PASSWORD' }).click();
       const remove = page.getByRole('dialog', { name: 'Delete rotation · DATABASE_PASSWORD' });
       await remove.getByRole('button', { name: 'Delete' }).click();

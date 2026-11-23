@@ -797,7 +797,7 @@ it('shows the reconcile instruction and offers release only once it is acknowled
     await settleTask();
     await click(buttonNamed(container, 'Release hold REPORTING_PASSWORD'));
     expect(dialog().textContent).toContain('reconcile the rotation\'s grants and its provider credential, and read its runs');
-    expect(dialog().textContent).toContain('never resumes a paused or halted rotation');
+    expect(dialog().textContent).toContain('This rotation is active, so its next scheduled run mints and publishes unattended again.');
     const release = buttonNamed(dialog(), 'Release hold');
     expect(release.disabled).toBe(true);
     await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
@@ -806,7 +806,7 @@ it('shows the reconcile instruction and offers release only once it is acknowled
     expect(document.querySelector('[data-ceremony]')?.getAttribute('data-ceremony')).toBe('rotation-release');
     await click(buttonNamed(document.body, 'Authorise'));
     expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HELD_ROTATION)}/release-hold`, search: '', body: { expected_generation: 1n } }]);
-    expect(container.querySelector('.rotations__done')?.textContent).toContain('It was not resumed.');
+    expect(container.querySelector('.rotations__done')?.textContent).toContain('its schedule publishes again');
   } finally {
     await unmount();
   }
@@ -873,6 +873,20 @@ it('names the server refusal in its own words and keeps the dialog open', async 
   }
 });
 
+it('sends nothing for a generation the browser cannot carry exactly, and says why', async () => {
+  const sent = actStub(reads([{ ...rotationList().items[0], generation: 2 ** 60 }]));
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Pause DATABASE_PASSWORD'));
+    await click(buttonNamed(dialog(), 'Pause'));
+    expect(acts(sent)).toEqual([]);
+    expect(dialog().querySelector('.alert')?.textContent).toContain('beyond what this page can send exactly, so nothing was sent');
+  } finally {
+    await unmount();
+  }
+});
+
 it('disables a dialog whose rotation was re-read at a newer generation', async () => {
   let listed = 0;
   const sent = actStub({
@@ -914,6 +928,20 @@ it('creates a rotation behind the ceremony, refusing an obvious slip before it',
       });
     };
     await choose(selects[1]!, rotationKeys.items[0]!.id);
+    // A fractional hour is still whole seconds, so the field itself is checked.
+    const hours = dialog().querySelector<HTMLInputElement>('input[type="number"]')!;
+    const type = async (input: HTMLInputElement, value: string) => {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    await choose(selects[2]!, rotationKeys.items[1]!.id);
+    await type(hours, '1.5');
+    await click(buttonNamed(dialog(), 'Create rotation'));
+    expect(dialog().textContent).toContain('The interval is a whole number of hours');
+    expect(document.querySelector('[data-ceremony]')).toBeNull();
+    await type(hours, '24');
     await choose(selects[2]!, rotationKeys.items[0]!.id);
     await click(buttonNamed(dialog(), 'Create rotation'));
     expect(dialog().textContent).toContain('must be two different keys');

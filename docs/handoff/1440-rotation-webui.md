@@ -48,7 +48,7 @@ authorization. No API, executor or rotation semantics changed.
 - Unit: `web/src/routes/machineAccess/Rotations.test.tsx` covers acts per state, pause
   without ceremony, resume and release behind the ceremony (stand-in modal asserting
   purpose, environment and both keys; nothing sent before it authorises, nothing after a
-  cancel), run-now body, delete query, a 409 shown in the server's words, create
+  cancel), run-now body, delete query, a 409 with the server's named reason, create
   validation and body.
 - Stories: `web/src/routes/Rotations.stories.tsx` adds CreateForm, CreateInvalid,
   CreateNoProvider, CreateRefusedProtected, ResumeAsksForCeremony (real Ceremony modal),

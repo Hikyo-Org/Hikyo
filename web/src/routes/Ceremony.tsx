@@ -169,7 +169,7 @@ const PURPOSE_LEDE: Partial<Record<CeremonyPurpose, string>> = {
   personal: 'change to your personal value',
   rotation: 'standing publish authority over these keys for a scheduled rotation',
   'rotation-run': 'one unscheduled publish of a new credential into these keys',
-  'rotation-release': "letting the executor settle the runs a restore hold stopped; the rotation's state does not change",
+  'rotation-release': 'lifting a restore hold: held runs are settled and an active rotation publishes on its schedule again; a paused or halted one stays stopped',
 };
 
 export type CeremonyRequest = {
