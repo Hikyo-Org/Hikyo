@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 func TestRuleRequestBindsItemsToProjects(t *testing.T) {
@@ -232,5 +234,15 @@ func TestWideningEnvReadsOnlyTheWideningRefusal(t *testing.T) {
 		if got := wideningEnv(err); got != "" {
 			t.Errorf("wideningEnv(%v) = %q, want empty", err, got)
 		}
+	}
+}
+
+// TestWideningEnvParsesTheServiceRefusal ties wideningEnv's marker to the
+// wording the service emits, so rewording the refusal breaks this test instead
+// of silently disabling the CLI's inline reauthentication.
+func TestWideningEnvParsesTheServiceRefusal(t *testing.T) {
+	err := failf(ExitRefused, "conflict (%s)", fmt.Sprintf(service.WideningReauthDetail, "env_a"))
+	if got := wideningEnv(err); got != "env_a" {
+		t.Fatalf("wideningEnv over the service wording = %q, want env_a", got)
 	}
 }

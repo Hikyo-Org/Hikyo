@@ -75,6 +75,9 @@ var (
 	// sentence and the half that makes `read` at org scope not a workload
 	// grant at all.
 	ErrMachineScope = fmt.Errorf("%w: service: this principal class may not hold a grant at this scope depth", domain.ErrConflict)
+	// WideningReauthDetail is the wire detail of a widening refusal; the CLI's
+	// inline ceremony parses the environment out of it (tied by a CLI test).
+	WideningReauthDetail = "reauthenticate over the environments this operation makes reachable, then retry (%s)"
 	// ErrMachineProject refuses a machine grant in a project other than the
 	// one the principal's existing grants already sit in. The ADR bounds
 	// automation to "one project's scope"; the first grant fixes which.
@@ -580,7 +583,7 @@ func (s *Auth) RequireDisclosureAuthority(
 			// and the remedy - a reauthentication over it - is what the CLI's
 			// inline ceremony and the browser's modal both key on.
 			return &detailErr{
-				detail: fmt.Sprintf("reauthenticate over the environments this operation makes reachable, then retry (%s)", env),
+				detail: fmt.Sprintf(WideningReauthDetail, env),
 				err:    fmt.Errorf("%w (%s)", ErrReauthRequired, env),
 			}
 		default:

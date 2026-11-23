@@ -427,6 +427,14 @@ func checkMachineRule(ctx context.Context, az *authz.TxAuthorizer, class domain.
 		}
 		return fmt.Errorf("%w: a class %q rule names exactly one project", ErrMachineScope, class)
 	}
+	// A rule's project comes only from the service-account row; the prior-grant
+	// fallback checkMachineProject keeps for grants would let a machine with no
+	// row (provisioning, instance, pre-table) hold a rule in any project.
+	if _, err := az.ServiceAccountByPrincipal(ctx, rule.Principal); errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("%w: this machine principal has no service-account row, so it may not hold a rule", ErrMachineProject)
+	} else if err != nil {
+		return err
+	}
 	return checkMachineProject(ctx, az, rule.Principal, domain.Scope{Org: rule.Org, Project: rule.Where.Projects[0]})
 }
 

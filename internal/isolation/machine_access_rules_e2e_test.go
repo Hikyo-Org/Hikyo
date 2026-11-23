@@ -135,4 +135,47 @@ func runMachineAccessRules(t *testing.T, db *store.DB) {
 			t.Fatalf("reveal grant over a rule-held read = %v, want ErrReauthRequired", err)
 		}
 	})
+
+	t.Run("an_all_except_rule_reaches_a_later_environment", func(t *testing.T) {
+		ci, _, credential := newAccount(t, "all-except", domain.ClassAutomation)
+		machine := service.Bearer(credential)
+		if _, err := rules.Create(ctx, service.LocalPrincipal(identAdmin), readOn(ci, domain.AxisAll, envProd)); err != nil {
+			t.Fatalf("all-except rule: %v", err)
+		}
+		execRaw(t, db, `INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) `+
+			`VALUES ('env_later', 'org_a', 'prj_a1', 'later', '', `+ts+`, 9)`)
+		if _, err := valueSvc(t, db).Get(ctx, machine, scopeEnv(orgA, prjA1, "env_later"), "SHARED_KEY", false); err != nil {
+			t.Fatalf("read in an environment created after the rule: %v", err)
+		}
+		if _, err := valueSvc(t, db).Get(ctx, machine, scopeEnv(orgA, prjA1, envProd), "SHARED_KEY", false); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("read in the excepted environment = %v, want not found", err)
+		}
+	})
+
+	t.Run("deleting_a_service_account_removes_its_rules", func(t *testing.T) {
+		ci, saID, _ := newAccount(t, "rule-deleted", domain.ClassAutomation)
+		if _, err := rules.Create(ctx, service.LocalPrincipal(identAdmin), readOn(ci, domain.AxisAll)); err != nil {
+			t.Fatal(err)
+		}
+		count := `SELECT COUNT(*) FROM rules WHERE principal_id = '` + string(ci) + `'`
+		if n := queryInt(t, db, count); n != 1 {
+			t.Fatalf("rules before delete = %d, want 1", n)
+		}
+		if err := identities.DeleteServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), saID); err != nil {
+			t.Fatalf("delete an account that holds a rule: %v", err)
+		}
+		if n := queryInt(t, db, count); n != 0 {
+			t.Fatalf("rules after delete = %d, want 0", n)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM rule_items WHERE rule_id NOT IN (SELECT id FROM rules)`); n != 0 {
+			t.Fatalf("orphan rule items = %d, want 0", n)
+		}
+	})
+
+	t.Run("a_machine_without_a_service_account_row_holds_no_rule", func(t *testing.T) {
+		execRaw(t, db, `INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_norow', 'machine', 'automation', `+ts+`)`)
+		if _, err := rules.Create(ctx, service.LocalPrincipal(identAdmin), readOn("mch_norow", domain.AxisAll)); !errors.Is(err, service.ErrMachineProject) {
+			t.Fatalf("rule for a machine with no service-account row = %v, want ErrMachineProject", err)
+		}
+	})
 }

@@ -307,8 +307,15 @@ Machine access (D11) follows separately.
   newly reaches.
 - **Evaluation.** The chokepoint reads machine rules through their own
   lookup and applies the same class check on every read: a stored machine
-  rule that fails it reaches nothing. Every other coverage check (delivery's
-  per-key projection, SSH, federation) stays blind to rules, as for people.
+  rule that fails it reaches nothing. Delivery's per-key projection and SSH
+  stay blind to rules, as for people; federation's binding gate counts a
+  machine's rules in the reach it checks, as the mint gate does.
+- **Environment rename (decided in #1480, lane coordinator, pending owner
+  confirmation).** While rule items bind environments by id, a rename cannot
+  widen a machine's reach, so the reauthentication step does not apply to it.
+  #1447, which binds environment selectors by name, must apply the
+  reauthentication step to machine principals gaining reach through a rename
+  or create.
 
 ## Rejected alternatives
 

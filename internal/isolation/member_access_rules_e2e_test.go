@@ -194,6 +194,10 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 
 	t.Run("machine_rules_follow_the_class_rules", func(t *testing.T) {
 		// mch_a1 is an automation principal bound to project A1.
+		// A machine holds rules only through its service-account row (the
+		// fixture principal predates the table), so give it one.
+		execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) `+
+			`VALUES ('sa_mch_a1', 'mch_a1', 'org_a', 'prj_a1', 'mch-a1', 'automation', `+ts+`, 'usr_orgadmin')`)
 		bothProjects := whereIn(domain.AxisAll, nil, domain.AxisAll)
 		bothProjects.Projects = []domain.ProjectID{prjA1, prjA2}
 		foreign := domain.Where{Projects: []domain.ProjectID{prjA2}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}

@@ -2172,6 +2172,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListMachineRulesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ba5d775ec8370046b22966c16c10edc7ffd52c1ad894108117a55199b2c6687f",
+    "reason": "Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
+  },
+  {
+    "engine": "postgres",
     "name": "ListManageMembersHoldersAtInstance",
     "annotation": "authn-resolution",
     "hash": "31956eaf6f6ce4b85c748c4f897d1152e5491cf01664b263d3c6ea855e0857aa"
@@ -5996,6 +6003,13 @@
     "name": "ListMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "e771adf3d2972f9fbf73a467876fc26f0d77eea3092f3ccb93c27dba4179f9a4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListMachineRulesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ba5d775ec8370046b22966c16c10edc7ffd52c1ad894108117a55199b2c6687f",
+    "reason": "Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
   },
   {
     "engine": "sqlite",
