@@ -15,18 +15,21 @@ authorization. No API, executor or rotation semantics changed.
   `rotationActRefusalText` shows a client sentence per status plus the server's named
   refusal (its safe detail) in parentheses. A fence above the browser's exact integer
   range fails before sending.
-- `web/src/routes/Ceremony.tsx`: new purpose `rotation`. It signs `publish` (the window
-  the service's `requireRotationCeremony` consumes over the environment and both keys)
-  but tells the person what they grant: "hand scheduled publishing to a rotation in ·
-  <env>", "standing publish authority over these keys for a scheduled rotation". The
+- `web/src/routes/Ceremony.tsx`: new purposes `rotation` (create, resume), `rotation-run`
+  and `rotation-release`. All three sign `publish` (the window the service's
+  `requireRotationCeremony` consumes over the environment and both keys), but each tells
+  the person what that act grants: create and resume "hand scheduled publishing to a
+  rotation in · <env>" with "standing publish authority over these keys for a scheduled
+  rotation"; run-now "one unscheduled publish of a new credential into these keys";
+  release-hold that the executor settles the held runs and the state does not change. The
   existing `publish` lede ("publish into a protected environment") would be false: a
   rotation's environment is never protected.
 - `web/src/routes/machineAccess/Rotations.tsx`: **Create rotation** dialog; per-row acts
   offered by state (`actVerbs`); one act dialog per verb with its consequences. An open
   dialog whose rotation was re-read at another generation, or no longer offers that act,
   disables its button and says to review the row again. Create,
-  resume, run-now and release-hold go through `useProtectedPublishCeremony` with purpose
-  `rotation`. Because the purpose is not `publish`, the hook never skips the ceremony for
+  resume, run-now and release-hold go through `useProtectedPublishCeremony` with those
+  purposes. Because none is `publish`, the hook never skips the ceremony for
   an unprotected environment; it skips it only when a live, non-single-decision window
   already covers the act, as the CLI (which tries the act first) and the server do.
   Pause and delete run no ceremony, matching the API formula.

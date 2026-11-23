@@ -803,7 +803,7 @@ it('shows the reconcile instruction and offers release only once it is acknowled
     await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     expect(release.disabled).toBe(false);
     await click(release);
-    expect(document.querySelector('[data-ceremony]')?.getAttribute('data-ceremony')).toBe('rotation');
+    expect(document.querySelector('[data-ceremony]')?.getAttribute('data-ceremony')).toBe('rotation-release');
     await click(buttonNamed(document.body, 'Authorise'));
     expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HELD_ROTATION)}/release-hold`, search: '', body: { expected_generation: 1n } }]);
     expect(container.querySelector('.rotations__done')?.textContent).toContain('It was not resumed.');
@@ -825,6 +825,7 @@ it('runs now with the destructive confirmation and the chosen overlap', async ()
     await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     expect(dialog().textContent).toContain('loses access at once');
     await click(buttonNamed(dialog(), 'Run now'));
+    expect(document.querySelector('[data-ceremony]')?.getAttribute('data-ceremony')).toBe('rotation-run');
     await click(buttonNamed(document.body, 'Authorise'));
     expect(acts(sent)).toEqual([{
       method: 'POST',

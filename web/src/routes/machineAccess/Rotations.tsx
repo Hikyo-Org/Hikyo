@@ -514,7 +514,7 @@ function useActGuard(env: EnvironmentRef, environmentName: string, scope: string
       return;
     }
     void guard.run(
-      [{ environmentId: env.environment, environmentName, keys, purpose: 'rotation' }],
+      [{ environmentId: env.environment, environmentName, keys, purpose: verb === 'run-now' ? 'rotation-run' : verb === 'release-hold' ? 'rotation-release' : 'rotation' }],
       act,
       'The publish confirmation could not be started, so nothing was changed',
     );

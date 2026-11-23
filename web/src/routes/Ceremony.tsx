@@ -79,7 +79,9 @@ export type CeremonyPurpose =
   | 'bypass'
   | 'access'
   | 'personal'
-  | 'rotation';
+  | 'rotation'
+  | 'rotation-run'
+  | 'rotation-release';
 
 const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   reveal: 'reveal',
@@ -94,6 +96,8 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   access: 'take emergency access in',
   personal: 'set your personal value in',
   rotation: 'hand scheduled publishing to a rotation in',
+  'rotation-run': 'publish a new credential now for a rotation in',
+  'rotation-release': 'release a restore hold on a rotation in',
 };
 
 /**
@@ -137,6 +141,9 @@ const SIGNED_OPERATION: Record<
   // A scheduled rotation (#148) consumes the publish window over the environment
   // and both its keys: it delegates publish authority to an unattended worker.
   rotation: 'publish',
+  // Run-now and release-hold consume the same window, but are one act each, not a schedule.
+  'rotation-run': 'publish',
+  'rotation-release': 'publish',
 };
 
 /**
@@ -161,6 +168,8 @@ const LEDE_NOUN: Record<(typeof SIGNED_OPERATION)[CeremonyPurpose], string> = {
 const PURPOSE_LEDE: Partial<Record<CeremonyPurpose, string>> = {
   personal: 'change to your personal value',
   rotation: 'standing publish authority over these keys for a scheduled rotation',
+  'rotation-run': 'one unscheduled publish of a new credential into these keys',
+  'rotation-release': "letting the executor settle the runs a restore hold stopped; the rotation's state does not change",
 };
 
 export type CeremonyRequest = {

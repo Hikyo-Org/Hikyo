@@ -419,8 +419,9 @@ test.describe('machine access', () => {
       // Create: both keys, the schedule in seconds; no credential is sent or shown.
       await page.getByRole('button', { name: 'Create rotation' }).click();
       const create = page.getByRole('dialog', { name: /^Create rotation · / });
-      await create.getByLabel('Password key').selectOption({ label: 'DATABASE_PASSWORD' });
-      await create.getByLabel('Role name key').selectOption({ label: 'DATABASE_USER' });
+      // BILLING_* belong to no live rotation in this list; the server allows one live rotation per key.
+      await create.getByLabel('Password key').selectOption({ label: 'BILLING_PASSWORD' });
+      await create.getByLabel('Role name key').selectOption({ label: 'BILLING_USER' });
       await create.getByRole('button', { name: 'Create rotation' }).click();
       await expect(page.locator('.rotations__done')).toContainText('you are its recorded authority principal');
       expect(sent.at(-1)).toEqual({
@@ -428,8 +429,8 @@ test.describe('machine access', () => {
         path: '',
         body: {
           provider_id: dynamicProvider.id,
-          key_id: rotationKeys.items[0]!.id,
-          username_key_id: rotationKeys.items[1]!.id,
+          key_id: rotationKeys.items[6]!.id,
+          username_key_id: rotationKeys.items[7]!.id,
           interval_seconds: 86_400n,
           revocation_delay_seconds: 3_600n,
         },

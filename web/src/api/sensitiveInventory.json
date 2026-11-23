@@ -43,7 +43,7 @@
     "routes/Adapters.tsx": "8d0dd2c8b3fa2275196ba84c39a20a8c45c3c13bd3b869707f189894394aba0d",
     "routes/CLILogin.tsx": "2846460e1385d8a717ac3dffbbd25cafdfc3737b67b1a999822bf9e1da53f95a",
     "routes/CLIReauth.tsx": "aeed2710a5f820989fdecd9ea1b6dff37a85bb8fe2f6ac1ca759822b1fe085bc",
-    "routes/Ceremony.tsx": "607bec286734478f6f5eeb5eed4527a1a02568f5d5bfe6d3195e09db5d976179",
+    "routes/Ceremony.tsx": "d793afd4f2d3a593ac4055a8e745b03355d85e872de3f203f036aa00b1e3af38",
     "routes/CertificatesTab.tsx": "4dc25e32057c870974addefefd7bea2c91d37b216692bb9e4145f694a95b9606",
     "routes/EnrolmentGate.tsx": "0bd0f3e04a15aad534fe0bcf25e979bb3dba64d31b4470fa2ba6487e9cb18033",
     "routes/EstablishCredential.tsx": "3d70213bb23c1b6aee5d2f531ad8b18144e9bcd1e510922e13ee6125e5beb1f9",
