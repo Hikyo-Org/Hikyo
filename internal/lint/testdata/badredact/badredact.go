@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math/big"
 	"time"
+	"unicode/utf16"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -66,6 +68,13 @@ func NarrowingNonSensitive(h holder, hp *holder) {
 	_ = fmt.Sprintf("%d", mkHolder().seq)
 	slog.Info("n", "n", h.seq)
 	_ = fmt.Sprintf("%d", h.count())
+	_ = fmt.Sprintf("%v", h.when())
+}
+
+// A named type with a pinned type's underlying struct is that pinned type.
+func AliasLeak(ev audit.Event) {
+	a := evAlias(ev)
+	slog.Info("audit", "id", a.Actor.ID) // want "logs audit content .*internal/audit\\.Event"
 }
 
 func mkHolder() holder { return holder{} }
@@ -96,7 +105,21 @@ func (h holder) revealAll() []string       { return []string{h.keyring.String()}
 func (h holder) revealPtr() *string        { s := h.keyring.String(); return &s }
 func (h holder) revealMap() map[string]int { return map[string]int{h.keyring.String(): 1} }
 func (h holder) revealPair() pair          { return pair{Key: h.keyring.String()} }
-func (h holder) evAny() any                { return h.ev }
+
+type probeWords [4]uint64
+
+func (h holder) revealWords() probeWords { return probeWords{uint64(len(h.keyring.String()))} }
+func (h holder) revealBig() *big.Int     { return new(big.Int).SetBytes([]byte(h.keyring.String())) }
+func (h holder) revealUTF16() []uint16   { return utf16.Encode([]rune(h.keyring.String())) }
+func (h holder) revealFloats() []float64 { return []float64{float64(len(h.keyring.String()))} }
+
+// when sets the zone name from held state; the zone name and instant of a
+// time.Time result are a named limit of the narrowing, not inspected.
+func (h holder) when() time.Time { return time.Unix(0, 0).In(time.FixedZone(h.keyring.String(), 0)) }
+
+type evAlias audit.Event
+
+func (h holder) evAny() any { return h.ev }
 
 type anybox struct{ v any }
 
@@ -114,6 +137,10 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%x", h.revealBytes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%x", h.revealArray())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealRunes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealWords())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealBig())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealUTF16())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealFloats())                      // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealAll())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", *h.revealPtr())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealMap())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"

@@ -43,6 +43,7 @@ var reviewedFalsePositives = map[string]bool{
 	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", mkHolder().seq)`: true, // int field of a call result
 	`NarrowingNonSensitive: slog.Info("n", "n", h.seq)`:            true, // int field, logging call
 	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", h.count())`:      true, // method with a plain int result
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%v", h.when())`:       true, // time.Time result; zone name and instant are not inspected (named limit)
 }
 
 // TestRedactFormatNarrowingDifferential runs the pre-narrowing and the

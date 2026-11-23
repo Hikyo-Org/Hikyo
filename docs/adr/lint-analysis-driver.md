@@ -66,19 +66,25 @@ The spike also established that:
    whose result is plain data, so a field or method of a harness struct that
    holds a `crypto.Keyring` is not flagged when only an int or similar is
    formatted. The rule was narrowed, not exempted. Still flagged: a pinned
-   receiver; an `any`, interface, func, chan or type-parameter field or method
-   result; a selection promoted from an embedded pinned type; a receiver's call
-   arguments and literal elements; and any method whose result carries text or
-   bytes at any depth (`string`, `[]byte`, `[]rune`, a byte array, `[]string`,
-   `*string`, a map with text keys or values, a struct with a string field), because a holder method such as
-   `h.reveal()` may build that text from the key material it holds.
-   `time.Time` is the one exception. The differential test
+   receiver, including a named struct type whose underlying type is identical
+   to a pinned type's (`type evAlias audit.Event`); an `any`, interface, func,
+   chan or type-parameter field or method result; a selection promoted from an
+   embedded pinned type; a receiver's call arguments and literal elements; and
+   any method whose result carries text, bytes or numbers at any depth
+   (`string`, `[]byte`, `[]rune`, a byte array, `[]string`, `*string`, a map
+   with text keys or values, a struct with a string field, a slice, array or
+   map of integers or floats such as `[]uint16` or `[4]uint64`, a `math/big`
+   value), because a holder method such as `h.reveal()` may build that value
+   from the key material it holds. The differential test
    `TestRedactFormatNarrowingDifferential` pins every dropped diagnostic.
    `redactfmt` left `strictDeferred` and its ceiling entries were removed.
    Named limits that remain: reflection and custom serializers are not seen;
    in-package extraction is not seen; a plain-typed field a holder fills from
-   key material (`h.secretText` of type string) is read as plain data; an
-   indexed holder (`h.items[0].seq`) stays flagged, which only over-reports.)
+   key material (`h.secretText` of type string) is read as plain data; a
+   scalar numeric result (a `uint64` derived from key material) is plain data;
+   the zone name and instant of a `time.Time` result are not inspected
+   (`time.FixedZone(h.keyring.String(), 0)`); an indexed holder
+   (`h.items[0].seq`) stays flagged, which only over-reports.)
 
    Owner decision (2026-11-20): no inline exemption markers. A nil
    `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -31,10 +32,15 @@ import (
 // whose result is plain data (readsPlainData): a holder field of an int, or a
 // method returning an int or time.Time, is not a leak. A holder method whose
 // result is an interface, a func, a chan or a type parameter, or carries a
-// string, byte or rune at any depth ([]string, []rune, *string, a map with text
-// keys or values, a struct with a string field) keeps the holder flagged. Not seen: a plain-typed field the holder fills from key
-// material (h.text of type string is read as plain data). An indexed holder
-// (h.items[0].seq) stays flagged, which only over-reports.
+// string, byte, rune or a number slice/array/map at any depth ([]string,
+// []rune, []uint16, [4]uint64, *string, a map with text keys or values, a
+// struct with a string field, a math/big value) keeps the holder flagged.
+// Not seen: a plain-typed field the holder fills from key material (h.text of
+// type string is read as plain data), a scalar numeric result (a uint64 derived
+// from key material), and the zone name and instant of a time.Time result. An
+// indexed holder (h.items[0].seq) stays flagged, which only over-reports.
+// A named type whose underlying struct is identical to a pinned type's is
+// treated as that pinned type, so a conversion cannot rename it away.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
@@ -209,7 +215,7 @@ func mentionsNamed(t types.Type, pinned map[string]bool, seen map[types.Type]boo
 	}
 	switch u := t.(type) {
 	case *types.Named:
-		if key := namedKey(u); pinned[key] {
+		if key := pinnedKey(u, pinned); key != "" {
 			return key
 		}
 		obj := u.Obj()
@@ -330,17 +336,25 @@ func readsPlainData(sel *types.Selection) bool {
 
 // carriesText reports whether a value of type t can carry text or bytes that a
 // holder method built from what it holds: a string or byte reachable through
-// pointers, slices, arrays, maps and struct fields, however deep (runes included). time.Time is
-// the one deliberate exception: it reaches a string only through *Location (a
-// zone name), never through the instant a method derives from held state.
+// pointers, slices, arrays, maps and struct fields, however deep, runes and
+// numeric slices, arrays and maps (a word or float encoding of the text)
+// included. time.Time is the one deliberate exception, kept so a plain
+// holder.now() stays unflagged; it is a named limit: its zone name
+// (time.FixedZone(h.keyring.String(), 0)) and instant are not inspected.
+// A scalar number is plain data: a uint64 derived from key material is not seen.
 func carriesText(t types.Type, seen map[types.Type]bool) bool {
 	if seen[t] {
 		return false
 	}
 	seen[t] = true
 	t = types.Unalias(t)
-	if n, ok := t.(*types.Named); ok && namedKey(n) == "time.Time" {
-		return false
+	if n, ok := t.(*types.Named); ok {
+		if namedKey(n) == "time.Time" {
+			return false
+		}
+		if obj := n.Obj(); obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == "math/big" {
+			return true
+		}
 	}
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
@@ -349,11 +363,11 @@ func carriesText(t types.Type, seen map[types.Type]bool) bool {
 	case *types.Pointer:
 		return carriesText(u.Elem(), seen)
 	case *types.Slice:
-		return carriesText(u.Elem(), seen)
+		return numeric(u.Elem()) || carriesText(u.Elem(), seen)
 	case *types.Array:
-		return carriesText(u.Elem(), seen)
+		return numeric(u.Elem()) || carriesText(u.Elem(), seen)
 	case *types.Map:
-		return carriesText(u.Key(), seen) || carriesText(u.Elem(), seen)
+		return numeric(u.Elem()) || carriesText(u.Key(), seen) || carriesText(u.Elem(), seen)
 	case *types.Struct:
 		for f := range u.Fields() {
 			if carriesText(f.Type(), seen) {
@@ -362,6 +376,13 @@ func carriesText(t types.Type, seen map[types.Type]bool) bool {
 		}
 	}
 	return false
+}
+
+// numeric reports an integer, float or complex element type: a slice of them
+// can encode key material as words or floats.
+func numeric(t types.Type) bool {
+	b, ok := t.Underlying().(*types.Basic)
+	return ok && b.Info()&types.IsNumeric != 0
 }
 
 func derefStruct(t types.Type) (*types.Struct, bool) {
@@ -421,11 +442,70 @@ func pinnedDirectly(t types.Type) string {
 		t = p.Elem()
 	}
 	if n, ok := t.(*types.Named); ok {
-		if key := namedKey(n); SensitiveTypes[key] || auditContentTypes[key] {
+		if key := pinnedKey(n, SensitiveTypes); key != "" {
+			return key
+		}
+		return pinnedKey(n, auditContentTypes)
+	}
+	return ""
+}
+
+// pinnedKey is the key of the pinned type n is, or "". A named struct whose
+// underlying type is identical to a pinned type's counts as that type, so
+// `type evAlias audit.Event` and a conversion cannot rename it away.
+func pinnedKey(n *types.Named, pinned map[string]bool) string {
+	if key := namedKey(n); pinned[key] {
+		return key
+	}
+	st, ok := n.Underlying().(*types.Struct)
+	if !ok || st.NumFields() == 0 || n.Obj() == nil || n.Obj().Pkg() == nil {
+		return ""
+	}
+	for key, p := range pinnedTypesFrom(n.Obj().Pkg()) {
+		if pinned[key] && types.Identical(st, p.Underlying()) {
 			return key
 		}
 	}
 	return ""
+}
+
+// pinnedTypesCache maps a package to the pinned types reachable through its
+// imports (itself included), keyed like SensitiveTypes.
+var pinnedTypesCache sync.Map
+
+func pinnedTypesFrom(pkg *types.Package) map[string]*types.Named {
+	if v, ok := pinnedTypesCache.Load(pkg); ok {
+		return v.(map[string]*types.Named)
+	}
+	out := map[string]*types.Named{}
+	visited := map[*types.Package]bool{}
+	var walk func(*types.Package)
+	walk = func(p *types.Package) {
+		if visited[p] {
+			return
+		}
+		visited[p] = true
+		for _, set := range []map[string]bool{SensitiveTypes, auditContentTypes} {
+			for key := range set {
+				dot := strings.LastIndex(key, ".")
+				path, name := key[:dot], key[dot+1:]
+				if path != p.Path() {
+					continue
+				}
+				if tn, ok := p.Scope().Lookup(name).(*types.TypeName); ok {
+					if named, ok := tn.Type().(*types.Named); ok {
+						out[key] = named
+					}
+				}
+			}
+		}
+		for _, imp := range p.Imports() {
+			walk(imp)
+		}
+	}
+	walk(pkg)
+	pinnedTypesCache.Store(pkg, out)
+	return out
 }
 
 // mentionsAny reports the first pinned type reachable from any of ts.
