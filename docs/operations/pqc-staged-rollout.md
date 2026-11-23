@@ -211,11 +211,13 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    (`internal/sshca/openssh_negotiation_test.go`); nothing else was run,
    including the sntrup761 option and any deployed sshd.
 
-Clients that offer no hybrid algorithm (OpenSSH before 8.9, unless 8.5 or
-later is configured to offer `sntrup761x25519-sha512@openssh.com`, and any
-other client or library without one) can no longer connect. Check the
-algorithms clients actually offer (`ssh -Q kex` on the client, server logs),
-not the version, before applying it. The list syntax and the `+`, `-` and `^`
+With `mlkem768x25519-sha256` alone, every client that does not offer it is
+refused: OpenSSH before 9.9 (including 8.9 to 9.8, which offer only sntrup761
+by default) and other SSH libraries without it. The sntrup761 option widens
+access back to 8.5 and later clients that offer
+`sntrup761x25519-sha512@openssh.com`. Check the algorithms clients actually
+offer (`ssh -Q kex` on the client, server logs), not the version, before
+applying either line. The list syntax and the `+`, `-` and `^`
 prefixes are in [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms),
 read 2026-11-23. A hybrid key exchange protects session confidentiality only;
 it does not make host or user signatures post-quantum (E-02).

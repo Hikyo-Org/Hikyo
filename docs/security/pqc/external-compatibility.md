@@ -3,8 +3,8 @@
 Status: **not an operative capability claim. Owner authorized merge of this
 documentation on 2026-11-04 (maintainer security approval for this PR only). The owner
 recorded the dispositions for F-01 to F-11 on 2026-11-04 (see Follow-ups); F-01, F-04,
-F-05 and F-09 are decided; F-03, F-06, F-08 and F-10 are recorded in this file
-(2026-11-23); F-02, F-07 and F-11 stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
+F-05 and F-09 are decided; F-03 (in the staged-rollout runbook), F-06, F-08 and
+F-10 are recorded (2026-11-23); F-02, F-07 and F-11 stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
 under [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Stacked on the
 transport policy (PR #1156; the register was written and tested on its head
 `f5d5491829d6`; the base has since moved and the sweep was not rerun on it;
@@ -15,7 +15,7 @@ main merge-base `b22eb0adb6480b3b2c61b8c86dee6df1a5a552a8`). The tested candidat
 [ADR register](../../adr/post-quantum-migration.md#decision-register). This
 document changes no DEC row and builds no mechanism. A claim here is only what
 a row proves. "Read" means the primary source was read for this document on
-**2026-11-03**.
+**2026-11-03** unless a row states another date.
 
 ## Facts that differ from the register
 
@@ -144,11 +144,13 @@ add a row.
 
 ## Table A: facts
 
-Versions in Tables A to C and the exception terms are candidate-time
-snapshots, for example `golang.org/x/crypto` v0.58.0 and Go 1.27.3; `dev`
-has since moved to v0.59.0 and Go 1.27.4, and those rows were not
-re-measured. The rows X10, X12, X15, X22, E-04 and E-13 were updated to the
-`dev` pins on 2026-11-23.
+Versions in Tables A and B and the exception terms are candidate-time
+snapshots unless a row says otherwise. The rows X10, X12, X15, X22, E-04
+and E-13 were updated to the `dev` pins on 2026-11-23; every other version
+is a snapshot and was not re-measured. Known drifts on `dev`:
+`golang.org/x/crypto` v0.59.0 (rows say v0.58.0), Go 1.27.4 (rows say
+1.27.3), `pgx` v5.13.0, `go-mail` v0.8.2 (rows say v0.8.1), `go-smtp`
+v0.26.0 (rows say v0.25.0) and `aws-sdk-go-v2` v1.48.0.
 
 Lifetime `H` is the confidentiality or verification horizon from the
 [inventory](inventory.md). "Chain" cells say "not observed" where no handshake
@@ -198,9 +200,9 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 | X07 | out of profile | local: OpenSSH 10.3p1 negotiated `mlkem768x25519-sha256`; classical-only client accepted by default sshd; refused with `KexAlgorithms mlkem768x25519-sha256`; github.com handshake (fact 5) | **Fired:** OpenSSH 10.6 offers a PQ signature by default; remaining: an operator names a fleet | The control is sshd `KexAlgorithms` (fixture). `WarnWeakCrypto` only logs a weak client and is not a control. Hikyo carries no SSH session | F-03 done (#1177): [runbook section](../../operations/pqc-staged-rollout.md#operator-owned-hybrid-only-ssh-key-exchange-x07-f-03) | E-02 limits only the signatures |
 | X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04 (decided 2026-11-04): the composite is not adopted (ML-DSA-44 is outside DEC-02, DEC-03 did not select composites) | E-02 |
 | X09 | unknown | source: IANA, W3C, go-webauthn; no primary authenticator or platform statement read | A primary authenticator statement; a change of position on credential parameters | RP creates classical credentials only; offering library PQC parameters would include ML-DSA-44 (excluded by DEC-02) | F-05 (decided 2026-11-04): classical credentials only | E-05 |
-| X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` v4.1.9 has ML-DSA (Go 1.27) but the allowlists and key loader refuse it | Hikyo widens key loading and the allowlist together (F-06, #1191); an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06 done: #1130 and #1132 notes posted 2026-11-23 | E-04 |
+| X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` v4.1.9 has ML-DSA (Go 1.27) but the allowlists and key loader refuse it | Hikyo widens key loading and the allowlist together (F-06, #1191); an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06 done (#1180): #1130 and #1132 notes posted 2026-11-23 | E-04 |
 | X11 | unknown | source only, including the SAML metadata proxy leg | As X02 | Unknown | F-02 | E-04, E-08 |
-| X12 | blocked | source: allowlist; ML-DSA identifier only in an Internet-Draft (-11, 2026-11-19); `goxmldsig` v1.6.1 has none | The identifier is published as an RFC; `goxmldsig` supports it | As X10 | F-06 | E-04 |
+| X12 | blocked | source: allowlist; ML-DSA identifier only in an Internet-Draft (-11, 2026-11-19); `goxmldsig` v1.6.1 has none | The identifier is published as an RFC or W3C Recommendation; `goxmldsig` supports it | As X10 | F-06 done (#1180) | E-04 |
 | X13 | compatibility-only | source: PostgreSQL 18 docs; `verify-full` enforced; negotiated group NOTRUN | Authorized fixture; operator names the server build | Strict is not selectable; server-controlled | F-07 (HOLD until a hybrid-capable PostgreSQL is named) | E-08 |
 | X14 | out of profile | source: AWS key spec reference; Hikyo custody is software only, so no KMS key is used for Hikyo's own keys | An external custody seam is designed | None for Hikyo keys | none | none (key-service contact is X15, E-13) |
 | X15 | unknown | source: `importer/sops.go` disclosure; key-service builds and the `gcpkms`, `azkv`, `hcvault`, `hckms` sources not read. **No PQ claim** covers the SOPS, kubeconfig and OpenBao imports or the key services SOPS contacts (F-08, [qualification](qualification.md)) | Source key policy named per import | Imports carry the source's policy; a KMS or Vault Transit file contacts that service | F-08 done (#1182); the operator runbook wording for import sources is #1135 scope and outside #1182 | E-13 |
@@ -281,6 +283,9 @@ route in this register:
   P-256, RSA 3072). A PQ session key exchange protects traffic only where the
   operator's sshd negotiates it (observed locally with OpenSSH 10.3p1). Hikyo
   makes no claim about it, and none about OpenSSH 10.6's composite signature.
+- X15: Hikyo makes no PQ claim for SOPS, kubeconfig or OpenBao imports or for
+  the key services SOPS contacts; the source's key policy and TLS govern
+  (E-13).
 - X09 to X12: signatures verified by Hikyo are RSA, ECDSA or Ed25519. A PQ
   signature from an IdP or authenticator is refused (OIDC, SAML) or not
   requested (WebAuthn). No PQ authenticity claim.
@@ -361,7 +366,7 @@ E-15, E-20) are not repeated. These terms are pointed to from the
 | --- | --- | --- | --- | --- |
 | E-02 | X07, X08 | OpenSSH 10.3p1 local only; `x/crypto/ssh` v0.58.0; no deployed sshd named | Peer unnamed | `x/crypto` adds composite; draft becomes an RFC; DEC-02 or DEC-03 revisited |
 | E-03 | X16 (includes I31: Kyverno and chart policy) | None named; statements read 2026-11-23: Sigstore public instance (PQC targeted mid-2027), Kyverno (no PQ statement found in the v1.17 and v1.18 announcements and `verifyImages` docs; v1.20.0 notes not fully read), Apple (no signing statement), RHEL 10.1 RPM (technology preview), Debian and Ubuntu archives (none found), GitHub commit verification (GPG, SSH, S/MIME), Go checksum database (none found) | Peers unnamed, no versions; no service states PQ issuance or signing in production | A service states PQ issuance or signing in production, for example the Sigstore PQC public instance |
-| E-04 | X10, X11, X12 | Libraries: `go-oidc` v3.21.0, `go-jose` v4.1.9 (ML-DSA since v4.1.8, Go 1.27 only), `gosaml2` v0.12.0, `goxmldsig` v1.6.1 (no ML-DSA); no IdP; rechecked 2026-11-23 | IdP unnamed | Hikyo allowlists and key loader accept ML-DSA (F-06, #1191); `goxmldsig` adds ML-DSA; the XML-DSig identifier leaves draft status; an IdP issues PQ |
+| E-04 | X10, X11, X12 | Libraries: `go-oidc` v3.21.0, `go-jose` v4.1.9 (ML-DSA since v4.1.8, Go 1.27 only), `gosaml2` v0.12.0, `goxmldsig` v1.6.1 (no ML-DSA); no IdP; rechecked 2026-11-23 | IdP unnamed | Hikyo allowlists and key loader accept ML-DSA (F-06, #1191); `goxmldsig` adds ML-DSA; the XML-DSig identifier is published as an RFC or W3C Recommendation; an IdP issues PQ |
 | E-05 | X09 | `go-webauthn` v0.18.2; no authenticator | Authenticator unnamed | Primary authenticator statement; a change of position on credential parameters |
 | E-06 | X01 | Effective 2026-11-04: GitHub Actions secrets API; libsodium sealed box as documented on 2026-11-03, API version `2022-11-28`; expires 2027-05-03 | None | GitHub documents a PQ option or a different algorithm |
 | E-07 | X02 to X06, X17, X19, X23 | Go 1.27.3 client; no peer | Peers unnamed | A peer is named and captured |
@@ -404,3 +409,22 @@ AWS [blog](https://aws.amazon.com/blogs/security/ml-kem-post-quantum-tls-now-sup
 [Go `crypto/tls`](https://pkg.go.dev/crypto/tls);
 [Sigstore](https://blog.sigstore.dev/post-quantum-2025/). FIDO vendor commentary
 was seen only in search results and supports no row.
+
+## Sources read 2026-11-23
+
+Follow-ups F-03, F-06, F-08 and F-10: OpenSSH
+[release notes](https://www.openssh.org/releasenotes.html) and
+[sshd_config(5)](https://man.openbsd.org/sshd_config); Sigstore posts
+([2026-10-02](https://blog.sigstore.dev/pqc-sigstore/),
+[2025-06-06](https://blog.sigstore.dev/post-quantum-2025/)) and
+[Trail of Bits, 2026-01-29](https://blog.trailofbits.com/2026/01/29/building-cryptographic-agility-into-sigstore/);
+[Apple Platform Security](https://support.apple.com/guide/security/secc7c82e533/web);
+[Red Hat RPM PQ signing](https://developers.redhat.com/articles/2025/10/07/signing-rpm-packages-using-quantum-resistant-cryptography);
+[Ubuntu 26.04 PQ post](https://discourse.ubuntu.com/t/post-quantum-support-in-the-upcoming-26-04-lts/76840);
+[RFC 9980](https://www.rfc-editor.org/rfc/rfc9980);
+[GitHub commit signature docs](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification);
+[Go sumdb design](https://go.googlesource.com/proposal/+/refs/heads/master/design/25530-sumdb.md);
+Kyverno v1.17 and v1.18 announcements and `verifyImages` docs;
+[draft-eastlake-rfc9231bis-xmlsec-uris-11](https://datatracker.ietf.org/doc/html/draft-eastlake-rfc9231bis-xmlsec-uris);
+`go-jose` v4.1.8 and v4.1.9 releases and `mldsa.go`; `goxmldsig` releases,
+`xml_constants.go`, issues and pull requests.
