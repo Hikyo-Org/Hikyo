@@ -199,6 +199,7 @@ JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.principal_id = $1
   AND p.kind = 'machine'
   AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 ORDER BY r.id, i.id
 `
@@ -219,7 +220,7 @@ type ListMachineRulesForPrincipalRow struct {
 // The machine twin of ListRulesForPrincipal: the same gates with kind =
 // 'machine'. A separate query keeps every human-only reader human-only. The
 // caller applies the machine class's live rule check to every row.
-// hikyo:reason Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row.
+// hikyo:reason Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row.
 // hikyo:authn-resolution
 func (q *Queries) ListMachineRulesForPrincipal(ctx context.Context, principalID string) ([]ListMachineRulesForPrincipalRow, error) {
 	rows, err := q.db.Query(ctx, listMachineRulesForPrincipal, principalID)
