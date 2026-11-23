@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -98,6 +101,7 @@ func TestCompleteShardWorkflowProvenanceAndMigration(t *testing.T) {
 	if got := fmt.Sprintf("%x", sha256.Sum256(oldSource)); got != "1349c193de1ca689aa322bb71affdea4e287a972af38d0d5530a6978e22b2d3c" {
 		t.Fatal("embedded trusted legacy source differs from the migration allowlist")
 	}
+	pinnedSource := withLegacyRaceWeights(t, newSource, oldSource)
 	const badBulk = `package main
 import ("fmt"; "os")
 func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Println("analysis-shards-all-v1"); return }; os.Exit(2) }
@@ -186,13 +190,15 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 	// subtest. A failed legacy execution must stop the parent comparison test.
 	expected := runScenario(t, workflowScenario{
 		name: "fixed legacy reference", event: "merge_group", source: oldSource,
-		wantSuccess: true, wantCalls: 24,
+		wantSuccess: true, wantCalls: 30,
 	})
 	for _, scenario := range []workflowScenario{
-		{"known legacy base", "merge_group", "", oldSource, true, 24},
-		{"new trusted base", "merge_group", "", newSource, true, 1},
-		{"trusted main", "workflow_dispatch", "refs/heads/main", newSource, true, 1},
-		{"authenticated release tag", "push", "refs/tags/v1.2.3", newSource, true, 1},
+		{"known legacy base", "merge_group", "", oldSource, true, 30},
+		{"new trusted base", "merge_group", "", pinnedSource, true, 1},
+		{"trusted main", "workflow_dispatch", "refs/heads/main", pinnedSource, true, 1},
+		{"authenticated release tag", "push", "refs/tags/v1.2.3", pinnedSource, true, 1},
+		{"recalibrated trusted base", "merge_group", "", newSource, true, 1},
+		{"recalibrated trusted main", "workflow_dispatch", "refs/heads/main", newSource, true, 1},
 		{"nonmain manual", "workflow_dispatch", "refs/heads/topic", newSource, false, 0},
 		{"unknown legacy source", "merge_group", "", append(append([]byte(nil), oldSource...), '\n'), false, 0},
 		{"bulk error has no fallback", "merge_group", "", []byte(badBulk), false, 0},
@@ -200,9 +206,74 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			actual := runScenario(t, scenario)
-			if scenario.wantSuccess && !reflect.DeepEqual(actual, expected) {
+			if !scenario.wantSuccess {
+				return
+			}
+			// Recalibrated weights move the real planner's race targets between
+			// shards, so it must cover the same targets and match every other
+			// output. Legacy and weight-pinned sources must match exactly.
+			if bytes.Equal(scenario.source, newSource) {
+				if !reflect.DeepEqual(raceTargetUnion(t, actual["race_plan"]), raceTargetUnion(t, expected["race_plan"])) {
+					t.Fatal("legacy and bulk race plans cover different targets on the same candidate inventory")
+				}
+				actual["race_plan"] = expected["race_plan"]
+			}
+			if !reflect.DeepEqual(actual, expected) {
 				t.Fatal("legacy and bulk outputs differ on the same candidate inventory")
 			}
 		})
 	}
+}
+
+// raceTargetUnion lists every package and filtered target a race plan runs, one
+// entry per occurrence, so duplicates and omissions both change the result.
+func raceTargetUnion(t *testing.T, plan jsontext.Value) []string {
+	t.Helper()
+	var shards [][]string
+	if err := json.Unmarshal(plan, &shards); err != nil {
+		t.Fatal(err)
+	}
+	var union []string
+	for _, shard := range shards {
+		for _, line := range shard {
+			pkg, filter, split := strings.Cut(line, "\t")
+			if !split {
+				union = append(union, pkg)
+				continue
+			}
+			names, ok := strings.CutPrefix(filter, "^(")
+			names, closed := strings.CutSuffix(names, ")$")
+			if !ok || !closed {
+				t.Fatalf("malformed race filter %q", line)
+			}
+			for _, name := range strings.Split(names, "|") {
+				union = append(union, pkg+"\t"+name)
+			}
+		}
+	}
+	sort.Strings(union)
+	return union
+}
+
+// withLegacyRaceWeights splices the frozen planner's race weight tables into
+// the current planner and disables the invocation budget, so the bulk protocol
+// must reproduce the legacy race placement byte for byte on any inventory.
+func withLegacyRaceWeights(t *testing.T, current, legacy []byte) []byte {
+	t.Helper()
+	for _, table := range []string{
+		`(?s)\nvar racePackageSeconds = map\[string\]float64\{\n.*?\n\}\n`,
+		`(?s)\nvar raceTargetSeconds = map\[string\]map\[string\]float64\{\n.*?\n\}\n`,
+	} {
+		pattern := regexp.MustCompile(table)
+		frozen := pattern.FindAll(legacy, -1)
+		if len(frozen) != 1 || len(pattern.FindAll(current, -1)) != 1 {
+			t.Fatalf("race weight table %s must occur once in each planner", table)
+		}
+		current = pattern.ReplaceAllLiteral(current, frozen[0])
+	}
+	budget := regexp.MustCompile(`(?m)^const raceInvocationBudgetSeconds = .*$`)
+	if len(budget.FindAll(current, -1)) != 1 {
+		t.Fatal("race invocation budget constant must occur once in the planner")
+	}
+	return budget.ReplaceAllLiteral(current, []byte("const raceInvocationBudgetSeconds = 1e300"))
 }
