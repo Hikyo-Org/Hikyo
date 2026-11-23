@@ -194,16 +194,19 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    was added in 9.9 ([release notes](https://www.openssh.org/releasenotes.html),
    read 2026-11-23). A name the server does not know can make `sshd -t` fail, so a
    fleet with mixed versions needs per-version drop-ins.
-3. Validate before reload: `sshd -t`, then `sshd -T | grep -i '^kexalgorithms'`.
-   Keep an existing session open until a new login succeeds.
+3. Validate before reload: `sshd -t`, then `sshd -T | grep -i '^kexalgorithms'`
+   and confirm the printed list contains only the hybrid names. Keep an existing
+   session open until a new login (`ssh -o ControlPath=none ...`) succeeds.
 4. Expected result: a client offering only classical algorithms (for example
-   `ssh -o KexAlgorithms=curve25519-sha256`) is refused with no matching key
+   `ssh -o ControlPath=none -o KexAlgorithms=curve25519-sha256`) is refused with no matching key
    exchange method. This was observed locally against OpenSSH 10.3p1
    (`internal/sshca/openssh_negotiation_test.go`); no deployed sshd was tested.
 
-Clients that lack a hybrid algorithm (OpenSSH before 9.0 and any client or
-library without one) can no longer connect, so check the client population
-first. The list syntax and the `+`, `-` and `^` prefixes are in
+Clients that offer no hybrid algorithm (OpenSSH before 8.9, unless 8.5 or later
+is configured to offer `sntrup761x25519-sha512@openssh.com`, and any other client or
+library without one) can no longer connect. Check the algorithms clients
+actually offer (`ssh -Q kex` on the client, server logs), not the version,
+before applying it. The list syntax and the `+`, `-` and `^` prefixes are in
 [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms), read
 2026-11-23. A hybrid key exchange protects session confidentiality only; it
 does not make host or user signatures post-quantum (E-02).
