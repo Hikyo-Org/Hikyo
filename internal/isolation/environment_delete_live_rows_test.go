@@ -11,10 +11,10 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-// #1420: a minted lease or an issued certificate pins its environment through a
-// restrict foreign key. A live one refuses the delete by name; a terminal one is
-// purged with the environment, by Environments.Delete and by the definitions
-// apply executor alike.
+// #1420: a minted lease, an issued certificate, an adapter target or a dynamic
+// provider pins its scope through a restrict foreign key. Each refuses the
+// delete by name; terminal leases and tombstoned providers are purged with
+// their scope. Certificate and adapter history is retained, never purged.
 
 func seedLeaseRows(t *testing.T, db *store.DB, f definitionsFixture) {
 	t.Helper()
@@ -30,6 +30,8 @@ func seedLeaseRows(t *testing.T, db *store.DB, f definitionsFixture) {
 	}
 }
 
+// seedCertificateRows seeds one certificate per state that matters: four live
+// ones (issued, issuing, renewed, unexpired revoked) and two terminal ones.
 func seedCertificateRows(t *testing.T, db *store.DB, f definitionsFixture, now time.Time) {
 	t.Helper()
 	project := string(f.project)
@@ -46,10 +48,18 @@ func seedCertificateRows(t *testing.T, db *store.DB, f definitionsFixture, now t
 		}
 		execRaw(t, db, `INSERT INTO pki_certificates (id,org_id,project_id,environment_id,profile_id,profile_name,issuer_id,serial,state,key_source,key_algorithm,key_fingerprint,sans,not_before,not_after,certificate_der,principal_id,principal_class,revoked_at,revocation_reason,issuing_deadline,created_at,updated_at) VALUES ('`+id+`','org_a','`+project+`','`+f.env+`','pkip_x','web','`+issuer+`','`+id+`','`+state+`','csr','ecdsa-p256','sha256:x','{"dns":[],"ip":[],"uri":[]}',`+pkiStamp(db, now.Add(-48*time.Hour))+`,`+pkiStamp(db, notAfter)+`,`+der+`,'usr_alice','human',`+revoked+`,`+pkiStamp(db, now)+`,`+pkiStamp(db, now)+`,`+pkiStamp(db, now)+`)`)
 	}
-	cert(project+"_issued", "issued", now.Add(24*time.Hour))
-	cert(project+"_revoked", "revoked", now.Add(24*time.Hour))
+	future := now.Add(24 * time.Hour)
+	cert(project+"_issued", "issued", future)
+	cert(project+"_issuing", "issuing", future)
+	cert(project+"_renewed", "renewed", future)
+	cert(project+"_revoked", "revoked", future)
 	cert(project+"_expired", "expired", now.Add(-time.Hour))
-	cert(project+"_old_revoked", "revoked", now.Add(-time.Hour))
+	cert(project+"_failed", "failed", now.Add(-time.Hour))
+}
+
+func count(t *testing.T, db *store.DB, table string, f definitionsFixture) int64 {
+	t.Helper()
+	return queryInt(t, db, "SELECT COUNT(*) FROM "+table+" WHERE project_id='"+string(f.project)+"'")
 }
 
 func TestEnvironmentDeleteLiveLease(t *testing.T) { forEngines(t, runEnvironmentDeleteLiveLease) }
@@ -60,15 +70,18 @@ func runEnvironmentDeleteLiveLease(t *testing.T, db *store.DB) {
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	live := string(f.project) + "_live"
 
-	// Every non-terminal state refuses by name and keeps the environment.
+	// Every non-terminal state refuses by name and keeps the environment, the
+	// leases and their effects.
 	for _, state := range []string{"active", "minting", "renewing", "revoking", "unknown"} {
 		execRaw(t, db, `UPDATE dynamic_leases SET state='`+state+`' WHERE id='`+live+`'`)
 		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
 		if !errors.Is(err, service.ErrEnvironmentHasLiveLease) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), live) {
 			t.Fatalf("delete with a %s lease = %v (%q)", state, err, safeError(err))
 		}
-		if got := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE id='"+f.env+"'"); got != 1 {
-			t.Fatalf("environment rows after the %s refusal = %d", state, got)
+		for table, want := range map[string]int64{"environments": 1, "dynamic_leases": 4, "dynamic_effects": 4} {
+			if got := count(t, db, table, f); got != want {
+				t.Fatalf("%s rows after the %s refusal = %d, want %d", table, state, got, want)
+			}
 		}
 	}
 
@@ -78,48 +91,100 @@ func runEnvironmentDeleteLiveLease(t *testing.T, db *store.DB) {
 		t.Fatalf("delete with only terminal leases: %v", err)
 	}
 	for _, table := range []string{"dynamic_leases", "dynamic_effects", "environments"} {
-		if got := queryInt(t, db, "SELECT COUNT(*) FROM "+table+" WHERE project_id='"+string(f.project)+"'"); got != 0 {
+		if got := count(t, db, table, f); got != 0 {
 			t.Errorf("%s still has %d rows after the environment was deleted", table, got)
 		}
 	}
 }
 
-func TestEnvironmentDeleteLiveCertificate(t *testing.T) {
-	forEngines(t, runEnvironmentDeleteLiveCertificate)
+func TestEnvironmentDeleteCertificates(t *testing.T) {
+	forEngines(t, runEnvironmentDeleteCertificates)
 }
 
-func runEnvironmentDeleteLiveCertificate(t *testing.T, db *store.DB) {
+func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	f := seedDefinitionsProject(t, db, "cert", true)
 	now := time.Now().UTC().Truncate(time.Second)
 	seedCertificateRows(t, db, f, now)
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-
-	// An unexpired issued, unknown or revoked certificate refuses by name: a
-	// revoked serial must stay on its CRL until it expires.
 	project := string(f.project)
-	refused := func(label, id string) {
+	refused := func(want error, label, id string) {
 		t.Helper()
 		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
-		if !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
+		if !errors.Is(err, want) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
 			t.Fatalf("delete with %s = %v (%q)", label, err, safeError(err))
 		}
-	}
-	refused("an issued certificate", project+"_issued")
-	execRaw(t, db, `UPDATE pki_certificates SET state='unknown' WHERE id='`+project+`_issued'`)
-	refused("an unknown certificate", project+"_issued")
-	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_issued'`)
-	refused("an unexpired revoked certificate", project+"_revoked")
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE project_id='"+string(f.project)+"'"); got != 4 {
-		t.Fatalf("certificates after the refusals = %d", got)
+		if got := count(t, db, "pki_certificates", f); got != 6 {
+			t.Fatalf("certificates after the %s refusal = %d, want 6", label, got)
+		}
+		if got := count(t, db, "environments", f); got != 1 {
+			t.Fatalf("environments after the %s refusal = %d", label, got)
+		}
 	}
 
-	// Once the live ones expire or fail, every row is purged with the environment.
+	// Each live state refuses by name, one after the other as it lapses; a revoked
+	// certificate stays live until it expires because it keeps its CRL entry.
+	refused(service.ErrEnvironmentHasLiveCertificate, "an issued certificate", project+"_issued")
+	execRaw(t, db, `UPDATE pki_certificates SET state='unknown' WHERE id='`+project+`_issued'`)
+	refused(service.ErrEnvironmentHasLiveCertificate, "an unknown certificate", project+"_issued")
+	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_issued'`)
+	refused(service.ErrEnvironmentHasLiveCertificate, "an issuing certificate", project+"_issuing")
+	execRaw(t, db, `UPDATE pki_certificates SET state='failed' WHERE id='`+project+`_issuing'`)
+	refused(service.ErrEnvironmentHasLiveCertificate, "a renewed certificate", project+"_renewed")
+	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_renewed'`)
+	refused(service.ErrEnvironmentHasLiveCertificate, "an unexpired revoked certificate", project+"_revoked")
+
+	// Terminal history is retained, so it refuses under its own name instead of
+	// the raw foreign-key conflict, and nothing is purged.
 	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE id='`+project+`_revoked'`)
-	if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()); err != nil {
-		t.Fatalf("delete with only terminal certificates: %v", err)
+	refused(service.ErrEnvironmentHasCertificateHistory, "only certificate history", project+"_expired")
+}
+
+func TestEnvironmentDeleteAdapterTargets(t *testing.T) {
+	forEngines(t, runEnvironmentDeleteAdapterTargets)
+}
+
+func runEnvironmentDeleteAdapterTargets(t *testing.T, db *store.DB) {
+	f := seedDefinitionsProject(t, db, "adapter", true)
+	project := string(f.project)
+	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+	execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_`+project+`','org_a','`+project+`','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
+	execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
+
+	// A tombstoned target still refuses, by name.
+	err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+	if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), "tgt_"+project) {
+		t.Fatalf("delete with a tombstoned adapter target = %v (%q)", err, safeError(err))
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE project_id='"+string(f.project)+"'"); got != 0 {
-		t.Fatalf("%d certificates outlived the environment", got)
+	if got := count(t, db, "environments", f); got != 1 {
+		t.Fatalf("environments after the refusal = %d", got)
+	}
+}
+
+func TestProjectDeleteDynamicProviders(t *testing.T) {
+	forEngines(t, runProjectDeleteDynamicProviders)
+}
+
+func runProjectDeleteDynamicProviders(t *testing.T, db *store.DB) {
+	f := seedDefinitionsProject(t, db, "provider", false)
+	project := string(f.project)
+	projects := &service.Projects{DB: db}
+	execRaw(t, db, `INSERT INTO dynamic_providers (id,org_id,project_id,kind,origin,tls_mode,grant_role,authority_principal_id,state,created_at) VALUES ('dpr_`+project+`','org_a','`+project+`','postgres','postgres://`+project+`.example/db','verify-full','reader','usr_alice','active',`+ts+`)`)
+
+	err := projects.Delete(t.Context(), service.LocalPrincipal(alice), f.scope())
+	if !errors.Is(err, service.ErrProjectHasActiveProvider) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), "dpr_"+project) {
+		t.Fatalf("delete with an active provider = %v (%q)", err, safeError(err))
+	}
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE id='"+project+"'"); got != 1 {
+		t.Fatalf("projects after the refusal = %d", got)
+	}
+
+	// A tombstoned provider is purged with the project.
+	execRaw(t, db, `UPDATE dynamic_providers SET state='tombstoned' WHERE id='dpr_`+project+`'`)
+	if err := projects.Delete(t.Context(), service.LocalPrincipal(alice), f.scope()); err != nil {
+		t.Fatalf("delete with only a tombstoned provider: %v", err)
+	}
+	if got := count(t, db, "dynamic_providers", f); got != 0 {
+		t.Fatalf("%d providers outlived the project", got)
 	}
 }
 
@@ -146,23 +211,32 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 		return err
 	}
 
-	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasLiveLease) || !strings.Contains(safeError(err), "prj_def_liverows_live") {
+	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasLiveLease) || !strings.Contains(safeError(err), project+"_live") {
 		t.Fatalf("apply with a live lease = %v (%q)", err, safeError(err))
 	}
-	execRaw(t, db, `UPDATE dynamic_leases SET state='expired' WHERE id='prj_def_liverows_live'`)
-	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !strings.Contains(safeError(err), "prj_def_liverows_issued") {
+	execRaw(t, db, `UPDATE dynamic_leases SET state='expired' WHERE id='`+project+`_live'`)
+	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !strings.Contains(safeError(err), project+"_issued") {
 		t.Fatalf("apply with a live certificate = %v (%q)", err, safeError(err))
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE project_id='"+project+"'"); got != 1 {
+	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed')`)
+	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE state='revoked'`)
+	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasCertificateHistory) {
+		t.Fatalf("apply with certificate history = %v (%q)", err, safeError(err))
+	}
+	if got := count(t, db, "environments", f); got != 1 {
 		t.Fatalf("environments after the refusals = %d", got)
 	}
-	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='prj_def_liverows_issued'`)
-	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE id='prj_def_liverows_revoked'`)
-	if err := apply(); err != nil {
-		t.Fatalf("apply with only terminal rows: %v", err)
+	if got := count(t, db, "dynamic_leases", f); got != 4 {
+		t.Fatalf("leases after the refusals = %d, want 4", got)
 	}
-	for _, table := range []string{"dynamic_leases", "dynamic_effects", "pki_certificates", "environments"} {
-		if got := queryInt(t, db, "SELECT COUNT(*) FROM "+table+" WHERE project_id='"+project+"'"); got != 0 {
+
+	// With the retained history gone, terminal leases and effects are purged.
+	execRaw(t, db, `DELETE FROM pki_certificates WHERE project_id='`+project+`'`)
+	if err := apply(); err != nil {
+		t.Fatalf("apply with only terminal leases: %v", err)
+	}
+	for _, table := range []string{"dynamic_leases", "dynamic_effects", "environments"} {
+		if got := count(t, db, table, f); got != 0 {
 			t.Errorf("%s still has %d rows after the apply deleted the environment", table, got)
 		}
 	}

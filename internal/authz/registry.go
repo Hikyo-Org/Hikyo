@@ -1128,9 +1128,15 @@ const (
 	StorePKICertificatesCountLive       StoreOp = "pki.CountLiveCertificates"
 	StorePKICertificatesRevokeLive      StoreOp = "pki.RevokeLiveCertificates"
 	StorePKICertificatesRevokedEntries  StoreOp = "pki.RevokedEntries"
-	// StorePKICertificatesPurgeEnvironment removes a deleted environment's
-	// certificate rows, refusing while one is live (#1420).
-	StorePKICertificatesPurgeEnvironment StoreOp = "pki.PurgeEnvironment"
+	// StorePKICertificatesGuardEnvironmentDelete refuses an environment delete
+	// while it holds certificate rows (#1420); nothing is purged.
+	StorePKICertificatesGuardEnvironmentDelete StoreOp = "pki.GuardEnvironmentDelete"
+	// StoreAdaptersGuardEnvironmentDelete refuses an environment delete while it
+	// holds adapter targets (#1420).
+	StoreAdaptersGuardEnvironmentDelete StoreOp = "adapters.GuardEnvironmentDelete"
+	// StoreDynamicProvidersPurgeProject removes a deleted project's tombstoned
+	// providers, refusing while one is active (#1420).
+	StoreDynamicProvidersPurgeProject StoreOp = "dynamic.PurgeProjectProviders"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -2523,6 +2529,8 @@ var operationTable = map[Operation]opSpec{
 			// A project's dismissals are removed with it (#74, ADR section 4
 			// lifecycle).
 			StoreScanningDismissalsDeleteByProject: true,
+			// Tombstoned dynamic providers go with it; an active one refuses.
+			StoreDynamicProvidersPurgeProject: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventProjectDeleted},
 	},
@@ -2642,9 +2650,9 @@ var operationTable = map[Operation]opSpec{
 			StoreRotationsPurgeEnvironment: true,
 			// Terminal dynamic leases and expired certificates go with it (#1420);
 			// a live lease or certificate refuses the delete.
-			StoreDynamicLeasesPurgeEnvironment:   true,
-			StorePKICertificatesPurgeEnvironment: true,
-			StoreEnvironmentsDelete:              true, StoreAuditTenantInsert: true,
+			StoreDynamicLeasesPurgeEnvironment:         true,
+			StorePKICertificatesGuardEnvironmentDelete: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
@@ -2996,10 +3004,10 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreRotationsPurgeEnvironment:       true,
-			StoreDynamicLeasesPurgeEnvironment:   true,
-			StorePKICertificatesPurgeEnvironment: true,
-			StoreDefinitionsPlanGet:              true, StoreDefinitionsPlanApply: true,
+			StoreRotationsPurgeEnvironment:             true,
+			StoreDynamicLeasesPurgeEnvironment:         true,
+			StorePKICertificatesGuardEnvironmentDelete: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,

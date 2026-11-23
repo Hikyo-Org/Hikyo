@@ -82,3 +82,11 @@ DELETE FROM dynamic_effects WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc
 
 -- name: DynamicPurgeLeasesForEnvironment :exec
 DELETE FROM dynamic_leases WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+
+-- Project delete (#1420): an active provider refuses the delete; tombstoned ones
+-- (kept only for the worker's revoke path) go with the project.
+-- name: DynamicListActiveProviderIDsForProject :many
+SELECT id FROM dynamic_providers WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active' ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- name: DynamicPurgeTombstonedProvidersForProject :exec
+DELETE FROM dynamic_providers WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='tombstoned';

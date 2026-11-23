@@ -475,6 +475,41 @@ func (q *Queries) DynamicGetProvider(ctx context.Context, arg DynamicGetProvider
 	return i, err
 }
 
+const dynamicListActiveProviderIDsForProject = `-- name: DynamicListActiveProviderIDsForProject :many
+SELECT id FROM dynamic_providers WHERE org_id=?1 AND project_id=?2 AND state='active' ORDER BY id LIMIT ?3
+`
+
+type DynamicListActiveProviderIDsForProjectParams struct {
+	ChainOrg     string
+	ChainProject string
+	RowLimit     int64
+}
+
+// Project delete (#1420): an active provider refuses the delete; tombstoned ones
+// (kept only for the worker's revoke path) go with the project.
+func (q *Queries) DynamicListActiveProviderIDsForProject(ctx context.Context, arg DynamicListActiveProviderIDsForProjectParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, dynamicListActiveProviderIDsForProject, arg.ChainOrg, arg.ChainProject, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const dynamicListLeasesForEnvironment = `-- name: DynamicListLeasesForEnvironment :many
 SELECT id,provider_id,environment_id,principal_id,principal_class,provider_handle,state,issued_at,expires_at,max_ttl_seconds,last_transition_at,created_at FROM dynamic_leases WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 ORDER BY id
 `
@@ -832,6 +867,20 @@ type DynamicPurgeLeasesForEnvironmentParams struct {
 
 func (q *Queries) DynamicPurgeLeasesForEnvironment(ctx context.Context, arg DynamicPurgeLeasesForEnvironmentParams) error {
 	_, err := q.db.ExecContext(ctx, dynamicPurgeLeasesForEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const dynamicPurgeTombstonedProvidersForProject = `-- name: DynamicPurgeTombstonedProvidersForProject :exec
+DELETE FROM dynamic_providers WHERE org_id=?1 AND project_id=?2 AND state='tombstoned'
+`
+
+type DynamicPurgeTombstonedProvidersForProjectParams struct {
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) DynamicPurgeTombstonedProvidersForProject(ctx context.Context, arg DynamicPurgeTombstonedProvidersForProjectParams) error {
+	_, err := q.db.ExecContext(ctx, dynamicPurgeTombstonedProvidersForProject, arg.ChainOrg, arg.ChainProject)
 	return err
 }
 

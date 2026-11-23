@@ -196,6 +196,13 @@ orphaned names. Remove targets while the PAT still authenticates. If a dead or
 revoked credential prevents scrub, Hikyo completes local teardown but reports
 the remote names as orphaned.
 
+Removed targets are tombstoned, not deleted, and their delivery ledger is
+retained. Deleting an environment that has any adapter target, live or
+tombstoned, is therefore refused by name (`ErrEnvironmentHasAdapterTargets`,
+listing up to ten target ids). Whether and how adapter history becomes
+deletable is tracked in
+[#1525](https://github.com/Hikyo-Org/Hikyo/issues/1525).
+
 ## GitLab CI/CD variables
 
 The GitLab adapter writes project or group CI/CD variables on gitlab.com or a

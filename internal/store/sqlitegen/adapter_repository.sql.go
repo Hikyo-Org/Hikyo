@@ -1190,6 +1190,46 @@ func (q *Queries) AdapterList(ctx context.Context, arg AdapterListParams) ([]Ada
 	return items, nil
 }
 
+const adapterListEnvironmentTargetIDs = `-- name: AdapterListEnvironmentTargetIDs :many
+SELECT id FROM adapter_targets WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 ORDER BY id LIMIT ?4
+`
+
+type AdapterListEnvironmentTargetIDsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RowLimit     int64
+}
+
+// Environment delete (#1420): any target row, live or tombstoned, refuses the delete by name.
+func (q *Queries) AdapterListEnvironmentTargetIDs(ctx context.Context, arg AdapterListEnvironmentTargetIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, adapterListEnvironmentTargetIDs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adapterListForReencrypt = `-- name: AdapterListForReencrypt :many
 SELECT id,credential_ciphertext FROM adapters WHERE org_id=?1 AND project_id=?2 AND id>?3 ORDER BY id LIMIT ?4
 `

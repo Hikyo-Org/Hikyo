@@ -156,6 +156,10 @@ type DynamicRepo interface {
 	// *LiveRowsError (ErrDynamicLiveLease) while a lease is not revoked,
 	// expired or failed: its provider role would be orphaned.
 	PurgeEnvironment(ctx context.Context, p authz.Proof) error
+	// PurgeProjectProviders removes the proof's project's tombstoned providers
+	// as part of the project delete. It is a *LiveRowsError
+	// (ErrDynamicActiveProvider) while an active provider exists.
+	PurgeProjectProviders(ctx context.Context, p authz.Proof) error
 }
 
 type dynamicQueries struct {
@@ -446,4 +450,23 @@ func (r dynamicQueries) PurgeEnvironment(ctx context.Context, p authz.Proof) err
 		return newLiveRowsError(ErrDynamicLiveLease, ids)
 	}
 	return r.queries.dynamicPurgeEnvironment(ctx, chain)
+}
+
+// ErrDynamicActiveProvider refuses a project delete while an active dynamic
+// provider exists: delete it first, which queues its leases for revocation.
+var ErrDynamicActiveProvider = fmt.Errorf("%w: the project still has an active dynamic provider; delete it first", ErrConflict)
+
+func (r dynamicQueries) PurgeProjectProviders(ctx context.Context, p authz.Proof) error {
+	chain, err := authz.Verify(p, authz.StoreDynamicProvidersPurgeProject, r.tok)
+	if err != nil {
+		return err
+	}
+	ids, err := r.queries.dynamicListActiveProviderIDsForProject(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrDynamicActiveProvider, ids)
+	}
+	return r.queries.dynamicPurgeTombstonedProviders(ctx, chain)
 }

@@ -914,6 +914,45 @@ func (q *Queries) PKIListCertificates(ctx context.Context, arg PKIListCertificat
 	return items, nil
 }
 
+const pKIListEnvironmentCertificateIDs = `-- name: PKIListEnvironmentCertificateIDs :many
+SELECT id FROM pki_certificates WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 ORDER BY id LIMIT ?4
+`
+
+type PKIListEnvironmentCertificateIDsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RowLimit     int64
+}
+
+func (q *Queries) PKIListEnvironmentCertificateIDs(ctx context.Context, arg PKIListEnvironmentCertificateIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, pKIListEnvironmentCertificateIDs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pKIListIssuers = `-- name: PKIListIssuers :many
 SELECT id,name,version,kind,origin,COALESCE(parent_id,'') AS parent_id,state,key_algorithm,key_fingerprint,CAST(CASE WHEN encrypted_private_key IS NULL THEN 0 ELSE 1 END AS INTEGER) AS key_present,certificate_der,csr_der,chain_pem,subject_cn,subject_org,not_before,not_after,crl_distribution_url,restore_hold,issued_count,crl_der,crl_number,revocation_seq,crl_this_update,crl_next_update,row_version,created_by,created_at,updated_at FROM pki_issuers ORDER BY name,version
 `
@@ -1018,8 +1057,8 @@ type PKIListLiveEnvironmentCertificateIDsParams struct {
 }
 
 // Environment delete (#1420): a certificate is live on the same terms as
-// PKICountLiveCertificates (unexpired and not failed/expired); anything else is
-// purged with the environment.
+// PKICountLiveCertificates; any certificate row at all is retained history that
+// refuses the delete by name (#825 keeps issuance history).
 func (q *Queries) PKIListLiveEnvironmentCertificateIDs(ctx context.Context, arg PKIListLiveEnvironmentCertificateIDsParams) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, pKIListLiveEnvironmentCertificateIDs,
 		arg.ChainOrg,
@@ -1116,21 +1155,6 @@ func (q *Queries) PKIPublishCRL(ctx context.Context, arg PKIPublishCRLParams) (i
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const pKIPurgeEnvironmentCertificates = `-- name: PKIPurgeEnvironmentCertificates :exec
-DELETE FROM pki_certificates WHERE org_id=?1 AND project_id=?2 AND environment_id=?3
-`
-
-type PKIPurgeEnvironmentCertificatesParams struct {
-	ChainOrg     string
-	ChainProject string
-	ChainEnv     string
-}
-
-func (q *Queries) PKIPurgeEnvironmentCertificates(ctx context.Context, arg PKIPurgeEnvironmentCertificatesParams) error {
-	_, err := q.db.ExecContext(ctx, pKIPurgeEnvironmentCertificates, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
-	return err
 }
 
 const pKIReleaseRenewal = `-- name: PKIReleaseRenewal :execrows

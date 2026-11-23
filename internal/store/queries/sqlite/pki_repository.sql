@@ -172,10 +172,10 @@ UPDATE pki_certificates SET renewed_by=NULL,updated_at=sqlc.arg(at),row_version=
 UPDATE pki_certificates SET state='revoked',revoked_at=sqlc.arg(at),revocation_reason=sqlc.arg(reason),updated_at=sqlc.arg(at),row_version=row_version+1 WHERE id=sqlc.arg(id) AND state IN ('issued','renewed','unknown') AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
 
 -- Environment delete (#1420): a certificate is live on the same terms as
--- PKICountLiveCertificates (unexpired and not failed/expired); anything else is
--- purged with the environment.
+-- PKICountLiveCertificates; any certificate row at all is retained history that
+-- refuses the delete by name (#825 keeps issuance history).
 -- name: PKIListLiveEnvironmentCertificateIDs :many
 SELECT id FROM pki_certificates WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>sqlc.arg(now) ORDER BY id LIMIT sqlc.arg(row_limit);
 
--- name: PKIPurgeEnvironmentCertificates :exec
-DELETE FROM pki_certificates WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+-- name: PKIListEnvironmentCertificateIDs :many
+SELECT id FROM pki_certificates WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id LIMIT sqlc.arg(row_limit);

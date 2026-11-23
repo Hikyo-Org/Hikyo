@@ -31,7 +31,7 @@ type pkiStoreQueries interface {
 	pkiSetIssuerHold(ctx context.Context, id string, hold int64, rowVersion int64, at time.Time) (int64, error)
 	pkiCountLiveCertificates(ctx context.Context, issuerID string, now time.Time) (int64, error)
 	pkiListLiveEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, now time.Time, limit int) ([]string, error)
-	pkiPurgeEnvironmentCertificates(ctx context.Context, chain domain.Scope) error
+	pkiListEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
 	pkiRevokeLiveCertificates(ctx context.Context, issuerID, reason string, at time.Time) (int64, error)
 	pkiRevokedEntries(ctx context.Context, issuerID string, now time.Time) ([]PKIRevokedEntry, error)
 	pkiRevokedChildren(ctx context.Context, issuerID string, now time.Time) ([]pkiRevokedChild, error)
@@ -752,10 +752,14 @@ func (q pgPKIStoreQueries) pkiListLiveEnvironmentCertificateIDs(ctx context.Cont
 	return q.queries.PKIListLiveEnvironmentCertificateIDs(ctx, pggen.PKIListLiveEnvironmentCertificateIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: pgRequiredTime(now), RowLimit: rowLimit})
 }
 
-func (q sqlitePKIStoreQueries) pkiPurgeEnvironmentCertificates(ctx context.Context, chain domain.Scope) error {
-	return q.pkiWriteError(q.queries.PKIPurgeEnvironmentCertificates(ctx, sqlitegen.PKIPurgeEnvironmentCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)}))
+func (q sqlitePKIStoreQueries) pkiListEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	return q.queries.PKIListEnvironmentCertificateIDs(ctx, sqlitegen.PKIListEnvironmentCertificateIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: int64(limit)})
 }
 
-func (q pgPKIStoreQueries) pkiPurgeEnvironmentCertificates(ctx context.Context, chain domain.Scope) error {
-	return q.pkiWriteError(q.queries.PKIPurgeEnvironmentCertificates(ctx, pggen.PKIPurgeEnvironmentCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)}))
+func (q pgPKIStoreQueries) pkiListEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	rowLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	return q.queries.PKIListEnvironmentCertificateIDs(ctx, pggen.PKIListEnvironmentCertificateIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: rowLimit})
 }

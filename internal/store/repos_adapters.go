@@ -725,3 +725,27 @@ func revokeAdapterCredential(ctx context.Context, db adapterDB, chain domain.Sco
 	}
 	return AdapterCredentialResult{PreviousAuthorityPrincipalID: authority, AuthorityPrincipalID: authority, TargetCount: targetCount}, nil
 }
+
+// ErrAdapterTargetsInEnvironment refuses an environment delete while it has an
+// adapter target: targets are only tombstoned, and their delivery ledger is
+// retained, so the environment cannot be deleted until a retention decision
+// lands.
+var ErrAdapterTargetsInEnvironment = fmt.Errorf("%w: the environment still has adapter targets, which are retained", ErrConflict)
+
+func (r adapterQueries) GuardEnvironmentDelete(ctx context.Context, p authz.Proof) error {
+	chain, err := authz.Verify(p, authz.StoreAdaptersGuardEnvironmentDelete, r.tok)
+	if err != nil {
+		return err
+	}
+	if chain.Env == "" {
+		return ErrNotFound
+	}
+	ids, err := r.db.adapterStoreQueries().environmentTargetIDs(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrAdapterTargetsInEnvironment, ids)
+	}
+	return nil
+}

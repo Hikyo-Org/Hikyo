@@ -656,6 +656,9 @@ func (s *Projects) Delete(ctx context.Context, actor Actor, scope domain.Scope) 
 		if err := releaseProjectRules(ctx, r, az, p, caller.Principal, scope); err != nil {
 			return err
 		}
+		if err := purgeProjectProviders(ctx, r, p); err != nil {
+			return err
+		}
 		if err := r.Projects().Delete(ctx, p); err != nil {
 			return err
 		}

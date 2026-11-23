@@ -155,15 +155,19 @@ hikyo cert issue --token-file /run/secrets/hikyo-token --env prod --profile web 
 ## Retained issuance history
 
 Hikyo retains certificate issuance history, including expired certificates and
-failed issuance attempts; the audit log keeps the issuance and revocation events
-regardless.
+failed issuance attempts. Deleting an environment or service account with this
+history returns an explicit conflict; certificate expiry does not make the
+history eligible for automatic deletion.
 
-Deleting an environment is refused while any of its certificates is still live:
-issuing, issued, renewed or unknown, or revoked, and not yet past its expiry. A
-revoked certificate stays on its CRL until it expires, so its row is kept until
-then. The refusal names the live certificate ids (up to ten). Revoke the
-certificates and wait for them to expire, then delete the environment: the
-remaining issuance rows of that environment are removed with it.
+An environment delete names the reason: `ErrEnvironmentHasLiveCertificate` while
+a certificate is still live (issuing, issued, renewed, unknown, or revoked and
+not yet expired, which keeps its CRL entry), and
+`ErrEnvironmentHasCertificateHistory` once only terminal history remains. Both
+list up to ten certificate ids.
+
+To deprovision access, revoke the affected certificates and service-account
+credentials. These revocations preserve the issuance history and do not remove
+the deletion guard. There is no automatic purge of this history.
 
 ## Rotation and retirement
 

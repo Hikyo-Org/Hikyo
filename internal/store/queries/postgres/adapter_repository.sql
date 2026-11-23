@@ -220,3 +220,7 @@ UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL,credential
 
 -- name: AdapterRevokeCredentialBump :execrows
 UPDATE adapter_targets SET generation=generation+1,active_job_id=NULL WHERE adapter_id=sqlc.arg(adapter_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='active';
+
+-- Environment delete (#1420): any target row, live or tombstoned, refuses the delete by name.
+-- name: AdapterListEnvironmentTargetIDs :many
+SELECT id FROM adapter_targets WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id LIMIT sqlc.arg(row_limit);
