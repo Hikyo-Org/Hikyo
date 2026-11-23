@@ -473,6 +473,8 @@ func haltReasonSentence(reason string) string {
 		return "the retry window ran out before a run could publish or extend the credential"
 	case "authority_lost":
 		return "the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone"
+	case "incident_contained":
+		return "an incident opened on the recorded person halted it, and a release never resumes it"
 	case "gate_failed":
 		return "a pre-publish gate refused: the environment became protected, a key changed or a draft appeared"
 	case "unknown":
@@ -490,7 +492,7 @@ func haltReasonWord(reason *string) string {
 		word = *reason
 	}
 	switch word {
-	case "retries_exhausted", "authority_lost", "gate_failed", "unknown":
+	case "retries_exhausted", "authority_lost", "gate_failed", "incident_contained", "unknown":
 		return word
 	}
 	return strconv.Quote(word)

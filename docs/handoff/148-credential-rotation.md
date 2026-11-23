@@ -82,9 +82,9 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   recommended (see "Owner decisions on S2b-2")
 - [x] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, key-aware
   pause, resume, delete and run-now (see "S2b-2 as built")
-- [ ] S2b-2 incident ledger enumeration of rotations: owner chose B (account scope only),
-  built in a follow-up branch from dev after this PR merges, not in this PR; containment itself
-  already halts the rotation
+- [x] S2b-2 incident ledger enumeration of rotations: owner chose B (account scope only),
+  built in #1039 slice 3 / #1471 (halt word `incident_contained`, org scope inherits through
+  the selected accounts, paused rotations halted too, independent of `account.contain`)
 - [x] S2b-2 run-level `published_versions_changed` hold release: option A (status only, as
   built), accepted as recommended
 - [x] S3 SPA status surface (merged); parity flip of the mutating rows to #1440 and the

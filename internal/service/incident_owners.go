@@ -31,7 +31,7 @@ import (
 
 // ErrIncidentLastManager refuses a containment that would leave an org without
 // an uncontained manage-members holder (ADR O3: refuse, no override).
-var ErrIncidentLastManager = errors.New("incident: assign another manage-members holder before containing this principal")
+var ErrIncidentLastManager = fmt.Errorf("%w: assign another manage-members holder before containing this principal", domain.ErrConflict)
 
 // ErrIncidentSelfContainment refuses containing the operator's own account: the
 // person acting is the one account that must stay reachable to finish the work.
@@ -196,10 +196,18 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	default:
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
+	// Pending owner confirmation (incident-containment ADR, amendment): an
+	// operator never contains their own account.
 	if target == w.caller.Principal {
 		return OwnerUnconfirmed, ErrIncidentSelfContainment
 	}
-	if err := w.az.LockTargetPrincipal(ctx, target); err != nil {
+	grants, err := w.az.GrantsForResetTarget(ctx, target)
+	if err != nil {
+		return OwnerUnconfirmed, err
+	}
+	// The target and the managers of every org it manages are locked in one sorted
+	// pass, so two concurrent containments of the last two managers cannot deadlock.
+	if err := lockTargetAndManagers(ctx, w.az, target, grants); err != nil {
 		return OwnerUnconfirmed, err
 	}
 	if _, contained, err := w.az.PrincipalContainedAt(ctx, target); err != nil {
@@ -210,7 +218,7 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	if _, err := w.az.AccountByPrincipal(ctx, target); err != nil {
 		return OwnerUnconfirmed, err
 	}
-	grants, err := w.az.GrantsForResetTarget(ctx, target)
+	grants, err = w.az.GrantsForResetTarget(ctx, target)
 	if err != nil {
 		return OwnerUnconfirmed, err
 	}
@@ -233,8 +241,10 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	if _, err := authorizeIncidentOp(ctx, w.az, w.caller, owning); err != nil {
 		return OwnerUnconfirmed, err
 	}
-	if err := lastManagerCheck(ctx, w.az, target, grants); err != nil {
+	if ok, err := hasAlternativeManager(ctx, w.az, target, grants); err != nil {
 		return OwnerUnconfirmed, err
+	} else if !ok {
+		return OwnerUnconfirmed, ErrIncidentLastManager
 	}
 	if err := w.az.ContainPrincipal(ctx, target, w.now, w.inc.ID); err != nil {
 		return OwnerUnconfirmed, err
@@ -255,40 +265,6 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	}
 	_, contained, err := w.az.PrincipalContainedAt(ctx, target)
 	return confirm(contained), err
-}
-
-// lastManagerCheck refuses containing the only uncontained manage-members holder
-// of an org the target manages (ADR O3). It takes the same census as privacy
-// restriction, in which a contained or restricted principal is not a holder, and
-// locks every holder in sorted order before it counts, so two concurrent
-// containments of the last two managers cannot both pass.
-func lastManagerCheck(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID, grants []domain.Grant) error {
-	seen := map[string]bool{}
-	for _, g := range grants {
-		if g.Capability != domain.CapManageMembers || g.Scope.Project != "" || seen[string(g.Scope.Org)] {
-			continue
-		}
-		org := string(g.Scope.Org)
-		seen[org] = true
-		holders, err := az.ManageMembersHolders(ctx, org)
-		if err != nil {
-			return err
-		}
-		slices.Sort(holders)
-		for _, h := range holders {
-			if err := az.LockTargetPrincipal(ctx, h); err != nil {
-				return err
-			}
-		}
-		holders, err = az.ManageMembersHolders(ctx, org)
-		if err != nil {
-			return err
-		}
-		if !slices.ContainsFunc(holders, func(p domain.PrincipalID) bool { return p != target }) {
-			return ErrIncidentLastManager
-		}
-	}
-	return nil
 }
 
 // ---- session.revoke and developer_credential.revoke ------------------------
@@ -327,29 +303,13 @@ func (o *incidentOwners) developerRevoke(ctx context.Context, actor Actor, item 
 			}
 			proof = p
 		}
-		rows, err := w.az.ListDeveloperCredentials(ctx)
-		if err != nil {
-			return OwnerUnconfirmed, err
+		// An account incident revokes only the person's own delegations, so a ledger
+		// row cannot name another person's; an org incident has no single authority.
+		authority := domain.PrincipalID("")
+		if w.inc.ScopeKind == domain.IncidentScopeAccount {
+			authority = domain.PrincipalID(w.inc.ScopeID)
 		}
-		var cred *authz.DeveloperCredential
-		for i := range rows {
-			if rows[i].ID == item.ObjectID {
-				cred = &rows[i]
-			}
-		}
-		if cred == nil {
-			// A delegation that no longer exists holds no authority.
-			return OwnerConfirmed, nil
-		}
-		// The delegation must be the one the ledger recorded: its scope matches the
-		// item's, and an account incident's is the contained person's own.
-		if cred.Scope.Org != w.scope.Org || cred.Scope.Project != w.scope.Project {
-			return OwnerUnconfirmed, domain.ErrNotFound
-		}
-		if w.inc.ScopeKind == domain.IncidentScopeAccount && cred.AuthorityPrincipal != domain.PrincipalID(w.inc.ScopeID) {
-			return OwnerUnconfirmed, domain.ErrNotFound
-		}
-		revoked, err := w.az.RevokeDeveloperCredentials(ctx, "", cred.Scope, cred.ID, w.now)
+		revoked, err := w.az.RevokeDeveloperCredentials(ctx, authority, w.scope, item.ObjectID, w.now)
 		if err != nil {
 			return OwnerUnconfirmed, err
 		}
@@ -367,33 +327,54 @@ func (o *incidentOwners) developerRevoke(ctx context.Context, actor Actor, item 
 				return OwnerUnconfirmed, err
 			}
 		}
-		after, err := w.az.ListDeveloperCredentials(ctx)
+		// Confirm from the scoped live listing: a delegation absent from it holds no
+		// authority, whether this call revoked it or it was already gone.
+		live, err := developerCredentialLive(ctx, w.az, w.scope.Org, authority, item.ObjectID, w.now)
+		return confirm(err == nil && !live), err
+	})
+}
+
+// developerCredentialLive reports whether a live delegation of the org (and, when
+// given, authority) has the id, reading the org's live delegations in pages.
+func developerCredentialLive(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (bool, error) {
+	after := ""
+	for page := 0; page < maxScanPages; page++ {
+		rows, err := az.LiveDeveloperCredentialsInOrg(ctx, org, authority, after, authz.MaxIncidentPage, now)
 		if err != nil {
-			return OwnerUnconfirmed, err
+			return false, err
 		}
-		for _, c := range after {
-			if c.ID == item.ObjectID {
-				return confirm(!c.RevokedAt.IsZero()), nil
+		for _, c := range rows {
+			if c.ID == id {
+				return true, nil
 			}
 		}
-		return OwnerConfirmed, nil
-	})
+		if len(rows) < authz.MaxIncidentPage {
+			return false, nil
+		}
+		after = rows[len(rows)-1].ID
+	}
+	return false, fmt.Errorf("%w: delegation listing exceeds its scan bound", domain.ErrConflict)
 }
 
 // ---- rotation.halt (#1471) -------------------------------------------------
 
 // rotationHalt halts a scheduled rotation whose recorded authority principal is
-// the contained account. It stops further scheduling with the fixed reason
-// authority_lost, the word the executor already uses when the recorded person no
-// longer holds the access the rotation needs. It never resumes: a release of the
-// principal leaves the rotation halted, and the resume stays an explicit operator
-// act with the rotation's own authorization. A run already past its gate or a
-// revoke in flight finishes under the executor's own fence (the generation bump
-// stales it); the credential already delivered keeps its expiry. Whatever the
-// rotation's state, the item is confirmed only when the rotation is no longer
-// active.
+// the account an incident selects (the incident's own account, or a member the org
+// incident selects). It uses the fixed reason incident_contained, so a halt by an
+// incident is never read as the executor's authority_lost. It halts an active or
+// a paused rotation and does not depend on the account.contain item: items are
+// independent owners that each read their own state (ADR, Concurrency and
+// fencing). It never resumes: a release of the principal leaves the rotation
+// halted, and the resume stays an explicit operator act with the rotation's own
+// authorization. A run already past its gate or a revoke in flight finishes under
+// the executor's own fence (the generation bump stales it); the credential
+// already delivered keeps its expiry. The item is confirmed only when the rotation
+// is halted or gone; a rotation a restore holds stays open.
 func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
 	return o.inTx(ctx, actor, item, domain.ObjectKindRotation, func(w ownerRun) (IncidentOwnerResult, error) {
+		if w.inc.ScopeKind != domain.IncidentScopeAccount && w.inc.ScopeKind != domain.IncidentScopeOrg {
+			return OwnerUnconfirmed, domain.ErrInvalid
+		}
 		if w.scope.Env == "" {
 			return OwnerUnconfirmed, domain.ErrInvalid
 		}
@@ -409,18 +390,29 @@ func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item aut
 		if err != nil {
 			return OwnerUnconfirmed, err
 		}
-		// The recorded authority is the incident's account: a ledger row for a
-		// rotation of anyone else is not this incident's to halt.
-		if w.inc.ScopeKind == domain.IncidentScopeAccount && cur.AuthorityPrincipalID != w.inc.ScopeID {
-			return OwnerUnconfirmed, domain.ErrNotFound
+		// The recorded authority must be an account this incident selects: the
+		// incident's own, or a member of the org the incident was opened on.
+		authority := domain.PrincipalID(cur.AuthorityPrincipalID)
+		if w.inc.ScopeKind == domain.IncidentScopeAccount {
+			if string(authority) != w.inc.ScopeID {
+				return OwnerUnconfirmed, domain.ErrNotFound
+			}
+		} else {
+			footprint, err := w.az.PrincipalFootprintOrgs(ctx, authority)
+			if err != nil {
+				return OwnerUnconfirmed, err
+			}
+			if !slices.Contains(footprint, w.inc.OrgID) {
+				return OwnerUnconfirmed, domain.ErrNotFound
+			}
 		}
-		halted, err := w.r.Rotations().HaltForIncident(ctx, proof, cur.ID, rotHaltAuthority, w.now)
+		halted, err := w.r.Rotations().HaltForIncident(ctx, proof, cur.ID, rotHaltIncident, w.now)
 		if err != nil {
 			return OwnerUnconfirmed, err
 		}
 		if halted {
 			cur.State, cur.Generation = store.RotationStateHalted, cur.Generation+1
-			if err := insertRotationConfigured(ctx, w.r, proof, w.caller.Principal, rotationActionHalted, rotHaltAuthority, cur); err != nil {
+			if err := insertRotationConfigured(ctx, w.r, proof, w.caller.Principal, rotationActionHalted, rotHaltIncident, cur); err != nil {
 				return OwnerUnconfirmed, err
 			}
 			return OwnerConfirmed, nil
@@ -429,9 +421,6 @@ func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item aut
 		if err != nil {
 			return OwnerUnconfirmed, err
 		}
-		// Paused, halted or deleted already: nothing will start. A restore hold on
-		// an active rotation also starts nothing, but it is not a stop the
-		// operator chose, so it stays open.
-		return confirm(now.State != store.RotationStateActive), nil
+		return confirm(now.State == store.RotationStateHalted || now.State == store.RotationStateDisabled), nil
 	})
 }

@@ -262,6 +262,9 @@ For a confirmed compromise, revoke exposed authority promptly even if that inter
 service. For planned rotation, mint the replacement, deploy and test all consumers, then
 revoke the predecessor. Scheduled provider rotation belongs to
 [#148](https://github.com/Hikyo-Org/Hikyo/issues/148); this runbook is manual.
+Once the ledger ships, an incident on an account (or on an org that selects it) lists the
+account's scheduled rotations and halts each with `incident_contained`. A release never
+resumes them: resume each one yourself after the replacement credentials are in place.
 
 ## 6. Consumer adoption
 

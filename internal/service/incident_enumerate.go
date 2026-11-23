@@ -220,32 +220,47 @@ func pageDeveloperCredentials(ctx context.Context, az *authz.TxAuthorizer, org d
 	return true, nil
 }
 
-// pageRotationsByAuthority lists the live scheduled rotations whose recorded
-// authority principal is the target (#1471). An org-bounded incident reads its
-// own org; an incident that spans orgs needs, and has, instance scope. Org and
-// project incidents list none here: they ride on the accounts they select. Each
-// is halted under the credential-reset the incident was opened with, so the
-// opener holds the owner's capability by construction.
-func pageRotationsByAuthority(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, target domain.PrincipalID, c *collector) error {
-	read := r.Rotations().ListByAuthorityInInstance
-	op, scope := authz.OpIncidentRotationsInstance, domain.Scope{}
+// rotationLister reads the live scheduled rotations whose recorded authority
+// principal is a given account (#1471). An org-bounded incident reads its own org;
+// an incident that spans orgs needs, and has, instance scope. An account incident
+// whose footprint is one org lists only that org's rotations: a rotation in an org
+// the account no longer belongs to has lost its recorded authority and halts by
+// effect at its next gate (the executor reads the grants, which a contained
+// principal does not load). Each is halted under the credential-reset the incident
+// was opened with, so the opener holds the owner's capability by construction.
+type rotationLister struct {
+	read  func(context.Context, authz.Proof, domain.PrincipalID, string, int) ([]store.RotationAuthorityRef, error)
+	proof authz.Proof
+	scope domain.Scope
+}
+
+func newRotationLister(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess) (rotationLister, error) {
+	l := rotationLister{read: r.Rotations().ListByAuthorityInInstance, scope: domain.Scope{}}
+	op := authz.OpIncidentRotationsInstance
 	if a.org != "" {
-		read = r.Rotations().ListByAuthorityInOrg
-		op, scope = authz.OpIncidentRotationsOrg, domain.Scope{Org: a.org}
+		l.read, l.scope, op = r.Rotations().ListByAuthorityInOrg, domain.Scope{Org: a.org}, authz.OpIncidentRotationsOrg
 	}
-	proof, err := az.Authorize(ctx, a.caller, op, scope)
-	if err != nil {
-		return err
-	}
+	proof, err := az.Authorize(ctx, a.caller, op, l.scope)
+	l.proof = proof
+	return l, err
+}
+
+// page adds the target's rotations as ledger items, spending one lookup per page
+// read from the budget and marking the source truncated when it runs out.
+func (l rotationLister) page(ctx context.Context, a incidentAccess, target domain.PrincipalID, c *collector) error {
 	after, seen := "", 0
 	for {
-		rows, err := read(ctx, proof, target, after, authz.MaxIncidentPage)
+		if !c.spend(1) {
+			c.truncated(domain.OwnerRotationHalt, string(target), l.scope)
+			return nil
+		}
+		rows, err := l.read(ctx, l.proof, target, after, authz.MaxIncidentPage)
 		if err != nil {
 			return err
 		}
 		for _, x := range rows {
 			if seen >= maxSourceItems {
-				c.truncated(domain.OwnerRotationHalt, a.scopeID, scope)
+				c.truncated(domain.OwnerRotationHalt, string(target), l.scope)
 				return nil
 			}
 			seen++
@@ -267,10 +282,13 @@ func (s *Incidents) collect(ctx context.Context, r store.Repos, az *authz.TxAuth
 	switch a.kind {
 	case domain.IncidentScopeAccount:
 		if err = s.collectAccount(ctx, az, a, now, c); err == nil {
-			err = pageRotationsByAuthority(ctx, r, az, a, domain.PrincipalID(a.scopeID), c)
+			var l rotationLister
+			if l, err = newRotationLister(ctx, r, az, a); err == nil {
+				err = l.page(ctx, a, domain.PrincipalID(a.scopeID), c)
+			}
 		}
 	case domain.IncidentScopeOrg:
-		err = s.collectOrg(ctx, az, a, now, c)
+		err = s.collectOrg(ctx, r, az, a, now, c)
 	case domain.IncidentScopeProject:
 		err = s.collectProject(ctx, r, az, a, now, c)
 	case domain.IncidentScopeAdapter:
@@ -464,7 +482,7 @@ func (s *Incidents) memberCanContain(ctx context.Context, az *authz.TxAuthorizer
 	return c.holds(ctx, az, caller, authz.OpIncidentInstance, domain.Scope{})
 }
 
-func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
+func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
 	scope := a.scope
 
 	// The members come from the org's footprint: every principal with a grant or
@@ -492,6 +510,10 @@ func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a in
 	for _, l := range ruleLines {
 		candidates = append(candidates, l.Principal)
 	}
+	rotations, err := newRotationLister(ctx, r, az, a)
+	if err != nil {
+		return err
+	}
 	members, listed := map[domain.PrincipalID]bool{}, 0
 	for _, p := range candidates {
 		if members[p] {
@@ -515,6 +537,10 @@ func (s *Incidents) collectOrg(ctx context.Context, az *authz.TxAuthorizer, a in
 		}
 		listed++
 		c.add(domain.OwnerAccountContain, domain.ObjectKindAccount, string(p), scope, ok)
+		// Org scope inherits through the accounts it selects (#1471, option B).
+		if err := rotations.page(ctx, a, p, c); err != nil {
+			return err
+		}
 	}
 
 	stopped, err := pageDeveloperCredentials(ctx, az, a.org, "", now,

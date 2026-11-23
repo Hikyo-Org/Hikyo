@@ -67,6 +67,10 @@ UPDATE rotations SET manual_run_id=NULL,manual_skip_overlap=0 WHERE id=sqlc.arg(
 SELECT COUNT(DISTINCT t.id) FROM adapter_targets t JOIN adapter_target_keys k ON k.target_id=t.id AND k.org_id=t.org_id AND k.project_id=t.project_id AND k.environment_id=t.environment_id
  WHERE t.org_id=sqlc.arg(chain_org) AND t.project_id=sqlc.arg(chain_project) AND t.environment_id=sqlc.arg(chain_env) AND t.state<>'tombstoned' AND k.key_id IN (sqlc.arg(key_id),sqlc.arg(username_key_id)) AND (t.converged_revision IS NULL OR t.converged_revision<sqlc.arg(revision));
 
+-- Incident containment halts a paused rotation too: nothing may resume it unseen.
+-- name: RotationRtHaltForIncident :execrows
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'halted' AND state<>'disabled' AND restore_hold=0;
+
 -- name: RotationRtHaltRotation :execrows
 UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=sqlc.arg(halt_reason),next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=sqlc.arg(now) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='active' AND restore_hold=0;
 

@@ -150,6 +150,7 @@ moves to `halted` with a named reason, a fixed word the API returns as `halt_rea
 - `retries_exhausted`: the retry window ran out before a run could publish or extend the credential.
 - `authority_lost`: the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone.
 - `gate_failed`: a pre-publish gate refused: the environment became protected, a key changed or a draft appeared.
+- `incident_contained`: an incident opened on the recorded person halted it, and a release never resumes it.
 - `unknown`: the server halted the rotation without a reason it can name (a halt recorded before the reason was kept, for one).
 
 A halted rotation does not extend the delivered credential. `hikyo rotation show` and
@@ -441,9 +442,10 @@ has no hold column; its active rotations come back paused instead, and you resum
 them by hand (that pause advances the rotation's generation, unlike a hold). Its
 paused and halted rotations come back exactly as they were, **not held**, because
 there is nothing to hold them with; check them before you resume one. A contained
-authority principal is not a restore hold: its rotation halts at the next start
-because a contained principal loads no grants, and releasing the principal does not
-resume it.
+authority principal is not a restore hold: an incident opened on the account (or on
+an org that selects it) lists its rotations and halts each one with
+`incident_contained`, active or paused, and releasing the principal does not
+resume them. You resume a halted rotation yourself.
 
 ## Monitoring
 

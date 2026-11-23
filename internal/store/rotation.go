@@ -249,11 +249,10 @@ type RotationRepo interface {
 	// ErrConflict when the rotation is not held (or is gone). The generation is
 	// not bumped, so a run in flight is not invalidated.
 	ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error
-	// HaltForIncident halts one active rotation with a named reason, bumping its
-	// generation so a run past its gate settles against a stale fence. It reports
-	// false, with no error, when the rotation is not active (already paused,
-	// halted, deleted or held by a restore): the incident ledger then reads its
-	// state. A rotation outside the proof's environment is ErrNotFound.
+	// HaltForIncident halts one active or paused rotation with a named reason,
+	// bumping its generation so a run past its gate settles against a stale fence.
+	// It reports false, with no error, when the rotation is already halted or
+	// deleted, or held by a restore: the incident ledger then reads its state. A rotation outside the proof's environment is ErrNotFound.
 	HaltForIncident(ctx context.Context, p authz.Proof, rotationID, reason string, at time.Time) (bool, error)
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider
@@ -861,12 +860,12 @@ func (q pgRotationQueries) setState(ctx context.Context, chain domain.Scope, m R
 }
 
 func (q sqliteRotationQueries) halt(ctx context.Context, chain domain.Scope, rotationID, reason string, at time.Time) (int64, error) {
-	n, err := q.q.RotationRtHaltRotation(ctx, sqlitegen.RotationRtHaltRotationParams{HaltReason: sqlText(reason), Now: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	n, err := q.q.RotationRtHaltForIncident(ctx, sqlitegen.RotationRtHaltForIncidentParams{HaltReason: sqlText(reason), Now: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 	return n, constraint(err)
 }
 
 func (q pgRotationQueries) halt(ctx context.Context, chain domain.Scope, rotationID, reason string, at time.Time) (int64, error) {
-	n, err := q.q.RotationRtHaltRotation(ctx, pggen.RotationRtHaltRotationParams{HaltReason: pgText(reason), Now: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	n, err := q.q.RotationRtHaltForIncident(ctx, pggen.RotationRtHaltForIncidentParams{HaltReason: pgText(reason), Now: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
 	return n, constraint(err)
 }
 

@@ -18,17 +18,22 @@ import (
 // object may already be gone, which is the target state.
 
 // tenantScope parses an item's scope, authorizes the incident again and rejects
-// an item outside the incident's org.
-func (o *incidentOwners) tenantScope(ctx context.Context, actor Actor, item authz.IncidentItem, kind string) (domain.Scope, error) {
+// an item outside the incident's org. It also probes the owner's own capability,
+// so an operator without it gets blocked whatever way the owner's service words
+// its refusal. The owner services open their own transactions and cannot join
+// this one: the incident binding is checked here, the owner's authorization again
+// inside the service, and a ledger row that moved or closed meanwhile is stale at
+// the ledger's transition.
+func (o *incidentOwners) tenantScope(ctx context.Context, actor Actor, item authz.IncidentItem, kind string, op authz.Operation) (scope domain.Scope, blocked bool, err error) {
 	if item.ObjectKind != kind {
-		return domain.Scope{}, domain.ErrInvalid
+		return domain.Scope{}, false, domain.ErrInvalid
 	}
-	scope, err := parseIncidentScope(item.Scope)
+	scope, err = parseIncidentScope(item.Scope)
 	if err != nil {
-		return domain.Scope{}, err
+		return domain.Scope{}, false, err
 	}
 	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		_, inc, err := o.s.incidentByID(ctx, az, actor, item.IncidentID, o.s.now())
+		caller, inc, err := o.s.incidentByID(ctx, az, actor, item.IncidentID, o.s.now())
 		if err != nil {
 			return err
 		}
@@ -38,9 +43,11 @@ func (o *incidentOwners) tenantScope(ctx context.Context, actor Actor, item auth
 		if inc.OrgID != "" && scope.Org != inc.OrgID {
 			return domain.ErrNotFound
 		}
-		return nil
+		holds, err := az.CallerHolds(ctx, caller, op, scope)
+		blocked = err == nil && !holds
+		return err
 	})
-	return scope, err
+	return scope, blocked, err
 }
 
 // ownerRefused maps an owner service's refusal for want of its capability to a
@@ -55,9 +62,12 @@ func ownerRefused(err error) (IncidentOwnerResult, bool) {
 // machineCredentialRevoke revokes one service-account credential. The item names
 // the credential; the service account is found by reading the project's.
 func (o *incidentOwners) machineCredentialRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
-	scope, err := o.tenantScope(ctx, actor, item, domain.ObjectKindMachineCredential)
+	scope, blocked, err := o.tenantScope(ctx, actor, item, domain.ObjectKindMachineCredential, authz.OpCredentialRevoke)
 	if err != nil {
 		return OwnerUnconfirmed, err
+	}
+	if blocked {
+		return OwnerBlocked, nil
 	}
 	if scope.Project == "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
@@ -115,9 +125,12 @@ func (o *incidentOwners) machineCredentialState(ctx context.Context, scope domai
 
 // invitationRevoke deletes one pending email invitation of the org.
 func (o *incidentOwners) invitationRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
-	scope, err := o.tenantScope(ctx, actor, item, domain.ObjectKindEmailInvitation)
+	scope, blocked, err := o.tenantScope(ctx, actor, item, domain.ObjectKindEmailInvitation, authz.OpEmailInvitationRevoke)
 	if err != nil {
 		return OwnerUnconfirmed, err
+	}
+	if blocked {
+		return OwnerBlocked, nil
 	}
 	if scope.Org == "" || scope.Project != "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
@@ -144,9 +157,12 @@ func (o *incidentOwners) invitationRevoke(ctx context.Context, actor Actor, item
 // scimCredentialRevoke revokes one SCIM bearer credential. The binding is found
 // through the org's own listings, in the acting operator's name.
 func (o *incidentOwners) scimCredentialRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
-	scope, err := o.tenantScope(ctx, actor, item, domain.ObjectKindSCIMCredential)
+	scope, blocked, err := o.tenantScope(ctx, actor, item, domain.ObjectKindSCIMCredential, authz.OpSCIMCredentialRevoke)
 	if err != nil {
 		return OwnerUnconfirmed, err
+	}
+	if blocked {
+		return OwnerBlocked, nil
 	}
 	if scope.Org == "" || scope.Project != "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
@@ -197,14 +213,21 @@ func (o *incidentOwners) scimCredentialState(ctx context.Context, actor Actor, o
 // item is confirmed only when the lease itself reads revoked (or expired), and
 // stays open, pending or unknown, until then.
 func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
-	scope, err := o.tenantScope(ctx, actor, item, domain.ObjectKindLease)
+	scope, blocked, err := o.tenantScope(ctx, actor, item, domain.ObjectKindLease, authz.OpLeaseRevoke)
 	if err != nil {
 		return OwnerUnconfirmed, err
+	}
+	if blocked {
+		return OwnerBlocked, nil
 	}
 	if scope.Env == "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
 	state, err := o.leaseState(ctx, actor, scope, item.ObjectID)
+	if errors.Is(err, domain.ErrNotFound) {
+		// A lease that no longer exists holds no role.
+		return OwnerConfirmed, nil
+	}
 	if err != nil {
 		if res, ok := ownerRefused(err); ok {
 			return res, nil
@@ -241,14 +264,21 @@ func (o *incidentOwners) leaseState(ctx context.Context, actor Actor, scope doma
 // targetPause pauses one adapter target. The pause is reversible by the target's
 // own resume and touches no ledger, so it is the containment form for an adapter.
 func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
-	scope, err := o.tenantScope(ctx, actor, item, domain.ObjectKindAdapterTarget)
+	scope, blocked, err := o.tenantScope(ctx, actor, item, domain.ObjectKindAdapterTarget, authz.OpAdapterConfigure)
 	if err != nil {
 		return OwnerUnconfirmed, err
+	}
+	if blocked {
+		return OwnerBlocked, nil
 	}
 	if scope.Project == "" || scope.Env != "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
 	t, err := o.svc.Adapters.PauseTarget(ctx, actor, scope, item.ObjectID)
+	if errors.Is(err, domain.ErrNotFound) {
+		// A target that no longer exists runs nothing.
+		return OwnerConfirmed, nil
+	}
 	if err != nil {
 		if res, ok := ownerRefused(err); ok {
 			return res, nil
