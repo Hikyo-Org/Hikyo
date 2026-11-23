@@ -880,6 +880,9 @@ func (q sqliteRotationQueries) listByAuthorityInOrg(ctx context.Context, chain d
 }
 
 func (q pgRotationQueries) listByAuthorityInOrg(ctx context.Context, chain domain.Scope, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
 	rows, err := q.q.RotationListByAuthorityInOrg(ctx, pggen.RotationListByAuthorityInOrgParams{ChainOrg: string(chain.Org), AuthorityPrincipalID: string(authority), AfterID: afterID, RowLimit: int32(limit)})
 	if err != nil {
 		return nil, err
@@ -900,6 +903,9 @@ func (q sqliteRotationQueries) listByAuthorityInInstance(ctx context.Context, au
 }
 
 func (q pgRotationQueries) listByAuthorityInInstance(ctx context.Context, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
 	rows, err := q.q.RotationListByAuthorityInInstance(ctx, pggen.RotationListByAuthorityInInstanceParams{AuthorityPrincipalID: string(authority), AfterID: afterID, RowLimit: int32(limit)})
 	if err != nil {
 		return nil, err
