@@ -132,17 +132,23 @@ export function Dialog({
   const refusedClose = useRef<{ readonly focus: Element | null } | null>(null);
   const holdRefusedCancel = (event: SyntheticEvent<HTMLDialogElement>) => {
     const focus = document.activeElement;
+    const element = event.currentTarget;
     try {
       onCancel?.(event);
     } finally {
-      refusedClose.current =
-        event.isDefaultPrevented() && !event.nativeEvent.cancelable ? { focus } : null;
+      const refused = event.isDefaultPrevented() && !event.nativeEvent.cancelable;
+      refusedClose.current = refused ? { focus } : null;
+      // Between the platform's close and the reopen below the dialog is not
+      // `[open]`: this marker keeps a surface behind it (SidePanel) from
+      // reading the next Escape as its own.
+      element.toggleAttribute('data-reopening', refused);
     }
   };
   const reopenRefusedClose = (event: SyntheticEvent<HTMLDialogElement>) => {
     const refused = refusedClose.current;
     refusedClose.current = null;
     const element = event.currentTarget;
+    element.removeAttribute('data-reopening');
     if (refused === null || !element.isConnected) return;
     element.showModal();
     if (refused.focus instanceof HTMLElement && element.contains(refused.focus)) refused.focus.focus();
