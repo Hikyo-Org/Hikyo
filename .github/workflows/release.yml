@@ -76,6 +76,7 @@ jobs:
       image: ${{ steps.identity.outputs.image }}
       compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
       non_darwin_sha256: ${{ steps.input-digests.outputs.non_darwin_sha256 }}
+      channel: ${{ steps.identity.outputs.channel }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -132,6 +133,7 @@ jobs:
             ./scripts/release/probe-tag-move.sh "$REPOSITORY" v-ruleset-probe "$TAG_SHA"
           image=$(printf 'ghcr.io/%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
           printf 'image=%s\n' "$image" >>"$GITHUB_OUTPUT"
+          printf 'channel=%s\n' "$(./scripts/release/release-channel.sh "$TAG")" >>"$GITHUB_OUTPUT"
 
       - name: Verify production trust bootstrap
         id: candidate
@@ -218,6 +220,9 @@ jobs:
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         env:
+          # The desktop tag shares this commit once published; never let
+          # GoReleaser pick a tag by commit.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           HIKYO_RELEASE_VERSION: ${{ steps.candidate.outputs.version }}
           HIKYO_RELEASE_COMMIT: ${{ steps.candidate.outputs.commit }}
           HIKYO_UPDATE_CHANNEL: stable
@@ -758,3 +763,144 @@ jobs:
             printf 'Review manifest SHA-256: %s\n' "$(sha256sum "$downloaded/release-manifest.json" | awk '{print $1}')"
             printf 'Use the local online ceremony publish command from current clean main with this version and digest after review.\n'
           } >>"$GITHUB_STEP_SUMMARY"
+
+  # The desktop app is built, signed and notarized for stable versions only, in
+  # this run, so a failure here fails the run and blocks publication of v<version>
+  # until its failed jobs are rerun (ADR D13). Signing and notary credentials are
+  # step-scoped: no step holds both.
+  desktop-app:
+    needs: [validation, docs, floor-bench, build-artifacts]
+    if: needs.build-artifacts.outputs.channel == 'stable'
+    environment: apple-signing
+    runs-on: macos-15
+    # Each matrix leg sets only its own architecture's two outputs. A rerun of
+    # one failed leg keeps the other leg's outputs, so every artifact is named by
+    # the attempt that produced it and its digest is recorded before upload.
+    outputs:
+      artifact_arm64: ${{ steps.record.outputs.artifact_arm64 }}
+      artifact_x86_64: ${{ steps.record.outputs.artifact_x86_64 }}
+      sha256_arm64: ${{ steps.record.outputs.sha256_arm64 }}
+      sha256_x86_64: ${{ steps.record.outputs.sha256_x86_64 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    permissions:
+      contents: read
+    env:
+      # The macOS 15 default client traps during API-key authentication.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      VERSION: ${{ needs.build-artifacts.outputs.version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Report selected Apple notarization client
+        run: |
+          xcodebuild -version
+          xcrun notarytool --version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
+      - name: Build the unsigned app
+        run: ./scripts/release/build-desktop-app.sh build "$VERSION" "$ARCH" "$RUNNER_TEMP/desktop/Hikyo.app"
+      - name: Sign the app with the hardened runtime
+        env:
+          APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: ./scripts/release/build-desktop-app.sh sign-app "$RUNNER_TEMP/desktop/Hikyo.app"
+      - name: Notarize and staple the app
+        env:
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/desktop-notarization
+        run: ./scripts/release/with-apple-ticket-network.sh ./scripts/release/build-desktop-app.sh notarize "$RUNNER_TEMP/desktop/Hikyo.app"
+      - name: Build the disk image from the stapled app
+        run: ./scripts/release/build-desktop-app.sh image "$VERSION" "$ARCH" "$RUNNER_TEMP/desktop/Hikyo.app" "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"
+      - name: Sign the disk image
+        env:
+          APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: ./scripts/release/build-desktop-app.sh sign-image "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"
+      - name: Notarize and staple the disk image
+        env:
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/desktop-notarization
+        run: ./scripts/release/with-apple-ticket-network.sh ./scripts/release/build-desktop-app.sh notarize "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"
+      - name: Verify signature, ticket and Gatekeeper
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: ./scripts/release/build-desktop-app.sh verify "$VERSION" "$ARCH" "$RUNNER_TEMP/desktop/Hikyo.app" "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg"
+      - name: Record the disk image name and digest
+        id: record
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          echo "artifact_$ARCH=desktop-dmg-$ARCH-$RUN_ATTEMPT" >>"$GITHUB_OUTPUT"
+          echo "sha256_$ARCH=$(shasum -a 256 "$RUNNER_TEMP/desktop-dmg/Hikyo-Desktop-$VERSION-$ARCH.dmg" | cut -d' ' -f1)" >>"$GITHUB_OUTPUT"
+      - name: Retain desktop notarization diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-notarization-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/desktop-notarization/*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Retain the notarized disk image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-dmg-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/desktop-dmg/Hikyo-Desktop-${{ needs.build-artifacts.outputs.version }}-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  # Stages desktop-v<version> as a draft. build-signed-draft does not depend on
+  # it, but a failure here still fails the run (ADR D13). Publication creates the
+  # tag from the draft's target commit, so this run never creates it.
+  desktop-draft:
+    needs: [build-artifacts, desktop-app]
+    if: needs.build-artifacts.outputs.channel == 'stable'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install pinned Cosign
+        run: |
+          mkdir -p "$HOME/.cosign"
+          ./scripts/ci/fetch-pinned-tool.sh cosign-linux-amd64 "$HOME/.cosign/cosign"
+          chmod +x "$HOME/.cosign/cosign"
+          echo "$HOME/.cosign" >>"$GITHUB_PATH"
+          "$HOME/.cosign/cosign" version
+      # Exact names, so a stale artifact of another attempt can never be mixed in.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.desktop-app.outputs.artifact_arm64 }}
+          path: ${{ runner.temp }}/desktop-dmg
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.desktop-app.outputs.artifact_x86_64 }}
+          path: ${{ runner.temp }}/desktop-dmg
+      - name: Sign the desktop inventory and stage the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_SHA256_ARM64: ${{ needs.desktop-app.outputs.sha256_arm64 }}
+          DESKTOP_SHA256_X86_64: ${{ needs.desktop-app.outputs.sha256_x86_64 }}
+        run: ./scripts/release/stage-desktop-draft.sh release/trust "$RUNNER_TEMP/desktop-dmg"

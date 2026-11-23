@@ -65,7 +65,7 @@ SELECT containment_state, privacy_state, contained_at FROM principals WHERE id =
 -- ...ByPrincipal) also serve sign-in, MFA and SSO and stay gated. This drops
 -- ONLY the containment condition: a restricted or erased account stays
 -- unreachable. Exactly one of the two arguments is set by the caller; the
--- other is empty and matches nothing. lint.CheckRecoveryLookup confines its
+-- other is empty and matches nothing. The lint recoverylookup analyzer confines its
 -- callers to the reset and establishment flows.
 -- hikyo:reason Reset issuance and credential establishment resolve the account of a principal containment may hold, with the containment condition dropped and the privacy gate kept; callable only from those flows.
 -- hikyo:authn-resolution

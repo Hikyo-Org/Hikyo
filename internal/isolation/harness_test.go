@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -541,6 +542,18 @@ func derivedDatabase(t *testing.T, dsn, suffix string) string {
 	}
 	u.Path = "/" + derived
 	return u.String()
+}
+
+// stepWorkerClock advances an adapter worker's fake clock by d without leaving
+// it behind the wall clock. Service calls stamp new outbox jobs with the wall
+// clock, so a fake clock that lags it on a slow runner sees a just-published job
+// as not yet due, and a drain stops before converging it. It never moves the
+// clock back, so deliberate jumps (past a lease, a backoff) are kept.
+func stepWorkerClock(clock time.Time, d time.Duration) time.Time {
+	if now := time.Now().UTC(); now.After(clock) {
+		clock = now
+	}
+	return clock.Add(d)
 }
 
 // pq quotes an identifier defensively; derived names come from the DSN.

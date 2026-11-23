@@ -67,9 +67,14 @@ feedback_plan_build() {
 					*/*) package="./${path%/*}" ;;
 					*) package=./. ;;
 				esac
-				remaining_go=("$package"/*.go)
+				# Match go list ./...: naming a testdata, dot or underscore directory
+				# explicitly would compile fixtures whose files are all build-ignored.
+				case "/${package#./}/" in
+					*/testdata/* | */.[!/]* | */_*) remaining_go=() ;;
+					*) remaining_go=("$package"/*.go) ;;
+				esac
 				# `go test -c ./desktop/...` from the root is an error: nested module.
-				if [ -f "${remaining_go[0]}" ] && [[ "$package" != ./desktop && "$package" != ./desktop/* ]]; then
+				if [ "${#remaining_go[@]}" -gt 0 ] && [ -f "${remaining_go[0]}" ] && [[ "$package" != ./desktop && "$package" != ./desktop/* ]]; then
 					duplicate=false
 					for existing in ${feedback_go_packages[@]+"${feedback_go_packages[@]}"}; do
 						if [ "$existing" = "$package" ]; then duplicate=true; break; fi

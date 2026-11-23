@@ -46,7 +46,7 @@ notarization yet (plan PR 5). `bin/` is ignored by Git.
 ## Signing and the keychain
 
 Each connection's token and session id are one generic-password item in the
-login keychain (service `io.hikyo.desktop`, account = the connection's random
+login keychain (service `app.hikyo.desktop`, account = the connection's random
 host). The item also records the origin, trust mode, pin and principal id the
 token belongs to; `connections.json` is plain user-writable data, so at start
 the shell compares it with the item and stops a connection that disagrees,
@@ -95,10 +95,13 @@ The instance must advertise `desktop-app/1` in `/api/v1/meta`.
 session needed): it checks that the Wails runtime stays inert in a window and
 that downloads save once, named and gated as the ADR requires.
 
-## Not shipped yet
+## Releases
 
-Code signing and notarization are later work (plan PR 5). v1 has no updater
-(ADR D13); adding one needs its own decision.
+Stable release builds are Developer ID signed and notarized by
+`scripts/release/build-desktop-app.sh` and published as a `desktop-v<version>`
+release; see [Apple signing](../docs/release/apple-signing.md#desktop-app). No
+desktop release exists until the first stable tag. v1 has no updater (ADR D13);
+adding one needs its own decision.
 
 ## CI
 

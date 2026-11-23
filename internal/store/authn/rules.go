@@ -20,7 +20,7 @@ import (
 // The member access rule surface (member-access-rules ADR). It lives on the
 // enumerated resolution surface for the same reason grants do: authorize()
 // reads rules to mint a proof. Every mutating method takes the principal-row
-// lock (lint.CheckGrantLock) and is named in lint.ResolutionSurfaceWriters.
+// lock (the lint grantlock analyzer) and is named in lint.ResolutionSurfaceWriters.
 //
 // Every read parses and validates: a row set that does not form a valid rule
 // is dropped, so the worst a corrupt row can do is deny.

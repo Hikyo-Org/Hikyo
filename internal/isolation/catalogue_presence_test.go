@@ -2,12 +2,12 @@ package isolation
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestCataloguePresenceListAndDefinitions(t *testing.T) {
@@ -37,7 +37,7 @@ func TestCataloguePresenceListAndDefinitions(t *testing.T) {
 		}
 		for i, key := range listed {
 			got, err := keys.Get(t.Context(), actor, f.scope(), key.ID)
-			if err != nil || !reflect.DeepEqual(key, got) {
+			if err != nil || !reflectx.Equal(key, got) {
 				t.Fatalf("list/get mismatch for %s: %+v / %+v, %v", key.Name, key, got, err)
 			}
 			if i > 0 && listed[i-1].Name >= key.Name {
@@ -53,12 +53,12 @@ func TestCataloguePresenceListAndDefinitions(t *testing.T) {
 			if key.ID != want.ID || key.RequiredIn.Mode != string(want.Presence.Required.Mode) || key.ForbiddenIn.Mode != string(want.Presence.Forbidden.Mode) {
 				t.Fatalf("definitions key %d differs: %+v / %+v", i, key, want)
 			}
-			if want.Presence.Forbidden.Mode == schema.PresenceExplicit && !reflect.DeepEqual(key.ForbiddenIn.Environments, []string{"dev"}) {
+			if want.Presence.Forbidden.Mode == schema.PresenceExplicit && !reflectx.Equal(key.ForbiddenIn.Environments, []string{"dev"}) {
 				t.Fatalf("explicit presence export = %+v", key.ForbiddenIn)
 			}
 		}
 		again, afterRevision, err := keys.List(t.Context(), actor, f.scope())
-		if err != nil || afterRevision != revision || !reflect.DeepEqual(again, listed) {
+		if err != nil || afterRevision != revision || !reflectx.Equal(again, listed) {
 			t.Fatalf("reads changed catalogue or revision: revision=%d err=%v", afterRevision, err)
 		}
 	})

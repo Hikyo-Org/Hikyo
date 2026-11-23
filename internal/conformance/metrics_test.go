@@ -9,7 +9,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // metricFamily is the pinned shape of one registered metric family: its name,
@@ -258,7 +258,7 @@ func TestMetricRegistryIsPinned(t *testing.T) {
 		}
 	}
 
-	if got, want := server.RequestLatencyBucketsSeconds(), []float64{0.005, 0.025, 0.1, 0.5, 1, 5}; !reflect.DeepEqual(got, want) {
+	if got, want := server.RequestLatencyBucketsSeconds(), []float64{0.005, 0.025, 0.1, 0.5, 1, 5}; !reflectx.Equal(got, want) {
 		t.Fatalf("latency buckets drifted\n got: %v\nwant: %v", got, want)
 	}
 }

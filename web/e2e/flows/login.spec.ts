@@ -1376,7 +1376,7 @@ test.describe('CLI login handoff', () => {
     const returnTo = `/login/cli?state=${flow.state}&provider=oidc%3A${OIDC_PROVIDER.slug}`;
     try {
       await page.goto(returnTo);
-      const approve = page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true });
+      const approve = page.getByRole('button', { name: 'Authorize sign-in', exact: true });
       await expect(approve).toBeVisible();
       const refused = page.waitForResponse((response) => response.url().endsWith('/auth/cli-login/approve'));
       await approve.click();
@@ -1387,7 +1387,8 @@ test.describe('CLI login handoff', () => {
       expect(refusedError.code).toBe('cli_login_factor_required');
       expect(refusedError.detail).toBe(detail);
       await expect(page.getByRole('heading', { name: 'Complete your sign-in' })).toBeVisible();
-      await expect(page.locator('.login__card').getByRole('alert')).toHaveText(detail);
+      // The page states its own guidance: the server's detail is CLI-worded.
+      await expect(page.locator('.login__card').getByRole('alert')).toHaveText('This sign-in needs an enrolled second factor. Sign out, sign in again here with a passkey or authenticator code, then approve the request again.');
       await page.screenshot({ path: testInfo.outputPath('mfa-required.png') });
 
       const loggedOut = page.waitForResponse((response) => response.url().endsWith('/auth/logout'));
@@ -1447,7 +1448,7 @@ test.describe('CLI login handoff', () => {
     // The deliberately unknown user code is only resolved after the ordinary
     // browser ceremony; the return URL must still carry it and the provider.
     await expect(page).toHaveURL(/\/login\/cli\?user_code=ABCDEFGH.*provider=oidc%3Ae2e-oidc/);
-    await expect(page.getByRole('heading', { name: 'CLI sign-in could not be completed' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign-in could not be completed' })).toBeVisible();
   });
 
   test('OAuth2 UI contract hides signup, starts sign-in and retains the CLI return after refusal', async ({ page }) => {
@@ -1499,14 +1500,14 @@ test.describe('CLI login handoff', () => {
         }
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(`/login/cli?user_code=${started.user_code}`);
-        const heading = page.getByRole('heading', { name: 'Authorize CLI sign-in' });
+        const heading = page.getByRole('heading', { name: 'Authorize sign-in' });
         const card = page.locator('.login__card');
-        const approve = page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true });
+        const approve = page.getByRole('button', { name: 'Authorize sign-in', exact: true });
         await expect(heading).toBeVisible();
         await expect(card).toContainText(started.user_code);
-        await expect(card).toContainText('Hikyo CLI');
+        await expect(card).toContainText('Hikyo app or CLI');
         await expect(card).toContainText(BASE_URL);
-        await expect(card).toContainText('Separate CLI session');
+        await expect(card).toContainText('Separate session for that client');
         await expectPinnedAssertionSet(page, {
           flow: 'cli-login', surface: 'cli-login', theme: scheme,
           text: [heading], radii: [[card, 'container'], [approve, 'control']],
@@ -1516,7 +1517,7 @@ test.describe('CLI login handoff', () => {
         });
         await page.screenshot({ path: `/tmp/hikyo-612-cli-${testInfo.project.name}-${scheme}.png` });
         await approve.click();
-        await expect(page.getByRole('heading', { name: 'CLI sign-in approved' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Sign-in approved' })).toBeVisible();
         await new Promise((resolve) => setTimeout(resolve, Math.max(0, nextPollAt - Date.now())));
         const completed = await poll();
         const completedBody = await completed.json();
@@ -1540,16 +1541,16 @@ test.describe('CLI login handoff', () => {
       const started = await startDeviceLogin();
       const path = `/login/cli?user_code=${started.user_code}`;
       await page.goto(path);
-      await page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'CLI sign-in approved' })).toBeVisible();
+      await page.getByRole('button', { name: 'Authorize sign-in', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Sign-in approved' })).toBeVisible();
       // A document reload drops cached consent and asks the real server again.
       const refusal = page.waitForResponse((response) =>
         response.url().endsWith(`/auth/cli-login/transactions/${started.user_code}`),
       );
       await page.reload();
       expect((await refusal).status()).toBe(403);
-      await expect(page.getByRole('heading', { name: 'CLI sign-in could not be completed' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Sign-in could not be completed' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Authorize sign-in', exact: true })).toHaveCount(0);
     } finally {
       await context.close();
     }
@@ -1562,12 +1563,12 @@ test.describe('CLI login handoff', () => {
       const first = await startDeviceLogin();
       await page.goto(`/login/cli?user_code=${first.user_code}`);
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'CLI sign-in cancelled' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Sign-in cancelled' })).toBeVisible();
       const second = await startDeviceLogin();
       await page.goto(`/login/cli?user_code=${second.user_code}`);
-      await expect(page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'CLI sign-in approved' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Authorize sign-in', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Authorize sign-in', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Sign-in approved' })).toBeVisible();
     } finally { await context.close(); }
   });
 
@@ -1592,9 +1593,9 @@ test.describe('CLI login handoff', () => {
           } else {
             await loginPage.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
           }
-          await expect(loginPage.getByRole('heading', { name: 'Authorize CLI sign-in' })).toBeVisible();
+          await expect(loginPage.getByRole('heading', { name: 'Authorize sign-in' })).toBeVisible();
           await expect(loginPage).toHaveURL(new RegExp(`/login/cli\\?state=${flow.state}`));
-          await loginPage.getByRole('button', { name: 'Authorize CLI sign-in', exact: true }).click();
+          await loginPage.getByRole('button', { name: 'Authorize sign-in', exact: true }).click();
           await expect(loginPage).toHaveURL(new RegExp(`^${flow.redirect.replaceAll('.', '\\.')}`));
           const callback = new URL(loginPage.url());
           expect(callback.searchParams.get('state')).toBe(flow.state);

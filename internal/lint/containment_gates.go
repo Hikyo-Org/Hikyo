@@ -2,8 +2,12 @@ package lint
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 // ContainmentGateExemptions names the queries that may test the privacy gate
@@ -139,4 +143,39 @@ func CheckContainmentGates(queries []Query, exempt map[string]string) []string {
 		}
 	}
 	return findings
+}
+
+// ContainmentGates runs CheckContainmentGates over both engines' declared query
+// files, once, on internal/store.
+var ContainmentGates = newContainmentGates()
+
+func newContainmentGates() *analysis.Analyzer {
+	exempt := ContainmentGateExemptions
+	return fileCheck{
+		name: "containmentgates", doc: "every privacy-active predicate in the query files is paired with the containment condition",
+		anchor: Module + "/internal/store",
+		flags: func(a *analysis.Analyzer) {
+			a.Flags.Func("exempt", "comma-separated exempted query names (default: ContainmentGateExemptions)", func(v string) error {
+				exempt = map[string]string{}
+				for _, name := range strings.Split(v, ",") {
+					if name != "" { // an empty value clears the default exemptions
+						exempt[name] = "set by -exempt"
+					}
+				}
+				return nil
+			})
+		},
+		run: func(src source, root string) ([]string, error) {
+			var findings []string
+			for _, engine := range []string{"sqlite", "postgres"} {
+				queries, err := parseQueries(src, filepath.Join(root, "internal", "store", "queries", engine))
+				if err != nil {
+					findings = append(findings, "containment gate: "+err.Error())
+					continue
+				}
+				findings = append(findings, CheckContainmentGates(queries, exempt)...)
+			}
+			return findings, nil
+		},
+	}.analyzer()
 }

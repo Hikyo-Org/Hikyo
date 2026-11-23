@@ -78,11 +78,13 @@ before any generation or stamp changes.
 
 ## Plaintext and offline operation
 
-`run` writes no plaintext file. Rendered targets exist only in the absolute
-runtime directory, which must be tmpfs: `RuntimeDirectory=` under systemd or
+`run` writes no plaintext file. Rendered targets exist only in the runtime
+directory, an absolute, clean path (no `.` or `..` segments and no trailing
+slash) that must be tmpfs: `RuntimeDirectory=` under systemd or
 `$XDG_RUNTIME_DIR` for a user service. On Unix it must be owned by the user
-running `hikyo`, and its parent must be owned by that user or root and not
-writable by group or other unless sticky (as `/dev/shm` is); otherwise
+running `hikyo`, and its parent and every directory above it (including
+symlink targets) must be owned by that user or root and not writable by group
+or other unless sticky (as `/dev/shm` is); otherwise
 `hikyo` refuses to use it rather than render plaintext where another user
 could pre-create or swap the directory. On a shared mount such as a
 group-writable volume or a Kubernetes `emptyDir`, point `runtime_dir` at a
@@ -116,7 +118,7 @@ error. Codes are stable automation handles; messages carry the details.
 | --- | --- |
 | `compose_version_below_floor` | Compose is older than 2.30.0. |
 | `runtime_not_tmpfs` | Rendered plaintext is not on a detected tmpfs. |
-| `runtime_dir_custody` | The runtime directory is owned by another user, or its parent lets other users replace it. |
+| `runtime_dir_custody` | The runtime directory is owned by another user, or its parent or a directory above it lets other users replace it. |
 | `never_rendered` | No current managed generation exists. |
 | `server_manifest_drift` | The server manifest and local stamp disagree. |
 | `target_key_missing` | A configured immutable key ID no longer exists. |

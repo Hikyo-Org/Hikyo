@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
 
@@ -69,7 +69,7 @@ func assertCLISnapshot(t *testing.T, auth *service.Auth, db *store.DB, browser, 
 	// nanoseconds supplied by the host clock.
 	want := browser.Assurance
 	want.AuthenticatedAt = before.Assurance.AuthenticatedAt
-	if !reflect.DeepEqual(cli.Assurance, want) {
+	if !reflectx.Equal(cli.Assurance, want) {
 		t.Fatalf("snapshot differs: got %+v want %+v", cli.Assurance, want)
 	}
 	after, err := auth.Identity(ctx, cli.SessionToken)
@@ -79,7 +79,7 @@ func assertCLISnapshot(t *testing.T, auth *service.Auth, db *store.DB, browser, 
 	if before.Principal != after.Principal || sessionProviderProvenance(t, db, browser.SessionID) != sessionProviderProvenance(t, db, cli.SessionID) {
 		t.Fatalf("provenance mismatch: browser %+v cli %+v", before, after)
 	}
-	if !reflect.DeepEqual(before.Assurance, after.Assurance) {
+	if !reflectx.Equal(before.Assurance, after.Assurance) {
 		t.Fatalf("durable assurance differs: browser %+v cli %+v", before.Assurance, after.Assurance)
 	}
 	if queryInt(t, db, "SELECT COUNT(*) FROM credential_establish_evidence WHERE session_id='"+cli.SessionID+"'") != 0 {
@@ -448,7 +448,7 @@ func TestCLILoginExpiryAndConcurrentDevice(t *testing.T) {
 			intervals = append(intervals, result.Interval)
 		}
 		sort.Ints(intervals)
-		if !reflect.DeepEqual(intervals, []int{10, 15}) {
+		if !reflectx.Equal(intervals, []int{10, 15}) {
 			t.Fatalf("lost durable slowdown: %v", intervals)
 		}
 		// Origin labels and verification URLs come only from valid server config.
