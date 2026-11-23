@@ -150,6 +150,7 @@ func TestAWSRealCreationIdentityVisibility(t *testing.T) {
 			roots := x509.NewCertPool()
 			roots.AddCert(server.Certificate())
 			raw, _ := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-create-observer"}, jsonwire.Stable)
+			// Hang guard, not under test: matches the package's 5s; owner-authorised exception (#1436).
 			client, err := awssm.NewClient(awssm.ClientConfig{Origin: server.URL, Credential: string(raw), Deadline: 5 * time.Second, RootCAs: roots, AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
 			if err != nil {
 				t.Fatal(err)
