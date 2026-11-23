@@ -233,8 +233,10 @@ on these points describe, continues.
   operation with a CLI spelling, declared as an amendment to
   [api-cli-surface.md](./api-cli-surface.md) in its implementing pull request. Its evaluation is the
   `authorize()` chokepoint's, so the answer cannot drift from enforcement. It is gated by
-  `manage-members@project` and lists only what that caller's project listings already show (the project's
-  grant lines and the project rules they may manage), never sibling projects or unmanageable rules.
+  `manage-members@project` and lists the project's grant lines, organisation-level grant lines of the asked
+  permission, and the project rules the caller may manage; never sibling projects, unmanageable rules or
+  instance operators. Showing organisation-level holders to a project manager is decided in #1481 by the
+  lane coordinator, pending owner confirmation; see the api-cli-surface amendment.
 
 ## First implementation slice (2026-09-29, historical)
 

@@ -85,8 +85,9 @@ there, in four groups: `can`, `excepted` (a rule would reach but an except
 removes it, with the excepted environments and keys), `needs_see` (Reveal or
 Reveal history without See) and `none`. Without `key`, a rule limited to some
 keys answers as `key_limited`. Other projects and instance operators are not
-listed, as on the Members page, and grants above organisation scope are not
-shown on a listed principal.
+listed, and grants above organisation scope are not shown on a listed
+principal, so someone who can only through such a grant or a rule you cannot
+manage is listed with no sources.
 The question needs `manage-members` at the project itself (a rule alone does not
 satisfy it), works for human sessions only, and is audited as a membership
 read. The `hikyo access who-can` command follows.
