@@ -44,6 +44,7 @@ arm() { write pr merge "$1" --repo "$GH_REPO" --auto --merge --match-head-commit
 
 printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || die 'invalid repository'
 printf '%s\n' "$GITHUB_SHA" | grep -Eq '^[0-9a-f]{40}$' || die 'invalid main commit'
+printf '%s\n' "${GITHUB_REPOSITORY_ID:-}" | grep -Eq '^[1-9][0-9]*$' || die 'invalid repository id'
 date_utc=${PROMOTE_DATE:-$(date -u +%Y%m%d)}
 printf '%s\n' "$date_utc" | grep -Eq '^[0-9]{8}$' || die 'invalid date'
 
@@ -86,26 +87,45 @@ fi
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" --jq \
 	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null), (.created_at | fromdateiso8601)] | @tsv")
-# Every app's check suites on commit $1, read through GraphQL like checksuites.Count.
-suite_count() {
+# Sets suites_problem to why commit $1's check suite count cannot vouch for a
+# listing by commit: unreadable, foreign, or above the margin. Empty means usable.
+# It never stops the run: a head that cannot be read is a stuck reason, so a
+# superseded promotion is still closed and replaced.
+suites_problem=
+count_suites() {
+	suites_problem=
 	# shellcheck disable=SC2016 # GraphQL variables, not shell ones.
-	count=$("$GH_BIN" api graphql -f 'query=query($o:String!,$n:String!,$c:GitObjectID!){repository(owner:$o,name:$n){object(oid:$c){... on Commit{oid checkSuites{totalCount}}}}}' \
+	if ! count=$("$GH_BIN" api graphql -f 'query=query($o:String!,$n:String!,$c:GitObjectID!){repository(owner:$o,name:$n){databaseId object(oid:$c){... on Commit{oid checkSuites{totalCount}}}}}' \
 		-f "o=${GH_REPO%%/*}" -f "n=${GH_REPO#*/}" -f "c=$1" \
-		--jq ".data.repository.object | select(.oid == \"$1\") | .checkSuites.totalCount") || die "cannot count check suites on $1"
-	printf '%s\n' "$count" | grep -Eq '^[0-9]+$' || die "incomplete check suite count for $1"
-	[ "$count" -le "$suite_margin" ] ||
-		die "$1 has $count check suites, above $suite_margin, so its ci-queue-required run cannot be listed reliably; operator review required"
+		--jq ".data.repository | select(.databaseId == $GITHUB_REPOSITORY_ID and .object.oid == \"$1\") | .object.checkSuites.totalCount" 2>"$work/err"); then
+		suites_problem='the check suite count cannot be read'
+	elif ! printf '%s\n' "$count" | grep -Eq '^[0-9]+$'; then
+		suites_problem='the check suite count is incomplete or belongs to another commit or repository'
+	elif [ "$count" -gt "$suite_margin" ]; then
+		suites_problem="$count check suites, above $suite_margin"
+	fi
 }
 # A refused or failed admission, or a PR that has sat for hours, means this promotion
 # cannot land.
 stuck_reason() {
 	printf '%s\n' "$2" | grep -Eq '^[0-9]+$' || die 'invalid pull request age'
-	suite_count "$1"
-	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
-		--jq '[.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")] | max_by(.id) // {}')
-	suite_count "$1" # suites only grow, so a count within the margin now bounds the listing above
-	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
+	check='{}'
 	reason=
+	# This count saves a REST read of a head that cannot be listed; the one after
+	# the read is what proves the listing was complete.
+	count_suites "$1"
+	if [ -z "$suites_problem" ]; then
+		check=$("$GH_BIN" api --paginate "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
+			--jq '.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")' | jq -s 'max_by(.id) // {}')
+		# Suites only grow, so a count within the margin now bounds the listing above.
+		count_suites "$1"
+	fi
+	if [ -n "$suites_problem" ]; then
+		check='{}'
+		reason="its ci-queue-required check cannot be read reliably ($suites_problem)"
+		return 0
+	fi
+	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
 	case "$state" in
 	none/* | queued/* | in_progress/* | completed/success) ;;
 	*) reason="the ci-queue-required check is $state" ;;
@@ -135,6 +155,7 @@ tab=$(printf '\t')
 while IFS=$tab read -r number head ref armed created; do
 	[ -n "$number" ] || continue
 	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
+	printf '%s\n' "$head" | grep -Eq '^[0-9a-f]{40}$' || die "pull request #$number has an invalid head commit"
 	printf '%s\n' "$ref" | grep -Eq '^release/nightly-[0-9]{8}-[0-9a-f]{7}$' ||
 		die "pull request #$number is a release/nightly- branch this workflow did not create; close it by hand"
 	if [ "$head" = "$commit" ]; then

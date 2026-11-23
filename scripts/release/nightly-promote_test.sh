@@ -83,7 +83,8 @@ graphql)
 	n=$(sed -n 1p "$SUITES_FILE")
 	[ "$(wc -l <"$SUITES_FILE")" -le 1 ] || sed -i.bak 1d "$SUITES_FILE"
 	[ "$n" != error ] || fail_with 'Bad Gateway (HTTP 502)'
-	json="{\"data\":{\"repository\":{\"object\":{\"oid\":\"${SUITES_OID:-$(printf '%s' "$fields" | sed 's/.* c=\([0-9a-f]*\).*/\1/')}\",\"checkSuites\":{\"totalCount\":$n}}}}}"
+	oid=${SUITES_OID:-$(printf '%s' "$fields" | sed 's/.* c=\([0-9a-f]*\).*/\1/')}
+	json="{\"data\":{\"repository\":{\"databaseId\":${SUITES_REPO:-7},\"object\":{\"oid\":\"$oid\",\"checkSuites\":{\"totalCount\":${n:-null}}}}}}"
 	;;
 repos/o/r/pulls\?*) json=$PULLS ;;
 *) exit 8 ;;
@@ -110,9 +111,9 @@ fail() {
 reset() {
 	DEV_REF=$main COMPARE=$content PULLS='[]' CHECKS='{"check_runs":[]}' BRANCH_REF=404
 	DEV_COMMIT=$dev PROOF_FAIL='' MERGE_FAIL='' DELETE_MISSING=''
-	SUITES_FILE=$work/suites SUITES_OID=''
+	SUITES_FILE=$work/suites SUITES_OID='' SUITES_REPO=''
 	printf '10\n' >"$SUITES_FILE"
-	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING SUITES_FILE SUITES_OID
+	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING SUITES_FILE SUITES_OID SUITES_REPO
 }
 # Sets the suite counts the stub reports, one per read; the last repeats.
 suites() { printf '%s\n' "$@" >"$work/suites"; }
@@ -120,7 +121,7 @@ run() {
 	for log in calls reads proof; do : >"$work/$log"; done
 	status=0
 	GH_BIN=$work/gh GO_BIN=$work/go CALLS=$work/calls READS=$work/reads PROOF_CALLS=$work/proof BODY=$work/body \
-		GH_REPO=o/r GITHUB_SHA=$main GH_TOKEN=read-token APP_TOKEN=app-token PROMOTE_DATE=20261102 \
+		GH_REPO=o/r GITHUB_REPOSITORY_ID=7 GITHUB_SHA=$main GH_TOKEN=read-token APP_TOKEN=app-token PROMOTE_DATE=20261102 \
 		PROMOTE_NOW=$now GITHUB_STEP_SUMMARY=$work/summary \
 		"$script" >"$work/out" 2>"$work/err" || status=$?
 	if grep -v '^read-token|' "$work/reads" >/dev/null; then fail 'a read used the App token'; fi
@@ -364,5 +365,85 @@ MERGE_FAIL=1
 export MERGE_FAIL
 run
 [ "$status" -ne 0 ] || fail 'a failed queue request was reported as success'
+
+# A listing by commit is only trusted for a head within checksuites.Margin; a head
+# that cannot be trusted is a stuck reason, so the superseded promotion is still replaced.
+margin=$(sed -n 's/^const Margin = \([0-9]*\)$/\1/p' "$(dirname "$script")/../ci/checksuites/checksuites.go")
+[ "$margin" = 900 ] || fail "nightly-promote.sh margin 900 no longer matches checksuites.Margin ($margin)"
+stuck_pull() {
+	reset
+	PULLS=$(pull 41 "$old" "$stale" "$armed" O/R "$hours4")
+	CHECKS=$(check completed '"failure"' 'Admission refused' 'Needs approval')
+	export PULLS CHECKS
+}
+replaced() {
+	grep -F "app-token|PATCH repos/o/r/pulls/41 state=closed" "$work/calls" >/dev/null || fail "$1 did not close the superseded promotion"
+	grep -F 'POST repos/o/r/pulls' "$work/calls" >/dev/null || fail "$1 did not open the new promotion"
+	[ "$status" -ne 0 ] || fail "$1 stayed green"
+}
+unread() {
+	if grep -F 'check-runs' "$work/reads" >/dev/null; then fail "$1 still listed check runs"; fi
+	grep -F 'cannot be read reliably' "$work/err" >/dev/null || fail "$1 gave no stuck report: $(cat "$work/err")"
+}
+
+stuck_pull
+suites 900 900
+run
+replaced 'head at the margin'
+grep -F 'is stuck: the ci-queue-required check is completed/failure' "$work/err" >/dev/null || fail 'head at the margin was not read'
+[ "$(grep -c 'check-runs' "$work/reads")" -eq 1 ] || fail 'head at the margin was not listed once'
+
+for count in 901 1000 2005; do
+	stuck_pull
+	suites "$count"
+	run
+	replaced "head with $count suites"
+	unread "head with $count suites"
+	grep -F "($count check suites, above 900)" "$work/err" >/dev/null || fail "head with $count suites gave the wrong reason"
+done
+
+stuck_pull
+suites 900 901
+run
+replaced 'head that outgrew the margin during the read'
+grep -F '(901 check suites, above 900)' "$work/err" >/dev/null || fail 'growth during the read gave the wrong reason'
+
+for bad in error '' abc -1; do
+	stuck_pull
+	suites "$bad"
+	run
+	replaced "unreadable suite count '$bad'"
+	unread "unreadable suite count '$bad'"
+done
+
+stuck_pull
+SUITES_OID=$main
+export SUITES_OID
+run
+replaced 'suite count for another commit'
+unread 'suite count for another commit'
+
+stuck_pull
+SUITES_REPO=8
+export SUITES_REPO
+run
+replaced 'suite count for another repository'
+unread 'suite count for another repository'
+
+# The queued promotion of the same commit on an oversized head is reported, not skipped.
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed")
+export PULLS
+suites 2005
+run
+[ "$status" -ne 0 ] || fail 'oversized head of the queued promotion stayed green'
+unread 'oversized head of the queued promotion'
+
+reset
+for log in calls reads proof; do : >"$work/$log"; done
+if GH_BIN=$work/gh GO_BIN=$work/go CALLS=$work/calls READS=$work/reads PROOF_CALLS=$work/proof BODY=$work/body GH_REPO=o/r \
+	GITHUB_REPOSITORY_ID='' GITHUB_SHA=$main GH_TOKEN=read-token APP_TOKEN=app-token "$script" >/dev/null 2>&1; then
+	fail 'a missing repository id was accepted'
+fi
 
 printf 'nightly promote fixture: no-ops, refusals, stuck promotions, in-flight handling and the exact write sequence behaved\n'
