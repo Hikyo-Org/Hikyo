@@ -193,7 +193,7 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 				return failf(ExitAuth, "a credential mint over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
 					"which this invocation cannot open; mint it in the browser's Machine access page%s", env, why, orRemedy(remedy))
 			}
-			fmt.Fprintf(ios.Stderr, "credential mint over %s: %s, so the ceremony is the browser's. Opening it to authorize the mint...\n", env, why)
+			_, _ = fmt.Fprintf(ios.Stderr, "credential mint over %s: %s, so the ceremony is the browser's. Opening it to authorize the mint...\n", env, why)
 			return runCLIReauthHandoff(ctx, client, st, *artifact, d.purpose, "identity.credential-mint", []string{env}, nil, ios.OpenURL)
 		}
 		if d.authorized && d.purpose == "" {

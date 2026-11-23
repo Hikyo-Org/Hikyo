@@ -74,8 +74,12 @@ func TestServiceAccountMintHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 			t.Errorf("browser opened at %q", browserURL)
 		}
 		go func() {
-			resp, _ := http.Get(callbackURI + "?code=hik_1_hc_mint&state=hik_1_hs_mint")
-			if resp != nil {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, callbackURI+"?code=hik_1_hc_mint&state=hik_1_hs_mint", nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if resp, err := http.DefaultClient.Do(req); err == nil {
 				_ = resp.Body.Close()
 			}
 		}()
