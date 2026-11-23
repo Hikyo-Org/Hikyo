@@ -147,7 +147,9 @@ expect_plan 'operator isolation' \
 for rotation_fixture in \
 	'internal/isolation/rotation_e2e_test.go' \
 	'internal/isolation/rotation_executor_e2e_test.go'; do
-	expect_selected "$rotation_fixture" k8s-e2e "$rotation_fixture"
+	expect_plan "$rotation_fixture" \
+		'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
+		"$rotation_fixture"
 done
 
 expect_plan 'generated CRD' \
