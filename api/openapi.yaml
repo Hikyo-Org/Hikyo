@@ -3527,9 +3527,11 @@ paths:
       summary: Answer who can use one permission in an environment.
       description: |
         "Who can...?" (member-access-rules ADR D10), evaluated by the
-        authorization chokepoint for the principals the caller's project
-        listings already show (the project's grant lines and the project
-        rules the caller may manage), people and machines alike. It answers
+        authorization chokepoint for the principals with a grant in the
+        project, an organisation-wide grant of the asked permission, or a
+        project rule the caller may manage, people and machines alike.
+        Instance operators are not listed, and grants above organisation
+        scope are not shown. It answers
         who can, who an except of a rule leaves out (naming the rule and the
         excepts), who has Reveal without See, and whom no grant or rule of
         theirs reaches. Rules the caller cannot manage are never named, and

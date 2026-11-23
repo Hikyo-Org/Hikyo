@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -32,8 +33,12 @@ type AccessView struct {
 // Resolve answers who can use one permission in one environment, optionally
 // for one key, from the chokepoint's own evaluation. The answer discloses
 // membership, so it needs the authority of the rule listing (`manage-members`
-// at the project) and shows no more than the project listings do: the project's
-// grant lines and the project rules the caller may manage (see Rules.List).
+// at the project). The population is the project's grant lines, the org-level
+// grant lines of the asked permission (an org admin reaches the project
+// through them), and the project rules the
+// caller may manage (see Rules.List). Sibling projects' lines are never read,
+// and instance holders are not listed, as on the Members page; the returned
+// grants stop at org scope for the same reason.
 // It is audited as the same membership read.
 func (s *Rules) Resolve(ctx context.Context, actor Actor, scope domain.Scope, capability domain.Capability, keyID string) ([]AccessView, error) {
 	var out []AccessView
@@ -47,11 +52,16 @@ func (s *Rules) Resolve(ctx context.Context, actor Actor, scope domain.Scope, ca
 			target := authz.KeyByID(keyID)
 			key = &target
 		}
-		// Only the project listings are read, never the org's rows: see Grants.List.
+		// Never the org's rows (sibling projects): see Grants.List.
 		grantLines, err := az.GrantLinesInProject(ctx, string(scope.Org), string(scope.Project))
 		if err != nil {
 			return err
 		}
+		orgLines, err := az.GrantLinesAtOrgLevel(ctx, string(scope.Org), capability)
+		if err != nil {
+			return err
+		}
+		grantLines = append(grantLines, orgLines...)
 		ruleLines, err := manageableProjectRules(ctx, az, caller, scope)
 		if err != nil {
 			return err
@@ -75,6 +85,8 @@ func (s *Rules) Resolve(ctx context.Context, actor Actor, scope domain.Scope, ca
 			if err != nil {
 				return err
 			}
+			// Instance scope would reveal operator status the project listing hides.
+			a.Grants = slices.DeleteFunc(a.Grants, func(g domain.Scope) bool { return g.Org == "" })
 			out = append(out, AccessView{AccessAnswer: a, Name: name})
 		}
 		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelEnv, grantEventInput{

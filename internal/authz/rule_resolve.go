@@ -60,12 +60,11 @@ type AccessAnswer struct {
 }
 
 // AccessPopulation is what the caller (a project member manager) may already
-// see of the project's membership: the principals of its project grant lines
-// and of the project rules the caller may manage, and those rule ids. The
-// service builds it from the project listings alone, so the answer never
-// reaches past them: not sibling projects, not rules the caller cannot
-// manage. A principal holding only an org or instance grant is listed when
-// it also holds a project grant or a visible rule, as in the project listing.
+// see of the project's membership: the principals of its project grant lines,
+// of the org-level grant lines that can decide the question, and of the project
+// rules the caller may manage, and those rule ids. The service builds it from
+// those reads alone, so the answer never reaches past them: not sibling
+// projects, not instance holders, not rules the caller cannot manage.
 type AccessPopulation struct {
 	Principals []domain.PrincipalID
 	// Rules is the set of rule ids the answer may name.
@@ -318,8 +317,8 @@ func (q accessQuestion) excepted(ctx context.Context, r domain.Rule) (AccessExce
 		}
 	}
 	if len(out.Envs) == 0 && len(out.Keys) == 0 && !out.KeyLimited {
-		// Only the excepts together hold the rule back: name them all.
-		out.Envs, out.Keys = envs, keys
+		// Excepts are disjunctive per axis, so one of them always holds the rule back alone.
+		return out, false, fmt.Errorf("authz: rule %s is held back by excepts, yet none of them alone", r.ID)
 	}
 	return out, true, nil
 }

@@ -56,10 +56,10 @@ func runRuleResolve(t *testing.T, db *store.DB) {
 		len(v.Excepts[0].Keys) != 1 || v.Excepts[0].Keys[0].Folder != "db" {
 		t.Fatalf("dave on db key = %+v, want excepted by folder db of %s", v, daveReveal)
 	}
-	// custodian holds only org-scope grants: the project listings do not show
-	// it, so the answer does not either (see TestRuleResolveIsolation).
-	if i := slices.IndexFunc(views, func(v service.AccessView) bool { return v.Principal == custodian }); i >= 0 {
-		t.Fatalf("custodian (org grants only) listed in a project answer: %+v", views[i])
+	// custodian holds Reveal at org scope only: it reaches the project through
+	// that line, so the answer lists it.
+	if v := state(views, custodian); v.State != authz.AccessCan || !slices.Equal(v.Grants, []domain.Scope{{Org: orgA}}) {
+		t.Fatalf("custodian (org-level reveal) = %+v, want can through the org grant", v)
 	}
 
 	views = resolve(f.strKeyID)
@@ -82,10 +82,11 @@ func runRuleResolve(t *testing.T, db *store.DB) {
 	}
 }
 
-// The answer shows no more than a project member manager's own listings: the
-// project's grant lines and the project rules they may manage. Sibling-project
-// members and rules, instance operators, org-only grant holders and rules the
-// caller cannot manage appear neither as principals nor in any content.
+// The population is the project's grant lines, the org-level lines of the
+// asked permission and the project rules the caller may manage. Sibling-project
+// members and rules, instance operators, org members whose org lines lack the
+// asked permission and rules the caller cannot manage appear neither as
+// principals nor in any content, and returned grants stop at org scope.
 func TestRuleResolveIsolation(t *testing.T) {
 	forEngines(t, runRuleResolveIsolation)
 }
@@ -178,7 +179,13 @@ func runRuleResolveIsolation(t *testing.T, db *store.DB) {
 
 	t.Run("project_member_manager_sees_only_the_project_view", func(t *testing.T) {
 		views := resolve(prjAdmin, dev, domain.CapRead, "")
-		mustBeAbsent(views, erin, gina, custodian, alice, root, orgAdmin, mchNoCls)
+		mustBeAbsent(views, erin, gina, root, mchNoCls)
+		// Org-level read holders reach the project through the org line.
+		for _, p := range []domain.PrincipalID{orgAdmin, alice, custodian} {
+			if v := mustFind(views, p); v.State != authz.AccessCan || !slices.Equal(v.Grants, []domain.Scope{{Org: orgA}}) {
+				t.Fatalf("%s = %+v, want can through the org read grant", p, v)
+			}
+		}
 		for _, p := range []domain.PrincipalID{prjAdmin, carol, dave, hank, ivan, mchWork} {
 			mustFind(views, p)
 		}
@@ -188,10 +195,10 @@ func runRuleResolveIsolation(t *testing.T, db *store.DB) {
 		if v := mustFind(views, carol); !slices.Equal(v.Rules, []string{carolRead}) || v.State != authz.AccessCan {
 			t.Fatalf("carol = %+v, want can through only %s", v, carolRead)
 		}
-		// Instance holder: listed because it holds a project grant, and named
-		// by the scope of what reaches.
-		if v := mustFind(views, ivan); v.State != authz.AccessCan || len(v.Grants) != 2 {
-			t.Fatalf("ivan = %+v, want can through the project and instance grants", v)
+		// Listed because it holds a project grant; its instance grant is not
+		// shown (operator status stays hidden, as on the Members page).
+		if v := mustFind(views, ivan); v.State != authz.AccessCan || !slices.Equal(v.Grants, []domain.Scope{{Org: orgA, Project: prjA1}}) {
+			t.Fatalf("ivan = %+v, want can through the project grant only", v)
 		}
 	})
 
@@ -217,7 +224,10 @@ func runRuleResolveIsolation(t *testing.T, db *store.DB) {
 		if v := mustFind(views, dave); !slices.Equal(v.Rules, []string{daveReveal}) {
 			t.Fatalf("dave on the db key = %+v, want %s", v, daveReveal)
 		}
-		mustBeAbsent(views, erin, gina, root)
+		mustBeAbsent(views, erin, gina, root, alice, orgAdmin)
+		if v := mustFind(views, custodian); v.State != authz.AccessCan {
+			t.Fatalf("custodian = %+v, want can through the org reveal grant", v)
+		}
 		if mentions(views, siblingRule) {
 			t.Fatalf("a sibling-project rule is named: %+v", views)
 		}
