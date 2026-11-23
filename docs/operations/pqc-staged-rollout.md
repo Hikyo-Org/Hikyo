@@ -212,8 +212,8 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    including the sntrup761 option and any deployed sshd.
 
 With `mlkem768x25519-sha256` alone, every client that does not offer it is
-refused: OpenSSH before 9.9 (including 8.9 to 9.8, which offer only sntrup761
-by default) and other SSH libraries without it. The sntrup761 option widens
+refused: OpenSSH before 9.9 (including 8.9 to 9.8, whose only default hybrid is
+sntrup761) and other SSH libraries without it. The sntrup761 option widens
 access back to 8.5 and later clients that offer
 `sntrup761x25519-sha512@openssh.com`. Check the algorithms clients actually
 offer (`ssh -Q kex` on the client, server logs), not the version, before

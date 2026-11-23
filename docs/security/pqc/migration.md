@@ -166,7 +166,9 @@ Accepted as recommended on 2026-11-02. Owner: Marc Went. Not operative; see the
 ### Pairing and remote proofs (I20)
 
 2048-bit SRP and Ed25519 DPoP; no standards-backed maintained PQ PAKE in the
-pinned dependencies; `go-jose` v4.1.6 has no ML-DSA; a JOSE ML-DSA identifier's
+pinned dependencies; `go-jose` v4.1.6 has no ML-DSA (rechecked 2026-11-23, see
+[E-04](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective));
+a JOSE ML-DSA identifier's
 status was not checked. Decision: #1130 stays HOLD (E-01). Hybrid TLS
 stops **recording** of the exchange; it does not stop an **active** forger of the
 classical pinned leaf, who captures the SRP transcript. Pairing pins are read over
