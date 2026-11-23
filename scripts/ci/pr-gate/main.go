@@ -618,6 +618,13 @@ func (ghAPI) write(ctx context.Context, method, path string, payload, result any
 	response, err := cmd.Output()
 	// A lost response may follow a successful mutation. Never retry writes.
 	if err != nil {
+		// Name gh's HTTP status (never its text) so a refused write is diagnosable.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			if status := stderrHTTPStatus(exit.Stderr); status != 0 {
+				return fmt.Errorf("GitHub %s failed for %s (HTTP %d); no mutation retry attempted", method, path, status)
+			}
+		}
 		return fmt.Errorf("GitHub %s failed for %s; no mutation retry attempted", method, path)
 	}
 	if dispatch {

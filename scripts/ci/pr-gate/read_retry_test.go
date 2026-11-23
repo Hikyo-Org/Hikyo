@@ -264,8 +264,8 @@ func TestGitHubWriteNeverRetries(t *testing.T) {
 	attempts := fakeGH(t, `echo 'gh: HTTP 502' >&2; exit 1`)
 	var receipt map[string]any
 	err := retryingGH.write(context.Background(), "POST", "repos/Hikyo-Org/Hikyo/issues/1/comments", map[string]string{"body": "x"}, &receipt)
-	if err == nil || !strings.Contains(err.Error(), "no mutation retry attempted") {
-		t.Fatalf("write failure was not terminal: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "(HTTP 502); no mutation retry attempted") {
+		t.Fatalf("write failure was not terminal or lost its status: %v", err)
 	}
 	if attempts() != 1 || len(*waits) != 0 {
 		t.Fatalf("attempts=%d waits=%v, write must never retry", attempts(), *waits)
