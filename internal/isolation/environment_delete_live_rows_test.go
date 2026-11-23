@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +159,50 @@ func runEnvironmentDeleteAdapterTargets(t *testing.T, db *store.DB) {
 	if got := count(t, db, "environments", f); got != 1 {
 		t.Fatalf("environments after the refusal = %d", got)
 	}
+	if got := count(t, db, "adapter_targets", f); got != 1 {
+		t.Fatalf("adapter targets after the refusal = %d", got)
+	}
+}
+
+// A configure fence is committed before its target row, with no foreign key to
+// it, so a failed environment setup leaves a fence with no target. It still
+// refuses by name rather than hitting the raw foreign-key conflict.
+func TestEnvironmentDeleteOrphanConfigureFence(t *testing.T) {
+	forEngines(t, runEnvironmentDeleteOrphanConfigureFence)
+}
+
+func runEnvironmentDeleteOrphanConfigureFence(t *testing.T, db *store.DB) {
+	f := seedDefinitionsProject(t, db, "fence", true)
+	project := string(f.project)
+	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+	execRaw(t, db, `INSERT INTO adapter_configure_fences (target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','environment','acme','app','staging',1,'eff_`+project+`',`+ts+`,'failed',`+ts+`)`)
+	err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+	if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), "tgt_"+project) {
+		t.Fatalf("delete with an orphan configure fence = %v (%q)", err, safeError(err))
+	}
+	if got := count(t, db, "adapter_configure_fences", f); got != 1 {
+		t.Fatalf("fences after the refusal = %d", got)
+	}
+}
+
+// A refusal names at most ten ids and says when more block.
+func TestEnvironmentDeleteRefusalTruncates(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedDefinitionsProject(t, db, "trunc", true)
+		seedLeaseRows(t, db, f)
+		project := string(f.project)
+		for i := 0; i < 11; i++ {
+			id := fmt.Sprintf("%s_more_%02d", project, i)
+			execRaw(t, db, `INSERT INTO dynamic_leases (id,org_id,project_id,environment_id,provider_id,principal_id,principal_class,provider_handle,state,max_ttl_seconds,last_transition_at,next_attempt_at,created_at) VALUES ('`+id+`','org_a','`+project+`','`+f.env+`','dpr_`+project+`','usr_alice','human','h_`+id+`','active',3600,`+ts+`,`+ts+`,`+ts+`)`)
+		}
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+		detail := safeError(err)
+		if !errors.Is(err, service.ErrEnvironmentHasLiveLease) || !strings.Contains(detail, "(first 10 shown)") ||
+			strings.Contains(detail, project+"_more_09") || !strings.Contains(detail, project+"_more_08") {
+			t.Fatalf("truncated refusal = %v (%q)", err, detail)
+		}
+	})
 }
 
 func TestProjectDeleteDynamicProviders(t *testing.T) {

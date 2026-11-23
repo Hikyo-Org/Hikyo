@@ -224,3 +224,8 @@ UPDATE adapter_targets SET generation=generation+1,active_job_id=NULL WHERE adap
 -- Environment delete (#1420): any target row, live or tombstoned, refuses the delete by name.
 -- name: AdapterListEnvironmentTargetIDs :many
 SELECT id FROM adapter_targets WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- A configure fence has no foreign key to adapter_targets (it is committed
+-- before the target insert), so a failed configure leaves one with no target.
+-- name: AdapterListEnvironmentFenceTargetIDs :many
+SELECT target_id FROM adapter_configure_fences WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY target_id LIMIT sqlc.arg(row_limit);

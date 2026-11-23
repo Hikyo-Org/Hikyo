@@ -2648,8 +2648,8 @@ var operationTable = map[Operation]opSpec{
 			// Rotation rows (#148) go with it too, but only once no rotation
 			// is live and no run is in flight: the purge refuses otherwise.
 			StoreRotationsPurgeEnvironment: true,
-			// Terminal dynamic leases and expired certificates go with it (#1420);
-			// a live lease or certificate refuses the delete.
+			// Terminal dynamic leases go with it (#1420); a live lease, any
+			// certificate row or any adapter target or configure fence refuses.
 			StoreDynamicLeasesPurgeEnvironment:         true,
 			StorePKICertificatesGuardEnvironmentDelete: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,

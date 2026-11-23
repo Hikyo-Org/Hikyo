@@ -1190,6 +1190,47 @@ func (q *Queries) AdapterList(ctx context.Context, arg AdapterListParams) ([]Ada
 	return items, nil
 }
 
+const adapterListEnvironmentFenceTargetIDs = `-- name: AdapterListEnvironmentFenceTargetIDs :many
+SELECT target_id FROM adapter_configure_fences WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 ORDER BY target_id LIMIT ?4
+`
+
+type AdapterListEnvironmentFenceTargetIDsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RowLimit     int64
+}
+
+// A configure fence has no foreign key to adapter_targets (it is committed
+// before the target insert), so a failed configure leaves one with no target.
+func (q *Queries) AdapterListEnvironmentFenceTargetIDs(ctx context.Context, arg AdapterListEnvironmentFenceTargetIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, adapterListEnvironmentFenceTargetIDs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var target_id string
+		if err := rows.Scan(&target_id); err != nil {
+			return nil, err
+		}
+		items = append(items, target_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adapterListEnvironmentTargetIDs = `-- name: AdapterListEnvironmentTargetIDs :many
 SELECT id FROM adapter_targets WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 ORDER BY id LIMIT ?4
 `

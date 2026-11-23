@@ -26,24 +26,24 @@ var (
 	// holds only terminal certificate rows: issuance history is retained (#825).
 	ErrEnvironmentHasCertificateHistory = fmt.Errorf("%w: the environment still has certificate issuance history", domain.ErrConflict)
 	// ErrEnvironmentHasAdapterTargets refuses an environment delete while it has
-	// an adapter target, live or tombstoned: targets are never deleted and their
-	// delivery ledger is retained.
+	// an adapter target, live or tombstoned, or a configure fence: targets are
+	// never deleted and their delivery records are retained.
 	ErrEnvironmentHasAdapterTargets = fmt.Errorf("%w: the environment still has adapter targets", domain.ErrConflict)
 	// ErrProjectHasActiveProvider refuses a project delete while an active
 	// dynamic provider exists.
 	ErrProjectHasActiveProvider = fmt.Errorf("%w: the project still has an active dynamic provider", domain.ErrConflict)
 )
 
-// environmentLiveError is a named environment-delete refusal that tells the
+// liveRowsRefusalError is a named environment-delete refusal that tells the
 // caller which rows block it. Ids are not secret.
-type environmentLiveError struct {
+type liveRowsRefusalError struct {
 	base   error
 	detail string
 }
 
-func (e *environmentLiveError) Error() string      { return "service: " + e.detail }
-func (e *environmentLiveError) SafeDetail() string { return e.detail }
-func (e *environmentLiveError) Unwrap() error      { return e.base }
+func (e *liveRowsRefusalError) Error() string      { return "service: " + e.detail }
+func (e *liveRowsRefusalError) SafeDetail() string { return e.detail }
+func (e *liveRowsRefusalError) Unwrap() error      { return e.base }
 
 // purgeEnvironmentLiveRows removes a deleted environment's terminal dynamic
 // leases in the delete's own transaction and refuses by name while a lease or
@@ -71,7 +71,7 @@ func purgeEnvironmentLiveRows(ctx context.Context, r store.Repos, proof authz.Pr
 	}
 	err = r.Adapters().GuardEnvironmentDelete(ctx, proof)
 	if refusal := liveRowsRefusal(err, ErrEnvironmentHasAdapterTargets, store.ErrAdapterTargetsInEnvironment,
-		"the environment still has adapter targets, live or tombstoned, whose delivery ledger is retained; targets: "); refusal != nil {
+		"the environment still has adapter targets (live or tombstoned) or configure fences, whose delivery records are retained; ids: "); refusal != nil {
 		return refusal
 	}
 	return err
@@ -98,5 +98,5 @@ func liveRowsRefusal(err, named, stored error, prefix string) error {
 	if live.Truncated {
 		detail += fmt.Sprintf(" (first %d shown)", store.LiveRowsLimit)
 	}
-	return &environmentLiveError{base: named, detail: detail}
+	return &liveRowsRefusalError{base: named, detail: detail}
 }
