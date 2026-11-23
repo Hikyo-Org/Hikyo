@@ -1345,6 +1345,10 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 	// transaction aborts (the run then settles as held), while sqlite's single write
 	// connection cannot interleave a hold at all.
 	// TestRotationHoldDuringThePublishTransactionRollsItBack fails without it.
+	// It is the same write that makes a concurrent incident halt abort the publish
+	// on PostgreSQL: the halt updates this rotation row, so the two conflict under
+	// serializable and the rerun finds the rotation halted. Removing it lets
+	// TestRotationIncidentHaltDuringThePublishTransactionRollsItBack fail.
 	_, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
 	return err
 }

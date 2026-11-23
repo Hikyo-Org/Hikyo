@@ -474,7 +474,7 @@ func haltReasonSentence(reason string) string {
 	case "authority_lost":
 		return "the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone"
 	case "incident_contained":
-		return "an incident opened on the recorded person halted it, and a release never resumes it"
+		return "an incident that affects the recorded person (opened on the account, or on an org that selects it) halted it, and a release never resumes it"
 	case "gate_failed":
 		return "a pre-publish gate refused: the environment became protected, a key changed or a draft appeared"
 	case "unknown":

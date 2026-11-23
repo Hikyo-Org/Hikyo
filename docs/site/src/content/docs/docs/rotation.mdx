@@ -150,7 +150,7 @@ moves to `halted` with a named reason, a fixed word the API returns as `halt_rea
 - `retries_exhausted`: the retry window ran out before a run could publish or extend the credential.
 - `authority_lost`: the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone.
 - `gate_failed`: a pre-publish gate refused: the environment became protected, a key changed or a draft appeared.
-- `incident_contained`: an incident opened on the recorded person halted it, and a release never resumes it.
+- `incident_contained`: an incident that affects the recorded person (opened on the account, or on an org that selects it) halted it, and a release never resumes it.
 - `unknown`: the server halted the rotation without a reason it can name (a halt recorded before the reason was kept, for one).
 
 A halted rotation does not extend the delivered credential. `hikyo rotation show` and
