@@ -324,7 +324,7 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	for _, key := range index.keys {
 		if value, ok := seed.values[key.Name]; ok {
 			// Seed writes store the seed as given; config.ManagedSeedForNode has
-			// already trimmed the SMTP password. Snapshot creation
+			// already trimmed every value. Snapshot creation
 			// then uses the same encrypted cells and lineage as normal publish.
 			id, err := newID("val")
 			if err != nil {
