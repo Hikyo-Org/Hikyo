@@ -450,7 +450,7 @@ func (e *githubReadError) Error() string {
 	case errors.Is(e.cause, context.Canceled):
 		details = append(details, context.Canceled.Error())
 	case errors.As(e.cause, &exit):
-		details = append(details, fmt.Sprintf("command exit status %d", exit.ExitCode()))
+		details = append(details, "command "+exit.ProcessState.String())
 	case e.cause != nil:
 		details = append(details, "command failed")
 	}
@@ -628,7 +628,7 @@ func (ghAPI) write(ctx context.Context, method, path string, payload, result any
 		case errors.As(err, &exit) && stderrHTTPStatus(exit.Stderr) != 0:
 			detail = fmt.Sprintf("HTTP %d", stderrHTTPStatus(exit.Stderr))
 		case errors.As(err, &exit):
-			detail = fmt.Sprintf("command exit status %d", exit.ExitCode())
+			detail = "command " + exit.ProcessState.String()
 		}
 		return fmt.Errorf("GitHub %s failed for %s (%s); no mutation retry attempted", method, path, detail)
 	}

@@ -282,6 +282,16 @@ func TestGitHubWriteNamesExitStatusWithoutHTTPStatus(t *testing.T) {
 	}
 }
 
+func TestGitHubWriteNamesSignal(t *testing.T) {
+	recordReadWaits(t)
+	fakeGH(t, `kill -KILL $$`)
+	var receipt map[string]any
+	err := retryingGH.write(context.Background(), "PATCH", "repos/Hikyo-Org/Hikyo/check-runs/1", map[string]string{"status": "queued"}, &receipt)
+	if err == nil || !strings.Contains(err.Error(), "(command signal: killed); no mutation retry attempted") {
+		t.Fatalf("write failure did not name the signal: %v", err)
+	}
+}
+
 func TestStderrHTTPStatus(t *testing.T) {
 	for _, tc := range []struct {
 		name, stderr string
