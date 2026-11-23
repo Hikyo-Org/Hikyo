@@ -126,7 +126,27 @@ export function Dialog({
   });
   const titleId = useId();
   const pressedScrim = useRef(false);
-  const refusedClose = useRef(false);
+  // Chromium makes a repeated Escape's cancel non-cancelable (close-watcher
+  // anti-abuse) and closes anyway. A cancel the caller refused is remembered,
+  // with the focus it interrupted, and the close that follows reopens it.
+  const refusedClose = useRef<{ readonly focus: Element | null } | null>(null);
+  const holdRefusedCancel = (event: SyntheticEvent<HTMLDialogElement>) => {
+    const focus = document.activeElement;
+    try {
+      onCancel?.(event);
+    } finally {
+      refusedClose.current =
+        event.isDefaultPrevented() && !event.nativeEvent.cancelable ? { focus } : null;
+    }
+  };
+  const reopenRefusedClose = (event: SyntheticEvent<HTMLDialogElement>) => {
+    const refused = refusedClose.current;
+    refusedClose.current = null;
+    const element = event.currentTarget;
+    if (refused === null || !element.isConnected) return;
+    element.showModal();
+    if (refused.focus instanceof HTMLElement && element.contains(refused.focus)) refused.focus.focus();
+  };
   const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
     if (event.target !== event.currentTarget) return false;
     const box = event.currentTarget.getBoundingClientRect();
@@ -146,17 +166,9 @@ export function Dialog({
       // a fully disabled in-flight form leaves nothing else Tab can reach,
       // which axe's scrollable-region-focusable rule requires.
       tabIndex={0}
-      onCancel={(event) => {
-        onCancel?.(event);
-        // Chromium makes a repeated Escape's cancel non-cancelable (close-watcher
-        // anti-abuse) and closes anyway; a refused cancel reopens on that close.
-        refusedClose.current = event.isDefaultPrevented() && !event.nativeEvent.cancelable;
-      }}
-      onClose={(event) => {
-        if (!refusedClose.current) return;
-        refusedClose.current = false;
-        if (event.currentTarget.isConnected) event.currentTarget.showModal();
-      }}
+      onCancel={holdRefusedCancel}
+      // The native close event, unrelated to the corner-close `onClose` prop.
+      onClose={reopenRefusedClose}
       onMouseDown={
         onBackdropClick === undefined
           ? undefined
