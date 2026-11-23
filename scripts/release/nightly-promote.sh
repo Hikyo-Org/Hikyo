@@ -92,13 +92,15 @@ open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_p
 # It never stops the run: a head that cannot be read is a stuck reason, so a
 # superseded promotion is still closed and replaced.
 suites_problem=
+# First line of the last failed read, as plain printable text.
+first_line() { head -n 1 "$work/err" | tr -cd '[:print:]' | cut -c1-200; }
 count_suites() {
 	suites_problem=
 	# shellcheck disable=SC2016 # GraphQL variables, not shell ones.
 	if ! count=$("$GH_BIN" api graphql -f 'query=query($o:String!,$n:String!,$c:GitObjectID!){repository(owner:$o,name:$n){databaseId object(oid:$c){... on Commit{oid checkSuites{totalCount}}}}}' \
 		-f "o=${GH_REPO%%/*}" -f "n=${GH_REPO#*/}" -f "c=$1" \
 		--jq ".data.repository | select(.databaseId == $GITHUB_REPOSITORY_ID and .object.oid == \"$1\") | .object.checkSuites.totalCount" 2>"$work/err"); then
-		suites_problem='the check suite count cannot be read'
+		suites_problem="the check suite count cannot be read: $(first_line)"
 	elif ! printf '%s\n' "$count" | grep -Eq '^[0-9]+$'; then
 		suites_problem='the check suite count is incomplete or belongs to another commit or repository'
 	elif [ "$count" -gt "$suite_margin" ]; then
@@ -115,10 +117,16 @@ stuck_reason() {
 	# the read is what proves the listing was complete.
 	count_suites "$1"
 	if [ -z "$suites_problem" ]; then
-		check=$("$GH_BIN" api --paginate "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
-			--jq '.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")' | jq -s 'max_by(.id) // {}')
+		# Without pipefail a failed read piped into jq would pass for an empty list, so
+		# collect the exit status of the read itself first.
+		if "$GH_BIN" api --paginate "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
+			--jq '.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")' >"$work/runs" 2>"$work/err"; then
+			check=$(jq -s 'max_by(.id) // {}' "$work/runs") || die 'invalid check run listing'
+		else
+			suites_problem="the check runs cannot be read: $(first_line)"
+		fi
 		# Suites only grow, so a count within the margin now bounds the listing above.
-		count_suites "$1"
+		[ -n "$suites_problem" ] || count_suites "$1"
 	fi
 	if [ -n "$suites_problem" ]; then
 		check='{}'

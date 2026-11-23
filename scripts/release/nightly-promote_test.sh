@@ -77,7 +77,16 @@ repos/o/r/compare/main...*)
 	[ "$COMPARE" != error ] || fail_with 'Bad Gateway (HTTP 502)'
 	json=$COMPARE
 	;;
-repos/o/r/commits/*/check-runs\?*) json=$CHECKS ;;
+repos/o/r/commits/*/check-runs\?*)
+	[ "${CHECKS_FAIL:-}" != 1 ] || fail_with 'Bad Gateway (HTTP 502)'
+	json=$CHECKS
+	if [ -n "${CHECKS2:-}" ]; then
+		# A second page: the filter runs on each page, as the paginated read does.
+		printf '%s' "$CHECKS" | jq -r "$filter"
+		json=$CHECKS2
+		[ "$CHECKS2" != fail ] || fail_with 'Bad Gateway (HTTP 502)'
+	fi
+	;;
 graphql)
 	# SUITES lists one count per read; the last repeats.
 	n=$(sed -n 1p "$SUITES_FILE")
@@ -111,9 +120,9 @@ fail() {
 reset() {
 	DEV_REF=$main COMPARE=$content PULLS='[]' CHECKS='{"check_runs":[]}' BRANCH_REF=404
 	DEV_COMMIT=$dev PROOF_FAIL='' MERGE_FAIL='' DELETE_MISSING=''
-	SUITES_FILE=$work/suites SUITES_OID='' SUITES_REPO=''
+	CHECKS_FAIL='' CHECKS2='' SUITES_FILE=$work/suites SUITES_OID='' SUITES_REPO=''
 	printf '10\n' >"$SUITES_FILE"
-	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING SUITES_FILE SUITES_OID SUITES_REPO
+	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING SUITES_FILE SUITES_OID SUITES_REPO CHECKS_FAIL CHECKS2
 }
 # Sets the suite counts the stub reports, one per read; the last repeats.
 suites() { printf '%s\n' "$@" >"$work/suites"; }
@@ -429,6 +438,35 @@ export SUITES_REPO
 run
 replaced 'suite count for another repository'
 unread 'suite count for another repository'
+
+# Runs listed over two pages: the newest failing run on page 2 is the verdict.
+stuck_pull
+CHECKS='{"check_runs":[{"id":1,"app":{"id":15368,"slug":"github-actions"},"status":"completed","conclusion":"success","output":{}}]}'
+CHECKS2=$(check completed '"failure"' 'Admission refused' 'Needs approval' | sed 's/"id":1/"id":2/')
+export CHECKS CHECKS2
+run
+replaced 'newest run on page two'
+grep -F 'is stuck: the ci-queue-required check is completed/failure' "$work/err" >/dev/null || fail 'the run on page two was missed'
+
+# A failed read, on the first page or after it, is a stuck reason, not an empty list.
+stuck_pull
+CHECKS_FAIL=1
+export CHECKS_FAIL
+run
+replaced 'failed check run read on page one'
+grep -F 'the check runs cannot be read: gh: Bad Gateway (HTTP 502)' "$work/err" >/dev/null || fail "failed check run read gave no reason: $(cat "$work/err")"
+stuck_pull
+CHECKS2=fail
+export CHECKS2
+run
+replaced 'failed check run read after page one'
+grep -F 'the check runs cannot be read: gh: Bad Gateway (HTTP 502)' "$work/err" >/dev/null || fail 'failure after page one gave no reason'
+
+# The suite count failure carries its error.
+stuck_pull
+suites error
+run
+grep -F 'the check suite count cannot be read: gh: Bad Gateway (HTTP 502)' "$work/err" >/dev/null || fail 'count failure lost its error'
 
 # The queued promotion of the same commit on an oversized head is reported, not skipped.
 reset
