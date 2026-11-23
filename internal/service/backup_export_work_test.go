@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -97,5 +98,46 @@ func TestPruneSweepsDeadExportDebris(t *testing.T) {
 	}
 	if !exists(filepath.Join(dir, "keep.txt")) {
 		t.Fatal("prune swept a foreign file")
+	}
+}
+
+// A child that cannot be removed must leave the marker and directory behind,
+// so a later sweep (free lock, marker present) retries instead of orphaning
+// plaintext the sweep no longer recognises.
+func TestUnremovableStagedPlaintextKeepsItsMarker(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX directory permissions and a non-root user")
+	}
+	dir := t.TempDir()
+	work, release, err := stageExportWork(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTree(t, work, "sub/snapshot.db")
+	sub := filepath.Join(work, "sub")
+	if err := os.Chmod(sub, 0o500); err != nil { // files inside cannot be unlinked
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sub, 0o700) })
+
+	release()
+	if !exists(filepath.Join(work, ".live")) || !exists(filepath.Join(sub, "snapshot.db")) {
+		t.Fatal("failed plaintext removal dropped the liveness marker")
+	}
+	if err := sweepExportDebris(dir); err == nil {
+		t.Fatal("sweep reported success while plaintext could not be removed")
+	}
+	if !exists(filepath.Join(work, ".live")) {
+		t.Fatal("failed sweep dropped the liveness marker")
+	}
+
+	if err := os.Chmod(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := sweepExportDebris(dir); err != nil {
+		t.Fatal(err)
+	}
+	if exists(work) {
+		t.Fatal("a later sweep did not retry the removal")
 	}
 }

@@ -74,20 +74,35 @@ func stageExportWork(ctx context.Context, dir string) (string, func(), error) {
 		// Plaintext goes first and the lock is released before the directory
 		// itself is removed: Windows cannot delete a directory holding a
 		// locked file.
-		removeChildren(work)
+		defer liveExportWork.Delete(work)
+		if err := removeChildren(work); err != nil {
+			// Keep the marker and directory: with `.live` present and its lock
+			// free the next sweep recognises this as dead debris and retries.
+			_ = live.Unlock()
+			slog.Warn("backup export staging could not be fully removed; the next export or prune retries", "path", work, "error", err)
+			return
+		}
 		_ = live.Unlock()
-		_ = os.RemoveAll(work)
-		liveExportWork.Delete(work)
+		if err := os.RemoveAll(work); err != nil {
+			slog.Warn("backup export work directory could not be removed", "path", work, "error", err)
+		}
 	}, nil
 }
 
-func removeChildren(work string) {
-	entries, _ := os.ReadDir(work)
+// removeChildren removes everything but the liveness marker and reports any
+// failure. Callers must not remove the marker while it returns an error.
+func removeChildren(work string) error {
+	entries, err := os.ReadDir(work)
+	if err != nil {
+		return err
+	}
+	var errs []error
 	for _, e := range entries {
 		if e.Name() != exportLiveLock {
-			_ = os.RemoveAll(filepath.Join(work, e.Name()))
+			errs = append(errs, os.RemoveAll(filepath.Join(work, e.Name())))
 		}
 	}
+	return errors.Join(errs...)
 }
 
 func canonicalDir(dir string) (string, error) {
@@ -166,7 +181,10 @@ func sweepWorkDir(work string) error {
 		_ = lock.Unlock()
 		return err
 	}
-	removeChildren(work)
+	if err := removeChildren(work); err != nil {
+		_ = lock.Unlock()
+		return err
+	}
 	_ = lock.Unlock()
 	return os.RemoveAll(work)
 }
