@@ -204,7 +204,8 @@ it('states the tighten advisory as a warning after the scan-warn dialog reclassi
     await settle();
     expect(mocks.reclassify).toHaveBeenCalledWith({ key: expect.any(String), classification: 'secret' });
     const notice = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent === `Reclassified LOG_LEVEL as secret. ${TIGHTEN_ADVISORY}`);
-    expect(notice?.querySelector('[data-glyph="warn"]')).not.toBeNull();
+    expect(notice).toBeInstanceOf(HTMLElement);
+    expect(notice?.querySelector('[data-glyph="warn"]') ?? null).not.toBeNull();
   } finally { await view.unmount(); }
 });
 

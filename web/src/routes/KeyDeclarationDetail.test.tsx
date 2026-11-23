@@ -781,7 +781,8 @@ describe('KeyDeclarationDetail', () => {
     await act(async () => dialogButton(view.container, 'Reclassify as secret').click());
     expect(textOf(view.container)).toContain(`Reclassified as secret. ${advisory}`);
     const notice = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent?.includes(advisory));
-    expect(notice?.querySelector('[data-glyph="warn"]')).not.toBeNull();
+    expect(notice).toBeInstanceOf(HTMLElement);
+    expect(notice?.querySelector('[data-glyph="warn"]') ?? null).not.toBeNull();
 
     await view.unmount();
   });

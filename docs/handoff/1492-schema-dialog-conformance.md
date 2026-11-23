@@ -35,7 +35,7 @@ There are new stories:
 - The Storybook tests for the four affected story files pass (41 tests), run through the shared heavy queue.
 - Before/after screenshots of 7 stories were captured from static Storybook builds of the base and this branch, at 1280×900 and 390×844. They are kept locally and are not hosted.
 - `sensitiveInventory.json`: the `api/matrix.ts` and `routes/MatrixRowEditor.tsx` pins are refreshed after a sensitivity review, recorded in its `review` field. Neither change touches plaintext state, mutation inputs or results, reveal, or focus remasking.
-- History claim verified: snapshot entries keep their write-time classification (`internal/service/revision_diff.go`), and the revision diff needs only `read` (`OpValueExport`). The `revision_diff_is_per_key_and_secret_safe` conformance scenario now tightens `CONFIG` to `secret` and asserts a plain reader still diffs the pre-tighten plaintexts. The advisory text matches that behaviour and is unchanged.
+- History claim verified: snapshot entries keep their write-time classification (`internal/service/revision_diff.go`), and the revision diff needs only `read` (`OpValueExport`). The `revision_diff_is_per_key_and_secret_safe` conformance scenario now tightens `CONFIG` to `secret` and asserts a plain reader still diffs the pre-tighten plaintexts. The advisory text matches that behaviour and is unchanged. This is service-level evidence; the history UI was not exercised at runtime.
 - An independent Standards and Spec review raised one blocking finding: the scan-warn path tightened without the advisory. It also raised low and nit findings, all fixed. Cross-provider review was not run.
 
 ## Remaining
