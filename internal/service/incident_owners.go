@@ -204,7 +204,8 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	}
 	// The target and the managers of every org it manages are locked in one sorted
 	// pass, so two concurrent containments of the last two managers cannot deadlock.
-	// The grants it returns were read under those locks.
+	// The grants it returns were read before the locks, in this transaction's
+	// serializable snapshot.
 	grants, holders, err := lockTargetAndManagers(ctx, w.az, target)
 	if err != nil {
 		return OwnerUnconfirmed, err

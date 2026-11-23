@@ -100,7 +100,8 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		// One sorted lock pass, shared with incident containment, so the two never
 		// take the target and the managers in opposite orders; the grants it returns
-		// were read under the locks. A release only needs the target.
+		// were read before the locks, in this transaction's serializable snapshot. A
+		// release only needs the target.
 		var holders map[string][]domain.PrincipalID
 		if action == "release" {
 			if err := az.LockTargetPrincipal(ctx, domain.PrincipalID(principal)); err != nil {
@@ -323,14 +324,19 @@ func lockTargetAndManagers(ctx context.Context, az *authz.TxAuthorizer, target d
 		set = append(set, p)
 	}
 	slices.Sort(set)
+	gone := map[domain.PrincipalID]bool{}
 	for _, p := range set {
 		// A holder whose principal row went away holds nothing (as in
 		// remainingMemberManagers); the target itself must exist.
 		if err := az.LockTargetPrincipal(ctx, p); errors.Is(err, domain.ErrNotFound) && p != target {
-			continue
+			gone[p] = true
 		} else if err != nil {
 			return nil, nil, err
 		}
+	}
+	// A skipped holder must not count as a remaining manager.
+	for org, holders := range byOrg {
+		byOrg[org] = slices.DeleteFunc(holders, func(p domain.PrincipalID) bool { return gone[p] })
 	}
 	return grants, byOrg, nil
 }
