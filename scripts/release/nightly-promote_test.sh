@@ -468,6 +468,29 @@ suites error
 run
 grep -F 'the check suite count cannot be read: gh: Bad Gateway (HTTP 502)' "$work/err" >/dev/null || fail 'count failure lost its error'
 
+# The count failing after the read leaves the listing unproven.
+stuck_pull
+suites 900 error
+run
+replaced 'count failing after the read'
+grep -F 'cannot be read reliably (the check suite count cannot be read' "$work/err" >/dev/null || fail 'count failing after the read gave the wrong reason'
+
+# An overflowing count is refused, not compared.
+stuck_pull
+suites 99999999999999999999
+run
+replaced 'overflowing suite count'
+unread 'overflowing suite count'
+
+# Bad data on one promotion is a stuck reason: it is still closed and replaced.
+stuck_pull
+PULLS=$(pull 41 'not-a-sha' "$stale" "$armed" O/R "$hours4")
+export PULLS
+run
+replaced 'malformed head commit'
+grep -F 'its head commit or age is invalid' "$work/err" >/dev/null || fail 'malformed head commit gave no reason'
+if grep -F 'check-runs' "$work/reads" >/dev/null; then fail 'malformed head commit was still read'; fi
+
 # The queued promotion of the same commit on an oversized head is reported, not skipped.
 reset
 PULLS=$(pull 41 "$dev" "$branch" "$armed")

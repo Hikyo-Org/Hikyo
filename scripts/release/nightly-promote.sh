@@ -93,7 +93,7 @@ open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_p
 # superseded promotion is still closed and replaced.
 suites_problem=
 # First line of the last failed read, as plain printable text.
-first_line() { head -n 1 "$work/err" | tr -cd '[:print:]' | cut -c1-200; }
+first_line() { head -n 1 "$work/err" | tr -cd '[:print:]' | cut -c1-200 | sed 's/##\[/## [/g'; }
 count_suites() {
 	suites_problem=
 	# shellcheck disable=SC2016 # GraphQL variables, not shell ones.
@@ -101,7 +101,7 @@ count_suites() {
 		-f "o=${GH_REPO%%/*}" -f "n=${GH_REPO#*/}" -f "c=$1" \
 		--jq ".data.repository | select(.databaseId == $GITHUB_REPOSITORY_ID and .object.oid == \"$1\") | .object.checkSuites.totalCount" 2>"$work/err"); then
 		suites_problem="the check suite count cannot be read: $(first_line)"
-	elif ! printf '%s\n' "$count" | grep -Eq '^[0-9]+$'; then
+	elif ! printf '%s\n' "$count" | grep -Eq '^[0-9]{1,9}$'; then
 		suites_problem='the check suite count is incomplete or belongs to another commit or repository'
 	elif [ "$count" -gt "$suite_margin" ]; then
 		suites_problem="$count check suites, above $suite_margin"
@@ -110,9 +110,13 @@ count_suites() {
 # A refused or failed admission, or a PR that has sat for hours, means this promotion
 # cannot land.
 stuck_reason() {
-	printf '%s\n' "$2" | grep -Eq '^[0-9]+$' || die 'invalid pull request age'
 	check='{}'
 	reason=
+	# Bad data on one promotion must not stop the run before it is closed and replaced.
+	if ! printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$' || ! printf '%s\n' "$2" | grep -Eq '^[0-9]{1,12}$'; then
+		reason='its head commit or age is invalid, so its ci-queue-required check cannot be read'
+		return 0
+	fi
 	# This count saves a REST read of a head that cannot be listed; the one after
 	# the read is what proves the listing was complete.
 	count_suites "$1"
@@ -121,7 +125,7 @@ stuck_reason() {
 		# collect the exit status of the read itself first.
 		if "$GH_BIN" api --paginate "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
 			--jq '.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")' >"$work/runs" 2>"$work/err"; then
-			check=$(jq -s 'max_by(.id) // {}' "$work/runs") || die 'invalid check run listing'
+			check=$(jq -s 'max_by(.id) // {}' "$work/runs") || suites_problem='the check run listing is not valid JSON'
 		else
 			suites_problem="the check runs cannot be read: $(first_line)"
 		fi
@@ -163,7 +167,6 @@ tab=$(printf '\t')
 while IFS=$tab read -r number head ref armed created; do
 	[ -n "$number" ] || continue
 	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
-	printf '%s\n' "$head" | grep -Eq '^[0-9a-f]{40}$' || die "pull request #$number has an invalid head commit"
 	printf '%s\n' "$ref" | grep -Eq '^release/nightly-[0-9]{8}-[0-9a-f]{7}$' ||
 		die "pull request #$number is a release/nightly- branch this workflow did not create; close it by hand"
 	if [ "$head" = "$commit" ]; then
