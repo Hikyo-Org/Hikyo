@@ -159,12 +159,6 @@ export function useCreateRotation(env: EnvironmentRef) {
   });
 }
 
-/**
- * useRotationAct takes one act on an existing rotation. Each carries the
- * generation the browser read, so a change someone made since is refused
- * (409) instead of overwritten. Resume, release-hold and run-now consume the
- * publish ceremony the caller ran; pause and delete need none.
- */
 /** GenerationRangeError is a fence the browser cannot send exactly; nothing was sent. */
 class GenerationRangeError extends Error {
   constructor(generation: bigint) {
@@ -172,6 +166,12 @@ class GenerationRangeError extends Error {
   }
 }
 
+/**
+ * useRotationAct takes one act on an existing rotation. Each carries the
+ * generation the browser read, so a change someone made since is refused
+ * (409) instead of overwritten. Resume, release-hold and run-now consume the
+ * publish ceremony the caller ran; pause and delete need none.
+ */
 export function useRotationAct(env: EnvironmentRef) {
   const transport = useTransport();
   const refresh = useRefreshEnvironment(env);

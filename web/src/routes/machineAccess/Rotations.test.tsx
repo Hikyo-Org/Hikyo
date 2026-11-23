@@ -873,6 +873,27 @@ it('names the server refusal in its own words and keeps the dialog open', async 
   }
 });
 
+it('says a paused held rotation stays stopped when its hold is released', async () => {
+  const pausedHeld = { ...rotationList().items[1], state: 'paused' };
+  actStub({
+    ...reads([pausedHeld]),
+    [`GET ${windowPath}`]: closedWindow,
+    [`POST ${rotationPath(HELD_ROTATION)}/release-hold`]: () => Response.json({ ...pausedHeld, restore_hold: false }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Release hold REPORTING_PASSWORD'));
+    expect(dialog().textContent).toContain('this one stays stopped until a person resumes it');
+    await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    await click(buttonNamed(dialog(), 'Release hold'));
+    await click(buttonNamed(document.body, 'Authorise'));
+    expect(container.querySelector('.rotations__done')?.textContent).toContain('It was not resumed.');
+  } finally {
+    await unmount();
+  }
+});
+
 it('sends nothing for a generation the browser cannot carry exactly, and says why', async () => {
   const sent = actStub(reads([{ ...rotationList().items[0], generation: 2 ** 60 }]));
   const { container, unmount } = await mount();

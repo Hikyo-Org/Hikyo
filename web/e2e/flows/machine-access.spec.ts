@@ -396,7 +396,7 @@ test.describe('machine access', () => {
       await expect(release.getByRole('button', { name: 'Release hold' })).toBeDisabled();
       await release.getByRole('checkbox').check();
       await release.getByRole('button', { name: 'Release hold' }).click();
-      await expect(page.locator('.rotations__done')).toContainText(`Rotation ${HELD_ROTATION} released`);
+      await expect(page.locator('.rotations__done')).toContainText('its schedule publishes again');
       expect(sent.at(-1)).toEqual({ method: 'POST', path: `/${HELD_ROTATION}/release-hold`, body: { expected_generation: 1n } });
 
       // Pause needs no ceremony and says the delivered credential stays valid.

@@ -21,9 +21,10 @@ authorization. No API, executor or rotation semantics changed.
   the person what that act grants: create and resume "hand scheduled publishing to a
   rotation in · <env>" with "standing publish authority over these keys for a scheduled
   rotation"; run-now "one unscheduled publish of a new credential into these keys";
-  release-hold that the executor settles the held runs and the state does not change. The
-  existing `publish` lede ("publish into a protected environment") would be false: a
-  rotation's environment is never protected.
+  release-hold that held runs are settled and an active rotation publishes on its schedule
+  again, while a paused or halted one stays stopped. The existing `publish` lede
+  ("publish into a protected environment") would be false: a rotation's environment is
+  never protected.
 - `web/src/routes/machineAccess/Rotations.tsx`: **Create rotation** dialog; per-row acts
   offered by state (`actVerbs`); one act dialog per verb with its consequences. An open
   dialog whose rotation was re-read at another generation, or no longer offers that act,
