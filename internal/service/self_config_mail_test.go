@@ -137,6 +137,6 @@ func TestSelfConfigTrimsAStagedMailPassword(t *testing.T) {
 	}
 	messages := sink.Messages()
 	if len(messages) != 1 || messages[0].Password != "rotated secret" {
-		t.Fatalf("SMTP AUTH password = %+v, want the trimmed value", messages)
+		t.Fatalf("SMTP AUTH saw %d messages, or an untrimmed password", len(messages))
 	}
 }

@@ -19,7 +19,7 @@ func TestManagedSeedTrimsThePassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	if values["HIKYO_MAIL_PASSWORD"] != "password" {
-		t.Fatalf("file password = %q, want trimmed", values["HIKYO_MAIL_PASSWORD"])
+		t.Fatal("file password was not trimmed")
 	}
 	if _, exists := values["HIKYO_MAIL_PASSWORD_FILE"]; exists {
 		t.Fatal("file reference became managed configuration")
@@ -30,7 +30,7 @@ func TestManagedSeedTrimsThePassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	if values["HIKYO_MAIL_PASSWORD"] != "inline secret" {
-		t.Fatalf("inline password = %q, want trimmed with interior space kept", values["HIKYO_MAIL_PASSWORD"])
+		t.Fatal("inline password was not trimmed, or lost its interior space")
 	}
 }
 
