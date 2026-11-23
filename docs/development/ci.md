@@ -581,9 +581,10 @@ ci-dev run 44901528773, attempt 1, on dev 4c7d11f6c; all twelve race shards
 passed. The twelve-shard count, complete target discovery and database
 serialization are unchanged. The planner also keeps each package's modelled
 `go test` invocation on a shard within a 600-second budget, half of the
-20-minute `-timeout`, before it balances shard totals. The largest modelled
-invocation falls from 1026 to 600 seconds on main, and the largest modelled
-shard is 1189 seconds against the 30-minute job limit. This model is not hosted
+20-minute `-timeout`, before it balances shard totals. Without the budget, the
+recalibrated model would plan a 1026-second invocation on main; with it, the
+largest is 600 seconds, and the largest modelled shard is 1189 seconds against
+the 30-minute job limit. This model is not hosted
 latency proof. Merge groups plan with the base branch's planner, so the new
 weights take effect after they land on main and are backmerged to dev.
 

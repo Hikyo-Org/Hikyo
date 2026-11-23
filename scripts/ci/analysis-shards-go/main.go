@@ -765,7 +765,7 @@ var racePackageSeconds = map[string]float64{
 // twelve-shard JSON artifacts. Observed paused targets retain the existing
 // four-wide parallel allowance; subtest events are excluded to avoid counting
 // parent and child elapsed twice. Unobserved source targets keep prior weights.
-// The unchanged planner discovers every target, including fuzz seeds and
+// The planner discovers every target, including fuzz seeds and
 // runnable examples, and gives missing weights its one-second fallback, so
 // targets measured at one second or less are omitted. Each split suite is
 // scaled to racePackageSeconds. Keep internal/lint whole so its repository

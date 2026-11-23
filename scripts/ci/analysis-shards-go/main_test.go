@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCompletePlanMatchesIndividualModes(t *testing.T) {
@@ -151,6 +152,9 @@ func TestRacePlanBalancesRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	limit := raceShardJobSeconds(t)
+	if timeout := raceGoTestTimeoutSeconds(t); raceInvocationBudgetSeconds > timeout/2 {
+		t.Fatalf("race invocation budget %.0fs exceeds half of the %.0fs go test -timeout in test-race-packages.sh", raceInvocationBudgetSeconds, timeout)
+	}
 	total, longest := 0.0, 0.0
 	for index, shard := range shards {
 		t.Logf("shard %d: predicted %.0fs (sequential %.0fs, pool %.0fs, longest pool entry %.0fs)",
@@ -194,6 +198,25 @@ func raceShardJobSeconds(t *testing.T) float64 {
 		t.Fatal(err)
 	}
 	return float64(minutes) * 60
+}
+
+// raceGoTestTimeoutSeconds reads the race go test -timeout from
+// test-race-packages.sh, which every planned invocation must finish within.
+func raceGoTestTimeoutSeconds(t *testing.T) float64 {
+	t.Helper()
+	script, err := os.ReadFile("../../../scripts/ci/test-race-packages.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := regexp.MustCompile(`go test -json -race [^\n]*-timeout=(\S+)`).FindAllSubmatch(script, -1)
+	if len(matches) != 1 {
+		t.Fatal("test-race-packages.sh must run exactly one go test -race with -timeout")
+	}
+	timeout, err := time.ParseDuration(string(matches[0][1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return timeout.Seconds()
 }
 
 // Split targets share startup, while an additional process consumes overhead.
@@ -248,7 +271,20 @@ func TestRacePlanKeepsInvocationsWithinBudget(t *testing.T) {
 	if got := bestRaceShard(shards, raceUnit{pkg: app, seconds: 10}); got != 0 {
 		t.Fatalf("in-budget target went to shard %d, want 0", got)
 	}
+	// Setup counts: 550 + 40 fits without it, but 550 + 40 + 20 does not.
+	if got := bestRaceShard(shards, raceUnit{pkg: app, seconds: 40}); got != 1 {
+		t.Fatalf("target over budget only with setup went to shard %d, want 1", got)
+	}
+	// 550 + 30 + 20 lands exactly on the budget, which still fits.
+	if got := bestRaceShard(shards, raceUnit{pkg: app, seconds: 30}); got != 0 {
+		t.Fatalf("target exactly at the budget went to shard %d, want 0", got)
+	}
 	if got := bestRaceShard(shards, raceUnit{pkg: peer, seconds: raceInvocationBudgetSeconds}); got != 0 {
 		t.Fatalf("oversized unit went to shard %d, want the cheapest shard 0", got)
+	}
+	// A fitting shard keeps the unit even when a later shard is cheaper.
+	reversed := []raceShard{place(peer, 2000), place(app, raceInvocationBudgetSeconds-50)}
+	if got := bestRaceShard(reversed, raceUnit{pkg: app, seconds: 100}); got != 0 {
+		t.Fatalf("cheaper over-budget shard took the target from fitting shard 0: got %d", got)
 	}
 }

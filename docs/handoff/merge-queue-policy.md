@@ -312,10 +312,11 @@ Race weights use all twelve JSON artifacts of ci-dev run 44901528773, attempt 1,
 on dev 4c7d11f6c, whose twelve race shards all passed. Twelve shards, complete
 target discovery and database serialization are preserved. Placement keeps each
 package's modelled `go test` invocation within a 600-second budget, half of the
-20-minute `-timeout`; the largest modelled invocation falls from 1026 to 600
-seconds on main and the largest modelled shard is 1189 seconds; model
-redistribution is not hosted latency proof. This lifecycle repair changes none
-of those planner weights or application/full-suite tests.
+20-minute `-timeout`. Without the budget, the recalibrated model would plan a
+1026-second invocation on main; with it, the largest is 600 seconds, and the
+largest modelled shard is 1189 seconds; model redistribution is not hosted
+latency proof. The earlier lifecycle repair changed no planner weights or
+application/full-suite tests.
 
 ## Interpreting merged-PR status summaries
 

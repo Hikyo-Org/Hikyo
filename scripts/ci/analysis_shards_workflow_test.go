@@ -197,6 +197,7 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 		{"trusted main", "workflow_dispatch", "refs/heads/main", pinnedSource, true, 1},
 		{"authenticated release tag", "push", "refs/tags/v1.2.3", pinnedSource, true, 1},
 		{"recalibrated trusted base", "merge_group", "", newSource, true, 1},
+		{"recalibrated trusted main", "workflow_dispatch", "refs/heads/main", newSource, true, 1},
 		{"nonmain manual", "workflow_dispatch", "refs/heads/topic", newSource, false, 0},
 		{"unknown legacy source", "merge_group", "", append(append([]byte(nil), oldSource...), '\n'), false, 0},
 		{"bulk error has no fallback", "merge_group", "", []byte(badBulk), false, 0},
@@ -269,9 +270,9 @@ func withLegacyRaceWeights(t *testing.T, current, legacy []byte) []byte {
 		}
 		current = pattern.ReplaceAllLiteral(current, frozen[0])
 	}
-	budget := []byte("const raceInvocationBudgetSeconds = 600.0\n")
-	if bytes.Count(current, budget) != 1 {
-		t.Fatal("race invocation budget must occur once in the planner")
+	budget := regexp.MustCompile(`(?m)^const raceInvocationBudgetSeconds = .*$`)
+	if len(budget.FindAll(current, -1)) != 1 {
+		t.Fatal("race invocation budget constant must occur once in the planner")
 	}
-	return bytes.Replace(current, budget, []byte("const raceInvocationBudgetSeconds = 1e300\n"), 1)
+	return budget.ReplaceAllLiteral(current, []byte("const raceInvocationBudgetSeconds = 1e300"))
 }
