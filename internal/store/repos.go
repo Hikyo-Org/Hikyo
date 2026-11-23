@@ -892,8 +892,10 @@ func (r sqliteEnvs) Delete(ctx context.Context, p authz.Proof) error {
 	if err != nil {
 		return err
 	}
-	// Shared by direct deletion and definitions apply. Retain every issuance
-	// row; even a revoked certificate may still require CRL publication.
+	// Backstop for any caller that skips the service guard
+	// (purgeEnvironmentLiveRows, which names the ids and the live/history
+	// distinction). Retain every issuance row; even a revoked certificate may
+	// still require CRL publication.
 	count, err := r.q.CountEnvironmentPKICertificates(ctx, sqlitegen.CountEnvironmentPKICertificatesParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: string(chain.Env),
 	})
@@ -1647,8 +1649,10 @@ func (r pgEnvs) Delete(ctx context.Context, p authz.Proof) error {
 	if err != nil {
 		return err
 	}
-	// Shared by direct deletion and definitions apply. Retain every issuance
-	// row; even a revoked certificate may still require CRL publication.
+	// Backstop for any caller that skips the service guard
+	// (purgeEnvironmentLiveRows, which names the ids and the live/history
+	// distinction). Retain every issuance row; even a revoked certificate may
+	// still require CRL publication.
 	count, err := r.q.CountEnvironmentPKICertificates(ctx, pggen.CountEnvironmentPKICertificatesParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: string(chain.Env),
 	})

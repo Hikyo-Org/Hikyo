@@ -21,10 +21,10 @@ var (
 	// ErrEnvironmentHasLiveCertificate refuses an environment delete while a
 	// PKI certificate in it is still live (unexpired and not failed or expired):
 	// its row backs the CRL entry of a revoked serial. The refusal names them.
-	ErrEnvironmentHasLiveCertificate = fmt.Errorf("%w: the environment still has a live certificate", domain.ErrConflict)
+	ErrEnvironmentHasLiveCertificate = fmt.Errorf("%w: the environment still has a live certificate", domain.ErrPKICertificateRetention)
 	// ErrEnvironmentHasCertificateHistory refuses an environment delete while it
 	// holds only terminal certificate rows: issuance history is retained (#825).
-	ErrEnvironmentHasCertificateHistory = fmt.Errorf("%w: the environment still has certificate issuance history", domain.ErrConflict)
+	ErrEnvironmentHasCertificateHistory = fmt.Errorf("%w: the environment still has certificate issuance history", domain.ErrPKICertificateRetention)
 	// ErrEnvironmentHasAdapterTargets refuses an environment delete while it has
 	// an adapter target, live or tombstoned, or a configure fence: targets are
 	// never deleted and their delivery records are retained.
@@ -47,7 +47,7 @@ func (e *liveRowsRefusalError) Unwrap() error      { return e.base }
 
 // purgeEnvironmentLiveRows removes a deleted environment's terminal dynamic
 // leases in the delete's own transaction and refuses by name while a lease or
-// certificate row, or an adapter target, remains (#1420).
+// certificate row, or an adapter target or configure fence, remains (#1420).
 func purgeEnvironmentLiveRows(ctx context.Context, r store.Repos, proof authz.Proof) error {
 	err := r.Dynamic().PurgeEnvironment(ctx, proof)
 	if refusal := liveRowsRefusal(err, ErrEnvironmentHasLiveLease, store.ErrDynamicLiveLease,

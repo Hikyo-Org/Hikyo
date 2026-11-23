@@ -2,7 +2,7 @@ package store
 
 // LiveRowsLimit bounds how many blocking row ids an environment-delete refusal
 // names.
-const LiveRowsLimit = 10
+const LiveRowsLimit = RotationBlockingIDsLimit
 
 // LiveRowsError is an environment-delete refusal that names the rows still
 // live. Ids are not secret.

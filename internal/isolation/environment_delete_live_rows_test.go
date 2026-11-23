@@ -111,7 +111,7 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	refused := func(want error, label, id string) {
 		t.Helper()
 		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
-		if !errors.Is(err, want) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
+		if !errors.Is(err, want) || !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
 			t.Fatalf("delete with %s = %v (%q)", label, err, safeError(err))
 		}
 		if got := count(t, db, "pki_certificates", f); got != 6 {

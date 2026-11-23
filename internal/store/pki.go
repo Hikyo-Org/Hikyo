@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 // Private-PKI request-path store (#154, docs/adr/pki.md). Every method is
@@ -679,11 +680,11 @@ func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, re
 
 // ErrPKILiveCertificate refuses an environment delete while a certificate in it
 // is still live: its row backs the CRL entry of a revoked serial.
-var ErrPKILiveCertificate = fmt.Errorf("%w: the environment still has a live certificate; revoke it and let it expire first", ErrConflict)
+var ErrPKILiveCertificate = fmt.Errorf("%w: the environment still has a live certificate; revoke it and let it expire first", domain.ErrPKICertificateRetention)
 
 // ErrPKICertificateHistory refuses an environment delete while it holds only
 // terminal certificate history, which is retained (#825).
-var ErrPKICertificateHistory = fmt.Errorf("%w: the environment still has certificate issuance history, which is retained", ErrConflict)
+var ErrPKICertificateHistory = fmt.Errorf("%w: the environment still has certificate issuance history, which is retained", domain.ErrPKICertificateRetention)
 
 func (r pkiQueries) GuardEnvironmentDelete(ctx context.Context, p authz.Proof, now time.Time) error {
 	chain, err := authz.Verify(p, authz.StorePKICertificatesGuardEnvironmentDelete, r.tok)

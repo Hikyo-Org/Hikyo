@@ -1132,7 +1132,7 @@ const (
 	// while it holds certificate rows (#1420); nothing is purged.
 	StorePKICertificatesGuardEnvironmentDelete StoreOp = "pki.GuardEnvironmentDelete"
 	// StoreAdaptersGuardEnvironmentDelete refuses an environment delete while it
-	// holds adapter targets (#1420).
+	// holds adapter targets or configure fences (#1420).
 	StoreAdaptersGuardEnvironmentDelete StoreOp = "adapters.GuardEnvironmentDelete"
 	// StoreDynamicProvidersPurgeProject removes a deleted project's tombstoned
 	// providers, refusing while one is active (#1420).
