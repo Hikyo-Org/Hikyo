@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -39,7 +40,7 @@ func TestSweepLegacyWorkDirectories(t *testing.T) {
 	if err := os.Symlink("/etc/hosts", filepath.Join(dir, ".export-4", "copy-link")); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
-	if err := sweepExportDebris(dir); err != nil {
+	if err := sweepExportDebris(slog.Default(), dir); err != nil {
 		t.Fatal(err)
 	}
 	for _, gone := range []string{".export-1", ".export-2", ".hikyo-export-5.partial"} {
@@ -61,7 +62,7 @@ func TestStagedWorkIsLiveToTheSweepEvenViaARelativeDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := &Backup{}
-	work, release, err := stageExportWork(t.Context(), "./backups")
+	work, release, err := stageExportWork(t.Context(), slog.Default(), "./backups")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +110,7 @@ func TestUnremovableStagedPlaintextKeepsItsMarker(t *testing.T) {
 		t.Skip("needs POSIX directory permissions and a non-root user")
 	}
 	dir := t.TempDir()
-	work, release, err := stageExportWork(t.Context(), dir)
+	work, release, err := stageExportWork(t.Context(), slog.Default(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func TestUnremovableStagedPlaintextKeepsItsMarker(t *testing.T) {
 	if !exists(filepath.Join(work, ".live")) || !exists(filepath.Join(sub, "snapshot.db")) {
 		t.Fatal("failed plaintext removal dropped the liveness marker")
 	}
-	if err := sweepExportDebris(dir); err == nil {
+	if err := sweepExportDebris(slog.Default(), dir); err == nil {
 		t.Fatal("sweep reported success while plaintext could not be removed")
 	}
 	if !exists(filepath.Join(work, ".live")) {
@@ -134,7 +135,7 @@ func TestUnremovableStagedPlaintextKeepsItsMarker(t *testing.T) {
 	if err := os.Chmod(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := sweepExportDebris(dir); err != nil {
+	if err := sweepExportDebris(slog.Default(), dir); err != nil {
 		t.Fatal(err)
 	}
 	if exists(work) {

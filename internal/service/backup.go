@@ -133,7 +133,7 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup destination %s: %w", dir, err)
 	}
-	work, releaseWork, err := stageExportWork(ctx, dir)
+	work, releaseWork, err := stageExportWork(ctx, s.logger(), dir)
 	if err != nil {
 		return ExportResult{}, err
 	}

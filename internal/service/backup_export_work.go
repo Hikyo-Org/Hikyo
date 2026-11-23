@@ -47,7 +47,7 @@ func (s *Backup) logger() *slog.Logger {
 // MkdirTemp) and holds the liveness lock until the returned cleanup runs.
 // Creation and sweeping share the directory lock, so a sweep cannot see a new
 // directory before its lock is held.
-func stageExportWork(ctx context.Context, dir string) (string, func(), error) {
+func stageExportWork(ctx context.Context, log *slog.Logger, dir string) (string, func(), error) {
 	unlock, err := lockBackupDirectory(ctx, dir)
 	if err != nil {
 		return "", nil, fmt.Errorf("backup staging directory lock: %w", err)
@@ -79,12 +79,12 @@ func stageExportWork(ctx context.Context, dir string) (string, func(), error) {
 			// Keep the marker and directory: with `.live` present and its lock
 			// free the next sweep recognises this as dead debris and retries.
 			_ = live.Unlock()
-			slog.Warn("backup export staging could not be fully removed; the next export or prune retries", "path", work, "error", err)
+			log.Warn("backup export staging could not be fully removed; the next export or prune retries", "path", work, "error", err)
 			return
 		}
 		_ = live.Unlock()
 		if err := os.RemoveAll(work); err != nil {
-			slog.Warn("backup export work directory could not be removed", "path", work, "error", err)
+			log.Warn("backup export work directory could not be removed", "path", work, "error", err)
 		}
 	}, nil
 }
@@ -126,13 +126,13 @@ func (s *Backup) sweepDirectory(ctx context.Context, dir string) error {
 		return err
 	}
 	defer unlock()
-	return sweepExportDebris(dir)
+	return sweepExportDebris(s.logger(), dir)
 }
 
 // sweepExportDebris requires the directory lock. Anything not matching an exact
 // Hikyo shape is left alone: the operator may point --out at a folder holding
 // their own files.
-func sweepExportDebris(dir string) error {
+func sweepExportDebris(log *slog.Logger, dir string) error {
 	dir, err := canonicalDir(dir)
 	if err != nil {
 		return err
@@ -150,7 +150,7 @@ func sweepExportDebris(dir string) error {
 				errs = append(errs, err)
 			}
 		case e.IsDir() && exportWorkName.MatchString(e.Name()):
-			errs = append(errs, sweepWorkDir(path))
+			errs = append(errs, sweepWorkDir(log, path))
 		case e.IsDir() && legacyExportWorkName.MatchString(e.Name()):
 			errs = append(errs, sweepLegacyWorkDir(path))
 		}
@@ -158,7 +158,7 @@ func sweepExportDebris(dir string) error {
 	return errors.Join(errs...)
 }
 
-func sweepWorkDir(work string) error {
+func sweepWorkDir(log *slog.Logger, work string) error {
 	if _, live := liveExportWork.Load(work); live {
 		return nil
 	}
@@ -168,7 +168,7 @@ func sweepWorkDir(work string) error {
 		// No marker: an export killed between mkdir and lock holds nothing,
 		// and rmdir refuses anything else.
 		if err := os.Remove(work); err != nil {
-			slog.Warn("backup export work directory has no liveness marker and was left in place; remove it by hand if no export is running", "path", work)
+			log.Warn("backup export work directory has no liveness marker and was left in place; remove it by hand if no export is running", "path", work)
 		}
 		return nil
 	}

@@ -338,7 +338,7 @@ func (s *Backup) Prune(ctx context.Context, dir string, policy PrunePolicy) (Pru
 		return PruneResult{}, errors.Join(err, recordErr)
 	}
 	defer unlock()
-	if err := sweepExportDebris(dir); err != nil {
+	if err := sweepExportDebris(s.logger(), dir); err != nil {
 		s.logger().Warn("backup export debris sweep failed", "dir", dir, "error", err)
 	}
 	priorClockUncertain := false
