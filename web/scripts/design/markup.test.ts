@@ -52,6 +52,11 @@ describe('scanMarkup', () => {
     ]);
   });
 
+  it('flags a hand-written table-scroll wrapper in favour of ui/TableScroll', () => {
+    expect(scanMarkup(lines(`<div className="table-scroll"><table /></div>`)).map((hit) => hit.atom)).toEqual(['ui/TableScroll']);
+    expect(scanMarkup(lines(`<TableScroll aria-label="Keys"><table /></TableScroll>`))).toEqual([]);
+  });
+
   it('lets a marker on the line rule that line and nothing after it', () => {
     expect(scanMarkup(lines(`
       <p className="notice" role="status">{/* markup-check: not an alert */}

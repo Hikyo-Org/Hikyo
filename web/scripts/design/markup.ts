@@ -48,6 +48,7 @@ const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: cls('matrix-editor'), atom: 'ui/Dialog' },
   { pattern: cls('settings-tag'), atom: 'ui/Button variant="quiet"' },
   { pattern: cls('chip'), atom: 'ui/Badge or ui/ChoiceGroup' },
+  { pattern: cls('table-scroll'), atom: 'ui/TableScroll' },
   { pattern: /[🔒🔗🔑✓✕✗×Δ◌⋯⚠⚙⚲⚿⧉⊘⇅◆▾▸↺✎ℹ]/u, atom: 'ui/Glyph' },
 ];
 

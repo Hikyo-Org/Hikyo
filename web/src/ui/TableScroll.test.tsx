@@ -23,6 +23,14 @@ it('renders a focusable region named by its caption', async () => {
   }
 });
 
+it('refuses an unnamed region or one with two names at compile time', () => {
+  // @ts-expect-error a region needs aria-labelledby or aria-label
+  const unnamed = <TableScroll><table /></TableScroll>;
+  // @ts-expect-error aria-labelledby and aria-label are exclusive
+  const both = <TableScroll aria-label="Keys" aria-labelledby="cap"><table /></TableScroll>;
+  expect([unnamed, both]).toHaveLength(2);
+});
+
 it('takes its name from aria-label when the table has no caption', async () => {
   const view = await renderForm(
     <TableScroll aria-label="Policies">
@@ -30,7 +38,8 @@ it('takes its name from aria-label when the table has no caption', async () => {
     </TableScroll>,
   );
   try {
-    const region = view.container.querySelector('.table-scroll');
+    const region = view.container.querySelector('[role="region"][aria-label="Policies"]');
+    expect(region).not.toBeNull();
     expect(region?.getAttribute('aria-label')).toBe('Policies');
     expect(region?.hasAttribute('aria-labelledby')).toBe(false);
     expect(region?.getAttribute('tabindex')).toBe('0');
