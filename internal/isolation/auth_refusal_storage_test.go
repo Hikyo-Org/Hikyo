@@ -514,37 +514,49 @@ func (serverOnlyDeadline) Done() <-chan struct{}         { return nil }
 func (serverOnlyDeadline) Err() error                    { return nil }
 
 // A client that gives up cannot be what frees the refusal row: the server must
-// abort the lock wait itself (lock_timeout and statement_timeout share the bound, so either may fire), leave no waiter behind, and not block later refusals.
+// abort the lock wait itself, leave no waiter behind, and not block later
+// refusals. lock_timeout and statement_timeout share the bound, so either may
+// fire. SQLite has no server to outlive the client, so only postgres runs.
 func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
-	forEngines(t, func(t *testing.T, db *store.DB) {
-		if db.Engine() != store.EnginePostgres {
-			t.Skip("sqlite interrupts the in-process statement on cancel; there is no server to outlive the client")
-		}
-		release := holdRefusalWriter(t, db)
-		sample := refusalStorageSample(t)
-		ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(300 * time.Millisecond)}
-		start := time.Now()
-		err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	db := seededDB(t, openPostgres)
+	release := holdRefusalWriter(t, db)
+	sample := refusalStorageSample(t)
+	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(300 * time.Millisecond)}
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		done <- tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 			_, err := az.UpdateRequestRefusals(ctx, &sample)
 			return err
 		})
-		var timedOut *pgconn.PgError
-		if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") || time.Since(start) > 3*time.Second {
-			t.Fatalf("server did not abort the lock wait at the deadline: %v after %s", err, time.Since(start))
-		}
-		if waiting := queryInt(t, db, "SELECT count(*) FROM pg_locks WHERE NOT granted"); waiting != 0 {
-			t.Fatalf("aborted attempt left %d lock waiters", waiting)
-		}
-		release()
-		signals := service.NewRefusalSignals(db)
-		signals.Deadline = 5 * time.Second
-		if err := signals.Record(t.Context(), sample); err != nil {
-			t.Fatalf("later refusal was blocked: %v", err)
-		}
-		if state := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1"); strings.Count(state, sample.RequestID) != 1 {
-			t.Fatalf("expected exactly the later sample in the window: %s", state)
-		}
-	})
+	}()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(3 * time.Second):
+		release() // unblock the writer so the goroutine and database can be torn down
+		<-done
+		t.Fatal("server never aborted the lock-blocked attempt: no server-side bound")
+	}
+	var timedOut *pgconn.PgError
+	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") {
+		t.Fatalf("server did not abort the lock wait at the deadline: %v after %s", err, time.Since(start))
+	}
+	// Scoped to this database and row: other tests share the server and wait on locks deliberately.
+	const waiters = "SELECT count(*) FROM pg_locks WHERE NOT granted AND relation='auth_refusal_window'::regclass " +
+		"AND database=(SELECT oid FROM pg_database WHERE datname=current_database())"
+	if waiting := queryInt(t, db, waiters); waiting != 0 {
+		t.Fatalf("aborted attempt left %d lock waiters", waiting)
+	}
+	release()
+	signals := service.NewRefusalSignals(db)
+	signals.Deadline = 5 * time.Second
+	if err := signals.Record(t.Context(), sample); err != nil {
+		t.Fatalf("later refusal was blocked: %v", err)
+	}
+	if state := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1"); strings.Count(state, sample.RequestID) != 1 {
+		t.Fatalf("expected exactly the later sample in the window: %s", state)
+	}
 }
 
 func sealedRefusalCount(t *testing.T, db *store.DB) int64 {
