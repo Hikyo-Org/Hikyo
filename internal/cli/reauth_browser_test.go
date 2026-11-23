@@ -82,8 +82,12 @@ func openAndApprove(t *testing.T, callbackURI *string) func(string) error {
 			t.Errorf("browser opened at %q", browserURL)
 		}
 		go func() {
-			resp, _ := http.Get(*callbackURI + "?code=hik_1_hc_access&state=hik_1_hs_access")
-			if resp != nil {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, *callbackURI+"?code=hik_1_hc_access&state=hik_1_hs_access", nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if resp, err := http.DefaultClient.Do(req); err == nil {
 				_ = resp.Body.Close()
 			}
 		}()

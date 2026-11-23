@@ -105,7 +105,7 @@ func chosenBrowserOpener(ios IO, st *State, instance string) (func(string) error
 		open = OpenBrowser
 	}
 	return func(target string) error {
-		fmt.Fprintf(ios.Stderr, "You chose the browser approval (%s); waiting for it. With no browser here, press Ctrl-C and %s.\n", cause, tail)
+		_, _ = fmt.Fprintf(ios.Stderr, "You chose the browser approval (%s); waiting for it. With no browser here, press Ctrl-C and %s.\n", cause, tail)
 		if err := open(target); err != nil {
 			return fmt.Errorf("%w; you chose the browser approval (%s), so no code prompt was offered: %s", err, cause, tail)
 		}

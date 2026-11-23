@@ -162,7 +162,7 @@ func (s *State) approveInBrowser(instance string) (bool, error) {
 // does not apply to them; say so rather than ignore it silently.
 func (s *State) readProof(ios IO, prompt string) (string, error) {
 	if s.forceBrowser {
-		fmt.Fprintln(ios.Stderr, "--approve-in-browser does not apply to this account-security proof; enter it here.")
+		_, _ = fmt.Fprintln(ios.Stderr, "--approve-in-browser does not apply to this account-security proof; enter it here.")
 	}
 	return ios.readPassword(prompt)
 }
@@ -208,7 +208,7 @@ func runConfig(_ context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(ios.Stdout, m)
+		_, _ = fmt.Fprintln(ios.Stdout, m)
 		return nil
 	}
 	return st.SetReauthMethod(instance, method)
