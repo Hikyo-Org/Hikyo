@@ -544,6 +544,15 @@ test.describe('machine access', () => {
     await expect(dialog.getByRole('alert')).toContainText('there is no second look');
     await expect(token).toBeVisible();
 
+    // Escape is no way out either, even repeated: Chromium makes a repeated
+    // Escape's cancel non-cancelable and closes the dialog unless it reopens.
+    for (let press = 0; press < 3; press += 1) {
+      await page.keyboard.press('Escape');
+    }
+    await expect(dialog).toBeVisible();
+    await expect(token).toBeVisible();
+    await expect.poll(() => dialog.evaluate((element) => element.matches(':modal'))).toBe(true);
+
     await dialog.getByRole('checkbox').check();
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden();
