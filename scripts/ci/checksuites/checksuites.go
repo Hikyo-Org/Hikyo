@@ -101,7 +101,7 @@ func Count(ctx context.Context, s Source, head string) (int, error) {
 			} `json:"repository"`
 		} `json:"data"`
 	}
-	if err := s.Read(ctx, s.object(head, "checkSuites{totalCount}"), &response); err != nil {
+	if err := s.Read(ctx, s.CountQuery(head), &response); err != nil {
 		return 0, fmt.Errorf("check suite count for %s: %w", head, err)
 	}
 	if len(response.Errors) != 0 {
@@ -112,6 +112,11 @@ func Count(ctx context.Context, s Source, head string) (int, error) {
 		return 0, errors.New("incomplete or foreign check suite count")
 	}
 	return *repo.Object.Suites.Total, nil
+}
+
+// CountQuery is the query Count sends.
+func (s Source) CountQuery(head string) string {
+	return s.object(head, "checkSuites{totalCount}")
 }
 
 // SuitesQuery is the query Find sends for one page of suites after cursor.

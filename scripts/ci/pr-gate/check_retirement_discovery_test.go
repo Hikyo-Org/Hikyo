@@ -670,6 +670,9 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 		{fault: "many suites, all finished"},
 		{fault: "suites grew past margin"},
 		{fault: "suites grew during the commit read"},
+		{fault: "recount at the margin stays on REST"},
+		{fault: "recount of a foreign repository", wantErr: "incomplete or foreign check suite count"},
+		{fault: "recount without a suite count", wantErr: "incomplete or foreign check suite count"},
 		{fault: "foreign suites grew past margin"},
 		{fault: "missing every-app suite count", wantErr: "incomplete check suite count"},
 		{fault: "fewer suites than github-actions", wantErr: "incomplete check suite count"},
@@ -719,11 +722,20 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				// REST would show these 100 records as complete; the suite count must win.
 				node["checkSuites"] = map[string]any{"totalCount": checksuites.Margin + 1}
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
-			case "suites grew during the commit read":
-				// History counted one suite and the listing is complete, but the recount
-				// after reading it passes the margin, so that listing cannot be trusted.
+			case "suites grew during the commit read", "recount at the margin stays on REST", "recount of a foreign repository", "recount without a suite count":
+				// History counted one suite and the listing is complete; only the recount
+				// after reading it differs: past the margin the listing cannot be trusted.
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
-				f.api.responses["graphql:"+fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid checkSuites{totalCount}}}}}`, f.c.suiteSource().Owner, f.c.suiteSource().Name, head)] = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "checkSuites": map[string]any{"totalCount": checksuites.Margin + 1}}}}}
+				repoID, suites := f.c.repo.ID, map[string]any{"totalCount": checksuites.Margin + 1}
+				switch tc.fault {
+				case "recount at the margin stays on REST":
+					suites = map[string]any{"totalCount": checksuites.Margin}
+				case "recount of a foreign repository":
+					repoID++
+				case "recount without a suite count":
+					suites = nil
+				}
+				f.api.responses["graphql:"+f.c.suiteSource().CountQuery(head)] = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": repoID, "object": map[string]any{"oid": head, "checkSuites": suites}}}}
 			case "suites at margin stay on REST":
 				node["checkSuites"] = map[string]any{"totalCount": checksuites.Margin}
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
@@ -877,7 +889,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) {
 					t.Fatalf("100 unfinished suites = %+v/%v, want accepted", got, err)
 				}
-			case "suites at margin stay on REST":
+			case "suites at margin stay on REST", "recount at the margin stays on REST":
 				if err != nil || !noTargets || f.api.reads["graphql:"+retirementSuitesQuery(f, head, "")] != 0 {
 					t.Fatalf("commit at the suite margin = %+v/%v, want a REST-only inventory", got, err)
 				}
@@ -918,8 +930,10 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			if strings.HasPrefix(tc.fault, "many suites") && f.api.reads[retirementChecksPath(f, head, 1)] != 0 {
 				t.Fatal("commit beyond the suite margin was read through its partial REST listing")
 			}
-			if tc.fault == "suites grew during the commit read" && f.api.reads[retirementChecksPath(f, head, 1)] != 1 {
-				t.Fatal("the commit listing was not read once before the recount refused it")
+			if strings.HasPrefix(tc.fault, "recount") || tc.fault == "suites grew during the commit read" {
+				if f.api.reads[retirementChecksPath(f, head, 1)] != 1 || f.api.reads["graphql:"+f.c.suiteSource().CountQuery(head)] != 1 {
+					t.Fatal("the commit listing and its recount were not each read once")
+				}
 			}
 			if tc.fault == "too many suites" && f.api.reads["graphql:"+retirementSuitesQuery(f, head, "c1")] != 0 {
 				t.Fatal("suite scan read past a refused first page")
