@@ -155,33 +155,53 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 }
 
-func requireRaceSeed(workflow map[string]any) error {
+// cacheSeedSpec names what differs between the trusted-main build cache seeds;
+// requireCacheSeed holds the trust rules they share.
+type cacheSeedSpec struct {
+	label, group, bootstrap, lookupID, key, restoreKeys, compile string
+	maxTimeout                                                   int
+}
+
+var raceSeedSpec = cacheSeedSpec{
+	label:       "race seed",
+	group:       "ci-race-cache-main",
+	bootstrap:   "${{ runner.temp }}/race-bootstrap",
+	lookupID:    "race-seed",
+	key:         sharedRaceReuseKey,
+	restoreKeys: sharedRaceReuseRestoreKeys,
+	compile:     "cache=\"$HOME/.cache/go-build\"\ntest ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\ngo list -deps -test -export -race ./... >/dev/null\ndu -sh \"$cache\"\n",
+	maxTimeout:  30,
+}
+
+func requireRaceSeed(workflow map[string]any) error { return requireCacheSeed(workflow, raceSeedSpec) }
+
+func requireCacheSeed(workflow map[string]any, spec cacheSeedSpec) error {
 	triggers, ok := workflow["on"].(map[string]any)
 	if !ok || len(triggers) != 2 {
-		return fmt.Errorf("race seed must run only daily or manually")
+		return fmt.Errorf("%s must run only daily or manually", spec.label)
 	}
 	if _, ok := triggers["workflow_dispatch"]; !ok {
-		return fmt.Errorf("missing manual race seed")
+		return fmt.Errorf("missing manual %s", spec.label)
 	}
 	if _, ok := triggers["schedule"]; !ok {
-		return fmt.Errorf("missing daily race seed")
+		return fmt.Errorf("missing daily %s", spec.label)
 	}
 	if !reflect.DeepEqual(workflow["permissions"], map[string]any{"contents": "read"}) {
-		return fmt.Errorf("race seed must be read-only")
+		return fmt.Errorf("%s must be read-only", spec.label)
 	}
-	if !reflect.DeepEqual(workflow["concurrency"], map[string]any{"group": "ci-race-cache-main", "cancel-in-progress": false}) {
-		return fmt.Errorf("race seed runs must queue behind each other, never cancel a publisher")
+	if !reflect.DeepEqual(workflow["concurrency"], map[string]any{"group": spec.group, "cancel-in-progress": false}) {
+		return fmt.Errorf("%s runs must queue behind each other, never cancel a publisher", spec.label)
 	}
 	jobs, ok := workflow["jobs"].(map[string]any)
 	if !ok || len(jobs) != 1 {
-		return fmt.Errorf("race seed must have exactly one job")
+		return fmt.Errorf("%s must have exactly one job", spec.label)
 	}
 	job, ok := jobs["seed"].(map[string]any)
 	if !ok {
-		return fmt.Errorf("race seed job is missing")
+		return fmt.Errorf("%s job is missing", spec.label)
 	}
 	if job["if"] != "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'" {
-		return fmt.Errorf("only trusted main may populate the race seed")
+		return fmt.Errorf("only trusted main may populate the %s", spec.label)
 	}
 	// No job-level env, permissions, container, or defaults: the cache location
 	// and token authority stay the runner defaults the steps assert.
@@ -190,14 +210,14 @@ func requireRaceSeed(workflow map[string]any) error {
 		keys = append(keys, key)
 	}
 	if len(keys) != 4 || job["runs-on"] != "ubuntu-latest" || job["steps"] == nil {
-		return fmt.Errorf("race seed job must set only its guard, runner, timeout, and steps (got %v)", keys)
+		return fmt.Errorf("%s job must set only its guard, runner, timeout, and steps (got %v)", spec.label, keys)
 	}
-	if timeout, ok := job["timeout-minutes"].(int); !ok || timeout < 1 || timeout > 30 {
-		return fmt.Errorf("race seed needs an explicit bounded timeout")
+	if timeout, ok := job["timeout-minutes"].(int); !ok || timeout < 1 || timeout > spec.maxTimeout {
+		return fmt.Errorf("%s needs an explicit bounded timeout", spec.label)
 	}
 	steps, ok := job["steps"].([]any)
 	if !ok || len(steps) != 7 {
-		return fmt.Errorf("unexpected race seed preparation or publication")
+		return fmt.Errorf("unexpected %s preparation or publication", spec.label)
 	}
 	step := func(i int) map[string]any {
 		s, _ := steps[i].(map[string]any)
@@ -206,15 +226,15 @@ func requireRaceSeed(workflow map[string]any) error {
 	checkout := step(0)
 	if uses, _ := checkout["uses"].(string); !strings.HasPrefix(uses, "actions/checkout@") ||
 		!reflect.DeepEqual(checkout["with"], map[string]any{"ref": "${{ github.sha }}", "persist-credentials": false}) {
-		return fmt.Errorf("race seed must use the immutable main SHA without credentials")
+		return fmt.Errorf("%s must use the immutable main SHA without credentials", spec.label)
 	}
 	setup := step(1)
 	if uses, _ := setup["uses"].(string); !strings.HasPrefix(uses, "actions/setup-go@") ||
-		!reflect.DeepEqual(setup["env"], map[string]any{"GOCACHE": "${{ runner.temp }}/race-bootstrap"}) {
+		!reflect.DeepEqual(setup["env"], map[string]any{"GOCACHE": spec.bootstrap}) {
 		return fmt.Errorf("setup diagnostics must use a separate temporary bootstrap cache")
 	}
 	if !reflect.DeepEqual(setup["with"], map[string]any{"go-version-file": "go.mod", "cache": false}) {
-		return fmt.Errorf("race seed must select pinned Go without implicit caches")
+		return fmt.Errorf("%s must select pinned Go without implicit caches", spec.label)
 	}
 	modules := step(2)
 	if modules["uses"] != reuseRestoreAction || !reflect.DeepEqual(modules["with"], map[string]any{
@@ -222,31 +242,31 @@ func requireRaceSeed(workflow map[string]any) error {
 		"key":          "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
 		"restore-keys": "go-mod-v2-${{ runner.os }}-",
 	}) {
-		return fmt.Errorf("race seed must read the shared module cache with the standard reader")
+		return fmt.Errorf("%s must read the shared module cache with the standard reader", spec.label)
 	}
 	abi := step(3)
 	if abi["id"] != "runner-cache-abi" || abi["run"] != "./scripts/ci/export-runner-cache-abi.sh" {
-		return fmt.Errorf("race seed must select the runner cache ABI")
+		return fmt.Errorf("%s must select the runner cache ABI", spec.label)
 	}
 	lookup := step(4)
-	if lookup["id"] != "race-seed" || lookup["uses"] != reuseRestoreAction || lookup["if"] != nil || lookup["continue-on-error"] != nil ||
+	if lookup["id"] != spec.lookupID || lookup["uses"] != reuseRestoreAction || lookup["if"] != nil || lookup["continue-on-error"] != nil ||
 		!reflect.DeepEqual(lookup["with"], map[string]any{
 			"path":         "~/.cache/go-build",
-			"key":          sharedRaceReuseKey,
-			"restore-keys": sharedRaceReuseRestoreKeys,
+			"key":          spec.key,
+			"restore-keys": spec.restoreKeys,
 			"lookup-only":  true,
 		}) {
-		return fmt.Errorf("race seed lookup must use the shared key and never restore historical entries")
+		return fmt.Errorf("%s lookup must use the shared key and never restore historical entries", spec.label)
 	}
+	miss := "steps." + spec.lookupID + ".outputs.cache-hit != 'true'"
 	compile := step(5)
-	wantCompile := "cache=\"$HOME/.cache/go-build\"\ntest ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\ngo list -deps -test -export -race ./... >/dev/null\ndu -sh \"$cache\"\n"
-	if compile["run"] != wantCompile || compile["if"] != "steps.race-seed.outputs.cache-hit != 'true'" || compile["continue-on-error"] != nil || compile["env"] != nil {
-		return fmt.Errorf("fresh race seed must compile every race dependency without executing tests")
+	if compile["run"] != spec.compile || compile["if"] != miss || compile["continue-on-error"] != nil || compile["env"] != nil {
+		return fmt.Errorf("fresh %s must run exactly its reviewed compile into an empty default cache", spec.label)
 	}
 	save := step(6)
 	if save["uses"] != reuseSaveAction || save["continue-on-error"] != nil ||
-		save["if"] != "success() && steps.race-seed.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
-		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps.race-seed.outputs.cache-primary-key }}"}) {
+		save["if"] != "success() && "+miss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
+		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps." + spec.lookupID + ".outputs.cache-primary-key }}"}) {
 		return fmt.Errorf("only a successful main seed may publish, once per exact key")
 	}
 	return nil
@@ -373,10 +393,17 @@ func TestRaceReuseReaderRejectsPerShardKeysAndWriters(t *testing.T) {
 // it reports. Run the real compile guard with the workflow's environment scopes
 // to prove the bootstrap cache never occupies the directory the seed will save.
 func TestRaceSeedGuardRequiresFreshDefaultDirectory(t *testing.T) {
-	workflow, _ := readWorkflowFile(t, "ci-race-cache.yml")
+	// The lint seed guards before its disk script, which creates the directory.
+	for file, guardEnd := range map[string]string{"ci-race-cache.yml": "go list -deps", "ci-lint-cache.yml": "./scripts/ci/prepare-go-cache-disk.sh"} {
+		t.Run(file, func(t *testing.T) { testSeedGuardRequiresFreshDefaultDirectory(t, file, guardEnd) })
+	}
+}
+
+func testSeedGuardRequiresFreshDefaultDirectory(t *testing.T, file, guardEnd string) {
+	workflow, _ := readWorkflowFile(t, file)
 	steps := workflowJobSteps(t, workflow, "seed")
 	compile := steps[5].(map[string]any)["run"].(string)
-	prefix, _, found := strings.Cut(compile, "go list -deps")
+	prefix, _, found := strings.Cut(compile, guardEnd)
 	if !found {
 		t.Fatal("actual compile guard missing")
 	}

@@ -163,6 +163,11 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		reference["runner-cache-abi"],
 		reference["test-go-cache"],
 		{
+			Name: lintDriverRestoreName,
+			Uses: reference["test-go-cache"].Uses,
+			With: map[string]string{"path": "~/.cache/go-build", "key": lintDriverReuseKey, "restore-keys": lintDriverRestoreKeys},
+		},
+		{
 			Name: "Prepare lint compiler cache",
 			Run:  "go run ./scripts/ci/prepare-lint-cache",
 		},
@@ -193,7 +198,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 	if job.Steps[2].With["cache"] != "false" {
 		fail("setup-go must not publish its own cache")
 	}
-	for _, index := range []int{3, 5} {
+	for _, index := range []int{3, 5, 6} {
 		if !strings.HasPrefix(job.Steps[index].Uses, "actions/cache/restore@") {
 			fail("step %d must restore caches only", index+1)
 		}
@@ -246,6 +251,9 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		return match[1]
 	}
 	checkoutPin, restorePin := pin("actions/checkout"), pin("actions/cache/restore")
+	lintDriverStep := "      - name: " + lintDriverRestoreName + "\n        uses: " + restorePin + "\n        with:\n" +
+		"          path: ~/.cache/go-build\n          key: " + lintDriverReuseKey + "\n          restore-keys: |\n" +
+		"            " + lintDriverModulePrefix + "\n            " + lintDriverRunnerPrefix + "\n"
 	appendStep := func(step string) func(string) string {
 		return func(s string) string { return s + step }
 	}
@@ -302,6 +310,9 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"run id in cache key":      replace("key: go-test-v2-${{ runner.os }}", "key: go-test-v2-${{ github.run_id }}-${{ runner.os }}"),
 		"cache save step":          appendStep("      - uses: " + reuseSaveAction + " # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go-test-v2\n"),
 		"artifact upload":          appendStep("      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n        with:\n          path: .\n"),
+		"lint driver key drift":    replace("key: go-lintdriver-v1-", "key: go-lintdriver-v2-"),
+		"lint driver narrow keys":  replace("            go-lintdriver-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-\n", ""),
+		"dropped lint driver seed": replace(lintDriverStep, ""),
 		"skipped lint cache":       replace("      - name: Prepare lint compiler cache\n        run: go run ./scripts/ci/prepare-lint-cache\n", ""),
 		"dropped boundary package": replace(" ./internal/boundary", ""),
 		"dropped lint package":     replace(" ./internal/lint", ""),
