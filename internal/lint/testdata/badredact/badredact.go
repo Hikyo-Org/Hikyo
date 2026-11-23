@@ -43,24 +43,41 @@ func LeakLocalKeys(value crypto.LocalKeys, pointer *crypto.LocalKeys) {
 	slog.Info("local keys", "keys", pointer) // want "passes sensitive type .*internal/crypto\\.LocalKeys to log/slog"
 }
 
+type inner struct{ name string }
+
 type holder struct {
 	keyring *crypto.Keyring
 	seq     int
 	ev      audit.Event
+	inner   inner
+	get     func() any
+	box     anybox
 }
 
-// Every sub-expression is checked, so a field of a struct that merely holds a
-// sensitive value is flagged too (h.seq, h.count()). That over-approximation is
-// deliberate until a narrower rule passes a differential test against these
-// fixtures (#1468); the other cases in Narrowing, and all of
-// NarrowingKeepsLeaks and Promoted, must stay flagged under any narrowing.
+// A field selected from a struct that merely holds a sensitive value is not a
+// leak: only the selected field is read (#1468). TestRedactFormatNarrowingDifferential
+// lists every diagnostic this drops. Narrowing, NarrowingKeepsLeaks and Promoted
+// must stay flagged.
+func NarrowingNonSensitive(h holder, hp *holder) {
+	_ = fmt.Sprintf("%d", h.seq)
+	_ = fmt.Sprintf("%s", h.inner.name)
+	_ = fmt.Sprintf("%d", (*hp).seq)
+	_ = fmt.Sprintf("%d", hp.seq)
+	_ = fmt.Sprintf("%d", mkHolder().seq)
+	slog.Info("n", "n", h.seq)
+	_ = fmt.Sprintf("%d", h.count())
+}
+
+func mkHolder() holder { return holder{} }
+
+// Selections that can still read the pinned value stay flagged: the pinned
+// field itself, a method on it, and an audit-content field of a holder.
 func Narrowing(h holder) {
-	_ = fmt.Sprintf("id_%d", h.seq)           // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", h.keyring)          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", any(h.keyring))     // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%d", h.count())          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", h.keyring.String()) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	slog.Info("audit", "actor", h.ev.Actor)   // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	_ = fmt.Sprintf("%v", h.keyring)              // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", any(h.keyring))         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.keyring.String())     // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	slog.Info("audit", "actor", h.ev.Actor)       // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "seq", h.ev.SchemaVersion) // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
 }
 
 func (h holder) count() int { return h.seq }
@@ -80,6 +97,8 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%v", struct{ v any }{kr}.v)                 // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "v", box(ev).v)                           // want "logs audit content .*internal/audit\\.Event"
 	slog.Info("audit", "v", h.evAny())                           // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	_ = fmt.Sprintf("%v", h.get())                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.box.v)                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "id", ev.Actor.ID)                        // want "logs audit content .*internal/audit\\.Event"
 	slog.Info("audit", "id", row.Actor.ID)                       // want "logs audit content .*internal/store\\.AuditEvent"
 	slog.Info("audit", "at", ev.OccurredAt.Format(time.RFC3339)) // want "logs audit content .*internal/audit\\.Event"

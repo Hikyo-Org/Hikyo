@@ -103,10 +103,21 @@ var RedactSurfaces = &analysis.Analyzer{
 }
 
 // RedactFormat is the redactfmt analyzer.
-var RedactFormat = &analysis.Analyzer{
-	Name: "redactfmt",
-	Doc:  "sensitive types are not formatted outside crypto; audit content is not logged",
-	Run: func(pass *analysis.Pass) (any, error) {
+var RedactFormat = newRedactFormat(subexpressionTypes)
+
+// newRedactFormat builds the analyzer around the function that collects an
+// argument's sub-expression types, so the differential test can run the
+// pre-narrowing collector (TestRedactFormatNarrowingDifferential).
+func newRedactFormat(collect func(*types.Info, ast.Expr) []types.Type) *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Name: "redactfmt",
+		Doc:  "sensitive types are not formatted outside crypto; audit content is not logged",
+		Run:  func(pass *analysis.Pass) (any, error) { return runRedactFormat(pass, collect) },
+	}
+}
+
+func runRedactFormat(pass *analysis.Pass, collect func(*types.Info, ast.Expr) []types.Type) (any, error) {
+	{
 		if !inModule(pass.Pkg.Path()) {
 			return nil, nil
 		}
@@ -132,7 +143,7 @@ var RedactFormat = &analysis.Analyzer{
 					// position while still carrying the value. Every
 					// sub-expression's type is therefore checked, not just the
 					// argument's own.
-					argTypes := subexpressionTypes(pass.TypesInfo, arg)
+					argTypes := collect(pass.TypesInfo, arg)
 					if len(argTypes) == 0 {
 						continue
 					}
@@ -155,7 +166,7 @@ var RedactFormat = &analysis.Analyzer{
 			})
 		}
 		return nil, nil
-	},
+	}
 }
 
 // calleePackage resolves the package path of a call's callee: a package
@@ -226,19 +237,147 @@ func mentionsNamed(t types.Type, pinned map[string]bool, seen map[types.Type]boo
 // every sub-expression inside it. Without the sub-expressions, wrapping a
 // pinned value in a conversion to `any` (or indexing a pinned map) hides it
 // from the check while logging exactly the same content.
+//
+// One sub-expression is not collected: the receiver of a selection that reads
+// only plain data from a holder (readsPlainData), as in h.seq or h.now(). The
+// selected field or method result is still collected, so a harness struct that
+// merely holds a Keyring is not a leak when an int is formatted. Everything
+// else is still walked: a receiver that is itself pinned (ev.Actor.ID reads
+// audit content), a method or field that can carry any value (an `any`, a
+// func), a selection promoted from an embedded pinned type, and a receiver's
+// own call arguments and composite literal elements.
 func subexpressionTypes(info *types.Info, arg ast.Expr) []types.Type {
 	var out []types.Type
+	holders := map[ast.Expr]bool{}
 	ast.Inspect(arg, func(n ast.Node) bool {
 		expr, ok := n.(ast.Expr)
 		if !ok {
 			return true
 		}
+		if sel, ok := expr.(*ast.SelectorExpr); ok && readsPlainData(info.Selections[sel]) {
+			holders[sel.X] = true
+		}
+		if holders[expr] {
+			// A transparent wrapper passes the holder through unchanged.
+			switch e := expr.(type) {
+			case *ast.ParenExpr:
+				holders[e.X] = true
+			case *ast.StarExpr:
+				holders[e.X] = true
+			}
+		}
 		if tv, ok := info.Types[expr]; ok && tv.Type != nil {
+			if holders[expr] && pinnedDirectly(tv.Type) == "" {
+				return true
+			}
 			out = append(out, tv.Type)
 		}
 		return true
 	})
 	return out
+}
+
+// readsPlainData reports whether a selection reads only plain data: a field,
+// or a method result, whose type cannot carry an arbitrary value, reached
+// without passing through an embedded pinned type.
+func readsPlainData(sel *types.Selection) bool {
+	if sel == nil {
+		return false
+	}
+	var result []types.Type
+	switch obj := sel.Obj().(type) {
+	case *types.Var:
+		result = []types.Type{obj.Type()}
+	case *types.Func:
+		sig, ok := obj.Type().(*types.Signature)
+		if !ok {
+			return false
+		}
+		if recv := sig.Recv(); recv != nil && pinnedDirectly(recv.Type()) != "" {
+			return false
+		}
+		for v := range sig.Results().Variables() {
+			result = append(result, v.Type())
+		}
+	default:
+		return false
+	}
+	cur := sel.Recv()
+	for _, i := range sel.Index()[:len(sel.Index())-1] {
+		st, ok := derefStruct(cur)
+		if !ok {
+			return false
+		}
+		cur = st.Field(i).Type()
+		if pinnedDirectly(cur) != "" {
+			return false
+		}
+	}
+	return !slices.ContainsFunc(result, func(t types.Type) bool { return !plainData(t, map[types.Type]bool{}) })
+}
+
+func derefStruct(t types.Type) (*types.Struct, bool) {
+	for {
+		t = types.Unalias(t)
+		p, ok := t.(*types.Pointer)
+		if !ok {
+			break
+		}
+		t = p.Elem()
+	}
+	st, ok := t.Underlying().(*types.Struct)
+	return st, ok
+}
+
+// plainData reports whether a value of type t cannot carry an arbitrary value:
+// no interface, func, channel or type parameter is reachable from it. A pinned
+// type is never plain.
+func plainData(t types.Type, seen map[types.Type]bool) bool {
+	if seen[t] {
+		return true
+	}
+	seen[t] = true
+	switch u := types.Unalias(t).(type) {
+	case *types.Basic:
+		return u.Kind() != types.UnsafePointer
+	case *types.Named:
+		return pinnedDirectly(u) == "" && plainData(u.Underlying(), seen)
+	case *types.Pointer:
+		return plainData(u.Elem(), seen)
+	case *types.Slice:
+		return plainData(u.Elem(), seen)
+	case *types.Array:
+		return plainData(u.Elem(), seen)
+	case *types.Map:
+		return plainData(u.Key(), seen) && plainData(u.Elem(), seen)
+	case *types.Struct:
+		for f := range u.Fields() {
+			if !plainData(f.Type(), seen) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// pinnedDirectly reports the pinned type t is (behind pointers), or "": a
+// pinned receiver is read whole, unlike a struct that merely holds one.
+func pinnedDirectly(t types.Type) string {
+	for {
+		t = types.Unalias(t)
+		p, ok := t.(*types.Pointer)
+		if !ok {
+			break
+		}
+		t = p.Elem()
+	}
+	if n, ok := t.(*types.Named); ok {
+		if key := namedKey(n); SensitiveTypes[key] || auditContentTypes[key] {
+			return key
+		}
+	}
+	return ""
 }
 
 // mentionsAny reports the first pinned type reachable from any of ts.

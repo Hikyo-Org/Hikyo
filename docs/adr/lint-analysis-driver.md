@@ -62,6 +62,15 @@ The spike also established that:
    [deferred test sites handoff](../handoff/lint-vet-driver-pr1-deferred-test-sites.md).
    Production files, external test packages and every other analyzer stay
    strict.)
+   (Amended by #1468: `redactfmt` no longer reads the receiver of a selection
+   that yields plain data, so a field or method of a harness struct that holds a
+   `crypto.Keyring` is not flagged when only an int or string is formatted. The
+   rule was narrowed, not exempted: a pinned receiver, an `any`/func-typed
+   field or method result, a selection promoted from an embedded pinned type
+   and a receiver's call arguments or literal elements stay flagged. The
+   differential test `TestRedactFormatNarrowingDifferential` pins every dropped
+   diagnostic. `redactfmt` left `strictDeferred` and its ceiling entries were
+   removed.)
 
    Owner decision (2026-11-20): no inline exemption markers. A nil
    `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts
