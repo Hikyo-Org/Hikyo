@@ -25,8 +25,14 @@ import (
 //     (log, log/slog) takes an audit-content-typed argument anywhere: the
 //     ops log records audit-subsystem health, never event content.
 //
-// This is a guardrail with named evasion limits (reflection, in-package
-// extraction, custom serializers), per the ADR: never a proof.
+// This is a guardrail with named evasion limits, per the ADR: never a proof.
+// Reflection and custom serializers are not seen. In-package extraction is not
+// seen. Rule 2's walk skips the receiver of a field selection or a method call
+// whose result is plain data (readsPlainData): a holder field of an int, or a
+// method returning an int or time.Time, is not a leak. A holder method that
+// returns an interface, func, string or byte slice keeps the holder flagged,
+// but a plain-typed field the holder fills from key material is not seen, and
+// neither is an indexed holder (h.items[0].seq), which stays flagged.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
@@ -117,56 +123,54 @@ func newRedactFormat(collect func(*types.Info, ast.Expr) []types.Type) *analysis
 }
 
 func runRedactFormat(pass *analysis.Pass, collect func(*types.Info, ast.Expr) []types.Type) (any, error) {
-	{
-		if !inModule(pass.Pkg.Path()) {
-			return nil, nil
-		}
-		exemptSensitive := pass.Pkg.Path() == sensitiveOwner
-		for _, file := range pass.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				calleePkg := calleePackage(pass.TypesInfo, call)
-				if calleePkg == "" {
-					return true
-				}
-				fmtCall := formattingPackages[calleePkg]
-				logCall := loggingPackages[calleePkg]
-				if !fmtCall && !logCall {
-					return true
-				}
-				for _, arg := range call.Args {
-					// Static-type erasure is the obvious bypass: `any(ev)` and
-					// `ev.Payload["formula"]` both type as `any` at the argument
-					// position while still carrying the value. Every
-					// sub-expression's type is therefore checked, not just the
-					// argument's own.
-					argTypes := collect(pass.TypesInfo, arg)
-					if len(argTypes) == 0 {
-						continue
-					}
-					if !exemptSensitive {
-						if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
-							pass.Reportf(arg.Pos(),
-								"%s passes sensitive type %s to %s: formatting/marshaling sensitive types outside their owning package is banned",
-								pass.Pkg.Path(), name, calleePkg)
-						}
-					}
-					if logCall {
-						if name := mentionsAny(argTypes, auditContentTypes); name != "" {
-							pass.Reportf(arg.Pos(),
-								"%s logs audit content %s: audit events are never mirrored to the ops log (audit-model ADR)",
-								pass.Pkg.Path(), name)
-						}
-					}
-				}
-				return true
-			})
-		}
+	if !inModule(pass.Pkg.Path()) {
 		return nil, nil
 	}
+	exemptSensitive := pass.Pkg.Path() == sensitiveOwner
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			calleePkg := calleePackage(pass.TypesInfo, call)
+			if calleePkg == "" {
+				return true
+			}
+			fmtCall := formattingPackages[calleePkg]
+			logCall := loggingPackages[calleePkg]
+			if !fmtCall && !logCall {
+				return true
+			}
+			for _, arg := range call.Args {
+				// Static-type erasure is the obvious bypass: `any(ev)` and
+				// `ev.Payload["formula"]` both type as `any` at the argument
+				// position while still carrying the value. Every
+				// sub-expression's type is therefore checked, not just the
+				// argument's own.
+				argTypes := collect(pass.TypesInfo, arg)
+				if len(argTypes) == 0 {
+					continue
+				}
+				if !exemptSensitive {
+					if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
+						pass.Reportf(arg.Pos(),
+							"%s passes sensitive type %s to %s: formatting/marshaling sensitive types outside their owning package is banned",
+							pass.Pkg.Path(), name, calleePkg)
+					}
+				}
+				if logCall {
+					if name := mentionsAny(argTypes, auditContentTypes); name != "" {
+						pass.Reportf(arg.Pos(),
+							"%s logs audit content %s: audit events are never mirrored to the ops log (audit-model ADR)",
+							pass.Pkg.Path(), name)
+					}
+				}
+			}
+			return true
+		})
+	}
+	return nil, nil
 }
 
 // calleePackage resolves the package path of a call's callee: a package
@@ -297,6 +301,11 @@ func readsPlainData(sel *types.Selection) bool {
 			return false
 		}
 		for v := range sig.Results().Variables() {
+			// A string or byte result can carry key material a holder method
+			// built from what it holds (h.reveal()), which the type cannot show.
+			if textOrBytes(v.Type()) {
+				return false
+			}
 			result = append(result, v.Type())
 		}
 	default:
@@ -314,6 +323,24 @@ func readsPlainData(sel *types.Selection) bool {
 		}
 	}
 	return !slices.ContainsFunc(result, func(t types.Type) bool { return !plainData(t, map[types.Type]bool{}) })
+}
+
+// textOrBytes reports whether t is a string, []byte or [N]byte (named or not).
+func textOrBytes(t types.Type) bool {
+	switch u := types.Unalias(t).Underlying().(type) {
+	case *types.Basic:
+		return u.Info()&types.IsString != 0
+	case *types.Slice:
+		return isByte(u.Elem())
+	case *types.Array:
+		return isByte(u.Elem())
+	}
+	return false
+}
+
+func isByte(t types.Type) bool {
+	b, ok := types.Unalias(t).Underlying().(*types.Basic)
+	return ok && b.Kind() == types.Uint8
 }
 
 func derefStruct(t types.Type) (*types.Struct, bool) {

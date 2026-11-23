@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/types"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,16 +32,17 @@ func legacySubexpressionTypes(info *types.Info, arg ast.Expr) []types.Type {
 // struct that is not itself pinned, and the selected field or method result
 // is plain data (an int, a string; no interface, func or pinned type). The key
 // is the fixture line without its
-// comment. A pinned value reachable through the selected field, a method, a
+// comment, prefixed by the enclosing function so a line cannot be listed for
+// a different function. A pinned value reachable through the selected field, a method, a
 // call argument, a literal or an audit-content receiver must never be listed.
 var reviewedFalsePositives = map[string]bool{
-	`_ = fmt.Sprintf("%d", h.seq)`:          true, // int field
-	`_ = fmt.Sprintf("%s", h.inner.name)`:   true, // string field two levels deep
-	`_ = fmt.Sprintf("%d", (*hp).seq)`:      true, // int field through a dereference
-	`_ = fmt.Sprintf("%d", hp.seq)`:         true, // int field through a pointer
-	`_ = fmt.Sprintf("%d", mkHolder().seq)`: true, // int field of a call result
-	`slog.Info("n", "n", h.seq)`:            true, // int field, logging call
-	`_ = fmt.Sprintf("%d", h.count())`:      true, // method with a plain int result
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", h.seq)`:          true, // int field
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%s", h.inner.name)`:   true, // string field two levels deep
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", (*hp).seq)`:      true, // int field through a dereference
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", hp.seq)`:         true, // int field through a pointer
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", mkHolder().seq)`: true, // int field of a call result
+	`NarrowingNonSensitive: slog.Info("n", "n", h.seq)`:            true, // int field, logging call
+	`NarrowingNonSensitive: _ = fmt.Sprintf("%d", h.count())`:      true, // method with a plain int result
 }
 
 // TestRedactFormatNarrowingDifferential runs the pre-narrowing and the
@@ -80,8 +82,10 @@ func TestRedactFormatNarrowingDifferential(t *testing.T) {
 	}
 }
 
+var funcName = regexp.MustCompile(`^func (?:\([^)]*\) )?(\w+)`)
+
 // fixtureLine is the source line a finding points at, without its trailing
-// comment. Findings read "file:line:col: analyzer: message".
+// comment, prefixed by its enclosing function ("Func: line"). Findings read "file:line:col: analyzer: message".
 func fixtureLine(t *testing.T, finding string) string {
 	t.Helper()
 	parts := strings.SplitN(finding, ":", 4)
@@ -96,6 +100,13 @@ func fixtureLine(t *testing.T, finding string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, _, _ := strings.Cut(strings.Split(string(src), "\n")[line-1], " //")
-	return strings.TrimSpace(text)
+	all := strings.Split(string(src), "\n")
+	text, _, _ := strings.Cut(all[line-1], " //")
+	for i := line - 1; i >= 0; i-- {
+		if m := funcName.FindStringSubmatch(all[i]); m != nil {
+			return m[1] + ": " + strings.TrimSpace(text)
+		}
+	}
+	t.Fatalf("finding %q is outside a function", finding)
+	return ""
 }

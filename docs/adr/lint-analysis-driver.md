@@ -66,11 +66,16 @@ The spike also established that:
    that yields plain data, so a field or method of a harness struct that holds a
    `crypto.Keyring` is not flagged when only an int or string is formatted. The
    rule was narrowed, not exempted: a pinned receiver, an `any`/func-typed
-   field or method result, a selection promoted from an embedded pinned type
-   and a receiver's call arguments or literal elements stay flagged. The
-   differential test `TestRedactFormatNarrowingDifferential` pins every dropped
-   diagnostic. `redactfmt` left `strictDeferred` and its ceiling entries were
-   removed.)
+   field or method result, a method returning a string, `[]byte` or byte array
+   (a holder method such as `h.reveal()` may build text from the key material it
+   holds), a selection promoted from an embedded pinned type and a receiver's
+   call arguments or literal elements stay flagged. The differential test
+   `TestRedactFormatNarrowingDifferential` pins every dropped diagnostic.
+   `redactfmt` left `strictDeferred` and its ceiling entries were removed.
+   Named limits that remain: reflection and custom serializers are not seen;
+   in-package extraction is not seen; a plain-typed field a holder fills from
+   key material (`h.secretText` of type string) is read as plain data; an
+   indexed holder (`h.items[0].seq`) stays flagged, which only over-reports.)
 
    Owner decision (2026-11-20): no inline exemption markers. A nil
    `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts

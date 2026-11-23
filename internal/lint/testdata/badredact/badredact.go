@@ -83,7 +83,12 @@ func Narrowing(h holder) {
 func (h holder) count() int { return h.seq }
 
 func (h holder) anyKey() any { return h.keyring }
-func (h holder) evAny() any  { return h.ev }
+
+// reveal and revealBytes build text or bytes from the held key material.
+func (h holder) reveal() string       { return h.keyring.String() }
+func (h holder) revealBytes() []byte  { return []byte(h.keyring.String()) }
+func (h holder) revealArray() [4]byte { return [4]byte{} }
+func (h holder) evAny() any           { return h.ev }
 
 type anybox struct{ v any }
 
@@ -97,6 +102,9 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%v", struct{ v any }{kr}.v)                 // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "v", box(ev).v)                           // want "logs audit content .*internal/audit\\.Event"
 	slog.Info("audit", "v", h.evAny())                           // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	_ = fmt.Sprintf("%s", h.reveal())                            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%x", h.revealBytes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%x", h.revealArray())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.get())                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.box.v)                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "id", ev.Actor.ID)                        // want "logs audit content .*internal/audit\\.Event"
