@@ -99,17 +99,18 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 	var out PrivacyReceipt
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		// One sorted lock pass, shared with incident containment, so the two never
-		// take the target and the managers in opposite orders. A release only needs
-		// the target, so it passes no grants.
-		grants := []domain.Grant(nil)
-		if action != "release" {
-			var err error
-			if grants, err = az.GrantsForResetTarget(ctx, domain.PrincipalID(principal)); err != nil {
+		// take the target and the managers in opposite orders; the grants it returns
+		// were read under the locks. A release only needs the target.
+		var grants []domain.Grant
+		if action == "release" {
+			if err := az.LockTargetPrincipal(ctx, domain.PrincipalID(principal)); err != nil {
 				return err
 			}
-		}
-		if err := lockTargetAndManagers(ctx, az, domain.PrincipalID(principal), grants); err != nil {
-			return err
+		} else {
+			var err error
+			if grants, err = lockTargetAndManagers(ctx, az, domain.PrincipalID(principal)); err != nil {
+				return err
+			}
 		}
 		a, err := az.PrivacyAccount(ctx, principal)
 		if err != nil {
@@ -287,28 +288,56 @@ func managerOrgs(grants []domain.Grant) []string {
 	return orgs
 }
 
+// maxLockPasses bounds the lock-and-verify loop of lockTargetAndManagers.
+const maxLockPasses = 4
+
 // lockTargetAndManagers locks the target and every manage-members holder of each
-// org the target manages in one sorted pass, so two concurrent batches that touch
+// org the target manages, in one sorted pass, so two concurrent batches that touch
 // the last managers of an org take their locks in the same order and cannot
-// deadlock. The census in hasAlternativeManager runs only after every lock is held.
-// shortcut: the grants are the caller's read; a manager grant added after it by a
-// writer that does not take the target lock is not covered, as in privacy before.
-func lockTargetAndManagers(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID, grants []domain.Grant) error {
-	set := []domain.PrincipalID{target}
-	for _, org := range managerOrgs(grants) {
-		holders, err := az.ManageMembersHolders(ctx, org)
+// deadlock. It reads the target's grants and the holders itself and then reads
+// both again under the locks: the pass is done only when the set read under the
+// lock is already locked. A grant or holder that changed in between adds its
+// principal and the pass repeats; after maxLockPasses it fails closed with a
+// conflict. It returns the grants read under the locks, which the caller's census
+// (hasAlternativeManager) then uses.
+// shortcut: a retry pass locks the added principals in sorted order among
+// themselves, not among the first pass's, so a deadlock stays possible then; the
+// database aborts one transaction and the caller fails closed.
+func lockTargetAndManagers(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID) ([]domain.Grant, error) {
+	locked := map[domain.PrincipalID]bool{}
+	for pass := 0; pass < maxLockPasses; pass++ {
+		grants, err := az.GrantsForResetTarget(ctx, target)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		set = append(set, holders...)
-	}
-	slices.Sort(set)
-	for _, p := range slices.Compact(set) {
-		if err := az.LockTargetPrincipal(ctx, p); err != nil {
-			return err
+		need := map[domain.PrincipalID]bool{target: true}
+		for _, org := range managerOrgs(grants) {
+			holders, err := az.ManageMembersHolders(ctx, org)
+			if err != nil {
+				return nil, err
+			}
+			for _, h := range holders {
+				need[h] = true
+			}
+		}
+		var fresh []domain.PrincipalID
+		for p := range need {
+			if !locked[p] {
+				fresh = append(fresh, p)
+			}
+		}
+		if len(fresh) == 0 {
+			return grants, nil // everything read under the locks was already locked
+		}
+		slices.Sort(fresh)
+		for _, p := range fresh {
+			if err := az.LockTargetPrincipal(ctx, p); err != nil {
+				return nil, err
+			}
+			locked[p] = true
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("%w: the managers of the target kept changing", domain.ErrConflict)
 }
 
 // hasAlternativeManager reports whether every org the target manages keeps another

@@ -202,13 +202,11 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	if target == w.caller.Principal {
 		return OwnerUnconfirmed, ErrIncidentSelfContainment
 	}
-	grants, err := w.az.GrantsForResetTarget(ctx, target)
-	if err != nil {
-		return OwnerUnconfirmed, err
-	}
 	// The target and the managers of every org it manages are locked in one sorted
 	// pass, so two concurrent containments of the last two managers cannot deadlock.
-	if err := lockTargetAndManagers(ctx, w.az, target, grants); err != nil {
+	// The grants it returns were read under those locks.
+	grants, err := lockTargetAndManagers(ctx, w.az, target)
+	if err != nil {
 		return OwnerUnconfirmed, err
 	}
 	if _, contained, err := w.az.PrincipalContainedAt(ctx, target); err != nil {
@@ -217,10 +215,6 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 		return OwnerConfirmed, nil
 	}
 	if _, err := w.az.AccountByPrincipal(ctx, target); err != nil {
-		return OwnerUnconfirmed, err
-	}
-	grants, err = w.az.GrantsForResetTarget(ctx, target)
-	if err != nil {
 		return OwnerUnconfirmed, err
 	}
 	footprint, err := w.az.PrincipalFootprintOrgs(ctx, target)
