@@ -197,7 +197,8 @@ While an export runs it stages an unencrypted copy of the datastore in a
 killed, the directory is left behind; the next export or retention prune removes
 a dead one, and never one whose export is still running. Until then the
 plaintext stays on that disk, so delete a stale directory by hand if no export
-is running and you cannot wait.
+is running and you cannot wait. Deleting a file does not scrub its data:
+filesystem snapshots, sync history and backups of the volume may keep it.
 
 Within an independent 180-day ceiling, the newest
 `HIKYO_BACKUP_RETAIN_COUNT` are protected from the earlier

@@ -118,7 +118,7 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	}
 	// Debris of a killed export is swept before anything can fail early.
 	// Best effort: a sweep problem must not block a backup, but it is loud.
-	if err := s.SweepExportDebris(ctx, dir); err != nil {
+	if err := s.sweepDirectory(ctx, dir); err != nil {
 		s.logger().Warn("backup export debris sweep failed", "dir", dir, "error", err)
 	}
 	// Recipient policy: refusing before a temp file exists keeps a

@@ -53,6 +53,10 @@ func stageExportWork(ctx context.Context, dir string) (string, func(), error) {
 		return "", nil, fmt.Errorf("backup staging directory lock: %w", err)
 	}
 	defer unlock()
+	// The live set and the sweep both key on the symlink-free absolute path.
+	if dir, err = canonicalDir(dir); err != nil {
+		return "", nil, fmt.Errorf("backup staging directory: %w", err)
+	}
 	work, err := os.MkdirTemp(dir, ".hikyo-export-work-")
 	if err != nil {
 		return "", nil, fmt.Errorf("backup staging directory: %w", err)
@@ -88,11 +92,21 @@ func removeChildren(work string) {
 	}
 }
 
-// SweepExportDebris takes the directory lock and removes debris of dead
-// exports. A missing directory has none.
-func (s *Backup) SweepExportDebris(ctx context.Context, dir string) error {
-	if _, err := os.Stat(dir); err != nil {
+func canonicalDir(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
+// sweepDirectory takes the directory lock and removes debris of dead exports.
+// A missing directory has none; any other failure to look is reported.
+func (s *Backup) sweepDirectory(ctx context.Context, dir string) error {
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
 		return nil
+	} else if err != nil {
+		return err
 	}
 	unlock, err := lockBackupDirectory(ctx, dir)
 	if err != nil {
@@ -106,6 +120,10 @@ func (s *Backup) SweepExportDebris(ctx context.Context, dir string) error {
 // Hikyo shape is left alone: the operator may point --out at a folder holding
 // their own files.
 func sweepExportDebris(dir string) error {
+	dir, err := canonicalDir(dir)
+	if err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -132,7 +150,8 @@ func sweepWorkDir(work string) error {
 		return nil
 	}
 	marker := filepath.Join(work, exportLiveLock)
-	if info, err := os.Lstat(marker); err != nil || !info.Mode().IsRegular() {
+	before, err := os.Lstat(marker)
+	if err != nil || !before.Mode().IsRegular() {
 		// No marker: an export killed between mkdir and lock holds nothing,
 		// and rmdir refuses anything else.
 		_ = os.Remove(work)
@@ -140,6 +159,11 @@ func sweepWorkDir(work string) error {
 	}
 	lock := flock.New(marker)
 	if ok, err := lock.TryLock(); err != nil || !ok {
+		return err
+	}
+	// The open follows symlinks; refuse a marker swapped for a link meanwhile.
+	if after, err := os.Lstat(marker); err != nil || !os.SameFile(before, after) {
+		_ = lock.Unlock()
 		return err
 	}
 	removeChildren(work)
@@ -155,9 +179,17 @@ func sweepLegacyWorkDir(work string) error {
 		return err
 	}
 	for _, e := range entries {
-		if e.Type()&os.ModeSymlink != 0 || (e.Name() != "snapshot.db" && !strings.HasPrefix(e.Name(), "copy-")) {
+		if !e.Type().IsRegular() || !legacyStagedName(e.Name()) {
 			return nil
 		}
 	}
 	return os.RemoveAll(work)
+}
+
+func legacyStagedName(name string) bool {
+	switch name {
+	case "snapshot.db", "snapshot.db-journal", "snapshot.db-wal", "snapshot.db-shm":
+		return true
+	}
+	return strings.HasPrefix(name, "copy-")
 }

@@ -160,7 +160,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	pkiRuntime := store.NewPKIRuntime(db)
 	rotationRuntime := store.NewRotationRuntime(db)
 	retentionSvc := &service.Retention{DB: db, PKI: pkiRuntime, Rotation: rotationRuntime, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
-	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
+	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}, Log: log}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	accessSvc := &service.Access{DB: db, Auth: authSvc}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)

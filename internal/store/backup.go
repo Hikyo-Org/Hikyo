@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -192,6 +193,11 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	if _, err := db.sqWrite.ExecContext(ctx, "VACUUM INTO ?", snapshot); err != nil {
 		return fmt.Errorf("store: sqlite snapshot: %w", err)
 	}
+	// SQLite creates the target under the process umask; the plaintext copy
+	// must be owner-only from the first moment it exists.
+	if err := os.Chmod(snapshot, 0o600); err != nil {
+		return fmt.Errorf("store: restrict sqlite snapshot: %w", err)
+	}
 	// Read the archived database itself. Reading the live version before
 	// VACUUM can attach an older schema version to a newer snapshot.
 	archived, err := sql.Open("sqlite", "file:"+url.PathEscape(snapshot)+"?mode=ro")
@@ -278,7 +284,7 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		if !pathutil.Within(baseClean, targetClean) {
 			return fmt.Errorf("invalid file path")
 		}
-		f, err := os.Create(targetClean)
+		f, err := os.OpenFile(targetClean, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
 			return fmt.Errorf("store: stage copy stream for %s: %w", table, err)
 		}
@@ -474,7 +480,22 @@ func writeManifest(tw *tar.Writer, m Manifest) error {
 	return nil
 }
 
+// writeFileMember archives one staged plaintext file and removes it as soon as
+// it is archived, so a killed export has less plaintext on disk. Nothing reads
+// a staged file again after this call, and every export stages into a fresh
+// directory, so no retry depends on the file surviving. It refuses a file that
+// is readable beyond its owner.
 func writeFileMember(tw *tar.Writer, name, path string) error {
+	if err := copyFileMember(tw, name, path); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("store: remove staged archive member %s: %w", name, err)
+	}
+	return nil
+}
+
+func copyFileMember(tw *tar.Writer, name, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("store: read archive member %s: %w", name, err)
@@ -483,6 +504,10 @@ func writeFileMember(tw *tar.Writer, name, path string) error {
 	info, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("store: stat archive member %s: %w", name, err)
+	}
+	// Windows reports synthetic permission bits, so the check is POSIX only.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("store: staged archive member %s is not owner-only (%v)", name, info.Mode().Perm())
 	}
 	hdr := &tar.Header{Name: name, Mode: 0o600, Size: info.Size(), ModTime: info.ModTime()}
 	if err := tw.WriteHeader(hdr); err != nil {
