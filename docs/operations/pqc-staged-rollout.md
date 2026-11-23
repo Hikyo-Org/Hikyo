@@ -205,7 +205,9 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    and `-o` arguments the daemon starts with (a reload keeps them). `-C` is
    not needed because `KexAlgorithms` is not allowed inside `Match`. Confirm
    the printed list contains only the hybrid names.
-   Before reloading, open a session and keep it open. Reload, then test a
+   Before editing, save copies of every sshd configuration file you will
+   change (the main file and any drop-ins), so the previous configuration can
+   be restored. Before reloading, open a session and keep it open. Reload, then test a
    fresh login (`ssh -o ControlPath=none ...`). If that login fails, restore
    the previous configuration and reload from the kept session.
 4. Expected result: a client offering only classical algorithms (for example
@@ -221,8 +223,15 @@ sntrup761) and other SSH libraries without it. The sntrup761 option widens
 access back to 8.5 and later clients that offer
 `sntrup761x25519-sha512@openssh.com`. Check the algorithms clients actually
 offer, not their version: `ssh -G HOST | grep -i '^kexalgorithms'` on OpenSSH
-clients (`ssh -Q kex` lists only what the build supports), and the server
-logs for other clients. Do this before applying either line. The list syntax and the `+`, `-` and `^`
+clients (`ssh -Q kex` lists only what the build supports). sshd does not
+log a client's KEX proposal at the default `LogLevel INFO`, so for other
+clients either run a test sshd on another port with the hybrid-only line
+(`sshd -f TESTFILE -p PORT`) and have those clients connect to it, or
+temporarily raise `LogLevel` to `DEBUG2` (the level that records the proposal;
+`INFO` and `VERBOSE` should not be relied on). sshd_config(5) says logging at a
+`DEBUG` level violates users' privacy and is not recommended, and it is
+high-volume, so keep it short, restrict log access, and restore the level.
+Do this before applying either line. The list syntax and the `+`, `-` and `^`
 prefixes are in [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms),
 read 2026-11-23. A hybrid key exchange protects session confidentiality only;
 it does not make host or user signatures post-quantum (E-02).
