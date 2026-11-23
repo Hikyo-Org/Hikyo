@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -148,20 +149,23 @@ func digest(b []byte) string {
 	return hex.EncodeToString(sum[:4])
 }
 
-// rolloutDiagnostics reports the newest ReplicaSet's ready count and the first
-// pod's phase and waiting reason, for a rollout wait that timed out.
+// rolloutDiagnostics reports the newest ReplicaSet's ready count and every
+// pod's phase, termination and waiting reason, for a rollout wait that timed out.
 func rolloutDiagnostics(e *opEnv, deployment string) string {
 	var rsList appsv1.ReplicaSetList
 	if err := e.cl.List(e.ctx, &rsList, client.InNamespace(e.ns)); err != nil {
 		return fmt.Sprintf("list ReplicaSets: %v", err)
 	}
+	// The newest ReplicaSet is the highest deployment revision; creation
+	// timestamps only resolve to one second.
 	var newest *appsv1.ReplicaSet
+	newestRev := -1
 	for i := range rsList.Items {
 		rs := &rsList.Items[i]
 		for _, ref := range rs.OwnerReferences {
-			if ref.Kind == "Deployment" && ref.Name == deployment &&
-				(newest == nil || rs.CreationTimestamp.After(newest.CreationTimestamp.Time)) {
-				newest = rs
+			rev, err := strconv.Atoi(rs.Annotations["deployment.kubernetes.io/revision"])
+			if ref.Kind == "Deployment" && ref.Name == deployment && err == nil && rev > newestRev {
+				newest, newestRev = rs, rev
 			}
 		}
 	}
@@ -173,11 +177,12 @@ func rolloutDiagnostics(e *opEnv, deployment string) string {
 	if err := e.cl.List(e.ctx, &pods, client.InNamespace(e.ns), client.MatchingLabels{"app": deployment}); err != nil || len(pods.Items) == 0 {
 		return out + "; no pod"
 	}
-	pod := pods.Items[0]
-	out += fmt.Sprintf("; pod %s phase=%s", pod.Name, pod.Status.Phase)
-	for _, cs := range pod.Status.ContainerStatuses {
-		if cs.State.Waiting != nil {
-			out += fmt.Sprintf(" waiting=%s", cs.State.Waiting.Reason)
+	for _, pod := range pods.Items {
+		out += fmt.Sprintf("; pod %s phase=%s terminating=%t", pod.Name, pod.Status.Phase, pod.DeletionTimestamp != nil)
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Waiting != nil {
+				out += fmt.Sprintf(" waiting=%s", cs.State.Waiting.Reason)
+			}
 		}
 	}
 	return out
