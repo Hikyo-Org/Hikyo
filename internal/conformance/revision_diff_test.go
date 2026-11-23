@@ -88,14 +88,23 @@ func scenarioRevisionDiff(t *testing.T, db *store.DB) {
 	if _, _, err := keys.Reclassify(t.Context(), actor, scope, config.ID, string(schema.Secret)); err != nil {
 		t.Fatal(err)
 	}
-	disclosedHistory, err := revisions.Diff(t.Context(), readActor, dev, left, right, "")
+	plainReader := newPrincipal(t, db, "usr_diff_plain_"+string(scope.Project), []grantSpec{{capability: "read", scope: scope}})
+	disclosedHistory, err := revisions.Diff(t.Context(), service.LocalPrincipal(plainReader), dev, left, right, "")
 	if err != nil {
 		t.Fatal(err)
 	}
+	seen := false
 	for _, row := range disclosedHistory.Items {
-		if row.KeyID == config.ID && (row.Classification != string(schema.Config) || !row.Revealed || row.Before == nil || *row.Before != "before" || row.After == nil || *row.After != "after") {
+		if row.KeyID != config.ID {
+			continue
+		}
+		seen = true
+		if row.Classification != string(schema.Config) || !row.Revealed || row.Before == nil || *row.Before != "before" || row.After == nil || *row.After != "after" {
 			t.Fatalf("pre-tighten history under plain read = %+v", row)
 		}
+	}
+	if !seen {
+		t.Fatalf("pre-tighten history lost the tightened key: %+v", disclosedHistory)
 	}
 	seed(t, db, []string{fmt.Sprintf("UPDATE snapshots SET payload_present=FALSE, collected_at='2026-08-17T00:00:00Z', collected_policy='diff-test' WHERE environment_id='%s' AND revision=%d", dev.Env, left)})
 	_, err = revisions.Diff(t.Context(), readActor, dev, left, right, "")

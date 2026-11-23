@@ -7,9 +7,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
 import { matrixProjectFixture } from '../testkit/matrixProject.ts';
+import { TIGHTEN_ADVISORY, type ScanFinding } from '../api/matrix.ts';
 
 const mocks = vi.hoisted(() => ({
-  stage: vi.fn<(input: { value: string }) => Promise<{ readonly findings: readonly never[] }>>(),
+  stage: vi.fn<(input: { value: string }) => Promise<{ readonly findings: readonly ScanFinding[] }>>(),
+  reclassify: vi.fn<(input: { key: string; classification: string }) => Promise<void>>(),
   system: false,
   systemMetadataReady: true,
 }));
@@ -27,6 +29,11 @@ vi.mock('@tanstack/react-virtual', () => ({
 vi.mock('../api/transport.tsx', async (importActual) => {
   const actual = await importActual<typeof import('../api/transport.tsx')>();
   return { ...actual, useWorkspaceContext: () => null };
+});
+
+vi.mock('../api/definitions.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../api/definitions.ts')>();
+  return { ...actual, useDefinitionsSettings: () => ({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true } }) };
 });
 
 vi.mock('../api/selfConfig.ts', async (importActual) => {
@@ -119,7 +126,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
       error: null,
     }),
     useCopyMatrixConfig: () => ({ mutate: vi.fn(), isPending: false }),
-    useReclassifyKey: () => ({ mutateAsync: vi.fn() }),
+    useReclassifyKey: () => ({ mutateAsync: mocks.reclassify }),
   };
 });
 
@@ -141,7 +148,11 @@ beforeEach(() => {
 });
 
 // schema-model.md trims every write path; the managed SMTP password is not exempt (#1492).
-it.each([['  padded password  ', 'padded password'], ['   ', ''], ['\tpassword\n', 'password']].flatMap(([password, trimmed]) => [true, false].map((metadataReady) => ({ password, trimmed, metadataReady }))))('trims the managed mail password like every value with metadata ready: $metadataReady, value: $password', async ({ password, trimmed, metadataReady }) => {
+it.each([
+  { password: '  padded password  ', trimmed: 'padded password' },
+  { password: '   ', trimmed: '' },
+  { password: '\tpassword\n', trimmed: 'password' },
+].flatMap((value) => [true, false].map((metadataReady) => ({ ...value, metadataReady }))))('trims the managed mail password like every value with metadata ready: $metadataReady, value: $password', async ({ password, trimmed, metadataReady }) => {
   mocks.system = true;
   mocks.systemMetadataReady = metadataReady;
   mocks.stage.mockResolvedValue({ findings: [] });
@@ -175,6 +186,25 @@ it('trims a row save, keeps interior newlines, and says how many values it chang
     expect(view.container.textContent).toContain(
       '1 draft updated for LOG_LEVEL. Leading and trailing whitespace was removed from 1 value.',
     );
+  } finally { await view.unmount(); }
+});
+
+it('states the tighten advisory as a warning after the scan-warn dialog reclassifies', async () => {
+  mocks.stage.mockResolvedValue({ findings: [{ rule_id: 'aws-access-key', surface: 'value_write', locator: 'app/LOG_LEVEL', acknowledgement: 'ack-1' }] });
+  mocks.reclassify.mockResolvedValue();
+  const view = await renderMatrix();
+  try {
+    await act(async () => buttonNamed(view.container, 'LOG_LEVEL in development: info').click());
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    if (textarea === null) throw new Error('matrix row editor textarea is missing');
+    await act(async () => typeInto(textarea, 'AKIA-looking-value'));
+    await act(async () => buttonNamed(view.container, 'Save 1 draft').click());
+    await settle();
+    await act(async () => buttonNamed(document.body, 'Reclassify LOG_LEVEL as secret').click());
+    await settle();
+    expect(mocks.reclassify).toHaveBeenCalledWith({ key: expect.any(String), classification: 'secret' });
+    const notice = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent === `Reclassified LOG_LEVEL as secret. ${TIGHTEN_ADVISORY}`);
+    expect(notice?.querySelector('[data-glyph="warn"]')).not.toBeNull();
   } finally { await view.unmount(); }
 });
 

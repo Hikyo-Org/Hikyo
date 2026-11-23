@@ -24,6 +24,7 @@ import {
   usePublishMatrix,
   useReclassifyKey,
   useStageMatrixValue,
+  TIGHTEN_ADVISORY,
   useInitializeMatrixValue,
   type MatrixKeyList,
   type MatrixEnvironmentRow,
@@ -242,6 +243,7 @@ export function Matrix({
   const [validationErrors, setValidationErrors] = useState<readonly MatrixValidationError[]>([]);
   const [publishOpen, setPublishOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [tightened, setTightened] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<{
     readonly owner: Selection;
     readonly message: string;
@@ -1057,6 +1059,10 @@ export function Matrix({
         <Alert tone="done">{notice}</Alert>
       )}
 
+      {tightened === null ? null : (
+        <Alert tone="warn">{tightened}</Alert>
+      )}
+
       {backgroundRefreshError ? (
         <Alert tone="warn">Live matrix refresh failed. Your loaded data and open edits are preserved; retrying automatically.</Alert>
       ) : null}
@@ -1660,6 +1666,7 @@ export function Matrix({
               ? undefined
               : async () => {
                   await reclassify.mutateAsync({ key: warn.keyId, classification: 'secret' });
+                  setTightened(`Reclassified ${warn.keyName} as secret. ${TIGHTEN_ADVISORY}`);
                 }
           }
           onDismiss={async (item) => {

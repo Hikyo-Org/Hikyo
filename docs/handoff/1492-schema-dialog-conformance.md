@@ -12,7 +12,7 @@ and [schema-model.md](../adr/schema-model.md) are closed. No server or API behav
 
 | Requirement | Change |
 | --- | --- |
-| Post-tightening advisory | `TIGHTEN_ADVISORY` in `web/src/api/matrix.ts` covers what the ADR requires: tightening cannot un-disclose, treat the values as exposed and rotate them, and old values stay readable in history. The key-detail confirm and a `warn` notice after commit both state it. So does the scan-warn dialog, before its "Reclassify as secret" action. |
+| Post-tightening advisory | `TIGHTEN_ADVISORY` in `web/src/api/matrix.ts` covers what the ADR requires: tightening cannot un-disclose, treat the values as exposed and rotate them, and old values stay readable in history. The key-detail confirm and a `warn` notice after commit both state it. So does the scan-warn dialog, before its "Reclassify as secret" action, and the matrix shows the same `warn` notice after that reclassify commits. |
 | Visible trim | Key create refuses a whitespace-only first value instead of silently dropping it. The live hint says trimming leaves it empty. The row-save trim notice is now tested. |
 | `any_of` hints | The row editor names every alternative as the field hint before typing. A live error replaces the hint. |
 | Deprecation warning | The row editor warns when the key is deprecated, with its note and the live-value count from the cells it can read. No server count was added, because that is a disclosure question. |
