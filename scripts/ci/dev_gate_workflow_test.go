@@ -64,7 +64,7 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 	if !reflect.DeepEqual(publish.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read", "checks": "write"}) || publish.Timeout != 1 {
 		t.Fatal("dev admission must retain narrow permissions and setup-inclusive budget")
 	}
-	if publish.Concurrency.Group != "dev-check-${{ github.repository_id }}-${{ matrix.work.head }}" || publish.Concurrency.Cancel || publish.Concurrency.Queue != "max" {
+	if publish.Concurrency.Group != "dev-check-${{ github.repository_id }}-${{ matrix.work.head }}" || publish.Concurrency.Cancel || publish.Concurrency.Queue != "" {
 		t.Fatal("dev writers must serialize under their distinct exact-head lease")
 	}
 	for _, job := range workflow.Jobs {

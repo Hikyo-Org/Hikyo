@@ -70,9 +70,9 @@ jobs:
       matrix:
         work: ${{ fromJSON(needs.discover.outputs.work) }}
     concurrency:
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
       group: dev-check-${{ github.repository_id }}-${{ matrix.work.head }}
       cancel-in-progress: false
-      queue: max
     steps:
       - name: Capture the setup-inclusive publisher budget
         env:

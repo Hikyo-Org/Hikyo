@@ -1,7 +1,8 @@
-# A publisher job that overruns its sixty-second budget (or fails on a read)
-# leaves a blocking, non-terminal check and fails its run. GitHub throttles the
-# discovery cron to hours, so rerun that run's failed jobs here: each rerun is a
-# new job with its own budget. The run attempt is the only loop bound, so this
+# A publisher job that overruns its sixty-second budget (or fails on a read), or a
+# group job that fails its proof, leaves a blocking, non-terminal check and fails its
+# run. GitHub throttles the discovery cron to hours, so rerun exactly those jobs
+# here: each rerun is a new job with its own budget. Nothing is rerun while the
+# shared token's rate limit is nearly spent. The run attempt is the only loop bound, so this
 # can neither loop nor multiply: attempt 3 publishes the terminal refusal. This
 # workflow runs no repository code and checks nothing out.
 name: gate-queue-retry
@@ -51,15 +52,30 @@ jobs:
           [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           test "$RUN_ATTEMPT" -lt 3
-          # Only a publisher job whose reconcile step failed is worth another budget.
-          # Worker group jobs share the publish- name, and reconcile always runs, so a
-          # failed setup counts too. Discovery and the gate's group- job are left alone.
-          failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-            --jq '[.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.name | test("^(dev-)?publish-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure"))] | length' |
-            awk '{ n += $1 } END { print n + 0 }')
-          if [ "$failed" -eq 0 ]; then
-            echo "No head publisher failed while reconciling; nothing to rerun."
+          # Never rerun into an exhausted window: a rerun reconcile spends the same shared
+          # budget that just failed it. Reading rate_limit does not count against the limit.
+          # Keep a tenth of it free (about one reconcile's worth of reads on the 1000 per hour
+          # repository token); below that, leave the check to the next trigger or the
+          # operator (gh workflow run ci-queue-gate.yml -f pr_number=<n>).
+          read -r remaining limit reset < <(gh api rate_limit --jq '.resources.core | "\(.remaining) \(.limit) \(.reset | todate)"')
+          [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]]
+          if [ $((remaining * 10)) -lt "$limit" ]; then
+            echo "Core rate limit has $remaining of $limit requests left; not rerunning. It resets at $reset."
             exit 0
           fi
-          echo "Rerunning $failed failed head publisher(s) of run $RUN_ID (attempt $RUN_ATTEMPT)."
-          gh run rerun "$RUN_ID" --failed
+          # Only a publisher or group job whose reconcile step failed is worth another budget.
+          # Worker group jobs share the publish- name, and reconcile always runs, so a
+          # failed setup counts too. Discovery is left alone. A pending job that a newer one
+          # replaced ends cancelled without running a step, so it never qualifies; rerun the
+          # qualifying jobs by id because `gh run rerun --failed` also reruns cancelled ones.
+          ids=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) | .id')
+          if [ -z "$ids" ]; then
+            echo "No head publisher or group job failed while reconciling; nothing to rerun."
+            exit 0
+          fi
+          for id in $ids; do
+            [[ "$id" =~ ^[1-9][0-9]*$ ]]
+            echo "Rerunning job $id of run $RUN_ID (attempt $RUN_ATTEMPT)."
+            gh api --method POST "repos/$GH_REPO/actions/jobs/$id/rerun"
+          done

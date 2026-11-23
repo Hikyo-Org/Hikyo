@@ -40,9 +40,9 @@ jobs:
       contents: read
       pull-requests: read
     concurrency:
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
       group: queue-check-${{ github.repository_id }}-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
       cancel-in-progress: false
-      queue: max
     steps:
       - name: Capture the authenticated setup-inclusive admission budget
         env:
@@ -110,9 +110,9 @@ jobs:
       contents: read
       pull-requests: read
     concurrency:
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
       group: queue-check-${{ github.repository_id }}-${{ github.event.workflow_run.head_sha }}
       cancel-in-progress: false
-      queue: max
     steps:
       - name: Check out trusted default-branch tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,7 +129,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_GATE_CHECK_NAME: ci-queue-required
           HEAD: ${{ github.event.workflow_run.head_sha }}
+        # The job's ten-minute timeout bounds the group proof, which has no admission clock.
+        # Let a rate-limit reset that arrives within five minutes be waited out (#1553).
         run: |
+          PR_GATE_DEADLINE=$(($(date +%s) + 300))
+          export PR_GATE_DEADLINE
           go run ./scripts/ci/pr-gate --queue --expected-head "$HEAD"
 
   dispatch:

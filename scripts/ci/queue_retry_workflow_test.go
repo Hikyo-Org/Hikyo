@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -123,41 +124,59 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		t.Fatal("the rerun step filters jobs with jq, which the runner image and this test need")
 	}
 	script := readQueueRetryWorkflow(t).Jobs["rerun"].Steps[0].Run
-	job := func(name, conclusion, failedStep string) string {
+	job := func(id int, name, conclusion, failedStep string) string {
 		step := conclusion
 		if conclusion == "cancelled" { // On a timeout the step failed and the job was then cancelled.
 			step = "failure"
 		}
-		return `{"name":"` + name + `","conclusion":"` + conclusion + `","steps":[{"name":"Compile trusted publisher","conclusion":"success"},{"name":"` + failedStep + `","conclusion":"` + step + `"}]}`
+		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"` + conclusion + `","steps":[{"name":"Compile trusted publisher","conclusion":"success"},{"name":"` + failedStep + `","conclusion":"` + step + `"}]}`
+	}
+	// A pending job that a newer one replaced was cancelled before it started: no step ran.
+	replaced := func(id int, name string) string {
+		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"cancelled","steps":[]}`
 	}
 	head := strings.Repeat("a", 40)
+	const healthy, spent = "4000 5000 1795475603", "40 5000 1795475603"
+	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
 	for _, tc := range []struct {
-		name    string
-		jobs    []string
-		attempt string
-		rerun   bool
-		fails   bool
+		name      string
+		jobs      []string
+		attempt   string
+		rateLimit string
+		rerun     []int
+		fails     bool
+		says      string
 	}{
-		{"queue publisher failed", []string{job("publish-"+head, "failure", "Reconcile one authenticated head")}, "1", true, false},
-		{"dev publisher failed", []string{job("dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "2", true, false},
-		{"one failure among passes", []string{job("publish-"+head, "success", "Reconcile one authenticated head"), job("publish-"+strings.Repeat("b", 40), "failure", "Reconcile one authenticated head")}, "1", true, false},
-		{"last attempt is never rerun", []string{job("publish-"+head, "failure", "Reconcile one authenticated head")}, "3", false, true},
-		{"publisher passed", []string{job("publish-"+head, "success", "Reconcile one authenticated head")}, "1", false, false},
-		{"no failed reconcile step", []string{job("publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
-		{"publisher cancelled by its timeout", []string{job("publish-"+head, "cancelled", "Reconcile one authenticated head")}, "1", true, false},
-		{"cancelled without a failed reconcile", []string{job("publish-"+head, "cancelled", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
-		{"cancelled after reconcile passed", []string{`{"name":"publish-` + head + `","conclusion":"cancelled","steps":[{"name":"Reconcile one authenticated head","conclusion":"success"}]}`}, "1", false, false},
-		{"worker group job shares the publisher name", []string{job("publish-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", true, false},
-		{"group job is not a head publisher", []string{job("group-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", false, false},
-		{"job name that is not a head is ignored", []string{job("publish-not-a-sha", "failure", "Reconcile")}, "1", false, false},
+		{"queue publisher failed", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", healthy, []int{1}, false, ""},
+		{"dev publisher failed", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "2", healthy, []int{1}, false, ""},
+		{"one failure among passes", []string{job(1, "publish-"+head, "success", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", healthy, []int{2}, false, ""},
+		{"last attempt is never rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "3", healthy, nil, true, ""},
+		{"publisher passed", []string{job(1, "publish-"+head, "success", reconcile)}, "1", healthy, nil, false, ""},
+		{"no failed reconcile step", []string{job(1, "publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", healthy, nil, false, ""},
+		{"publisher cancelled by its timeout", []string{job(1, "publish-"+head, "cancelled", reconcile)}, "1", healthy, []int{1}, false, ""},
+		{"cancelled without a failed reconcile", []string{job(1, "publish-"+head, "cancelled", "Capture the authenticated setup-inclusive admission budget")}, "1", healthy, nil, false, ""},
+		{"cancelled after reconcile passed", []string{`{"id":1,"name":"publish-` + head + `","conclusion":"cancelled","steps":[{"name":"` + reconcile + `","conclusion":"success"}]}`}, "1", healthy, nil, false, ""},
+		{"worker group job shares the publisher name", []string{job(1, "publish-"+head, "failure", groupReconcile)}, "1", healthy, []int{1}, false, ""},
+		{"failed group job is rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", healthy, []int{1}, false, ""},
+		{"passed group job is not rerun", []string{job(1, "group-"+head, "success", groupReconcile)}, "1", healthy, nil, false, ""},
+		{"job name that is not a head is ignored", []string{job(1, "publish-not-a-sha", "failure", "Reconcile")}, "1", healthy, nil, false, ""},
+		// gh run rerun --failed reruns cancelled jobs too, so only the failed one may be rerun, by id.
+		{"replaced pending reconcile is not rerun", []string{replaced(1, "publish-"+head), job(2, "publish-"+head, "failure", reconcile), replaced(3, "group-"+head)}, "1", healthy, []int{2}, false, ""},
+		{"only replaced pending reconciles", []string{replaced(1, "publish-"+head), replaced(2, "dev-publish-"+head)}, "1", healthy, nil, false, ""},
+		{"nothing is rerun while the budget is spent", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", spent, nil, false, "40 of 5000"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
-			// The stub answers the jobs listing and applies the script's own --jq filter to it.
+			rl := strings.Fields(tc.rateLimit)
+			// The stub answers rate_limit and the jobs listing by applying the script's own --jq filter, and records reruns.
 			stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
-				"if [ \"$1\" = api ]; then\n  while [ $# -gt 0 ]; do\n    if [ \"$1\" = --jq ]; then filter=$2; break; fi\n    shift\n  done\n" +
-				"  printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq \"$filter\"\nfi\n"
+				"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
+				"case \"$*\" in\n" +
+				"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}}}' | jq -r \"$filter\" ;;\n" +
+				"  *--method\\ POST*) ;;\n" +
+				"  api*) printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
+				"esac\n"
 			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -168,8 +187,24 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 				t.Fatalf("exit mismatch (want failure=%t): %v\n%s", tc.fails, err, out)
 			}
 			recorded, _ := os.ReadFile(calls)
-			if reran := strings.Contains(string(recorded), "run rerun 41595466545 --failed"); reran != tc.rerun {
-				t.Fatalf("rerun=%t want %t\ncalls:\n%s\noutput:\n%s", reran, tc.rerun, recorded, out)
+			var got []string
+			for _, line := range strings.Split(string(recorded), "\n") {
+				if strings.HasPrefix(line, "api --method POST ") {
+					got = append(got, line)
+				}
+				if strings.Contains(line, "run rerun") {
+					t.Fatalf("gh run rerun also reruns cancelled jobs; rerun by job id instead: %s", line)
+				}
+			}
+			var want []string
+			for _, id := range tc.rerun {
+				want = append(want, "api --method POST repos/Hikyo-Org/Hikyo/actions/jobs/"+strconv.Itoa(id)+"/rerun")
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("reruns %v want %v\ncalls:\n%s\noutput:\n%s", got, want, recorded, out)
+			}
+			if tc.says != "" && !strings.Contains(string(out), tc.says) {
+				t.Fatalf("output must say why nothing reran (%q):\n%s", tc.says, out)
 			}
 		})
 	}

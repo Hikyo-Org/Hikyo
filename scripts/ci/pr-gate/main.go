@@ -436,6 +436,8 @@ type githubReadError struct {
 	// GraphQL answered with an error payload. The server decided, so a retry
 	// cannot help even though gh exited nonzero.
 	rejected bool
+	// A 403/429 whose gh stderr names the rate limit. Only the flag is kept.
+	rateLimited bool
 }
 
 func (e *githubReadError) Error() string {
@@ -533,9 +535,68 @@ func stderrHTTPStatus(stderr []byte) int {
 // and the check retirement commands keep their single attempt.
 type retryingAPI struct{ api api }
 
+var rateLimitNow = time.Now
+
+// Slack past the reported reset so the retry lands in the new window.
+const rateLimitSkew = 5 * time.Second
+
+var errNoRateLimitWait = errors.New("no exhausted core rate limit to wait for")
+
+// The reset time fits only if the job's own budget outlasts it: the context
+// deadline when set, otherwise PR_GATE_DEADLINE (unix seconds).
+func readBudgetEnd(ctx context.Context) (time.Time, bool) {
+	if d, ok := ctx.Deadline(); ok {
+		return d, true
+	}
+	n, err := strconv.ParseInt(os.Getenv("PR_GATE_DEADLINE"), 10, 64)
+	return time.Unix(n, 0), err == nil && n > 0
+}
+
+// awaitRateLimitReset waits out an exhausted core limit when the reset fits the
+// job's budget. The rate_limit read does not count against the limit. It returns
+// nil after waiting, errNoRateLimitWait when this is not an exhausted core limit
+// (a secondary limit), and a visible failure naming the reset when it cannot wait.
+func (a retryingAPI) awaitRateLimitReset(ctx context.Context, failure *githubReadError) error {
+	var limits struct {
+		Resources struct {
+			Core struct {
+				Remaining int   `json:"remaining"`
+				Reset     int64 `json:"reset"`
+			} `json:"core"`
+		} `json:"resources"`
+	}
+	if a.api.read(ctx, "rate_limit", &limits) != nil || limits.Resources.Core.Remaining > 0 || limits.Resources.Core.Reset <= 0 {
+		return errNoRateLimitWait
+	}
+	reset := time.Unix(limits.Resources.Core.Reset, 0)
+	now := rateLimitNow()
+	wait := max(reset.Sub(now), 0) + rateLimitSkew
+	if end, ok := readBudgetEnd(ctx); !ok || now.Add(wait).After(end) {
+		return fmt.Errorf("GitHub API rate limit exhausted until %s, which is beyond this job's remaining budget: %w", reset.UTC().Format(time.RFC3339), failure)
+	}
+	fmt.Fprintf(os.Stderr, "trusted PR gate: GitHub API rate limit exhausted; waiting %s for the reset at %s\n", wait.Round(time.Second), reset.UTC().Format(time.RFC3339))
+	if err := readRetryWait(ctx, wait); err != nil {
+		return &githubReadError{path: failure.path, cause: err}
+	}
+	return nil
+}
+
 func (a retryingAPI) read(ctx context.Context, path string, result any) error {
+	waitedForReset := false
 	for attempt := 0; ; attempt++ {
 		err := a.api.read(ctx, path, result)
+		var limited *githubReadError
+		if err != nil && !waitedForReset && errors.As(err, &limited) && limited.rateLimited {
+			// One reset wait per read: a second rate limit is reported as it is.
+			waitedForReset = true
+			switch waitErr := a.awaitRateLimitReset(ctx, limited); {
+			case waitErr == nil:
+				attempt--
+				continue
+			case !errors.Is(waitErr, errNoRateLimitWait):
+				return waitErr
+			}
+		}
 		if err == nil || attempt >= len(readRetryBackoff) || !transientGitHubRead(err) {
 			return err
 		}
@@ -599,7 +660,8 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 		if status == 0 && errors.As(err, &exit) {
 			status = stderrHTTPStatus(exit.Stderr)
 		}
-		return &githubReadError{path: path, status: status, cause: err}
+		limited := (status == 403 || status == 429) && exit != nil && bytes.Contains(bytes.ToLower(exit.Stderr), []byte("rate limit"))
+		return &githubReadError{path: path, status: status, cause: err, rateLimited: limited}
 	}
 	return decode(data, result)
 }
