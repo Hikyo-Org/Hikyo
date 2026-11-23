@@ -771,6 +771,32 @@ it('resumes only after the publish ceremony over the environment and both keys',
   }
 });
 
+it('sends nothing when the rotation changes while the ceremony is open', async () => {
+  let listed = 0;
+  const sent = actStub({
+    [`GET ${base}/keys`]: () => Response.json(rotationKeys),
+    // The first read is generation 1; any re-read is generation 2.
+    [`GET ${listPath(PROD)}`]: () => Response.json({ items: [{ ...haltedRotation(), generation: listed++ > 0 ? 2 : 1 }] }),
+    [`GET ${windowPath}`]: closedWindow,
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Resume ANALYTICS_PASSWORD'));
+    await click(buttonNamed(dialog(), 'Resume'));
+    expect(document.querySelector('[data-ceremony]')).not.toBeNull();
+    // Someone else's change lands while the person is still confirming.
+    const includeDeleted = [...container.querySelectorAll('label')].find((l) => l.textContent?.includes('Include all deleted rotations'))!;
+    await act(async () => document.getElementById(includeDeleted.htmlFor)!.click());
+    await settleTask();
+    expect(dialog().textContent).toContain('changed since you opened this, so nothing will be sent');
+    await click(buttonNamed(document.body, 'Authorise'));
+    expect(acts(sent)).toEqual([]);
+  } finally {
+    await unmount();
+  }
+});
+
 it('sends nothing when the ceremony is cancelled', async () => {
   const sent = actStub({ ...reads([haltedRotation()]), [`GET ${windowPath}`]: closedWindow });
   const { container, unmount } = await mount();

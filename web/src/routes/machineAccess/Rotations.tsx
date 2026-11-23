@@ -551,6 +551,11 @@ function RotationActDialog({
   const [skipOverlap, setSkipOverlap] = useState(false);
   const [abandon, setAbandon] = useState(false);
   const [reconciled, setReconciled] = useState(false);
+  // The ceremony can outlast a re-read: the act checks the latest staleness, not the one at submit.
+  const staleNow = useRef(stale);
+  useEffect(() => {
+    staleNow.current = stale;
+  }, [stale]);
   const busy = mutation.isPending;
   const name = catalogue.find((key) => key.id === rotation.key_id)?.name ?? rotation.id;
 
@@ -574,6 +579,7 @@ function RotationActDialog({
   const submit = () => {
     setFailure(null);
     guard.run(verb, ceremonyKeys(catalogue, [rotation.key_id, rotation.username_key_id]), () => {
+      if (staleNow.current) return;
       mutation.mutate(act, {
         onSuccess: () => onDone(DONE[verb]),
         onError: (error) => setFailure(rotationActRefusalText(error, verb)),
