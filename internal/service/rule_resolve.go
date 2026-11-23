@@ -12,10 +12,14 @@ import (
 
 // The answer states, re-exported so handlers classify an answer without
 // importing the chokepoint.
+// AccessState is the answer state type.
+type AccessState = authz.AccessState
+
 const (
 	AccessCan      = authz.AccessCan
 	AccessExcepted = authz.AccessExcepted
 	AccessNeedsSee = authz.AccessNeedsSee
+	AccessNone     = authz.AccessNone
 )
 
 // AccessView is one principal of a "Who can...?" answer (member-access-rules
@@ -28,7 +32,9 @@ type AccessView struct {
 // Resolve answers who can use one permission in one environment, optionally
 // for one key, from the chokepoint's own evaluation. The answer discloses
 // membership, so it needs the authority of the rule listing (`manage-members`
-// at the project) and is audited as the same membership read.
+// at the project) and shows no more than the project listings do: the project's
+// grant lines and the project rules the caller may manage (see Rules.List).
+// It is audited as the same membership read.
 func (s *Rules) Resolve(ctx context.Context, actor Actor, scope domain.Scope, capability domain.Capability, keyID string) ([]AccessView, error) {
 	var out []AccessView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -41,7 +47,24 @@ func (s *Rules) Resolve(ctx context.Context, actor Actor, scope domain.Scope, ca
 			target := authz.KeyByID(keyID)
 			key = &target
 		}
-		answers, err := az.ResolveAccess(ctx, p, capability, key)
+		// Only the project listings are read, never the org's rows: see Grants.List.
+		grantLines, err := az.GrantLinesInProject(ctx, string(scope.Org), string(scope.Project))
+		if err != nil {
+			return err
+		}
+		ruleLines, err := manageableProjectRules(ctx, az, caller, scope)
+		if err != nil {
+			return err
+		}
+		pop := authz.AccessPopulation{Rules: map[string]bool{}}
+		for _, l := range grantLines {
+			pop.Principals = append(pop.Principals, l.Principal)
+		}
+		for _, l := range ruleLines {
+			pop.Principals = append(pop.Principals, l.Principal)
+			pop.Rules[l.ID] = true
+		}
+		answers, err := az.ResolveAccess(ctx, p, pop, capability, key)
 		if err != nil {
 			return err
 		}

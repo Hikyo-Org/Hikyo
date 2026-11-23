@@ -133,7 +133,10 @@ func (a *API) ResolveAccess(ctx context.Context, req apigen.ResolveAccessRequest
 		NeedsSee: []apigen.AccessPrincipal{}, None: []apigen.AccessPrincipal{},
 	}
 	for _, v := range views {
-		p := wireAccessPrincipal(domain.ProjectID(req.Project), v)
+		p, err := wireAccessPrincipal(domain.ProjectID(req.Project), v)
+		if err != nil {
+			return nil, err
+		}
 		switch v.State {
 		case service.AccessCan:
 			out.Can = append(out.Can, p)
@@ -141,17 +144,24 @@ func (a *API) ResolveAccess(ctx context.Context, req apigen.ResolveAccessRequest
 			out.Excepted = append(out.Excepted, p)
 		case service.AccessNeedsSee:
 			out.NeedsSee = append(out.NeedsSee, p)
-		default:
+		case service.AccessNone:
 			out.None = append(out.None, p)
+		default:
+			return nil, fmt.Errorf("rule resolve: unknown access state %q", v.State)
 		}
 	}
 	return apigen.ResolveAccess200JSONResponse(out), nil
 }
 
-func wireAccessPrincipal(project domain.ProjectID, v service.AccessView) apigen.AccessPrincipal {
-	kind := apigen.Machine
-	if v.Class == domain.ClassHuman {
+func wireAccessPrincipal(project domain.ProjectID, v service.AccessView) (apigen.AccessPrincipal, error) {
+	var kind apigen.PrincipalKind
+	switch v.Class {
+	case domain.ClassHuman:
 		kind = apigen.Human
+	case domain.ClassDeveloper, domain.ClassWorkload, domain.ClassAutomation, domain.ClassProvisioning, domain.ClassInstanceConn:
+		kind = apigen.Machine
+	default:
+		return apigen.AccessPrincipal{}, fmt.Errorf("rule resolve: principal %s has unknown class %q", v.Principal, v.Class)
 	}
 	out := apigen.AccessPrincipal{
 		PrincipalId: string(v.Principal), PrincipalName: optStr(v.Name), Kind: kind,
@@ -171,7 +181,7 @@ func wireAccessPrincipal(project domain.ProjectID, v service.AccessView) apigen.
 		}
 		out.Excepts = append(out.Excepts, except)
 	}
-	return out
+	return out, nil
 }
 
 func (a *API) CreateRule(ctx context.Context, req apigen.CreateRuleRequestObject) (apigen.CreateRuleResponseObject, error) {

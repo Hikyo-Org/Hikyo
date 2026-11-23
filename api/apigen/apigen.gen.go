@@ -5014,7 +5014,7 @@ type AccessResolution struct {
 	// NeedsSee Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
 	NeedsSee []AccessPrincipal `json:"needs_see"`
 
-	// None Members of the org that no grant or rule of theirs reaches here.
+	// None Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
 	None []AccessPrincipal `json:"none"`
 
 	// Permission The capabilities a member access rule may carry (member-access-rules

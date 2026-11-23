@@ -232,7 +232,9 @@ on these points describe, continues.
   ([#1474](https://github.com/Hikyo-Org/Hikyo/issues/1474)).** D10's "Who can…?" becomes an additive `/api/v1`
   operation with a CLI spelling, declared as an amendment to
   [api-cli-surface.md](./api-cli-surface.md) in its implementing pull request. Its evaluation is the
-  `authorize()` chokepoint's, so the answer cannot drift from enforcement.
+  `authorize()` chokepoint's, so the answer cannot drift from enforcement. It is gated by
+  `manage-members@project` and lists only what that caller's project listings already show (the project's
+  grant lines and the project rules they may manage), never sibling projects or unmanageable rules.
 
 ## First implementation slice (2026-09-29, historical)
 

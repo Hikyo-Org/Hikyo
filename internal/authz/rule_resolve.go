@@ -59,12 +59,27 @@ type AccessAnswer struct {
 	Excepts []AccessExcept
 }
 
+// AccessPopulation is what the caller (a project member manager) may already
+// see of the project's membership: the principals of its project grant lines
+// and of the project rules the caller may manage, and those rule ids. The
+// service builds it from the project listings alone, so the answer never
+// reaches past them: not sibling projects, not rules the caller cannot
+// manage. A principal holding only an org or instance grant is listed when
+// it also holds a project grant or a visible rule, as in the project listing.
+type AccessPopulation struct {
+	Principals []domain.PrincipalID
+	// Rules is the set of rule ids the answer may name.
+	Rules map[string]bool
+}
+
 // ResolveAccess answers "Who can...?" for one permission in the environment
 // a live rule.resolve proof was minted for, optionally for one key of its
-// project. The population is every principal holding a grant or a rule in
-// the org; an instance-scope grant holder is listed only when it reaches.
-// A key that does not exist is the uniform nonexistent outcome.
-func (a *TxAuthorizer) ResolveAccess(ctx context.Context, p Proof, capability domain.Capability, key *KeyTarget) ([]AccessAnswer, error) {
+// project. The population is the caller's own project view (AccessPopulation);
+// each principal's state is evaluated over everything it holds, but only the
+// rules in the population are named. A key that does not exist is the
+// uniform nonexistent outcome; its id is opaque, so a member manager without
+// See can confirm one exists (accepted, member-access-rules ADR).
+func (a *TxAuthorizer) ResolveAccess(ctx context.Context, p Proof, pop AccessPopulation, capability domain.Capability, key *KeyTarget) ([]AccessAnswer, error) {
 	c, ok := p.(*proof)
 	if !ok || c == nil || c.kind != kindTenant || c.op != OpRuleResolve || c.tok == nil || c.tok != a.tok || !c.tok.alive() || c.chain.Env == "" {
 		return nil, errors.New("authz: access resolution needs a live rule.resolve proof")
@@ -89,55 +104,21 @@ func (a *TxAuthorizer) ResolveAccess(ctx context.Context, p Proof, capability do
 	if shape == domain.ShapeProject {
 		at = domain.LevelProject
 	}
-	members, instance, err := a.accessPopulation(ctx, chain.Org)
-	if err != nil {
-		return nil, err
-	}
-	q := accessQuestion{a: a, chain: chain, capability: capability, at: at, key: bound}
-	out := make([]AccessAnswer, 0, len(members)+len(instance))
-	for _, principal := range slices.Concat(members, instance) {
-		answer, err := q.answer(ctx, principal)
+	q := accessQuestion{a: a, chain: chain, capability: capability, at: at, key: bound, visible: pop.Rules}
+	principals := slices.Clone(pop.Principals)
+	slices.Sort(principals)
+	principals = slices.Compact(principals)
+	out := make([]AccessAnswer, 0, len(principals))
+	for _, principal := range principals {
+		answer, ok, err := q.answer(ctx, principal)
 		if err != nil {
 			return nil, err
 		}
-		if answer.State == AccessNone && !slices.Contains(members, principal) {
-			continue
+		if ok {
+			out = append(out, answer)
 		}
-		out = append(out, answer)
 	}
 	return out, nil
-}
-
-// accessPopulation lists the org's principals (a grant or a rule inside it)
-// and, apart, the instance-scope grant holders that are not among them.
-func (a *TxAuthorizer) accessPopulation(ctx context.Context, org domain.OrgID) (members, instance []domain.PrincipalID, err error) {
-	grantLines, err := a.r.GrantLinesInOrg(ctx, string(org))
-	if err != nil {
-		return nil, nil, err
-	}
-	ruleLines, err := a.r.RuleLinesInOrg(ctx, string(org))
-	if err != nil {
-		return nil, nil, err
-	}
-	instanceLines, err := a.r.GrantLinesAtInstance(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, l := range grantLines {
-		members = append(members, l.Principal)
-	}
-	for _, l := range ruleLines {
-		members = append(members, l.Principal)
-	}
-	slices.Sort(members)
-	members = slices.Compact(members)
-	for _, l := range instanceLines {
-		if !slices.Contains(members, l.Principal) {
-			instance = append(instance, l.Principal)
-		}
-	}
-	slices.Sort(instance)
-	return members, slices.Compact(instance), nil
 }
 
 type accessQuestion struct {
@@ -146,6 +127,8 @@ type accessQuestion struct {
 	capability domain.Capability
 	at         domain.Level
 	key        *domain.RuleKey
+	// visible is the rule ids the answer may name.
+	visible map[string]bool
 }
 
 // holds is the chokepoint's evaluation of the question's permission over
@@ -173,55 +156,61 @@ func (q accessQuestion) holds(ctx context.Context, capability domain.Capability,
 	return q.a.ruleSelectorHeld(ctx, project, grants, rules, domain.CapManageMembers, target)
 }
 
-func (q accessQuestion) answer(ctx context.Context, principal domain.PrincipalID) (AccessAnswer, error) {
+// answer evaluates one principal. A principal that no longer exists, or has
+// no class, holds nothing the chokepoint would admit and is left out (false)
+// rather than labelled.
+func (q accessQuestion) answer(ctx context.Context, principal domain.PrincipalID) (AccessAnswer, bool, error) {
 	out := AccessAnswer{Principal: principal, State: AccessNone}
 	class, err := q.a.r.PrincipalClass(ctx, principal)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return out, err
+	if errors.Is(err, domain.ErrNotFound) || (err == nil && class == "") {
+		return out, false, nil
+	}
+	if err != nil {
+		return out, false, err
 	}
 	out.Class = class
 	caller := Identity{Principal: principal, Class: class}
 	grants, err := q.a.r.Grants(ctx, principal)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 	var rules []domain.Rule
 	if rulesApply(caller) {
 		if rules, err = q.a.r.Rules(ctx, principal); err != nil {
-			return out, err
+			return out, false, err
 		}
 	}
 	held, err := q.holds(ctx, q.capability, grants, rules)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 	if held {
 		withdrawn, err := q.a.machineRevealWithdrawn(ctx, caller, Formula{{Cap: q.capability, At: q.at}}, q.chain)
 		if err != nil {
-			return out, err
+			return out, false, err
 		}
 		if withdrawn {
-			return out, nil
+			return out, true, nil
 		}
 		if err := q.sources(ctx, &out, grants, rules); err != nil {
-			return out, err
+			return out, false, err
 		}
 		out.State = AccessCan
 		if q.capability == domain.CapReveal || q.capability == domain.CapRevealHistory {
 			see, err := q.holds(ctx, domain.CapRead, grants, rules)
 			if err != nil {
-				return out, err
+				return out, false, err
 			}
 			if !see {
 				out.State = AccessNeedsSee
 			}
 		}
-		return out, nil
+		return out, true, nil
 	}
 	for _, rule := range rules {
 		except, ok, err := q.excepted(ctx, rule)
 		if err != nil {
-			return out, err
+			return out, false, err
 		}
 		if ok {
 			out.Excepts = append(out.Excepts, except)
@@ -230,7 +219,7 @@ func (q accessQuestion) answer(ctx context.Context, principal domain.PrincipalID
 	if len(out.Excepts) > 0 {
 		out.State = AccessExcepted
 	}
-	return out, nil
+	return out, true, nil
 }
 
 // sources names each grant and rule that gives the permission on its own.
@@ -267,9 +256,10 @@ func (q accessQuestion) sources(ctx context.Context, out *AccessAnswer, grants [
 	return nil
 }
 
-// candidate reports whether a rule could take part in this question at all.
+// candidate reports whether a rule could take part in this question at all
+// and may be named: a rule outside the caller's view never is.
 func (q accessQuestion) candidate(r domain.Rule) bool {
-	return r.Org == q.chain.Org && r.Capability == q.capability && r.Validate() == nil && slices.Contains(r.Where.Projects, q.chain.Project)
+	return q.visible[r.ID] && r.Org == q.chain.Org && r.Capability == q.capability && r.Validate() == nil && slices.Contains(r.Where.Projects, q.chain.Project)
 }
 
 // excepted reports whether the rule is held back only by its own excepts in

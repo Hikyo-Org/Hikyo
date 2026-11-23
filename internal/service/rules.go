@@ -355,13 +355,7 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		}
 		var manageable []bool
 		if level == domain.LevelProject {
-			targets := make([]domain.Rule, len(lines))
-			for i, line := range lines {
-				where := whereFromItems(line.Items)
-				where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
-				targets[i] = domain.Rule{Org: scope.Org, Capability: line.Capability, Where: where}
-			}
-			manageable, err = az.RulesManageable(ctx, caller, targets, scope.Project)
+			manageable, err = ruleLinesManageable(ctx, az, caller, scope, lines)
 			if err != nil {
 				return err
 			}
@@ -392,6 +386,37 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		})
 	})
 	return out, err
+}
+
+// ruleLinesManageable reports, per project rule line, whether the caller may
+// manage it: the filter Rules.List and Rules.Resolve share.
+func ruleLinesManageable(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, lines []authz.RuleLine) ([]bool, error) {
+	targets := make([]domain.Rule, len(lines))
+	for i, line := range lines {
+		where := whereFromItems(line.Items)
+		where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
+		targets[i] = domain.Rule{Org: scope.Org, Capability: line.Capability, Where: where}
+	}
+	return az.RulesManageable(ctx, caller, targets, scope.Project)
+}
+
+// manageableProjectRules lists the project's rule lines the caller may manage.
+func manageableProjectRules(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope) ([]authz.RuleLine, error) {
+	lines, err := az.RuleLinesInProject(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	manageable, err := ruleLinesManageable(ctx, az, caller, scope, lines)
+	if err != nil {
+		return nil, err
+	}
+	var out []authz.RuleLine
+	for i, line := range lines {
+		if manageable[i] {
+			out = append(out, line)
+		}
+	}
+	return out, nil
 }
 
 // checkRuleReferences refuses, with a clear error rather than a foreign-key
