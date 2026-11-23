@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,12 +24,21 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 	var start, now int64
 	var encoded string
 	if r.sq != nil {
+		// sqlite needs no bound: BEGIN IMMEDIATE already holds the single writer, and
+		// ctx cancellation interrupts the in-process statement or COMMIT, which rolls back.
 		row, err := r.sq.ReadAuthRefusalWindow(ctx)
 		if err != nil {
 			return 0, err
 		}
 		start, now, encoded = row.WindowStart, row.NowSeconds, row.State
 	} else {
+		// Cancelling the client does not stop a statement or COMMIT the server already has,
+		// so the caller's remaining deadline is also enforced server-side (0 would disable it).
+		if dl, ok := ctx.Deadline(); ok {
+			if err := r.pg.BoundAuthRefusalTransaction(ctx, strconv.FormatInt(max(1, time.Until(dl).Milliseconds()), 10)); err != nil {
+				return 0, err
+			}
+		}
 		row, err := r.pg.ReadAuthRefusalWindow(ctx)
 		if err != nil {
 			return 0, err

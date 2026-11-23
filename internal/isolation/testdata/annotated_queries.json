@@ -161,6 +161,13 @@
   },
   {
     "engine": "postgres",
+    "name": "BoundAuthRefusalTransaction",
+    "annotation": "authn-resolution",
+    "hash": "e26b6ab9aa461c6055a594797c353244a141d1f954a0b89ac7198c6d1e268af5",
+    "reason": "refusal accounting bounds its own lock wait and statements, commit included, server-side so an abandoned transaction cannot hold the singleton row past the caller's deadline"
+  },
+  {
+    "engine": "postgres",
     "name": "CLILoginByCode",
     "annotation": "authn-resolution",
     "hash": "66c6844a51250d697f3ed0e583eead076f98b45cba7428ae0220b52d4ada0d5d",

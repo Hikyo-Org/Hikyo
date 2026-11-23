@@ -192,6 +192,15 @@
         "postgres": "7ed3956a6c8fc12fc771e746104f099229017a1cb25204022f981c22d90c45a4"
       }
     },
+    "BoundAuthRefusalTransaction": {
+      "authority": "refusal accounting bounds its own lock wait and statements, commit included, server-side so an abandoned transaction cannot hold the singleton row past the caller's deadline",
+      "sql_hash": {
+        "postgres": "e26b6ab9aa461c6055a594797c353244a141d1f954a0b89ac7198c6d1e268af5"
+      },
+      "api_hash": {
+        "postgres": "649860f2494629133d2869895f1782e0fd9982dca0d8723ecdf1fb5692c60c5f"
+      }
+    },
     "CoordinationCountForeignNodes": {
       "authority": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert.",
       "sql_hash": {
