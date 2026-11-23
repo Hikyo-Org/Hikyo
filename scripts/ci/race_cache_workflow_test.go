@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +66,10 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["seed"].(map[string]any) }
 	for name, mutation := range map[string]func(map[string]any){
+		"top-level env": func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-race=false"} },
+		"top-level defaults": func(w map[string]any) {
+			w["defaults"] = map[string]any{"run": map[string]any{"shell": "sh"}}
+		},
 		"PR trigger":       func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
 		"push trigger":     func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
 		"missing schedule": func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
@@ -159,7 +164,10 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 // requireCacheSeed holds the trust rules they share.
 type cacheSeedSpec struct {
 	label, group, bootstrap, lookupID, key, restoreKeys, compile string
-	maxTimeout                                                   int
+	// generationID and generation, when set, pin a step between the ABI and
+	// the lookup whose output rotates the key.
+	generationID, generation string
+	maxTimeout               int
 }
 
 var raceSeedSpec = cacheSeedSpec{
@@ -176,6 +184,16 @@ var raceSeedSpec = cacheSeedSpec{
 func requireRaceSeed(workflow map[string]any) error { return requireCacheSeed(workflow, raceSeedSpec) }
 
 func requireCacheSeed(workflow map[string]any, spec cacheSeedSpec) error {
+	// No top-level env or defaults: either would change what the seed compiles
+	// without touching the reviewed steps.
+	top := make([]string, 0, len(workflow))
+	for key := range workflow {
+		top = append(top, key)
+	}
+	sort.Strings(top)
+	if !reflect.DeepEqual(top, []string{"concurrency", "jobs", "name", "on", "permissions"}) {
+		return fmt.Errorf("%s must set only name, triggers, permissions, concurrency and jobs (got %v)", spec.label, top)
+	}
 	triggers, ok := workflow["on"].(map[string]any)
 	if !ok || len(triggers) != 2 {
 		return fmt.Errorf("%s must run only daily or manually", spec.label)
@@ -215,8 +233,12 @@ func requireCacheSeed(workflow map[string]any, spec cacheSeedSpec) error {
 	if timeout, ok := job["timeout-minutes"].(int); !ok || timeout < 1 || timeout > spec.maxTimeout {
 		return fmt.Errorf("%s needs an explicit bounded timeout", spec.label)
 	}
+	next := 4
+	if spec.generation != "" {
+		next = 5
+	}
 	steps, ok := job["steps"].([]any)
-	if !ok || len(steps) != 7 {
+	if !ok || len(steps) != next+3 {
 		return fmt.Errorf("unexpected %s preparation or publication", spec.label)
 	}
 	step := func(i int) map[string]any {
@@ -248,7 +270,13 @@ func requireCacheSeed(workflow map[string]any, spec cacheSeedSpec) error {
 	if abi["id"] != "runner-cache-abi" || abi["run"] != "./scripts/ci/export-runner-cache-abi.sh" {
 		return fmt.Errorf("%s must select the runner cache ABI", spec.label)
 	}
-	lookup := step(4)
+	if spec.generation != "" {
+		generation := step(4)
+		if len(generation) != 3 || generation["name"] == nil || generation["id"] != spec.generationID || generation["run"] != spec.generation {
+			return fmt.Errorf("%s must rotate its key with exactly the reviewed generation step", spec.label)
+		}
+	}
+	lookup := step(next)
 	if lookup["id"] != spec.lookupID || lookup["uses"] != reuseRestoreAction || lookup["if"] != nil || lookup["continue-on-error"] != nil ||
 		!reflect.DeepEqual(lookup["with"], map[string]any{
 			"path":         "~/.cache/go-build",
@@ -259,11 +287,11 @@ func requireCacheSeed(workflow map[string]any, spec cacheSeedSpec) error {
 		return fmt.Errorf("%s lookup must use the shared key and never restore historical entries", spec.label)
 	}
 	miss := "steps." + spec.lookupID + ".outputs.cache-hit != 'true'"
-	compile := step(5)
+	compile := step(next + 1)
 	if compile["run"] != spec.compile || compile["if"] != miss || compile["continue-on-error"] != nil || compile["env"] != nil {
 		return fmt.Errorf("fresh %s must run exactly its reviewed compile into an empty default cache", spec.label)
 	}
-	save := step(6)
+	save := step(next + 2)
 	if save["uses"] != reuseSaveAction || save["continue-on-error"] != nil ||
 		save["if"] != "success() && "+miss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
 		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps." + spec.lookupID + ".outputs.cache-primary-key }}"}) {
@@ -402,7 +430,8 @@ func TestRaceSeedGuardRequiresFreshDefaultDirectory(t *testing.T) {
 func testSeedGuardRequiresFreshDefaultDirectory(t *testing.T, file, guardEnd string) {
 	workflow, _ := readWorkflowFile(t, file)
 	steps := workflowJobSteps(t, workflow, "seed")
-	compile := steps[5].(map[string]any)["run"].(string)
+	// The compile step sits right before the save, after any generation step.
+	compile := steps[len(steps)-2].(map[string]any)["run"].(string)
 	prefix, _, found := strings.Cut(compile, guardEnd)
 	if !found {
 		t.Fatal("actual compile guard missing")

@@ -172,7 +172,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		{
 			Name: lintDriverRestoreName,
 			Uses: reference["test-go-cache"].Uses,
-			With: map[string]string{"path": "~/.cache/go-build", "key": lintDriverReuseKey, "restore-keys": lintDriverRestoreKeys},
+			With: map[string]string{"path": "~/.cache/go-build", "key": lintDriverModulePrefix, "restore-keys": lintDriverRunnerPrefix},
 		},
 		{
 			Name: "Prepare lint compiler cache",
@@ -259,8 +259,8 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 	}
 	checkoutPin, restorePin := pin("actions/checkout"), pin("actions/cache/restore")
 	lintDriverStep := "      - name: " + lintDriverRestoreName + "\n        uses: " + restorePin + "\n        with:\n" +
-		"          path: ~/.cache/go-build\n          key: " + lintDriverReuseKey + "\n          restore-keys: |\n" +
-		"            " + lintDriverModulePrefix + "\n            " + lintDriverRunnerPrefix + "\n"
+		"          path: ~/.cache/go-build\n          key: " + lintDriverModulePrefix + "\n" +
+		"          restore-keys: " + lintDriverRunnerPrefix + "\n"
 	appendStep := func(step string) func(string) string {
 		return func(s string) string { return s + step }
 	}
@@ -318,7 +318,7 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"cache save step":          appendStep("      - uses: " + reuseSaveAction + " # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go-test-v2\n"),
 		"artifact upload":          appendStep("      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n        with:\n          path: .\n"),
 		"lint driver key drift":    replace("key: go-lintdriver-v2-", "key: go-lintdriver-v3-"),
-		"lint driver narrow keys":  replace("            go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-\n", ""),
+		"lint driver narrow keys":  replace("          restore-keys: "+lintDriverRunnerPrefix+"\n", ""),
 		"dropped lint driver seed": replace(lintDriverStep, ""),
 		"skipped lint cache":       replace("      - name: Prepare lint compiler cache\n        run: go run ./scripts/ci/prepare-lint-cache\n", ""),
 		"dropped boundary package": replace(" ./internal/boundary", ""),

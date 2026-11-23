@@ -2,6 +2,8 @@ package ci_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,29 +11,37 @@ import (
 )
 
 const (
-	// The one key ci-lint-cache.yml writes and test_core_serial and the advisory
-	// invariants job read. It moves with modules, toolchain ABI and lint sources.
-	lintDriverModulePrefix = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
-	lintDriverRunnerPrefix = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
-	lintDriverReuseKey     = lintDriverModulePrefix + "${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}"
-	lintDriverRestoreKeys  = lintDriverModulePrefix + "\n" + lintDriverRunnerPrefix + "\n"
-	lintDriverRestoreName  = "Restore lint driver Go cache"
+	// ci-lint-cache.yml writes one seed per ISO week for the module set and
+	// runner ABI. test_core_serial and the advisory invariants job read the
+	// newest seed by prefix, then fall back to any seed for the runner ABI.
+	lintDriverModulePrefix   = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
+	lintDriverRunnerPrefix   = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+	lintDriverGenerationID   = "lint-cache-generation"
+	lintDriverGenerationRun  = `echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"`
+	lintDriverSeedKey        = lintDriverModulePrefix + "${{ steps." + lintDriverGenerationID + ".outputs.value }}"
+	lintDriverRestoreName    = "Restore lint driver Go cache"
+	lintDriverSeedLintTests  = "go test -count=1 -timeout=20m ./internal/lint\n"
+	lintDriverSerialPackage  = "lint_package=$(go list ./internal/lint)\n"
+	lintDriverSerialLintTest = `go test -count=1 -timeout=20m "$lint_package"`
 )
 
 var lintDriverSeedSpec = cacheSeedSpec{
-	label:       "lint driver seed",
-	group:       "ci-lint-cache-main",
-	bootstrap:   "${{ runner.temp }}/lint-bootstrap",
-	lookupID:    "lint-driver-seed",
-	key:         lintDriverReuseKey,
-	restoreKeys: lintDriverRunnerPrefix,
+	label:        "lint driver seed",
+	group:        "ci-lint-cache-main",
+	bootstrap:    "${{ runner.temp }}/lint-bootstrap",
+	lookupID:     "lint-driver-seed",
+	key:          lintDriverSeedKey,
+	restoreKeys:  lintDriverRunnerPrefix,
+	generationID: lintDriverGenerationID,
+	generation:   lintDriverGenerationRun,
 	compile: "cache=\"$HOME/.cache/go-build\"\n" +
 		"test ! -e \"$cache\"\n" +
 		"test \"$(go env GOCACHE)\" = \"$cache\"\n" +
 		"./scripts/ci/prepare-go-cache-disk.sh\n" +
 		"go run ./scripts/ci/prepare-lint-cache\n" +
-		"go test -count=1 -timeout=20m ./internal/lint\n" +
-		"du -sh \"$cache\"\n",
+		lintDriverSeedLintTests +
+		"du -sh \"$cache\"\n" +
+		"df -h \"$cache\"\n",
 	maxTimeout: 45,
 }
 
@@ -42,55 +52,60 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["seed"].(map[string]any) }
 	seedStep := func(w map[string]any, i int) map[string]any { return job(w)["steps"].([]any)[i].(map[string]any) }
-	setKey := func(w map[string]any, key string) { seedStep(w, 4)["with"].(map[string]any)["key"] = key }
+	setKey := func(w map[string]any, key string) { seedStep(w, 5)["with"].(map[string]any)["key"] = key }
 	editCompile := func(old, replacement string) func(map[string]any) {
 		return func(w map[string]any) {
-			c := seedStep(w, 5)
+			c := seedStep(w, 6)
 			c["run"] = strings.Replace(c["run"].(string), old, replacement, 1)
 		}
 	}
 	for name, mutation := range map[string]func(map[string]any){
-		"PR trigger":       func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
-		"push trigger":     func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
-		"missing schedule": func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
-		"write token":      func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
-		"job write token":  func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
-		"cancelling group": func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
-		"shared group":     func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
-		"untrusted ref":    func(w map[string]any) { job(w)["if"] = "true" },
-		"any ref":          func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
-		"unbounded job":    func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
-		"no timeout":       func(w map[string]any) { delete(job(w), "timeout-minutes") },
+		"top-level env":      func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-tags=ui"} },
+		"top-level defaults": func(w map[string]any) { w["defaults"] = map[string]any{"run": map[string]any{"shell": "sh"}} },
+		"PR trigger":         func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
+		"push trigger":       func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
+		"missing schedule":   func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
+		"write token":        func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
+		"job write token":    func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"cancelling group":   func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"shared group":       func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
+		"untrusted ref":      func(w map[string]any) { job(w)["if"] = "true" },
+		"any ref":            func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
+		"unbounded job":      func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
+		"no timeout":         func(w map[string]any) { delete(job(w), "timeout-minutes") },
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},
 		"extra writer": func(w map[string]any) {
 			j := job(w)
 			j["steps"] = append(j["steps"].([]any), map[string]any{
-				"uses": reuseSaveAction, "with": map[string]any{"path": "~/.cache/go-build", "key": lintDriverReuseKey},
+				"uses": reuseSaveAction, "with": map[string]any{"path": "~/.cache/go-build", "key": lintDriverSeedKey},
 			})
 		},
 		"mutable checkout ref":          func(w map[string]any) { seedStep(w, 0)["with"].(map[string]any)["ref"] = "${{ github.ref }}" },
 		"checkout persists credentials": func(w map[string]any) { seedStep(w, 0)["with"].(map[string]any)["persist-credentials"] = true },
 		"setup-go implicit cache":       func(w map[string]any) { seedStep(w, 1)["with"].(map[string]any)["cache"] = true },
 		"bootstrap touches real cache":  func(w map[string]any) { seedStep(w, 1)["env"] = map[string]any{"GOCACHE": "~/.cache/go-build"} },
-		"lookup restores entries":       func(w map[string]any) { delete(seedStep(w, 4)["with"].(map[string]any), "lookup-only") },
-		"lookup is skipped":             func(w map[string]any) { seedStep(w, 4)["if"] = "false" },
+		"lookup restores entries":       func(w map[string]any) { delete(seedStep(w, 5)["with"].(map[string]any), "lookup-only") },
+		"lookup is skipped":             func(w map[string]any) { seedStep(w, 5)["if"] = "false" },
+		"daily generation":              func(w map[string]any) { seedStep(w, 4)["run"] = `echo "value=$(date -u +%F)" >>"$GITHUB_OUTPUT"` },
+		"fixed generation":              func(w map[string]any) { seedStep(w, 4)["run"] = `echo "value=2026-W48" >>"$GITHUB_OUTPUT"` },
+		"skipped generation":            func(w map[string]any) { seedStep(w, 4)["if"] = "false" },
+		"removed generation": func(w map[string]any) {
+			j := job(w)
+			steps := j["steps"].([]any)
+			j["steps"] = append(steps[:4:4], steps[5:]...)
+		},
 		"key ignores go.sum": func(w map[string]any) {
-			setKey(w, strings.Replace(lintDriverReuseKey, "'go.mod', 'go.sum', ", "'go.mod', ", 1))
+			setKey(w, strings.Replace(lintDriverSeedKey, "'go.mod', 'go.sum', ", "'go.mod', ", 1))
 		},
-		"key ignores lint sources": func(w map[string]any) {
-			setKey(w, strings.Replace(lintDriverReuseKey, "'internal/lint/**', ", "", 1))
-		},
-		"key ignores prepare tool": func(w map[string]any) {
-			setKey(w, strings.Replace(lintDriverReuseKey, ", 'scripts/ci/prepare-lint-cache/**'", "", 1))
-		},
+		"key without generation": func(w map[string]any) { setKey(w, lintDriverModulePrefix) },
 		"key without ABI": func(w map[string]any) {
-			setKey(w, strings.Replace(lintDriverReuseKey, "${{ steps.runner-cache-abi.outputs.value }}-", "", 1))
+			setKey(w, strings.Replace(lintDriverSeedKey, "${{ steps.runner-cache-abi.outputs.value }}-", "", 1))
 		},
-		"key is per run":       func(w map[string]any) { setKey(w, lintDriverReuseKey+"-${{ github.run_id }}") },
-		"key is per commit":    func(w map[string]any) { setKey(w, lintDriverReuseKey+"-${{ github.sha }}") },
-		"restore keys widen":   func(w map[string]any) { seedStep(w, 4)["with"].(map[string]any)["restore-keys"] = "go-lintdriver-v2-" },
+		"key is per run":       func(w map[string]any) { setKey(w, lintDriverSeedKey+"-${{ github.run_id }}") },
+		"key is per commit":    func(w map[string]any) { setKey(w, lintDriverSeedKey+"-${{ github.sha }}") },
+		"restore keys widen":   func(w map[string]any) { seedStep(w, 5)["with"].(map[string]any)["restore-keys"] = "go-lintdriver-v2-" },
 		"compile reuses cache": editCompile("test ! -e \"$cache\"\n", ""),
 		"compile redirected":   editCompile("test \"$(go env GOCACHE)\" = \"$cache\"\n", ""),
 		"skips prepare":        editCompile("go run ./scripts/ci/prepare-lint-cache\n", ""),
@@ -99,20 +114,20 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		"unbounded lint tests": editCompile(" -timeout=20m", ""),
 		"guard after disk": editCompile("test ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\n./scripts/ci/prepare-go-cache-disk.sh\n",
 			"./scripts/ci/prepare-go-cache-disk.sh\ntest ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\n"),
-		"compile fail open":   func(w map[string]any) { seedStep(w, 5)["continue-on-error"] = true },
-		"compile always runs": func(w map[string]any) { delete(seedStep(w, 5), "if") },
-		"compile env":         func(w map[string]any) { seedStep(w, 5)["env"] = map[string]any{"GOCACHE": "/tmp/other"} },
+		"compile fail open":   func(w map[string]any) { seedStep(w, 6)["continue-on-error"] = true },
+		"compile always runs": func(w map[string]any) { delete(seedStep(w, 6), "if") },
+		"compile env":         func(w map[string]any) { seedStep(w, 6)["env"] = map[string]any{"GOCACHE": "/tmp/other"} },
 		"save without exact miss": func(w map[string]any) {
-			seedStep(w, 6)["if"] = "success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
+			seedStep(w, 7)["if"] = "success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
 		},
 		"save from any ref": func(w map[string]any) {
-			seedStep(w, 6)["if"] = "success() && steps.lint-driver-seed.outputs.cache-hit != 'true'"
+			seedStep(w, 7)["if"] = "success() && steps.lint-driver-seed.outputs.cache-hit != 'true'"
 		},
 		"save after failure": func(w map[string]any) {
-			seedStep(w, 6)["if"] = strings.Replace(seedStep(w, 6)["if"].(string), "success() && ", "always() && ", 1)
+			seedStep(w, 7)["if"] = strings.Replace(seedStep(w, 7)["if"].(string), "success() && ", "always() && ", 1)
 		},
-		"save under another key": func(w map[string]any) { seedStep(w, 6)["with"].(map[string]any)["key"] = lintDriverReuseKey },
-		"save another path":      func(w map[string]any) { seedStep(w, 6)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
+		"save under another key": func(w map[string]any) { seedStep(w, 7)["with"].(map[string]any)["key"] = lintDriverSeedKey },
+		"save another path":      func(w map[string]any) { seedStep(w, 7)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed map[string]any
@@ -127,8 +142,10 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 }
 
-// Readers restore the seed exactly once, right after the go-test-v2 restore
-// into the same directory, and never write any cache.
+// Readers restore the newest seed exactly once, right after the go-test-v2
+// restore into the same directory, and never write any cache.
+// actions/cache prefix-matches key before restore-keys, so a prefix key finds
+// the current week's seed without a generation step in every reader.
 func requireLintDriverReader(steps []any) error {
 	restores, previous := 0, ""
 	for _, value := range steps {
@@ -145,9 +162,9 @@ func requireLintDriverReader(steps []any) error {
 		if step["name"] == lintDriverRestoreName || strings.Contains(key, "go-lintdriver") {
 			restores++
 			if previous != "go-test-v2" || step["name"] != lintDriverRestoreName || uses != reuseRestoreAction ||
-				len(step) != 3 || len(with) != 3 || with["path"] != "~/.cache/go-build" || key != lintDriverReuseKey ||
-				with["restore-keys"] != lintDriverRestoreKeys {
-				return fmt.Errorf("lint driver reader must restore exactly the seed key and both prefixes after the test cache")
+				len(step) != 3 || len(with) != 3 || with["path"] != "~/.cache/go-build" || key != lintDriverModulePrefix ||
+				with["restore-keys"] != lintDriverRunnerPrefix {
+				return fmt.Errorf("lint driver reader must restore the seed's module prefix, then its runner prefix, after the test cache")
 			}
 		}
 		previous = ""
@@ -183,7 +200,7 @@ func TestLintDriverReadersShareTheSeedKey(t *testing.T) {
 				"reader saves": func(steps []any) []any {
 					return append(steps, map[string]any{
 						"uses": reuseSaveAction,
-						"with": map[string]any{"path": "~/.cache/go-build", "key": lintDriverReuseKey},
+						"with": map[string]any{"path": "~/.cache/go-build", "key": lintDriverSeedKey},
 					})
 				},
 				"combined cache action": func(steps []any) []any {
@@ -191,14 +208,19 @@ func TestLintDriverReadersShareTheSeedKey(t *testing.T) {
 					step["uses"] = strings.Replace(reuseRestoreAction, "cache/restore", "cache", 1)
 					return steps
 				},
-				"wrong key": func(steps []any) []any {
+				"pinned week": func(steps []any) []any {
 					_, step := restoreStep(steps)
-					step["with"].(map[string]any)["key"] = lintDriverModulePrefix
+					step["with"].(map[string]any)["key"] = lintDriverModulePrefix + "2026-W48"
 					return steps
 				},
-				"missing module prefix": func(steps []any) []any {
+				"runner prefix as key": func(steps []any) []any {
 					_, step := restoreStep(steps)
-					step["with"].(map[string]any)["restore-keys"] = lintDriverRunnerPrefix + "\n"
+					step["with"].(map[string]any)["key"] = lintDriverRunnerPrefix
+					return steps
+				},
+				"missing runner fallback": func(steps []any) []any {
+					_, step := restoreStep(steps)
+					delete(step["with"].(map[string]any), "restore-keys")
 					return steps
 				},
 				"skipped reader": func(steps []any) []any {
@@ -232,5 +254,20 @@ func TestLintDriverReadersShareTheSeedKey(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// The seed compiles the lint package's tests with the flags test_core_serial
+// uses; a different flag set would build different actions and miss the seed.
+func TestLintDriverSeedMatchesSerialLintTests(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts/ci/test-core-packages.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(raw)
+	if !strings.Contains(lintDriverSeedSpec.compile, lintDriverSeedLintTests) ||
+		!strings.Contains(script, lintDriverSerialPackage) ||
+		strings.Count(script, lintDriverSerialLintTest) != 1 {
+		t.Fatalf("test-core-packages.sh must run %q for ./internal/lint, as the lint driver seed does", lintDriverSerialLintTest)
 	}
 }

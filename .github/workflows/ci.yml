@@ -543,8 +543,9 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
-      # No Go build cache: its 2.71 GB entry saved about 1.3 minutes per run, and
-      # the 10 GB Actions budget now holds the lint driver seed (ci-lint-cache.yml).
+      # No Go build cache: a warm 2.71 GB entry cut GoReleaser by about 4 to 11
+      # minutes, but the 10 GB Actions budget now holds the lint driver seed
+      # (ci-lint-cache.yml), which saves more time across more jobs.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -1579,14 +1580,14 @@ jobs:
             go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       # Read only: ci-lint-cache.yml is the single writer of the lint matrix's
       # compiler and vet entries. Both restores share one content-addressed cache.
+      # The seed rotates weekly, so the key is a prefix: actions/cache restores
+      # the newest seed for these modules, then any seed for this runner ABI.
       - name: Restore lint driver Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}
-          restore-keys: |
-            go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-
-            go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-
+          restore-keys: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Populate Go module cache
         run: go mod download
       # Never replays results: PostgreSQL conformance must exercise this run's

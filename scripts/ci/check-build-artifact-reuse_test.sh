@@ -153,9 +153,9 @@ require_line "$spa_builder" 'pnpm run test'
 require_line "$spa_builder" 'pnpm run build'
 
 require_line "$workflow" 'name: Upload unsigned development snapshot'
-upload_block=$(sed -n \
-	'/name: Upload unsigned development snapshot/,/name: Save release-snapshot Go cache/p' \
-	"$workflow")
+# The upload is the job's last step; the job block bounds the range.
+upload_block=$(printf '%s\n' "$release_block" |
+	sed -n '/name: Upload unsigned development snapshot/,$p')
 printf '%s\n' "$upload_block" | grep -F "if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" >/dev/null ||
 	fail 'development snapshot upload is not guarded on trusted main'
 for expected in \

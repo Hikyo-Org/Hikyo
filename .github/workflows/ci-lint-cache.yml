@@ -46,6 +46,11 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      # Compile results go stale as the module changes. One immutable seed per
+      # ISO week bounds both that staleness and the cache budget's churn.
+      - name: Select weekly lint driver cache generation
+        id: lint-cache-generation
+        run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
       # The cache policy fixture requires restore-keys on every go-build
       # reader; lookup-only never restores, so cache-hit stays exact-key only.
       - name: Look up this lint driver seed without restoring old entries
@@ -53,11 +58,12 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}
+          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ steps.lint-cache-generation.outputs.value }}
           restore-keys: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
           lookup-only: true
       # The guard runs before the disk script, which creates the cache directory.
-      # A cold cache peaks near 10 GB raw before the save archives it.
+      # A cold cache reached about 9 GB raw on macOS and may be larger on Linux;
+      # du and df record the real size and the remaining disk.
       - name: Compile and vet the lint driver matrix into a fresh cache
         if: steps.lint-driver-seed.outputs.cache-hit != 'true'
         run: |
@@ -68,6 +74,7 @@ jobs:
           go run ./scripts/ci/prepare-lint-cache
           go test -count=1 -timeout=20m ./internal/lint
           du -sh "$cache"
+          df -h "$cache"
       - name: Save lint driver seed from trusted main only
         if: >-
           success() && steps.lint-driver-seed.outputs.cache-hit != 'true' &&

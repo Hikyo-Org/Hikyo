@@ -305,11 +305,12 @@ for file in "$@"; do
                     if (feedback_cache == "true") build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047"
 				# The generation belongs to the key line itself; restore-keys or
 				# comments elsewhere in the step must not satisfy it.
-				key_line = block
-				sub(/^.*key: go-/, "key: go-", key_line)
+				# The first version segment is the generation, so go-x-v1-v2- fails.
+				key_line = substr(block, index(block, "key: go-"))
 				sub(/\n.*$/, "", key_line)
-				if (index(block, "key: go-") == 0 ||
-					key_line !~ /^key: go-[a-z0-9-]*-v2-/ ||
+				generation = ""
+				if (match(key_line, /-v[0-9]+-/)) generation = substr(key_line, RSTART, RLENGTH)
+				if (index(block, "key: go-") == 0 || generation != "-v2-" ||
 					index(block, "${{ runner.os }}") == 0 ||
 					index(block, "${{ runner.arch }}") == 0 ||
 					index(block, "${{ steps.runner-cache-abi.outputs.value }}") == 0 ||
@@ -390,26 +391,26 @@ fi
 lint_cache_workflow="$workflows_dir/ci-lint-cache.yml"
 lint_runner_prefix='go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
 lint_module_prefix="$lint_runner_prefix\${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
-lint_key="key: $lint_module_prefix\${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}"
+lint_key="key: $lint_module_prefix\${{ steps.lint-cache-generation.outputs.value }}"
 require_line "$lint_cache_workflow" "$lint_key"
 require_line "$lint_cache_workflow" "restore-keys: $lint_runner_prefix"
+require_line "$lint_cache_workflow" 'run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"'
 require_line "$lint_cache_workflow" 'lookup-only: true'
 require_line "$lint_cache_workflow" 'key: ${{ steps.lint-driver-seed.outputs.cache-primary-key }}'
 [ "$(grep -c 'actions/cache/save@' "$lint_cache_workflow")" = 1 ] ||
 	fail 'the lint driver seed must have exactly one writer step'
 for reader in "$workflow:test_core_serial" "$workflows_dir/ci-invariants.yml:invariants"; do
 	block=$(workflow_job_block "${reader%:*}" "${reader##*:}")
-	if ! printf '%s\n' "$block" | grep -Fx "          $lint_key" >/dev/null ||
-		! printf '%s\n' "$block" | grep -Fx -A2 '          restore-keys: |' |
-		grep -Fx -A1 "            $lint_module_prefix" |
-			grep -Fx "            $lint_runner_prefix" >/dev/null; then
-		fail "${reader##*:} must read the exact lint driver key with both fallback prefixes"
+	# Readers prefix-match the weekly seed, then fall back to any seed for the ABI.
+	if ! printf '%s\n' "$block" | grep -Fx -A1 "          key: $lint_module_prefix" |
+		grep -Fx "          restore-keys: $lint_runner_prefix" >/dev/null; then
+		fail "${reader##*:} must read the lint driver module prefix, then the runner prefix"
 	fi
 done
 for file in "$@"; do
-	# Every go-lintdriver line is the exact key or one of its two prefixes.
+	# Every go-lintdriver line is the seed key or one of the two reader lines.
 	grep -F 'go-lintdriver' "$file" | sed 's/^[[:space:]]*//' |
-		grep -Fxv -e "$lint_key" -e "$lint_module_prefix" -e "$lint_runner_prefix" -e "restore-keys: $lint_runner_prefix" >/dev/null &&
+		grep -Fxv -e "$lint_key" -e "key: $lint_module_prefix" -e "restore-keys: $lint_runner_prefix" >/dev/null &&
 		fail "unexpected lint driver cache key or prefix in $(basename "$file")"
 	[ "$(basename "$file")" != ci-lint-cache.yml ] || continue
 	awk '
