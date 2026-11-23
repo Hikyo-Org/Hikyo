@@ -25,7 +25,9 @@ import (
 // the Go context timer can fire late on a loaded runner, so the server may
 // report first; callers classify both the same way. An administrator's
 // pg_cancel_backend also yields 57014 and is labelled a deadline too; harmless,
-// because the production caller discards the error.
+// because the production caller discards the error. Only statements inside
+// UpdateRequestRefusals are mapped: service may not import this package, and a
+// server timeout during COMMIT is left as the raw PgError.
 func RefusalDeadlineError(err error) error {
 	var pgErr *pgconn.PgError
 	if err == nil || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pgErr) || (pgErr.Code != "55P03" && pgErr.Code != "57014") {

@@ -536,8 +536,8 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	const blocked = "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND cardinality(pg_blocking_pids(pid))>0"
 	for seen := false; !seen; {
 		select {
-		case <-done:
-			t.Fatal("attempt finished without ever blocking behind the held writer")
+		case err := <-done:
+			t.Fatalf("attempt finished without ever blocking behind the held writer: %v", err)
 		case <-time.After(10 * time.Millisecond):
 			seen = queryInt(t, db, blocked) > 0
 		}
@@ -547,7 +547,7 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	case err = <-done:
 	case <-time.After(3 * time.Second):
 		release() // unblock the writer so the goroutine and database can be torn down
-		<-done
+		t.Logf("released writer; attempt ended with: %v", <-done)
 		t.Fatal("server never aborted the lock-blocked attempt: no server-side bound")
 	}
 	var timedOut *pgconn.PgError
