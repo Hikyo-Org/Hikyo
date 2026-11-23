@@ -235,8 +235,8 @@ on these points describe, continues.
   `authorize()` chokepoint's, so the answer cannot drift from enforcement. It is gated by
   `manage-members@project` and lists the project's grant lines, organisation-level grant lines of the asked
   permission, and the project rules the caller may manage; never sibling projects, unmanageable rules or
-  instance operators. Showing organisation-level holders to a project manager is decided in #1481 by the
-  lane coordinator, pending owner confirmation; see the api-cli-surface amendment.
+  instance operators. Showing organisation-level holders to a project manager is decided in #1481 and
+  confirmed by the owner 2026-11-23; see the api-cli-surface amendment.
 
 ## First implementation slice (2026-09-29, historical)
 
