@@ -3,6 +3,7 @@ package lint
 import (
 	"go/ast"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -138,6 +139,63 @@ func TestDriverFilesExist(t *testing.T) {
 	for file := range driverFiles {
 		if _, err := os.Stat(filepath.Join(moduleRoot(), filepath.FromSlash(file))); err != nil {
 			t.Errorf("driverFiles entry %s: %v", file, err)
+		}
+	}
+}
+
+// A //line directive cannot lend a file the authority of an inventoried path:
+// the decision reads the file on disk.
+func TestInventoriedPathClaimedByLineDirectiveIsRefused(t *testing.T) {
+	const claimed = "/owned/internal/isolation/oauth2_e2e_test.go"
+	if !driverFiles["internal/isolation/oauth2_e2e_test.go"] {
+		t.Fatal("the claimed path is no longer inventoried; pick another")
+	}
+	files := token.NewFileSet()
+	f := files.AddFile("/owned/internal/isolation/new_writer_test.go", -1, 100)
+	f.SetLines([]int{0})
+	f.AddLineInfo(0, claimed, 1)
+	if got := files.Position(f.Pos(1)).Filename; got != claimed {
+		t.Fatalf("directive not applied: %s", got)
+	}
+	if permittedHandlePosition(files, Module+"/internal/isolation", f.Pos(1)) {
+		t.Fatal("a //line claim received an inventoried file's authority")
+	}
+}
+
+// Every inventory entry still earns its place: with the inventory emptied,
+// each entry's file produces at least one handles diagnostic in some analysis
+// context. A file that no longer needs a raw handle must leave the inventory,
+// so the inventory only pays down.
+func TestDriverFilesAreAllUsed(t *testing.T) {
+	saved := driverFiles
+	driverFiles = map[string]bool{}
+	defer func() { driverFiles = saved }()
+	dirs := map[string]bool{}
+	for file := range saved {
+		dirs[Module+"/"+filepath.ToSlash(filepath.Dir(file))] = true
+	}
+	patterns := slices.Sorted(maps.Keys(dirs))
+	used := map[string]bool{}
+	root := filepath.ToSlash(moduleRoot()) + "/"
+	for _, ctx := range Contexts {
+		pkgs, err := loadFixture(ctx, true, patterns...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, finding := range checkDriverHandles(pkgs) {
+			posn, _, _ := strings.Cut(finding, ": handles: ")
+			if i := strings.LastIndex(posn, ":"); i >= 0 {
+				posn = posn[:i]
+			}
+			if i := strings.LastIndex(posn, ":"); i >= 0 {
+				posn = posn[:i]
+			}
+			used[strings.TrimPrefix(filepath.ToSlash(posn), root)] = true
+		}
+	}
+	for file := range saved {
+		if !used[file] {
+			t.Errorf("driverFiles entry %s produces no handles diagnostic without it; remove it from the inventory", file)
 		}
 	}
 }

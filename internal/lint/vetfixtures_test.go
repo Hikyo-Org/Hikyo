@@ -412,6 +412,7 @@ func TestVetDriverIgnoresLineDirectives(t *testing.T) {
 			for _, want := range []string{
 				"fence: seal seals ciphertext but never calls the writer fence",
 				"handles: ",
+				"calls store.DB.SQLiteRead",
 			} {
 				if !strings.Contains(joined, want) {
 					t.Errorf("findings lack %q:\n%s", want, joined)
