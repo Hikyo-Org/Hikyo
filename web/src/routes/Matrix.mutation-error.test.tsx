@@ -140,7 +140,8 @@ beforeEach(() => {
   mocks.stage.mockRejectedValue(new Error('stage rejected'));
 });
 
-it.each(['  padded password  ', '   ', '\tpassword\n'].flatMap((password) => [true, false].map((metadataReady) => ({ password, metadataReady }))))('preserves managed mail password bytes with metadata ready: $metadataReady, value: $password', async ({ password, metadataReady }) => {
+// schema-model.md trims every write path; the managed SMTP password is not exempt (#1492).
+it.each([['  padded password  ', 'padded password'], ['   ', ''], ['\tpassword\n', 'password']].flatMap(([password, trimmed]) => [true, false].map((metadataReady) => ({ password, trimmed, metadataReady }))))('trims the managed mail password like every value with metadata ready: $metadataReady, value: $password', async ({ password, trimmed, metadataReady }) => {
   mocks.system = true;
   mocks.systemMetadataReady = metadataReady;
   mocks.stage.mockResolvedValue({ findings: [] });
@@ -155,7 +156,8 @@ it.each(['  padded password  ', '   ', '\tpassword\n'].flatMap((password) => [tr
     await act(async () => typeInto(textarea, password));
     await act(async () => buttonNamed(view.container, 'Save 1 draft').click());
     await settle();
-    expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ key: 'HIKYO_MAIL_PASSWORD', value: password }));
+    expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ key: 'HIKYO_MAIL_PASSWORD', value: trimmed }));
+    expect(view.container.textContent).toContain('Leading and trailing whitespace was removed from 1 value.');
   } finally { await view.unmount(); }
 });
 

@@ -21,7 +21,7 @@ func scenarioRevisionDiff(t *testing.T, db *store.DB) {
 	dev := mustEnv(t, envs, actor, scope, "dev")
 	secret := mustKey(t, keys, actor, scope, "SECRET", string(schema.Secret), schema.DefaultPresenceRules())
 	mustKey(t, keys, actor, scope, "OTHER_SECRET", string(schema.Secret), schema.DefaultPresenceRules())
-	mustKey(t, keys, actor, scope, "CONFIG", string(schema.Config), schema.DefaultPresenceRules())
+	config := mustKey(t, keys, actor, scope, "CONFIG", string(schema.Config), schema.DefaultPresenceRules())
 	publishValue(t, db, values, actor, dev, "SECRET", "same-secret")
 	publishValue(t, db, values, actor, dev, "OTHER_SECRET", "other-secret")
 	publishValue(t, db, values, actor, dev, "CONFIG", "before")
@@ -80,6 +80,21 @@ func scenarioRevisionDiff(t *testing.T, db *store.DB) {
 	for _, row := range sticky.Items {
 		if row.KeyID == secret.ID && (row.Classification != string(schema.Secret) || row.Revealed || row.Before != nil || row.After != nil) {
 			t.Fatalf("historical declassification: %+v", row)
+		}
+	}
+	// Tightening cannot un-disclose (schema-model.md): the revisions written
+	// while CONFIG was config still show its plaintext under plain read, which
+	// is what the UI's mandatory tighten advisory states (#1492).
+	if _, _, err := keys.Reclassify(t.Context(), actor, scope, config.ID, string(schema.Secret)); err != nil {
+		t.Fatal(err)
+	}
+	disclosedHistory, err := revisions.Diff(t.Context(), readActor, dev, left, right, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range disclosedHistory.Items {
+		if row.KeyID == config.ID && (row.Classification != string(schema.Config) || !row.Revealed || row.Before == nil || *row.Before != "before" || row.After == nil || *row.After != "after") {
+			t.Fatalf("pre-tighten history under plain read = %+v", row)
 		}
 	}
 	seed(t, db, []string{fmt.Sprintf("UPDATE snapshots SET payload_present=FALSE, collected_at='2026-08-17T00:00:00Z', collected_policy='diff-test' WHERE environment_id='%s' AND revision=%d", dev.Env, left)})
