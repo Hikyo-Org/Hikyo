@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
-	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -136,11 +135,11 @@ func (a *API) ResolveAccess(ctx context.Context, req apigen.ResolveAccessRequest
 	for _, v := range views {
 		p := wireAccessPrincipal(domain.ProjectID(req.Project), v)
 		switch v.State {
-		case authz.AccessCan:
+		case service.AccessCan:
 			out.Can = append(out.Can, p)
-		case authz.AccessExcepted:
+		case service.AccessExcepted:
 			out.Excepted = append(out.Excepted, p)
-		case authz.AccessNeedsSee:
+		case service.AccessNeedsSee:
 			out.NeedsSee = append(out.NeedsSee, p)
 		default:
 			out.None = append(out.None, p)

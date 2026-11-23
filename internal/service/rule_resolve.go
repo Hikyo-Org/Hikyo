@@ -10,6 +10,14 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
+// The answer states, re-exported so handlers classify an answer without
+// importing the chokepoint.
+const (
+	AccessCan      = authz.AccessCan
+	AccessExcepted = authz.AccessExcepted
+	AccessNeedsSee = authz.AccessNeedsSee
+)
+
 // AccessView is one principal of a "Who can...?" answer (member-access-rules
 // ADR D10), with the principal's display name.
 type AccessView struct {
