@@ -606,7 +606,10 @@ const raceProcessSetupSeconds = 20.0
 // raceInvocationBudgetSeconds caps one package's modelled go test invocation on
 // a shard at half of test-race-packages.sh's -timeout=20m: hosted runs of one
 // unchanged internal/app target list took from 779 s to over 1200 s. A unit
-// that fits no shard goes to the cheapest one, as before.
+// that fits no shard goes to the cheapest one, as before. More shards help only
+// split suites: a whole package nearing the budget (internal/upgradecustody,
+// 558 s with setup) must be split through test-race-packages.sh's split-suite
+// allowlist and raceTargetSeconds entries.
 const raceInvocationBudgetSeconds = 600.0
 
 // racePackageSeconds holds package-level JSON elapsed, summed across all
@@ -946,8 +949,7 @@ var raceTargetSeconds = map[string]map[string]float64{
 		"TestBuildCurrentStatePresenceEquivalence":                                     2.95,
 		"TestCommittedDeploymentCarriesStrictEnvelopeAcrossRenewalBothEngines":         21.58,
 		"TestCommittedDeploymentRenewsUnseenSubmitAndRestoreWithoutNewMFA":             15.57,
-		"TestCompleteRestoreClearsRestoredAdapterCredential":                           5.0,
-		"TestDeliveryPollWork":                                                         18.97,
+		"TestDeliveryPollWork": 18.97,
 		"TestDeploymentRenewalRejectsChangedDecisionAndStaleRow":                       8.91,
 		"TestDeveloperMintBusinessRefusalsRemainAuditedAfterRollback":                  2.28,
 		"TestDeveloperPolicyClampOnlyCountsLiveCredentials":                            2.35,

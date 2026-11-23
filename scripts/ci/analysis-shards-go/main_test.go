@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -148,14 +150,18 @@ func TestRacePlanBalancesRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	limit := raceShardJobSeconds(t)
 	total, longest := 0.0, 0.0
 	for index, shard := range shards {
 		t.Logf("shard %d: predicted %.0fs (sequential %.0fs, pool %.0fs, longest pool entry %.0fs)",
 			index, shard.cost(), shard.sequential, shard.pool, shard.longest)
 		total += shard.cost()
 		longest = max(longest, shard.cost())
+		if planned := shard.cost() + raceJobOverheadSeconds; planned > limit {
+			t.Errorf("shard %d plans %.0fs with job overhead, over the %.0fs race_shard job timeout", index, planned, limit)
+		}
 		// The budget fallback is silent; fail here so a recalibration that
-		// saturates it raises the race shard count instead.
+		// saturates it splits the package or adds race shards instead.
 		for path, seconds := range shard.seconds {
 			if seconds+raceProcessSetupSeconds > raceInvocationBudgetSeconds {
 				t.Errorf("shard %d plans %.0fs for %s, over the %.0fs invocation budget", index, seconds+raceProcessSetupSeconds, path, raceInvocationBudgetSeconds)
@@ -165,6 +171,29 @@ func TestRacePlanBalancesRepository(t *testing.T) {
 	if mean := total / float64(len(shards)); longest > mean*1.1 {
 		t.Fatalf("longest shard predicts %.0fs, over 110%% of the %.0fs mean", longest, mean)
 	}
+}
+
+// raceJobOverheadSeconds allows for race_shard steps outside test-race-packages.sh
+// (checkout, toolchain, cache restore, PostgreSQL, artifact upload): 61 to 104 s
+// per job in ci-dev run 44901528773.
+const raceJobOverheadSeconds = 120.0
+
+// raceShardJobSeconds reads the race_shard job's timeout-minutes from ci.yml.
+func raceShardJobSeconds(t *testing.T) float64 {
+	t.Helper()
+	workflow, err := os.ReadFile("../../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`(?m)^  race_shard:\n(?:    .*\n|\n)*?    timeout-minutes: (\d+)\n`).FindSubmatch(workflow)
+	if match == nil {
+		t.Fatal("ci.yml race_shard job has no timeout-minutes")
+	}
+	minutes, err := strconv.Atoi(string(match[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return float64(minutes) * 60
 }
 
 // Split targets share startup, while an additional process consumes overhead.
@@ -206,11 +235,13 @@ func TestRacePlanChargesSetupInPool(t *testing.T) {
 func TestRacePlanKeepsInvocationsWithinBudget(t *testing.T) {
 	app := &packageInfo{ImportPath: "example/internal/app", relativePath: "internal/app"}
 	peer := &packageInfo{ImportPath: "example/peer", relativePath: "peer"}
-	full := raceShard{seconds: map[string]float64{app.ImportPath: raceInvocationBudgetSeconds - 50}}
-	full = full.with(raceUnit{pkg: app, seconds: raceInvocationBudgetSeconds - 50})
-	busy := raceShard{seconds: map[string]float64{peer.ImportPath: 2000}}
-	busy = busy.with(raceUnit{pkg: peer, seconds: 2000})
-	shards := []raceShard{full, busy}
+	// Place units the way planRace does: totals first, then the package seconds.
+	place := func(pkg *packageInfo, seconds float64) raceShard {
+		shard := raceShard{seconds: map[string]float64{}}.with(raceUnit{pkg: pkg, seconds: seconds})
+		shard.seconds[pkg.ImportPath] += seconds
+		return shard
+	}
+	shards := []raceShard{place(app, raceInvocationBudgetSeconds-50), place(peer, 2000)}
 	if got := bestRaceShard(shards, raceUnit{pkg: app, seconds: 100}); got != 1 {
 		t.Fatalf("over-budget target went to shard %d, want 1", got)
 	}

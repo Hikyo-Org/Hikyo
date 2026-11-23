@@ -576,15 +576,16 @@ No terminal check is reset, foreign checks are not patched, and complete
 historical scans and their existing bounds remain. These final mutable reads
 are not an atomic GitHub authority transaction.
 
-Race weights are recalibrated from all twelve JSON timing artifacts of successful
-full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
-discovery and database serialization are unchanged. The source snapshot contains
-800 planner units, including whole-package units; this is not a test count.
-The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
-is not hosted latency proof. PR #893 bootstrap copies the planner from its
-immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
-are exercised after landing; a later legitimate full group must establish the
-approximately 35-minute target.
+Race weights are recalibrated from all twelve `race-timings-*` JSON artifacts of
+ci-dev run 44901528773, attempt 1, on dev 4c7d11f6c; all twelve race shards
+passed. The twelve-shard count, complete target discovery and database
+serialization are unchanged. The planner also keeps each package's modelled
+`go test` invocation on a shard within a 600-second budget, half of the
+20-minute `-timeout`, before it balances shard totals. The largest modelled
+invocation falls from 1026 to 600 seconds on main, and the largest modelled
+shard is 1189 seconds against the 30-minute job limit. This model is not hosted
+latency proof. Merge groups plan with the base branch's planner, so the new
+weights take effect after they land on main and are backmerged to dev.
 
 Trusted-main probes demonstrated that omitting terminal reset fields retains
 completed/success and that the explicit-null candidate is rejected. Those
