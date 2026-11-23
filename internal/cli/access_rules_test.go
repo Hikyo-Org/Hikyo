@@ -173,9 +173,13 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 		refusals int
 		wantCode int
 		wantPost int
+		noReveal bool
 	}{
-		{"retries_after_the_window_opens", 1, ExitOK, 2},
-		{"stops_on_a_repeated_environment", 2, ExitRefused, 2},
+		{"retries_after_the_window_opens", 1, ExitOK, 2, false},
+		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false},
+		// A history-only widening needs reveal-history, not reveal, so the
+		// window's can_reveal being false must not stop the ceremony.
+		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posts, windows := 0, 0
@@ -186,7 +190,7 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 				case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_dev/reveal-window":
 					windows++
-					_ = jsonwire.Encode(w, apigen.RevealWindow{Live: true, CanReveal: true})
+					_ = jsonwire.Encode(w, apigen.RevealWindow{Live: true, CanReveal: !tc.noReveal})
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {
@@ -221,28 +225,38 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 	}
 }
 
+// serverConflict is the CLI error for a 409 the server answers, built by the
+// client's own response conversion rather than by hand.
+func serverConflict(t *testing.T, code apigen.ErrorCode, detail string) error {
+	t.Helper()
+	var body apigen.Error
+	body.Error.Code = code
+	body.Error.Message = "conflict"
+	if detail != "" {
+		body.Error.Detail = &detail
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return errorFromResponse(http.StatusConflict, http.Header{}, payload)
+}
+
 func TestWideningEnvReadsOnlyTheWideningRefusal(t *testing.T) {
-	widening := failf(ExitRefused, "conflict (reauthenticate over the environments this operation makes reachable, then retry (env_a))")
-	if got := wideningEnv(widening); got != "env_a" {
-		t.Fatalf("wideningEnv = %q, want env_a", got)
+	if got := wideningEnv(serverConflict(t, apigen.ErrorCodeConflict, fmt.Sprintf(service.WideningReauthDetail, "env_a"))); got != "env_a" {
+		t.Fatalf("wideningEnv over the service wording = %q, want env_a", got)
 	}
 	for _, err := range []error{
 		nil,
 		failf(ExitRefused, "not permitted"),
-		failf(ExitAuth, "conflict (reauthenticate over the environments this operation makes reachable, then retry (env_a))"),
+		serverConflict(t, apigen.ErrorCodeConflict, ""),
+		serverConflict(t, apigen.ErrorCodeConflict, "another conflict (env_a)"),
+		serverConflict(t, apigen.ErrorCodeUnauthenticated, fmt.Sprintf(service.WideningReauthDetail, "env_a")),
+		// The text alone, with no structured detail, is not the refusal.
+		failf(ExitRefused, "conflict (%s)", fmt.Sprintf(service.WideningReauthDetail, "env_a")),
 	} {
 		if got := wideningEnv(err); got != "" {
 			t.Errorf("wideningEnv(%v) = %q, want empty", err, got)
 		}
-	}
-}
-
-// TestWideningEnvParsesTheServiceRefusal ties wideningEnv's marker to the
-// wording the service emits, so rewording the refusal breaks this test instead
-// of silently disabling the CLI's inline reauthentication.
-func TestWideningEnvParsesTheServiceRefusal(t *testing.T) {
-	err := failf(ExitRefused, "conflict (%s)", fmt.Sprintf(service.WideningReauthDetail, "env_a"))
-	if got := wideningEnv(err); got != "env_a" {
-		t.Fatalf("wideningEnv over the service wording = %q, want env_a", got)
 	}
 }

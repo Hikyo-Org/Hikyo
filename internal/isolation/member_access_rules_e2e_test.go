@@ -567,7 +567,7 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 
 // countedAuthorizeKey is countedAuthorize for the key-aware entry point, on
 // value.reveal.
-func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget) (int, error) {
+func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget, classes ...domain.PrincipalClass) (int, error) {
 	t.Helper()
 	ctx := t.Context()
 	count := 0
@@ -591,7 +591,11 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count}
 		r = authn.NewSQLite(dbtx)
 	}
-	_, err := authz.NewTxAuthorizer(r, tok).AuthorizeKey(ctx, authz.Identity{Principal: principal}, authz.OpValueReveal, scope, key)
+	caller := authz.Identity{Principal: principal}
+	if len(classes) != 0 {
+		caller.Class = classes[0]
+	}
+	_, err := authz.NewTxAuthorizer(r, tok).AuthorizeKey(ctx, caller, authz.OpValueReveal, scope, key)
 	return count, err
 }
 

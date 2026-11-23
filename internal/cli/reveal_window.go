@@ -70,6 +70,11 @@ type disclosure struct {
 	// window overrides the read-authorized reveal-window route for decisions
 	// whose own operation is authorized by publish instead.
 	window func(ctx context.Context, env string) (apigen.RevealWindow, error)
+	// authorized means the server already checked the caller's own disclosure
+	// authority and asked only for the window (a machine widening names
+	// reveal or reveal-history by what it reaches), so can_reveal, which is
+	// the current-plaintext question only, must not veto the ceremony.
+	authorized bool
 }
 
 // withRevealCeremony runs a disclosure, and on the server's refusal opens the
@@ -132,7 +137,7 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	if d.protectedOnly && !window.Protected {
 		return nil
 	}
-	exempt := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access" || d.purpose == "publish"
+	exempt := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access" || d.purpose == "publish" || d.authorized
 	if !window.CanReveal && !exempt {
 		return refusal
 	}

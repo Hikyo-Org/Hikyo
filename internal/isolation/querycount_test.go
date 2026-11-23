@@ -178,6 +178,22 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			}
 		}
 	})
+	t.Run("machine_key_aware_missing_and_foreign_parity", func(t *testing.T) {
+		counts := map[int]bool{}
+		for _, scope := range []domain.Scope{
+			{Org: orgB, Project: prjB1, Env: envB1},
+			{Org: "org_missing", Project: prjB1, Env: envB1},
+		} {
+			n, err := countedAuthorizeKey(t, db, mchA1, scope, authz.KeyByName("SHARED_KEY"), domain.ClassWorkload)
+			if !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("machine key-aware refusal = %v, want ErrNotFound", err)
+			}
+			counts[n] = true
+		}
+		if len(counts) != 1 {
+			t.Fatalf("machine key-aware refusals cost different query counts %v; a foreign org and a missing one must match", counts)
+		}
+	})
 	t.Run("personal_owner_fallback_parity", func(t *testing.T) {
 		// The owner fallback (personal-values ADR) adds one owner read to a
 		// human's list or delete denial; a missing chain performs it too.

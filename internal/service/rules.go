@@ -303,13 +303,20 @@ func (s *Rules) gateMachineRules(ctx context.Context, az *authz.TxAuthorizer, ca
 		if len(current) == 0 && len(historical) == 0 {
 			continue
 		}
+		// Attribute the delta rule by rule: each event names what its rule
+		// adds on top of the pre-state and the rules before it, so the
+		// events together equal the gated delta without any rule claiming
+		// another's environments.
+		so := slices.Clone(pre)
 		for i, rule := range added {
-			if !slices.Contains(rule.Where.Projects, project) {
+			if !slices.Contains(rule.Where.Projects, project) || rule.Capability != domain.CapRead {
 				continue
 			}
-			switch rule.Capability {
-			case domain.CapRead, domain.CapReveal, domain.CapRevealHistory:
-			default:
+			next := append(slices.Clone(so), authz.RuleGrants([]domain.Rule{rule}, scope, envs)...)
+			b, a := authz.ReachableFrom(scope, envs, so), authz.ReachableFrom(scope, envs, next)
+			so = next
+			cur, hist := newlyReachable(b.Current, a.Current), newlyReachable(b.Historical, a.Historical)
+			if len(cur) == 0 && len(hist) == 0 {
 				continue
 			}
 			out[i] = append(out[i], audit.Payload{
@@ -317,8 +324,8 @@ func (s *Rules) gateMachineRules(ctx context.Context, az *authz.TxAuthorizer, ca
 				"principal_class":            string(class),
 				"capability":                 string(rule.Capability),
 				"scope":                      renderScope(scope),
-				"newly_reachable_current":    envStrings(current),
-				"newly_reachable_historical": envStrings(historical),
+				"newly_reachable_current":    envStrings(cur),
+				"newly_reachable_historical": envStrings(hist),
 			})
 		}
 	}

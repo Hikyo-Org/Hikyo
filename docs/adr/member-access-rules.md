@@ -305,6 +305,8 @@ Machine access (D11) follows separately.
   rule. The grant widening gate and the credential mint gate count the
   machine's rules too, so a rule-held `read` cannot hide what a `reveal` grant
   newly reaches.
+- **Service account deletion.** Deleting a service account removes its rules
+  without a count or confirmation, as its grants are removed.
 - **Evaluation.** The chokepoint reads machine rules through their own
   lookup and applies the same class check on every read: a stored machine
   rule that fails it reaches nothing. Delivery's per-key projection and SSH
@@ -315,7 +317,8 @@ Machine access (D11) follows separately.
   widen a machine's reach, so the reauthentication step does not apply to it.
   #1447, which binds environment selectors by name, must apply the
   reauthentication step to machine principals gaining reach through a rename
-  or create.
+  or create. Creating an environment already widens an automation *all* or
+  *all, except* rule without the gate, the same as a project-scope grant.
 
 ## Rejected alternatives
 
