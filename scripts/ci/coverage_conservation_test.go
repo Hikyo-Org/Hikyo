@@ -579,7 +579,7 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	}
 	for name, mutation := range map[string]func(map[string]map[string]any){
 		"narrow complete shard counts": func(j map[string]map[string]any) {
-			mutateShardPlanningStep(j, "run", replaceShardPlanningRunText("race_count=12", "race_count=6"))
+			mutateShardPlanningStep(j, "run", replaceShardPlanningRunText("race_count=18", "race_count=6"))
 		},
 		"use candidate planner": func(j map[string]map[string]any) {
 			mutateShardPlanningStep(j, "run", replaceShardPlanningRunText("git show \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\"", "git show \"HEAD:scripts/ci/analysis-shards-go/main.go\""))
@@ -932,7 +932,7 @@ func TestShardPlanningMutationGuards(t *testing.T) {
 		"duplicated step": func() { mutateShardPlanningStep(jobs(step(), step()), "if", "false") },
 		"unchanged value": func() { mutateShardPlanningStep(jobs(step()), "run", completeShardPlanningRun) },
 		"missing text":    func() { replaceShardPlanningRunText("missing planner mutation target", "replacement") },
-		"unchanged text":  func() { replaceShardPlanningRunText("race_count=12", "race_count=12") },
+		"unchanged text":  func() { replaceShardPlanningRunText("race_count=18", "race_count=18") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			defer func() {
