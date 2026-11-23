@@ -223,7 +223,7 @@ Each line is a title and a one-sentence body, filed as the linked issue. All
 are owned by Marc Went. Rows served are in Table B. On 2026-11-04 the owner accepted
 the dispositions proposed for F-01 to F-11. F-01, F-04, F-05 and F-09 are decided
 in their bodies below; F-03, F-06, F-08 and F-10 are recorded in this file
-(2026-11-23, #1177, #1180 (#1180 stays open), #1182, #1184); F-02, F-07 and F-11 stay open as
+(2026-11-23, #1177, #1180 (stays open), #1182, #1184); F-02, F-07 and F-11 stay open as
 tracked work.
 
 | ID | Title | Body | Rows |
