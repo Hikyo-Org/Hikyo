@@ -312,8 +312,8 @@ Machine access (D11) follows separately.
   rule that fails it reaches nothing. Delivery's per-key projection and SSH
   stay blind to rules, as for people; federation's binding gate counts a
   machine's rules in the reach it checks, as the mint gate does.
-- **Environment rename (decided in #1480, lane coordinator, pending owner
-  confirmation).** While rule items bind environments by id, a rename cannot
+- **Environment rename (decided in #1480, confirmed by the owner
+  2026-11-23).** While rule items bind environments by id, a rename cannot
   widen a machine's reach, so the reauthentication step does not apply to it.
   #1447, which binds environment selectors by name, must apply the
   reauthentication step to machine principals gaining reach through a rename
