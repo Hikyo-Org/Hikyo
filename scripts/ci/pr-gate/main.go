@@ -618,14 +618,19 @@ func (ghAPI) write(ctx context.Context, method, path string, payload, result any
 	response, err := cmd.Output()
 	// A lost response may follow a successful mutation. Never retry writes.
 	if err != nil {
-		// Name gh's HTTP status (never its text) so a refused write is diagnosable.
+		// Name gh's HTTP status (never its text), else why gh stopped, so a
+		// refused write is diagnosable.
+		detail := "command failed"
 		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			if status := stderrHTTPStatus(exit.Stderr); status != 0 {
-				return fmt.Errorf("GitHub %s failed for %s (HTTP %d); no mutation retry attempted", method, path, status)
-			}
+		switch {
+		case ctx.Err() != nil:
+			detail = ctx.Err().Error()
+		case errors.As(err, &exit) && stderrHTTPStatus(exit.Stderr) != 0:
+			detail = fmt.Sprintf("HTTP %d", stderrHTTPStatus(exit.Stderr))
+		case errors.As(err, &exit):
+			detail = fmt.Sprintf("command exit status %d", exit.ExitCode())
 		}
-		return fmt.Errorf("GitHub %s failed for %s; no mutation retry attempted", method, path)
+		return fmt.Errorf("GitHub %s failed for %s (%s); no mutation retry attempted", method, path, detail)
 	}
 	if dispatch {
 		response, err = dispatchResponseBody(response)

@@ -272,6 +272,16 @@ func TestGitHubWriteNeverRetries(t *testing.T) {
 	}
 }
 
+func TestGitHubWriteNamesExitStatusWithoutHTTPStatus(t *testing.T) {
+	recordReadWaits(t)
+	fakeGH(t, `echo 'connection reset' >&2; exit 4`)
+	var receipt map[string]any
+	err := retryingGH.write(context.Background(), "PATCH", "repos/Hikyo-Org/Hikyo/check-runs/1", map[string]string{"status": "queued"}, &receipt)
+	if err == nil || !strings.Contains(err.Error(), "(command exit status 4); no mutation retry attempted") || strings.Contains(err.Error(), "connection reset") {
+		t.Fatalf("write failure did not name only its exit status: %v", err)
+	}
+}
+
 func TestStderrHTTPStatus(t *testing.T) {
 	for _, tc := range []struct {
 		name, stderr string
