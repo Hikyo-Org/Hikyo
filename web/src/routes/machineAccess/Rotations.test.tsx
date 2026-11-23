@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { deferred } from '../../testkit/ceremony.ts';
 import { renderForm, settleTask } from '../../testkit/renderForm.tsx';
 import { dynamicProvider } from '../../testkit/machineAccess.ts';
 import { ORG, PRJ, PROD, STAGING } from '../../testkit/ids.ts';
@@ -684,7 +685,7 @@ it('keeps browsing controls usable in the read-only demo', async () => {
 type Sent = { readonly method: string; readonly path: string; readonly search: string; readonly body: unknown };
 
 /** Answers reads and acts by `METHOD path`; every request is recorded with its JSON body. */
-function actStub(routes: Readonly<Record<string, () => Response>>): Sent[] {
+function actStub(routes: Readonly<Record<string, () => Response | Promise<Response>>>): Sent[] {
   const sent: Sent[] = [];
   vi.stubGlobal('fetch', vi.fn(async (...args: Parameters<typeof fetch>) => {
     const request = args[0] instanceof Request ? args[0] : new Request(args[0], args[1]);
@@ -952,6 +953,69 @@ it('disables a dialog whose rotation was re-read at a newer generation', async (
     expect(dialog().textContent).toContain('changed since you opened this, so nothing will be sent');
     expect(buttonNamed(dialog(), 'Pause').disabled).toBe(true);
     expect(acts(sent)).toHaveLength(1);
+  } finally {
+    await unmount();
+  }
+});
+
+const chooseOption = async (select: HTMLSelectElement, value: string) => {
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+};
+
+it('keeps the create proposal fixed from submit until the act starts', async () => {
+  const lookup = deferred<Response>();
+  const sent = actStub({
+    ...reads([]),
+    [`GET ${windowPath}`]: () => lookup.promise,
+    [`POST ${listPath(PROD)}`]: () => Response.json({ ...rotationList().items[0] }, { status: 201 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Create rotation'));
+    const selects = [...dialog().querySelectorAll('select')];
+    await chooseOption(selects[1]!, rotationKeys.items[0]!.id);
+    await chooseOption(selects[2]!, rotationKeys.items[1]!.id);
+    await click(buttonNamed(dialog(), 'Create rotation'));
+    // The window lookup is still pending: nothing the person sees can change under it.
+    expect(dialog().querySelector('fieldset')!.disabled).toBe(true);
+    await act(async () => lookup.resolve(Response.json({ protected: false, effective_window_seconds: 300, live: true, single_decision: false, can_reveal: true, totp_offered: true })));
+    await settleTask();
+    expect(acts(sent)).toHaveLength(1);
+    expect(acts(sent)[0]!.body).toEqual({
+      provider_id: dynamicProvider.id,
+      key_id: rotationKeys.items[0]!.id,
+      username_key_id: rotationKeys.items[1]!.id,
+      interval_seconds: 86_400n,
+      revocation_delay_seconds: 3_600n,
+    });
+  } finally {
+    await unmount();
+  }
+});
+
+it('refuses a provider that stopped being eligible while it stayed selected', async () => {
+  const sent = actStub({ ...reads([]), [`GET ${windowPath}`]: closedWindow });
+  const other = { ...dynamicProvider, id: 'dpv_123e4567-e89b-12d3-a456-426614174051', origin: 'db2.internal.example.com:5432' };
+  const panel = (list: typeof providers) => (
+    <RotationsPanel org={ORG} project={PRJ} environments={environments} environmentsRead="ready" providers={list} />
+  );
+  const { container, rerender, unmount } = await renderForm(panel([dynamicProvider, other]));
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Create rotation'));
+    const selects = [...dialog().querySelectorAll('select')];
+    await chooseOption(selects[1]!, rotationKeys.items[0]!.id);
+    await chooseOption(selects[2]!, rotationKeys.items[1]!.id);
+    // The selected provider loses its admin credential; another stays eligible.
+    await rerender(panel([{ ...dynamicProvider, credential_present: false }, other]));
+    await click(buttonNamed(dialog(), 'Create rotation'));
+    expect(dialog().textContent).toContain('A chosen provider or key is no longer eligible here: choose it again.');
+    expect(document.querySelector('[data-ceremony]')).toBeNull();
+    expect(acts(sent)).toEqual([]);
   } finally {
     await unmount();
   }

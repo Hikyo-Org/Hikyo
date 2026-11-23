@@ -508,22 +508,27 @@ function expiryNote(rotation: Rotation): string {
  */
 function useActGuard(env: EnvironmentRef, environmentName: string, scope: string) {
   const guard = useProtectedPublishCeremony({ org: env.org, project: env.project }, ['rotation', env.environment, scope]);
+  const [looking, setLooking] = useState(false);
   const run = (verb: ActVerb | 'create', keys: ReturnType<typeof ceremonyKeys>, act: () => void) => {
     if (!CEREMONY_VERBS.has(verb)) {
       act();
       return;
     }
-    void guard.run(
-      [{ environmentId: env.environment, environmentName, keys, purpose: verb === 'run-now' ? 'rotation-run' : verb === 'release-hold' ? 'rotation-release' : 'rotation' }],
-      act,
-      'The publish confirmation could not be started, so nothing was changed',
-    );
+    setLooking(true);
+    void guard
+      .run(
+        [{ environmentId: env.environment, environmentName, keys, purpose: verb === 'run-now' ? 'rotation-run' : verb === 'release-hold' ? 'rotation-release' : 'rotation' }],
+        act,
+        'The publish confirmation could not be started, so nothing was changed',
+      )
+      .finally(() => setLooking(false));
   };
   const ceremony =
     guard.request === null ? null : (
       <Ceremony key={guard.requestKey} request={guard.request} onAuthorised={guard.onAuthorised} onCancel={guard.onCancel} />
     );
-  return { run, ceremony, error: guard.error };
+  // From submit until the act starts (window lookup, then any ceremony), the proposal is fixed.
+  return { run, ceremony, error: guard.error, pending: looking || guard.request !== null };
 }
 
 function RotationActDialog({
@@ -556,7 +561,7 @@ function RotationActDialog({
   useEffect(() => {
     staleNow.current = stale;
   }, [stale]);
-  const busy = mutation.isPending;
+  const busy = mutation.isPending || guard.pending;
   const name = catalogue.find((key) => key.id === rotation.key_id)?.name ?? rotation.id;
 
   const act: RotationAct =
@@ -612,7 +617,7 @@ function RotationActDialog({
         }
       >
         <p className="mono rotations__id">{rotation.id}</p>
-        {stale && !busy ? (
+        {stale && !mutation.isPending ? (
           <Alert tone="warn">
             Rotation {rotation.id} changed since you opened this, so nothing will be sent. Close this and review its row
             again.
@@ -648,6 +653,7 @@ function RotationActDialog({
             </p>
             <Checkbox
               label="I have reconciled the grants and the provider credential and read the runs"
+              disabled={busy}
               checked={reconciled}
               onChange={(event) => setReconciled(event.target.checked)}
             />
@@ -661,6 +667,7 @@ function RotationActDialog({
             </p>
             <Checkbox
               label="Skip the overlap: revoke the superseded credential as soon as the new one is published"
+              disabled={busy}
               checked={skipOverlap}
               onChange={(event) => setSkipOverlap(event.target.checked)}
             />
@@ -680,6 +687,7 @@ function RotationActDialog({
             </p>
             <Checkbox
               label="Close its unsettled runs instead of refusing while a run is in flight"
+              disabled={busy}
               checked={abandon}
               onChange={(event) => setAbandon(event.target.checked)}
             />
@@ -736,7 +744,7 @@ function CreateRotationDialog({
   const [hours, setHours] = useState('24');
   const [minutes, setMinutes] = useState('60');
   const [failure, setFailure] = useState<string | null>(null);
-  const busy = mutation.isPending;
+  const busy = mutation.isPending || guard.pending;
 
   const submit = () => {
     // A fractional hour or minute would still be whole seconds: check the field itself.
@@ -744,7 +752,10 @@ function CreateRotationDialog({
     const delay = Number.isInteger(Number(minutes)) ? Number(minutes) * MINUTE : Number.NaN;
     let invalid: string | null = null;
     if (providerId === '' || keyId === '' || usernameKeyId === '') invalid = 'Choose a provider, a password key and a role name key.';
-    else if (keyId === usernameKeyId) invalid = 'The password key and the role name key must be two different keys.';
+    else if (!minting.some((p) => p.id === providerId) || !secrets.some((k) => k.id === keyId) || !ungrouped.some((k) => k.id === usernameKeyId)) {
+      // A re-read can make a chosen provider or key ineligible while it stays selected.
+      invalid = 'A chosen provider or key is no longer eligible here: choose it again.';
+    } else if (keyId === usernameKeyId) invalid = 'The password key and the role name key must be two different keys.';
     else if (!Number.isInteger(interval) || interval < HOUR || interval > 90 * 24 * HOUR) invalid = 'The interval is a whole number of hours, from 1 to 2160 (90 days).';
     else if (!Number.isInteger(delay) || delay < 5 * MINUTE || delay > 7 * 24 * HOUR) invalid = 'The overlap is a whole number of minutes, from 5 to 10080 (7 days).';
     else if (delay >= interval) invalid = 'The overlap must be shorter than the interval.';
