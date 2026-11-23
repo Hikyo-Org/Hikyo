@@ -175,7 +175,38 @@ rehearsal, every `kubectl` and `helm` step and the real cluster are **NOTRUN**.
 | Private PKI ML-DSA (#1133) | `MLDSAEnabled` is false in production wiring |
 | Release trust (#1132) | No signer, no root, no caller of the verifiers on any shipping path; custody of the ML-DSA recovery key is not named. See the [signing runbook](pqc-release-signing-runbook.md), also not executable |
 | Pairing (#1130) | HOLD; no PQ protocol. The classical pairing and revocation drill is NOTRUN |
-| External routes (#1134) | No selector reaches them; nothing to enable |
+| External routes (#1134) | No selector reaches them; nothing to enable. The one operator-owned control is sshd key exchange, below |
+
+### Operator-owned: hybrid-only SSH key exchange (X07, F-03)
+
+Hikyo carries no SSH session and makes no claim about it. Where an operator
+wants an sshd to refuse a classical-only key exchange, the control is sshd's
+`KexAlgorithms`, not `WarnWeakCrypto`, which only logs a weak client. This is
+operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
+
+1. Check the server supports the names: `ssh -Q kex | grep -E 'mlkem768x25519|sntrup761x25519'`.
+2. Set in `sshd_config` (or a `sshd_config.d` drop-in):
+   `KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com`
+   Use only the names step 1 lists. `mlkem768x25519-sha256` needs OpenSSH 9.9 or
+   later and is the default hybrid since 10.0. `sntrup761x25519-sha512@openssh.com`
+   was added in OpenSSH 8.5, enters the default list in 8.9 and is the preferred
+   default in 9.0; the unsuffixed `sntrup761x25519-sha512` alias
+   was added in 9.9 ([release notes](https://www.openssh.org/releasenotes.html),
+   read 2026-11-23). A name the server does not know can make `sshd -t` fail, so a
+   fleet with mixed versions needs per-version drop-ins.
+3. Validate before reload: `sshd -t`, then `sshd -T | grep -i '^kexalgorithms'`.
+   Keep an existing session open until a new login succeeds.
+4. Expected result: a client offering only classical algorithms (for example
+   `ssh -o KexAlgorithms=curve25519-sha256`) is refused with no matching key
+   exchange method. This was observed locally against OpenSSH 10.3p1
+   (`internal/sshca/openssh_negotiation_test.go`); no deployed sshd was tested.
+
+Clients that lack a hybrid algorithm (OpenSSH before 9.0 and any client or
+library without one) can no longer connect, so check the client population
+first. The list syntax and the `+`, `-` and `^` prefixes are in
+[sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms), read
+2026-11-23. A hybrid key exchange protects session confidentiality only; it
+does not make host or user signatures post-quantum (E-02).
 
 ## Abort criteria (any one stops the stage)
 
