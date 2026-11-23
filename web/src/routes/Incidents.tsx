@@ -42,6 +42,12 @@ function narrowScope(value: string): IncidentScope {
   return INCIDENT_SCOPES.find((scope) => scope === value) ?? 'account';
 }
 
+/** The label for a server scope kind; an unknown kind (the enum is open) shows as its own word. */
+export function scopeLabel(value: string): string {
+  const known = INCIDENT_SCOPES.find((scope) => scope === value);
+  return known === undefined ? value : SCOPE_LABEL[known];
+}
+
 function itemTone(item: IncidentItem): BadgeTone {
   if (item.refused || item.outcome === 'blocked') return 'danger';
   if (item.outcome === 'done' || item.outcome === 'attested') return 'ok';
@@ -130,7 +136,7 @@ function Ledger({ id }: { id: string }) {
     <Panel id="incident-ledger" title="Incident ledger">
       <p>
         <Badge tone={live ? 'changed' : 'ok'}>{incident.data.status.replaceAll('_', ' ')}</Badge>{' '}
-        {SCOPE_LABEL[narrowScope(incident.data.scope_kind)]} <span className="mono">{incident.data.scope_id}</span>
+        {scopeLabel(incident.data.scope_kind)} <span className="mono">{incident.data.scope_id}</span>
         {' '}opened <time dateTime={incident.data.opened_at}>{formatWhen(incident.data.opened_at)}</time>
       </p>
       <Counts incident={incident.data} />

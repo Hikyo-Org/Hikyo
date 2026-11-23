@@ -271,25 +271,70 @@ func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 				{"close", http.MethodPost, id + "/close", map[string]bool{"with_residuals": true}},
 			}
 		}
+		// The security trail records a denial for the caller's own refusal, so the
+		// count is part of what the two reads must share (tenant-isolation ADR:
+		// equal refusal reads for missing and inaccessible).
+		denials := func() int64 {
+			return queryInt(t, db, `SELECT (SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'grant.denied') + (SELECT COUNT(*) FROM audit_instance_events WHERE type = 'grant.denied')`)
+		}
+		type result struct {
+			code    int
+			body    []byte
+			denials int64
+		}
+		run := func(tok, method, path string, body any) result {
+			d := denials()
+			c, b := iw.call(t, tok, method, path, body)
+			return result{c, b, denials() - d}
+		}
+		// Wire ids must match the API's id shape, so the org and project the
+		// foreign probes name are seeded under a UUID-shaped id.
+		const (
+			orgReal    = "org_00000000-0000-7000-8000-0000000000c1"
+			prjReal    = "prj_00000000-0000-7000-8000-0000000000c2"
+			orgMissing = "org_00000000-0000-7000-8000-0000000000c3"
+			prjMissing = "prj_00000000-0000-7000-8000-0000000000c4"
+			adapterID  = "adp_00000000-0000-7000-8000-0000000000c5"
+		)
+		execRaw(t, db, `INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ('`+orgReal+`', 'org-real', TRUE, '{}', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO projects (id, org_id, name, created_at) VALUES ('`+prjReal+`', '`+orgReal+`', 'prj-real', `+ts+`)`)
+		type opening struct {
+			name          string
+			foreign, miss map[string]string
+		}
+		openings := []opening{
+			{"account", map[string]string{"scope_kind": "account", "principal": string(wireTarget)}, map[string]string{"scope_kind": "account", "principal": string(wireGhost)}},
+			{"org", map[string]string{"scope_kind": "org", "org": orgReal}, map[string]string{"scope_kind": "org", "org": orgMissing}},
+			{"project", map[string]string{"scope_kind": "project", "org": orgReal, "project": prjReal}, map[string]string{"scope_kind": "project", "org": orgReal, "project": prjMissing}},
+			{"adapter", map[string]string{"scope_kind": "adapter", "org": orgReal, "project": prjReal, "adapter": adapterID}, map[string]string{"scope_kind": "adapter", "org": orgReal, "project": prjMissing, "adapter": adapterID}},
+		}
 		for _, p := range callers {
 			tok := tokens[p]
 			ghosts := probes(ghost)
 			for i, pr := range probes(real.Id) {
-				gc, gb := iw.call(t, tok, ghosts[i].method, "/incidents/"+ghosts[i].suffix, ghosts[i].body)
-				c, b := iw.call(t, tok, pr.method, "/incidents/"+pr.suffix, pr.body)
-				if gc != http.StatusNotFound {
-					t.Fatalf("%s: a nonexistent incident answers %d %s, want 404", pr.name, gc, gb)
+				g := run(tok, ghosts[i].method, "/incidents/"+ghosts[i].suffix, ghosts[i].body)
+				r := run(tok, pr.method, "/incidents/"+pr.suffix, pr.body)
+				if g.code != http.StatusNotFound {
+					t.Fatalf("%s: a nonexistent incident answers %d %s, want 404", pr.name, g.code, g.body)
 				}
-				if c != gc || !bytes.Equal(b, gb) {
-					t.Errorf("%s as %s: foreign incident answered %d %q, nonexistent %d %q", pr.name, p, c, b, gc, gb)
+				if r.code != g.code || !bytes.Equal(r.body, g.body) {
+					t.Errorf("%s as %s: foreign incident answered %d %q, nonexistent %d %q", pr.name, p, r.code, r.body, g.code, g.body)
+				}
+				if r.denials != g.denials {
+					t.Errorf("%s as %s: a foreign incident wrote %d grant.denied rows, a nonexistent one %d", pr.name, p, r.denials, g.denials)
 				}
 			}
-			// Opening an account the caller has no authority over reads like opening
-			// one that does not exist.
-			wantC, wantB := iw.call(t, tok, http.MethodPost, "/incidents", map[string]string{"scope_kind": "account", "principal": string(wireGhost)})
-			gotC, gotB := iw.call(t, tok, http.MethodPost, "/incidents", map[string]string{"scope_kind": "account", "principal": string(wireTarget)})
-			if gotC != http.StatusNotFound || gotC != wantC || !bytes.Equal(gotB, wantB) {
-				t.Errorf("open an account as %s answered %d %q, a missing account %d %q", p, gotC, gotB, wantC, wantB)
+			// Opening a target the caller has no authority over reads like opening
+			// one that does not exist, for every scope kind.
+			for _, o := range openings {
+				want := run(tok, http.MethodPost, "/incidents", o.miss)
+				got := run(tok, http.MethodPost, "/incidents", o.foreign)
+				if got.code != http.StatusNotFound || got.code != want.code || !bytes.Equal(got.body, want.body) {
+					t.Errorf("open %s as %s answered %d %q, a missing target %d %q", o.name, p, got.code, got.body, want.code, want.body)
+				}
+				if got.denials != want.denials {
+					t.Errorf("open %s as %s wrote %d grant.denied rows, a missing target %d", o.name, p, got.denials, want.denials)
+				}
 			}
 		}
 		if after := ledger(); after != before {

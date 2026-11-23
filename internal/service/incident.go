@@ -265,6 +265,14 @@ func (s *Incidents) incidentByID(ctx context.Context, az *authz.TxAuthorizer, ac
 	}
 	az.SetClock(now)
 	inc, err := az.IncidentByID(ctx, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		// A missing id authorizes like an instance-scope incident, so it records
+		// the same refusal a foreign one does: equal reads, equal security trail.
+		if _, aerr := authorizeIncidentOp(ctx, az, caller, ""); aerr != nil && !errors.Is(aerr, domain.ErrUnauthorized) {
+			return authz.Identity{}, authz.Incident{}, aerr
+		}
+		return authz.Identity{}, authz.Incident{}, domain.ErrNotFound
+	}
 	if err != nil {
 		return authz.Identity{}, authz.Incident{}, err
 	}
