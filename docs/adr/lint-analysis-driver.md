@@ -66,11 +66,11 @@ The spike also established that:
    whose result is plain data, so a field or method of a harness struct that
    holds a `crypto.Keyring` is not flagged when only an int or similar is
    formatted. The rule was narrowed, not exempted. Still flagged: a pinned
-   receiver; an `any`, interface or func-typed field or method result; a
-   selection promoted from an embedded pinned type; a receiver's call
+   receiver; an `any`, interface, func, chan or type-parameter field or method
+   result; a selection promoted from an embedded pinned type; a receiver's call
    arguments and literal elements; and any method whose result carries text or
-   bytes at any depth (`string`, `[]byte`, a byte array, `[]string`, `*string`,
-   a map, a struct with a string field), because a holder method such as
+   bytes at any depth (`string`, `[]byte`, `[]rune`, a byte array, `[]string`,
+   `*string`, a map with text keys or values, a struct with a string field), because a holder method such as
    `h.reveal()` may build that text from the key material it holds.
    `time.Time` is the one exception. The differential test
    `TestRedactFormatNarrowingDifferential` pins every dropped diagnostic.

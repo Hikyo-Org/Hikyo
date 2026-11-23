@@ -30,9 +30,9 @@ import (
 // seen. Rule 2's walk skips the receiver of a field selection or a method call
 // whose result is plain data (readsPlainData): a holder field of an int, or a
 // method returning an int or time.Time, is not a leak. A holder method whose
-// result is an interface, a func, or carries a string or byte at any depth
-// ([]string, *string, map[string]int, a struct with a string field) keeps the
-// holder flagged. Not seen: a plain-typed field the holder fills from key
+// result is an interface, a func, a chan or a type parameter, or carries a
+// string, byte or rune at any depth ([]string, []rune, *string, a map with text
+// keys or values, a struct with a string field) keeps the holder flagged. Not seen: a plain-typed field the holder fills from key
 // material (h.text of type string is read as plain data). An indexed holder
 // (h.items[0].seq) stays flagged, which only over-reports.
 
@@ -330,7 +330,7 @@ func readsPlainData(sel *types.Selection) bool {
 
 // carriesText reports whether a value of type t can carry text or bytes that a
 // holder method built from what it holds: a string or byte reachable through
-// pointers, slices, arrays, maps and struct fields, however deep. time.Time is
+// pointers, slices, arrays, maps and struct fields, however deep (runes included). time.Time is
 // the one deliberate exception: it reaches a string only through *Location (a
 // zone name), never through the instant a method derives from held state.
 func carriesText(t types.Type, seen map[types.Type]bool) bool {
@@ -344,7 +344,8 @@ func carriesText(t types.Type, seen map[types.Type]bool) bool {
 	}
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
-		return u.Info()&types.IsString != 0 || u.Kind() == types.Uint8
+		// Int32 is rune: []rune(secret) is text. This over-reports plain int32.
+		return u.Info()&types.IsString != 0 || u.Kind() == types.Uint8 || u.Kind() == types.Int32
 	case *types.Pointer:
 		return carriesText(u.Elem(), seen)
 	case *types.Slice:

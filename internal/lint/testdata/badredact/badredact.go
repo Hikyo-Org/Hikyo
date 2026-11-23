@@ -91,6 +91,7 @@ func (h holder) revealArray() [4]byte { return [4]byte{} }
 
 type pair struct{ Key string }
 
+func (h holder) revealRunes() []rune       { return []rune(h.keyring.String()) }
 func (h holder) revealAll() []string       { return []string{h.keyring.String()} }
 func (h holder) revealPtr() *string        { s := h.keyring.String(); return &s }
 func (h holder) revealMap() map[string]int { return map[string]int{h.keyring.String(): 1} }
@@ -112,6 +113,7 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%s", h.reveal())                            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%x", h.revealBytes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%x", h.revealArray())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealRunes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealAll())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", *h.revealPtr())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	_ = fmt.Sprintf("%v", h.revealMap())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
