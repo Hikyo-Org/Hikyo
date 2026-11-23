@@ -1,14 +1,25 @@
-import { listRotationRunsOp, listRotationsOp } from '@hikyo/operations';
+import {
+  createRotationOp,
+  deleteRotationOp,
+  listRotationRunsOp,
+  listRotationsOp,
+  pauseRotationOp,
+  releaseRotationHoldOp,
+  resumeRotationOp,
+  runRotationNowOp,
+} from '@hikyo/operations';
 import { zCredentialRotation, zRotationRun } from '@hikyo/zod';
 import {
   useInfiniteQuery,
+  useMutation,
+  useQueryClient,
   type InfiniteData,
   type UseInfiniteQueryResult,
 } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { parsed } from './client.ts';
-import { commonRefusalText, statusText } from './statusText.ts';
+import { commonRefusalText, statusText, withDetail } from './statusText.ts';
 import { useTransport } from './transport.tsx';
 
 /** A scheduled credential rotation (#148), status only: no secret is ever on it. */
@@ -98,6 +109,121 @@ export function useRotationRuns(
   });
 }
 
+/** The six acts on a rotation (#1440); none of them carries or returns a credential. */
+export type RotationVerb = 'create' | 'pause' | 'resume' | 'release-hold' | 'run-now' | 'delete';
+
+export type RotationAct =
+  | { readonly verb: 'pause' | 'resume' | 'release-hold'; readonly rotation: Rotation }
+  | { readonly verb: 'run-now'; readonly rotation: Rotation; readonly skipOverlap: boolean }
+  | { readonly verb: 'delete'; readonly rotation: Rotation; readonly abandon: boolean };
+
+export type CreateRotationInput = {
+  readonly providerId: string;
+  readonly keyId: string;
+  readonly usernameKeyId: string;
+  readonly intervalSeconds: number;
+  readonly revocationDelaySeconds: number;
+};
+
+/** Every list and run read of one environment, so an act refreshes them all. */
+function useRefreshEnvironment(env: EnvironmentRef): () => void {
+  const queries = useQueryClient();
+  return () => {
+    void queries.invalidateQueries({ queryKey: ['rotations', env.org, env.project, env.environment] });
+    void queries.invalidateQueries({ queryKey: ['rotation-runs', env.org, env.project, env.environment] });
+  };
+}
+
+/**
+ * useCreateRotation configures a rotation. The caller runs the publish ceremony
+ * over the environment and both keys first; the server consumes it.
+ */
+export function useCreateRotation(env: EnvironmentRef) {
+  const transport = useTransport();
+  const refresh = useRefreshEnvironment(env);
+  return useMutation({
+    mutationFn: (input: CreateRotationInput) =>
+      parsed(createRotationOp, {
+        path: { org: env.org, project: env.project, environment: env.environment },
+        body: {
+          provider_id: input.providerId,
+          key_id: input.keyId,
+          username_key_id: input.usernameKeyId,
+          interval_seconds: input.intervalSeconds,
+          revocation_delay_seconds: input.revocationDelaySeconds,
+        },
+        ...transport,
+      }),
+    // A lost response may still have committed, so the list is re-read either way.
+    onSettled: refresh,
+  });
+}
+
+/**
+ * useRotationAct takes one act on an existing rotation. Each carries the
+ * generation the browser read, so a change someone made since is refused
+ * (409) instead of overwritten. Resume, release-hold and run-now consume the
+ * publish ceremony the caller ran; pause and delete need none.
+ */
+export function useRotationAct(env: EnvironmentRef) {
+  const transport = useTransport();
+  const refresh = useRefreshEnvironment(env);
+  return useMutation({
+    mutationFn: async (act: RotationAct): Promise<void> => {
+      const path = { org: env.org, project: env.project, environment: env.environment, rotation: act.rotation.id };
+      const expected_generation = Number(act.rotation.generation);
+      const options = { path, ...transport };
+      switch (act.verb) {
+        case 'pause':
+          await parsed(pauseRotationOp, { ...options, body: { expected_generation } });
+          return;
+        case 'resume':
+          await parsed(resumeRotationOp, { ...options, body: { expected_generation } });
+          return;
+        case 'release-hold':
+          await parsed(releaseRotationHoldOp, { ...options, body: { expected_generation } });
+          return;
+        case 'run-now':
+          await parsed(runRotationNowOp, {
+            ...options,
+            body: { confirm_destructive: true, expected_generation, skip_overlap: act.skipOverlap },
+          });
+          return;
+        case 'delete':
+          await parsed(deleteRotationOp, { ...options, query: { expected_generation, abandon: act.abandon } });
+          return;
+      }
+    },
+    onSettled: refresh,
+  });
+}
+
+/**
+ * rotationActRefusalText names a refused act. The server's named refusal (a
+ * protected environment, a stale generation, a restore hold, a run in flight)
+ * travels as the safe detail and is shown as given, never re-derived here.
+ */
+export function rotationActRefusalText(error: unknown, verb: RotationVerb): string {
+  const subject = verb === 'create' ? 'The rotation was not created' : `The ${verb} was refused`;
+  return statusText(
+    error,
+    {
+      400: (e) => withDetail(`${subject}: the server refused the request.`, e),
+      401: commonRefusalText.sessionEnded,
+      403: (e) =>
+        withDetail(
+          `${subject}: it needs ${verb === 'pause' || verb === 'delete' ? 'publish' : 'edit, publish and reveal'} on both keys, from a signed-in person${verb === 'pause' || verb === 'delete' ? '' : ', and the publish confirmation'}.`,
+          e,
+        ),
+      404: `${subject}: the rotation or environment is not here, or you may not read it.`,
+      409: (e) => withDetail(`${subject}: it conflicts with the rotation's current state.`, e),
+      429: commonRefusalText.requests,
+    },
+    `${subject}. Try again.`,
+    (e) => `${subject} (server error ${String(e.status)}).`,
+  );
+}
+
 /**
  * rotationRefusalText names a failed read without inventing a cause. The API
  * answers a caller who may not read the environment with the same not-found it
@@ -154,7 +280,7 @@ export function owedRunText(run: RotationRun): string {
   return `ATTENTION: run ${run.id} is ${run.phase} and a provider role it owes a drop is still live (${until}); before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back`;
 }
 
-/** The command that lifts a restore hold; the browser has no release action. */
+/** The command that lifts a restore hold, the CLI twin of the browser's release action. */
 export function releaseHoldCommand(rotation: Rotation): string {
   return `hikyo rotation release-hold ${rotation.id}`;
 }

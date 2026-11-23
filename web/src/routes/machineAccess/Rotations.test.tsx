@@ -18,7 +18,20 @@ import {
 } from '../../testkit/rotations.ts';
 import { MAX_RUN_PAGES } from '../../api/rotations.ts';
 import { ReadOnlyContext } from '../../ui/ReadOnlyContext.ts';
+import type { CeremonyRequest } from '../Ceremony.tsx';
 import { RotationsPanel } from './Rotations.tsx';
+
+// The modal needs the auth provider; the act's wiring is what these tests own, so
+// the stand-in shows what it was asked to confirm and lets the test answer it.
+vi.mock('../Ceremony.tsx', () => ({
+  Ceremony: ({ request, onAuthorised, onCancel }: { request: CeremonyRequest; onAuthorised: () => void; onCancel: () => void }) => (
+    <div data-ceremony={request.purpose} data-environment={request.environmentId}>
+      {request.keys.map((key) => key.name).join(',')}
+      <button type="button" onClick={onAuthorised}>Authorise</button>
+      <button type="button" onClick={onCancel}>Cancel ceremony</button>
+    </div>
+  ),
+}));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -139,12 +152,12 @@ it('flags a rotation that owes a drop in words, and never says drop when a resto
     expect(owed).toContain('Owes a drop');
     expect(owed).toContain('1 run(s) that owe a provider role a drop and the role is still live; before you drop it at the provider, check that neither key serves that role, because a revision restore can put it back');
     expect(owed).not.toContain('do NOT drop');
-    // A rotation with nothing owed has neither badge nor line, and the page offers no act.
+    // A rotation with nothing owed has neither badge nor line, and no act says to drop a role.
     const held = container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)!.textContent ?? '';
     expect(held).not.toContain('Owes a drop');
     expect(held).not.toContain('Do not drop');
     expect(held).not.toContain('ATTENTION');
-    expect([...container.querySelectorAll('button')].map((b) => b.textContent).join(' ')).not.toMatch(/release|resume|pause|delete|run now|drop it/i);
+    expect([...container.querySelectorAll('button')].map((b) => b.textContent).join(' ')).not.toMatch(/drop/i);
   } finally {
     await unmount();
   }
@@ -176,10 +189,11 @@ it('is loud about a restore hold and names the command that releases it', async 
     expect(alert?.getAttribute('role')).toBe('alert');
     expect(alert?.textContent).toContain(`RESTORE HOLD: rotation ${HELD_ROTATION} is held after a restore and starts no run`);
     expect(alert?.textContent).toContain(`hikyo rotation release-hold ${HELD_ROTATION}`);
-    // The row says it in words too, and offers no release action.
-    expect(container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)?.textContent).toContain('Restore hold');
-    expect(container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)?.textContent).toContain('Held after a restore: no run starts');
-    expect([...container.querySelectorAll('button')].map((b) => b.textContent).join(' ')).not.toMatch(/release|resume|pause|delete|run now/i);
+    // The row says it in words too, and offers release instead of the acts a hold refuses.
+    const row = container.querySelector(`[data-rotation="${HELD_ROTATION}"]`)!;
+    expect(row.textContent).toContain('Restore hold');
+    expect(row.textContent).toContain('Held after a restore: no run starts');
+    expect([...row.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Show runs', 'Release hold', 'Pause']);
   } finally {
     await unmount();
   }
@@ -659,6 +673,243 @@ it('keeps browsing controls usable in the read-only demo', async () => {
     await act(async () => buttonNamed(container, 'Show runs of DATABASE_PASSWORD').click());
     await settleTask();
     expect(container.querySelectorAll('[data-run]').length).toBeGreaterThan(0);
+  } finally {
+    await unmount();
+  }
+});
+
+// ---- #1440: the acts -------------------------------------------------------
+
+type Sent = { readonly method: string; readonly path: string; readonly search: string; readonly body: unknown };
+
+/** Answers reads and acts by `METHOD path`; every request is recorded with its JSON body. */
+function actStub(routes: Readonly<Record<string, () => Response>>): Sent[] {
+  const sent: Sent[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (...args: Parameters<typeof fetch>) => {
+    const request = args[0] instanceof Request ? args[0] : new Request(args[0], args[1]);
+    const url = new URL(request.url);
+    const text = await request.text();
+    sent.push({ method: request.method, path: url.pathname, search: url.search, body: text === '' ? undefined : JSON.parse(text) });
+    const answer = routes[`${request.method} ${url.pathname}`];
+    if (answer === undefined) throw new Error(`unexpected ${request.method} ${url.pathname}`);
+    return answer();
+  }));
+  return sent;
+}
+
+const windowPath = `${base}/environments/${PROD}/reveal-window`;
+const closedWindow = () => Response.json({ protected: false, effective_window_seconds: 300, live: false, single_decision: false, can_reveal: true, totp_offered: true });
+const rotationPath = (rotation: string) => `${listPath(PROD)}/${rotation}`;
+const reads = (items: unknown[]) => ({
+  [`GET ${base}/keys`]: () => Response.json(rotationKeys),
+  [`GET ${listPath(PROD)}`]: () => Response.json({ items }),
+});
+const acts = (sent: Sent[]) => sent.filter((r) => r.method !== 'GET');
+const click = async (button: HTMLButtonElement) => {
+  await act(async () => button.click());
+  await settleTask();
+};
+const dialog = () => document.querySelector('dialog')!;
+
+it('offers each rotation only the acts its state allows', async () => {
+  actStub(reads([...rotationList().items, haltedRotation(), deletedRotation()]));
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const offered = (id: string) => [...container.querySelector(`[data-rotation="${id}"]`)!.querySelectorAll('button')].map((b) => b.textContent);
+    expect(offered(ROTATION)).toEqual(['Show runs', 'Pause', 'Run now', 'Delete']);
+    expect(offered(HELD_ROTATION)).toEqual(['Show runs', 'Release hold', 'Pause']);
+    expect(offered(HALTED_ROTATION)).toEqual(['Show runs', 'Resume', 'Delete']);
+    expect(offered('rot_123e4567-e89b-12d3-a456-426614174204')).toEqual(['Show runs']);
+  } finally {
+    await unmount();
+  }
+});
+
+it('pauses without a ceremony, carrying the generation it read, and says the credential stays valid', async () => {
+  const sent = actStub({
+    ...reads(rotationList().items),
+    [`POST ${rotationPath(ROTATION)}/pause`]: () => Response.json({ ...rotationList().items[0], state: 'paused', generation: 2 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Pause DATABASE_PASSWORD'));
+    expect(dialog().textContent).toContain('The credential already delivered stays valid until 2099-01-31T00:00:00Z; this revokes nothing.');
+    await click(buttonNamed(dialog(), 'Pause'));
+    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(ROTATION)}/pause`, search: '', body: { expected_generation: 1 } }]);
+    expect(sent.some((r) => r.path === windowPath)).toBe(false);
+    expect(container.querySelector('.rotations__done')?.textContent).toContain(`Rotation ${ROTATION} paused.`);
+  } finally {
+    await unmount();
+  }
+});
+
+it('resumes only after the publish ceremony over the environment and both keys', async () => {
+  const sent = actStub({
+    ...reads([haltedRotation()]),
+    [`GET ${windowPath}`]: closedWindow,
+    [`POST ${rotationPath(HALTED_ROTATION)}/resume`]: () => Response.json({ ...haltedRotation(), state: 'active', generation: 2 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Resume ANALYTICS_PASSWORD'));
+    expect(dialog().textContent).toContain('halted (retries_exhausted)');
+    await click(buttonNamed(dialog(), 'Resume'));
+    // An unprotected environment still takes the ceremony: the rotation publishes unattended.
+    const ceremony = document.querySelector('[data-ceremony]')!;
+    expect(ceremony.getAttribute('data-ceremony')).toBe('rotation');
+    expect(ceremony.getAttribute('data-environment')).toBe(PROD);
+    expect(ceremony.textContent).toContain('ANALYTICS_PASSWORD,ANALYTICS_USER');
+    expect(acts(sent)).toEqual([]);
+    await click(buttonNamed(document.body, 'Authorise'));
+    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HALTED_ROTATION)}/resume`, search: '', body: { expected_generation: 1 } }]);
+  } finally {
+    await unmount();
+  }
+});
+
+it('sends nothing when the ceremony is cancelled', async () => {
+  const sent = actStub({ ...reads([haltedRotation()]), [`GET ${windowPath}`]: closedWindow });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Resume ANALYTICS_PASSWORD'));
+    await click(buttonNamed(dialog(), 'Resume'));
+    await click(buttonNamed(document.body, 'Cancel ceremony'));
+    expect(acts(sent)).toEqual([]);
+    expect(document.querySelector('[data-ceremony]')).toBeNull();
+  } finally {
+    await unmount();
+  }
+});
+
+it('shows the reconcile instruction and offers release only once it is acknowledged', async () => {
+  const sent = actStub({
+    ...reads(rotationList().items),
+    [`GET ${windowPath}`]: closedWindow,
+    [`POST ${rotationPath(HELD_ROTATION)}/release-hold`]: () => Response.json({ ...rotationList().items[1], restore_hold: false }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Release hold REPORTING_PASSWORD'));
+    expect(dialog().textContent).toContain('reconcile the rotation\'s grants and its provider credential, and read its runs');
+    expect(dialog().textContent).toContain('never resumes a paused or halted rotation');
+    const release = buttonNamed(dialog(), 'Release hold');
+    expect(release.disabled).toBe(true);
+    await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(release.disabled).toBe(false);
+    await click(release);
+    expect(document.querySelector('[data-ceremony]')?.getAttribute('data-ceremony')).toBe('rotation');
+    await click(buttonNamed(document.body, 'Authorise'));
+    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HELD_ROTATION)}/release-hold`, search: '', body: { expected_generation: 1 } }]);
+    expect(container.querySelector('.rotations__done')?.textContent).toContain('It was not resumed.');
+  } finally {
+    await unmount();
+  }
+});
+
+it('runs now with the destructive confirmation and the chosen overlap', async () => {
+  const sent = actStub({
+    ...reads(rotationList().items),
+    [`GET ${windowPath}`]: closedWindow,
+    [`POST ${rotationPath(ROTATION)}/run-now`]: () => Response.json({ rotation_id: ROTATION, run_id: 'rrn_123e4567-e89b-12d3-a456-426614174399', skip_overlap: true }, { status: 202 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Run now DATABASE_PASSWORD'));
+    await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(dialog().textContent).toContain('loses access at once');
+    await click(buttonNamed(dialog(), 'Run now'));
+    await click(buttonNamed(document.body, 'Authorise'));
+    expect(acts(sent)).toEqual([{
+      method: 'POST',
+      path: `${rotationPath(ROTATION)}/run-now`,
+      search: '',
+      body: { confirm_destructive: true, expected_generation: 1, skip_overlap: true },
+    }]);
+  } finally {
+    await unmount();
+  }
+});
+
+it('deletes without a ceremony, abandoning in-flight runs only when asked', async () => {
+  const sent = actStub({
+    ...reads(rotationList().items),
+    [`DELETE ${rotationPath(ROTATION)}`]: () => Response.json({ ...rotationList().items[0], state: 'disabled' }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Delete DATABASE_PASSWORD'));
+    expect(dialog().textContent).toContain('this revokes nothing');
+    await click(buttonNamed(dialog(), 'Delete'));
+    expect(acts(sent)).toEqual([{ method: 'DELETE', path: rotationPath(ROTATION), search: '?expected_generation=1&abandon=false', body: undefined }]);
+  } finally {
+    await unmount();
+  }
+});
+
+it('names the server refusal in its own words and keeps the dialog open', async () => {
+  actStub({
+    ...reads(rotationList().items),
+    [`POST ${rotationPath(ROTATION)}/pause`]: () =>
+      Response.json({ error: { code: 'conflict', message: 'Conflict', detail: 'the rotation changed since it was read; read it again' } }, { status: 409 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Pause DATABASE_PASSWORD'));
+    await click(buttonNamed(dialog(), 'Pause'));
+    expect(dialog().querySelector('.alert')?.textContent).toContain('the rotation changed since it was read; read it again');
+    expect(container.querySelector('.rotations__done')).toBeNull();
+  } finally {
+    await unmount();
+  }
+});
+
+it('creates a rotation behind the ceremony, refusing an obvious slip before it', async () => {
+  const sent = actStub({
+    ...reads([]),
+    [`GET ${windowPath}`]: closedWindow,
+    [`POST ${listPath(PROD)}`]: () => Response.json(rotationList().items[0], { status: 201 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Create rotation'));
+    const selects = [...dialog().querySelectorAll('select')];
+    const choose = async (select: HTMLSelectElement, value: string) => {
+      await act(async () => {
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    };
+    await choose(selects[1]!, rotationKeys.items[0]!.id);
+    await choose(selects[2]!, rotationKeys.items[0]!.id);
+    await click(buttonNamed(dialog(), 'Create rotation'));
+    expect(dialog().textContent).toContain('must be two different keys');
+    expect(document.querySelector('[data-ceremony]')).toBeNull();
+    await choose(selects[2]!, rotationKeys.items[1]!.id);
+    await click(buttonNamed(dialog(), 'Create rotation'));
+    expect(document.querySelector('[data-ceremony]')?.textContent).toContain('DATABASE_PASSWORD,DATABASE_USER');
+    await click(buttonNamed(document.body, 'Authorise'));
+    expect(acts(sent)).toEqual([{
+      method: 'POST',
+      path: listPath(PROD),
+      search: '',
+      body: {
+        provider_id: dynamicProvider.id,
+        key_id: rotationKeys.items[0]!.id,
+        username_key_id: rotationKeys.items[1]!.id,
+        interval_seconds: 86_400,
+        revocation_delay_seconds: 3_600,
+      },
+    }]);
+    expect(container.querySelector('.rotations__done')?.textContent).toContain('you are its recorded authority principal');
   } finally {
     await unmount();
   }
