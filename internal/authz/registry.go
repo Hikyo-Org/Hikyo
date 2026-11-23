@@ -380,6 +380,12 @@ const (
 	// OpIncidentAdapterWork is the enumeration's bounded read of one project's
 	// non-terminal route moves and pending scrub jobs.
 	OpIncidentAdapterWork Operation = "incident.adapter-work"
+	// The rotation listings and the halt (#1471): an account incident lists the
+	// scheduled rotations whose recorded authority principal is the contained
+	// account, and halts each one under the incident's credential-reset.
+	OpIncidentRotationsOrg      Operation = "incident.rotations-org"
+	OpIncidentRotationsInstance Operation = "incident.rotations-instance"
+	OpIncidentRotationHalt      Operation = "incident.rotation-halt"
 
 	// Audit trail reads (#45, audit-model ADR). One operation per addressed
 	// depth — the registry pins one depth per tenant operation, so the three
@@ -1021,6 +1027,11 @@ const (
 	// that mint from a provider being deleted or losing its credential.
 	StoreRotationsPurgeEnvironment StoreOp = "rotations.PurgeEnvironment"
 	StoreRotationsPauseForProvider StoreOp = "rotations.PauseForProvider"
+	// The incident ledger lists a principal's live rotations by their recorded
+	// authority (#1471) and halts one under the incident's own authority.
+	StoreRotationsListByAuthorityInOrg      StoreOp = "rotations.ListByAuthorityInOrg"
+	StoreRotationsListByAuthorityInInstance StoreOp = "rotations.ListByAuthorityInInstance"
+	StoreRotationsHaltForIncident           StoreOp = "rotations.HaltForIncident"
 	// StoreRotationsPauseForEnvironment pauses the active rotations of an
 	// environment, or of the whole project, that became protected or gained an
 	// approval policy.
@@ -2418,14 +2429,14 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelOrg,
 		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
 		events: []audit.EventType{
-			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
 		},
 	},
 	OpIncidentInstance: {
 		class:   ClassInstance,
 		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
 		events: []audit.EventType{
-			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
 		},
 	},
 	// The project listing addresses the project and takes the org-level
@@ -2455,6 +2466,32 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAdaptersListOpenMoves: true, StoreAdaptersListScrubs: true, StoreAdaptersListOrphanedMoves: true},
 		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+
+	// Scheduled rotations by authority principal (#1471, incident-containment
+	// ADR amendment: rotation is an account-scope object kind). The listings are
+	// the enumeration of an incident the operations above opened; the halt is the
+	// owner function of that ledger item and runs on the rotation's environment
+	// under the org-level credential-reset atom, the way the lease listing does.
+	OpIncidentRotationsOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreRotationsListByAuthorityInOrg: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+	OpIncidentRotationsInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreRotationsListByAuthorityInInstance: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+	OpIncidentRotationHalt: {
+		class:    ClassTenant,
+		level:    domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreRotationsHaltForIncident: true, StoreRotationsGet: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 
 	// The Project aggregate (#48). `manage-projects` is the permission-model ADR's

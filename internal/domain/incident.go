@@ -120,6 +120,10 @@ const (
 	// OwnerConsumerAdoption is a consumer adopting a replacement credential: the
 	// ADR records it as attested, since Hikyo cannot observe the consumer.
 	OwnerConsumerAdoption = "consumer.adopt"
+	// OwnerRotationHalt halts a scheduled credential rotation whose recorded
+	// authority principal is the contained account (#1471). It halts and never
+	// resumes: releasing the principal leaves the rotation halted.
+	OwnerRotationHalt = "rotation.halt"
 	// OwnerNone marks an object no workflow revokes (out of scope).
 	OwnerNone = "none"
 )
@@ -129,7 +133,7 @@ var IncidentOwnerFunctions = []string{
 	OwnerSessionRevoke, OwnerDeveloperRevoke, OwnerExternalIdentity, OwnerFactorRemoval, OwnerServiceAccountReview,
 	OwnerMachineCredential, OwnerAccountContain, OwnerEmailInvitation, OwnerSCIMCredential, OwnerLeaseRevoke,
 	OwnerAdapterTargetPause, OwnerAdapterMove, OwnerAdapterScrub, OwnerAdapterOrphan, OwnerAdapterCredential, OwnerAdapterUpstream,
-	OwnerDynamicCredential, OwnerDynamicUpstream, OwnerConsumerAdoption, OwnerNone,
+	OwnerDynamicCredential, OwnerDynamicUpstream, OwnerConsumerAdoption, OwnerRotationHalt, OwnerNone,
 }
 
 // Object kinds: the closed vocabulary of what an item names.
@@ -151,6 +155,7 @@ const (
 	ObjectKindAdapterMove        = "adapter_move"
 	ObjectKindAdapterScrub       = "adapter_scrub"
 	ObjectKindDynamicProvider    = "dynamic_provider"
+	ObjectKindRotation           = "rotation"
 	ObjectKindEnumeration        = "enumeration"
 	ObjectKindOrg                = "org"
 	ObjectKindProject            = "project"
@@ -165,7 +170,7 @@ const (
 var IncidentObjectKinds = []string{
 	ObjectKindSession, ObjectKindDeveloperCred, ObjectKindExternalIdentity, ObjectKindTOTPFactor, ObjectKindPasskey, ObjectKindServiceAccount,
 	ObjectKindMachineCredential, ObjectKindAccount, ObjectKindEmailInvitation, ObjectKindSCIMCredential, ObjectKindSCIMBinding, ObjectKindLease,
-	ObjectKindAdapter, ObjectKindAdapterTarget, ObjectKindAdapterMove, ObjectKindAdapterScrub, ObjectKindDynamicProvider, ObjectKindEnumeration, ObjectKindOrg, ObjectKindProject,
+	ObjectKindAdapter, ObjectKindAdapterTarget, ObjectKindAdapterMove, ObjectKindAdapterScrub, ObjectKindDynamicProvider, ObjectKindRotation, ObjectKindEnumeration, ObjectKindOrg, ObjectKindProject,
 	ObjectKindDeliveredPlaintext, ObjectKindLocalCopy, ObjectKindRunningProcess, ObjectKindExternalSession, ObjectKindIssuedCertificate,
 }
 

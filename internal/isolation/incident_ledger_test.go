@@ -165,6 +165,7 @@ func runIncidentEnumeratesAccount(t *testing.T, db *store.DB) {
 	}
 	got := w.itemMap(t, incResponder, v.Incident.ID)
 	want := map[string]string{
+		"account.contain|account|usr_itarget":                      "pending/",
 		"session.revoke|session|ses_it_1":                          "pending/",
 		"developer_credential.revoke|developer_credential|devc_it": "pending/",
 		"service_account.review|service_account|sa_it":             "pending/",
@@ -179,7 +180,7 @@ func runIncidentEnumeratesAccount(t *testing.T, db *store.DB) {
 	if len(got) != len(want) {
 		t.Errorf("ledger holds %d items, want exactly %d: %v", len(got), len(want), got)
 	}
-	if v.Counts[domain.ItemPending] != 3 || v.Counts[domain.ItemOutOfScope] != 5 {
+	if v.Counts[domain.ItemPending] != 4 || v.Counts[domain.ItemOutOfScope] != 5 {
 		t.Errorf("counts = %v", v.Counts)
 	}
 	// Grants are census context, never revoke work: containment keeps them and
@@ -429,8 +430,8 @@ func TestIncidentResumeRunsOnlyOpenItemsAndOnlyConfirmedIsDone(t *testing.T) {
 			t.Fatalf("resume = %+v, owner actions = %d, want the session and developer credential items examined and confirmed", res, owner.actions)
 		}
 		// Items whose owner is not registered are skipped and never become done.
-		if res.Skipped != 1 {
-			t.Errorf("skipped = %d, want 1 (service account)", res.Skipped)
+		if res.Skipped != 2 {
+			t.Errorf("skipped = %d, want 2 (service account, contain)", res.Skipped)
 		}
 		got := w.itemMap(t, incResponder, id)
 		wantItems(t, got, map[string]string{
@@ -853,9 +854,10 @@ func TestIncidentCleanCloseNeedsEveryObservableItemConfirmed(t *testing.T) {
 		owner := newFakeOwner()
 		w.withOwner(owner)
 		w.svc.Owners[domain.OwnerServiceAccountReview] = owner.run
+		w.svc.Owners[domain.OwnerAccountContain] = owner.run
 		res, err := w.svc.Resume(ctx, w.as(incResponder), id)
-		if err != nil || res.Confirmed != 3 {
-			t.Fatalf("resume = %+v, %v, want the three observable items confirmed", res, err)
+		if err != nil || res.Confirmed != 4 {
+			t.Fatalf("resume = %+v, %v, want the four observable items confirmed", res, err)
 		}
 		closed, err := w.svc.Close(ctx, w.as(incResponder), id, false)
 		if err != nil {

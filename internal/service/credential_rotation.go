@@ -246,6 +246,7 @@ const (
 	rotationActionPaused       rotationAction = "paused"
 	rotationActionResumed      rotationAction = "resumed"
 	rotationActionDeleted      rotationAction = "deleted"
+	rotationActionHalted       rotationAction = "halted"
 	rotationActionHoldReleased rotationAction = "hold_released"
 )
 

@@ -3404,6 +3404,20 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationListByAuthorityInInstance",
+    "annotation": "instance-scoped",
+    "hash": "50572af6dbd1ce4c99bbd2b07de3ee587ebfe85915463a09e6b6385d7e6730ac",
+    "reason": "Instance-level incident enumeration lists the live rotation identifiers of one authority principal across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no rotation secret, key or provider detail is selected."
+  },
+  {
+    "engine": "postgres",
+    "name": "RotationListByAuthorityInOrg",
+    "annotation": "instance-scoped",
+    "hash": "a802e88fe20e2f672080488bcdafb5094e9a83aedba113467ef9cb8bb51e407d",
+    "reason": "Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects."
+  },
+  {
+    "engine": "postgres",
     "name": "RotationProviderLiveRuns",
     "annotation": "instance-scoped",
     "hash": "7090b5799fb0d6fe925a3287c8fed95516753f96d52a1c324ab9f8646b39ac27",
@@ -7221,6 +7235,20 @@
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
     "hash": "7b657d72d590c757f8ff97a6ce19a015d434dedd618878fc2eef6ee31d5e63c5"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationListByAuthorityInInstance",
+    "annotation": "instance-scoped",
+    "hash": "50572af6dbd1ce4c99bbd2b07de3ee587ebfe85915463a09e6b6385d7e6730ac",
+    "reason": "Instance-level incident enumeration lists the live rotation identifiers of one authority principal across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no rotation secret, key or provider detail is selected."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationListByAuthorityInOrg",
+    "annotation": "instance-scoped",
+    "hash": "a802e88fe20e2f672080488bcdafb5094e9a83aedba113467ef9cb8bb51e407d",
+    "reason": "Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects."
   },
   {
     "engine": "sqlite",

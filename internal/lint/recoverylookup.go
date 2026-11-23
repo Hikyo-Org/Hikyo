@@ -48,12 +48,13 @@ var RecoveryLookupRules = []RecoveryRule{
 }
 
 // ContainmentSetterRules confines the two setters of the containment state.
-// In S1 no service code may call them: only the authz forwarders and the
-// store resolver that implements them. The incident service (S3) adds its
-// own entry here, in the same change that introduces it.
+// Only the authz forwarders, the store resolver that implements them and the
+// incident service's single contain core may call ContainPrincipal; release
+// has no service caller until the release slice adds its own entry.
 var ContainmentSetterRules = []RecoveryRule{
 	{Name: "ContainPrincipal", Allowed: map[string][]string{
 		Module + "/internal/authz":       {"TxAuthorizer.ContainPrincipal"},
+		Module + "/internal/service":     {"Incidents.containAccount"},
 		Module + "/internal/store/authn": {"Resolver.ContainPrincipal"},
 	}},
 	{Name: "ReleasePrincipalContainment", Allowed: map[string][]string{
@@ -66,7 +67,7 @@ type confinementKind struct{ name, doc, where string }
 
 var (
 	recoveryKind = confinementKind{"recoverylookup", "the recovery lookup is reached only from the reset and establishment flows", "the reset and establishment flows"}
-	setterKind   = confinementKind{"containmentsetters", "the containment setters are reached only from the authz forwarders and the authn store", "the authz forwarders and the authn store"}
+	setterKind   = confinementKind{"containmentsetters", "the containment setters are reached only from the authz forwarders, the authn store and the incident contain core", "the authz forwarders, the authn store and the incident contain core"}
 )
 
 // RecoveryLookup and ContainmentSetters are the two confinement analyzers.

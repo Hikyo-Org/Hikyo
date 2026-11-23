@@ -220,6 +220,45 @@ func pageDeveloperCredentials(ctx context.Context, az *authz.TxAuthorizer, org d
 	return true, nil
 }
 
+// pageRotationsByAuthority lists the live scheduled rotations whose recorded
+// authority principal is the target (#1471). An org-bounded incident reads its
+// own org; an incident that spans orgs needs, and has, instance scope. Org and
+// project incidents list none here: they ride on the accounts they select. Each
+// is halted under the credential-reset the incident was opened with, so the
+// opener holds the owner's capability by construction.
+func pageRotationsByAuthority(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, target domain.PrincipalID, c *collector) error {
+	read := r.Rotations().ListByAuthorityInInstance
+	op, scope := authz.OpIncidentRotationsInstance, domain.Scope{}
+	if a.org != "" {
+		read = r.Rotations().ListByAuthorityInOrg
+		op, scope = authz.OpIncidentRotationsOrg, domain.Scope{Org: a.org}
+	}
+	proof, err := az.Authorize(ctx, a.caller, op, scope)
+	if err != nil {
+		return err
+	}
+	after, seen := "", 0
+	for {
+		rows, err := read(ctx, proof, target, after, authz.MaxIncidentPage)
+		if err != nil {
+			return err
+		}
+		for _, x := range rows {
+			if seen >= maxSourceItems {
+				c.truncated(domain.OwnerRotationHalt, a.scopeID, scope)
+				return nil
+			}
+			seen++
+			c.add(domain.OwnerRotationHalt, domain.ObjectKindRotation, x.ID,
+				domain.Scope{Org: domain.OrgID(x.OrgID), Project: domain.ProjectID(x.ProjectID), Env: domain.EnvID(x.EnvironmentID)}, true)
+		}
+		if len(rows) < authz.MaxIncidentPage {
+			return nil
+		}
+		after = rows[len(rows)-1].ID
+	}
+}
+
 // collect runs every proofless reader the target's scope names, inside the
 // authorizing transaction, and records which tenant readers still have to run.
 func (s *Incidents) collect(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time) (*collector, error) {
@@ -227,7 +266,9 @@ func (s *Incidents) collect(ctx context.Context, r store.Repos, az *authz.TxAuth
 	var err error
 	switch a.kind {
 	case domain.IncidentScopeAccount:
-		err = s.collectAccount(ctx, az, a, now, c)
+		if err = s.collectAccount(ctx, az, a, now, c); err == nil {
+			err = pageRotationsByAuthority(ctx, r, az, a, domain.PrincipalID(a.scopeID), c)
+		}
 	case domain.IncidentScopeOrg:
 		err = s.collectOrg(ctx, az, a, now, c)
 	case domain.IncidentScopeProject:
@@ -271,6 +312,18 @@ func (s *Incidents) collectAccount(ctx context.Context, az *authz.TxAuthorizer, 
 		}
 	}
 	c.census = IncidentCensus{Grants: len(grants), Rules: len(ruleIDs)}
+
+	// The target itself is contained first: the principal state is what fences
+	// sign-in and every later mint, and release never revives the rest.
+	if _, err := az.AccountByPrincipal(ctx, target); err == nil {
+		ok, err := s.memberCanContain(ctx, az, a.caller, c, target)
+		if err != nil {
+			return err
+		}
+		c.add(domain.OwnerAccountContain, domain.ObjectKindAccount, string(target), instance, ok)
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
 
 	// Ending a person's sessions and delegations is the credential-reset
 	// operation the incident itself was authorized under (O2: a holder who can

@@ -1513,23 +1513,11 @@ A contained principal loads no grants, so a Gate that runs while the principal i
 (`RecordedPrincipalHolds`) refuses at the rotation's next start and halts it. Containment
 does not stop a run already past its Gate or a revoke in flight; a release of the principal never resumes it
 (`TestRotationHaltsWhenItsAuthorityIsContained`). That is containment through the existing
-seam. **Stopped, owner decision needed:** listing a principal's rotations as ledger items and
-pausing them through an owner function. What is settled: the ledger vocabulary is code-level
-(no CHECK on `owner_function` or `object_kind`), and `Incidents.Owners` has no registered
-owners yet (#1039 wires them). What is not settled: the ADR lists scheduled rotation under
-"Not decided here", and it gives no rotation effect for the org and project scopes.
-
-- A. Leave it. Containment halts by effect; the ledger does not list rotations. Cheapest;
-  the operator sees halted rotations in doctor and metrics but not on the incident.
-- B. Account scope only: add object kind `rotation` and owner function `rotation.halt`,
-  enumerate by authority principal in `collectAccount` (new store read and authz op), the
-  owner function halts with a named reason; org and project scopes ride on the accounts they
-  select. Registration of the owner stays with #1039.
-- C. B plus a project-scope item for every rotation in the project, whatever its authority.
-  Needs an ADR amendment for project scope.
-- Recommendation: B, after the owner confirms that org and project scopes inherit through
-  the accounts they select. It needs one new store read, one authz read operation and about
-  one slice of tests; none of it is in this PR.
+seam. **Decided 2026-11-23 (#1471, option B):** the incident ledger lists a contained
+account's live rotations by authority principal (object kind `rotation`) and the
+`rotation.halt` owner function halts each with the existing reason `authority_lost`. Org and
+project scopes inherit through the accounts they select. Release never resumes a halt. See the
+amendment in the [incident-containment ADR](../adr/incident-containment.md).
 
 ### Run-level hold (`revoke_refused` with `published_versions_changed`)
 

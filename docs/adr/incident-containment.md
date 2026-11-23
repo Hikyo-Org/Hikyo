@@ -383,6 +383,25 @@ banner on the amended ADR, operative when the implementation pull request merges
   and [remote-instance-pairing](./remote-instance-pairing.md): no change to their owners;
   they gain a correlated invocation from the ledger.
 
+## Amendment: scheduled rotations are an account-scope object kind (#1471)
+
+Declared amendment, owner decision of 2026-11-23 (option B), operative when the
+implementation pull request merges. [Credential rotation](../handoff/148-credential-rotation.md)
+records an authority principal on each rotation and keeps running it after that
+principal is contained, so a contained account would still have a scheduler acting in its name.
+
+- `rotation` is an account-scope ledger object kind, owned by the `rotation.halt` owner
+  function. The ledger lists a contained account's live (not disabled) rotations by
+  authority principal and halts each one.
+- Org and project scopes inherit through the accounts they select. They add no rotation
+  listing of their own: a rotation is reached when its authority account is contained.
+- Halting reuses the existing halt reason `authority_lost`, so the closed API enum does not
+  grow. The halt bumps the rotation generation, which fences in-flight runs.
+- Release never resumes a halted rotation (O4). An operator resumes it through the
+  rotation's own owner, as for any halt.
+- Authority is the account-scope containment authority: `credential-reset` at the owning
+  org, or at instance scope when the account's footprint spans several orgs.
+
 ## Not decided here
 
 - Alert-driven or automatic containment. F3 ([#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038))

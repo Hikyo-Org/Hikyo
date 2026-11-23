@@ -840,6 +840,105 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 	return items, nil
 }
 
+const rotationListByAuthorityInInstance = `-- name: RotationListByAuthorityInInstance :many
+SELECT id,org_id,project_id,environment_id,state FROM rotations WHERE authority_principal_id=$1 AND state<>'disabled' AND id > $2 ORDER BY id LIMIT $3
+`
+
+type RotationListByAuthorityInInstanceParams struct {
+	AuthorityPrincipalID string
+	AfterID              string
+	RowLimit             int32
+}
+
+type RotationListByAuthorityInInstanceRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	State         string
+}
+
+// The same page across every org, for an account whose footprint spans several.
+// hikyo:reason Instance-level incident enumeration lists the live rotation identifiers of one authority principal across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no rotation secret, key or provider detail is selected.
+// hikyo:instance-scoped
+func (q *Queries) RotationListByAuthorityInInstance(ctx context.Context, arg RotationListByAuthorityInInstanceParams) ([]RotationListByAuthorityInInstanceRow, error) {
+	rows, err := q.db.Query(ctx, rotationListByAuthorityInInstance, arg.AuthorityPrincipalID, arg.AfterID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListByAuthorityInInstanceRow
+	for rows.Next() {
+		var i RotationListByAuthorityInInstanceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationListByAuthorityInOrg = `-- name: RotationListByAuthorityInOrg :many
+SELECT id,project_id,environment_id,state FROM rotations WHERE org_id=$1 AND authority_principal_id=$2 AND state<>'disabled' AND id > $3 ORDER BY id LIMIT $4
+`
+
+type RotationListByAuthorityInOrgParams struct {
+	ChainOrg             string
+	AuthorityPrincipalID string
+	AfterID              string
+	RowLimit             int32
+}
+
+type RotationListByAuthorityInOrgRow struct {
+	ID            string
+	ProjectID     string
+	EnvironmentID string
+	State         string
+}
+
+// Incident enumeration (#1471): one org's live rotations whose recorded authority
+// principal is the contained account, in id order, ids and the state only.
+// hikyo:reason Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects.
+// hikyo:instance-scoped
+func (q *Queries) RotationListByAuthorityInOrg(ctx context.Context, arg RotationListByAuthorityInOrgParams) ([]RotationListByAuthorityInOrgRow, error) {
+	rows, err := q.db.Query(ctx, rotationListByAuthorityInOrg,
+		arg.ChainOrg,
+		arg.AuthorityPrincipalID,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListByAuthorityInOrgRow
+	for rows.Next() {
+		var i RotationListByAuthorityInOrgRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rotationListOrOwed = `-- name: RotationListOrOwed :many
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE rotations.org_id=$1 AND rotations.project_id=$2 AND rotations.environment_id=$3 AND (rotations.state<>'disabled' OR EXISTS (SELECT 1 FROM rotation_runs owed WHERE owed.rotation_id=rotations.id AND owed.org_id=rotations.org_id AND owed.project_id=rotations.project_id AND owed.environment_id=rotations.environment_id AND owed.phase IN ('revoke_refused','quarantine'))) AND rotations.id > $4 ORDER BY rotations.id LIMIT $5
 `

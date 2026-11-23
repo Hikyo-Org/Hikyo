@@ -1098,10 +1098,11 @@ var registry = map[EventType]TypeSpec{
 	EventPrivacySubjectRestricted: privacySubjectSpec,
 	EventPrivacySubjectErased:     privacySubjectSpec,
 
-	EventIncidentOpened:      incidentSpecs[EventIncidentOpened],
-	EventIncidentItemIntent:  incidentSpecs[EventIncidentItemIntent],
-	EventIncidentItemOutcome: incidentSpecs[EventIncidentItemOutcome],
-	EventIncidentClosed:      incidentSpecs[EventIncidentClosed],
+	EventIncidentOpened:             incidentSpecs[EventIncidentOpened],
+	EventIncidentItemIntent:         incidentSpecs[EventIncidentItemIntent],
+	EventIncidentItemOutcome:        incidentSpecs[EventIncidentItemOutcome],
+	EventIncidentClosed:             incidentSpecs[EventIncidentClosed],
+	EventIncidentPrincipalContained: incidentSpecs[EventIncidentPrincipalContained],
 
 	EventGrantDenied: {
 		SchemaVersion: 1,
