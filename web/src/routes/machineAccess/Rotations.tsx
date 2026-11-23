@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useProjectKeys } from '../../api/adapters.ts';
 import type { DynamicProvider } from '../../api/dynamic.ts';
@@ -36,6 +36,7 @@ import { Dialog } from '../../ui/Dialog.tsx';
 import { Input } from '../../ui/Input.tsx';
 import { Breakable, NamedId } from '../../ui/NamedId.tsx';
 import { Select } from '../../ui/Select.tsx';
+import { TableScroll } from '../../ui/TableScroll.tsx';
 import { Ceremony } from '../Ceremony.tsx';
 import { useProtectedPublishCeremony } from '../useProtectedPublishCeremony.ts';
 import { NoEnvironments, type EnvironmentsRead } from './EnvironmentsRead.tsx';
@@ -178,6 +179,7 @@ function RotationList({
   environmentName: string;
   providers: readonly DynamicProvider[];
 }) {
+  const rotationsCaptionId = useId();
   const [includeDisabled, setIncludeDisabled] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [acting, setActing] = useState<{ verb: ActVerb; rotation: Rotation } | 'create' | null>(null);
@@ -246,9 +248,9 @@ function RotationList({
       ) : null}
 
       {query.isSuccess && rotations.length > 0 ? (
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={rotationsCaptionId}>
           <table className="values__table machine__table rotations__table table--cards">
-            <caption className="visually-hidden">
+            <caption id={rotationsCaptionId} className="visually-hidden">
               The environment&apos;s credential rotations. No credential is listed.
             </caption>
             <thead>
@@ -399,7 +401,7 @@ function RotationList({
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       ) : null}
       {query.isSuccess && rotations.length === 0 ? (
         <p role="status">
@@ -856,6 +858,7 @@ function CreateRotationDialog({
  * that matter most, those still owing a provider role a drop, can be old.
  */
 function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: Rotation; name: string }) {
+  const runsCaptionId = useId();
   const query = useRotationRuns(env, rotation.id);
   const { hasNextPage, isFetching, isError, fetchNextPage } = query;
   const pages = query.data?.pages.length ?? 0;
@@ -902,9 +905,9 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
         <p role="status">This rotation has not run yet.</p>
       ) : null}
       {runs.length > 0 ? (
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={runsCaptionId}>
           <table className="values__table machine__table rotations__table table--cards">
-            <caption className="visually-hidden">
+            <caption id={runsCaptionId} className="visually-hidden">
               Runs of this rotation, newest first. Error codes are fixed words, never provider detail.
             </caption>
             <thead>
@@ -972,7 +975,7 @@ function RunTimeline({ env, rotation, name }: { env: EnvironmentRef; rotation: R
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       ) : null}
       <p className="machine__footnote">
         Adapter targets not converged counts adapter (sync) targets only: a machine that reads the

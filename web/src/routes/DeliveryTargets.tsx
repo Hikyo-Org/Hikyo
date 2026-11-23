@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Link } from 'react-router';
 
 import {
@@ -8,6 +9,7 @@ import {
 import type { ProjectRef, ServiceAccount } from '../api/identities.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { relativeAge } from './history-state.ts';
 
 /**
@@ -96,6 +98,8 @@ export function DeliveryTargetsPanel({
   accounts: readonly ServiceAccount[];
   now: Date;
 }) {
+  const reportersCaptionId = useId();
+  const targetsCaptionId = useId();
   const nameOf = (principal: string) =>
     accounts.find((account) => account.principal_id === principal)?.name ?? principal;
   const groups = groupTargets(view.reports);
@@ -156,9 +160,9 @@ export function DeliveryTargetsPanel({
             : 'unknown'}
         </p>
       ) : (
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={reportersCaptionId}>
           <table className="values__table machine__table">
-            <caption className="visually-hidden">
+            <caption id={reportersCaptionId} className="visually-hidden">
               Per reporting service account: this server&apos;s last authenticated delivery fetch and
               any quota refusal.
             </caption>
@@ -204,7 +208,7 @@ export function DeliveryTargetsPanel({
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
 
       <h3>Reported by controllers</h3>
@@ -221,9 +225,9 @@ export function DeliveryTargetsPanel({
               {', namespace '}
               <code className="mono">{group.namespace}</code>
             </h4>
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={`${targetsCaptionId}-${group.namespace}`}>
               <table className="values__table machine__table">
-                <caption className="visually-hidden">
+                <caption id={`${targetsCaptionId}-${group.namespace}`} className="visually-hidden">
                   {`Delivery targets in namespace ${group.namespace}, as their controller reported them.`}
                 </caption>
                 <thead>
@@ -271,7 +275,7 @@ export function DeliveryTargetsPanel({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </section>
         ))
       )}

@@ -25,6 +25,7 @@ import { Glyph } from '../ui/Glyph.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { ConsentKeys, consentKeys, type ConsentKey } from './ConsentScope.tsx';
@@ -235,7 +236,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                 <p>No approval policies. Changes in every environment publish directly.</p>
               ) : null}
               {policies.data !== undefined && policies.data.items.length > 0 ? (
-                <div className="table-scroll">
+                <TableScroll aria-label="Approval policies">
                   <table className="change-approvals__policies">
                     <thead>
                       <tr>
@@ -284,7 +285,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               ) : null}
 
               {formOpen ? (

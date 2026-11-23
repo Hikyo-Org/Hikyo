@@ -31,6 +31,7 @@ import { Ceremony, type CeremonyRequest } from './Ceremony.tsx';
 import { Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { duration } from '../app/duration.ts';
 import { Sep } from '../ui/Sep.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 
 /**
  * Temporary access (#152): approval-mediated, time-bound access to one
@@ -438,7 +439,7 @@ function ScopedTemporaryAccess({ org, project }: { org: string; project: string 
                 <p>No access policies. Nothing is requestable in this project yet.</p>
               ) : null}
               {isManager && policies.data.items.length > 0 ? (
-                <div className="table-scroll">
+                <TableScroll aria-label="Access policies">
                 <table className="temporary-access__policies">
                   <thead>
                     <tr>
@@ -495,7 +496,7 @@ function ScopedTemporaryAccess({ org, project }: { org: string; project: string 
                     ))}
                   </tbody>
                 </table>
-                </div>
+                </TableScroll>
               ) : null}
 
               {deletingPolicy === null ? null : (

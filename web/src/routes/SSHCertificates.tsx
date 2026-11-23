@@ -1,6 +1,6 @@
 import { isDemo } from '../demo/config.ts';
 import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { isoDay } from '../api/identities.ts';
 import {
@@ -41,6 +41,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { useMintLifecycle, type MintBoundaryFields } from './mintLifecycle.ts';
 import { duration } from '../app/duration.ts';
 import { NamedId } from '../ui/NamedId.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { DownloadLink } from '../app/DownloadLink.tsx';
 
 /**
@@ -127,6 +128,9 @@ export function SSHCertificatesPanel({
   environmentsRead: EnvironmentsRead;
   requesterOptions: readonly RequesterOption[];
 }) {
+  const casCaptionId = useId();
+  const certificatesCaptionId = useId();
+  const profilesCaptionId = useId();
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? '');
   const current = environments.find((e) => e.id === environmentId) ?? environments[0];
   const env: EnvironmentRef = { org, project, environment: current?.id ?? '' };
@@ -193,9 +197,9 @@ export function SSHCertificatesPanel({
             Create CA
           </Button>
         </div>
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={casCaptionId}>
         <table className="values__table machine__table">
-          <caption className="visually-hidden">The environment&apos;s SSH CAs and their signing keys.</caption>
+          <caption id={casCaptionId} className="visually-hidden">The environment&apos;s SSH CAs and their signing keys.</caption>
           <thead>
             <tr>
               <th scope="col">Name</th>
@@ -268,7 +272,7 @@ export function SSHCertificatesPanel({
             ))}
           </tbody>
         </table>
-        </div>
+        </TableScroll>
         {cas.isSuccess && caItems.length === 0 ? (
           <p role="status">No SSH CA in this environment yet. Create one to issue certificates.</p>
         ) : null}
@@ -287,9 +291,9 @@ export function SSHCertificatesPanel({
             Create profile
           </Button>
         </div>
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={profilesCaptionId}>
         <table className="values__table machine__table">
-          <caption className="visually-hidden">The signing profiles of this environment.</caption>
+          <caption id={profilesCaptionId} className="visually-hidden">The signing profiles of this environment.</caption>
           <thead>
             <tr>
               <th scope="col">Name</th>
@@ -335,7 +339,7 @@ export function SSHCertificatesPanel({
             ))}
           </tbody>
         </table>
-        </div>
+        </TableScroll>
 
         {profiles.isSuccess && profileItems.length === 0 ? (
           <p role="status">No SSH profile in this environment yet.</p>
@@ -355,9 +359,9 @@ export function SSHCertificatesPanel({
             Issue certificate
           </Button>
         </div>
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={certificatesCaptionId}>
         <table className="values__table machine__table">
-          <caption className="visually-hidden">
+          <caption id={certificatesCaptionId} className="visually-hidden">
             The most recent certificates. The record carries public data only; no private key is ever listed.
           </caption>
           <thead>
@@ -410,7 +414,7 @@ export function SSHCertificatesPanel({
             ))}
           </tbody>
         </table>
-        </div>
+        </TableScroll>
         {certificates.isSuccess && certificateItems.length === 0 ? (
           <p role="status">No SSH certificate issued in this environment yet.</p>
         ) : null}
