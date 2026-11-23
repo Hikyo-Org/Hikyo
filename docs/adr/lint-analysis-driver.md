@@ -93,7 +93,10 @@ The spike also established that:
    `internal/lint/handle_positions.go`, each entry with a one-line
    justification and no inline exemption markers. A test file outside the
    inventory is reported like a production file; the `badhandle` fixture
-   (`harness_test.go`) pins that. With both analyzers clean, `strictDeferred`,
+   (`harness_test.go`) pins that. The one exception is `externalTestFiles` in
+   the same file: the 10 reviewed inventory files whose package clause is
+   `<pkg>_test` may use their entry under the external test package, and every
+   other external test file stays strict. With both analyzers clean, `strictDeferred`,
    the driver test's deferred-site bookkeeping and `deferred_sites.json` were
    removed: every diagnostic in every file is now strict.)
 
