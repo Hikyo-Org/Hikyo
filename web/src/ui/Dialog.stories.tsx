@@ -140,7 +140,11 @@ export const MustAcknowledge: Story = {
     dialog.dispatchEvent(new Event('cancel', { cancelable: false }));
     await expect(args.onCancel).toHaveBeenCalled();
     dialog.close();
+    // Until it reopens the dialog is not `[open]`: the marker is what keeps a
+    // SidePanel behind it from reading the next Escape as its own (#1470).
+    await expect(dialog).toHaveAttribute('data-reopening');
     await waitFor(() => expect(dialog.matches(':modal')).toBe(true));
+    await expect(dialog).not.toHaveAttribute('data-reopening');
     // The reopen hands focus back to the control it interrupted.
     await expect(acknowledge).toHaveFocus();
   },
