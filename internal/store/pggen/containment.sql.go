@@ -139,24 +139,25 @@ func (q *Queries) GetAccountIDForContainmentSweep(ctx context.Context, principal
 }
 
 const getLatestAuthorityConsumedSince = `-- name: GetLatestAuthorityConsumedSince :one
-SELECT CAST(COALESCE(CAST(credential_authorities.consumed_at AS TEXT), '') AS TEXT) AS consumed_at FROM credential_authorities
-WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = $1) AND credential_authorities.created_at > CAST(CAST($2 AS TEXT) AS TIMESTAMPTZ)
+SELECT CAST(CASE WHEN credential_authorities.consumed_at > CAST(CAST($1 AS TEXT) AS TIMESTAMPTZ) THEN CAST(credential_authorities.consumed_at AS TEXT) ELSE '' END AS TEXT) AS consumed_at FROM credential_authorities
+WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = $2) AND credential_authorities.created_at > CAST(CAST($1 AS TEXT) AS TIMESTAMPTZ)
 ORDER BY credential_authorities.created_at DESC, credential_authorities.id DESC LIMIT 1
 `
 
 type GetLatestAuthorityConsumedSinceParams struct {
-	PrincipalID string
 	Since       string
+	PrincipalID string
 }
 
 // Release evidence (incident-containment ADR, O4 A). The newest establishment
 // authority minted for the account after its containment was recorded: consumed
 // means a credential establishment completed. A newer mint consumes older
 // outstanding authorities, so only the newest row speaks for establishment.
+// A consumption at or before the containment instant is the containment's own sweep, never an establishment, so a mint stamped after it by a skewed clock does not speak.
 // hikyo:reason Release reads the consumption time of the newest establishment authority minted for one principal's account after its containment; it returns a timestamp and no identifier or secret.
 // hikyo:authn-resolution
 func (q *Queries) GetLatestAuthorityConsumedSince(ctx context.Context, arg GetLatestAuthorityConsumedSinceParams) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestAuthorityConsumedSince, arg.PrincipalID, arg.Since)
+	row := q.db.QueryRow(ctx, getLatestAuthorityConsumedSince, arg.Since, arg.PrincipalID)
 	var consumed_at string
 	err := row.Scan(&consumed_at)
 	return consumed_at, err

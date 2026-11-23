@@ -135,10 +135,11 @@ WHERE p.id = sqlc.arg(principal_id)
 -- authority minted for the account after its containment was recorded: consumed
 -- means a credential establishment completed. A newer mint consumes older
 -- outstanding authorities, so only the newest row speaks for establishment.
+-- A consumption at or before the containment instant is the containment's own sweep, never an establishment, so a mint stamped after it by a skewed clock does not speak.
 -- hikyo:reason Release reads the consumption time of the newest establishment authority minted for one principal's account after its containment; it returns a timestamp and no identifier or secret.
 -- hikyo:authn-resolution
 -- name: GetLatestAuthorityConsumedSince :one
-SELECT CAST(COALESCE(CAST(credential_authorities.consumed_at AS TEXT), '') AS TEXT) AS consumed_at FROM credential_authorities
+SELECT CAST(CASE WHEN credential_authorities.consumed_at > CAST(CAST(sqlc.arg(since) AS TEXT) AS TIMESTAMPTZ) THEN CAST(credential_authorities.consumed_at AS TEXT) ELSE '' END AS TEXT) AS consumed_at FROM credential_authorities
 WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = sqlc.arg(principal_id)) AND credential_authorities.created_at > CAST(CAST(sqlc.arg(since) AS TEXT) AS TIMESTAMPTZ)
 ORDER BY credential_authorities.created_at DESC, credential_authorities.id DESC LIMIT 1;
 

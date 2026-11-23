@@ -500,13 +500,22 @@ principal is contained, so a contained account would still have a scheduler acti
   incident attested. An account with neither a password nor a linked identity is refused,
   because nothing then records a replaced way to sign in. An unmet condition is a conflict
   (`ErrReleaseNotReady`) and the principal stays contained.
-- Every path that re-establishes a contained account mints an authority row after the
-  containment: the operator reset, the break-glass reset, recovery-code consumption and a
-  federated claim of a reset authority. Containment retires outstanding authorities and
-  establishment refuses one minted before it, and the password and factor writes of a signed-in
-  session need a session a contained account cannot hold. So the signal is complete: an
-  account that was re-established has a newer consumed authority, and one that was not stays
-  contained (test: `TestIncidentReleaseAcceptsARealResetEstablishment`).
+- The ways back for a contained account are the operator reset (refused for a linked
+  account, so a linked one needs the host-local reset) and the break-glass reset. Each mints an
+  authority row after containment. Recovery-code consumption and a federated claim are not
+  reachable for a contained account: their lookups are containment-gated and refuse before
+  anything is spent or minted (tests: `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment`,
+  `TestIncidentContainedAccountRefusesFederatedClaim`). Containment retires outstanding
+  authorities and establishment refuses one minted before it, and password and factor writes of a
+  signed-in session need a session a contained account cannot hold. Only a consumption after
+  the containment instant counts: the containment sweep stamps that instant itself, so a swept
+  authority never reads as an establishment, whatever its mint clock.
+- Release is authorized as containment was: the same target classification applies, so a
+  target in several orgs needs instance scope and an instance-capability target is refused. The
+  linked-identity condition reads the target's own identities and needs an attested item for each
+  in the containing incident; an org incident lists every member's identities for that purpose.
+  An unattested enumeration-truncation row for identities holds the release. A member with an
+  identity and no password is released once its identities are attested.
 - Release revives and regrants nothing. The store setter advances the session generation
   again and retires pending proofs, and a revoked delegation stays revoked.
 - A restore lists the contained principals among the unreconciled (`Status.Contained`, shown

@@ -21,14 +21,19 @@ Local only until slice 4 merges.
   `TestIncidentReleaseNeedsEstablishmentForAPasswordAccount`,
   `TestIncidentReleaseRefusesAnAccountWithNothingToReplace`,
   `TestIncidentReleaseAcceptsARealResetEstablishment` (real reset, establish, release),
+  `TestIncidentReleaseOrgIncidentWaitsForIdentityAttestation`, `TestIncidentReleaseKeepsContainmentsOrgBound`,
+  `TestIncidentReleaseIgnoresAuthoritiesThatPredateOrWereSweptByContainment`, and the negative
+  `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment` and `...RefusesFederatedClaim`,
   `TestRestoreReconcileDoesNotLiftContainment` (real archive restore and reopen).
 
 ## Not done
 
 - No HTTP route, CLI verb or web control for release: the operator surface is a later slice.
 - The recovery rehearsal on an isolated instance is not run.
-- The establishment signal is read from the authority rows. Traced: every re-establishment
-  path of a contained account (operator reset, break-glass reset, recovery code, federated
-  claim) mints one after containment, and no path writes a credential without one (ADR slice 5).
+- The establishment signal is read from the authority rows: only a consumption after the
+  containment instant counts. The real ways back are the operator reset (refused for linked
+  accounts) and the break-glass reset; recovery-code consumption and a federated claim refuse a
+  contained account (negative tests). Release applies containment's org classification and reads
+  the target's own identities, which an org incident now lists per member.
 - Maintainer security review and the human merge gate remain required. Cross-provider review
   did not run and is not CLEAN.

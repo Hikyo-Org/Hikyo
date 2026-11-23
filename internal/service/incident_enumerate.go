@@ -569,7 +569,7 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 	if err != nil {
 		return err
 	}
-	members, reached, listed := map[domain.PrincipalID]bool{}, map[domain.PrincipalID]bool{}, 0
+	members, reached, listed, idItems := map[domain.PrincipalID]bool{}, map[domain.PrincipalID]bool{}, 0, 0
 	for i, p := range candidates {
 		if members[p] {
 			continue
@@ -590,7 +590,8 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 			break
 		}
 		reached[p] = true
-		if _, err := az.AccountByPrincipal(ctx, p); errors.Is(err, domain.ErrNotFound) {
+		account, err := az.AccountByPrincipal(ctx, p)
+		if errors.Is(err, domain.ErrNotFound) {
 			continue
 		} else if err != nil {
 			return err
@@ -603,6 +604,20 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 		}
 		listed++
 		c.add(domain.OwnerAccountContain, domain.ObjectKindAccount, string(p), scope, ok)
+		// A member's linked identities are listed too, as account scope lists them:
+		// release waits on their attestation whichever incident contained the member.
+		identities, err := az.ExternalIdentitiesForAccount(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		for _, x := range identities {
+			if idItems >= maxSourceItems {
+				c.truncated(domain.OwnerExternalIdentity, a.scopeID, scope)
+				break
+			}
+			idItems++
+			c.noRevokeOwner(domain.OwnerExternalIdentity, domain.ObjectKindExternalIdentity, x.ID, scope)
+		}
 		// Org scope inherits through the accounts it selects (#1471, option B).
 		if err := rotations.page(ctx, a, p, c); err != nil {
 			return err

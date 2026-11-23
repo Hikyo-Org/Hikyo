@@ -34,7 +34,7 @@ var RecoveryLookupRules = []RecoveryRule{
 		Module + "/internal/authz":   {"TxAuthorizer.RecoveryAccountByID"},
 	}},
 	{Name: "RecoveryAccountByPrincipal", Allowed: map[string][]string{
-		Module + "/internal/service": {"Auth.ResetCredential", "Auth.BreakGlassResetCredential"},
+		Module + "/internal/service": {"Auth.ResetCredential", "Auth.BreakGlassResetCredential", "identitiesNotAttested"},
 		Module + "/internal/authz":   {"TxAuthorizer.RecoveryAccountByPrincipal"},
 	}},
 	{Name: "GetAccountForRecovery", Allowed: map[string][]string{

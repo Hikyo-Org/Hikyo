@@ -160,6 +160,94 @@ func TestIncidentReleaseAcceptsARealResetEstablishment(t *testing.T) {
 	})
 }
 
+// An org incident lists each member's linked identities, so release waits on
+// their attestation like an account incident does, and a member with no password
+// is releasable once they are attested (no break-glass needed).
+func TestIncidentReleaseOrgIncidentWaitsForIdentityAttestation(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_rel','acc_itarget','oidc','https://idp.example.test','subject-rel','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		w.realOwners()
+		id := w.openOrg(t, incResponder)
+		w.resume(t, incResponder, id)
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("containment_state = %q, want contained", s)
+		}
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with an unattested identity = %v, want ErrReleaseNotReady", err)
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("release of a password-less member after attestation: %v", err)
+		}
+	})
+}
+
+// Release applies containment's own classification: a target in two orgs needs
+// instance scope, so the holder of one org's credential-reset cannot release it
+// even through the org incident that contained it.
+func TestIncidentReleaseKeepsContainmentsOrgBound(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_rel_b', 'usr_itarget', 'read', 'org_b', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_rel','acc_itarget','oidc','https://idp.example.test','subject-rel','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		w.realOwners()
+		id := w.openOrg(t, incInstance)
+		w.resume(t, incInstance, id)
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("containment_state = %q, want contained", s)
+		}
+		if err := w.svc.Attest(ctx, w.as(incInstance), id, w.itemIDByKey(t, incInstance, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("an org-only holder released a two-org target = %v, want not found", err)
+		}
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("a refused release changed containment_state to %q", s)
+		}
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incInstance), id, incTarget); err != nil {
+			t.Fatalf("the instance holder's release: %v", err)
+		}
+	})
+}
+
+// Only a consumption after the containment is an establishment. A reset minted
+// before containment and swept by it is not one, an authority consumed after
+// being minted before containment is not one, and neither is a mint stamped
+// after containment by a skewed clock that the containment sweep consumed.
+func TestIncidentReleaseIgnoresAuthoritiesThatPredateOrWereSweptByContainment(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		auth := authService(t, db)
+		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_itarget', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+ts+`)`)
+		if _, err := auth.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response"); err != nil {
+			t.Fatalf("reset before containment: %v", err)
+		}
+		id := w.containedIncident(t, false)
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release after a pre-containment reset was swept = %v, want ErrReleaseNotReady", err)
+		}
+		// Minted before containment, consumed after it.
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_old', `+blobLit(db, []byte("ca-old"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+farFuture+`, `+ts+`)`)
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with an authority minted before containment = %v, want ErrReleaseNotReady", err)
+		}
+		// Minted after containment on a clock ahead, then swept at the containment instant.
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_skew', `+blobLit(db, []byte("ca-skew"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, (SELECT contained_at FROM principals WHERE id = 'usr_itarget'), `+farFuture+`)`)
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with a swept skewed authority = %v, want ErrReleaseNotReady", err)
+		}
+	})
+}
+
 // A restore lists a contained principal as such, and reconciling it re-asserts
 // its grants without lifting containment: release is the separate incident act.
 func TestRestoreReconcileDoesNotLiftContainment(t *testing.T) {

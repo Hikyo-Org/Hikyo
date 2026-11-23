@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -42,8 +43,16 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 		// One answer for an unknown principal, one this incident did not
 		// contain, and the incident's own account.
 		contained, err := az.PrincipalContainedIncident(ctx, target)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return err // a serialization failure must reach the retry loop
+		}
 		if err != nil || contained != inc.ID || ownIncident(caller, inc) {
 			return domain.ErrNotFound
+		}
+		// The same classification containment ran: a target in several orgs needs
+		// instance scope, and an instance-capability target is host-local.
+		if err := authorizeReleaseTarget(ctx, az, caller, target); err != nil {
+			return err
 		}
 		at, ok, err := az.PrincipalContainedAt(ctx, target)
 		if err != nil {
@@ -65,7 +74,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 				return fmt.Errorf("%w: no credential establishment has completed since containment", ErrReleaseNotReady)
 			}
 		}
-		pending, total, err := identityItemsNotAttested(ctx, az, inc.ID)
+		pending, total, err := identitiesNotAttested(ctx, az, inc.ID, target)
 		if err != nil {
 			return err
 		}
@@ -89,9 +98,51 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 	})
 }
 
-// identityItemsNotAttested counts the incident's linked-identity items that are
-// not attested, and how many it has.
-func identityItemsNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string) (pending, total int, err error) {
+// authorizeReleaseTarget applies containment's own classification to a release:
+// an instance-capability target answers not found, one inside exactly one org
+// needs the incident capability there, and any other needs instance scope. The
+// grants that classify the target are still read while it is contained.
+func authorizeReleaseTarget(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, target domain.PrincipalID) error {
+	grants, err := az.GrantsForResetTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	footprint, err := az.PrincipalFootprintOrgs(ctx, target)
+	if err != nil {
+		return err
+	}
+	org, instanceCap, orgCount := classifyResetTarget(grants, footprint)
+	if instanceCap {
+		return domain.ErrNotFound
+	}
+	owning := domain.OrgID("")
+	if orgCount == 1 {
+		owning = domain.OrgID(org)
+	}
+	if _, err := authorizeIncidentOp(ctx, az, caller, owning); err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			return domain.ErrNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+// identitiesNotAttested reads the target's own linked identities and counts the
+// ones the incident has no attested item for, so the condition holds for an org
+// incident as well as an account one. An unattested enumeration-truncated
+// identity row counts too: the cut means identities went unlisted. total is how
+// many identities the account holds.
+func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, err error) {
+	account, err := az.RecoveryAccountByPrincipal(ctx, target)
+	if err != nil {
+		return 0, 0, err
+	}
+	identities, err := az.ExternalIdentitiesForAccount(ctx, account.ID)
+	if err != nil {
+		return 0, 0, err
+	}
+	attested, truncated := map[string]bool{}, 0
 	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, releasePageSize, false)
@@ -99,17 +150,27 @@ func identityItemsNotAttested(ctx context.Context, az *authz.TxAuthorizer, incid
 			return 0, 0, err
 		}
 		for _, it := range page {
-			if it.ObjectKind != domain.ObjectKindExternalIdentity {
+			if it.ObjectKind != domain.ObjectKindExternalIdentity && it.OwnerFunction != domain.OwnerExternalIdentity {
 				continue
 			}
-			total++
-			if it.Outcome != domain.ItemAttested {
-				pending++
+			switch {
+			case it.Reason == domain.ReasonEnumerationTruncated:
+				if it.Outcome != domain.ItemAttested {
+					truncated++
+				}
+			case it.Outcome == domain.ItemAttested:
+				attested[it.ObjectID] = true
 			}
 		}
 		if len(page) < releasePageSize {
-			return pending, total, nil
+			break
 		}
 		after = page[len(page)-1].ID
 	}
+	for _, x := range identities {
+		if !attested[x.ID] {
+			pending++
+		}
+	}
+	return pending + truncated, len(identities), nil
 }
