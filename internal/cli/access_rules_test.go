@@ -174,12 +174,17 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 		wantCode int
 		wantPost int
 		noReveal bool
+		closed   bool
+		wantErr  string
 	}{
-		{"retries_after_the_window_opens", 1, ExitOK, 2, false},
-		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false},
+		{"retries_after_the_window_opens", 1, ExitOK, 2, false, false, ""},
+		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false, false, ""},
 		// A history-only widening needs reveal-history, not reveal, so the
 		// window's can_reveal being false must not stop the ceremony.
-		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true},
+		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true, false, ""},
+		// With no window and no inline TOTP, the CLI hands the rule change to the
+		// browser rather than suggesting a reveal.
+		{"hands_a_closed_window_to_the_browser", 1, ExitAuth, 1, false, true, "complete the rule change in the browser"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posts, windows := 0, 0
@@ -190,7 +195,7 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 				case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_dev/reveal-window":
 					windows++
-					_ = jsonwire.Encode(w, apigen.RevealWindow{Live: true, CanReveal: !tc.noReveal})
+					_ = jsonwire.Encode(w, apigen.RevealWindow{Live: !tc.closed, CanReveal: !tc.noReveal})
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {
@@ -220,6 +225,9 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 			if code != tc.wantCode || posts != tc.wantPost || windows != 1 {
 				t.Fatalf("exit=%d posts=%d windows=%d, want exit=%d posts=%d windows=1; out=%s%s",
 					code, posts, windows, tc.wantCode, tc.wantPost, stdout, stderr)
+			}
+			if !strings.Contains(stderr.String(), tc.wantErr) {
+				t.Fatalf("stderr = %q, want %q", stderr, tc.wantErr)
 			}
 		})
 	}

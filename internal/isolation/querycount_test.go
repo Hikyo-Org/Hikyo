@@ -184,7 +184,7 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			{Org: orgB, Project: prjB1, Env: envB1},
 			{Org: "org_missing", Project: prjB1, Env: envB1},
 		} {
-			n, err := countedAuthorizeKey(t, db, mchA1, scope, authz.KeyByName("SHARED_KEY"), domain.ClassWorkload)
+			n, err := countedAuthorizeKey(t, db, mchA1, scope, authz.KeyByName("SHARED_KEY"), domain.ClassAutomation)
 			if !errors.Is(err, domain.ErrNotFound) {
 				t.Fatalf("machine key-aware refusal = %v, want ErrNotFound", err)
 			}

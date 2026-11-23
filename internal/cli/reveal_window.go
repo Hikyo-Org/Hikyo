@@ -166,6 +166,10 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		if d.purpose == "access" {
 			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
 		}
+		if d.authorized && d.purpose == "" {
+			return failf(ExitAuth, "a rule change that widens a machine in %s needs a reauthentication window and %s; "+
+				"complete the rule change in the browser, or raise the window with `hikyo project-settings set --env %s --reauth-window-seconds 300`", env, why, env)
+		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			if d.purpose == "publish" {
 				return failf(ExitAuth, "a publish in %s needs a reauthentication ceremony and %s: the ceremony is the browser's, "+
