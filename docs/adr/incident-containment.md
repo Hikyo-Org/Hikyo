@@ -430,6 +430,21 @@ principal is contained, so a contained account would still have a scheduler acti
 - Audit: the halt event joins the incident through the incident id as its correlation id,
   like every other owner event.
 
+### Operator surface (slice 4)
+
+- An owner that refuses a pending item records the closed reason `owner_failed` on the row, so
+  `pending/owner_failed` (refused) differs from `pending/` (not yet run). An unknown or blocked
+  item keeps the reason it has. Resume still runs a refused item again and a later confirmation
+  writes `done` with no reason. The reason vocabulary already held the word, so there is no
+  migration.
+- A rotation item's state is read from the live rotation when the page is built and is never
+  stored, so it cannot go stale. A rotation the caller cannot read shows no state, and one that
+  no longer exists shows `gone`.
+- The API adds six operations (revision 21): open, show, list items, resume, attest and close.
+  Each dispatches between the org and instance incident operations inside the service, like
+  credential reset, so the routes are human-session only and carry no single contract operation.
+  The CLI verb is `hikyo incident` and the web surface is Incidents at `/orgs/:org/incidents`.
+
 ## Not decided here
 
 - Alert-driven or automatic containment. F3 ([#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038))

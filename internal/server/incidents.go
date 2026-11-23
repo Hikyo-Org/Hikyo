@@ -17,10 +17,18 @@ import (
 // defaultIncidentPage is the item page size when the request names none.
 const defaultIncidentPage = 100
 
-// count narrows one outcome count; a ledger holds far fewer than 2^31 items.
-func count(v service.IncidentView, o domain.ItemOutcome) int32 {
-	return int32(min(v.Counts[o], math.MaxInt32))
+// clamp32 narrows a ledger count; a ledger holds far fewer than 2^31 items.
+func clamp32(n int64) int32 {
+	if n < 0 {
+		return 0
+	}
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(n)
 }
+
+func count(v service.IncidentView, o domain.ItemOutcome) int32 { return clamp32(v.Counts[o]) }
 
 func wireIncident(v service.IncidentView) apigen.Incident {
 	inc := v.Incident
@@ -42,7 +50,7 @@ func wireIncident(v service.IncidentView) apigen.Incident {
 	}
 	if v.Reopened {
 		out.Reopened = &v.Reopened
-		added := int32(v.Added)
+		added := clamp32(int64(v.Added))
 		out.Added = &added
 	}
 	return out
@@ -136,8 +144,8 @@ func (a *API) ResumeIncident(ctx context.Context, req apigen.ResumeIncidentReque
 		return nil, err
 	}
 	return apigen.ResumeIncident200JSONResponse(apigen.IncidentResumeResult{
-		Examined: int32(r.Examined), Confirmed: int32(r.Confirmed), Unconfirmed: int32(r.Unconfirmed),
-		Failed: int32(r.Failed), Blocked: int32(r.Blocked), Stale: int32(r.Stale), Skipped: int32(r.Skipped),
+		Examined: clamp32(int64(r.Examined)), Confirmed: clamp32(int64(r.Confirmed)), Unconfirmed: clamp32(int64(r.Unconfirmed)),
+		Failed: clamp32(int64(r.Failed)), Blocked: clamp32(int64(r.Blocked)), Stale: clamp32(int64(r.Stale)), Skipped: clamp32(int64(r.Skipped)),
 	}), nil
 }
 
