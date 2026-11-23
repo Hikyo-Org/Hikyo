@@ -140,16 +140,21 @@ func TestAllCapabilityDoesNotInventory(t *testing.T) {
 	}
 }
 
-// TestRacePlanBalancesRepository plans this repository's twelve race shards and
-// logs each predicted duration; run with -v after regenerating the weights.
+// TestRacePlanBalancesRepository plans this repository's race shards at the
+// ci.yml count and logs each predicted duration; run with -v after
+// regenerating the weights.
 func TestRacePlanBalancesRepository(t *testing.T) {
 	packages, err := listPackages("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	shards, err := planRace(packages, 12)
+	shards, err := planRace(packages, raceShardCount(t))
 	if err != nil {
 		t.Fatal(err)
+	}
+	relative := map[string]string{}
+	for _, pkg := range packages {
+		relative[pkg.ImportPath] = pkg.relativePath
 	}
 	limit := raceShardJobSeconds(t)
 	if timeout := raceGoTestTimeoutSeconds(t); raceInvocationBudgetSeconds > timeout/2 {
@@ -157,12 +162,13 @@ func TestRacePlanBalancesRepository(t *testing.T) {
 	}
 	total, longest := 0.0, 0.0
 	for index, shard := range shards {
-		t.Logf("shard %d: predicted %.0fs (sequential %.0fs, pool %.0fs, longest pool entry %.0fs)",
-			index, shard.cost(), shard.sequential, shard.pool, shard.longest)
+		wall := raceShardWallSeconds(shard, relative)
+		t.Logf("shard %d: predicted %.0fs (sequential %.0fs, pool %.0fs, longest pool entry %.0fs), scheduled wall %.0fs",
+			index, shard.cost(), shard.sequential, shard.pool, shard.longest, wall)
 		total += shard.cost()
 		longest = max(longest, shard.cost())
-		if planned := shard.cost() + raceJobOverheadSeconds; planned > limit {
-			t.Errorf("shard %d plans %.0fs with job overhead, over the %.0fs race_shard job timeout", index, planned, limit)
+		if planned := wall*raceVarianceFactor + raceJobOverheadSeconds; planned > limit {
+			t.Errorf("shard %d schedules %.0fs, %.0fs with variance and job overhead, over the %.0fs race_shard job timeout", index, wall, planned, limit)
 		}
 		// The budget fallback is silent; fail here so a recalibration that
 		// saturates it splits the package or adds race shards instead.
@@ -175,6 +181,54 @@ func TestRacePlanBalancesRepository(t *testing.T) {
 	if mean := total / float64(len(shards)); longest > mean*1.1 {
 		t.Fatalf("longest shard predicts %.0fs, over 110%% of the %.0fs mean", longest, mean)
 	}
+}
+
+// raceVarianceFactor covers hosted run-to-run spread: one unchanged
+// internal/app target list took 779 s to over 1200 s, single invocations ran
+// 0.44 to 1.76 times their weights, and merge group 45168962693's race shard 6
+// ran about 1.2 times its scheduled wall until the job timeout cancelled it.
+const raceVarianceFactor = 1.5
+
+// raceShardWallSeconds schedules a shard the way test-race-packages.sh runs it:
+// unfiltered packages and the concurrent split suites through xargs -P 2 in
+// shard order, each on the first free lane, then the filtered app and service
+// suites one at a time. Every invocation pays raceProcessSetupSeconds.
+func raceShardWallSeconds(shard raceShard, relative map[string]string) float64 {
+	var lanes [2]float64
+	serial := 0.0
+	for _, line := range raceShardLines(shard) {
+		path, _, _ := strings.Cut(line, "\t")
+		seconds := shard.seconds[path] + raceProcessSetupSeconds
+		if raceSequentialSuites[relative[path]] {
+			serial += seconds
+			continue
+		}
+		free := 0
+		if lanes[1] < lanes[0] {
+			free = 1
+		}
+		lanes[free] += seconds
+	}
+	return max(lanes[0], lanes[1]) + serial
+}
+
+// raceShardCount reads the race_count the analysis_shards step passes to the
+// planner in ci.yml.
+func raceShardCount(t *testing.T) int {
+	t.Helper()
+	workflow, err := os.ReadFile("../../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := regexp.MustCompile(`(?m)^\s*race_count=(\d+)$`).FindAllSubmatch(workflow, -1)
+	if len(matches) != 1 {
+		t.Fatal("ci.yml must set race_count exactly once")
+	}
+	count, err := strconv.Atoi(string(matches[0][1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
 
 // raceJobOverheadSeconds allows for race_shard steps outside test-race-packages.sh
@@ -286,5 +340,23 @@ func TestRacePlanKeepsInvocationsWithinBudget(t *testing.T) {
 	reversed := []raceShard{place(peer, 2000), place(app, raceInvocationBudgetSeconds-50)}
 	if got := bestRaceShard(reversed, raceUnit{pkg: app, seconds: 100}); got != 0 {
 		t.Fatalf("cheaper over-budget shard took the target from fitting shard 0: got %d", got)
+	}
+}
+
+// Two xargs lanes take entries in shard order, each on the first free lane,
+// and the filtered app suite runs after them; cost() would allow only 695 s
+// for this pool, but the scheduled lanes end at 780 s.
+func TestRaceShardWallSecondsFollowsTheScheduler(t *testing.T) {
+	shard := raceShard{seconds: map[string]float64{}, targets: map[string][]string{}}
+	relative := map[string]string{}
+	for path, seconds := range map[string]float64{"a": 450, "b": 400, "c": 340, "d": 120, "internal/app": 300} {
+		pkg := &packageInfo{ImportPath: "example/" + path, relativePath: path}
+		relative[pkg.ImportPath] = path
+		shard = shard.with(raceUnit{pkg: pkg, seconds: seconds})
+		shard.seconds[pkg.ImportPath] += seconds
+	}
+	// Lanes: a 470, b 420, then c joins b (780) and d joins a (610).
+	if got, want := raceShardWallSeconds(shard, relative), 780.0+320; got != want {
+		t.Fatalf("scheduled wall = %v, want %v", got, want)
 	}
 }
