@@ -292,6 +292,16 @@ func TestGitHubWriteNamesSignal(t *testing.T) {
 	}
 }
 
+func TestGitHubReadNamesSignal(t *testing.T) {
+	recordReadWaits(t)
+	fakeGH(t, `kill -KILL $$`)
+	var result map[string]any
+	err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result)
+	if err == nil || !strings.Contains(err.Error(), "command signal: killed") {
+		t.Fatalf("read failure did not name the signal: %v", err)
+	}
+}
+
 func TestStderrHTTPStatus(t *testing.T) {
 	for _, tc := range []struct {
 		name, stderr string
