@@ -37,5 +37,9 @@
    `tls_mode` (v1.0.0 and later do). Then re-run deploy-preview and update the "Trust bundle"
    section of `docs/handoffs/hikyo-migration.md`.
 3. DBugIT (hikyo.dbugit.io): done for CI on 2026-11-23 (DBugIT PR #832; the
-   Delivery `ci` bundle is `system-ca`). The VU host still needs the pinned CLI
-   and the `system-ca` `hikyo-trust.json` before the December re-key.
+   Delivery `ci` bundle is `system-ca`). The VU host is not repaired yet: its
+   release driver sources `scripts/lib/hikyo.sh` from the tag it releases, and
+   the live tag (v3.4.1) still requires `spki_pin`. Before the December
+   re-key, release a tag that contains PR #832, install the pinned CLI, and
+   only then replace `hikyo-trust.json` with the `system-ca` form. A rollback
+   to a tag without #832 needs the pinned file back.
