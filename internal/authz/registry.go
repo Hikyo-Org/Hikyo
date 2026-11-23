@@ -1001,6 +1001,9 @@ const (
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
 	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
 	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+	// StoreDynamicLeasesPurgeEnvironment removes a deleted environment's terminal
+	// lease and effect rows, refusing while a lease is live (#1420).
+	StoreDynamicLeasesPurgeEnvironment StoreOp = "dynamic.PurgeEnvironment"
 
 	// Scheduled credential rotation configuration (#148, S1). Proof-carrying,
 	// environment-bound; the run state machine (S2) adds its own ops.
@@ -1125,6 +1128,9 @@ const (
 	StorePKICertificatesCountLive       StoreOp = "pki.CountLiveCertificates"
 	StorePKICertificatesRevokeLive      StoreOp = "pki.RevokeLiveCertificates"
 	StorePKICertificatesRevokedEntries  StoreOp = "pki.RevokedEntries"
+	// StorePKICertificatesPurgeEnvironment removes a deleted environment's
+	// certificate rows, refusing while one is live (#1420).
+	StorePKICertificatesPurgeEnvironment StoreOp = "pki.PurgeEnvironment"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -2634,7 +2640,11 @@ var operationTable = map[Operation]opSpec{
 			// Rotation rows (#148) go with it too, but only once no rotation
 			// is live and no run is in flight: the purge refuses otherwise.
 			StoreRotationsPurgeEnvironment: true,
-			StoreEnvironmentsDelete:        true, StoreAuditTenantInsert: true,
+			// Terminal dynamic leases and expired certificates go with it (#1420);
+			// a live lease or certificate refuses the delete.
+			StoreDynamicLeasesPurgeEnvironment:   true,
+			StorePKICertificatesPurgeEnvironment: true,
+			StoreEnvironmentsDelete:              true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
@@ -2986,8 +2996,10 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreRotationsPurgeEnvironment: true,
-			StoreDefinitionsPlanGet:        true, StoreDefinitionsPlanApply: true,
+			StoreRotationsPurgeEnvironment:       true,
+			StoreDynamicLeasesPurgeEnvironment:   true,
+			StorePKICertificatesPurgeEnvironment: true,
+			StoreDefinitionsPlanGet:              true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,

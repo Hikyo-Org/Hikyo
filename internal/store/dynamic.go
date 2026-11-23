@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -150,6 +151,11 @@ type DynamicRepo interface {
 	FinishMint(ctx context.Context, p authz.Proof, mutation DynamicLeaseFinishMint) error
 	EnqueueTransition(ctx context.Context, p authz.Proof, mutation DynamicLeaseTransition) (DynamicLease, error)
 	ReencryptProvider(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
+	// PurgeEnvironment removes the proof's environment's lease and effect rows
+	// as part of the environment delete, once none is live. It is a
+	// *LiveRowsError (ErrDynamicLiveLease) while a lease is not revoked,
+	// expired or failed: its provider role would be orphaned.
+	PurgeEnvironment(ctx context.Context, p authz.Proof) error
 }
 
 type dynamicQueries struct {
@@ -417,4 +423,27 @@ func (r dynamicQueries) ListProvidersForReencrypt(ctx context.Context, p authz.P
 		return nil, err
 	}
 	return r.queries.dynamicListProvidersForReencrypt(ctx, chain, cursor, limit)
+}
+
+// ErrDynamicLiveLease refuses an environment delete while a lease in it is not
+// terminal (revoked, expired or failed): the provider role it pins must be
+// revoked first, never orphaned.
+var ErrDynamicLiveLease = fmt.Errorf("%w: the environment still has a live dynamic lease; revoke it first", ErrConflict)
+
+func (r dynamicQueries) PurgeEnvironment(ctx context.Context, p authz.Proof) error {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeasesPurgeEnvironment, r.tok)
+	if err != nil {
+		return err
+	}
+	if chain.Env == "" {
+		return ErrNotFound
+	}
+	ids, err := r.queries.dynamicListLiveLeaseIDsForEnvironment(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrDynamicLiveLease, ids)
+	}
+	return r.queries.dynamicPurgeEnvironment(ctx, chain)
 }

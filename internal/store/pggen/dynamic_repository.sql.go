@@ -533,6 +533,45 @@ func (q *Queries) DynamicListLeasesForEnvironment(ctx context.Context, arg Dynam
 	return items, nil
 }
 
+const dynamicListLiveLeaseIDsForEnvironment = `-- name: DynamicListLiveLeaseIDsForEnvironment :many
+SELECT id FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state NOT IN ('revoked','expired','failed') ORDER BY id LIMIT $4
+`
+
+type DynamicListLiveLeaseIDsForEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RowLimit     int32
+}
+
+// Environment delete (#1420): the leases that are not revoked, expired or failed
+// still pin a provider role, so they refuse the delete; the terminal ones and
+// their effects are purged with it.
+func (q *Queries) DynamicListLiveLeaseIDsForEnvironment(ctx context.Context, arg DynamicListLiveLeaseIDsForEnvironmentParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, dynamicListLiveLeaseIDsForEnvironment,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const dynamicListNonTerminalLeasesInInstance = `-- name: DynamicListNonTerminalLeasesInInstance :many
 SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE state NOT IN ('revoked','expired','failed') AND id > $1 ORDER BY id LIMIT $2
 `
@@ -746,6 +785,36 @@ func (q *Queries) DynamicProviderCredentialCiphertext(ctx context.Context, arg D
 	var admin_credential_ciphertext []byte
 	err := row.Scan(&admin_credential_ciphertext)
 	return admin_credential_ciphertext, err
+}
+
+const dynamicPurgeEffectsForEnvironment = `-- name: DynamicPurgeEffectsForEnvironment :exec
+DELETE FROM dynamic_effects WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type DynamicPurgeEffectsForEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) DynamicPurgeEffectsForEnvironment(ctx context.Context, arg DynamicPurgeEffectsForEnvironmentParams) error {
+	_, err := q.db.Exec(ctx, dynamicPurgeEffectsForEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const dynamicPurgeLeasesForEnvironment = `-- name: DynamicPurgeLeasesForEnvironment :exec
+DELETE FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type DynamicPurgeLeasesForEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) DynamicPurgeLeasesForEnvironment(ctx context.Context, arg DynamicPurgeLeasesForEnvironmentParams) error {
+	_, err := q.db.Exec(ctx, dynamicPurgeLeasesForEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
 }
 
 const dynamicReencryptProvider = `-- name: DynamicReencryptProvider :execrows

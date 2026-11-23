@@ -994,6 +994,47 @@ func (q *Queries) PKIListIssuers(ctx context.Context) ([]PKIListIssuersRow, erro
 	return items, nil
 }
 
+const pKIListLiveEnvironmentCertificateIDs = `-- name: PKIListLiveEnvironmentCertificateIDs :many
+SELECT id FROM pki_certificates WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>$4 ORDER BY id LIMIT $5
+`
+
+type PKIListLiveEnvironmentCertificateIDsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Now          pgtype.Timestamptz
+	RowLimit     int32
+}
+
+// Environment delete (#1420): a certificate is live on the same terms as
+// PKICountLiveCertificates (unexpired and not failed/expired); anything else is
+// purged with the environment.
+func (q *Queries) PKIListLiveEnvironmentCertificateIDs(ctx context.Context, arg PKIListLiveEnvironmentCertificateIDsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, pKIListLiveEnvironmentCertificateIDs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Now,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pKIListProfiles = `-- name: PKIListProfiles :many
 SELECT id,name,policy,row_version,created_by,created_at,updated_at FROM pki_profiles ORDER BY name
 `
@@ -1058,6 +1099,21 @@ func (q *Queries) PKIPublishCRL(ctx context.Context, arg PKIPublishCRLParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const pKIPurgeEnvironmentCertificates = `-- name: PKIPurgeEnvironmentCertificates :exec
+DELETE FROM pki_certificates WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type PKIPurgeEnvironmentCertificatesParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) PKIPurgeEnvironmentCertificates(ctx context.Context, arg PKIPurgeEnvironmentCertificatesParams) error {
+	_, err := q.db.Exec(ctx, pKIPurgeEnvironmentCertificates, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
 }
 
 const pKIReleaseRenewal = `-- name: PKIReleaseRenewal :execrows

@@ -70,3 +70,15 @@ SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_l
 -- hikyo:instance-scoped
 -- name: DynamicListNonTerminalLeasesInInstance :many
 SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE state NOT IN ('revoked','expired','failed') AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- Environment delete (#1420): the leases that are not revoked, expired or failed
+-- still pin a provider role, so they refuse the delete; the terminal ones and
+-- their effects are purged with it.
+-- name: DynamicListLiveLeaseIDsForEnvironment :many
+SELECT id FROM dynamic_leases WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state NOT IN ('revoked','expired','failed') ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- name: DynamicPurgeEffectsForEnvironment :exec
+DELETE FROM dynamic_effects WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);
+
+-- name: DynamicPurgeLeasesForEnvironment :exec
+DELETE FROM dynamic_leases WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);

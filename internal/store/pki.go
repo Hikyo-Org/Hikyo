@@ -211,6 +211,12 @@ type PKIRepo interface {
 	ReleaseRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error)
 	RevokeCertificate(ctx context.Context, p authz.Proof, id, reason string, at time.Time) (bool, error)
 	IssuerForSigning(ctx context.Context, p authz.Proof, id string) (PKIIssuer, []byte, uint32, error)
+	// PurgeEnvironmentCertificates removes the proof's environment's certificate
+	// rows as part of the environment delete, once none is live (the
+	// CountLiveCertificates definition: unexpired and not failed or expired, so
+	// a revoked certificate stays until its CRL entry lapses). It is a
+	// *LiveRowsError (ErrPKILiveCertificate) otherwise.
+	PurgeEnvironmentCertificates(ctx context.Context, p authz.Proof, now time.Time) error
 }
 
 // PKIRevokedEntry is one serial a CRL lists.
@@ -669,4 +675,25 @@ func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, re
 		err = r.db.pkiStoreQueries().pkiBumpCertificateRevocation(ctx, id)
 	}
 	return changed, err
+}
+
+// ErrPKILiveCertificate refuses an environment delete while a certificate in it
+// is still live: deleting its row would drop a revoked serial from the CRL or
+// forget an issuance that may still be valid.
+var ErrPKILiveCertificate = fmt.Errorf("%w: the environment still has a live certificate; revoke it and let it expire first", ErrConflict)
+
+func (r pkiQueries) PurgeEnvironmentCertificates(ctx context.Context, p authz.Proof, now time.Time) error {
+	chain, err := authz.Verify(p, authz.StorePKICertificatesPurgeEnvironment, r.tok)
+	if err != nil {
+		return err
+	}
+	q := r.db.pkiStoreQueries()
+	ids, err := q.pkiListLiveEnvironmentCertificateIDs(ctx, chain, now, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrPKILiveCertificate, ids)
+	}
+	return q.pkiPurgeEnvironmentCertificates(ctx, chain)
 }

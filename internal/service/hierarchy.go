@@ -1143,6 +1143,9 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		if err := purgeEnvironmentRotations(ctx, r, p); err != nil {
 			return err
 		}
+		if err := purgeEnvironmentLiveRows(ctx, r, p); err != nil {
+			return err
+		}
 		if err := r.SSH().PurgeEnvironment(ctx, p); err != nil {
 			return err
 		}
