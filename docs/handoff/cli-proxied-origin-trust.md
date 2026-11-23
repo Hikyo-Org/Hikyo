@@ -36,6 +36,6 @@
    DBugIT's repair below does. Confirm its pinned CLI release supports
    `tls_mode` (v1.0.0 and later do). Then re-run deploy-preview and update the "Trust bundle"
    section of `docs/handoffs/hikyo-migration.md`.
-3. DBugIT (hikyo.dbugit.io): apply the
-   [system-ca consumer repair](966-dbugit-system-ca-repair.md) and switch its
-   bundle the same way before the December re-key.
+3. DBugIT (hikyo.dbugit.io): done for CI on 2026-11-23 (DBugIT PR #832; the
+   Delivery `ci` bundle is `system-ca`). The VU host still needs the pinned CLI
+   and the `system-ca` `hikyo-trust.json` before the December re-key.

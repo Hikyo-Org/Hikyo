@@ -202,7 +202,8 @@ egress proxies out of runners that use it.
 1. Add CAA records for the zone that allow only the CAs the proxy issues from.
    For Cloudflare, take the list from its current documentation.
 2. Replace the protected bundle with the `system-ca` form, keeping its `name`
-   and `origin` and removing `spki_pin`:
+   and `origin` and removing `spki_pin`. Keep an existing `tls_profile`
+   unchanged, and leave it out if the bundle had none:
 
    ```json
    {"name": "ci", "origin": "https://secrets.example.com", "tls_mode": "system-ca"}
