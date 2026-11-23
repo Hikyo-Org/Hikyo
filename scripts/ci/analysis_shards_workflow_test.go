@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,42 @@ func normalizeCompleteShardPlanning(job map[string]any) error {
 		return fmt.Errorf("complete shard planning step is missing")
 	}
 	return nil
+}
+
+// withoutRacePlacement replaces race_plan with its sorted package/target units.
+// The frozen legacy planner keeps the race weights of its era, so only the
+// weight-driven placement of units on shards may differ from the current
+// planner; every other output and the complete set of race units must match.
+func withoutRacePlacement(t *testing.T, outputs map[string]json.RawMessage) map[string]json.RawMessage {
+	t.Helper()
+	var shards [][]string
+	if err := json.Unmarshal(outputs["race_plan"], &shards); err != nil {
+		t.Fatal(err)
+	}
+	units := []string{}
+	for _, shard := range shards {
+		for _, line := range shard {
+			path, filter, _ := strings.Cut(line, "\t")
+			if filter == "" {
+				units = append(units, path)
+				continue
+			}
+			for _, target := range strings.Split(strings.TrimSuffix(strings.TrimPrefix(filter, "^("), ")$"), "|") {
+				units = append(units, path+"\t"+target)
+			}
+		}
+	}
+	sort.Strings(units)
+	encoded, err := json.Marshal(units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalized := map[string]json.RawMessage{}
+	for key, value := range outputs {
+		normalized[key] = value
+	}
+	normalized["race_plan"] = encoded
+	return normalized
 }
 
 func TestCompleteShardWorkflowProvenanceAndMigration(t *testing.T) {
@@ -200,7 +237,7 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			actual := runScenario(t, scenario)
-			if scenario.wantSuccess && !reflect.DeepEqual(actual, expected) {
+			if scenario.wantSuccess && !reflect.DeepEqual(withoutRacePlacement(t, actual), withoutRacePlacement(t, expected)) {
 				t.Fatal("legacy and bulk outputs differ on the same candidate inventory")
 			}
 		})

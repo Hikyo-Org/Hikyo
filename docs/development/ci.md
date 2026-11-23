@@ -576,15 +576,19 @@ No terminal check is reset, foreign checks are not patched, and complete
 historical scans and their existing bounds remain. These final mutable reads
 are not an atomic GitHub authority transaction.
 
-Race weights are recalibrated from all twelve JSON timing artifacts of successful
-full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
-discovery and database serialization are unchanged. The source snapshot contains
-800 planner units, including whole-package units; this is not a test count.
-The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
-is not hosted latency proof. PR #893 bootstrap copies the planner from its
-immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
-are exercised after landing; a later legitimate full group must establish the
-approximately 35-minute target.
+Race weights are recalibrated from the twelve JSON timing artifacts of ci-dev
+run 45154290942 (2026-11-23), whose shard 9 timed out at the 30-minute job limit
+inside `internal/app`. Tests added since the 2026-10-12 calibration had no weight
+and defaulted to one second, so placement stacked slow ones on one shard. Shard 9
+was cancelled mid-invocation: its unfinished `internal/app` package elapsed and the
+seven targets it never started come from successful run 44707819137 (2026-11-20),
+and the one started-but-unfinished target is weighed by the subtests that completed,
+a lower bound. The twelve-shard count, packing, complete target discovery and
+database serialization are unchanged. The measured-cost model maximum moves from
+773 to 1191 seconds because the previously unweighted work is now counted, and the
+shards are balanced to within two seconds. This model is not hosted latency proof;
+the job limit and setup time are unchanged, and the next full ci-dev run must
+confirm the margin.
 
 Trusted-main probes demonstrated that omitting terminal reset fields retains
 completed/success and that the explicit-null candidate is rejected. Those
