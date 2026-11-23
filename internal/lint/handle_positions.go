@@ -24,8 +24,6 @@ var driverFiles = map[string]bool{
 	mcpFixtureDirectory + "lifecycle.go":                         true, // pinned cancellation/drain catalogue lock and committed claim/backend observations
 	mcpFixtureDirectory + "public.go":                            true, // pinned guarded read-only observations and bounded approved fixture catalogue lock
 	"internal/store/self_config_test.go":                         true, // admitted, isolated both-engine protected hierarchy/activation fixtures
-	"internal/isolation/floor_bench_test.go":                     true, // signed-admitted bulk fixture and independent committed-chunk observation only
-	"internal/isolation/ops_floor_test.go":                       true, // isolated admitted SQLite health accounting for native O2 acceptance
 	"internal/store/timestamps_postgres_test.go":                 true, // existing exact PostgreSQL connection timestamp regression
 	"internal/upgradegate/gate_populated_process_test.go":        true, // actual admitted transactions seed crash-recovery acceptance
 	"internal/upgradegate/configuration_test.go":                 true, // admitted old-catalogue fixture verifies read-only upgrade preview
@@ -85,7 +83,6 @@ var driverFiles = map[string]bool{
 	"internal/store/migrate/saml_migration_test.go":              true,
 	"internal/store/migrate/upgrade_test.go":                     true,
 	"internal/store/pool_test.go":                                true,
-	"internal/store/preparation.go":                              true,
 	"internal/store/recovery.go":                                 true,
 	"internal/store/restore_destination.go":                      true,
 	"internal/store/runtime_read.go":                             true,
@@ -105,18 +102,13 @@ var driverFiles = map[string]bool{
 	"internal/store/upgrade/candidate_keys_test.go":              true,
 	"internal/store/upgrade/configuration_migrate.go":            true, // exact schema-applied session owns atomic encrypted managed-data migration
 	"internal/store/upgrade/configuration_migrate_test.go":       true, // isolated both-engine migration, rollback and ciphertext preservation fixtures
-	"internal/store/upgrade/control_schema.go":                   true,
 	"internal/store/upgrade/crash_test.go":                       true,
 	"internal/store/upgrade/domain_catalog.go":                   true,
 	"internal/store/upgrade/fresh_instance.go":                   true,
 	"internal/store/upgrade/genesis.go":                          true,
 	"internal/store/upgrade/identity_consistency_test.go":        true,
-	"internal/store/upgrade/identity_unix.go":                    true,
-	"internal/store/upgrade/identity_windows.go":                 true,
 	"internal/store/upgrade/inspect_control.go":                  true,
-	"internal/store/upgrade/inspect_control_test.go":             true,
 	"internal/store/upgrade/inspection.go":                       true,
-	"internal/store/upgrade/inspection_test.go":                  true,
 	"internal/store/upgrade/ledger_test.go":                      true,
 	"internal/store/upgrade/lock.go":                             true,
 	"internal/store/upgrade/maintenance_leases.go":               true,
@@ -135,12 +127,8 @@ var driverFiles = map[string]bool{
 	"internal/store/upgrade/restore_schema_test.go":              true,
 	"internal/store/upgrade/restore_test.go":                     true,
 	"internal/store/upgrade/rollback.go":                         true, // rollback lock holds the reserved migration session and replaces the live database under it
-	"internal/store/upgrade/route_test.go":                       true,
-	"internal/store/upgrade/schema.go":                           true,
 	"internal/store/upgrade/schema_postgres.go":                  true, // canonical catalog scope on the reserved migration/admission connection; no pool access
 	"internal/store/upgrade/scratch_reset.go":                    true,
-	"internal/store/upgrade/snapshot.go":                         true,
-	"internal/store/upgrade/state.go":                            true,
 	"internal/store/upgrade/storage.go":                          true,
 	"internal/store/upgrade_source.go":                           true,
 	"internal/upgradegate/gate_test.go":                          true,
