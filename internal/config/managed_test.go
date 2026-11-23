@@ -77,6 +77,17 @@ func TestManagedSeedRefusesWhitespaceOnlyValues(t *testing.T) {
 	}
 }
 
+func TestManagedSeedRefusesAWhitespaceOnlyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "password")
+	if err := os.WriteFile(path, []byte(" \n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{ManagedInputs: map[string]string{"HIKYO_MAIL_PASSWORD_FILE": path}}
+	if _, err := cfg.ManagedSeed(); err == nil || !strings.Contains(err.Error(), "HIKYO_MAIL_PASSWORD_FILE") || strings.Contains(err.Error(), path) {
+		t.Fatalf("whitespace-only file: err = %v, want a refusal naming only the setting", err)
+	}
+}
+
 func TestManagedSeedRejectsConflictingPasswordSourcesWithoutLeakingThem(t *testing.T) {
 	cfg := &Config{ManagedInputs: map[string]string{"HIKYO_MAIL_PASSWORD": "private-value", "HIKYO_MAIL_PASSWORD_FILE": "/private/path"}}
 	_, err := cfg.ManagedSeed()

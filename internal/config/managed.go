@@ -146,7 +146,11 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 		if err != nil {
 			return nil, fmt.Errorf("%s: cannot import a regular file of at most 65536 bytes", source.file)
 		}
-		values[source.value] = schema.Normalize(content)
+		content = schema.Normalize(content)
+		if content == "" {
+			return nil, fmt.Errorf("%s must name a nonempty file", source.file)
+		}
+		values[source.value] = content
 	}
 	return values, nil
 }
