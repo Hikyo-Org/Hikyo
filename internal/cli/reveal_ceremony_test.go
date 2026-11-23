@@ -130,19 +130,38 @@ func TestRevealCeremonyOpensWindowByTOTPAndPersistsRotatedToken(t *testing.T) {
 }
 
 func TestRevealCeremonyRefusesZeroWindowNamingTheBrowserPath(t *testing.T) {
-	handler, _ := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 0, Protected: true})
-	ios, _, stderr := definitionsTestIO(t, handler)
-	ios.ReadPassword = func(string) (string, error) {
-		t.Fatal("a 0-window environment must not prompt for a code")
-		return "", nil
-	}
-	if code := cli.Run(t.Context(), ios, revealArgs()); code != cli.ExitAuth {
-		t.Fatalf("exit %d, want ExitAuth; stderr=%s", code, stderr.String())
-	}
-	for _, want := range []string{"protected environment", "ceremony is the browser's", "project-settings set --env env_70 --reauth-window-seconds"} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Errorf("refusal lacks %q: %s", want, stderr.String())
-		}
+	// Raising the window is offered only where it can help: the server caps a
+	// protected environment's window at 0 (ErrProtectedWindowCap).
+	for _, tc := range []struct {
+		name      string
+		protected bool
+		want      []string
+		lacks     []string
+	}{
+		{"protected", true, []string{"protected environment", "ceremony is the browser's"}, []string{"reauth-window-seconds"}},
+		{"zero_window", false, []string{"reveal window is 0", "ceremony is the browser's", "project-settings set --env env_70 --reauth-window-seconds"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, _ := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 0, Protected: tc.protected})
+			ios, _, stderr := definitionsTestIO(t, handler)
+			ios.ReadPassword = func(string) (string, error) {
+				t.Fatal("a 0-window environment must not prompt for a code")
+				return "", nil
+			}
+			if code := cli.Run(t.Context(), ios, revealArgs()); code != cli.ExitAuth {
+				t.Fatalf("exit %d, want ExitAuth; stderr=%s", code, stderr.String())
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("refusal lacks %q: %s", want, stderr.String())
+				}
+			}
+			for _, lack := range tc.lacks {
+				if strings.Contains(stderr.String(), lack) {
+					t.Errorf("refusal offers %q, which cannot help here: %s", lack, stderr.String())
+				}
+			}
+		})
 	}
 }
 

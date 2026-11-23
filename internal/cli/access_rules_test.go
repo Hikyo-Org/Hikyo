@@ -174,17 +174,19 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 		wantCode int
 		wantPost int
 		noReveal bool
-		closed   bool
+		window   apigen.RevealWindow
 		wantErr  string
 	}{
-		{"retries_after_the_window_opens", 1, ExitOK, 2, false, false, ""},
-		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false, false, ""},
+		{"retries_after_the_window_opens", 1, ExitOK, 2, false, apigen.RevealWindow{Live: true}, ""},
+		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false, apigen.RevealWindow{Live: true}, ""},
 		// A history-only widening needs reveal-history, not reveal, so the
 		// window's can_reveal being false must not stop the ceremony.
-		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true, false, ""},
-		// With no window and no inline TOTP, the CLI hands the rule change to the
-		// browser rather than suggesting a reveal.
-		{"hands_a_closed_window_to_the_browser", 1, ExitAuth, 1, false, true, "complete the rule change in the browser"},
+		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true, apigen.RevealWindow{Live: true}, ""},
+		// With no window and no inline TOTP, the CLI names the one step that can
+		// open a window for this cause, never a reveal or a browser rule editor.
+		{"asks_to_raise_a_zero_window", 1, ExitAuth, 1, false, apigen.RevealWindow{}, "--reauth-window-seconds 300`, then retry"},
+		{"asks_to_enroll_without_an_authenticator", 1, ExitAuth, 1, false, apigen.RevealWindow{EffectiveWindowSeconds: 300}, "enroll an authenticator in the browser, then retry"},
+		{"says_a_protected_environment_cannot_widen_yet", 1, ExitAuth, 1, false, apigen.RevealWindow{Protected: true}, "cannot be made yet"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posts, windows := 0, 0
@@ -195,7 +197,9 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 				case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_dev/reveal-window":
 					windows++
-					_ = jsonwire.Encode(w, apigen.RevealWindow{Live: !tc.closed, CanReveal: !tc.noReveal})
+					window := tc.window
+					window.CanReveal = !tc.noReveal
+					_ = jsonwire.Encode(w, window)
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {
