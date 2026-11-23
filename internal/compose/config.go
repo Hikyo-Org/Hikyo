@@ -158,9 +158,13 @@ func (c *Config) validate() error {
 	// runtime_dir is optional (the CLI resolves a default per ops-spec § 6);
 	// when set it MUST be absolute, because env_file resolves relative to the
 	// compose file and plaintext must land at a known tmpfs path, never a
-	// git-worktree-relative one.
+	// git-worktree-relative one. It must also be clean: the custody check vets
+	// the cleaned path, while the kernel resolves `..` after a symlink.
 	if c.RuntimeDir != "" && !filepath.IsAbs(c.RuntimeDir) {
 		return fmt.Errorf("hikyo-compose.yaml: `runtime_dir` %q must be an absolute path", c.RuntimeDir)
+	}
+	if c.RuntimeDir != "" && filepath.Clean(c.RuntimeDir) != c.RuntimeDir {
+		return fmt.Errorf("hikyo-compose.yaml: `runtime_dir` %q must be a clean path (no `.` or `..` segments, repeated or trailing slashes); use %q", c.RuntimeDir, filepath.Clean(c.RuntimeDir))
 	}
 	for name, tgt := range c.Targets {
 		if !targetNameGrammar.MatchString(name) {

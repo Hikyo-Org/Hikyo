@@ -13,7 +13,7 @@ cleanup() {
 	[ -z "$server" ] || kill "$server" 2>/dev/null || true
 	pkill -f "$work/probe" 2>/dev/null || true
 	for h in $seeded; do
-		security delete-generic-password -s io.hikyo.desktop -a "$h" >/dev/null 2>&1 || true
+		security delete-generic-password -s app.hikyo.desktop -a "$h" >/dev/null 2>&1 || true
 	done
 	rm -rf "$work"
 }

@@ -558,7 +558,7 @@ test.describe('multi-instance', () => {
     // B's config value is delivered in plaintext and rendered from the remote.
     // Its presence proves the matrix read reached B; the banner proves the shell
     // knows whose data it is showing.
-    await expect(page.getByText(b.value)).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.matrix-cell__value', { hasText: b.value })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('.workspace-banner')).toContainText(BASE_URL_B);
 
     // And nothing leaked to A. This is the no-proxy claim, checked at runtime
@@ -765,7 +765,7 @@ test.describe('multi-instance', () => {
         }
         if (surface.id === 'cli-reauth') {
           await expect(page.getByLabel('Authenticator code')).toBeVisible();
-          await expect(page.getByRole('button', { name: 'Authorize CLI' })).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toBeVisible();
           await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
           expect(cliTransactionReads).toBe(1);
         }

@@ -12,7 +12,7 @@ package main
 #include <string.h>
 #include <Security/Security.h>
 
-#define HIKYO_SERVICE "io.hikyo.desktop"
+#define HIKYO_SERVICE "app.hikyo.desktop"
 
 static SecKeychainRef hkLogin(void) {
 	// The passwd entry, not $HOME: the path must not depend on the environment.

@@ -123,6 +123,20 @@ func VerifyStableArtifactSignatureReader(snapshot Snapshot, release VerifiedRele
 	return err
 }
 
+// VerifyStableWorkflowBlob verifies a blob the stable release workflow signed for
+// an exact version and source commit, using the delegated policy and the pinned
+// Sigstore root. It authenticates no release manifest; callers bind the payload.
+// Only the maintainer release tool (scripts/release/stable) calls it.
+func (s Snapshot) VerifyStableWorkflowBlob(version, commit string, signature, payload []byte) error {
+	if !s.StableKeylessEnabled() {
+		return errors.New("stable keyless policy is not authorized")
+	}
+	if len(payload) > MaxDocumentBytes || len(signature) > MaxDocumentBytes {
+		return errors.New("stable workflow blob exceeds byte bound")
+	}
+	return s.state.workflowPolicy.verify(s.state.stableTrustedRoot, signature, payload, commit, "v"+version)
+}
+
 func sameDigests(a, b []releaseidentity.Digest) bool { return slices.Equal(a, b) }
 
 // cloneStableRoot prevents mutable caller-owned bytes becoming authority.

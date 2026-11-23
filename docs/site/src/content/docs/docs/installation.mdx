@@ -37,7 +37,8 @@ It distinguishes chart publication from source availability and keeps existing
 manual installations on their separate upgrade path.
 For controller ownership of a signed chart, use
 [Kubernetes GitOps](/docs/kubernetes-gitops/) for Flux and Argo CD configurations
-with exact chart pins and explicit activation. These recipes refuse stable 1.0.0.
+with exact chart pins and explicit activation. These recipes refuse the stable 1.0.0
+chart; the 1.1.0 chart carries its fixes.
 
 ## Stable downloads
 
@@ -62,9 +63,11 @@ For native installation, Compose and Helm runtime inputs, continue with
 
 <Callout type="info" title="Publication and qualification">
   The [1.0.0 release notes](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0)
-  retain platform/install, provider, MCP and operational follow-ups. A published
+  list platform/install, provider, MCP and operational follow-ups; the
+  [implementation status](/implementation-status/) tracks what remains. A published
   artifact does not establish acceptance of your deployment. Homebrew has a
-  separate tap publication step; use the verified DMG while its cask is unavailable.
+  separate tap publication step after each release; use the verified DMG until the
+  cask carries %STABLE_VERSION%.
 </Callout>
 
 ## Verify a stable bundle

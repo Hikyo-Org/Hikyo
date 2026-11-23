@@ -14,7 +14,7 @@ import (
 // included, not just payloads.
 
 // FreeTextBound is the byte bound on any single free-text field. The concrete
-// value is the operations spec's (§ 20 audit ops / row 20: free text 1 KiB),
+// value is the operations spec's (§ 20 audit ops / row 21: free text 1 KiB),
 // applied under the threat model's bounded-payload baseline.
 const FreeTextBound = 1024
 

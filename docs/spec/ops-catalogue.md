@@ -6,6 +6,8 @@
 
 The ops-spec inventory carries **two rows numbered 15** (the secret-scanning post-lock insertion collided with plans/pins/grants). Rows are referenced by *name* throughout the corpus, so no reference is ambiguous; renumbering the locked ADR's inventory is an editorial amendment under the oss-mechanics procedure, not a synthesis act — recorded here and in [open-items.md](./open-items.md), values untouched.
 
+*Corrected 2026-11-20 ([#32](https://github.com/Hikyo-Org/Hikyo/issues/32)):* the ops-spec editorial amendment renumbers the second row 15 (plans/pins/grants) and every later row by one, so the inventory now runs 15, 15a, 16 to 22; its banner maps old numbers to new.
+
 ## Authentication refusal summaries (#1034)
 
 Owner-approved 2026-10-28; operative with the
@@ -96,7 +98,7 @@ configuration bounds validated at create time; each hit is a named refusal
 
 ## GitHub adapter ([github-adapter.md](../adr/github-adapter.md) ops delegation)
 
-GitHub's own headers drive runtime pacing (the ADR's decision tree); these values size the defaults and bounds around it, composable with the adapter-outbox rows (row 19: outbox 30 s → 1 h jittered, depth 1000/target, concurrency 1/target · 4/org):
+GitHub's own headers drive runtime pacing (the ADR's decision tree); these values size the defaults and bounds around it, composable with the adapter-outbox rows (row 20: outbox 30 s → 1 h jittered, depth 1000/target, concurrency 1/target · 4/org):
 
 | Entry | Default | Scope |
 |---|---|---|

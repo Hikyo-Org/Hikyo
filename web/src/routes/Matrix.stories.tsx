@@ -8,6 +8,7 @@ import {
   zKey,
   zKeyGroupList,
   zKeyList,
+  zPendingChange,
   zPendingDraftList,
   zPersonalValueCounts,
   zPersonalValueList,
@@ -517,6 +518,273 @@ export const Populated: Story = {
   },
 };
 
+// Sentinels that must never be printed anywhere, attribute or text: a secret key
+// whose wire carries a revealed value, and a config key with a secret cell.
+const LEAK = 'leaky-secret-sentinel';
+const LEAK_CELL = 'leaky-secret-cell-sentinel';
+const tipDevValues = values(devValues.items.map((item): Values['items'][number] => {
+  if (item.key_id === keyId(6)) return { ...item, revealed: true, value: LEAK };
+  if (item.key_id === keyId(11)) return { ...item, classification: 'secret', revealed: true, value: LEAK_CELL };
+  if (item.key_id === keyId(2)) return { ...item, value: `https://${'preview-'.repeat(12)}app.example.com` };
+  return item;
+}));
+
+// A config value the cell clips shows its full text in a tip on hover and on
+// keyboard focus; one that fits shows none; Escape closes it from anywhere and
+// only one is open at a time; a secret, even one whose wire carries a revealed
+// value, puts nothing of itself anywhere in the DOM.
+export const ValueTip: Story = {
+  parameters: app([
+    ...catalogue({}),
+    ...readyRows(DEV, { values: tipDevValues, signals: devSignals, pending: devDrafts, protected: false }),
+    ...allReady,
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const tipOf = (button: HTMLElement) => {
+      const tip = button.nextElementSibling;
+      return tip instanceof HTMLElement && tip.matches('.matrix__key-tip--value') ? tip : null;
+    };
+    const flags = await canvas.findByRole('button', { name: /^FEATURE_FLAGS in development:/ });
+    const flagsValue = flags.querySelector<HTMLElement>('.matrix-cell__value');
+    if (flagsValue === null) throw new Error('value span missing');
+    flagsValue.style.width = '3ch';
+    await expect(flagsValue.scrollWidth).toBeGreaterThan(flagsValue.clientWidth);
+    const tip = tipOf(flags);
+    if (tip === null) throw new Error('tip missing');
+    await expect(tip).toHaveTextContent('checkout-v2,search-rerank');
+    await expect(tip.matches(':popover-open')).toBe(false);
+    const isOpen = () => tip.matches(':popover-open');
+    // A tap's compatibility events are not a hover.
+    flags.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'touch' }));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(isOpen()).toBe(false);
+    // A mouse hover waits a moment, so passing over cells opens nothing.
+    await userEvent.hover(flags);
+    await expect(isOpen()).toBe(false);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    // It sits within the viewport at its full width, not squeezed by the edge.
+    const box = tip.getBoundingClientRect();
+    await expect(box.width).toBeGreaterThan(150);
+    await expect(box.left).toBeGreaterThanOrEqual(0);
+    await expect(box.right).toBeLessThanOrEqual(window.innerWidth);
+    // Escape closes a hover-opened tip too.
+    await userEvent.keyboard('{Escape}');
+    await expect(isOpen()).toBe(false);
+    await userEvent.unhover(flags);
+    // Keyboard focus (the last input was a key) shows it too.
+    flags.focus();
+    await expect(tip.matches(':popover-open')).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    await expect(tip.matches(':popover-open')).toBe(false);
+    // Escape also cancels another cell's pending hover open.
+    const baseUrl = canvas.getByRole('button', { name: /^PUBLIC_BASE_URL in development:/ });
+    const baseTip = tipOf(baseUrl);
+    if (baseTip === null) throw new Error('PUBLIC_BASE_URL is not clipped');
+    // Control: an ordinary hover opens it, once the pointer has moved since the
+    // last Escape.
+    baseUrl.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    baseUrl.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    await waitFor(() => expect(baseTip.matches(':popover-open')).toBe(true));
+    baseUrl.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    await waitFor(() => expect(baseTip.matches(':popover-open')).toBe(false));
+    flags.blur();
+    flags.focus();
+    await expect(isOpen()).toBe(true);
+    baseUrl.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    await userEvent.keyboard('{Escape}');
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(baseTip.matches(':popover-open')).toBe(false);
+    baseUrl.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    flags.blur();
+    // Escape holds hover off until the pointer really moves.
+    await userEvent.hover(canvasElement);
+    await userEvent.hover(flags);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    // Pointing at the tip itself keeps it open.
+    await userEvent.hover(tip);
+    await expect(tip.matches(':popover-open')).toBe(true);
+    await userEvent.unhover(tip);
+    await expect(tip.matches(':popover-open')).toBe(false);
+    // Scrolling keeps it attached to its cell: it is fixed, so it is re-placed.
+    await userEvent.hover(flags);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    canvasElement.querySelector('.matrix__scroll')?.dispatchEvent(new Event('scroll'));
+    await expect(tip.matches(':popover-open')).toBe(true);
+    await userEvent.unhover(flags);
+
+    // Keyboard focus on a cell below the fold scrolls it into view, and the tip
+    // stays open beside it rather than closing on that scroll.
+    flags.blur();
+    const spacer = document.createElement('div');
+    spacer.style.height = '300vh';
+    canvasElement.prepend(spacer);
+    window.scrollTo(0, 0);
+    await expect(flags.getBoundingClientRect().top).toBeGreaterThan(window.innerHeight);
+    await userEvent.keyboard('{Shift}');
+    flags.focus();
+    await waitFor(() => expect(flags.getBoundingClientRect().top).toBeLessThan(window.innerHeight));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await expect(tip.matches(':popover-open')).toBe(true);
+    const [cellBox, tipBox] = [flags.getBoundingClientRect(), tip.getBoundingClientRect()];
+    const gap = Math.min(Math.abs(tipBox.top - cellBox.bottom), Math.abs(cellBox.top - tipBox.bottom));
+    await expect(gap).toBeLessThanOrEqual(1);
+    flags.blur();
+    spacer.remove();
+    await expect(tip.matches(':popover-open')).toBe(false);
+
+    // A tip that fits is not cut (no fade); one past the cap is, and scrolls.
+    await userEvent.hover(flags);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    await expect(tip).not.toHaveAttribute('data-cut');
+    const original = tip.textContent;
+    tip.style.whiteSpace = 'pre-wrap';
+    tip.textContent = 'LINE\n'.repeat(120);
+    window.dispatchEvent(new Event('resize'));
+    await waitFor(() => expect(tip).toHaveAttribute('data-cut'));
+    // Cut, not clipped: the reader can scroll it, and it stays open meanwhile.
+    tip.scrollTop = 40;
+    await waitFor(() => expect(tip.scrollTop).toBeGreaterThan(0));
+    await expect(isOpen()).toBe(true);
+    await userEvent.unhover(flags);
+    tip.style.whiteSpace = '';
+    tip.textContent = original;
+
+    // Closing the editor with the keyboard returns focus to the cell, and its tip.
+    await userEvent.keyboard('{Shift}');
+    flags.focus();
+    await waitFor(() => expect(isOpen()).toBe(true));
+    await userEvent.keyboard('{Enter}');
+    // Escape on a modal dialog is its cancel event, which the browser's own key
+    // handling would fire.
+    const editor = await waitFor(() => {
+      const open = canvasElement.querySelector('dialog[open]');
+      if (open === null) throw new Error('editor not open');
+      return open;
+    });
+    await userEvent.keyboard('{Escape}');
+    editor.dispatchEvent(new Event('cancel', { cancelable: true }));
+    await waitFor(() => expect(flags).toHaveFocus());
+    await waitFor(() => expect(isOpen()).toBe(true));
+    flags.blur();
+
+    // A cell scrolled under the sticky header keeps its tip while any of it
+    // shows (the header's cells are sticky, not its box), and loses it once the
+    // header covers the cell entirely; it returns with the cell while focused.
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    const headCell = canvasElement.querySelector<HTMLElement>('.matrix__table thead th');
+    if (scroller === null || headCell === null) throw new Error('matrix scroller missing');
+    scroller.style.maxHeight = '220px';
+    scroller.scrollTop = 0;
+    flags.focus();
+    await waitFor(() => expect(isOpen()).toBe(true));
+    // What stays pinned over a value cell: the header's cells, and under them
+    // the cell's stuck group bar, which spans the visible width.
+    // Every group bar is one height; FEATURE_FLAGS sits under the first.
+    const bar = canvasElement.querySelector<HTMLElement>('.matrix__group-row-inner');
+    if (bar === null) throw new Error('group bar missing');
+    const covered = () => headCell.getBoundingClientRect().bottom + bar.getBoundingClientRect().height;
+    const under = flags.getBoundingClientRect();
+    scroller.scrollTop += under.top - covered() + under.height * 0.8;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(flags.getBoundingClientRect().bottom).toBeGreaterThan(covered() + 1);
+    await expect(isOpen()).toBe(true);
+    scroller.scrollTop += under.height;
+    await waitFor(() => expect(isOpen()).toBe(false));
+    scroller.scrollTop = 0;
+    await waitFor(() => expect(isOpen()).toBe(true));
+    flags.blur();
+    scroller.style.maxHeight = '';
+
+    // A value that fits opens no tip.
+    const fits = canvas.getByRole('button', { name: /^PAYMENT_PROVIDER in development:/ });
+    await userEvent.hover(fits);
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(tipOf(fits)?.matches(':popover-open')).toBe(false);
+    await userEvent.unhover(fits);
+
+    // A secret key, and a config key with a secret cell: masked in the text and
+    // the accessible name, no tip, no plaintext anywhere in the DOM.
+    for (const name of [/^DATABASE_READ_REPLICA_URL in development:/, /^OTEL_EXPORTER_OTLP_ENDPOINT in development:/]) {
+      const secret = canvas.getByRole('button', { name });
+      await expect(secret.querySelector('.matrix-cell__value')).toHaveTextContent('••••••••');
+      await expect(secret).toHaveAccessibleName(/••••••••/);
+      await expect(tipOf(secret)).toBeNull();
+    }
+    await expect(canvasElement.innerHTML).not.toContain(LEAK);
+    await expect(canvasElement.innerHTML).not.toContain(LEAK_CELL);
+  },
+};
+
+// The key tip opens on keyboard focus where the name is hidden (a phone), with
+// no hover: a tap focuses without :focus-visible and keeps its first-tap preview.
+export const PhoneKeyTipFocus: Story = {
+  parameters: app([...catalogue({}), ...allReady]),
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas }) => {
+    // The runner reports (hover: hover) however narrow the viewport; a phone
+    // does not, and the tip must open on keyboard focus without it.
+    const realMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query: string) =>
+      query.includes('hover') ? realMatchMedia('not all') : realMatchMedia(query);
+    try {
+      const link = await canvas.findByRole('link', { name: 'Declaration of DATABASE_READ_REPLICA_URL, secret' });
+      const tip = link.parentElement?.querySelector('.matrix__key-tip');
+      if (tip === null || tip === undefined) throw new Error('key tip missing');
+      await expect(tip.matches(':popover-open')).toBe(false);
+      await userEvent.keyboard('{Shift}');
+      link.focus();
+      await waitFor(() => expect(tip.matches(':popover-open')).toBe(true));
+      await expect(tip).toHaveTextContent('DATABASE_READ_REPLICA_URL');
+      // A pointer passing off the link does not take the tip from keyboard focus.
+      link.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body }));
+      await expect(tip.matches(':popover-open')).toBe(true);
+      link.blur();
+      await expect(tip.matches(':popover-open')).toBe(false);
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  },
+};
+
+// Saving a value into a cell that is secret under a config key must not hand
+// the value to the config-only scan warning, even when the write returns
+// findings; the same write into a plain config cell does warn.
+const PENDING_CHANGE = (key: number, name: string, classification: 'config' | 'secret') => ({
+  version_id: VER_OWN,
+  key_id: keyId(key),
+  name,
+  classification,
+  operation: 'set',
+  staged_from_revision: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  findings: [{ rule_id: 'postgres-uri', surface: 'edit', locator: name }],
+}) satisfies z.input<typeof zPendingChange>;
+export const SecretCellScanWarning: Story = {
+  parameters: app([
+    ...catalogue({}),
+    ...readyRows(DEV, { values: tipDevValues, signals: devSignals, pending: devDrafts, protected: false }),
+    ...allReady,
+    { url: `${PROJECT_URL}/environments/${DEV}/reveal-window`, body: { effective_window_seconds: 600, protected: false, totp_offered: false, live: false, single_decision: false, can_reveal: false } },
+    { url: `${PROJECT_URL}/environments/${DEV}/values/OTEL_EXPORTER_OTLP_ENDPOINT`, method: 'PUT', body: PENDING_CHANGE(11, 'OTEL_EXPORTER_OTLP_ENDPOINT', 'config') },
+    { url: `${PROJECT_URL}/environments/${DEV}/values/PAYMENT_PROVIDER`, method: 'PUT', body: PENDING_CHANGE(10, 'PAYMENT_PROVIDER', 'config') },
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const save = async (cell: RegExp, value: string) => {
+      await userEvent.click(await canvas.findByRole('button', { name: cell }));
+      const field = await canvas.findByRole('textbox', { name: /value$/ });
+      await userEvent.clear(field);
+      await userEvent.type(field, value);
+      await userEvent.click(canvas.getByRole('button', { name: /^Save 1 draft/ }));
+    };
+    await save(/^OTEL_EXPORTER_OTLP_ENDPOINT in development:/, 'postgres://u:p@h/db');
+    await waitFor(() => expect(canvasElement.querySelector('dialog[open]')).toBeNull());
+    await expect(canvas.queryByText('Possible secret in a config value')).toBeNull();
+    await expect(canvasElement.innerHTML).not.toContain('postgres://u:p@h/db');
+    await save(/^PAYMENT_PROVIDER in development:/, 'adyen');
+    await expect(await canvas.findByText('Possible secret in a config value')).toBeVisible();
+  },
+};
+
 export const EmptyFolderSuggestion: Story = {
   parameters: app([
     ...catalogue({}), ...allReady,
@@ -835,6 +1103,15 @@ export const PhoneCollapsedGroup: Story = {
 // glyph per key; the name moves into a tap/hover popover anchored to the icon,
 // and the envs picker moves out of the now icon-only header into the head row.
 // The full name stays the link's accessible name throughout.
+// A touch tap: the click a finger produces, which a mouse click is not.
+const tap = (element: HTMLElement) =>
+  element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, pointerType: 'touch' }));
+const penTap = (element: HTMLElement) => {
+  element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen' }));
+  element.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'pen', relatedTarget: document.body }));
+  element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, pointerType: 'pen' }));
+};
+
 export const PhoneCompactKeyColumn: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas, canvasElement }) => {
@@ -848,8 +1125,19 @@ export const PhoneCompactKeyColumn: Story = {
     const realMatchMedia = window.matchMedia.bind(window);
     window.matchMedia = (query: string) =>
       query.includes('hover') || query.includes('pointer: fine')
-        ? ({ matches: false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false } as MediaQueryList)
+        ? realMatchMedia('not all')
         : realMatchMedia(query);
+    // Likewise a script-driven focus after untrusted events counts as keyboard
+    // focus here, where a real tap's does not: a keyboard focus would open the
+    // preview before the tap does. Only the key links are told otherwise.
+    const realMatches = Element.prototype.matches;
+    Object.defineProperty(Element.prototype, 'matches', {
+      configurable: true,
+      writable: true,
+      value(this: Element, selector: string) {
+        return selector === ':focus-visible' && this.classList.contains('matrix__key') ? false : realMatches.call(this, selector);
+      },
+    });
 
     try {
       const name = 'Declaration of DATABASE_READ_REPLICA_URL, secret';
@@ -870,7 +1158,7 @@ export const PhoneCompactKeyColumn: Story = {
       if (tip === null || tip === undefined) throw new Error('key tip missing');
       await expect(tip).not.toBeVisible();
       // A tap shows the name, in the popover, not by growing the column.
-      await userEvent.click(link);
+      tap(link);
       await waitFor(() => expect(tip).toBeVisible());
       await expect(tip).toHaveTextContent('DATABASE_READ_REPLICA_URL');
       await expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48);
@@ -945,16 +1233,35 @@ export const PhoneCompactKeyColumn: Story = {
       // Escape closes the name; a tap shows it again.
       await userEvent.keyboard('{Escape}');
       await waitFor(() => expect(tip).not.toBeVisible());
-      await userEvent.click(link);
+      tap(link);
       await waitFor(() => expect(tip).toBeVisible());
+      // A pen that cannot hover leaves the link before each tap's click lands:
+      // its first tap shows the name, and that leave must not hide it again.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(tip).not.toBeVisible());
+      penTap(link);
+      await waitFor(() => expect(tip).toBeVisible());
+      // A pen enters the link before it presses it, which arms the hover
+      // delay. A press held past that delay must not let the delay open the
+      // name under the pen, or the tap's click would navigate on first contact.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(tip).not.toBeVisible());
+      link.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'pen' }));
+      link.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'pen' }));
+      link.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen' }));
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      penTap(link);
+      await waitFor(() => expect(tip).toBeVisible());
+      await expect(link).toBeInTheDocument();
       // The second tap, with the name shown, opens the declaration detail: the
       // matrix route unmounts (this story mounts only the matrix route). The
       // real-touch proof (an auto popover light-dismissing between the tap's
       // pointer events and its click) is in e2e/matrix.spec.ts.
-      await userEvent.click(link);
+      penTap(link);
       await waitFor(() => expect(link).not.toBeInTheDocument());
     } finally {
       window.matchMedia = realMatchMedia;
+      Object.defineProperty(Element.prototype, 'matches', { configurable: true, writable: true, value: realMatches });
     }
   },
 };

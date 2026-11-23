@@ -235,6 +235,23 @@ func (sel Selector) holds(all, done, named *total) (bool, error) {
 	return *all.Total > *done.Total, nil
 }
 
+// Recheck refuses a commit listing that was read while head's suites grew past
+// Margin: REST lists only the newest 1000 suites, so the read could have missed
+// an older suite holding the check. Call it after reading every listing.
+func Recheck(ctx context.Context, s Source, head string, listings []string) error {
+	if len(listings) != 1 || !strings.HasPrefix(listings[0], "commits/") {
+		return nil
+	}
+	count, err := Count(ctx, s, head)
+	if err != nil {
+		return err
+	}
+	if count > Margin {
+		return fmt.Errorf("check suites on %s grew past %d during the read; retry", head, Margin)
+	}
+	return nil
+}
+
 // Listings returns the check-runs REST listings that together hold every run of
 // the named check on head, each followed by the query string the caller adds:
 // the commit's own listing while REST sees every suite, else one listing per

@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -31,6 +30,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // The Floci lane (#158): the real-AWS suite body against an emulator with IAM
@@ -432,7 +432,7 @@ func TestAWSEmulatorPolicyStripping(t *testing.T) {
 		}
 		for i, st := range after.Statement {
 			if st["Effect"] == "Deny" {
-				if !reflect.DeepEqual(st, before.Statement[i]) {
+				if !reflectx.Equal(st, before.Statement[i]) {
 					t.Fatalf("%s: a Deny statement changed", file)
 				}
 				continue

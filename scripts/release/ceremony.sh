@@ -466,6 +466,7 @@ dry_run_phase() {
 				printf '%s\n' 'Would skip the stable homebrew-tap for this prerelease.'
 			else
 				printf '%s\n' 'Would open or refresh a protected homebrew-tap PR only after public release verification.'
+				printf '%s\n' 'Would print that the desktop-v draft is published separately with publish-desktop-draft.sh.'
 			fi
 			printf '%s\n' "would require exact typed confirmation: publish $tag"
 			;;
@@ -810,8 +811,22 @@ verify_published_release_and_prepare_tap() {
 		"$published_bundle" "${HIKYO_HOMEBREW_TAP_REPOSITORY:-Hikyo-Org/homebrew-tap}"
 }
 
+# The staged desktop-v draft must verify before v can become public, matching the
+# online ceremony: a missing or failed desktop draft blocks CLI publication.
+desktop_gate() {
+	[ "$("$script_dir/release-channel.sh" "$tag")" = stable ] || return 0
+	"$script_dir/publish-desktop-draft.sh" --check-only "$repository" "$version" release/trust ||
+		fail "desktop-v$version draft is not ready: its jobs may still be running (wait for the $tag release run to finish), or failed (rerun the failed jobs; if their outputs are lost, delete the $tag draft and use Re-run all jobs); then retry"
+}
+
+# This legacy path never publishes the desktop-v draft; the maintainer must.
+desktop_followup() {
+	[ "$("$script_dir/release-channel.sh" "$tag")" = stable ] || return 0
+	printf 'The desktop app is not published by this path. Now run, from the repository root:\n  scripts/release/publish-desktop-draft.sh %s %s release/trust\n' "$repository" "$version"
+}
+
 phase_publish() {
-	for command_name in cosign gh jq route; do require_command "$command_name"; done
+	for command_name in cosign gh go jq route; do require_command "$command_name"; done
 	require_saved_phase signed signatures-staged published
 	require_online
 	signed_dir=$release_dir/signed
@@ -823,6 +838,7 @@ phase_publish() {
 		validate_manifest_assets "$final_dir" published
 		verify_published_release_and_prepare_tap "$final_dir"
 		printf 'Published release remains externally verified: %s\n' "$tag"
+		desktop_followup
 		return 0
 	fi
 	confirm_exact "stage signatures $tag"
@@ -878,6 +894,7 @@ EOF
 		--metadata "$repo_root/release/trust/metadata.json" \
 		--metadata-signature "$repo_root/release/trust/metadata.sigstore.json" \
 		--bundle "$verify_dir" --state "$trust_state_path" --published --latest
+	desktop_gate
 	confirm_exact "publish $tag"
 	if [ "$channel" = prerelease ]; then
 		gh release edit "$tag" --repo "$repository" --draft=false --prerelease --verify-tag
@@ -889,6 +906,7 @@ EOF
 	validate_manifest_assets "$final_dir" published
 	verify_published_release_and_prepare_tap "$final_dir"
 	printf 'Published and externally reverified: %s\n' "$tag"
+	desktop_followup
 }
 
 if [ "${HIKYO_CEREMONY_SOURCE_ONLY:-}" != true ]; then

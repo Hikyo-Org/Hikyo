@@ -5,7 +5,7 @@ import (
 )
 
 // This file is the small, deliberately partial SQL reader behind
-// CheckContainmentGates. It is NOT a SQL parser. It masks what must not be
+// the containmentgates analyzer. It is NOT a SQL parser. It masks what must not be
 // read as predicates (comments, quoted identifiers, string literals), then
 // records parenthesis groups and the clause keywords inside them, so a gate
 // condition can be judged by where it sits: in the same query scope as the

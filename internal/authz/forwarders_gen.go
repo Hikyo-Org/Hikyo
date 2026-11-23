@@ -1060,7 +1060,7 @@ func (a *TxAuthorizer) ReconcilePrincipal(ctx context.Context, p domain.Principa
 
 // RecoveryAccountByID and RecoveryAccountByPrincipal are the ONE recovery
 // lookup: the account gates minus the containment condition. Only credential
-// reset and establishment may call them (lint.CheckRecoveryLookup).
+// reset and establishment may call them (the lint recoverylookup analyzer).
 func (a *TxAuthorizer) RecoveryAccountByID(ctx context.Context, id string) (Account, error) {
 	return a.r.RecoveryAccountByID(ctx, id)
 }

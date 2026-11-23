@@ -57,6 +57,10 @@ else
   packaged='Packaged|^TestActualDefaultDevCLIStartsAndRestarts$'
   go test -count=1 -skip "$packaged" "$app_package" || status=1
   go test -count=1 -run "$packaged" "$app_package" || status=1
-  go test -count=1 "$lint_package" || status=1
+  # The vet driver compiles and analyzes every context; measured 331 s on a
+  # hosted runner after the lint cache is prepared (invariants run
+  # 44714758733, head 2ad5ad17f; 461 s in the earlier run 44694008741), so
+  # 20 m is 2.6x to 3.6x headroom without hiding a hang.
+  go test -count=1 -timeout=20m "$lint_package" || status=1
 fi
 exit "$status"

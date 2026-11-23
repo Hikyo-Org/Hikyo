@@ -6,8 +6,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 func TestMCPFixtureHelperPinsMatchTargetPlatform(t *testing.T) {
@@ -16,7 +14,6 @@ func TestMCPFixtureHelperPinsMatchTargetPlatform(t *testing.T) {
 	linuxHash := "c1a9de843f6d422726c459d63e5b000144a62a4a7f13b61ebec73327c85a2f9a"
 	darwinHash := "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b"
 	root := repoRoot(t)
-	loaded := map[string][]*packages.Package{}
 	for _, tc := range []struct{ native, context, target, errno, hash, wrong string }{
 		{"linux", "default", "linux", "111", linuxHash, darwinHash},
 		{"linux", "ui", "linux", "111", linuxHash, darwinHash},
@@ -25,19 +22,15 @@ func TestMCPFixtureHelperPinsMatchTargetPlatform(t *testing.T) {
 		{"darwin", "ui", "darwin", "61", darwinHash, linuxHash},
 	} {
 		t.Run(tc.native+"/"+tc.context, func(t *testing.T) {
-			context := BuildContext{Name: tc.context, GOOS: tc.target, ProductionOnly: true}
+			context := BuildContext{Name: tc.context, GOOS: tc.target}
 			if tc.context == "ui" {
 				context.BuildFlags = []string{"-tags=ui"}
 			}
-			key := tc.target + "/" + tc.context
-			pkgs := loaded[key]
-			if pkgs == nil {
-				var err error
-				pkgs, err = LoadIn(context, Module+"/scripts/acceptance/mcp-fixture", Module+"/internal/jsonwire")
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded[key] = pkgs
+			// Every row loads its own (target, context): a cache would hold five
+			// type-checked module slices live at once for no reuse.
+			pkgs, err := loadFixture(context, false, Module+"/scripts/acceptance/mcp-fixture", Module+"/internal/jsonwire")
+			if err != nil {
+				t.Fatal(err)
 			}
 			declaration, exists := rawSQLDeclarations(pkgs, root, Module)[helper]
 			if !exists {
@@ -72,7 +65,7 @@ func TestMCPFixtureHelperPinsMatchTargetPlatform(t *testing.T) {
 			if actual := rawSQLProtocolDependencies(pins[lifecycle], tc.context)[helper]; actual != hash {
 				t.Fatalf("selected pin %s, actual target %s", actual, hash)
 			}
-			if findings := CheckRawSQL(pkgs, root, Module, pins, tc.context); len(findings) != 0 {
+			if findings := checkRawSQL(pkgs, root, Module, pins, tc.context); len(findings) != 0 {
 				t.Fatal(findings)
 			}
 			// The other OS's exact hash cannot stand in for this target's pin.
@@ -81,7 +74,7 @@ func TestMCPFixtureHelperPinsMatchTargetPlatform(t *testing.T) {
 			bad.BuildDependencies[tc.context] = maps.Clone(bad.BuildDependencies[tc.context])
 			bad.BuildDependencies[tc.context][helper] = tc.wrong
 			pins[lifecycle] = bad
-			assertFindings(t, CheckRawSQL(pkgs, root, Module, pins, tc.context), []string{"changed reviewed helper dependency " + helper})
+			assertFindings(t, checkRawSQL(pkgs, root, Module, pins, tc.context), []string{"changed reviewed helper dependency " + helper})
 		})
 	}
 }

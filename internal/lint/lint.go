@@ -1,28 +1,17 @@
-// Package lint holds the three custom static analyzers the tenant-isolation
-// ADR fixes (proof signatures, SQL predicate confinement, proof-forgery
-// guard). They run against the real repository from this package's tests, so
-// a violation is a build failure in CI. Each is a guardrail with its evasion
-// limits stated in the ADR — logic bugs inside the trusted set are review's
-// job, not lint's.
-//
-// The ADR sketches these as go/analysis passes; they are implemented
-// directly over go/packages type information instead — same inputs, same
-// build-failing effect, less framework. The checks return findings as
-// strings so the tests (and the invariant suite) can assert emptiness and
-// print every violation at once.
+// Package lint holds the repository's custom static analyzers. They are
+// go/analysis passes built into one vet tool (cmd/lintvet); this package's
+// tests build it and run it with go vet once per analysis context, so a
+// violation is a build failure in CI (docs/adr/lint-analysis-driver.md). Each
+// is a guardrail with its evasion limits stated in the ADR; logic bugs inside
+// the trusted set are review's job, not lint's.
 package lint
 
 import (
 	"encoding/json/v2"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
-	"sync"
-
-	"golang.org/x/tools/go/packages"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
@@ -40,20 +29,15 @@ type BuildContext struct {
 	BuildFlags []string
 	// GOOS overrides the target operating system; empty keeps the host's.
 	GOOS string
-	// ProductionOnly leaves test packages out of the load. The windows
-	// context needs it: internal/upgradecustody's test package only
-	// typechecks on unix (local_test.go names a helper declared in a
-	// unix-only test file), so windows-only test files are not analysed.
-	ProductionOnly bool
 }
 
 // Contexts is the supported analysis matrix, shared by the lint and boundary
-// loaders. The default context is first, and Load/LoadRepo use it.
+// loaders. The default context is first.
 var Contexts = []BuildContext{
 	{Name: "default"},
 	{Name: "ui", BuildFlags: []string{"-tags=ui"}},
-	{Name: "darwin", GOOS: "darwin", ProductionOnly: true},
-	{Name: "windows", GOOS: "windows", ProductionOnly: true},
+	{Name: "darwin", GOOS: "darwin"},
+	{Name: "windows", GOOS: "windows"},
 }
 
 // Env is the explicit environment for a build-system query under the context.
@@ -137,106 +121,4 @@ func (c BuildContext) needsWebuiPlaceholder() bool {
 		}
 	}
 	return false
-}
-
-var (
-	loadMu    sync.Mutex
-	loadOnces = map[string]*sync.Once{}
-	loaded    = map[string][]*packages.Package{}
-	loadErrs  = map[string]error{}
-)
-
-// LoadRepo loads every package in the module under the default context, with
-// syntax and type information, exactly once per test process.
-func LoadRepo() ([]*packages.Package, error) {
-	return LoadRepoIn(Contexts[0])
-}
-
-// LoadRepoIn is LoadRepo under one supported context, cached per context.
-func LoadRepoIn(ctx BuildContext) ([]*packages.Package, error) {
-	loadMu.Lock()
-	once, ok := loadOnces[ctx.Name]
-	if !ok {
-		once = &sync.Once{}
-		loadOnces[ctx.Name] = once
-	}
-	loadMu.Unlock()
-	once.Do(func() {
-		pkgs, err := LoadIn(ctx, Module+"/...")
-		loadMu.Lock()
-		loaded[ctx.Name], loadErrs[ctx.Name] = pkgs, err
-		loadMu.Unlock()
-	})
-	loadMu.Lock()
-	defer loadMu.Unlock()
-	return loaded[ctx.Name], loadErrs[ctx.Name]
-}
-
-// Load loads arbitrary patterns under the default context (the
-// negative-fixture tests use it on testdata packages).
-//
-// The mode deliberately omits NeedDeps. The type checker still resolves every
-// imported symbol — a root package's direct imports get their Types from
-// compiler export data as a side effect of type-checking the root — so the
-// analyzers, which reason about type identity (authz.Proof, driver handles),
-// see everything they need. Adding NeedDeps alongside NeedSyntax|NeedTypesInfo
-// would instead mark the entire transitive dependency closure (pgx, x/tools,
-// stdlib) as "needs source", parsing every dependency's AST and building a
-// full types.Info for each and keeping them all resident. On this package's
-// test suite that was the difference between a ~7GB and a ~1.2GB peak RSS, and
-// it made each tiny testdata load carry the full closure too; macOS Activity
-// Monitor's "Memory" column inflated the former past 20GB once compression and
-// -race shadow footprint were counted.
-//
-// The one seam: flatten() walks into imported module packages that are not
-// roots of the load and therefore have Types (from export data) but no
-// TypesInfo. Analyzers that reach those either select their target packages by
-// path first (never touching a non-root's TypesInfo) or guard on nil type
-// information before dereferencing it. In LoadRepo every module package is a
-// root, so no module package is skipped there regardless.
-func Load(patterns ...string) ([]*packages.Package, error) {
-	return LoadIn(Contexts[0], patterns...)
-}
-
-// LoadIn loads arbitrary patterns under one supported context.
-//
-// The context's overlay reaches cmd/go as an -overlay build flag rather than
-// packages.Config.Overlay: go/packages treats any Config.Overlay as invalidating
-// all export data and then type-checks the whole dependency closure from source,
-// which took the ui context's live heap from ~1.1GB to ~2.5GB.
-func LoadIn(ctx BuildContext, patterns ...string) ([]*packages.Package, error) {
-	buildFlags := ctx.BuildFlags
-	if ctx.needsWebuiPlaceholder() {
-		dir, err := os.MkdirTemp("", "hikyo-lint-overlay-")
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = os.RemoveAll(dir) }() // a leaked temp overlay is harmless
-		overlay, err := ctx.WriteOverlay(dir)
-		if err != nil {
-			return nil, err
-		}
-		if overlay != "" {
-			buildFlags = append(slices.Clone(buildFlags), "-overlay="+overlay)
-		}
-	}
-	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
-			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-		// Test packages are in scope: a forged proof in a test outside authz
-		// is the same breach as one in production code.
-		Tests:      !ctx.ProductionOnly,
-		BuildFlags: buildFlags,
-		Env:        ctx.Env(),
-	}
-	pkgs, err := packages.Load(cfg, patterns...)
-	if err != nil {
-		return nil, err
-	}
-	for _, p := range pkgs {
-		for _, e := range p.Errors {
-			return nil, fmt.Errorf("load %s under %s: %s", p.PkgPath, ctx.Name, e)
-		}
-	}
-	return pkgs, nil
 }

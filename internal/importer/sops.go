@@ -12,6 +12,7 @@ import (
 	"github.com/getsops/sops/v3/cmd/sops/formats"
 	"github.com/getsops/sops/v3/decrypt"
 	"github.com/getsops/sops/v3/hcvault"
+	vaultapi "github.com/hashicorp/vault/api"
 	"gopkg.in/yaml.v3"
 )
 
@@ -273,19 +274,32 @@ func allPlaintext(n *yaml.Node) bool {
 // SOPS_HC_VAULT_ALLOWLIST. A file names its own hc_vault address in its
 // metadata, and the library sends VAULT_TOKEN or ~/.vault-token there before it
 // verifies the MAC, so a hostile file would otherwise choose where the token
-// goes. The returned func restores the variable; call it inside WithSanitized,
-// which serializes the process-global environment.
+// goes. The allowlist is checked only when the client is built, and the Vault
+// client follows a redirect to any origin with the same token, so redirects are
+// disabled in either case. The returned func restores both variables; call it
+// inside WithSanitized, which serializes the process-global environment.
 func pinVaultDestination() func() {
+	restoreRedirects := setEnvScoped(vaultapi.EnvVaultDisableRedirects, "true")
 	const name = hcvault.SopsHCVaultAllowlist
-	prev, had := os.LookupEnv(name)
-	if had && prev != "" {
-		return func() {}
+	if prev, had := os.LookupEnv(name); had && prev != "" {
+		return restoreRedirects
 	}
 	pin := hcvault.AllowlistNoHosts
 	if addr := os.Getenv("VAULT_ADDR"); addr != "" {
 		pin = addr
 	}
-	_ = os.Setenv(name, pin)
+	restoreAllowlist := setEnvScoped(name, pin)
+	return func() {
+		restoreAllowlist()
+		restoreRedirects()
+	}
+}
+
+// setEnvScoped sets name to value and returns a func restoring its previous
+// state, including absence.
+func setEnvScoped(name, value string) func() {
+	prev, had := os.LookupEnv(name)
+	_ = os.Setenv(name, value)
 	return func() {
 		if had {
 			_ = os.Setenv(name, prev)

@@ -856,10 +856,17 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		}
 		own = append(own, part...)
 	}
+	if err := checksuites.Recheck(ctx, c.suiteSource(), head, listings); err != nil {
+		return nil, err
+	}
 	for _, v := range local {
-		if (strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix)) && !seen[v.ID] {
+		if seen[v.ID] {
+			continue
+		}
+		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 			return nil, errors.New("controller check missing from the check suite inventory")
 		}
+		return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
 	}
 	return own, nil
 }

@@ -107,3 +107,14 @@ func TestReportSeenOnlyByTheCommitListingBeyondRESTSuiteCapIsRefused(t *testing.
 		t.Fatalf("error %v with %d writes, want a refusal", err, len(f.writes))
 	}
 }
+
+// Suites added while the commit listing is read can push an older suite out of
+// REST's newest 1000, so the reporter counts again after the read and refuses.
+func TestReportRefusesACommitListingWhenSuitesGrowDuringTheRead(t *testing.T) {
+	f := newFixture(t)
+	f.existing("in_progress")
+	f.suites, f.grown = checksuites.Margin, checksuites.Margin+1
+	if err := f.c.publish(context.Background(), f.e); err == nil || !strings.Contains(err.Error(), "grew past") || len(f.writes) != 0 {
+		t.Fatalf("error %v with %d writes, want a refusal after the recount", err, len(f.writes))
+	}
+}

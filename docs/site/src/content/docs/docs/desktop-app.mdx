@@ -41,13 +41,39 @@ goal of version 1 to do so.
 
 ## Install the app
 
-The app will be published from its own repository, `Hikyo-Org/hikyo-app`, under
-its own tags. It is never part of the signed `hikyo` releases, and the `hikyo` DMGs
-do not contain it.
+The app will be published in the `Hikyo-Org/Hikyo` releases under its own
+`desktop-v` tags, at the same version as `hikyo`. It is never part of the signed
+`hikyo` releases, and the `hikyo` DMGs do not contain it.
 
 > **Download location: not published yet.** The release channel does not exist
 > at the time of writing. This page will link the signed, notarized download
 > here once it does. Until then, do not install a build from any other source.
+
+### Verify the download
+
+Each release carries `desktop-inventory.json` and its signature bundle
+`desktop-inventory.sigstore.json`. The inventory lists every DMG with its size
+and SHA-256. Replace `VERSION` with the release version and `ARCH` with `arm64` (Apple
+silicon) or `x86_64` (Intel):
+
+```sh
+cosign verify-blob \
+  --bundle desktop-inventory.sigstore.json \
+  --certificate-identity https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@refs/tags/vVERSION \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  desktop-inventory.json
+shasum -a 256 Hikyo-Desktop-VERSION-ARCH.dmg
+```
+
+The hash must equal the one listed for that file in the inventory. Then ask
+Gatekeeper to assess the disk image:
+
+```sh
+spctl -a -vv -t open --context context:primary-signature Hikyo-Desktop-VERSION-ARCH.dmg
+```
+
+Expect `accepted` and `source=Notarized Developer ID`. Any other source, or a
+rejection, means you should not open the file.
 
 Version 1 has no updater and no update check. To upgrade, download and verify
 the new release by hand.

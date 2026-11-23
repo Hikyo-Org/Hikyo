@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -322,6 +323,123 @@ func TestSOPSVaultKeyIsPinnedToTheOperatorsVaultAddr(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The pinned Vault may answer with a redirect, and the Vault client follows one
+// to any origin with the same token. Inside the import scope redirects are off,
+// whichever allowlist branch applies, and the setting is restored afterwards.
+func TestSOPSVaultRedirectDoesNotCarryTheToken(t *testing.T) {
+	var destHits, allowedHits atomic.Int32
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		destHits.Add(1)
+		http.Error(w, "nope", http.StatusBadRequest)
+	}))
+	defer dest.Close()
+	allowed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		allowedHits.Add(1)
+		http.Redirect(w, r, dest.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer allowed.Close()
+
+	enc := "ENC[AES256_GCM,data:AAAA,iv:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,tag:AAAAAAAAAAAAAAAAAAAAAA==,type:str]"
+	file := fmt.Sprintf(`{"k":%q,"sops":{"hc_vault":[{"vault_address":%q,"engine_path":"transit","key_name":"k","created_at":"2026-01-01T00:00:00Z","enc":"vault:v1:AAAA"}],"lastmodified":"2026-01-01T00:00:00Z","mac":%q,"version":"3.13.1"}}`, enc, allowed.URL, enc)
+
+	for _, tc := range []struct{ name, allowlist string }{
+		{"pinned to VAULT_ADDR", ""},
+		{"operator allowlist", allowed.URL},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			destHits.Store(0)
+			allowedHits.Store(0)
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("VAULT_TOKEN", "hvs.operator-token")
+			t.Setenv("VAULT_ADDR", allowed.URL)
+			t.Setenv("SOPS_HC_VAULT_ALLOWLIST", tc.allowlist)
+			t.Setenv("VAULT_DISABLE_REDIRECTS", "")
+			if err := os.Unsetenv("VAULT_DISABLE_REDIRECTS"); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Run(t.Context(), sopsSource, Input{Path: "vault.json", Data: []byte(file)})
+			wantCode(t, err, CodeDecrypt, "hvs.operator-token")
+			if allowedHits.Load() == 0 {
+				t.Fatal("the allowed Vault was never contacted")
+			}
+			if n := destHits.Load(); n != 0 {
+				t.Fatalf("the redirect destination received %d request(s)", n)
+			}
+			if v, ok := os.LookupEnv("VAULT_DISABLE_REDIRECTS"); ok {
+				t.Fatalf("VAULT_DISABLE_REDIRECTS leaked past the import: %q", v)
+			}
+		})
+	}
+}
+
+// Redirects being off must not stop a pinned Vault that answers directly: the
+// age fixture's data key, served by a Transit stub, decrypts the same records.
+func TestSOPSVaultDecryptsThroughThePinnedVault(t *testing.T) {
+	withAgeIdentity(t)
+	want, err := run(t, sopsSource, "sops-age.yaml", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataKey := fixtureDataKey(t)
+	var hits atomic.Int32
+	vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path != "/v1/transit/decrypt/k" || r.Header.Get("X-Vault-Token") != "hvs.operator-token" {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"data":{"plaintext":%q}}`, base64.StdEncoding.EncodeToString(dataKey))
+	}))
+	defer vault.Close()
+
+	in := string(read(t, "sops-age.yaml").Data)
+	start, end := strings.Index(in, "    age:\n"), strings.Index(in, "    encrypted_regex:")
+	if start < 0 || end < start {
+		t.Fatal("sops-age.yaml no longer has the expected age block")
+	}
+	file := in[:start] + fmt.Sprintf("    hc_vault:\n        - vault_address: %s\n          engine_path: transit\n          key_name: k\n          created_at: \"2026-01-01T00:00:00Z\"\n          enc: vault:v1:AAAA\n", vault.URL) + in[end:]
+
+	for _, tc := range []struct{ name, allowlist string }{
+		{"pinned to VAULT_ADDR", ""},
+		{"operator allowlist", vault.URL},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hits.Store(0)
+			t.Setenv("SOPS_AGE_KEY", "")
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("VAULT_TOKEN", "hvs.operator-token")
+			t.Setenv("VAULT_ADDR", vault.URL)
+			t.Setenv("SOPS_HC_VAULT_ALLOWLIST", tc.allowlist)
+			got, err := Run(t.Context(), sopsSource, Input{Path: "sops-vault.yaml", Data: []byte(file)})
+			if err != nil {
+				t.Fatalf("decrypt through the pinned Vault: %v", err)
+			}
+			if hits.Load() == 0 {
+				t.Fatal("the pinned Vault was never contacted")
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("records through Vault differ from the age decryption:\n got %+v\nwant %+v", got, want)
+			}
+		})
+	}
+}
+
+// fixtureDataKey is the data key of sops-age.yaml, unwrapped once with
+// sops-age-identity.txt and kept as testdata: age is confined to internal/crypto.
+func fixtureDataKey(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "sops-age-datakey.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil || len(key) != 32 {
+		t.Fatalf("sops-age-datakey.txt: %d-byte key, %v; want 32 bytes", len(key), err)
+	}
+	return key
 }
 
 // ---------------------------------------------------------------------------
