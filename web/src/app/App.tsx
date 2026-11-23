@@ -63,6 +63,7 @@ const AccountSecurity = lazy(() => import('../routes/AccountSecurity.tsx').then(
 const Audit = lazy(() => import('../routes/Audit.tsx').then((routes) => ({ default: routes.Audit })));
 const InstanceAudit = lazy(() => import('../routes/Audit.tsx').then((routes) => ({ default: routes.InstanceAudit })));
 const ChangeApprovals = lazy(() => import('../routes/ChangeApprovals.tsx').then((routes) => ({ default: routes.ChangeApprovals })));
+const Incidents = lazy(() => import('../routes/Incidents.tsx').then((routes) => ({ default: routes.Incidents })));
 const TemporaryAccess = lazy(() => import('../routes/TemporaryAccess.tsx').then((routes) => ({ default: routes.TemporaryAccess })));
 const InstanceConfig = lazy(() => import('../routes/InstanceConfig.tsx').then((routes) => ({ default: routes.InstanceConfig })));
 const InstanceAdmin = lazy(() => import('../routes/InstanceAdmin.tsx').then((routes) => ({ default: routes.InstanceAdmin })));
@@ -115,6 +116,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   'project-settings': withRouteFallback(<ProjectSettings />),
   'change-approvals': withRouteFallback(<ChangeApprovals />),
   'temporary-access': withRouteFallback(<TemporaryAccess />),
+  incidents: withRouteFallback(<Incidents />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),
   'instance-config': withRouteFallback(<WorkspaceScope><InstanceConfig /></WorkspaceScope>),
   'instance-members': withRouteFallback(<Members key="members-instance" scope={{ kind: 'instance' }} />),

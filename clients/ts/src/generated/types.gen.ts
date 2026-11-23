@@ -1065,6 +1065,116 @@ export type RotationRunList = {
     next_after?: string;
 };
 
+/**
+ * What the incident is opened on. `principal` names an account; `org`, `project` and `adapter` name the other scopes.
+ */
+export type IncidentOpenRequest = {
+    /**
+     * What the incident is opened on. OPEN enum.
+     */
+    scope_kind: string;
+    principal?: Id;
+    org?: Id;
+    project?: Id;
+    adapter?: Id;
+};
+
+export type IncidentCloseRequest = {
+    /**
+     * Close although items are still open, recording the residuals.
+     */
+    with_residuals?: boolean;
+};
+
+/**
+ * How many items sit in each ledger outcome.
+ */
+export type IncidentOutcomeCounts = {
+    pending: number;
+    done: number;
+    unknown: number;
+    attested: number;
+    blocked: number;
+    out_of_scope: number;
+};
+
+export type Incident = {
+    id: Id;
+    scope_kind: string;
+    scope_id: string;
+    org?: Id;
+    /**
+     * OPEN enum.
+     */
+    status: string;
+    opened_by: Id;
+    opened_at: Timestamp;
+    closed_by?: Id;
+    closed_at?: Timestamp;
+    counts: IncidentOutcomeCounts;
+    /**
+     * True when the scope already had an open incident and this open added only the missing objects.
+     */
+    reopened?: boolean;
+    /**
+     * Items this open added to the ledger.
+     */
+    added?: number;
+};
+
+export type IncidentItem = {
+    id: Id;
+    owner_function: string;
+    object_kind: string;
+    object_id: string;
+    /**
+     * The ledger's closed outcome set. Pending, unknown and blocked are open.
+     */
+    outcome: 'pending' | 'done' | 'unknown' | 'attested' | 'blocked' | 'out_of_scope';
+    /**
+     * Why the item sits in its outcome, as a fixed word; absent when there is none.
+     * `owner_failed` on a pending item means its owner refused it. OPEN enum.
+     *
+     */
+    reason?: string;
+    /**
+     * An open item whose owner refused it, as opposed to one that has not run yet.
+     */
+    refused: boolean;
+    /**
+     * A rotation item's own state, read live when the page is built and never
+     * stored: `active`, `paused`, `halted`, `disabled`, or `gone` when the
+     * rotation no longer exists. Absent for other kinds and for a rotation the
+     * caller cannot read. OPEN enum.
+     *
+     */
+    object_state?: string;
+    attested_by?: Id;
+    attested_at?: Timestamp;
+    updated_at: Timestamp;
+};
+
+export type IncidentItemList = {
+    items: Array<IncidentItem>;
+    /**
+     * Pass as `after` to read the next page. Present after a full page, and that next page may be empty.
+     */
+    next_after?: string;
+};
+
+/**
+ * What one resume pass did, in items.
+ */
+export type IncidentResumeResult = {
+    examined: number;
+    confirmed: number;
+    unconfirmed: number;
+    failed: number;
+    blocked: number;
+    stale: number;
+    skipped: number;
+};
+
 export type MintLeaseRequest = {
     provider_id: Id;
     /**
@@ -7287,6 +7397,16 @@ export type IdentityId = Id;
  * Enrolled passkey credential identifier.
  */
 export type WebauthnCredentialId = Id;
+
+/**
+ * The incident id.
+ */
+export type IncidentId = Id;
+
+/**
+ * The incident item id.
+ */
+export type IncidentItemId = Id;
 
 /**
  * The target principal whose credential is being reset.
@@ -18685,6 +18805,410 @@ export type ResetCredentialResponses = {
 };
 
 export type ResetCredentialResponse = ResetCredentialResponses[keyof ResetCredentialResponses];
+
+export type OpenIncidentData = {
+    body: IncidentOpenRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/incidents';
+};
+
+export type OpenIncidentErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type OpenIncidentError = OpenIncidentErrors[keyof OpenIncidentErrors];
+
+export type OpenIncidentResponses = {
+    /**
+     * The incident with its outcome counts.
+     */
+    200: Incident;
+};
+
+export type OpenIncidentResponse = OpenIncidentResponses[keyof OpenIncidentResponses];
+
+export type GetIncidentData = {
+    body?: never;
+    path: {
+        /**
+         * The incident id.
+         */
+        incident: Id;
+    };
+    query?: never;
+    url: '/api/v1/incidents/{incident}';
+};
+
+export type GetIncidentErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetIncidentError = GetIncidentErrors[keyof GetIncidentErrors];
+
+export type GetIncidentResponses = {
+    /**
+     * The incident.
+     */
+    200: Incident;
+};
+
+export type GetIncidentResponse = GetIncidentResponses[keyof GetIncidentResponses];
+
+export type ListIncidentItemsData = {
+    body?: never;
+    path: {
+        /**
+         * The incident id.
+         */
+        incident: Id;
+    };
+    query?: {
+        /**
+         * Maximum items on this page.
+         */
+        limit?: number;
+        /**
+         * The `next_after` a previous page returned. Absent reads the first page.
+         */
+        after?: string;
+        /**
+         * Keep only the items that still need work (pending, unknown or blocked).
+         */
+        open_only?: boolean;
+    };
+    url: '/api/v1/incidents/{incident}/items';
+};
+
+export type ListIncidentItemsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListIncidentItemsError = ListIncidentItemsErrors[keyof ListIncidentItemsErrors];
+
+export type ListIncidentItemsResponses = {
+    /**
+     * Item page.
+     */
+    200: IncidentItemList;
+};
+
+export type ListIncidentItemsResponse = ListIncidentItemsResponses[keyof ListIncidentItemsResponses];
+
+export type ResumeIncidentData = {
+    body?: never;
+    path: {
+        /**
+         * The incident id.
+         */
+        incident: Id;
+    };
+    query?: never;
+    url: '/api/v1/incidents/{incident}/resume';
+};
+
+export type ResumeIncidentErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ResumeIncidentError = ResumeIncidentErrors[keyof ResumeIncidentErrors];
+
+export type ResumeIncidentResponses = {
+    /**
+     * What the pass did.
+     */
+    200: IncidentResumeResult;
+};
+
+export type ResumeIncidentResponse = ResumeIncidentResponses[keyof ResumeIncidentResponses];
+
+export type AttestIncidentItemData = {
+    body?: never;
+    path: {
+        /**
+         * The incident id.
+         */
+        incident: Id;
+        /**
+         * The incident item id.
+         */
+        item: Id;
+    };
+    query?: never;
+    url: '/api/v1/incidents/{incident}/items/{item}/attest';
+};
+
+export type AttestIncidentItemErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type AttestIncidentItemError = AttestIncidentItemErrors[keyof AttestIncidentItemErrors];
+
+export type AttestIncidentItemResponses = {
+    /**
+     * The item is attested.
+     */
+    204: void;
+};
+
+export type AttestIncidentItemResponse = AttestIncidentItemResponses[keyof AttestIncidentItemResponses];
+
+export type CloseIncidentData = {
+    body?: IncidentCloseRequest;
+    path: {
+        /**
+         * The incident id.
+         */
+        incident: Id;
+    };
+    query?: never;
+    url: '/api/v1/incidents/{incident}/close';
+};
+
+export type CloseIncidentErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CloseIncidentError = CloseIncidentErrors[keyof CloseIncidentErrors];
+
+export type CloseIncidentResponses = {
+    /**
+     * The closed incident.
+     */
+    200: Incident;
+};
+
+export type CloseIncidentResponse = CloseIncidentResponses[keyof CloseIncidentResponses];
 
 export type EnrolPasskeyStartData = {
     body: WebauthnEnrolStartRequest;

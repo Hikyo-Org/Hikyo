@@ -7148,6 +7148,42 @@ label.chk:has(input:disabled) {
   align-self: flex-start;
 }
 
+/* Incident containment (#1039). The outcome counts are plain text pairs and
+   every item state is a word in a badge, never colour alone. */
+.incident__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.incident__counts div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.incident__counts dt {
+  color: var(--tx-dim);
+}
+
+.incident__counts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.incident__items {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.incident__items th,
+.incident__items td {
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--panel-line);
+  vertical-align: top;
+}
+
 /* Temporary access (#152). Same layout vocabulary as change approvals; the
    request state is always spelled out in text, never colour alone. Its own
    grid/gap/margin come from `.page--chrome` (see change-approvals). */

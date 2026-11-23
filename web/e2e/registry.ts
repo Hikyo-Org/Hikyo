@@ -68,6 +68,9 @@ export const FLOWS: readonly Flow[] = [
   { id: 'change-approvals', spec: 'flows/matrix.spec.ts', surfaces: ['change-approvals'] },
   // Temporary access (#152) rides matrix.spec.ts for the same reason.
   { id: 'temporary-access', spec: 'flows/matrix.spec.ts', surfaces: ['temporary-access'] },
+  // Incident containment (#1039) rides members.spec.ts, the org-scoped sibling
+  // surface already in group 1 on main, for the closure reason the audit entry spells out.
+  { id: 'incidents', spec: 'flows/members.spec.ts', surfaces: ['incidents'] },
   {
     id: 'chrome-settings',
     spec: 'flows/settings.spec.ts',

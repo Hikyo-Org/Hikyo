@@ -117,12 +117,21 @@ var reviewedWireExtras = wireExtras{
 		// naming the tier. See the exception note above for why this route audits here
 		// rather than through an operation row.
 		"http:POST /api/v1/accounts/{principal}/credential-reset": {Ops: []string{"OpCredentialReset", "OpCredentialResetInstance"}, Events: []string{"EventAuthCredentialResetIssued", "EventAuthAuthorityMinted"}, NoPrimary: "Credential reset selects OpCredentialReset or OpCredentialResetInstance by target principal scope; OpenAPI has no single x-hikyo-operation."},
-		"http:POST /api/v1/auth/cli-reauth/approve":               {Events: []string{"EventAuthCLIReauthHandoff"}},
-		"http:POST /api/v1/auth/cli-reauth/redeem":                {Events: []string{"EventAuthCLIReauthHandoff"}},
-		"http:POST /api/v1/auth/cli-reauth/start":                 {Events: []string{"EventAuthCLIReauthHandoff"}},
-		"http:POST /api/v1/auth/credential/establish":             {Events: []string{"EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventPersonalValueDeleted"}},
-		"http:POST /api/v1/auth/identities/link":                  {Events: []string{"EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/local/login":                      {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
+		// The incident ledger (#1039). Each route dispatches at runtime between the
+		// org-scoped and instance-scoped incident operations by the incident's owning
+		// org, resolved inside the handler's transaction, so no single operation is named.
+		"http:POST /api/v1/incidents":                                {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:GET /api/v1/incidents/{incident}":                      {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:GET /api/v1/incidents/{incident}/items":                {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:POST /api/v1/incidents/{incident}/resume":              {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:POST /api/v1/incidents/{incident}/items/{item}/attest": {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:POST /api/v1/incidents/{incident}/close":               {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:POST /api/v1/auth/cli-reauth/approve":                  {Events: []string{"EventAuthCLIReauthHandoff"}},
+		"http:POST /api/v1/auth/cli-reauth/redeem":                   {Events: []string{"EventAuthCLIReauthHandoff"}},
+		"http:POST /api/v1/auth/cli-reauth/start":                    {Events: []string{"EventAuthCLIReauthHandoff"}},
+		"http:POST /api/v1/auth/credential/establish":                {Events: []string{"EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventPersonalValueDeleted"}},
+		"http:POST /api/v1/auth/identities/link":                     {Events: []string{"EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/local/login":                         {Events: []string{"EventAuthLogin", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		// Login-challenge finish endpoints (#760). A browser password login on an
 		// account with an enrolled factor mints no session; these present the factor
 		// against the single-use challenge and mint. Unauthenticated-class like the

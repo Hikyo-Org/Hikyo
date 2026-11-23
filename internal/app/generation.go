@@ -285,6 +285,13 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		DB: db, ExternalOrigin: cfg.ExternalOrigin, ExternalOriginExplicit: cfg.ExternalOriginExplicit, Mail: selfConfig.Capture,
 		Budget: budget, Log: log, Sends: owner.emailSends,
 	}
+	// The incident ledger resumes through owner functions that reuse the same
+	// tenant services, so a containment cannot run on a second configuration.
+	incidentsSvc := &service.Incidents{DB: db, Adapters: adapterService, Dynamic: dynamicService, SCIM: scimSvc, Log: log}
+	incidentsSvc.Owners = service.NewIncidentOwners(incidentsSvc, service.IncidentOwnerServices{
+		Identities: &service.Identities{DB: db, Auth: authSvc}, Invites: emailInvitationsSvc, SCIM: scimSvc,
+		Dynamic: dynamicService, Adapters: adapterService,
+	})
 	api := &server.API{
 		Mail:     &service.InstanceMail{DB: db, Auth: authSvc, Capture: selfConfig.Capture},
 		Runtime:  &service.System{DB: db, Store: sc},
@@ -358,6 +365,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Audits:              &service.Audits{DB: db, Budget: budget},
 		Approvals:           approvalsSvc,
 		Access:              accessSvc,
+		Incidents:           incidentsSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
 		// table and the same bounds. Two instances would let the wire clamp a

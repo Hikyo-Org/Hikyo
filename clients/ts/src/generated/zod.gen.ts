@@ -863,6 +863,87 @@ export const zRotationRunList = z.object({
     next_after: z.string().max(128).optional()
 });
 
+/**
+ * What the incident is opened on. `principal` names an account; `org`, `project` and `adapter` name the other scopes.
+ */
+export const zIncidentOpenRequest = z.object({
+    scope_kind: z.string(),
+    principal: zId.optional(),
+    org: zId.optional(),
+    project: zId.optional(),
+    adapter: zId.optional()
+});
+
+export const zIncidentCloseRequest = z.object({
+    with_residuals: z.boolean().optional()
+});
+
+/**
+ * How many items sit in each ledger outcome.
+ */
+export const zIncidentOutcomeCounts = z.object({
+    pending: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    done: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    unknown: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    attested: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    blocked: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    out_of_scope: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+export const zIncident = z.object({
+    id: zId,
+    scope_kind: z.string(),
+    scope_id: z.string().max(128),
+    org: zId.optional(),
+    status: z.string(),
+    opened_by: zId,
+    opened_at: zTimestamp,
+    closed_by: zId.optional(),
+    closed_at: zTimestamp.optional(),
+    counts: zIncidentOutcomeCounts,
+    reopened: z.boolean().optional(),
+    added: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).optional()
+});
+
+export const zIncidentItem = z.object({
+    id: zId,
+    owner_function: z.string().max(128),
+    object_kind: z.string().max(64),
+    object_id: z.string().max(128),
+    outcome: z.enum([
+        'pending',
+        'done',
+        'unknown',
+        'attested',
+        'blocked',
+        'out_of_scope'
+    ]),
+    reason: z.string().optional(),
+    refused: z.boolean(),
+    object_state: z.string().optional(),
+    attested_by: zId.optional(),
+    attested_at: zTimestamp.optional(),
+    updated_at: zTimestamp
+});
+
+export const zIncidentItemList = z.object({
+    items: z.array(zIncidentItem),
+    next_after: z.string().max(128).optional()
+});
+
+/**
+ * What one resume pass did, in items.
+ */
+export const zIncidentResumeResult = z.object({
+    examined: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    confirmed: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    unconfirmed: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    failed: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    blocked: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    stale: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    skipped: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
 export const zMintLeaseRequest = z.object({
     provider_id: zId,
     max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(9223372036))
@@ -5517,6 +5598,16 @@ export const zIdentityId = zId;
 export const zWebauthnCredentialId = zId;
 
 /**
+ * The incident id.
+ */
+export const zIncidentId = zId;
+
+/**
+ * The incident item id.
+ */
+export const zIncidentItemId = zId;
+
+/**
  * The target principal whose credential is being reset.
  */
 export const zResetTargetPrincipal = zId;
@@ -7457,6 +7548,67 @@ export const zResetCredentialPath = z.object({
  * A session-less credential-establishment authority, returned once.
  */
 export const zResetCredentialResponse = zCredentialResetResult;
+
+export const zOpenIncidentBody = zIncidentOpenRequest;
+
+/**
+ * The incident with its outcome counts.
+ */
+export const zOpenIncidentResponse = zIncident;
+
+export const zGetIncidentPath = z.object({
+    incident: zId
+});
+
+/**
+ * The incident.
+ */
+export const zGetIncidentResponse = zIncident;
+
+export const zListIncidentItemsPath = z.object({
+    incident: zId
+});
+
+export const zListIncidentItemsQuery = z.object({
+    limit: z.int().gte(1).lte(500).optional().default(100),
+    after: z.string().max(128).optional(),
+    open_only: z.boolean().optional().default(false)
+});
+
+/**
+ * Item page.
+ */
+export const zListIncidentItemsResponse = zIncidentItemList;
+
+export const zResumeIncidentPath = z.object({
+    incident: zId
+});
+
+/**
+ * What the pass did.
+ */
+export const zResumeIncidentResponse = zIncidentResumeResult;
+
+export const zAttestIncidentItemPath = z.object({
+    incident: zId,
+    item: zId
+});
+
+/**
+ * The item is attested.
+ */
+export const zAttestIncidentItemResponse = z.void();
+
+export const zCloseIncidentBody = zIncidentCloseRequest;
+
+export const zCloseIncidentPath = z.object({
+    incident: zId
+});
+
+/**
+ * The closed incident.
+ */
+export const zCloseIncidentResponse = zIncident;
 
 export const zEnrolPasskeyStartBody = zWebauthnEnrolStartRequest;
 

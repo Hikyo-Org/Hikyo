@@ -74,6 +74,7 @@ import {
   approveCliLogin,
   approveCliReauth,
   approveWorkspaceHandoff,
+  attestIncidentItem,
   authMethods,
   beginRecovery,
   bindPkiProfile,
@@ -86,6 +87,7 @@ import {
   clearProjectIdentityImage,
   clearValue,
   cloneEnvironment,
+  closeIncident,
   compromiseRetireSamlSpKey,
   configureTransitKey,
   copyValues,
@@ -174,6 +176,7 @@ import {
   getEnvironmentSignals,
   getFileTarget,
   getFolder,
+  getIncident,
   getInstanceConfig,
   getInstanceMail,
   getInstanceRegistrationPolicy,
@@ -233,6 +236,7 @@ import {
   listFileTargets,
   listFolders,
   listIdentities,
+  listIncidentItems,
   listInstanceConnections,
   listInstanceGrants,
   listKeyGroups,
@@ -295,6 +299,7 @@ import {
   oidcCallback,
   oidcLifecycle,
   oidcStart,
+  openIncident,
   pairRemote,
   passkeyLoginFinish,
   passkeyLoginStart,
@@ -354,6 +359,7 @@ import {
   resetCredential,
   resumeAdapterMove,
   resumeAdapterTarget,
+  resumeIncident,
   resumeRotation,
   retirePkiIssuer,
   retireSamlSpKey,
@@ -510,6 +516,7 @@ import type {
   ApproveCliLoginData,
   ApproveCliReauthData,
   ApproveWorkspaceHandoffData,
+  AttestIncidentItemData,
   AuthMethodsData,
   BeginRecoveryData,
   BindPkiProfileData,
@@ -522,6 +529,7 @@ import type {
   ClearProjectIdentityImageData,
   ClearValueData,
   CloneEnvironmentData,
+  CloseIncidentData,
   CompromiseRetireSamlSpKeyData,
   ConfigureTransitKeyData,
   CopyValuesData,
@@ -610,6 +618,7 @@ import type {
   GetEnvironmentSignalsData,
   GetFileTargetData,
   GetFolderData,
+  GetIncidentData,
   GetInstanceConfigData,
   GetInstanceMailData,
   GetInstanceRegistrationPolicyData,
@@ -669,6 +678,7 @@ import type {
   ListFileTargetsData,
   ListFoldersData,
   ListIdentitiesData,
+  ListIncidentItemsData,
   ListInstanceConnectionsData,
   ListInstanceGrantsData,
   ListKeyGroupsData,
@@ -731,6 +741,7 @@ import type {
   OidcCallbackData,
   OidcLifecycleData,
   OidcStartData,
+  OpenIncidentData,
   PairRemoteData,
   PasskeyLoginFinishData,
   PasskeyLoginStartData,
@@ -790,6 +801,7 @@ import type {
   ResetCredentialData,
   ResumeAdapterMoveData,
   ResumeAdapterTargetData,
+  ResumeIncidentData,
   ResumeRotationData,
   RetirePkiIssuerData,
   RetireSamlSpKeyData,
@@ -957,6 +969,7 @@ import {
   zClearProjectIdentityImageResponse,
   zClearValueResponse,
   zCloneEnvironmentResponse,
+  zCloseIncidentResponse,
   zCompromiseRetireSamlSpKeyResponse,
   zConfigureTransitKeyResponse,
   zCopyValuesResponse,
@@ -1023,6 +1036,7 @@ import {
   zGetEnvironmentSignalsResponse,
   zGetFileTargetResponse,
   zGetFolderResponse,
+  zGetIncidentResponse,
   zGetInstanceConfigResponse,
   zGetInstanceMailResponse,
   zGetInstanceRegistrationPolicyResponse,
@@ -1082,6 +1096,7 @@ import {
   zListFileTargetsResponse,
   zListFoldersResponse,
   zListIdentitiesResponse,
+  zListIncidentItemsResponse,
   zListInstanceConnectionsResponse,
   zListInstanceGrantsResponse,
   zListKeyGroupsResponse,
@@ -1142,6 +1157,7 @@ import {
   zOauth2StartResponse,
   zOidcCallbackResponse,
   zOidcStartResponse,
+  zOpenIncidentResponse,
   zPairRemoteResponse,
   zPasskeyLoginFinishResponse,
   zPasskeyLoginStartResponse,
@@ -1198,6 +1214,7 @@ import {
   zResetCredentialResponse,
   zResumeAdapterMoveResponse,
   zResumeAdapterTargetResponse,
+  zResumeIncidentResponse,
   zResumeRotationResponse,
   zRetirePkiIssuerResponse,
   zRetireSshCaKeyResponse,
@@ -1340,6 +1357,7 @@ export const clearOrgIdentityImageOp: BodyOperation<ClearOrgIdentityImageData, t
 export const clearProjectIdentityImageOp: BodyOperation<ClearProjectIdentityImageData, typeof zClearProjectIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(clearProjectIdentityImage, [200], zClearProjectIdentityImageResponse);
 export const clearValueOp: BodyOperation<ClearValueData, typeof zClearValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(clearValue, [200], zClearValueResponse);
 export const cloneEnvironmentOp: BodyOperation<CloneEnvironmentData, typeof zCloneEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cloneEnvironment, [201], zCloneEnvironmentResponse);
+export const closeIncidentOp: BodyOperation<CloseIncidentData, typeof zCloseIncidentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(closeIncident, [200], zCloseIncidentResponse);
 export const compromiseRetireSamlSpKeyOp: BodyOperation<CompromiseRetireSamlSpKeyData, typeof zCompromiseRetireSamlSpKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(compromiseRetireSamlSpKey, [200], zCompromiseRetireSamlSpKeyResponse);
 export const configureTransitKeyOp: BodyOperation<ConfigureTransitKeyData, typeof zConfigureTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(configureTransitKey, [200], zConfigureTransitKeyResponse);
 export const copyValuesOp: BodyOperation<CopyValuesData, typeof zCopyValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(copyValues, [200], zCopyValuesResponse);
@@ -1406,6 +1424,7 @@ export const getEnvironmentSettingsOp: BodyOperation<GetEnvironmentSettingsData,
 export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, typeof zGetEnvironmentSignalsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSignals, [200], zGetEnvironmentSignalsResponse);
 export const getFileTargetOp: BodyOperation<GetFileTargetData, typeof zGetFileTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFileTarget, [200], zGetFileTargetResponse);
 export const getFolderOp: BodyOperation<GetFolderData, typeof zGetFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFolder, [200], zGetFolderResponse);
+export const getIncidentOp: BodyOperation<GetIncidentData, typeof zGetIncidentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getIncident, [200], zGetIncidentResponse);
 export const getInstanceConfigOp: BodyOperation<GetInstanceConfigData, typeof zGetInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceConfig, [200], zGetInstanceConfigResponse);
 export const getInstanceMailOp: BodyOperation<GetInstanceMailData, typeof zGetInstanceMailResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceMail, [200], zGetInstanceMailResponse);
 export const getInstanceRegistrationPolicyOp: BodyOperation<GetInstanceRegistrationPolicyData, typeof zGetInstanceRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceRegistrationPolicy, [200], zGetInstanceRegistrationPolicyResponse);
@@ -1465,6 +1484,7 @@ export const listFederationIssuersOp: BodyOperation<ListFederationIssuersData, t
 export const listFileTargetsOp: BodyOperation<ListFileTargetsData, typeof zListFileTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFileTargets, [200], zListFileTargetsResponse);
 export const listFoldersOp: BodyOperation<ListFoldersData, typeof zListFoldersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFolders, [200], zListFoldersResponse);
 export const listIdentitiesOp: BodyOperation<ListIdentitiesData, typeof zListIdentitiesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listIdentities, [200], zListIdentitiesResponse);
+export const listIncidentItemsOp: BodyOperation<ListIncidentItemsData, typeof zListIncidentItemsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listIncidentItems, [200], zListIncidentItemsResponse);
 export const listInstanceConnectionsOp: BodyOperation<ListInstanceConnectionsData, typeof zListInstanceConnectionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listInstanceConnections, [200], zListInstanceConnectionsResponse);
 export const listInstanceGrantsOp: BodyOperation<ListInstanceGrantsData, typeof zListInstanceGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listInstanceGrants, [200], zListInstanceGrantsResponse);
 export const listKeyGroupsOp: BodyOperation<ListKeyGroupsData, typeof zListKeyGroupsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listKeyGroups, [200], zListKeyGroupsResponse);
@@ -1525,6 +1545,7 @@ export const oauth2CallbackOp: BodyOperation<Oauth2CallbackData, typeof zOauth2C
 export const oauth2StartOp: BodyOperation<Oauth2StartData, typeof zOauth2StartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oauth2Start, [200], zOauth2StartResponse);
 export const oidcCallbackOp: BodyOperation<OidcCallbackData, typeof zOidcCallbackResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oidcCallback, [200], zOidcCallbackResponse);
 export const oidcStartOp: BodyOperation<OidcStartData, typeof zOidcStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oidcStart, [200], zOidcStartResponse);
+export const openIncidentOp: BodyOperation<OpenIncidentData, typeof zOpenIncidentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(openIncident, [200], zOpenIncidentResponse);
 export const pairRemoteOp: BodyOperation<PairRemoteData, typeof zPairRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pairRemote, [201], zPairRemoteResponse);
 export const passkeyLoginFinishOp: BodyOperation<PasskeyLoginFinishData, typeof zPasskeyLoginFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginFinish, [200], zPasskeyLoginFinishResponse);
 export const passkeyLoginStartOp: BodyOperation<PasskeyLoginStartData, typeof zPasskeyLoginStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginStart, [200], zPasskeyLoginStartResponse);
@@ -1581,6 +1602,7 @@ export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, t
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
 export const resumeAdapterTargetOp: BodyOperation<ResumeAdapterTargetData, typeof zResumeAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterTarget, [202], zResumeAdapterTargetResponse);
+export const resumeIncidentOp: BodyOperation<ResumeIncidentData, typeof zResumeIncidentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeIncident, [200], zResumeIncidentResponse);
 export const resumeRotationOp: BodyOperation<ResumeRotationData, typeof zResumeRotationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeRotation, [200], zResumeRotationResponse);
 export const retirePkiIssuerOp: BodyOperation<RetirePkiIssuerData, typeof zRetirePkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(retirePkiIssuer, [200], zRetirePkiIssuerResponse);
 export const retireSshCaKeyOp: BodyOperation<RetireSshCaKeyData, typeof zRetireSshCaKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(retireSshCaKey, [200], zRetireSshCaKeyResponse);
@@ -1694,6 +1716,7 @@ export const updateSshProfileOp: BodyOperation<UpdateSshProfileData, typeof zUpd
 export const voteAccessRequestOp: BodyOperation<VoteAccessRequestData, typeof zVoteAccessRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteAccessRequest, [200], zVoteAccessRequestResponse);
 export const voteApprovalRequestOp: BodyOperation<VoteApprovalRequestData, typeof zVoteApprovalRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteApprovalRequest, [200], zVoteApprovalRequestResponse);
 export const whoamiOp: BodyOperation<WhoamiData, typeof zWhoamiResponse> = /* @__PURE__ */ new GeneratedBodyOperation(whoami, [200], zWhoamiResponse);
+export const attestIncidentItemOp: BodylessOperation<AttestIncidentItemData> = /* @__PURE__ */ new GeneratedBodylessOperation(attestIncidentItem, [204]);
 export const changeEnvironmentParameterOp: BodylessOperation<ChangeEnvironmentParameterData> = /* @__PURE__ */ new GeneratedBodylessOperation(changeEnvironmentParameter, [204]);
 export const deleteAccessPolicyOp: BodylessOperation<DeleteAccessPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteAccessPolicy, [204]);
 export const deleteApprovalPolicyOp: BodylessOperation<DeleteApprovalPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteApprovalPolicy, [204]);

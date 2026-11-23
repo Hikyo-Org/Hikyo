@@ -1228,6 +1228,42 @@ test.describe('audit trail', () => {
       });
     }
   }
+
+  // Incident containment (#1039): the open form is the page's first control and
+  // needs no incident to exist, so the pinned set runs on a fresh instance.
+  for (const scheme of ['dark', 'light'] as const) {
+    for (const surface of surfacesForFlow('incidents')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(`/orgs/${seed.org}/incidents`);
+          const heading = page.getByRole('heading', { name: 'Incident containment', level: 1 });
+          const open = page.getByRole('button', { name: 'Open incident' });
+          const panel = page.locator('.panel').first();
+          await expect(open).toBeVisible();
+          await expectPinnedAssertionSet(page, {
+            flow: 'incidents',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading],
+            radii: [
+              [panel, 'container'],
+              [open, 'control'],
+            ],
+            fonts: [[heading, 'ui']],
+            colours: [
+              [heading, 'color', '--tx'],
+              [panel, 'backgroundColor', '--bg-panel'],
+            ],
+            hairlines: [panel],
+            density: [],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
 });
 
 /**

@@ -234,6 +234,8 @@ type API struct {
 	Approvals ApprovalService
 	// Access is the approval-mediated temporary-access surface (#152).
 	Access AccessService
+	// Incidents is the incident containment ledger (#1039).
+	Incidents *service.Incidents
 	// SCIM is the provisioning ADMINISTRATION surface (human sessions,
 	// `manage-members` at org scope); SCIMWire is the identity provider's own
 	// protocol path (a provisioning credential, `scim-provision`). They are two

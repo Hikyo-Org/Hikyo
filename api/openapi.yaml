@@ -58,6 +58,8 @@ servers:
     description: The instance this document was served from.
 
 tags:
+  - name: incidents
+    description: Incident containment ledger (#1039). Open an incident, list and resume its items, attest and close.
   - name: meta
     description: Unauthenticated instance discovery.
   - name: auth
@@ -6410,6 +6412,213 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Internal"
+
+  /api/v1/incidents:
+    post:
+      operationId: openIncident
+      tags: [incidents]
+      summary: Open an incident on an account, org, project or adapter, or reopen the open one.
+      description: |
+        Incident containment (#1039, incident-containment ADR). Opens the incident
+        ledger for a scope and enumerates what the scope leaves behind: one item per
+        object, each with an owner function. Opening a scope that already has an
+        open incident enumerates again and adds only the objects the ledger lacks
+        (`reopened`), so a repeat never resets a recorded outcome.
+
+        The caller needs credential-reset at the incident's owning org, or at the
+        instance for an incident that spans orgs. This route dispatches between the
+        two by the target. Every failure that could enumerate an account target
+        answers the same `404`.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentOpenRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The incident with its outcome counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Incident"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/incidents/{incident}:
+    parameters:
+      - $ref: "#/components/parameters/IncidentID"
+    get:
+      operationId: getIncident
+      tags: [incidents]
+      summary: One incident with its outcome counts.
+      description: |
+        The incident and how many of its items sit in each outcome. Gated like the
+        rest of the ledger; an incident the caller may not work answers `404`.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The incident.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Incident"
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/incidents/{incident}/items:
+    parameters:
+      - $ref: "#/components/parameters/IncidentID"
+    get:
+      operationId: listIncidentItems
+      tags: [incidents]
+      summary: The incident's ledger items, in id order.
+      description: |
+        One page of items. A rotation item carries `object_state`, the rotation's own
+        state read when the page is built and never stored, so the list shows what
+        the rotation is now (`gone` when it no longer exists). `refused` separates an
+        open item whose owner refused it from one that has not run yet.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum items on this page.
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: after
+          in: query
+          required: false
+          description: The `next_after` a previous page returned. Absent reads the first page.
+          schema: {type: string, maxLength: 128}
+        - name: open_only
+          in: query
+          required: false
+          description: Keep only the items that still need work (pending, unknown or blocked).
+          schema: {type: boolean, default: false}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: Item page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItemList"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/incidents/{incident}/resume:
+    parameters:
+      - $ref: "#/components/parameters/IncidentID"
+    post:
+      operationId: resumeIncident
+      tags: [incidents]
+      summary: Run the open items again and report what the pass did.
+      description: |
+        Re-reads each open item and runs its owner function once. Only an owner's
+        confirmation writes `done`; anything else leaves the item open. The counts
+        describe this pass only.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: What the pass did.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentResumeResult"
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/incidents/{incident}/items/{item}/attest:
+    parameters:
+      - $ref: "#/components/parameters/IncidentID"
+      - $ref: "#/components/parameters/IncidentItemID"
+    post:
+      operationId: attestIncidentItem
+      tags: [incidents]
+      summary: State that an open item was resolved outside this system.
+      description: |
+        Records the caller's statement that an open item was dealt with elsewhere.
+        An attestation is not a confirmation: it is a distinct outcome that names
+        who stated it. An operator cannot attest an item of an incident on their
+        own account.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: The item is attested.
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/incidents/{incident}/close:
+    parameters:
+      - $ref: "#/components/parameters/IncidentID"
+    post:
+      operationId: closeIncident
+      tags: [incidents]
+      summary: Close the incident, with its residual items named when any are open.
+      description: |
+        Closing with an open item needs `with_residuals`, which records the
+        incident as `closed_with_residuals` and keeps the open items listed. Without
+        it, an incident with open items answers `409`.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentCloseRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The closed incident.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Incident"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
 
   /api/v1/auth/webauthn/enrol/start:
     post:
@@ -16716,6 +16925,18 @@ components:
       description: Enrolled passkey credential identifier.
       schema:
         $ref: "#/components/schemas/ID"
+    IncidentID:
+      name: incident
+      in: path
+      required: true
+      description: The incident id.
+      schema: {$ref: "#/components/schemas/ID"}
+    IncidentItemID:
+      name: item
+      in: path
+      required: true
+      description: The incident item id.
+      schema: {$ref: "#/components/schemas/ID"}
     ResetTargetPrincipal:
       name: principal
       in: path
@@ -18606,6 +18827,126 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/RotationRun"}}
         next_after: {type: string, maxLength: 128, description: "Pass as `after` to read the next page. Absent on the last page."}
+
+    IncidentOpenRequest:
+      type: object
+      additionalProperties: false
+      required: [scope_kind]
+      description: What the incident is opened on. `principal` names an account; `org`, `project` and `adapter` name the other scopes.
+      properties:
+        scope_kind:
+          type: string
+          description: What the incident is opened on. OPEN enum.
+          x-extensible-enum: [account, org, project, adapter]
+        principal: {$ref: "#/components/schemas/ID"}
+        org: {$ref: "#/components/schemas/ID"}
+        project: {$ref: "#/components/schemas/ID"}
+        adapter: {$ref: "#/components/schemas/ID"}
+
+    IncidentCloseRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        with_residuals:
+          type: boolean
+          description: Close although items are still open, recording the residuals.
+
+    IncidentOutcomeCounts:
+      type: object
+      additionalProperties: false
+      required: [pending, done, unknown, attested, blocked, out_of_scope]
+      description: How many items sit in each ledger outcome.
+      properties:
+        pending: {type: integer, format: int32}
+        done: {type: integer, format: int32}
+        unknown: {type: integer, format: int32}
+        attested: {type: integer, format: int32}
+        blocked: {type: integer, format: int32}
+        out_of_scope: {type: integer, format: int32}
+
+    Incident:
+      type: object
+      additionalProperties: false
+      required: [id, scope_kind, scope_id, status, opened_by, opened_at, counts]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        scope_kind:
+          type: string
+          x-extensible-enum: [account, org, project, adapter]
+        scope_id: {type: string, maxLength: 128}
+        org: {$ref: "#/components/schemas/ID"}
+        status:
+          type: string
+          description: OPEN enum.
+          x-extensible-enum: [open, closed, closed_with_residuals]
+        opened_by: {$ref: "#/components/schemas/ID"}
+        opened_at: {$ref: "#/components/schemas/Timestamp"}
+        closed_by: {$ref: "#/components/schemas/ID"}
+        closed_at: {$ref: "#/components/schemas/Timestamp"}
+        counts: {$ref: "#/components/schemas/IncidentOutcomeCounts"}
+        reopened:
+          type: boolean
+          description: True when the scope already had an open incident and this open added only the missing objects.
+        added:
+          type: integer
+          format: int32
+          description: Items this open added to the ledger.
+
+    IncidentItem:
+      type: object
+      additionalProperties: false
+      required: [id, owner_function, object_kind, object_id, outcome, refused, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        owner_function: {type: string, maxLength: 128}
+        object_kind: {type: string, maxLength: 64}
+        object_id: {type: string, maxLength: 128}
+        outcome:
+          type: string
+          description: The ledger's closed outcome set. Pending, unknown and blocked are open.
+          enum: [pending, done, unknown, attested, blocked, out_of_scope]
+        reason:
+          type: string
+          description: |
+            Why the item sits in its outcome, as a fixed word; absent when there is none.
+            `owner_failed` on a pending item means its owner refused it. OPEN enum.
+          x-extensible-enum: [owner_failed, owner_unconfirmed, needs_another_operator, enumeration_truncated, upstream_not_observable, no_revoke_owner]
+        refused:
+          type: boolean
+          description: An open item whose owner refused it, as opposed to one that has not run yet.
+        object_state:
+          type: string
+          description: |
+            A rotation item's own state, read live when the page is built and never
+            stored: `active`, `paused`, `halted`, `disabled`, or `gone` when the
+            rotation no longer exists. Absent for other kinds and for a rotation the
+            caller cannot read. OPEN enum.
+          x-extensible-enum: [active, paused, halted, disabled, gone]
+        attested_by: {$ref: "#/components/schemas/ID"}
+        attested_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+
+    IncidentItemList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/IncidentItem"}}
+        next_after: {type: string, maxLength: 128, description: "Pass as `after` to read the next page. Present after a full page, and that next page may be empty."}
+
+    IncidentResumeResult:
+      type: object
+      additionalProperties: false
+      required: [examined, confirmed, unconfirmed, failed, blocked, stale, skipped]
+      description: What one resume pass did, in items.
+      properties:
+        examined: {type: integer, format: int32}
+        confirmed: {type: integer, format: int32}
+        unconfirmed: {type: integer, format: int32}
+        failed: {type: integer, format: int32}
+        blocked: {type: integer, format: int32}
+        stale: {type: integer, format: int32}
+        skipped: {type: integer, format: int32}
 
     MintLeaseRequest:
       type: object
