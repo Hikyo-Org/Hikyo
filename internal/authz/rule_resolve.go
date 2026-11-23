@@ -11,7 +11,7 @@ import (
 )
 
 // "Who can...?" (member-access-rules ADR D10) at the chokepoint. Every
-// principal of the org is evaluated with the predicates authorizeTenant uses:
+// principal in the population (AccessPopulation) is evaluated with the predicates authorizeTenant uses:
 // evaluate and evaluateWithRules for an ordinary atom, the delegation
 // selector check for Manage access, rulesApply for whose rules count and
 // machineRevealWithdrawn for the machine-reveal opt-in. Nothing is cached.
