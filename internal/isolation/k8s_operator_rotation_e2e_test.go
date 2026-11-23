@@ -4,15 +4,19 @@ package isolation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
@@ -44,7 +48,7 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 	x := newRotExecOn(t, f)
 	rot := x.create("key_e2e_sec1", "key_e2e_cfg1")
 
-	// 30s is the operator's minimum resync, which bounds how soon it sees the publish.
+	// 30s is the operator's minimum resync, which bounds how late it sees the publish.
 	cr := e.createCR(crSpec{name: "cr-rotation", target: "rotation-secret", secretRef: "boot-rotation", mapping: allFourMapping()})
 	must(t, e.cl.Get(e.ctx, types.NamespacedName{Namespace: e.ns, Name: cr.Name}, cr))
 	cr.Spec.ResyncInterval = "30s"
@@ -53,7 +57,7 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 
 	// Baseline: the original values are delivered and the Deployment is stamped.
 	e.waitCondition("cr-rotation", hikyov1.ConditionReady, metav1.ConditionTrue, hikyov1.ReasonReconciled)
-	waitRolled(t, e, "rotapp", "rotation-secret", "")
+	waitRolled(t, e, "cr-rotation", "rotapp", "rotation-secret", "")
 	before := e.getDeployment("rotapp")
 	baselineStamp := stampOf(before, "rotation-secret")
 	baselineGen := before.Generation
@@ -77,10 +81,25 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 	}
 
 	// The operator-managed Secret now carries the rotated credential...
-	poll(t, e.ctx, func(context.Context) (bool, error) {
-		got, ok := e.getSecret("rotation-secret")
-		return ok && string(got.Data[secKeyOne]) == role.password && string(got.Data[cfgKeyOne]) == candidate, nil
-	})
+	lastSecret := "no observation"
+	func() {
+		defer func() {
+			if t.Failed() {
+				t.Logf("secret wait: %s; CR conditions: %s", lastSecret, dumpConds(e.getCR("cr-rotation")))
+			}
+		}()
+		poll(t, e.ctx, func(context.Context) (bool, error) {
+			got, ok := e.getSecret("rotation-secret")
+			if !ok {
+				lastSecret = "Secret absent"
+				return false, nil
+			}
+			lastSecret = fmt.Sprintf("sha256(%s)=%s sha256(%s)=%s want sha256(%s)=%s sha256(%s)=%s",
+				secKeyOne, digest(got.Data[secKeyOne]), cfgKeyOne, digest(got.Data[cfgKeyOne]),
+				secKeyOne, digest([]byte(role.password)), cfgKeyOne, digest([]byte(candidate)))
+			return string(got.Data[secKeyOne]) == role.password && string(got.Data[cfgKeyOne]) == candidate, nil
+		})
+	}()
 	got, _ := e.getSecret("rotation-secret")
 	if string(got.Data[cfgKeyTwo]) != cfgValTwo || string(got.Data[secKeyTwo]) != secValTwo {
 		t.Fatal("rotation changed keys it does not own")
@@ -88,7 +107,7 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 
 	// ...and the consuming Deployment rolled: new pod-template stamp, a new
 	// generation and ReplicaSet, a ready replacement pod; the bystander is untouched.
-	waitRolled(t, e, "rotapp", "rotation-secret", baselineStamp)
+	waitRolled(t, e, "cr-rotation", "rotapp", "rotation-secret", baselineStamp)
 	if after := e.getDeployment("rotapp"); after.Generation <= baselineGen {
 		t.Fatalf("Deployment generation did not advance: %d -> %d", baselineGen, after.Generation)
 	}
@@ -102,12 +121,12 @@ func testCredentialRotationRollout(t *testing.T, restCfg *rest.Config, sch *runt
 
 // waitRolled waits for a fully rolled-out, ready Deployment whose stamp for the
 // secret is set and differs from notStamp.
-func waitRolled(t *testing.T, e *opEnv, deployment, secret, notStamp string) {
+func waitRolled(t *testing.T, e *opEnv, crName, deployment, secret, notStamp string) {
 	t.Helper()
 	last := "no observation"
 	defer func() {
 		if t.Failed() {
-			t.Logf("rollout wait: %s; CR conditions: %s", last, dumpConds(e.getCR("cr-rotation")))
+			t.Logf("rollout wait: %s; %s; CR conditions: %s", last, rolloutDiagnostics(e, deployment), dumpConds(e.getCR(crName)))
 		}
 	}()
 	poll(t, e.ctx, func(ctx context.Context) (bool, error) {
@@ -121,4 +140,45 @@ func waitRolled(t *testing.T, e *opEnv, deployment, secret, notStamp string) {
 		return stamp != "" && stamp != notStamp && d.Status.ObservedGeneration >= d.Generation &&
 			d.Status.Replicas == 1 && d.Status.UpdatedReplicas == 1 && d.Status.AvailableReplicas == 1, nil
 	})
+}
+
+// digest is a short SHA-256 of a value, so failure logs never carry plaintext.
+func digest(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:4])
+}
+
+// rolloutDiagnostics reports the newest ReplicaSet's ready count and the first
+// pod's phase and waiting reason, for a rollout wait that timed out.
+func rolloutDiagnostics(e *opEnv, deployment string) string {
+	var rsList appsv1.ReplicaSetList
+	if err := e.cl.List(e.ctx, &rsList, client.InNamespace(e.ns)); err != nil {
+		return fmt.Sprintf("list ReplicaSets: %v", err)
+	}
+	var newest *appsv1.ReplicaSet
+	for i := range rsList.Items {
+		rs := &rsList.Items[i]
+		for _, ref := range rs.OwnerReferences {
+			if ref.Kind == "Deployment" && ref.Name == deployment &&
+				(newest == nil || rs.CreationTimestamp.After(newest.CreationTimestamp.Time)) {
+				newest = rs
+			}
+		}
+	}
+	out := "no ReplicaSet"
+	if newest != nil {
+		out = fmt.Sprintf("newest ReplicaSet %s ready=%d/%d", newest.Name, newest.Status.ReadyReplicas, newest.Status.Replicas)
+	}
+	var pods corev1.PodList
+	if err := e.cl.List(e.ctx, &pods, client.InNamespace(e.ns), client.MatchingLabels{"app": deployment}); err != nil || len(pods.Items) == 0 {
+		return out + "; no pod"
+	}
+	pod := pods.Items[0]
+	out += fmt.Sprintf("; pod %s phase=%s", pod.Name, pod.Status.Phase)
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil {
+			out += fmt.Sprintf(" waiting=%s", cs.State.Waiting.Reason)
+		}
+	}
+	return out
 }

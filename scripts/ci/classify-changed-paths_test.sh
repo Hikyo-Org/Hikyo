@@ -144,6 +144,12 @@ expect_plan 'operator isolation' \
 	'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
 	'internal/isolation/k8s_operator_e2e_test.go'
 
+for rotation_fixture in \
+	'internal/isolation/rotation_e2e_test.go' \
+	'internal/isolation/rotation_executor_e2e_test.go'; do
+	expect_selected "$rotation_fixture" k8s-e2e "$rotation_fixture"
+done
+
 expect_plan 'generated CRD' \
 	'["floor-bench","generated","k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
 	'chart/hikyo/crds/hikyo.dev_hikyosecrets.yaml'
