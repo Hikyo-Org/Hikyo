@@ -269,7 +269,7 @@ func permittedHandlePosition(fset *token.FileSet, base string, pos token.Pos) bo
 	}
 	relative := filename[index+1:]
 	expected := Module + "/" + filepath.ToSlash(filepath.Dir(relative))
-	if base != expected && !(base == expected+"_test" && externalTestFiles[relative]) {
+	if base != expected && (base != expected+"_test" || !externalTestFiles[relative]) {
 		return false
 	}
 	return driverFiles[relative]
