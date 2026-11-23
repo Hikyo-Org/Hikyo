@@ -335,8 +335,8 @@ same authorization and refusals:
   holds it. A deleted rotation takes no act.
 - Create, resume, run-now and release-hold then ask you to confirm the publish over
   the environment and both keys with a passkey, a code or your identity provider,
-  even in an unprotected environment; a live publish window you already opened
-  covers it. Pause and delete need no confirmation step beyond their dialog.
+  even in an unprotected environment; any live re-authentication window in this
+  environment covers it. Pause and delete need no confirmation step beyond their dialog.
 - **Release hold** shows the reconcile-then-release instruction first, and its button
   stays disabled until you tick that you have reconciled the grants and the provider
   credential and read the runs. It never resumes the rotation.
@@ -345,7 +345,7 @@ same authorization and refusals:
   of refusing while one is in flight; that revokes nothing.
 - Every act sends the generation the tab read, so a change someone made since is
   refused as a conflict instead of overwritten, and every refusal is shown in the
-  server's own words. The tab never shows or stores a credential.
+  sentence plus the server's named reason. The tab never shows or stores a credential.
 
 Reading the tab needs **read** on the
 environment. A person who lacks it gets the API's answer (the same not-found for a

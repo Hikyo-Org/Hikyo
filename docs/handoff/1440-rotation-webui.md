@@ -12,7 +12,9 @@ authorization. No API, executor or rotation semantics changed.
   overwrite. Run-now always sends `confirm_destructive: true` (the dialog is the
   confirmation) and the chosen `skip_overlap`; delete sends `abandon`. Both hooks
   re-read the environment's rotation list and runs when they settle, success or not.
-  `rotationActRefusalText` shows the server's named refusal (its safe detail) verbatim.
+  `rotationActRefusalText` shows a client sentence per status plus the server's named
+  refusal (its safe detail) in parentheses. A fence above the browser's exact integer
+  range fails before sending.
 - `web/src/routes/Ceremony.tsx`: new purpose `rotation`. It signs `publish` (the window
   the service's `requireRotationCeremony` consumes over the environment and both keys)
   but tells the person what they grant: "hand scheduled publishing to a rotation in ·
@@ -20,7 +22,9 @@ authorization. No API, executor or rotation semantics changed.
   existing `publish` lede ("publish into a protected environment") would be false: a
   rotation's environment is never protected.
 - `web/src/routes/machineAccess/Rotations.tsx`: **Create rotation** dialog; per-row acts
-  offered by state (`actVerbs`); one act dialog per verb with its consequences. Create,
+  offered by state (`actVerbs`); one act dialog per verb with its consequences. An open
+  dialog whose rotation was re-read at another generation, or no longer offers that act,
+  disables its button and says to review the row again. Create,
   resume, run-now and release-hold go through `useProtectedPublishCeremony` with purpose
   `rotation`. Because the purpose is not `publish`, the hook never skips the ceremony for
   an unprotected environment; it skips it only when a live, non-single-decision window
@@ -47,11 +51,19 @@ authorization. No API, executor or rotation semantics changed.
   CreateNoProvider, CreateRefusedProtected, ResumeAsksForCeremony (real Ceremony modal),
   ResumeRefused, ReleaseHoldInstruction, RunNowSkipOverlap, PauseDone,
   DeleteRefusedInFlight.
+- Hook: `useProtectedPublishCeremony.test.tsx` "rotation purpose": prompts in an
+  unprotected environment, skips only for a live sliding window, prompts for a
+  single-decision window and over a workspace transport.
 - e2e: `web/e2e/flows/machine-access.spec.ts` "the Rotations tab takes each act...": the
   rotation routes are stubbed at the network boundary (no provider can mint in the dev
   instance), the publish ceremony is real (reveal-window read and passkey assertion).
+  Request bodies are parsed strictly with the API's generated request schemas.
 
 ## Remaining
 
 - No real-server e2e of a rotation act: it needs a PostgreSQL dynamic provider in the dev
-  instance. The Go service tests own the server behaviour.
+  instance. The Go service tests own the server behaviour, including that a live window
+  opened by one act satisfies `requireRotationCeremony` for the next; the e2e only shows
+  the client skips the second prompt.
+- A 403 is shown as "you may lack access"; the dialog does not re-prompt the ceremony
+  on its own. Retrying the act runs the ceremony again if no window is live.

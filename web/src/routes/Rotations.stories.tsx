@@ -325,7 +325,7 @@ export const CreateNoProvider: Story = {
 };
 
 // A live publish window covers the act, so the server answers at once: a protected
-// environment is refused by name, in the server's words.
+// environment is refused by name, with the server's named reason.
 export const CreateRefusedProtected: Story = {
   parameters: {
     app: {
@@ -435,5 +435,81 @@ export const DeleteRefusedInFlight: Story = {
     await expect(dialog).toHaveTextContent('this revokes nothing');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     await expect(await within(dialog).findByRole('alert')).toHaveTextContent('the rotation has a run in flight; let it finish first');
+  },
+};
+
+// A live window covers the act, yet the server refuses access: the 403 carries no
+// detail, so the page names what release-hold needs without claiming the cause.
+export const ReleaseHoldForbidden: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        revealWindow(true),
+        { url: `${LIST}/${HELD_ROTATION}/release-hold`, method: 'POST', status: 403, body: { error: { code: 'forbidden', message: 'Forbidden' } } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Release hold REPORTING_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Release hold rotation · REPORTING_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('checkbox'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Release hold' }));
+    await expect(await within(dialog).findByText(/you may lack access/)).toBeVisible();
+  },
+};
+
+export const RunNowRefused: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        revealWindow(true),
+        { url: `${LIST}/${ROTATION}/run-now`, method: 'POST', status: 409, body: refusal(409, 'a run of this rotation is already in flight') },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Run now DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Run now rotation · DATABASE_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Run now' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('a run of this rotation is already in flight');
+  },
+};
+
+// Someone changed the rotation since the tab read it: the generation fence refuses
+// the act as a conflict instead of acting on the newer state.
+export const StaleGenerationConflict: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        { url: `${LIST}/${ROTATION}/pause`, method: 'POST', status: 409, body: refusal(409, 'the rotation changed since generation 1; read it again') },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Pause DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Pause rotation · DATABASE_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Pause' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('the rotation changed since generation 1; read it again');
+  },
+};
+
+// The ceremony lookup itself fails: nothing is sent and the dialog says so.
+export const CeremonyCouldNotStart: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        { url: WINDOW, status: 503, body: { error: { code: 'service_unavailable', message: 'Service unavailable' } } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Resume ANALYTICS_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Resume rotation · ANALYTICS_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Resume' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('The publish confirmation could not be started, so nothing was changed');
   },
 };

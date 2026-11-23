@@ -11,6 +11,7 @@ import {
   owedSummaryText,
   owesDrop,
   owesDropSummary,
+  restoreHoldState,
   restoreHoldText,
   VERSIONS_CHANGED_CODE,
   rfc3339,
@@ -142,7 +143,8 @@ export function RotationsPanel({
         Scheduled rotation of one PostgreSQL password and role name, minted, published and later
         dropped by the server on its own. This page never shows a credential. Creating, resuming and
         running a rotation, and lifting a restore hold, hand publishing of its keys to the server, so
-        each asks you to confirm with a passkey or code first; the same acts are{' '}
+        each asks you to confirm the publish first (passkey, code or your identity provider), unless a
+        re-authentication window still live in this environment covers it; the same acts are{' '}
         <code>hikyo rotation</code> commands.
       </p>
       {current === undefined ? (
@@ -189,6 +191,12 @@ function RotationList({
   const held = rotations.filter((rotation) => rotation.restore_hold && rotation.state !== 'disabled');
   const halted = rotations.filter((rotation) => rotation.state === 'halted');
   const chosen = rotations.find((rotation) => rotation.id === selected);
+  // The dialog acts on the generation the person reviewed; a newer read of that rotation makes it stale.
+  const actingNow = acting === null || acting === 'create' ? undefined : rotations.find((rotation) => rotation.id === acting.rotation.id);
+  const stale =
+    acting !== null &&
+    acting !== 'create' &&
+    (actingNow === undefined || actingNow.generation !== acting.rotation.generation || !actVerbs(actingNow).includes(acting.verb));
 
   return (
     <>
@@ -210,13 +218,14 @@ function RotationList({
       {query.isError ? <Alert>{rotationRefusalText(query.error, 'rotations')}</Alert> : null}
 
       {held.map((rotation) => (
-        <Alert key={rotation.id}>{restoreHoldText(rotation)}</Alert>
+        <Alert key={rotation.id}>{restoreHoldText(rotation)} Or use Release hold on its row.</Alert>
       ))}
       {halted.length > 0 ? (
         <Alert tone="warn">
           {halted.length === 1 ? 'One rotation is' : `${String(halted.length)} rotations are`} halted:
           the server stopped {halted.length === 1 ? 'it' : 'them'} and starts no run until a person
-          resumes {halted.length === 1 ? 'it' : 'them'} with <code>hikyo rotation resume</code>. A
+          resumes {halted.length === 1 ? 'it' : 'them'} with Resume on {halted.length === 1 ? 'its row' : 'their rows'} or{' '}
+          <code>hikyo rotation resume</code>. A
           halted rotation does not extend the credential already delivered.
           {halted.map((rotation) => (
             <span key={`cause-${rotation.id}`}>
@@ -229,8 +238,8 @@ function RotationList({
             .map((rotation) => (
               <span key={rotation.id}>
                 {' '}
-                Rotation {rotation.id} is also held after a restore: lift the hold with{' '}
-                <code>hikyo rotation release-hold {rotation.id}</code> first, then resume it.
+                Rotation {rotation.id} is also held after a restore: lift the hold with Release hold on its row
+                (or <code>hikyo rotation release-hold {rotation.id}</code>) first, then resume it.
               </span>
             ))}
         </Alert>
@@ -431,6 +440,7 @@ function RotationList({
           environmentName={environmentName}
           verb={acting.verb}
           rotation={acting.rotation}
+          stale={stale}
           catalogue={catalogue}
           onClose={() => setActing(null)}
           onDone={(message) => {
@@ -521,6 +531,7 @@ function RotationActDialog({
   environmentName,
   verb,
   rotation,
+  stale,
   catalogue,
   onClose,
   onDone,
@@ -529,6 +540,7 @@ function RotationActDialog({
   environmentName: string;
   verb: ActVerb;
   rotation: Rotation;
+  stale: boolean;
   catalogue: readonly CatalogueKey[];
   onClose: () => void;
   onDone: (message: string) => void;
@@ -582,7 +594,7 @@ function RotationActDialog({
             <Button
               type="button"
               variant={verb === 'delete' || verb === 'run-now' ? 'danger' : 'primary'}
-              disabled={busy || (verb === 'release-hold' && !reconciled)}
+              disabled={busy || stale || (verb === 'release-hold' && !reconciled)}
               onClick={submit}
             >
               {busy ? 'Working…' : ACT_LABEL[verb]}
@@ -591,6 +603,12 @@ function RotationActDialog({
         }
       >
         <p className="mono rotations__id">{rotation.id}</p>
+        {stale && !busy ? (
+          <Alert tone="warn">
+            Rotation {rotation.id} changed since you opened this, so nothing will be sent. Close this and review its row
+            again.
+          </Alert>
+        ) : null}
         {verb === 'pause' ? (
           <p>Pausing stops scheduling this rotation until a person resumes it. {expiryNote(rotation)}</p>
         ) : null}
@@ -610,7 +628,7 @@ function RotationActDialog({
         ) : null}
         {verb === 'release-hold' ? (
           <>
-            <Alert>{restoreHoldText(rotation)}</Alert>
+            <Alert>{restoreHoldState(rotation)}.</Alert>
             <p>
               Before you release it: reconcile the rotation&apos;s grants and its provider credential, and read its runs.
               Releasing lets the executor roll back or reconcile the runs held before their publish and drop their
@@ -709,8 +727,9 @@ function CreateRotationDialog({
   const busy = mutation.isPending;
 
   const submit = () => {
-    const interval = Number(hours) * HOUR;
-    const delay = Number(minutes) * MINUTE;
+    // A fractional hour or minute would still be whole seconds: check the field itself.
+    const interval = Number.isInteger(Number(hours)) ? Number(hours) * HOUR : Number.NaN;
+    const delay = Number.isInteger(Number(minutes)) ? Number(minutes) * MINUTE : Number.NaN;
     let invalid: string | null = null;
     if (providerId === '' || keyId === '' || usernameKeyId === '') invalid = 'Choose a provider, a password key and a role name key.';
     else if (keyId === usernameKeyId) invalid = 'The password key and the role name key must be two different keys.';

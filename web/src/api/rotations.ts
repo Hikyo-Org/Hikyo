@@ -171,6 +171,10 @@ export function useRotationAct(env: EnvironmentRef) {
   return useMutation({
     mutationFn: async (act: RotationAct): Promise<void> => {
       const path = { org: env.org, project: env.project, environment: env.environment, rotation: act.rotation.id };
+      // The generated client types the fence as number: refuse one it cannot carry exactly.
+      if (act.rotation.generation > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error(`rotation ${act.rotation.id} generation ${String(act.rotation.generation)} exceeds the browser's exact integer range`);
+      }
       const expected_generation = Number(act.rotation.generation);
       const options = { path, ...transport };
       switch (act.verb) {
@@ -212,7 +216,7 @@ export function rotationActRefusalText(error: unknown, verb: RotationVerb): stri
       401: commonRefusalText.sessionEnded,
       403: (e) =>
         withDetail(
-          `${subject}: it needs ${verb === 'pause' || verb === 'delete' ? 'publish' : 'edit, publish and reveal'} on both keys, from a signed-in person${verb === 'pause' || verb === 'delete' ? '' : ', and the publish confirmation'}.`,
+          `${subject}: you may lack access. It needs ${verb === 'pause' || verb === 'delete' ? 'publish' : 'edit, publish and reveal'} on both keys, from a signed-in person${verb === 'pause' || verb === 'delete' ? '' : ', and a publish confirmation that is still live'}.`,
           e,
         ),
       404: `${subject}: the rotation or environment is not here, or you may not read it.`,
@@ -287,11 +291,16 @@ export function releaseHoldCommand(rotation: Rotation): string {
 
 /** restoreHoldText is the RESTORE HOLD sentence for a rotation a restore holds. */
 export function restoreHoldText(rotation: Rotation): string {
+  return `${restoreHoldState(rotation)}; reconcile its grants and provider credential, then run: ${releaseHoldCommand(rotation)}`;
+}
+
+/** restoreHoldState is the RESTORE HOLD sentence without the CLI instruction, for the browser's release dialog. */
+export function restoreHoldState(rotation: Rotation): string {
   const until =
     rotation.credential_expires_at === undefined || rotation.credential_expires_at === null
       ? 'no recorded expiry'
       : `the delivered credential lapses at ${rfc3339(rotation.credential_expires_at)}`;
-  return `RESTORE HOLD: rotation ${rotation.id} is held after a restore and starts no run (${until}); reconcile its grants and provider credential, then run: ${releaseHoldCommand(rotation)}`;
+  return `RESTORE HOLD: rotation ${rotation.id} is held after a restore and starts no run (${until})`;
 }
 
 /** The halt reasons the server writes, as fixed words; `unknown` is a halt it did not name. */

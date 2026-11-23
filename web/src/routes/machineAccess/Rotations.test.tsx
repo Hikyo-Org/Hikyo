@@ -14,6 +14,7 @@ import {
   ROTATION,
   rotationKeys,
   rotationList,
+  rotationRequestBody,
   settledRuns,
 } from '../../testkit/rotations.ts';
 import { MAX_RUN_PAGES } from '../../api/rotations.ts';
@@ -689,7 +690,7 @@ function actStub(routes: Readonly<Record<string, () => Response>>): Sent[] {
     const request = args[0] instanceof Request ? args[0] : new Request(args[0], args[1]);
     const url = new URL(request.url);
     const text = await request.text();
-    sent.push({ method: request.method, path: url.pathname, search: url.search, body: text === '' ? undefined : JSON.parse(text) });
+    sent.push({ method: request.method, path: url.pathname, search: url.search, body: rotationRequestBody(request.method, url.pathname, text) });
     const answer = routes[`${request.method} ${url.pathname}`];
     if (answer === undefined) throw new Error(`unexpected ${request.method} ${url.pathname}`);
     return answer();
@@ -737,7 +738,7 @@ it('pauses without a ceremony, carrying the generation it read, and says the cre
     await click(buttonNamed(container, 'Pause DATABASE_PASSWORD'));
     expect(dialog().textContent).toContain('The credential already delivered stays valid until 2099-01-31T00:00:00Z; this revokes nothing.');
     await click(buttonNamed(dialog(), 'Pause'));
-    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(ROTATION)}/pause`, search: '', body: { expected_generation: 1 } }]);
+    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(ROTATION)}/pause`, search: '', body: { expected_generation: 1n } }]);
     expect(sent.some((r) => r.path === windowPath)).toBe(false);
     expect(container.querySelector('.rotations__done')?.textContent).toContain(`Rotation ${ROTATION} paused.`);
   } finally {
@@ -764,7 +765,7 @@ it('resumes only after the publish ceremony over the environment and both keys',
     expect(ceremony.textContent).toContain('ANALYTICS_PASSWORD,ANALYTICS_USER');
     expect(acts(sent)).toEqual([]);
     await click(buttonNamed(document.body, 'Authorise'));
-    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HALTED_ROTATION)}/resume`, search: '', body: { expected_generation: 1 } }]);
+    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HALTED_ROTATION)}/resume`, search: '', body: { expected_generation: 1n } }]);
   } finally {
     await unmount();
   }
@@ -804,7 +805,7 @@ it('shows the reconcile instruction and offers release only once it is acknowled
     await click(release);
     expect(document.querySelector('[data-ceremony]')?.getAttribute('data-ceremony')).toBe('rotation');
     await click(buttonNamed(document.body, 'Authorise'));
-    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HELD_ROTATION)}/release-hold`, search: '', body: { expected_generation: 1 } }]);
+    expect(acts(sent)).toEqual([{ method: 'POST', path: `${rotationPath(HELD_ROTATION)}/release-hold`, search: '', body: { expected_generation: 1n } }]);
     expect(container.querySelector('.rotations__done')?.textContent).toContain('It was not resumed.');
   } finally {
     await unmount();
@@ -829,7 +830,7 @@ it('runs now with the destructive confirmation and the chosen overlap', async ()
       method: 'POST',
       path: `${rotationPath(ROTATION)}/run-now`,
       search: '',
-      body: { confirm_destructive: true, expected_generation: 1, skip_overlap: true },
+      body: { confirm_destructive: true, expected_generation: 1n, skip_overlap: true },
     }]);
   } finally {
     await unmount();
@@ -871,6 +872,29 @@ it('names the server refusal in its own words and keeps the dialog open', async 
   }
 });
 
+it('disables a dialog whose rotation was re-read at a newer generation', async () => {
+  let listed = 0;
+  const sent = actStub({
+    [`GET ${base}/keys`]: () => Response.json(rotationKeys),
+    // The first read is generation 1; the re-read after the refusal is generation 2.
+    [`GET ${listPath(PROD)}`]: () => Response.json({ items: rotationList().items.map((r, i) => (i === 0 && listed++ > 0 ? { ...r, generation: 2 } : r)) }),
+    [`POST ${rotationPath(ROTATION)}/pause`]: () =>
+      Response.json({ error: { code: 'conflict', message: 'Conflict', detail: 'the rotation changed since it was read; read it again' } }, { status: 409 }),
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Pause DATABASE_PASSWORD'));
+    await click(buttonNamed(dialog(), 'Pause'));
+    await settleTask();
+    expect(dialog().textContent).toContain('changed since you opened this, so nothing will be sent');
+    expect(buttonNamed(dialog(), 'Pause').disabled).toBe(true);
+    expect(acts(sent)).toHaveLength(1);
+  } finally {
+    await unmount();
+  }
+});
+
 it('creates a rotation behind the ceremony, refusing an obvious slip before it', async () => {
   const sent = actStub({
     ...reads([]),
@@ -905,8 +929,8 @@ it('creates a rotation behind the ceremony, refusing an obvious slip before it',
         provider_id: dynamicProvider.id,
         key_id: rotationKeys.items[0]!.id,
         username_key_id: rotationKeys.items[1]!.id,
-        interval_seconds: 86_400,
-        revocation_delay_seconds: 3_600,
+        interval_seconds: 86_400n,
+        revocation_delay_seconds: 3_600n,
       },
     }]);
     expect(container.querySelector('.rotations__done')?.textContent).toContain('you are its recorded authority principal');
