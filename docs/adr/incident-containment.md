@@ -500,6 +500,13 @@ principal is contained, so a contained account would still have a scheduler acti
   incident attested. An account with neither a password nor a linked identity is refused,
   because nothing then records a replaced way to sign in. An unmet condition is a conflict
   (`ErrReleaseNotReady`) and the principal stays contained.
+- Every path that re-establishes a contained account mints an authority row after the
+  containment: the operator reset, the break-glass reset, recovery-code consumption and a
+  federated claim of a reset authority. Containment retires outstanding authorities and
+  establishment refuses one minted before it, and the password and factor writes of a signed-in
+  session need a session a contained account cannot hold. So the signal is complete: an
+  account that was re-established has a newer consumed authority, and one that was not stays
+  contained (test: `TestIncidentReleaseAcceptsARealResetEstablishment`).
 - Release revives and regrants nothing. The store setter advances the session generation
   again and retires pending proofs, and a revoked delegation stays revoked.
 - A restore lists the contained principals among the unreconciled (`Status.Contained`, shown

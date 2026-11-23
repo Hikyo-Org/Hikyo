@@ -20,13 +20,15 @@ Local only until slice 4 merges.
 - `TestIncidentReleaseRequiresEstablishmentOrAttestation`,
   `TestIncidentReleaseNeedsEstablishmentForAPasswordAccount`,
   `TestIncidentReleaseRefusesAnAccountWithNothingToReplace`,
+  `TestIncidentReleaseAcceptsARealResetEstablishment` (real reset, establish, release),
   `TestRestoreReconcileDoesNotLiftContainment` (real archive restore and reopen).
 
 ## Not done
 
 - No HTTP route, CLI verb or web control for release: the operator surface is a later slice.
 - The recovery rehearsal on an isolated instance is not run.
-- An establishment signal is read from the authority rows; an account that re-establishes
-  through a path that does not mint an authority is not seen (a later review point).
+- The establishment signal is read from the authority rows. Traced: every re-establishment
+  path of a contained account (operator reset, break-glass reset, recovery code, federated
+  claim) mints one after containment, and no path writes a credential without one (ADR slice 5).
 - Maintainer security review and the human merge gate remain required. Cross-provider review
   did not run and is not CLEAN.

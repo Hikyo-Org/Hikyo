@@ -128,6 +128,38 @@ func TestIncidentReleaseRefusesAnAccountWithNothingToReplace(t *testing.T) {
 	})
 }
 
+// The real re-establishment path: an operator reset mints an authority after
+// containment, establishing it creates the password, and that is the evidence
+// release reads (ADR O4 A).
+func TestIncidentReleaseAcceptsARealResetEstablishment(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		auth := authService(t, db)
+		id := w.containedIncident(t, false)
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+
+		reset, err := auth.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
+		if err != nil {
+			t.Fatalf("reset of the contained account: %v", err)
+		}
+		// Minted but not yet established: a password-less account with nothing
+		// attested stays contained.
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release before establishing = %v, want ErrReleaseNotReady", err)
+		}
+		if err := auth.EstablishCredential(ctx, reset.Authority, "a password established after containment"); err != nil {
+			t.Fatalf("establishing the reset authority: %v", err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("release after a real establishment: %v", err)
+		}
+		if s := w.containmentState(t, incTarget); s != "none" {
+			t.Errorf("containment_state = %q, want none", s)
+		}
+	})
+}
+
 // A restore lists a contained principal as such, and reconciling it re-asserts
 // its grants without lifting containment: release is the separate incident act.
 func TestRestoreReconcileDoesNotLiftContainment(t *testing.T) {
