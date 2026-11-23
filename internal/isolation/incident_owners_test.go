@@ -110,8 +110,9 @@ func TestIncidentOwnersContainAccountEndToEnd(t *testing.T) {
 	})
 }
 
-// A refusal leaves the item open and the account untouched: pending, never done,
-// the sessions and delegations alive, and the resume counts it as failed.
+// A refusal leaves the contain item open and the account uncontained: pending,
+// never done, and the resume counts it as failed. The session and delegation
+// items are independent owners and complete on their own (ADR, Concurrency).
 func TestIncidentOwnerRefusesSelfContainment(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
@@ -221,7 +222,9 @@ func TestIncidentOwnerHaltsRotationsAndReleaseNeverResumes(t *testing.T) {
 		if n := r.w.correlated(t, "rotation.configured", id); n == 0 {
 			t.Errorf("the rotation halt event does not carry the incident id as correlation")
 		}
-		// Release of the principal never resumes the rotation.
+		// Release of the principal never resumes the rotation. The release is a raw
+		// UPDATE because the release service is a later slice; it proves only that the
+		// executor does not resume a halted rotation on its own.
 		execRaw(t, db, `UPDATE principals SET containment_state='none' WHERE id='`+string(alice)+`'`)
 		r.x.advance(25 * 3600 * 1e9)
 		r.x.drain()
@@ -456,6 +459,7 @@ func TestIncidentOwnerAdapterTargetPause(t *testing.T) {
 func TestIncidentRotationListingIsBoundedByTheLookupBudget(t *testing.T) {
 	for name, open := range map[string]func(*testing.T) *store.DB{"sqlite": openSQLite, "postgres": openPostgres} {
 		t.Run(name, func(t *testing.T) {
+			_ = open(t) // an engine the run does not configure skips here, not per budget
 			for budget := 3; budget <= 30; budget++ {
 				found := false
 				t.Run(fmt.Sprint(budget), func(t *testing.T) {

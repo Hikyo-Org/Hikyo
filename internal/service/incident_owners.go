@@ -18,7 +18,8 @@ import (
 // Incident owner functions (incident-containment ADR, "Credential replacement";
 // #1039 S3, #1471). Each one performs the revocation of one ledger kind through
 // the existing owner, under that owner's own capability and in its own
-// transaction, and then re-reads the owner's current state. Only a re-read that
+// transaction, and then re-reads the owner's current state (a same-transaction or
+// later read, never a cached one). Only a re-read that
 // shows the target state returns OwnerConfirmed, so a crash, a lost response or
 // an unreachable provider leaves the item open. An owner is idempotent: resume
 // runs it again for an item whose earlier outcome never reached the ledger, and

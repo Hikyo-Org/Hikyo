@@ -1515,9 +1515,12 @@ does not stop a run already past its Gate or a revoke in flight; a release of th
 (`TestRotationHaltsWhenItsAuthorityIsContained`). That is containment through the existing
 seam. **Decided 2026-11-23 (#1471, option B):** the incident ledger lists a contained
 account's live rotations by authority principal (object kind `rotation`) and the
-`rotation.halt` owner function halts each with the existing reason `authority_lost`. Org and
-project scopes inherit through the accounts they select. Release never resumes a halt. See the
-amendment in the [incident-containment ADR](../adr/incident-containment.md).
+`rotation.halt` owner function halts each with the dedicated reason `incident_contained`
+(an open-enum word; `authority_lost` stays the executor's own). Org scope inherits through the
+accounts it selects; project and adapter scopes select no account and list no rotation. Release
+never resumes a halt. A refused containment item reads `pending/` in the ledger, with
+`owner_failed` only in the audit outcome event; slice 4 must show refused versus not yet run.
+See the amendment in the [incident-containment ADR](../adr/incident-containment.md).
 
 ### Run-level hold (`revoke_refused` with `published_versions_changed`)
 

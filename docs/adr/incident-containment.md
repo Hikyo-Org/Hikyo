@@ -484,8 +484,15 @@ remain to be delivered by the implementation.
 - The owner functions refuse containing the operator's own account (self-containment).
   This keeps the lockout guard of O3 and is not an owner decision yet. An override would
   need its own decision.
+- An org incident that lists the operator as a member yields a contain item that is always
+  refused, so that incident cannot close clean while the operator's own rotations (halted by
+  their independent items) stay halted. The operator hands the incident to another responder.
 
 ## Review record
+
+Disposition for the #1471 amendment (task-level): cross-model review not run; the owner
+policy of 2026-10-29 makes it optional; independent same-provider Standards and Spec review
+done (claude-opus-5-5), findings repaired; not CLEAN for cross-model.
 
 Independent Spec review ran in two rounds against issue #1039; its findings were
 addressed in the text. Independent Standards review is recorded on the pull request.

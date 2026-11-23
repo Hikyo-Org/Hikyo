@@ -98,7 +98,17 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 	}
 	var out PrivacyReceipt
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		if err := az.LockTargetPrincipal(ctx, domain.PrincipalID(principal)); err != nil {
+		// One sorted lock pass, shared with incident containment, so the two never
+		// take the target and the managers in opposite orders. A release only needs
+		// the target, so it passes no grants.
+		grants := []domain.Grant(nil)
+		if action != "release" {
+			var err error
+			if grants, err = az.GrantsForResetTarget(ctx, domain.PrincipalID(principal)); err != nil {
+				return err
+			}
+		}
+		if err := lockTargetAndManagers(ctx, az, domain.PrincipalID(principal), grants); err != nil {
 			return err
 		}
 		a, err := az.PrivacyAccount(ctx, principal)
@@ -108,17 +118,10 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 		if expectedAccount != "" && expectedAccount != a.ID {
 			return errors.New("privacy: receipt account does not match principal")
 		}
-		grants, err := az.GrantsForResetTarget(ctx, domain.PrincipalID(principal))
-		if err != nil {
-			return err
-		}
 		if action != "erase" && a.State == "erased" {
 			return errors.New("privacy: erased accounts cannot be released")
 		}
 		if a.State == "active" && action != "release" {
-			if err := lockTargetAndManagers(ctx, az, domain.PrincipalID(principal), grants); err != nil {
-				return err
-			}
 			if ok, err := hasAlternativeManager(ctx, az, domain.PrincipalID(principal), grants); err != nil {
 				return err
 			} else if !ok {
