@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -21,6 +21,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -439,7 +440,7 @@ func (d *bootstrapDeployment) sign(ctx context.Context, command configrollout.Co
 	command.ExpiresAt = command.IssuedAt.Add(5 * time.Minute)
 	// A metadata roundtrip detaches nested input pointers before signing and
 	// returning an immutable command for the service's durable transaction.
-	raw, err := json.Marshal(command)
+	raw, err := json.Marshal(command, jsonwire.Stable)
 	var detached configrollout.Command
 	if err != nil || json.Unmarshal(raw, &detached) != nil {
 		return configrollout.SignedCommand{}, configrollout.ErrInvalid

@@ -3,7 +3,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -62,7 +64,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(output).Encode(release.Identity())
+		return jsonwire.Encode(output, release.Identity())
 	case "legacy-bridges":
 		release, err := upgradebundle.VerifyNightlyDirectory(ctx, directory, snapshot)
 		if err != nil {
@@ -94,7 +96,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 					return err
 				}
 				statement := releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: release.PolicyDigest(), SourceMigrations: source.Migrations, TargetMigrations: manifest, SourceSchemaSHA256: source.SchemaSHA256, TargetSchemaSHA256: schema, Mode: "maintenance"}
-				statementRaw, err := json.MarshalIndent(statement, "", "  ")
+				statementRaw, err := json.Marshal(statement, jsonwire.Stable, jsontext.WithIndent("  "))
 				if err != nil {
 					return err
 				}
@@ -165,7 +167,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return errors.Join(json.NewEncoder(file).Encode(document), file.Close())
+		return errors.Join(jsonwire.Encode(file, document), file.Close())
 	default:
 		return errors.New("unknown nightly operation")
 	}

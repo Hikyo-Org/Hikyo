@@ -2,7 +2,7 @@ package selfupdate
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -193,7 +194,7 @@ func readNightlyState(statePath string) (nightlyVerificationState, error) {
 }
 
 func saveNightlyState(statePath string, state nightlyVerificationState) error {
-	raw, err := json.Marshal(state)
+	raw, err := json.Marshal(state, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

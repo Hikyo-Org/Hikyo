@@ -89,7 +89,7 @@ type SelfConfigRepo interface {
 	SelfConfigReader
 	CreateBinding(context.Context, authz.Proof, SelfConfigBinding) error
 	BeginJob(context.Context, authz.Proof, SelfConfigJob) (SelfConfigJob, error)
-	CommitJob(context.Context, authz.Proof, string, time.Time) (SelfConfigBinding, error)
+	CommitJob(context.Context, authz.Proof, string) (SelfConfigBinding, error)
 	FinishJob(context.Context, authz.Proof, string, string, string, time.Time) error
 	PutNode(context.Context, authz.Proof, SelfConfigNode) error
 	FenceRestored(context.Context, authz.Proof, string, time.Time) error

@@ -5,10 +5,13 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type reservationReceipt struct {
@@ -79,13 +82,13 @@ func createReservation(ctx context.Context, dir string) error {
 // succeeds. A failed/ambiguous create cannot establish ownership for adoption.
 func createReservationObjects(dir string, a executionAuthorization, raw []byte, create func([]byte) ([]byte, error)) error {
 	var list struct {
-		Items []json.RawMessage `json:"items"`
+		Items []jsontext.Value `json:"items"`
 	}
 	if json.Unmarshal(raw, &list) != nil || len(list.Items) != 5 {
 		return errors.New("invalid approved reservation inventory")
 	}
-	var namespace json.RawMessage
-	var remaining []json.RawMessage
+	var namespace jsontext.Value
+	var remaining []jsontext.Value
 	for _, item := range list.Items {
 		var object struct {
 			Kind     string `json:"kind"`
@@ -126,7 +129,7 @@ func createReservationObjects(dir string, a executionAuthorization, raw []byte, 
 	if err := writePrivate(filepath.Join(dir, "reservation.json"), receipt); err != nil {
 		return err
 	}
-	rest, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": remaining})
+	rest, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": remaining}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

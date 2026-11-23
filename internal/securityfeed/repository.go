@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +20,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/gofrs/flock"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
@@ -302,7 +303,7 @@ func (r *Repository) Refresh(ctx context.Context) (document Document, returnErr 
 }
 
 func signedRoleClaim(signed any) (roleFloor, error) {
-	raw, err := json.Marshal(signed)
+	raw, err := json.Marshal(signed, jsonwire.Stable)
 	if err != nil {
 		return roleFloor{}, err
 	}
@@ -342,7 +343,7 @@ func loadFloor(path string, bootstrap []byte) (trustFloor, error) {
 }
 
 func saveFloor(path string, floor trustFloor) error {
-	raw, err := json.Marshal(floor)
+	raw, err := json.Marshal(floor, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@
     "browser-operations",
     "---Installation---",
     "installation",
+    "desktop-app",
     "kubernetes-gitops",
     "build-from-source",
     "---Concepts---",
@@ -35,6 +36,7 @@
     "environment-parameters",
     "deployment-adapters",
     "dynamic-secrets",
+    "rotation",
     "ssh-certificates",
     "transit",
     "private-pki",
@@ -47,6 +49,7 @@
     "configuration-rollouts",
     "---Identity providers---",
     "social-signin",
+    "oidc-providers",
     "signup-mail",
     "saml",
     "scim",
@@ -65,6 +68,7 @@
     "compliance-operations",
     "---Reference---",
     "cli-reference",
+    "cli-help",
     "http-api"
   ]
 }

@@ -3,7 +3,7 @@ package githubactions
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -337,7 +337,7 @@ func TestContractSyntheticFatalPath(t *testing.T) {
 			var payload struct {
 				Inputs map[string]string `json:"inputs"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			if err := json.UnmarshalRead(r.Body, &payload); err != nil {
 				return nil, err
 			}
 			nonce = payload.Inputs["nonce"]

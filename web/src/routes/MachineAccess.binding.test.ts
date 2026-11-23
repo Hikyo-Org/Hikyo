@@ -24,10 +24,10 @@ const binding = (claims: MachineCredential['required_claims']): MachineCredentia
 });
 
 describe('presetForBinding', () => {
-  it('detects GitHub Actions from its numeric repository pins', () => {
+  it('detects GitHub Actions from its repository id pins', () => {
     const credential = binding([
-      { claim: 'repository_id', number_value: 42n },
-      { claim: 'repository_owner_id', number_value: 7n },
+      { claim: 'repository_id', string_value: '42' },
+      { claim: 'repository_owner_id', string_value: '7' },
       { claim: 'event_name', string_value: 'push' },
     ]);
     expect(presetForBinding(credential).id).toBe('github-actions');
@@ -50,7 +50,7 @@ describe('seedClaims', () => {
     const bigId = 9007199254740993n; // 2^53 + 1: unrepresentable as a JS number.
     const credential = binding([
       { claim: 'repository_id', number_value: bigId },
-      { claim: 'repository_owner_id', number_value: 7n },
+      { claim: 'repository_owner_id', string_value: '7' },
       { claim: 'event_name', string_value: 'push' },
     ]);
     const seeded = seedClaims(presetForBinding(credential), credential);
@@ -69,19 +69,19 @@ describe('seedClaims', () => {
 describe('carriedClaims', () => {
   it('preserves a custom pin no preset field renders, so replacement never weakens it', () => {
     const credential = binding([
-      { claim: 'repository_id', number_value: 42n },
-      { claim: 'repository_owner_id', number_value: 7n },
+      { claim: 'repository_id', string_value: '42' },
+      { claim: 'repository_owner_id', string_value: '7' },
       { claim: 'event_name', string_value: 'push' },
       // A claim the operator added via the CLI, beyond the GitHub preset.
       { claim: 'environment', string_value: 'production' },
-      { claim: 'ref_protected', bool_value: true },
+      { claim: 'run_attempt', bool_value: true },
     ]);
     const preset = presetForBinding(credential);
     const carried = carriedClaims(preset, credential);
-    // The three preset claims are rendered as fields; the two extras are carried.
+    // The preset claims are rendered as fields; the two extras are carried.
     expect(carried).toEqual([
       { claim: 'environment', string_value: 'production' },
-      { claim: 'ref_protected', bool_value: true },
+      { claim: 'run_attempt', bool_value: true },
     ]);
     // And the preset fields are NOT double-counted in the carried set.
     for (const field of preset.claims) {

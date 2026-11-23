@@ -15,8 +15,8 @@ import (
 // Keeping the accepted command permits exact recovery after its transport TTL.
 type controllerJournal struct {
 	Accepted SignedCommand `json:"accepted"`
-	Plan     *record       `json:"plan,omitempty"`
-	Response *Response     `json:"response,omitempty"`
+	Plan     *record       `json:"plan,omitzero"`
+	Response *Response     `json:"response,omitzero"`
 }
 
 type Controller struct {
@@ -94,7 +94,9 @@ func (c *Controller) reconcileTrust(ctx context.Context) error {
 	if current == nil || recorded != nil && recorded.Generation == current.Generation {
 		return nil
 	}
-	putRecord(journalSecret, trustKey, current)
+	if err = putRecord(journalSecret, trustKey, current); err != nil {
+		return err
+	}
 	if _, err = c.client.CoreV1().Secrets(e.Target.Namespace).Update(ctx, journalSecret, metav1.UpdateOptions{}); err != nil {
 		return apiError(err)
 	}
@@ -168,9 +170,13 @@ func (c *Controller) reconcile(ctx context.Context) error {
 		}
 		journal.Accepted = signed
 		journal.Response = nil
-		putRecord(journalSecret, journalKey, journal)
+		if err = putRecord(journalSecret, journalKey, journal); err != nil {
+			return err
+		}
 		if current := trustFor(e); current != nil && (recorded == nil || recorded.Generation < current.Generation) {
-			putRecord(journalSecret, trustKey, current)
+			if err = putRecord(journalSecret, trustKey, current); err != nil {
+				return err
+			}
 		}
 		journalSecret, err = c.client.CoreV1().Secrets(e.Target.Namespace).Update(ctx, journalSecret, metav1.UpdateOptions{})
 		if err != nil {
@@ -251,7 +257,9 @@ func (c *Controller) reconcile(ctx context.Context) error {
 		response.Outcome = "complete"
 	}
 	journal.Response = &response
-	putRecord(journalSecret, journalKey, journal)
+	if err := putRecord(journalSecret, journalKey, journal); err != nil {
+		return err
+	}
 	if _, err := c.client.CoreV1().Secrets(e.Target.Namespace).Update(ctx, journalSecret, metav1.UpdateOptions{}); err != nil {
 		return apiError(err)
 	}
@@ -268,7 +276,9 @@ func (c *Controller) writeResponse(ctx context.Context, response Response) error
 	if decode(s.Data[responseKey], &current) == nil && digest(current) == digest(response) {
 		return nil
 	}
-	putRecord(s, responseKey, response)
+	if err := putRecord(s, responseKey, response); err != nil {
+		return err
+	}
 	if _, err := c.client.CoreV1().Secrets(e.Target.Namespace).Update(ctx, s, metav1.UpdateOptions{}); err != nil {
 		return apiError(err)
 	}

@@ -260,7 +260,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			return result, err
 		}
 		var providerStatus int
-		primaryLanded := false
+		var primaryLanded bool
 		if row.Surface == adapter.Secret {
 			var write WriteResult
 			write, err = m.writeSecret(ctx, journal, effect, req.Target.Destination, row, publicKey)

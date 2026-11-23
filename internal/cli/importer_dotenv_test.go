@@ -1,7 +1,7 @@
 package cli_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // A strict import server: it declares LOG_LEVEL and DATABASE_URL and rejects any
@@ -24,7 +25,7 @@ func strictImportHandler(t *testing.T) http.Handler {
 			return
 		}
 		var req apigen.ImportValuesRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.UnmarshalRead(r.Body, &req); err != nil {
 			t.Errorf("decode import body: %v", err)
 		}
 		var imported []string
@@ -36,7 +37,7 @@ func strictImportHandler(t *testing.T) http.Handler {
 			}
 			imported = append(imported, string(e.Key))
 		}
-		_ = json.NewEncoder(w).Encode(apigen.ImportValuesResult{Imported: imported})
+		_ = jsonwire.Encode(w, apigen.ImportValuesResult{Imported: imported})
 	})
 }
 

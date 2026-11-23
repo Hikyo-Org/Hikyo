@@ -2,7 +2,7 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -127,29 +127,93 @@ func freezeContract(base, revised []byte) ([]Violation, error) {
 // parseContractDocument decodes exactly as kin-openapi's loader does (JSON
 // first, then oasdiff/yaml), so `off` or `yes` stays the string every other
 // consumer of the spec reads, not a YAML 1.1 boolean. Numbers stay
-// json.Number, so integers beyond float64 precision remain distinct (in YAML,
-// up to the uint64 range; yaml.v3 decodes larger ones as float64).
+// contractNumber, so integers beyond float64 precision remain distinct (in
+// YAML, up to the uint64 range; yaml.v3 decodes larger ones as float64).
 func parseContractDocument(raw []byte) (map[string]any, error) {
-	useNumber := func(d *json.Decoder) *json.Decoder { d.UseNumber(); return d }
-	var v any
-	dec := useNumber(json.NewDecoder(bytes.NewReader(raw)))
-	err := dec.Decode(&v)
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	v, err := readContractValue(dec)
 	if err == nil {
-		if _, end := dec.Token(); end != io.EOF {
+		if _, end := dec.ReadToken(); !errors.Is(end, io.EOF) {
 			err = errors.New("trailing data after the JSON document")
 		}
 	}
 	if err != nil {
-		v = nil
-		if _, err := yaml.Unmarshal(raw, &v, yaml.DecodeOpts{DisableTimestamps: true}, useNumber); err != nil {
+		// oasdiff/yaml hands the converted JSON to UnmarshalJSON, which reads it
+		// with the same number-preserving reader.
+		var doc contractDocument
+		if _, err := yaml.Unmarshal(raw, &doc, yaml.DecodeOpts{DisableTimestamps: true}); err != nil {
 			return nil, err
 		}
+		v = doc.value
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("the document is not a mapping")
 	}
 	return m, nil
+}
+
+// contractNumber keeps a JSON number's digits, distinct from a string.
+type contractNumber string
+
+// contractDocument receives oasdiff/yaml's JSON conversion of a YAML document.
+type contractDocument struct{ value any }
+
+func (d *contractDocument) UnmarshalJSON(raw []byte) (err error) {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	d.value, err = readContractValue(dec)
+	return err
+}
+
+// readContractValue reads one JSON value into maps, slices, strings, bools,
+// nil and contractNumber. Duplicate member names are an error.
+func readContractValue(dec *jsontext.Decoder) (any, error) {
+	switch kind := dec.PeekKind(); kind {
+	case '{':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		m := map[string]any{}
+		for dec.PeekKind() != '}' {
+			name, err := dec.ReadToken()
+			if err != nil {
+				return nil, err
+			}
+			if m[name.String()], err = readContractValue(dec); err != nil {
+				return nil, err
+			}
+		}
+		_, err := dec.ReadToken()
+		return m, err
+	case '[':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		a := []any{}
+		for dec.PeekKind() != ']' {
+			v, err := readContractValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			a = append(a, v)
+		}
+		_, err := dec.ReadToken()
+		return a, err
+	default:
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return nil, err
+		}
+		switch kind {
+		case 'n':
+			return nil, nil
+		case 't', 'f':
+			return tok.Bool(), nil
+		case '0':
+			return contractNumber(tok.String()), nil
+		}
+		return tok.String(), nil
+	}
 }
 
 func (w *contractWalker) report(id string, l loc, detail, what string) {

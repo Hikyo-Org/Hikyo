@@ -16,6 +16,9 @@ services:
       - --root-key-file=/run/hikyo-root/root-key
     environment:
       HIKYO_DB: sqlite:/var/lib/hikyo/hikyo.db
+      # Also in the environment, which `docker exec` inherits, so host-only
+      # operator commands read the same root key as the server.
+      HIKYO_ROOT_KEY_FILE: /run/hikyo-root/root-key
       HIKYO_EXTERNAL_ORIGIN: ${HIKYO_EXTERNAL_ORIGIN:?set the HTTPS browser origin}
       HIKYO_TRUSTED_PROXY_CIDRS: ${HIKYO_TRUSTED_PROXY_CIDRS:?set exact reverse proxy CIDRs}
       HIKYO_UPGRADE_UNATTENDED: "true"

@@ -41,6 +41,8 @@ type ReencryptRepo interface {
 	ReencryptOauth2Provider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListSamlKeysForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptSamlKey(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
+	ListOidcLifecycleSecretsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
+	ReencryptOidcLifecycleSecret(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
 	ListRemotesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptRemote(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
 	ListPkiIssuersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
@@ -240,6 +242,29 @@ func (r sqliteReencrypt) ReencryptSamlKey(ctx context.Context, p authz.Proof, id
 		return false, err
 	}
 	n, err := r.q.ReencryptSamlKey(ctx, sqlitegen.ReencryptSamlKeyParams{Ct: newCiphertext, DekVersion: int64(dekVersion), ID: id, RowVersion: int64(rowVersion)})
+	return n == 1, err
+}
+
+func (r sqliteReencrypt) ListOidcLifecycleSecretsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListOidcLifecycleSecrets, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListOidcLifecycleSecretsForReencrypt(ctx, sqlitegen.ListOidcLifecycleSecretsForReencryptParams{ID: cursor, Limit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.LifecycleSecret})
+	}
+	return out, nil
+}
+
+func (r sqliteReencrypt) ReencryptOidcLifecycleSecret(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptOidcLifecycleSecret, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptOidcLifecycleSecret(ctx, sqlitegen.ReencryptOidcLifecycleSecretParams{NewCt: newCiphertext, ID: id, OldCt: oldCiphertext})
 	return n == 1, err
 }
 
@@ -459,6 +484,33 @@ func (r pgReencrypt) ReencryptSamlKey(ctx context.Context, p authz.Proof, id str
 		return false, err
 	}
 	n, err := r.q.ReencryptSamlKey(ctx, pggen.ReencryptSamlKeyParams{Ct: newCiphertext, DekVersion: int64(dekVersion), ID: id, RowVersion: int64(rowVersion)})
+	return n == 1, err
+}
+
+func (r pgReencrypt) ListOidcLifecycleSecretsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListOidcLifecycleSecrets, r.tok); err != nil {
+		return nil, err
+	}
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListOidcLifecycleSecretsForReencrypt(ctx, pggen.ListOidcLifecycleSecretsForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.LifecycleSecret})
+	}
+	return out, nil
+}
+
+func (r pgReencrypt) ReencryptOidcLifecycleSecret(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptOidcLifecycleSecret, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptOidcLifecycleSecret(ctx, pggen.ReencryptOidcLifecycleSecretParams{NewCt: newCiphertext, ID: id, OldCt: oldCiphertext})
 	return n == 1, err
 }
 

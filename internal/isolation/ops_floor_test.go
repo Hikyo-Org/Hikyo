@@ -4,7 +4,8 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 )
 
@@ -224,13 +226,13 @@ func TestOpsFloorDoctor(t *testing.T) {
 	execRaw(t, db, `DELETE FROM snapshot_entries WHERE id LIKE 'floor_bytes_%'`)
 	check("recovered", "ok", cli.ExitOK, "", "")
 	for _, report := range results {
-		raw, _ := json.Marshal(report)
+		raw, _ := json.Marshal(report, jsonwire.Stable)
 		if strings.Contains(string(raw), token) || strings.Contains(string(raw), artifacts.password) {
 			t.Fatal("doctor output contained synthetic credential material")
 		}
 	}
 	if output := os.Getenv("HIKYO_OPS_FLOOR_OUTPUT"); output != "" {
-		raw, err := json.MarshalIndent(results, "", "  ")
+		raw, err := json.Marshal(results, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {
 			t.Fatal(err)
 		}

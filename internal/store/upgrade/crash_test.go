@@ -1,12 +1,14 @@
 package upgrade
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestBootstrapCrashChild(t *testing.T) {
@@ -41,7 +43,7 @@ func TestAbruptProcessExitLeavesAbsentOrCompleteBootstrap(t *testing.T) {
 			both(t, func(t *testing.T, cfg Config) {
 				// This test-only child has no deferred rollback/connection cleanup. A
 				// separate process inspects the durable result after its abrupt exit.
-				raw, err := json.Marshal(cfg)
+				raw, err := json.Marshal(cfg, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

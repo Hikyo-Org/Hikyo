@@ -7,6 +7,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/sealfixture"
 )
 
 // proveFixture is a migrated sqlite instance with one project, environment and
@@ -47,10 +48,7 @@ func plantSecret(t *testing.T, db *store.DB, kr *crypto.Keyring, plaintext strin
 		t.Fatal(err)
 	}
 	aad := crypto.ValueAAD{OrgID: "org_p", ProjectID: "prj_p", EnvID: "env_p", KeyID: "key_p", RowID: "val_p", FieldTag: valueFieldTag}
-	record, err := sealer.SealValue(aad, []byte(plaintext))
-	if err != nil {
-		t.Fatal(err)
-	}
+	record := sealfixture.Value(t, sealer, aad, []byte(plaintext))
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(),
 		`INSERT INTO value_entries (id,org_id,project_id,environment_id,key_id,ciphertext,updated_at,updated_by) VALUES ('val_p','org_p','prj_p','env_p','key_p',?,'2026-08-17T00:00:00Z','usr_p')`,
 		record); err != nil {

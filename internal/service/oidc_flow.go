@@ -204,7 +204,7 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, 
 	// unthrottled Argon2 oracle; the per-IP admission slot is already held, so
 	// this adds only the account-scoped delay, never a second slot.
 	if purpose != purposeLogin && purpose != purposeClaim {
-		if s.Admission.AccountDelay(account.ID) > 0 {
+		if s.Admission.AccountInBackoff(ctx, account.ID) {
 			return OIDCStartResult{}, admission.ErrOverloaded
 		}
 	}
@@ -1224,6 +1224,32 @@ func (s *Auth) ListIdentities(ctx context.Context, presented string) ([]External
 	return out, err
 }
 
+// removeIdentityLink is the transaction body every identity removal shares:
+// the account's developer scope is revoked, the identity row removed, and the
+// account's personal values purged when the removal leaves it unqualified.
+// bySystem is a removal a directory's lifecycle event caused: its caller has
+// already revoked the developer credentials of the swept sessions, so none is
+// revoked here, and the purge is attributed to the system actor. The caller
+// owns the proof, the last-credential check, the session handling and the
+// removal's own audit event.
+func removeIdentityLink(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, identityID string, bySystem bool, now time.Time) error {
+	if !bySystem {
+		if err := revokeDeveloperScope(ctx, az, account.PrincipalID, account.PrincipalID, domain.Scope{}, "identity-unlinked", now); err != nil {
+			return err
+		}
+	}
+	if err := az.RemoveExternalIdentity(ctx, identityID); err != nil {
+		return err
+	}
+	// The removed identity may have been what qualified the account for
+	// personal values, as every other credential write checks.
+	ok, err := accountQualified(ctx, az, account.ID)
+	if err != nil || ok {
+		return err
+	}
+	return purgePersonalValuesBy(ctx, az, account.PrincipalID, PersonalCauseQualificationLost, bySystem, now)
+}
+
 // UnlinkIdentity removes a linked identity as an account-security mutation. It
 // refuses removing the last remaining credential (in the lockout-invariant
 // shape), verifies the pre-existing password, and reissues the acting session.
@@ -1258,15 +1284,7 @@ func (s *Auth) UnlinkIdentity(ctx context.Context, presented, identityID, proof 
 		if e := s.assertLoginCredential(ctx, az, account.ID, identityID); e != nil {
 			return e
 		}
-		if e := revokeDeveloperScope(ctx, az, account.PrincipalID, account.PrincipalID, domain.Scope{}, "identity-unlinked", now); e != nil {
-			return e
-		}
-		if e := az.RemoveExternalIdentity(ctx, identityID); e != nil {
-			return e
-		}
-		// The removed identity may have been what qualified the account for
-		// personal values, as every other credential write checks.
-		if e := purgePersonalIfUnqualified(ctx, az, account, now); e != nil {
+		if e := removeIdentityLink(ctx, az, account, identityID, false, now); e != nil {
 			return e
 		}
 		*result, e = s.reissueSession(ctx, az, account, evidence.factorClass(), MethodLocalPassword, Artifact(live.Artifact), now)

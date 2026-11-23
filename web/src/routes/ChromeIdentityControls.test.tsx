@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { dismissContinueInBrowser } from '../app/shell.ts';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import type { PreparedImage } from './chrome-image.ts';
 import { ChromeIdentityControls, type ChromeIdentityActions } from './ChromeIdentityControls.tsx';
@@ -358,5 +359,16 @@ describe('ChromeIdentityControls image uploads', () => {
     expect(calls).toEqual(['set', 'clear']);
     act(() => root.unmount());
     host.remove();
+  });
+});
+
+describe('ChromeIdentityControls in the desktop app', () => {
+  afterEach(() => { dismissContinueInBrowser(); vi.unstubAllGlobals(); });
+  it('offers Continue in browser beside the image picker, and nowhere else', () => {
+    const node = <ChromeIdentityControls identityId="x" name="Payments" kind="org" identity={{ hue: 280 }} actions={actions} />;
+    expect(render(node).textContent).not.toContain('Continue in browser');
+    vi.stubGlobal('location', { protocol: 'wails:', origin: 'wails://x' });
+    const container = render(node);
+    expect(container.textContent).toContain('File picker not opening?');
   });
 });

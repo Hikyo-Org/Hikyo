@@ -2,10 +2,12 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 )
 
@@ -22,17 +24,17 @@ func mcpProfile(h http.Handler, codex bool) http.Handler {
 			h.ServeHTTP(w, r)
 			return
 		}
-		var body map[string]json.RawMessage
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var body map[string]jsontext.Value
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			panic(err)
 		}
-		var params map[string]json.RawMessage
+		var params map[string]jsontext.Value
 		if err := json.Unmarshal(body["params"], &params); err != nil {
 			panic(err)
 		}
 		delete(params, "_meta")
-		body["params"], _ = json.Marshal(params)
-		raw, _ := json.Marshal(body)
+		body["params"], _ = json.Marshal(params, jsonwire.Stable)
+		raw, _ := json.Marshal(body, jsonwire.Stable)
 		r = r.Clone(r.Context())
 		r.URL.Path = mcpserver.CodexPath
 		r.Header.Del("Mcp-Method")

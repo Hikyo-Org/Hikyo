@@ -21,14 +21,14 @@ for activation, promotion and operator commands.
 
 | What you need | Actions workflow | What it does |
 | --- | --- | --- |
-| Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. |
+| Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. A base retarget runs the same lanes through `ci-feedback-retarget.yml`, whose runs are also named `ci-feedback`. |
 | Refresh the bounded feedback compiler cache | `cache-seed-feedback-backend` | Daily or manual, trusted main only. Compiles application, CLI and CI tooling exports without DWARF in a fresh dedicated directory, checks its size and file count, then publishes the version-2 seed that the application and tooling feedback lanes read. Dispatch it manually after this workflow changes or a `go.mod`/`go.sum` change lands. |
 | Refresh the production-fixture compiler cache | `cache-seed-feedback` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
 | Refresh the shared race compiler cache | `cache-seed-race` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
 | Refresh the pinned tool downloads | `cache-seed-tools` | Daily or manual, trusted main only. Downloads each checksum-pinned release file (ShellCheck, kind, Cosign, Node, Helm, the Calico manifest) with bounded backoff and publishes one entry per `scripts/ci/pinned-tools/<name>.pin`. `lint`, `supply-chain-checks`, `k8s-e2e`, reliability and `ci-feedback` restore it so a GitHub release outage does not fail them. Dispatch it manually after a pin file changes. |
 | Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, the golangci-lint config, workflows, Git hooks, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Run the Storybook suite before merge | `ci-advisory-storybook` | Advisory, per PR push touching `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, `docs/site/scripts/test-csp.mjs`, `scripts/ci/storybook-suite.sh` or the workflow's setup helpers (`install-corepack.sh`, `export-pnpm-cache.sh`). Runs the same commands as the `storybook` job in `ci.yml` (story tests in both palettes, production build, theme and docs checks, static demo) on the exact PR head in the Playwright container. The pre-push hook runs the same script locally. Not a required context; `ci-dev` and the queue still run the job. |
-| Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, errchkjson, noctx, wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline is not enforced. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
+| Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, noctx, staticcheck `SA*` except `SA4006`/`SA4009`, `QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline of those rules is not enforced. A second strict pass runs wastedassign, unused and staticcheck `SA4006`/`SA4009` (`.golangci-strict.yml`) on every whole changed package (a moved file counts for both packages), because those rules hold at zero across the repo. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
 | Lint the desktop module | `ci-advisory-golangci-desktop` | Advisory, per PR push touching `desktop/`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-version`, `scripts/ci/run-go-tool.sh` or the workflow itself. Pinned `golangci-lint` over the whole nested module on macOS; a Linux pre-job skips the macOS job where `desktop/go.mod` does not exist. The strict pass runs only where `.golangci-strict.yml` exists. |
 | Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
 | Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 17 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
@@ -39,6 +39,8 @@ for activation, promotion and operator commands.
 | Measure performance | `perf-codspeed` or `perf-control` | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
 | Promote dev to main for the nightly | `nightly-promote` | Daily at 22:17 UTC or manual on main. Opens a `release/nightly-*` PR for the last green dev commit when main lacks it and queues it. A merged promotion starts the nightly. |
 | Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch path, built and signed from main after complete verified source proof of that exact commit. A commit that is already published is skipped. |
+| Check compatibility before tagging | `release-compatibility-check` | Manual, on main, read-only. For a given `X.Y.Z` it generates the upgrade-compatibility declaration at main's tip and compares it with the highest earlier stable release's signed declaration, and requires the reviewed release-source edge from that release (see [online signing](../release/online-signing.md)). It tags and publishes nothing and `release-build` does not depend on it. Dispatch works only from main, so it goes live when a promotion lands it there. |
+| Prepare the security patch tag | `security-patch-plan` | Every push to main, hourly, or manual on main. Read-only plan job, then an issue job that writes the one issue "Security patch release: maintainer action needed" with the exact tag and ceremony commands for a merged Dependabot security update, or closes it. Tags and publishes nothing (see [online signing](../release/online-signing.md)). Its triggers run only from main, so it goes live when a promotion lands it there. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 
@@ -62,12 +64,12 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 40 YAML workflow files. GitHub's sidebar also contains
+The source contains 42 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
 | --- | --- | --- |
-| Validation | `ci-feedback.yml`, `ci-dev.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and full validation have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
+| Validation | `ci-feedback.yml`, `ci-feedback-retarget.yml`, `ci-dev.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and full validation have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-golangci.yml`, `ci-invariants.yml`, `ci-storybook.yml` | Read-only early signals for dependency bumps, new-code static analysis, repository-invariant suites that otherwise fail only in the serial queue, and the Storybook suite that otherwise runs only after merge to dev. None is a required context. |
 | Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-queue-retry.yml` | Trusted callbacks publish dev admission and queue admission/group proof; the retry workflow reruns a failed head publisher (see [Queue publisher head leases](#queue-publisher-head-leases)). Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
@@ -79,6 +81,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
 | Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Pinned tool seed | `ci-tool-cache.yml` | Trusted-main-only producer of the pinned release-file entries. Every other workflow only restores them, and the helper verifies each file's SHA-256 before use, so a poisoned or stale entry cannot run. |
+| Release preparation | `release-compatibility-check.yml`, `security-patch-plan.yml` | Both are read-only and tag nothing. The compatibility check is a manual pre-tag comparison; the planner keeps one issue with the commands for the signed tag. Both need the default branch, so they go live at promotion. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
 | Publication | `nightly-promote.yml`, `nightly.yml`, `nightly-manual.yml`, `release.yml`, `apple-release-recovery.yml`, `security-release.yml`, `security-feed.yml`, `docs.yml` | Promotion, nightly, stable tags, the security feed, and Pages retain separate credentials and gates. Promotion opens its PR as the nightly App, because a PR opened with the workflow token starts no CI. |
 
@@ -127,6 +130,21 @@ The runner timeout includes checkout, dependency setup, and execution. A timeout
 is failed feedback, not proof of a completed check. Shared hosted runner queue
 capacity prevents a universal five-minute promise without measured capacity.
 
+The `docs-impact` feedback check (Go lane, application scope) fails a PR that
+changes `internal/cli/testdata/help.txt`, `api/openapi.yaml` or
+`internal/config/variables.go` without changing user docs under
+`docs/site/src/content/docs/` or `docs/operations/`. A `Docs-Impact: none -
+<reason>` trailer in the final trailer block of a non-merge commit in the PR
+range opts out. On failure, the check names the page that usually needs the
+update. Feedback tooling comes from the PR's integration merge, so the check
+applies to a PR once the check is on that PR's base branch.
+
+The `docs-impact` check also covers the desktop shell: a change to
+`desktop/internal/shell/shellroutes.go` (the `/__shell` routes) or
+`desktop/main_darwin.go` (the launch environment) needs a change to
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`, or the same opt-out
+trailer. User docs under `docs/site/src/content/docs/` also satisfy it.
+
 ### Desktop shell (macOS)
 
 `desktop/` is a nested Go module (the Wails shell, #1215). Wails, cgo and WebKit
@@ -153,7 +171,8 @@ lints it from inside `desktop/` instead. The registry domain `desktop` and the
 4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
-   inside it for the pre-push hook and `ci-advisory-golangci`.
+   inside it, new code and then the strict rules on the whole module, for the
+   pre-push hook and `ci-advisory-golangci`.
 
 The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
 (the refusal list derives from it) and the root packages `desktop/` imports, and
@@ -396,11 +415,33 @@ every `ci-dev-required` record in the oldest Actions check suite on the head,
 whichever workflow owned it, and judged the required check only by the newest
 suite of each workflow. A `gate-dev` run for a title or body edit on the same
 head therefore hid the record and left the merge waiting for an "expected" check
-until a new head arrived. A base retarget reruns `ci-feedback`, and its callback
-reassesses the PR. When that run does not start, because the PR conflicts with
-its new base or a fork run awaits approval, the hourly schedule reassesses it.
-Closing and reopening a PR still reruns the workflow that hosts the record, so a
-reopened PR needs a new head. See the [handoff](../handoff/dev-gate-stale-required-check.md).
+until a new head arrived. On #1374 the record sat in `ci-feedback`'s suite, and a
+body edit started a skipped `ci-feedback` run that hid it the same way. A
+workflow that runs when a head first gets suites therefore does not run on
+`edited`. Edits start `ci-feedback-retarget.yml` instead, which never runs on
+opened, synchronize or reopened, so it never hosts a record. For a base retarget
+it calls `ci-feedback.yml` and its lanes are named `retarget / feedback (go)`; a
+title or body edit leaves one skipped `retarget` job. The workflow is named
+`ci-feedback`, so the existing `gate-dev` callback reassesses the PR (the
+`gate-queue` publisher's filter skips this callback, and a retarget to main reaches
+it through its `edited` event), and the publisher reads both workflows' runs and
+uses the newest useful one.
+The shared name assumes GitHub supersedes suites per workflow file, not per name.
+That is unverified: the evidence only shows that other workflows, which had both
+another file and another name, did not hide a record. If edits still hide a record
+that `ci-feedback` hosts, the fallback is a distinct name in the `gate-dev`
+callback filter and the publisher's source list; the `gate-dev` edit needs the
+backmerge first.
+When the retarget run does not start, because the PR conflicts with its new base
+or a fork run awaits approval, the hourly schedule reassesses it.
+`scripts/ci/dev_gate_workflow_test.go` refuses any other pull request trigger
+type than `closed` on such a workflow, except `perf-pr`'s `ready_for_review` and `gate-queue`'s
+`edited`, which remain known exposures. Closing and reopening a PR still reruns
+the workflow that hosts the record, so a reopened PR needs a new head. So does a
+head that got two suites of one workflow at once, as when a stack's base and head
+were force-pushed in the same second on #1375. See the
+[handoffs](../handoff/dev-gate-stale-required-check.md)
+and [the #1374 follow-up](../handoff/dev-required-check-edited-suite.md).
 
 GitHub judges every PR of a stack by the rules of the stack base, so each layer of
 a stack based on `dev` waits for `ci-dev-required` (#1245 to #1247 and #1137 on
@@ -439,17 +480,8 @@ targets any other branch, and it retires a pending record left by an earlier pas
 Such a PR holds no queue role: it neither protects a queue record from retirement
 nor makes a main PR on the same commit ambiguous. A refusal that an older publisher
 left on a stacked head stays until the next push, because retirement skips
-completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
-admits the PR afresh.
-
-`gate-queue` treats a stacked PR like a dev PR. Only main has a queue, so the
-`ci-feedback` callback publishes no `ci-queue-required` record on a head whose PR
-targets any other branch, and it retires a pending record left by an earlier pass.
-Such a PR holds no queue role: it neither protects a queue record from retirement
-nor makes a main PR on the same commit ambiguous. A refusal that an older publisher
-left on a stacked head stays until the next push, because retirement skips
-completed records. A stack's later retarget to main reruns `ci-feedback`, whose callback
-admits the PR afresh.
+completed records. A stack's later retarget to main reaches `gate-queue` through its `edited`
+event, which admits the PR afresh.
 
 The `gate-queue` publisher answers only callbacks whose run path is
 `.github/workflows/ci-feedback.yml`. `ci-feedback-retarget.yml` shares the name
@@ -650,9 +682,18 @@ owners' scan). Past 900 suites admission may time out; at 1,000 the scans alone
 take about 42 s. It then fails closed and the PR needs a new head.
 Because those reads open only `github-actions` suites, the owners also list the
 name by commit and refuse another app's same-name record there, as a listing by
-commit alone did. They refuse when the `github-actions` suite total changes during a scan, so a
-head still gaining suites can refuse until a later attempt. A controller record the listing by commit shows but the suite inventory lacks is
-refused, not treated as absent.
+commit alone did, each by its own rule. The queue verdict refuses any other
+app's same-name record. Retirement refuses one only when its external ID carries
+the controller prefix. The reporter refuses one only when its external ID matches
+the report's. They refuse when the `github-actions` suite total changes during a
+scan, so a head still gaining suites can refuse until a later attempt. The
+controller and the queue verdict refuse a `github-actions` record the listing by
+commit shows but the suite inventory lacks, instead of treating it as absent,
+whether or not its external ID carries the controller prefix; the reporter
+compares only records with the report's external ID. At 900 suites or fewer each
+owner reads the commit listing, then counts every app's suites again and
+refuses if the count has passed 900, since REST could then have left an older
+suite out of the listing.
 Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
 cannot be completed, a run reported by two suites, or a check in more than 100
 suites refuses instead of listing partially. Discovery refuses all targets on

@@ -6,7 +6,7 @@ import (
 	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -275,7 +275,7 @@ func (s *Auth) SAMLStart(ctx context.Context, slug, purpose, environmentID, pres
 	if purpose == purposeReauth && provider.AssurancePolicy == nil {
 		return SAMLStartResult{}, ErrSAMLReauthNoPolicy
 	}
-	if purpose != purposeLogin && s.Admission.AccountDelay(account.ID) > 0 {
+	if purpose != purposeLogin && s.Admission.AccountInBackoff(ctx, account.ID) {
 		return SAMLStartResult{}, admission.ErrOverloaded
 	}
 	var linkEvidence ReauthEvidence

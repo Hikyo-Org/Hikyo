@@ -230,7 +230,7 @@ function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Deci
       setCode('');
       if (!current.current) return;
       if (workspace !== null) {
-        if (acting === undefined || acting === null || workspaceSession(workspace.origin) !== acting || result.session_token === undefined || result.session_id !== acting.bearer.session) throw new Error('The owner session changed. Reconnect and retry.');
+        if (acting === undefined || acting === null || workspaceSession(workspace.origin) !== acting || result === undefined || result.session_token === undefined || result.session_id !== acting.bearer.session) throw new Error('The owner session changed. Reconnect and retry.');
         rememberWorkspace({ ...acting.bearer, value: result.session_token });
       }
       await onComplete();

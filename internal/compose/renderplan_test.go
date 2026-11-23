@@ -1,10 +1,13 @@
 package compose
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestBuildRenderPlanLiveOfflineEquivalence(t *testing.T) {
@@ -58,7 +61,7 @@ func TestBuildRenderPlanGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := json.MarshalIndent(plan, "", "  ")
+	got, err := json.Marshal(plan, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		t.Fatal(err)
 	}

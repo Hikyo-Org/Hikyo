@@ -197,8 +197,9 @@ const VARIANTS = ['secondary', 'primary', 'danger', 'quiet'] as const;
 
 // One size for every variant, enabled and disabled, plus the icon-only
 // square: a variant never changes height, padding or type size. The
-// `btn--compact` class (the matrix column header's anchor and summary) is the
-// one smaller box: `--hit-min` on a fine pointer, `--control` on a coarse one.
+// `btn--compact` class (the matrix column header's anchor and summary, and the
+// matrix group row's `+ Key`) is the one smaller box: `--hit-min` on a fine
+// pointer, `--control` on a coarse one.
 export const Sizes: Story = {
   parameters: { controls: { disable: true } },
   render: () => (

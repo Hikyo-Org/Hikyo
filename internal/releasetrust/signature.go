@@ -10,7 +10,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -28,9 +28,9 @@ const MaxDocumentBytes = 4 << 20
 // envelope. Cert/RekorBundle are packaging only: this profile always verifies
 // against the caller's separately pinned public key, never envelope key data.
 type LegacyBundle struct {
-	Base64Signature string          `json:"base64Signature"`
-	Cert            string          `json:"cert,omitempty"`
-	RekorBundle     json.RawMessage `json:"rekorBundle,omitempty"`
+	Base64Signature string         `json:"base64Signature"`
+	Cert            string         `json:"cert,omitempty"`
+	RekorBundle     jsontext.Value `json:"rekorBundle,omitzero"`
 }
 
 func decodeDocument(raw []byte, value any) error {

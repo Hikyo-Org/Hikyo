@@ -2,7 +2,10 @@ package isolation
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"strings"
@@ -473,4 +476,50 @@ func finishSSHLifecycle(t *testing.T, db *store.DB, node *sshHarness, admin serv
 			t.Errorf("ssh lifecycle did not emit %s", typ)
 		}
 	}
+}
+
+// TestSSHRotateCARefusesAnEarlierKey: re-importing a CA's own key would mint a
+// new live row for a public key the revocation list already tracks under the
+// old row's state, un-revoking its certificates while hosts still trust it.
+func TestSSHRotateCARefusesAnEarlierKey(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := tctx(t)
+		env := domain.Scope{Org: orgA, Project: prjA1, Env: envA1}
+		admin := service.LocalPrincipal(alice)
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_ssh_manage','usr_alice','manage-identities','org_a','prj_a1',NULL,`+ts+`)`)
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_ssh_read','usr_alice','read','org_a','prj_a1','env_a1',`+ts+`)`)
+		node := newSSHNode(t, db)
+
+		_, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		block, err := ssh.MarshalPrivateKey(priv, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		pemKey := pem.EncodeToMemory(block)
+		ca, err := node.svc.CreateCA(ctx, admin, env, service.CreateSSHCARequest{Name: "imported", PrivateKey: pemKey})
+		if err != nil {
+			t.Fatalf("create CA from an imported key: %v", err)
+		}
+		// The active key itself.
+		if _, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{PrivateKey: pemKey}); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("rotate to the active key: %v, want ErrInvalid", err)
+		}
+		// A retired key (not merely retiring).
+		rotated, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{})
+		if err != nil {
+			t.Fatalf("rotate to a generated key: %v", err)
+		}
+		if _, err := node.svc.RetireCAKey(ctx, admin, env, ca.ID, rotated.Keys[1].ID); err != nil {
+			t.Fatalf("retire the imported key: %v", err)
+		}
+		if _, err := node.svc.RotateCA(ctx, admin, env, ca.ID, service.RotateSSHCARequest{PrivateKey: pemKey}); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("rotate back to an earlier key: %v, want ErrInvalid", err)
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM ssh_ca_keys WHERE ca_id='"+ca.ID+"'"); got != 2 {
+			t.Fatalf("CA has %d keys after refused rotations, want 2", got)
+		}
+	})
 }

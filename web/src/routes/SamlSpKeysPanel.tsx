@@ -89,7 +89,7 @@ export function SamlSpKeysPanel() {
         >
           Rotate the active signing key
         </Button>
-        <code className="instance-cli">$ hikyo saml sp-key rotate</code>
+        <code className="instance-cli">$ hikyo instance-config saml-sp-key rotate</code>
       </div>
       <p className="field__hint">
         Rotation marks the current active key retiring and publishes a new active

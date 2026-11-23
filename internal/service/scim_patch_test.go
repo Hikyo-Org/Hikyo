@@ -2,8 +2,9 @@ package service
 
 import (
 	"errors"
-	"reflect"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestReduceUserPatchAppliesCommandsInOrder(t *testing.T) {
@@ -61,7 +62,7 @@ func TestReduceUserPatchAppliesCommandsInOrder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReduceUserPatch: %v", err)
 			}
-			if !reflect.DeepEqual(got, tt.want) {
+			if !reflectx.Equal(got, tt.want) {
 				t.Fatalf("ReduceUserPatch = %#v, want %#v", got, tt.want)
 			}
 		})
@@ -136,7 +137,7 @@ func TestReduceGroupPatchAppliesMembershipCommandsInOrder(t *testing.T) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("ReduceGroupPatch error = %v, want %v", err, tt.wantErr)
 			}
-			if tt.wantErr == nil && !reflect.DeepEqual(got.Desired, tt.want) {
+			if tt.wantErr == nil && !reflectx.Equal(got.Desired, tt.want) {
 				t.Fatalf("ReduceGroupPatch desired = %#v, want %#v", got.Desired, tt.want)
 			}
 			if got.MembersTouched != tt.wantMembersTouched {
@@ -165,7 +166,7 @@ func TestReducersDoNotMutateCurrentDesiredState(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ReduceGroupPatch: %v", err)
 	}
-	if !reflect.DeepEqual(group.Members, []string{"user-a"}) {
+	if !reflectx.Equal(group.Members, []string{"user-a"}) {
 		t.Fatalf("ReduceGroupPatch mutated current members: %v", group.Members)
 	}
 }

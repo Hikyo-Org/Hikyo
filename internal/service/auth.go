@@ -348,7 +348,7 @@ func (s *Auth) LocalLogin(ctx context.Context, username, password string, artifa
 	// no work at all, denying logins to everyone else — the throttle becoming
 	// the outage. An account in backoff is refused outright with the same
 	// uniform overload answer every other pre-auth path gives.
-	if delay := s.Admission.AccountDelay(username); delay > 0 {
+	if s.Admission.AccountInBackoff(ctx, username) {
 		return LoginResult{}, admission.ErrOverloaded
 	}
 
@@ -838,6 +838,26 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 			}
 		}
 
+		// Recovery lookup: a contained account must stay establishable, and still
+		// cannot sign in afterwards. Containing consumes every outstanding
+		// authority, so an unconsumed one minted before contained_at can only come
+		// from a defect elsewhere; refuse it like any superseded authority.
+		account, err := az.RecoveryAccountByID(ctx, live.AccountID)
+		if err != nil {
+			return err
+		}
+		containedAt, contained, err := az.PrincipalContainedAt(ctx, account.PrincipalID)
+		if err != nil {
+			return err
+		}
+		if contained && live.CreatedAt.Before(containedAt) {
+			if aerr := s.refuseAuthorityIn(ctx, az, "epoch-superseded"); aerr != nil {
+				return aerr
+			}
+			refused = domain.ErrUnauthenticated
+			return nil
+		}
+
 		// The NULL guard is the atomic claim: two concurrent presentations
 		// cannot both establish a credential, and the loser fails closed.
 		claimed, err := az.ConsumeAuthority(ctx, live.ID, now)
@@ -883,10 +903,6 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 			}
 		}
 
-		account, err := az.AccountByID(ctx, live.AccountID)
-		if err != nil {
-			return err
-		}
 		// Establishing a credential invalidates every session of the
 		// principal: an account-security mutation deletes sessions in the
 		// same transaction as the credential change.

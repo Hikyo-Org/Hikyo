@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import {
   developerCredentialFailureText,
@@ -21,6 +21,7 @@ export function ProjectDeveloperCredentials(ref: ProjectRef) {
   const environments = useEnvironments(ref.org, ref.project);
   const environmentName = (id: string) => environments.data?.items.find((item) => item.id === id)?.name;
   const feedback = useFeedback(developerCredentialFailureText);
+  const captionId = useId();
   const target = credentials.isSuccess ? credentials.data.items.find((item) => item.id === selected) : undefined;
 
   return <Panel id="project-developer-credentials" title="Developer credentials">
@@ -40,9 +41,10 @@ export function ProjectDeveloperCredentials(ref: ProjectRef) {
       </Button>
     </div>
     {credentials.isSuccess && credentials.data.items.length === 0 ? <p role="status">No developer credentials in this project.</p> : null}
-    {credentials.isSuccess && credentials.data.items.length > 0 ? <div className="table-scroll">
+    {/* Focusable: on a phone the table scrolls, and once every credential is revoked it holds nothing else a keyboard can reach. */}
+    {credentials.isSuccess && credentials.data.items.length > 0 ? <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
       <table>
-        <caption>Developer credential metadata, including expired and revoked credentials</caption>
+        <caption id={captionId}>Developer credential metadata, including expired and revoked credentials</caption>
         <thead><tr><th scope="col">Credential</th><th scope="col">Human delegator</th><th scope="col">Environment</th><th scope="col">Lifetime</th><th scope="col">Revocation</th></tr></thead>
         <tbody>{credentials.data.items.map((credential) => <tr key={credential.id}>
           <td><code title={credential.id}>{credential.prefix_hint}…</code><p className="field__hint">Developer: <span className="mono">{credential.principal_id}</span></p></td>

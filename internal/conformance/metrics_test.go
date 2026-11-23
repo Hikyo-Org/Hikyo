@@ -9,7 +9,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // metricFamily is the pinned shape of one registered metric family: its name,
@@ -122,6 +122,22 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_pki_certificates_unknown", MaxSeries: 1},
 		{Name: "hikyo_pki_issuers_on_hold", MaxSeries: 1},
 		{Name: "hikyo_pki_gauges_known", MaxSeries: 1},
+		// Scheduled credential rotation (#148): label-free, one series each.
+		{Name: "hikyo_rotation_runs_quarantined", MaxSeries: 1},
+		{Name: "hikyo_rotation_runs_unknown_outcome", MaxSeries: 1},
+		{Name: "hikyo_rotation_runs_revoke_refused", MaxSeries: 1},
+		{Name: "hikyo_rotation_halted", MaxSeries: 1},
+		{Name: "hikyo_rotation_restore_held", MaxSeries: 1},
+		{Name: "hikyo_rotation_overdue", MaxSeries: 1},
+		{Name: "hikyo_rotation_credentials_expiring", MaxSeries: 1},
+		{Name: "hikyo_rotation_gauges_known", MaxSeries: 1},
+		// Authentication refusal accounting health (#1034): label-free, so no
+		// source, request, principal or token can multiply series under a flood.
+		{Name: "hikyo_auth_refusal_accounting_healthy", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_accounting_failures_total", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_pending_window_timestamp_seconds", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_writers_in_flight", MaxSeries: 1},
+		{Name: "hikyo_auth_refusal_writers_waiting", MaxSeries: 1},
 	}
 }
 
@@ -139,8 +155,16 @@ func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0
 func (stubMeasuredSources) SSHSnapshot() (int64, int64, error)        { return 0, 0, nil }
 func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
+func (stubMeasuredSources) RotationSnapshot() (server.RotationCounts, error) {
+	return server.RotationCounts{}, nil
+}
+
 func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 func (stubMeasuredSources) AccessSnapshot() (int64, int64, error)         { return 0, 0, nil }
+
+type stubRefusalHealth struct{}
+
+func (stubRefusalHealth) RefusalHealth() service.RefusalHealth { return service.RefusalHealth{} }
 
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
@@ -153,7 +177,9 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics.SetSSHSource(stubMeasuredSources{})
 	metrics.SetTransitSource(stubMeasuredSources{})
 	metrics.SetPKISource(stubMeasuredSources{})
+	metrics.SetRotationSource(stubMeasuredSources{})
 	metrics.SetAccessSource(stubMeasuredSources{})
+	metrics.SetRefusalSource(stubRefusalHealth{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -232,7 +258,7 @@ func TestMetricRegistryIsPinned(t *testing.T) {
 		}
 	}
 
-	if got, want := server.RequestLatencyBucketsSeconds(), []float64{0.005, 0.025, 0.1, 0.5, 1, 5}; !reflect.DeepEqual(got, want) {
+	if got, want := server.RequestLatencyBucketsSeconds(), []float64{0.005, 0.025, 0.1, 0.5, 1, 5}; !reflectx.Equal(got, want) {
 		t.Fatalf("latency buckets drifted\n got: %v\nwant: %v", got, want)
 	}
 }

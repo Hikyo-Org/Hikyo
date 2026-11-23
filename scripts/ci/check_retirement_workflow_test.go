@@ -2,7 +2,7 @@ package ci_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func reporterRepairWorkflowContract(raw []byte) error {
@@ -100,7 +102,7 @@ test "$head" != "$FAIL_HEAD"
 			if err := os.WriteFile(filepath.Join(dir, "check-retirement"), []byte(fake), 0700); err != nil {
 				t.Fatal(err)
 			}
-			payload, err := json.Marshal(tc.heads)
+			payload, err := json.Marshal(tc.heads, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -129,30 +127,10 @@ func runOAuth2Provider(ctx context.Context, ios IO, args []string) error {
 	if enabled.set {
 		input.Enabled = enabled.value
 	}
-	if secretFile != "" {
-		info, err := os.Stat(secretFile)
-		if err != nil {
-			return failf(ExitUsage, "cannot read client secret file")
-		}
-		if !info.Mode().IsRegular() || info.Size() > 4098 {
-			return failf(ExitUsage, "client secret file must be a regular file of at most 4098 bytes")
-		}
-		raw, err := os.ReadFile(secretFile)
-		if err != nil {
-			return failf(ExitUsage, "cannot read client secret file")
-		}
-		input.ClientSecret = strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r")
-	} else {
-		input.ClientSecret, err = ios.readPassword("Client secret (required for every update): ")
-		if err != nil {
-			return err
-		}
-	}
-	if input.ClientSecret == "" {
-		return failf(ExitUsage, "client secret is empty")
-	}
-	if !utf8.ValidString(input.ClientSecret) || utf8.RuneCountInString(input.ClientSecret) > 4096 {
-		return failf(ExitUsage, "client secret must contain at most 4096 characters")
+	input.ClientSecret, err = secretFromFileOrPrompt(ios, secretFile, "client secret",
+		"Client secret (required for every update): ", true)
+	if err != nil {
+		return err
 	}
 	var row apigen.Oauth2Provider
 	if err := client.Do(ctx, http.MethodPut, path, input, &row); err != nil {

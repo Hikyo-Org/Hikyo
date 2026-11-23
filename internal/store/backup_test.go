@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestRestoreSQLiteConcurrentAttemptsOwnDistinctStaging(t *testing.T) {
@@ -302,7 +304,7 @@ func sqliteRestoreManifest(t *testing.T) []byte {
 		Format:    ArchiveFormat,
 		Engine:    EngineSQLite,
 		CreatedAt: time.Unix(0, 0).UTC(),
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

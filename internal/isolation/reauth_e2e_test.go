@@ -796,6 +796,42 @@ func runReauthTOTPZeroWindow(t *testing.T, db *store.DB) {
 	}
 }
 
+func TestReauthTOTPRefusesSupersededEpochSeed(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		factorAdmin := bootstrapFactorAdmin(t, db)
+		auth, password := factorAdmin.auth, factorAdmin.password
+		base := time.Now().UTC()
+		clk := base
+		auth.Now = func() time.Time { return clk }
+		auth.ReauthWindow = 5 * time.Minute
+		auth.ReauthHardCap = 10 * time.Minute
+		ctx := t.Context()
+
+		login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clk = base.Add(30 * time.Second)
+		confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, clk))
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "UPDATE auth_instance_state SET credential_epoch=credential_epoch+1 WHERE id=1")
+		execRaw(t, db, "UPDATE sessions SET credential_epoch=credential_epoch+1")
+		clk = base.Add(60 * time.Second)
+		if _, err := auth.ReauthTOTP(ctx, confirmed.SessionToken, unboundReauthIntent(t, "env_prod"), totpCode(t, uri, clk)); !errors.Is(err, service.ErrNoTOTPFactor) {
+			t.Fatalf("TOTP reauth with a superseded-epoch seed: %v, want ErrNoTOTPFactor", err)
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM reauth_windows"); got != 0 {
+			t.Errorf("reauth windows opened = %d, want 0", got)
+		}
+	})
+}
+
 func TestLowerEffectiveWindowStranding(t *testing.T) {
 	forEngines(t, runLowerEffectiveWindowStranding)
 }

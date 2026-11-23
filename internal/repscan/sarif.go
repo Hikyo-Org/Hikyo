@@ -1,10 +1,12 @@
 package repscan
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"io"
 	"net/url"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // SARIF 2.1.0, hand-rolled: the subset a code-scanning consumer needs and
@@ -71,7 +73,7 @@ type sarifLocation struct {
 
 type sarifPhysical struct {
 	ArtifactLocation sarifArtifactLoc `json:"artifactLocation"`
-	Region           *sarifRegion     `json:"region,omitempty"`
+	Region           *sarifRegion     `json:"region,omitzero"`
 }
 
 type sarifArtifactLoc struct {
@@ -154,7 +156,5 @@ func WriteSARIF(w io.Writer, r *Report, toolVersion string) error {
 			},
 		}},
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(log)
+	return jsonwire.Encode(w, log, jsontext.WithIndent("  "))
 }

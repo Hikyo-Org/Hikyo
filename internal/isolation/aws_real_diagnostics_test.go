@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/netip"
 	"strings"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The code vocabulary is closed: only these operation names and provider codes
@@ -89,7 +90,7 @@ func TestAWSRealDiagnosticsFromCreateFailure(t *testing.T) {
 	t.Cleanup(remote.Close)
 	roots := x509.NewCertPool()
 	roots.AddCert(remote.Certificate())
-	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-diagnostic-credential-canary"})
+	raw, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-diagnostic-credential-canary"}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal("cannot encode synthetic descriptor")
 	}

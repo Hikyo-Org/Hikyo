@@ -7,9 +7,10 @@ trap 'rm -rf "$work"' EXIT
 fail() { printf 'feedback plan fixture: %s\n' "$*" >&2; exit 1; }
 # shellcheck source=scripts/ci/feedback-plan.sh
 source "$script_dir/feedback-plan.sh"
-mkdir -p "$work/repo with spaces/app" "$work/repo with spaces/scripts/tool" "$work/bin"
+mkdir -p "$work/repo with spaces/app" "$work/repo with spaces/scripts/tool" "$work/repo with spaces/internal/config" "$work/bin"
 cd "$work/repo with spaces"
 printf 'package app\n' >app/owner.go
+printf 'package config\n' >internal/config/variables.go
 printf 'package tool\n' >scripts/tool/owner.go
 printf 'package scripts\n' >scripts/owner.go
 printf 'package tool\n' >"scripts/tool/line
@@ -45,7 +46,7 @@ plan() {
 	# check details and the lane union and still satisfy the consistency test.
 	# shellcheck disable=SC2016 # jq resolves the required argument, not Bash.
 	"$real_jq" -e --argjson required '{
-		"audit-collector": ["python"],
+		"audit-collector": ["python"], "docs-impact": [],
 		"release-admission": ["python", "releaseDependencies"],
 		"go-format": ["go"], "go-mod-verify": ["go"], "go-compile": ["go"], "desktop-compile": ["go"],
 		"shellcheck": ["shellcheck"], "actionlint": ["go", "shellcheck"],
@@ -78,15 +79,21 @@ plan all CONTRIBUTING.md
 expect '.docs and (.lanes.tooling.checks | map(.id)) == ["docs"] and .lanes.tooling.prerequisites.node and (.lanes.tooling.prerequisites.pnpm | not)'
 plan all web/file.ts
 expect '.web and (.client | not) and (.lanes.frontend.checks | map(.id)) == ["web-typecheck", "web-lint", "web-test"] and .lanes.frontend.prerequisites.clientDependencies and .lanes.frontend.prerequisites.webDependencies'
+plan all internal/cli/testdata/help.txt
+expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and .docs and (.lanes.tooling.checks | map(.id)) == ["docs"] and .lanes.go.prerequisites.go == false'
+plan all internal/config/variables.go
+expect '(.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "docs-impact"]'
+plan tooling internal/cli/testdata/help.txt scripts/owner.go
+expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "docs"]'
 plan all api/openapi.yaml
 # desktop/ does not exist yet on this tree (main, dev before the shell lands): even
 # root packages the module imports select no desktop check.
-expect '.client and .web and (.desktop | not) and (.lanes.go.checks | map(.id)) == [] and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
+expect '.client and .web and (.desktop | not) and (.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
 # From here on the nested module exists.
 mkdir -p desktop
 : >desktop/go.mod
 plan all api/openapi.yaml
-expect '(.lanes.go.checks | map(.id)) == ["desktop-compile"] and .desktop and .client and .web'
+expect '(.lanes.go.checks | map(.id)) == ["desktop-compile", "docs-impact"] and .desktop and .client and .web'
 plan all docs/operations/audit-collector.md scripts/ci/release-admission/test_release_records.py
 expect '.auditCollector and .releaseAdmission and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission"] and .lanes.tooling.prerequisites.python and .lanes.tooling.prerequisites.releaseDependencies'
 plan all app/owner.go scripts/tool/owner.go "scripts/tool/line
@@ -103,6 +110,18 @@ plan all app/deleted.go removed/final.go
 expect '.go and (.lanes.go.checks | map(.id)) == ["go-compile"]'
 feedback_plan_select go application
 [ "${#go_files[@]}" -eq 0 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./app ]
+# Packages go list ./... skips are formatted but never compiled by path.
+mkdir -p internal/lint/testdata/fixture .hidden/pkg _scratch
+printf '//go:build ignore\n\npackage fixture\n' >internal/lint/testdata/fixture/ignored.go
+printf 'package pkg\n' >.hidden/pkg/a.go
+printf 'package scratch\n' >_scratch/a.go
+plan all internal/lint/testdata/fixture/ignored.go .hidden/pkg/a.go _scratch/a.go
+expect '.go == false and (.lanes.go.checks | map(.id)) == ["go-format"]'
+feedback_plan_select go application
+[ "${#go_files[@]}" -eq 3 ] && [ "${#go_packages[@]}" -eq 0 ]
+plan all app/owner.go
+feedback_plan_select go application
+[ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./app ]
 # desktop/ is a nested module: its Go files are formatted from the root but compiled
 # only by the desktop check, never by the root go-compile, which cannot load them.
 mkdir -p desktop/internal/shell internal/crypto
@@ -118,7 +137,7 @@ feedback_plan_select go application
 plan all internal/crypto/seal.go
 expect '.desktop and .go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "desktop-compile"]'
 plan all desktop/main_darwin.go
-expect '.desktop and (.lanes.go.checks | map(.id)) == ["go-format", "desktop-compile"]'
+expect '.desktop and (.lanes.go.checks | map(.id)) == ["go-format", "desktop-compile", "docs-impact"]'
 plan all desktop/README.md
 expect '.desktop and (.lanes.go.checks | map(.id)) == ["desktop-compile"]'
 plan all app/owner.go
@@ -127,6 +146,11 @@ expect '(.desktop | not) and (.lanes.go.checks | map(.id)) == ["go-format", "go-
 rm desktop/go.mod
 plan all internal/crypto/seal.go
 expect '(.desktop | not) and .go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"]'
+# The desktop shell'"'"'s wire contract and launch environment are documented surfaces.
+plan all desktop/main_darwin.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
+plan all desktop/internal/shell/shellroutes.go
+expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
 # Unknown declarative identifiers must never become silent successful no-ops.
 if (feedback_check_prerequisites unknown) >"$work/output" 2>&1; then fail 'accepted unknown check'; fi
 if (feedback_plan_hosted_lane unknown) >"$work/output" 2>&1; then fail 'accepted unknown hosted lane'; fi

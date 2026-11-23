@@ -96,3 +96,31 @@ func TestOccurrenceBatchPredicatesKeepCompleteChain(t *testing.T) {
 		})
 	}
 }
+
+// RETURNING names the output of an UPDATE or DELETE after its predicate chose
+// the rows, so it neither satisfies nor widens the chain proof.
+func TestReturningClauseNeverSatisfiesChain(t *testing.T) {
+	rules := map[string]TableRule{"items": {Class: "project", Chain: []string{"org_id", "project_id"}}}
+	good := []string{
+		"UPDATE items SET state='done' WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state NOT IN ('done','failed') RETURNING id,state",
+		"DELETE FROM items WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) RETURNING id",
+	}
+	for _, sql := range good {
+		if got := checkQuery("postgres", Query{Name: "returning", SQL: sql}, rules); len(got) != 0 {
+			t.Errorf("%s: %v", sql, got)
+		}
+	}
+	bad := []string{
+		// The chain conjunct lives only in the RETURNING list.
+		"UPDATE items SET state='done' WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) RETURNING project_id=sqlc.arg(chain_project)",
+		// A nested SELECT in the output list is still refused.
+		"UPDATE items SET state='done' WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) RETURNING (SELECT secret FROM another_tenant LIMIT 1)",
+		// A chain column is still immutable.
+		"UPDATE items SET project_id=sqlc.arg(other) WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) RETURNING id",
+	}
+	for _, sql := range bad {
+		if got := checkQuery("postgres", Query{Name: "returning_bad", SQL: sql}, rules); len(got) == 0 {
+			t.Errorf("unproved RETURNING statement accepted: %s", sql)
+		}
+	}
+}

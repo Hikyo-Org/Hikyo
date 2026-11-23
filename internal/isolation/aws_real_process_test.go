@@ -3,7 +3,8 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/devupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -141,9 +143,7 @@ const awsReplayReceiptLimit = 4096
 
 func decodeAWSReplayReceipt(raw []byte, jobID, arn string) (awsReplayReceipt, error) {
 	var receipt awsReplayReceipt
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if len(raw) > awsReplayReceiptLimit || decoder.Decode(&receipt) != nil || decoder.Decode(new(any)) != io.EOF || receipt.JobID != jobID || receipt.ARN != arn || len(receipt.PutTokens) > 32 {
+	if len(raw) > awsReplayReceiptLimit || json.Unmarshal(raw, &receipt, json.RejectUnknownMembers(true)) != nil || receipt.JobID != jobID || receipt.ARN != arn || len(receipt.PutTokens) > 32 {
 		return awsReplayReceipt{}, errors.New("invalid bounded process replay receipt")
 	}
 	for _, token := range receipt.PutTokens {
@@ -185,7 +185,7 @@ func writeAWSReplayReceipt(t *testing.T, input awsReplayInput, s *realAWSSandbox
 	}
 	s.mu.Unlock()
 	receipt := awsReplayReceipt{JobID: input.JobID, ARN: input.ProofARN, PutTokens: s.recordedPutTokens(input.ProofARN)}
-	raw, err := json.Marshal(receipt)
+	raw, err := json.Marshal(receipt, jsonwire.Stable)
 	if err != nil || len(raw) > awsReplayReceiptLimit {
 		pipe.Close()
 		t.Fatal("invalid replay metadata receipt")
@@ -199,7 +199,7 @@ func writeAWSReplayReceipt(t *testing.T, input awsReplayInput, s *realAWSSandbox
 
 func (h *realAWSDurable) runReplayChild(input awsReplayInput, expectedExit int) awsReplayReceipt {
 	t := h.t
-	raw, err := json.Marshal(input)
+	raw, err := json.Marshal(input, jsonwire.Stable)
 	if err != nil || len(raw) > 128<<10 {
 		t.Fatal("cannot encode bounded replay input")
 	}
@@ -281,12 +281,11 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 	}
 	defer crypto.Zero(raw)
 	var input awsReplayInput
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(decoder, &input, json.RejectUnknownMembers(true)); err != nil {
 		t.Fatal("invalid replay input shape")
 	}
-	if err := decoder.Decode(new(any)); err != io.EOF || len(input.Root) != crypto.KeySize || input.TargetID == "" || input.JobID == "" || input.Manifest.validate(time.Now()) != nil {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) || len(input.Root) != crypto.KeySize || input.TargetID == "" || input.JobID == "" || input.Manifest.validate(time.Now()) != nil {
 		t.Fatal("invalid replay authorization or custody")
 	}
 	defer crypto.Zero(input.Root)
@@ -435,7 +434,7 @@ func TestAWSRealReplayCustodyImport(t *testing.T) {
 func TestAWSRealReplayReceiptGuards(t *testing.T) {
 	jobID, arn, token := "offline-replay-job", "arn:aws:secretsmanager:eu-central-1:099256073061:secret:hikyo-e2e-offline123/static/document-AbCd12", strings.Repeat("a", 64)
 	encode := func(receipt awsReplayReceipt) []byte {
-		raw, err := json.Marshal(receipt)
+		raw, err := json.Marshal(receipt, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

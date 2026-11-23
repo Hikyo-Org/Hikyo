@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
@@ -78,7 +79,7 @@ func modernBody(id int, method, name, arguments string) []byte {
 }
 
 func strconvQuote(value string) string {
-	b, _ := json.Marshal(value)
+	b, _ := json.Marshal(value, jsonwire.Stable)
 	return string(b)
 }
 

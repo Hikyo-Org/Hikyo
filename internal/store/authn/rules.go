@@ -3,7 +3,7 @@ package authn
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -20,7 +20,7 @@ import (
 // The member access rule surface (member-access-rules ADR). It lives on the
 // enumerated resolution surface for the same reason grants do: authorize()
 // reads rules to mint a proof. Every mutating method takes the principal-row
-// lock (lint.CheckGrantLock) and is named in lint.ResolutionSurfaceWriters.
+// lock (the lint grantlock analyzer) and is named in lint.ResolutionSurfaceWriters.
 //
 // Every read parses and validates: a row set that does not form a valid rule
 // is dropped, so the worst a corrupt row can do is deny.
@@ -128,19 +128,27 @@ func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, mac
 	var rows []ruleRow
 	if r.sq != nil {
 		var got []sqlitegen.ListRulesForPrincipalRow
-		if machine {
-			machineRows, err := r.sq.ListMachineRulesForPrincipal(ctx, string(p))
-			if err != nil {
-				return nil, err
+		var err error
+		switch {
+		case r.historicalRecoveryBeforeContainment:
+			// Source schemas 66 through 88 have no containment column. The two
+			// row types carry the same fields, so a conversion maps them.
+			var old []sqlitegen.RecoveryListRulesBeforeContainmentRow
+			old, err = r.sq.RecoveryListRulesBeforeContainment(ctx, string(p))
+			for _, g := range old {
+				got = append(got, sqlitegen.ListRulesForPrincipalRow(g))
 			}
+		case machine:
+			var machineRows []sqlitegen.ListMachineRulesForPrincipalRow
+			machineRows, err = r.sq.ListMachineRulesForPrincipal(ctx, string(p))
 			for _, g := range machineRows {
 				got = append(got, sqlitegen.ListRulesForPrincipalRow(g))
 			}
-		} else {
-			var err error
-			if got, err = r.sq.ListRulesForPrincipal(ctx, string(p)); err != nil {
-				return nil, err
-			}
+		default:
+			got, err = r.sq.ListRulesForPrincipal(ctx, string(p))
+		}
+		if err != nil {
+			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: string(p), capability: g.Capability, org: g.OrgID,
@@ -149,19 +157,25 @@ func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, mac
 		}
 	} else {
 		var got []pggen.ListRulesForPrincipalRow
-		if machine {
-			machineRows, err := r.pg.ListMachineRulesForPrincipal(ctx, string(p))
-			if err != nil {
-				return nil, err
+		var err error
+		switch {
+		case r.historicalRecoveryBeforeContainment:
+			var old []pggen.RecoveryListRulesBeforeContainmentRow
+			old, err = r.pg.RecoveryListRulesBeforeContainment(ctx, string(p))
+			for _, g := range old {
+				got = append(got, pggen.ListRulesForPrincipalRow(g))
 			}
+		case machine:
+			var machineRows []pggen.ListMachineRulesForPrincipalRow
+			machineRows, err = r.pg.ListMachineRulesForPrincipal(ctx, string(p))
 			for _, g := range machineRows {
 				got = append(got, pggen.ListRulesForPrincipalRow(g))
 			}
-		} else {
-			var err error
-			if got, err = r.pg.ListRulesForPrincipal(ctx, string(p)); err != nil {
-				return nil, err
-			}
+		default:
+			got, err = r.pg.ListRulesForPrincipal(ctx, string(p))
+		}
+		if err != nil {
+			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: string(p), capability: g.Capability, org: g.OrgID,

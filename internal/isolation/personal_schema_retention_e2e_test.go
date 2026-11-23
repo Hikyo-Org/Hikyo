@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -269,7 +270,7 @@ func TestPersonalRequiredInDefinitionsRoundTripAndEnvironmentDelete(t *testing.T
 				bundle.Keys[i].PersonalRequiredIn = &definitions.Presence{Mode: string(schema.PresenceAll), Environments: []string{}}
 			}
 		}
-		allRaw, err := json.Marshal(bundle)
+		allRaw, err := json.Marshal(bundle, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

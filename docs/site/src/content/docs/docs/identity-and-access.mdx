@@ -65,7 +65,95 @@ Such a move is refused until it is confirmed with `--confirm-widening`
 naming exactly those people; only a member manager of the project is told who
 they are.
 
+In the browser, **Members** lists each person or machine once, as a card per
+scope that groups every permission they hold there. A card shows scope-wide
+grants and narrowed rules together, and the search box covers both. **Edit**
+revokes one permission or opens the composer with the member and scope
+selected. Narrowed rules offer Edit, Publish, Reveal, Reveal history,
+Define keys and Manage access for selected keys or folders. See always applies
+to the whole environment, and machines keep scope-wide access. A delegated
+member manager sees and changes only the rules they may manage, and can assign
+only permissions they hold. Assigning See requires management over every key of
+the selected environments, because See itself is environment-wide.
+
 ## Human onboarding
+
+There are three ways to bring a person in, besides registration policy below:
+
+| Route | Use it when | Command |
+| --- | --- | --- |
+| New-account invitation | The person has no account yet. | `hikyo access member invite <username>` |
+| Email invitation | The person already has an account with a verified local sign-up address. | `hikyo access invitation send <email>` |
+| Provider claim | The invited account should sign in through an identity provider. | Browser, on the establish page |
+
+### Invite a new account
+
+A holder of `manage-members` at the organisation or instance creates the account
+and a single-use credential-establishment authority with an optional role
+template. The authority is shown once, through the print triad (a new
+`--output-file`, an interactive terminal, or `--dangerously-print`):
+
+```bash
+hikyo access member invite alice --display-name "Alice Example" \
+  --template viewer --org <org-id> --output-file ./alice-authority
+hikyo access member invite bob --instance-scope --dangerously-print
+```
+
+Without `--template` the account is created with no grants and shows no
+membership row until a grant is added. A taken username is refused; a project
+address is a usage error. Deliver the authority out of band. The invitee
+consumes it on the instance's `/establish` page, or with
+`hikyo account establish-credential`, to choose a first password or, in the
+browser, to link a provider (see below). The authority expires after 24 hours.
+The browser equivalent is **Members → Invite**.
+
+### Invite an existing account by email
+
+An administrator who holds `manage-members` on the organisation, in a session
+that passed a second factor, and who knows the exact email address of an
+existing account can invite it into the organisation with a role template. Only
+an account whose address was verified through local email sign-up can be reached.
+
+```bash
+hikyo access invitation send alice@example.com --template viewer --org <org-id>
+hikyo access invitation list --org <org-id>
+hikyo access invitation revoke <invitation-id> --org <org-id>
+printf '%s' "$LINK_OR_TOKEN" | hikyo access invitation accept --yes
+```
+
+`send` requires `--template`. It needs configured [signup mail](/docs/signup-mail/)
+and an explicit public origin; when one is missing, the error names the missing
+setting, and it is the same for every address. The administrator is never told whether the address matched an
+account: an unknown address gets the same response and the same pending row, and
+no mail. The emailed link is `<origin>/invitations/accept#token=...`; it is
+single use and expires after 7 days. Sending again to the same address replaces
+the earlier invitation. An organisation can send 30 invitations per hour and
+hold 200 pending ones.
+
+The person joins only by accepting while signed in as the invited account. In
+the browser, open the link; with the CLI, give the token or the whole link on
+standard input (never as an argument). The acceptance page names the
+organisation and role before confirming. Accepting applies the role template,
+which, when the template adds a permission the person did not hold, ends all
+their sessions and revokes their developer credentials because it raises their
+privileges. Acceptance fails if the inviter has since lost `manage-members`. The
+CLI refuses a link from a different instance origin before sending anything, and
+needs `--yes` when there is no terminal to confirm on. Every server-side
+accept failure (wrong account, expired, revoked, replaced, inviter no longer
+authorized) is one indistinguishable not-found answer.
+In the browser, **Members → Invite by email** sends an invitation; a separate
+**Pending email invitations** panel on Members lists and revokes them.
+
+### Claim an invitation with a provider
+
+An invitation authority can also be spent by signing in through an enabled OIDC
+or OAuth2 provider (not SAML) instead of choosing a password. On the
+`/establish` page, paste the authority, then choose the provider button. The
+provider identity is linked to the already-invited account and you land signed
+in on **Account & security**. A refused authority shows one sentence and never says why. An
+account that already holds a password, factor, passkey or external identity
+cannot be claimed this way, and a recovery-issued authority is refused. See
+[social sign-in](/docs/social-signin/).
 
 Registration is closed by default. An administrator can create an organisation
 or instance registration policy that admits selected identity providers, verified
@@ -75,7 +163,9 @@ Local email sign-up requires configured mail delivery and a stable public origin
 federated sign-up requires an enabled OIDC or supported OAuth2 provider. SAML
 provisioning uses its separate identity and SCIM path.
 
-The browser exposes registration policy in instance or organisation
+The CLI reads and replaces a policy with `hikyo access registration show`,
+`set --file policy.json` and `delete`, each taking `--org ORG` or
+`--instance-scope`. The browser exposes registration policy in instance or organisation
 administration. A permitted registration method appears on the sign-up page;
 without a policy the door stays closed. Email verification establishes a local
 sign-in address, never an account-linking or password-recovery key. An existing
@@ -86,16 +176,101 @@ Microsoft Entra and GitHub app setup, policy admission and CLI sign-in. The
 [signup mail runbook](/docs/signup-mail/) covers transport inputs, explicit test
 delivery and verification failures.
 
-## Human sessions
+## Temporary access
 
-The local CLI login prompts on the controlling terminal. Passwords never cross
-argv. Sessions are stored in the local Hikyo state directory with mode `0600`.
+Temporary access lets a person ask for named capabilities in one environment
+for a bounded time. It is for humans in an interactive session; machines are
+refused. An access policy defines the offer, and approval writes grants with an
+absolute expiry. They are never permanent grants: they expire on their own on
+every node, and a person holding one can use it but cannot grant it to others.
+
+A policy is project-scoped and needs `manage-members` on the project. It offers
+a subset of `read`, `reveal`, `reveal-history`, `edit`, `publish` and `pin`,
+and covers one environment (`--covers ENV`) or, when omitted, every environment:
 
 ```bash
-hikyo login https://hikyo.example.com --tls-mode system-ca --local --as alice
+hikyo access policy create --capability read,reveal --covers <env-id> \
+  --approver principal:<principal-id> --max-duration 8h --min-approvals 1 \
+  --ttl 86400 --bypasser <principal-id>
+hikyo access policy list
+hikyo access policy update <policy-id> --max-duration 4h   # omitted fields keep their values
+hikyo access policy delete <policy-id>
+```
+
+Defaults are `--max-duration 8h`, `--min-approvals 1` and `--ttl 86400` (seconds
+a request may wait for a decision). `--approver` and `--bypasser` repeat, and
+an approver is a principal or a SCIM-mapped group binding. `--allow-self-approval`
+lets a requester who is also an approver approve their own request, `--disabled` saves the policy without
+offering it, and `--clear-bypassers` on `update` empties the emergency set.
+Naming bypassers on an enabled policy also requires that you could grant every
+offered capability yourself. A policy's environment cannot be changed; create a
+replacement policy instead. Changing a policy invalidates open requests at
+their next decision; access already granted keeps its expiry.
+
+```bash
+hikyo access request create --env <env-id> --capability reveal --duration 1h --reason "incident 4821"
+hikyo access request list --env <env-id>
+hikyo access request approve <request-id> --env <env-id>
+hikyo access request reject <request-id> --env <env-id>
+hikyo access request cancel <request-id> --env <env-id>
+hikyo access request revoke <request-id> --env <env-id>
+```
+
+Anyone who can read the environment can list requests and file one. The
+request must fall within the covering policy's capabilities and `--max-duration`,
+and needs a `--reason`. To approve or reject you must be a current approver of
+the policy; to approve you must also be able to grant every requested
+capability yourself; the requester
+cannot approve their own request unless the policy allows it. A rejection
+resolves the request at once; the approval that reaches `--min-approvals` writes
+the time-bound grants. The requester can `cancel` an open request. `revoke` ends
+granted access early and is open to the holder, a project member manager and an
+eligible approver.
+
+A named bypasser can take the policy's capabilities without a quorum:
+
+```bash
+hikyo access request emergency --env <env-id> --capability reveal --reason "outage"
+```
+
+`emergency` needs a current reauthentication ceremony bound to the environment
+and a reason, and it is audited. `--duration` defaults to 1h, capped by the
+policy's `--max-duration`; an explicit longer duration is refused. It never
+changes the policy.
+
+## Human sessions
+
+`hikyo login` opens the instance's `/login/cli` browser page, with only the
+callback on a loopback address, and asks you to approve the CLI session on a consent page that names the
+instance. Use whatever the instance offers: password, authenticator, passkey,
+OIDC, SAML or OAuth2. `--device` instead shows a verification URL and a code to
+approve from another device (RFC 8628). The CLI session is separate from the
+browser session, and the browser keeps its own. Both need a controlling terminal.
+
+```bash
+hikyo login https://hikyo.example.com --tls-mode system-ca
+hikyo login https://hikyo.example.com --device
+hikyo login https://hikyo.example.com --tls-mode system-ca --provider oidc:work --name example
 hikyo whoami --instance https://hikyo.example.com
 hikyo logout --instance https://hikyo.example.com
 ```
+
+`--provider KIND:SLUG` preselects a provider; a bare slug works when it is
+unambiguous. If the signed-in browser session lacks the second factor the
+account has enrolled, the consent page asks you to sign out and sign in again
+with it, then approve again.
+
+The terminal-native `--local --as USER` login prompts for the password on the
+controlling terminal and never accepts it on argv. It is only for accounts with
+no enrolled factor: once an account has TOTP or a passkey, the server refuses
+`--local` after the password is verified and points to browser or device login.
+`--local` cannot be combined with `--device` or `--provider`.
+
+```bash
+hikyo login https://hikyo.example.com --tls-mode system-ca --local --as alice
+```
+
+Sessions are stored in the local Hikyo state directory with mode `0600`.
 
 ## Account recovery
 

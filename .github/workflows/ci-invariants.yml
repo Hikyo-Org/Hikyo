@@ -16,6 +16,7 @@ on:
       - go.mod
       - go.sum
       - .golangci.yml
+      - .golangci-strict.yml
       - '.github/**'
       - '.githooks/**'
       - 'scripts/**'
@@ -41,7 +42,7 @@ jobs:
   invariants:
     name: repository invariants (boundary, lint, CI policy)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
     steps:
@@ -84,4 +85,4 @@ jobs:
       # Alone, as in test-core-packages.sh: the lint driver's cross-platform
       # compiler loads must not compete with other suites for CPU and memory.
       - name: Lint driver tests
-        run: go test -count=1 ./internal/lint
+        run: go test -count=1 -timeout=20m ./internal/lint

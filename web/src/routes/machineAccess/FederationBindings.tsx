@@ -8,7 +8,6 @@ import {
   identityRefusalText,
   isoDay,
   KUBERNETES_PRESET,
-  parseClaimNumber,
   presetFieldId,
   pullRequestRefusal,
   useCreateBinding,
@@ -136,9 +135,10 @@ export function presetForBinding(credential: MachineCredential): FederationPrese
 
 /**
  * seedClaims fills the replace form's claim inputs from the predecessor. The
- * read-shape `number_value` is a bigint (an int64 repository id does not
- * survive a float), and `claimText` stringifies it losslessly, so the seeded
- * text round-trips back through the numeric parse on submit.
+ * read-shape `number_value` is a bigint (an int64 does not survive a float),
+ * and `claimText` stringifies it losslessly, so a legacy numeric id is re-pinned
+ * as the exact decimal string the issuer emits. A field the predecessor did not
+ * pin stays blank: a replacement shows what was pinned and invents nothing.
  */
 export function seedClaims(
   preset: FederationPreset,
@@ -264,10 +264,12 @@ export function BindingDialog({
   // pinned; a fresh binding starts on Kubernetes. The account is locked to the
   // row the replace was launched from, because a binding belongs to one.
   const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
-  const unsafeClaim = replaces === undefined ? null : unsafeNumericClaim(replaces);
   // Predecessor pins no form field renders, carried verbatim so a replacement
   // never silently drops an identity constraint the form could not show.
   const carried = replaces === undefined ? [] : carriedClaims(seedPreset, replaces);
+  // Only carried pins are sent as numbers; preset fields are re-pinned as exact
+  // decimal strings, so a large legacy id there needs no range guard.
+  const unsafeClaim = replaces === undefined ? null : unsafeNumericClaim({ ...replaces, required_claims: carried });
   const [account, setAccount] = useState(initial.id);
   const [preset, setPreset] = useState<FederationPreset>(seedPreset);
   const unsupportedPreset = preset.id === 'forgejo';
@@ -303,39 +305,27 @@ export function BindingDialog({
    * pinsOrRefusal builds the pinned claims, or names the first field that
    * cannot be one.
    *
-   * The numeric fields are the ones worth refusing over: an immutable
-   * repository id is what stops a renamed-and-reused path inheriting this
-   * binding, and a field that quietly became 0, or rounded to a neighbouring
-   * id past 2^53, would bind this service account to somebody else's
-   * repository while looking like it worked.
+   * Every preset field is a required pin the issuer emits as a JSON string, and
+   * the server refuses any other kind, so a predecessor's legacy number or
+   * boolean is re-pinned as the string the issuer actually sends. An id is
+   * checked to be digits before it is sent, because a typo'd id would bind
+   * this service account to somebody else's repository while looking fine.
    */
   const pinsOrRefusal = (): FederatedClaimPin[] | string => {
     const pins: FederatedClaimPin[] = [];
     for (const field of preset.claims) {
       const raw = claims[field.claim] ?? '';
-      const original = replaces?.required_claims?.find((pin) => pin.claim === field.claim);
-      if (original?.string_value !== undefined) {
-        pins.push({ claim: field.claim, string_value: raw });
-        continue;
-      }
-      if (original?.bool_value !== undefined) {
-        if (raw !== 'true' && raw !== 'false') {
-          return `${field.label} (${field.claim}) preserves a boolean pin: enter true or false. Use the CLI for a deliberate type change. Nothing was bound.`;
+      if (field.kind === 'id') {
+        if (!/^[0-9]+$/.test(raw.trim())) {
+          return `${field.label} (${field.claim}) must be a whole number the issuer actually mints: digits only. Nothing was bound.`;
         }
-        pins.push({ claim: field.claim, bool_value: raw === 'true' });
-        continue;
-      }
-      if (original?.number_value !== undefined || field.kind === 'number') {
-        const value = parseClaimNumber(raw);
-        if (value === null) {
-          return `${field.label} (${field.claim}) must be a whole number the issuer actually mints: digits only, and inside the range this contract can carry exactly. Nothing was bound.`;
-        }
-        pins.push({ claim: field.claim, number_value: value });
+        pins.push({ claim: field.claim, string_value: raw.trim() });
         continue;
       }
       if (raw.trim() === '') {
         return `${field.label} (${field.claim}) is required: this issuer's bindings must pin it, and the server refuses a binding without it. Nothing was bound.`;
       }
+      // Matched byte-for-byte, so the text is pinned exactly as entered.
       pins.push({ claim: field.claim, string_value: raw });
     }
     return pins;
@@ -557,6 +547,7 @@ export function BindingDialog({
         <input
           id="binding-subject"
           className="mono"
+          placeholder={preset.subjectHint}
           value={subject}
           onChange={(event) => {
             setSubject(event.target.value);
@@ -604,7 +595,7 @@ export function BindingDialog({
             <input
               id={presetFieldId(field.claim)}
               className="mono"
-              inputMode={field.kind === 'number' ? 'numeric' : 'text'}
+              inputMode={field.kind === 'id' ? 'numeric' : 'text'}
               value={claims[field.claim] ?? ''}
               onChange={(event) => {
                 setClaims((current) => ({ ...current, [field.claim]: event.target.value }));
@@ -674,9 +665,7 @@ export function BindingDialog({
   );
 }
 
-/** blankClaims is a preset's pin fields, empty except the event a CI binding defaults to. */
+/** blankClaims is a preset's pin fields, empty except the defaults the preset names. */
 function blankClaims(preset: FederationPreset): Record<string, string> {
-  return Object.fromEntries(
-    preset.claims.map((field) => [field.claim, field.kind === 'event' ? 'push' : '']),
-  );
+  return Object.fromEntries(preset.claims.map((field) => [field.claim, field.defaultValue ?? '']));
 }

@@ -2,7 +2,7 @@ package ci_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -697,10 +697,6 @@ func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
 
 		})
 	}
-}
-
-func requireFeedbackSeed(workflow map[string]any) error {
-	return requireFeedbackSeedProfile(workflow, false)
 }
 
 func requireFeedbackSeedProfile(workflow map[string]any, compact bool) error {

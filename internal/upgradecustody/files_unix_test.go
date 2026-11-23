@@ -27,7 +27,7 @@ func TestReadRecoversInterruptedInitialPublication(t *testing.T) {
 	}
 	defer dir.Close()
 
-	got, err := read(dir, os.Geteuid())
+	got, err := read(dir, fileName, os.Geteuid())
 	if err != nil {
 		t.Fatalf("read interrupted publication: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestReadRejectsUnrelatedHardLink(t *testing.T) {
 	}
 	defer dir.Close()
 
-	if _, err := read(dir, os.Geteuid()); err == nil {
+	if _, err := read(dir, fileName, os.Geteuid()); err == nil {
 		t.Fatal("read accepted an unrelated hard link")
 	}
 }

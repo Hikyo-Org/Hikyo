@@ -9,7 +9,8 @@ package checksuites
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -41,7 +42,7 @@ type Source struct {
 	Read func(ctx context.Context, query string, out any) error
 	// Diagnose turns the errors a GraphQL response reports into an error. Nil
 	// reports the first error's message.
-	Diagnose func(errs []json.RawMessage) error
+	Diagnose func(errs []jsontext.Value) error
 }
 
 // Selector picks the suites to read. The zero value selects suites holding a
@@ -59,7 +60,7 @@ type total struct {
 	Total *int `json:"totalCount"`
 }
 
-func (s Source) diagnose(errs []json.RawMessage) error {
+func (s Source) diagnose(errs []jsontext.Value) error {
 	if s.Diagnose != nil {
 		return s.Diagnose(errs)
 	}
@@ -90,7 +91,7 @@ func (s Source) object(head, fields string) string {
 // cap applies to.
 func Count(ctx context.Context, s Source, head string) (int, error) {
 	var response struct {
-		Errors []json.RawMessage `json:"errors"`
+		Errors []jsontext.Value `json:"errors"`
 		Data   struct {
 			Repo *struct {
 				ID     int64 `json:"databaseId"`
@@ -138,7 +139,7 @@ func Find(ctx context.Context, s Source, head string, sel Selector) ([]int64, er
 	count, after := -1, ""
 	for page := 1; page <= MaxSuites/pageSize; page++ {
 		var response struct {
-			Errors []json.RawMessage `json:"errors"`
+			Errors []jsontext.Value `json:"errors"`
 			Data   struct {
 				Repo *struct {
 					ID     int64 `json:"databaseId"`
@@ -232,6 +233,23 @@ func (sel Selector) holds(all, done, named *total) (bool, error) {
 		return false, errors.New("incomplete or inconsistent check suite run counts")
 	}
 	return *all.Total > *done.Total, nil
+}
+
+// Recheck refuses a commit listing that was read while head's suites grew past
+// Margin: REST lists only the newest 1000 suites, so the read could have missed
+// an older suite holding the check. Call it after reading every listing.
+func Recheck(ctx context.Context, s Source, head string, listings []string) error {
+	if len(listings) != 1 || !strings.HasPrefix(listings[0], "commits/") {
+		return nil
+	}
+	count, err := Count(ctx, s, head)
+	if err != nil {
+		return err
+	}
+	if count > Margin {
+		return fmt.Errorf("check suites on %s grew past %d during the read; retry", head, Margin)
+	}
+	return nil
 }
 
 // Listings returns the check-runs REST listings that together hold every run of

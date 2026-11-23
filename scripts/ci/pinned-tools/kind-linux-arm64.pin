@@ -1,2 +1,2 @@
-url=https://github.com/kubernetes-sigs/kind/releases/download/v0.32.0/kind-linux-arm64
-sha256=b92cd615e97585de8ddade28ed5cd7feb4248d717c233eea5b03c37298900f5d
+url=https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-arm64
+sha256=20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2

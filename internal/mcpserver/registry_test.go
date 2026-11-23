@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -154,7 +153,7 @@ func TestRegistryRowsAreDeterministicAndImmutable(t *testing.T) {
 	if rows[0].ServiceOperation != "service.Keys.List" || rows[0].AuthorizationOperation != "key.list" ||
 		rows[0].AuditDisposition != AuditDispositionNone || !rows[0].ReadOnly ||
 		rows[0].ResultBytes != MaxStructuredContentBytes || rows[0].SecretPolicy != SecretPolicyNoSecretMaterial ||
-		!json.Valid(rows[0].InputSchema) || !json.Valid(rows[0].OutputSchema) {
+		!rows[0].InputSchema.IsValid() || !rows[0].OutputSchema.IsValid() {
 		t.Fatalf("incomplete registry projection: %#v", rows[0])
 	}
 	rows[0].Formula[0] = "mutated"

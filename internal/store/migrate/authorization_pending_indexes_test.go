@@ -79,7 +79,7 @@ func indexFixturePlan(t *testing.T, db *sql.DB, engine store.Engine, query strin
 func testAuthorizationPendingIndexes(t *testing.T, cfg store.Config) {
 	t.Helper()
 	ctx := t.Context()
-	if err := RunUpTo(ctx, cfg, 76); err != nil {
+	if err := RunUpTo(ctx, cfg, 89); err != nil {
 		t.Fatal(err)
 	}
 	db := migrationFixtureSQL(t, cfg)

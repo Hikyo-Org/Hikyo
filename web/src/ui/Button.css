@@ -53,7 +53,7 @@ a.btn {
 
 /* A labelled button (icon + word, e.g. Close) that collapses to icon-only at
  * the phone breakpoint, same square size as .btn--icon. Its `.btn__label` is
- * hidden by the `.visually-hidden-phone` rule (app.css), so the accessible
+ * hidden by the phone visually-hidden rule (app.css), so the accessible
  * name never changes with width.
  */
 @media (max-width: 700px) {
@@ -82,8 +82,9 @@ a.btn {
 }
 
 /* The compact class, only for the matrix column header's `rev N · history`
-   anchor and environment picker summary. Its height is the WCAG hit floor on a
-   fine pointer; a coarse pointer keeps the touch control. */
+   anchor and environment picker summary, and the matrix group row's `+ Key`.
+   Its height is the WCAG hit floor on a fine pointer; a coarse pointer keeps
+   the touch control. */
 .btn--compact {
   padding: 0 var(--space-2);
   font-size: var(--fs-xs);

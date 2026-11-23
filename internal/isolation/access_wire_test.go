@@ -3,7 +3,7 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -134,7 +135,7 @@ func (e accessWireEnv) callAs(t *testing.T, token, method, path string, body any
 	t.Helper()
 	var payload io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -97,10 +97,10 @@ func (p Policy) permits(source releaseidentity.Identity, target Target, now time
 
 type Decision struct {
 	Applicable []string `json:"applicable"`
-	Target     *Target  `json:"target,omitempty"`
+	Target     *Target  `json:"target,omitzero"`
 	Blocked    string   `json:"blocked,omitempty"`
 	// Urgent records that the selected target fixes an urgent applicable advisory.
-	Urgent bool `json:"urgent,omitempty"`
+	Urgent bool `json:"urgent,omitzero"`
 }
 
 // urgentFix reports whether target fixes an applicable advisory at or above

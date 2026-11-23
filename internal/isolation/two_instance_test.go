@@ -3,7 +3,7 @@ package isolation
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -100,7 +101,7 @@ func (i *instanceUnderTest) post(t *testing.T, path, bearer, origin string, body
 	t.Helper()
 	var payload *strings.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,7 +126,7 @@ func (i *instanceUnderTest) post(t *testing.T, path, bearer, origin string, body
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if out != nil && resp.StatusCode < 300 {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		if err := json.UnmarshalRead(resp.Body, out); err != nil {
 			t.Fatalf("decode %s: %v", path, err)
 		}
 	}

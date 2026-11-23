@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -242,7 +242,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	drain := func() {
 		t.Helper()
 		for range 16 {
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			worked, err := worker.RunOnce(ctx)
 			if err != nil {
 				t.Fatalf("worker: %v", err)
@@ -322,7 +322,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 			t.Fatalf("remove %s: %v", id, err)
 		}
 	}
-	clock = clock.Add(2 * adapter.LeaseTime)
+	clock = stepWorkerClock(clock, 2*adapter.LeaseTime)
 	drain()
 	if !emulator.Deleted("prod/keys/APP_SHARED_KEY") || !emulator.Deleted("prod/app") {
 		t.Fatal("teardown did not schedule deletion of every owned secret")
@@ -616,7 +616,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 			}
 			defer func() { afterStage = nil }()
 			for attempt := 0; attempt < 8 && !interrupted; attempt++ {
-				clock = clock.Add(time.Second)
+				clock = stepWorkerClock(clock, time.Second)
 				if worked, err := worker.RunOnce(ctx); err != nil || !worked {
 					t.Fatalf("adoption worker before injected interruption: worked=%v err=%v", worked, err)
 				}
@@ -630,7 +630,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 			if count := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='dispatched'`, target.ID)); count != 1 {
 				t.Fatalf("ambiguous adoption did not persist Dispatched: %d", count)
 			}
-			clock = clock.Add(time.Minute)
+			clock = stepWorkerClock(clock, time.Minute)
 			drain()
 			got, _ := emulator.Value(name)
 			var delivered map[string]string
@@ -684,7 +684,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 				replayWorker := *worker
 				replayWorker.Loader = loader
 				for attempt := 0; attempt < 16 && !interrupted; attempt++ {
-					clock = clock.Add(time.Second)
+					clock = stepWorkerClock(clock, time.Second)
 					// The injected Finish failure leaves the old fence unresolved; the
 					// immediate retry can refuse it as superseded before crash recovery.
 					if worked, err := replayWorker.RunOnce(ctx); !worked || (err != nil && !(interrupted && interruption == "finish-failure" && errors.Is(err, adapter.ErrSuperseded))) {
@@ -708,7 +708,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 				versions := emulator.Versions(name)
 				// Expire the actual provider fence as well as the worker lease.
 				// ClaimDue must close an unfinished effect before LoadExecution.
-				clock = clock.Add(adapter.LeaseTime + time.Minute)
+				clock = stepWorkerClock(clock, adapter.LeaseTime+time.Minute)
 				for attempt := 0; attempt < 16 && loader.loads < 2; attempt++ {
 					if worked, err := replayWorker.RunOnce(ctx); err != nil || !worked {
 						t.Fatalf("promoted replay: worked=%v err=%v", worked, err)

@@ -2,7 +2,8 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -45,7 +47,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		// satisfy the Id grammar the frozen Zod schemas enforce.
 		operator := service.LocalPrincipal(root)
 		keyring := probeKeyring(t, db)
-		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "skew-transit-org", true, json.RawMessage(`{}`))
+		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "skew-transit-org", true, jsontext.Value(`{}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +141,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		var goList apigen.TransitKeyList
-		decodeErr := json.NewDecoder(listRes.Body).Decode(&goList)
+		decodeErr := json.UnmarshalRead(listRes.Body, &goList)
 		_ = listRes.Body.Close()
 		if listRes.StatusCode != http.StatusOK || decodeErr != nil || len(goList.Items) != 3 {
 			t.Fatalf("go decode of the transit list: status %d, %d items, err %v", listRes.StatusCode, len(goList.Items), decodeErr)
@@ -153,7 +155,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			"codes":         []string{totpCode(t, uri, clk), totpCode(t, uri, clk.Add(30*time.Second))},
 			"weak_username": "skew-unenrolled",
 			"scope":         map[string]string{"org": org.ID, "project": project.ID, "environment": env.ID},
-		})
+		}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

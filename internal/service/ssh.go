@@ -477,6 +477,12 @@ func (s *SSH) RotateCA(ctx context.Context, actor Actor, scope domain.Scope, caI
 		}
 		var previous string
 		for _, k := range before.Keys {
+			// Every earlier key counts, retired ones included: re-importing it
+			// would put the same public key under a new, live row, and the KRL
+			// filters revocations by the signing key row's state.
+			if k.Fingerprint == material.fingerprint {
+				return SSHCAView{}, fmt.Errorf("%w: the key is already one of this CA's keys; rotate to a different key", domain.ErrInvalid)
+			}
 			if k.State == "active" {
 				previous = k.Fingerprint
 			}

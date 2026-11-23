@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const plaintextMarker = "s3cr3t-VALUE-never-outside-ciphertext"
@@ -89,7 +91,7 @@ func TestOpenRefusesTamperExpiryAndUnpinnedKeys(t *testing.T) {
 		c := e
 		c.Names = append([]Name(nil), e.Names...)
 		fn(&c)
-		raw, _ := json.Marshal(c)
+		raw, _ := json.Marshal(c, jsonwire.Stable)
 		return raw
 	}
 	cases := map[string]struct {
@@ -182,7 +184,7 @@ func TestAckBindsDigestIdempotencyAndPinnedKey(t *testing.T) {
 	var forged Ack
 	_ = json.Unmarshal(ack, &forged)
 	forged.Status = AckAlreadyApplied
-	raw, _ := json.Marshal(forged)
+	raw, _ := json.Marshal(forged, jsonwire.Stable)
 	if _, err := VerifyAck(raw, f.receiver.Public(), sealed.Digest, sealed.IdempotencyKey); !errors.Is(err, ErrSignature) {
 		t.Fatalf("forged status accepted: %v", err)
 	}

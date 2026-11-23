@@ -1,8 +1,7 @@
 package store
 
 import (
-	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
@@ -15,13 +14,6 @@ func adapterVersionWitness(value int64, valid bool) *int64 {
 		return nil
 	}
 	return &value
-}
-
-func adapterOptionalVersion(value *int64) sql.NullInt64 {
-	if value == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *value, Valid: true}
 }
 
 func adapterRequireVersion(provider string) int64 {

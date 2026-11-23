@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/getsops/sops/v3/cmd/sops/formats"
 	"github.com/getsops/sops/v3/decrypt"
+	"github.com/getsops/sops/v3/hcvault"
+	vaultapi "github.com/hashicorp/vault/api"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,7 +24,8 @@ import (
 // KMS. Two disclosures the ADR requires and this comment makes concrete:
 //
 //   - a file encrypted to a KMS or Vault Transit key CONTACTS THAT KEY SERVICE.
-//     File mode is offline only for age/GPG-encrypted material.
+//     File mode is offline only for age/GPG-encrypted material. A Vault Transit
+//     key is contacted only at the operator's VAULT_ADDR (pinVaultDestination).
 //   - the GPG key source EXECS `gpg`, inside the library, with no hook for the
 //     child's environment. That exec is covered by WithSanitized (spawn.go),
 //     which strips Hikyo credentials, contexts and trust material from this
@@ -265,6 +269,46 @@ func allPlaintext(n *yaml.Node) bool {
 	}
 }
 
+// pinVaultDestination limits the Vault hosts the library may contact to the
+// operator's own VAULT_ADDR (or none when it is unset), unless the operator set
+// SOPS_HC_VAULT_ALLOWLIST. A file names its own hc_vault address in its
+// metadata, and the library sends VAULT_TOKEN or ~/.vault-token there before it
+// verifies the MAC, so a hostile file would otherwise choose where the token
+// goes. The allowlist is checked only when the client is built, and the Vault
+// client follows a redirect to any origin with the same token, so redirects are
+// disabled in either case. The returned func restores both variables; call it
+// inside WithSanitized, which serializes the process-global environment.
+func pinVaultDestination() func() {
+	restoreRedirects := setEnvScoped(vaultapi.EnvVaultDisableRedirects, "true")
+	const name = hcvault.SopsHCVaultAllowlist
+	if prev, had := os.LookupEnv(name); had && prev != "" {
+		return restoreRedirects
+	}
+	pin := hcvault.AllowlistNoHosts
+	if addr := os.Getenv("VAULT_ADDR"); addr != "" {
+		pin = addr
+	}
+	restoreAllowlist := setEnvScoped(name, pin)
+	return func() {
+		restoreAllowlist()
+		restoreRedirects()
+	}
+}
+
+// setEnvScoped sets name to value and returns a func restoring its previous
+// state, including absence.
+func setEnvScoped(name, value string) func() {
+	prev, had := os.LookupEnv(name)
+	_ = os.Setenv(name, value)
+	return func() {
+		if had {
+			_ = os.Setenv(name, prev)
+		} else {
+			_ = os.Unsetenv(name)
+		}
+	}
+}
+
 // sopsDecrypt runs the library's decryption under the run deadline.
 //
 // `decrypt.DataWithFormat` takes no context — it is the stable API and it
@@ -288,6 +332,7 @@ func sopsDecrypt(ctx context.Context, in Input, format formats.Format) ([]byte, 
 	go func() {
 		var plain []byte
 		err := WithSanitized(func() error {
+			defer pinVaultDestination()()
 			out, derr := decrypt.DataWithFormat(in.Data, format)
 			plain = out
 			return derr
@@ -304,7 +349,9 @@ func sopsDecrypt(ctx context.Context, in Input, format formats.Format) ([]byte, 
 			// service's response body, a file fragment, or a MAC comparison
 			// rendering both macs — none of which belongs on stderr.
 			return nil, failure(sopsSource, CodeDecrypt, in.Path,
-				"decryption failed: no ambient key (age, GPG, KMS) opened this file, or its integrity check did not hold")
+				"decryption failed: no ambient key (age, GPG, KMS) opened this file, or its integrity check did not hold. "+
+					"A Vault Transit key is contacted only at VAULT_ADDR; if the file names another Vault address, "+
+					"set VAULT_ADDR to it or allow it in SOPS_HC_VAULT_ALLOWLIST")
 		}
 		return got.plain, nil
 	}

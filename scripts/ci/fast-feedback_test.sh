@@ -26,7 +26,7 @@ commit_fixture() {
 }
 printf '# Fixture\n' >README.md
 printf '26.7.0\n' >.nvmrc
-printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
+printf '{"packageManager":"pnpm@12.21.0"}\n' >package.json
 printf 'module example.invalid/feedback-fixture\n\ngo 1.27.2\n' >go.mod
 # Keep the imported library unchanged relative to base: changed-file linting
 # must follow it even when it is not listed as a changed ShellCheck input.
@@ -171,7 +171,7 @@ refuse 'client dependencies missing'
 mkdir -p clients/ts/node_modules web/node_modules "$work/bin"
 cat >"$work/bin/pnpm" <<'EOF'
 #!/bin/sh
-if [ "$1" = --version ]; then printf '11.24.0\n'; exit 0; fi
+if [ "$1" = --version ]; then printf '12.21.0\n'; exit 0; fi
 if [ "$4" = test ]; then printf 'frontend unit failure\n'; exit 43; fi
 EOF
 chmod +x "$work/bin/pnpm"
@@ -250,6 +250,9 @@ FIXTURE_TOOLS_ROOT="$work/tooling" FIXTURE_SOURCE_ROOT="$repo" \
 # Docs-only inputs use the real checker from the tooling owner against source.
 rm -rf .github scripts/ci
 cp "$script_dir/../../.nvmrc" .nvmrc
+# A consumed docs input present at the base, so only the later loop changes it.
+mkdir -p internal/cli/testdata
+printf '# Fixture\n\nContent\n' >internal/cli/testdata/help.txt
 commit_fixture
 docs_base=$(git rev-parse HEAD)
 for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
@@ -271,7 +274,7 @@ FAST_FEEDBACK_BASE="$docs_base" FAST_FEEDBACK_TOOLS_DIR="$script_dir" refuse 're
 [ ! -e docs/site/public ] && [ ! -e docs/site/src ]
 # Each consumed policy/site/runtime input, including deletions, selects docs.
 selection_base=$(git rev-parse HEAD)
-for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE internal/cli/testdata/help.txt docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
 	if [ -f "$path" ]; then
 		mv "$path" "$work/input-backup"
 		FAST_FEEDBACK_BASE="$selection_base" run_feedback --working-tree --plan
@@ -316,5 +319,6 @@ printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency
 
 bash "$script_dir/fast-feedback-lanes_test.sh"
 bash "$script_dir/fast-feedback-plan_test.sh"
+sh "$script_dir/check-docs-impact_test.sh"
 bash "$script_dir/fast-feedback-deadline_test.sh"
 bash "$script_dir/dependency-compatibility_test.sh"

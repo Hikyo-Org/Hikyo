@@ -90,11 +90,12 @@ if [ "$full" = true ]; then
 	# Generated code is fresh (CI job: generated). Needs the pinned generators.
 	stage 'generated code is fresh'
 	go tool sqlc generate || fail 'sqlc generate'
+	go run ./api/omitzero || fail 'omitzero overlay'
 	go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml || fail 'oapi-codegen'
 	go run ./internal/scanning/gen || fail 'scanning gen'
 	go run ./internal/authz/gen || fail 'authz gen'
 	./scripts/gen-crds.sh || fail 'gen-crds'
-	git diff --exit-code -- internal/store/sqlitegen internal/store/pggen api/apigen \
+	git diff --exit-code -- internal/store/sqlitegen internal/store/pggen api/apigen api/omitzero-overlay.yaml \
 		internal/scanning/rules_gen.go internal/authz/forwarders_gen.go internal/authz/wire_registry_gen.go \
 		chart/hikyo/crds internal/operator/api || fail 'generated drift'
 	test -z "$(git status --porcelain --untracked-files=all -- \

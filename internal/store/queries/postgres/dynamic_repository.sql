@@ -59,3 +59,16 @@ UPDATE dynamic_leases SET state=sqlc.arg(state),last_transition_at=sqlc.arg(at),
 
 -- name: DynamicEnqueueUnknownWithTTL :execrows
 UPDATE dynamic_leases SET state=sqlc.arg(state),max_ttl_seconds=sqlc.arg(max_ttl_seconds),last_transition_at=sqlc.arg(at),next_attempt_at=sqlc.arg(next_attempt_at),attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(lease_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND (CAST(sqlc.arg(chain_env) AS TEXT)='' OR environment_id=sqlc.arg(chain_env)) AND state='unknown';
+
+-- Incident enumeration: the non-terminal leases of one project, in id order and
+-- bounded by the limit. Only identifiers and the state are selected.
+-- name: DynamicListNonTerminalLeasesInProject :many
+SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state NOT IN ('revoked','expired','failed') AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- Incident enumeration at instance level: the non-terminal leases of every org,
+-- in id order and bounded by the limit. The read is cross-tenant by definition,
+-- like ListAllProjects, and selects identifiers and the state only.
+-- hikyo:reason Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected.
+-- hikyo:instance-scoped
+-- name: DynamicListNonTerminalLeasesInInstance :many
+SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE state NOT IN ('revoked','expired','failed') AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(row_limit);

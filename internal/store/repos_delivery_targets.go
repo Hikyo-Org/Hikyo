@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -126,7 +127,7 @@ func encodeConditions(conditions []deliverytarget.Condition) (string, error) {
 		out = append(out, conditionJSON{Type: c.Type, Status: c.Status, Reason: c.Reason, ObservedGeneration: c.ObservedGeneration})
 	}
 	slices.SortFunc(out, func(a, b conditionJSON) int { return strings.Compare(a.Type, b.Type) })
-	raw, err := json.Marshal(out)
+	raw, err := json.Marshal(out, jsonwire.Stable)
 	return string(raw), err
 }
 

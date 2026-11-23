@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -118,7 +119,7 @@ func TestCLILoginDeviceWireAdmission(t *testing.T) {
 			t.Fatalf("throttled=%t pendingAfterMinute=%t", throttled, pendingAfterMinute)
 		}
 		clock = clock.Add(time.Minute)
-		approval, _ := json.Marshal(apigen.CLILoginApproveRequest{Reference: start.UserCode})
+		approval, _ := json.Marshal(apigen.CLILoginApproveRequest{Reference: start.UserCode}, jsonwire.Stable)
 		status, _, raw = call("/auth/cli-login/approve", string(approval), "application/json", true)
 		if status != 200 {
 			t.Fatalf("cookie approval status%d body%s", status, raw)

@@ -2,7 +2,8 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"maps"
@@ -17,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -136,7 +138,7 @@ func scimRawResponse(t *testing.T, method, url, token string, body any) (int, []
 		raw, verbatim := body.([]byte)
 		if !verbatim {
 			var err error
-			raw, err = json.Marshal(body)
+			raw, err = json.Marshal(body, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +199,7 @@ func runSCIMSequence(t *testing.T, call scimCall, steps []scimStep) map[string]s
 		// literal maps above stay readable.
 		payload := step.Body
 		if payload != nil {
-			raw, err := json.Marshal(payload)
+			raw, err := json.Marshal(payload, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -205,7 +207,7 @@ func runSCIMSequence(t *testing.T, call scimCall, steps []scimStep) map[string]s
 			for name, value := range ids {
 				rendered = strings.ReplaceAll(rendered, "{"+name+"}", value)
 			}
-			payload = json.RawMessage(rendered)
+			payload = jsontext.Value(rendered)
 		}
 		status, body := call(step.Method, path, payload)
 		if status != step.Want {
@@ -1619,7 +1621,7 @@ func runSCIMWireAdmissionOverHTTP(t *testing.T, db *store.DB) {
 	}
 	// The exact body, byte for byte: the ADR names this refusal, so its
 	// rendering is pinned rather than merely "an error of some kind".
-	wantBytes, err := json.Marshal(scimproto.ErrBodyTooLarge.Body())
+	wantBytes, err := json.Marshal(scimproto.ErrBodyTooLarge.Body(), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

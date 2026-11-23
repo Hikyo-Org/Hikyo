@@ -49,7 +49,8 @@ Both recipes run the coordinator from the signed release package on the host,
 which installs `/usr/bin/hikyo`. The binary installer's `/usr/local/bin/hikyo` is
 not used: the maintenance unit and native upgrades name the packaged path, and
 the ceremony stops with that explanation if the package is absent. Release 1.0.0
-does not contain `security-maintenance`, and a host installed from it is not adopted:
+does not contain `security-maintenance` (it first ships in 1.1.0), and a host
+installed from 1.0.0 is not adopted:
 it keeps the [manual procedure](manual-upgrades.md), and `enroll` refuses it and says
 why. Only an installation created through these recipes from a release that contains
 this feature can enroll. On Compose, both the host package and the image must be
@@ -119,9 +120,10 @@ this coordinator starts the source image again (Compose from its prepared snapsh
 Kubernetes by writing the prepared Deployment template back), and the attempt is
 retried with the usual backoff. Each such attempt stops the service for a few
 minutes, so after three of them at the same target the coordinator stops trying: see
-[repeated failure](#repeated-failure-at-one-target). In this recipe, `hikyo admin create` inside the container needs
-`HIKYO_UPGRADE_BUNDLE` and `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY` set to the bundle
-and key cached under `/var/lib/hikyo-upgrade/unattended`.
+[repeated failure](#repeated-failure-at-one-target). In this recipe, `hikyo admin create`, `backup` and `restore` run inside the
+container as they are: the command derives the bundle and operator key the server
+already admitted (see [local operator
+commands](unattended-container-upgrades.md#local-operator-commands)).
 
 1. Install the [signed package](https://hikyo.app/docs/installation/#native-packages)
    for this release, plus Docker Engine with the Compose plugin and `jq`.

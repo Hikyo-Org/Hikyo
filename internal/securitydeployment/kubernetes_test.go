@@ -2,7 +2,7 @@ package securitydeployment
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +12,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 
@@ -1860,7 +1861,7 @@ func TestKubernetesIdentityPinIsFirstWriterWins(t *testing.T) {
 	if err := f.executor.publishIdentity([]byte(`{"deployment_uid":"deployment-0"}`), "deployment-0"); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(kubernetesIdentity{DeploymentUID: "deployment-1"})
+	raw, _ := json.Marshal(kubernetesIdentity{DeploymentUID: "deployment-1"}, jsonwire.Stable)
 	if err := f.executor.publishIdentity(raw, "deployment-1"); !errors.Is(err, ErrConflict) {
 		t.Fatalf("a second enrollment replaced or accepted another pin: %v", err)
 	}

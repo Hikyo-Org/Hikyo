@@ -47,6 +47,11 @@ func testAllowedCIDRs(t *testing.T) []netip.Prefix {
 // harness gates HIKYO_TEST_POSTGRES_DSN.
 func targetProvider(t *testing.T) (*Provider, string) {
 	t.Helper()
+	return targetProviderWithDeadline(t, 10*time.Second)
+}
+
+func targetProviderWithDeadline(t *testing.T, deadline time.Duration) (*Provider, string) {
+	t.Helper()
 	dsn := os.Getenv("HIKYO_TEST_DYNAMIC_PG_DSN")
 	if dsn == "" {
 		if os.Getenv("HIKYO_DYNAMIC_PG_REQUIRED") != "" {
@@ -70,7 +75,7 @@ func targetProvider(t *testing.T) (*Provider, string) {
 			t.Fatal("HIKYO_TEST_DYNAMIC_PG_CA contained no certificates")
 		}
 	}
-	p, err := New(Config{Origin: dsn, Password: password, RootCAs: roots, AllowedCIDRs: testAllowedCIDRs(t), Deadline: 10 * time.Second})
+	p, err := New(Config{Origin: dsn, Password: password, RootCAs: roots, AllowedCIDRs: testAllowedCIDRs(t), Deadline: deadline})
 	if err != nil {
 		t.Fatalf("provider: %v", err)
 	}
@@ -189,4 +194,39 @@ func mustPassword(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return pw
+}
+
+// A mint blocked on the server (here behind an uncommitted CREATE ROLE of the same
+// name) is aborted by the server's own statement_timeout before the client's
+// deadline, so it answers with a definite refusal rather than an ambiguous
+// timeout: the server never keeps a call the client has stopped waiting for.
+func TestProviderMintIsBoundedOnTheServer(t *testing.T) {
+	p, grantRole := targetProviderWithDeadline(t, 4*time.Second)
+	ctx := context.Background()
+	name := dynamic.RoleName("dsb_" + time.Now().UTC().Format("20060102150405.000000"))
+	t.Cleanup(func() { _ = p.DropRole(context.Background(), name) })
+
+	blocker, err := p.connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = blocker.Close(context.Background()) }()
+	tx, err := blocker.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx, createRoleSQL(dynamic.CreateRoleRequest{Name: name, Password: mustPassword(t), GrantRole: grantRole, ValidUntil: time.Now().Add(time.Hour)})); err != nil {
+		t.Fatalf("hold the role name: %v", err)
+	}
+
+	start := time.Now()
+	err = p.CreateRole(ctx, dynamic.CreateRoleRequest{Name: name, Password: mustPassword(t), GrantRole: grantRole, ValidUntil: time.Now().Add(time.Hour)})
+	elapsed := time.Since(start)
+	if !errors.Is(err, dynamic.ErrRefused) || errors.Is(err, dynamic.ErrAmbiguous) {
+		t.Fatalf("blocked mint = %v, want a definite refusal from the server's timeout", err)
+	}
+	if elapsed >= 4*time.Second {
+		t.Fatalf("the mint returned after %s, the server did not abort it ahead of the client deadline", elapsed)
+	}
 }

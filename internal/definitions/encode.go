@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Encode renders a validated canonical bundle: sorted object keys at every
@@ -24,43 +27,33 @@ func Encode(b CanonicalBundle) ([]byte, error) {
 }
 
 // canonicalize serializes any value with sorted keys and stable integers. The
-// round-trip through `any` with UseNumber sorts every object member (Go's
-// encoder sorts map keys) while preserving int64 exactly as its literal digits,
-// which a float64 round-trip would not.
+// round-trip through a generic tree sorts every object member (the encoder
+// sorts map keys) while keeping each number as its literal digits, which a
+// float64 round-trip would not preserve for int64.
 func canonicalize(v any) ([]byte, error) {
 	raw, err := marshalNoEscape(v)
 	if err != nil {
 		return nil, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var generic any
-	if err := dec.Decode(&generic); err != nil {
+	generic, err := DecodeLiteralTree(jsontext.NewDecoder(bytes.NewReader(raw)))
+	if err != nil {
 		return nil, fmt.Errorf("definitions: canonicalize decode: %w", err)
 	}
-	sorted, err := marshalNoEscape(generic)
+	indented, err := json.Marshal(generic, jsonwire.Stable, jsontext.EscapeForHTML(false), jsontext.WithIndent("  "))
 	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if err := json.Indent(&buf, sorted, "", "  "); err != nil {
 		return nil, fmt.Errorf("definitions: canonicalize indent: %w", err)
 	}
-	buf.WriteByte('\n')
-	return buf.Bytes(), nil
+	return append(indented, '\n'), nil
 }
 
-// marshalNoEscape marshals without HTML escaping and without the trailing
-// newline json.Encoder appends, so `<`, `>` and `&` in a pattern or description
-// survive verbatim.
+// marshalNoEscape marshals without HTML escaping and without a trailing
+// newline, so `<`, `>` and `&` in a pattern or description survive verbatim.
 func marshalNoEscape(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	raw, err := json.Marshal(v, jsonwire.Stable, jsontext.EscapeForHTML(false))
+	if err != nil {
 		return nil, fmt.Errorf("definitions: marshal: %w", err)
 	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+	return raw, nil
 }
 
 // Digest is the SHA-256 of the canonical encoding, hex-encoded and unprefixed.

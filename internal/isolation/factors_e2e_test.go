@@ -462,6 +462,39 @@ func runStepUpElevates(t *testing.T, db *store.DB) {
 	}
 }
 
+func TestStepUpRefusesSupersededEpochTOTP(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		factorAdmin := bootstrapFactorAdmin(t, db)
+		auth, password := factorAdmin.auth, factorAdmin.password
+		base := time.Now().UTC()
+		clk := base
+		auth.Now = func() time.Time { return clk }
+		ctx := t.Context()
+
+		login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clk = base.Add(30 * time.Second)
+		confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, clk))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A restore bumps the epoch and leaves the old TOTP row in place; the
+		// acting session is carried across so it still authenticates.
+		execRaw(t, db, "UPDATE auth_instance_state SET credential_epoch=credential_epoch+1 WHERE id=1")
+		execRaw(t, db, "UPDATE sessions SET credential_epoch=credential_epoch+1")
+		clk = base.Add(60 * time.Second)
+		if _, err := auth.StepUpTOTP(ctx, confirmed.SessionToken, totpCode(t, uri, clk)); !errors.Is(err, service.ErrNoTOTPFactor) {
+			t.Fatalf("step-up with a superseded-epoch TOTP seed: %v, want ErrNoTOTPFactor", err)
+		}
+	})
+}
+
 func TestTOTPConfirmSameStep(t *testing.T) {
 	forEngines(t, runConfirmSameStep)
 }

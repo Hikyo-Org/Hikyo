@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,10 +23,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // Vault/OpenBao KV v2 delivery (#162), end to end through the real service,
@@ -77,7 +78,7 @@ func (s kvServer) do(t *testing.T, method, path string, body any) (int, map[stri
 	t.Helper()
 	var input io.Reader
 	if body != nil {
-		raw, _ := json.Marshal(body)
+		raw, _ := json.Marshal(body, jsonwire.Stable)
 		input = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(context.Background(), method, s.addr+path, input)
@@ -221,7 +222,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	t.Cleanup(func() {
 		server.must(t, http.MethodPost, "/v1/auth/token/revoke", map[string]any{"token": auth["client_token"]})
 	})
-	credential, _ := json.Marshal(map[string]string{"method": "token", "token": auth["client_token"].(string), "ca_pem": string(server.ca)})
+	credential, _ := json.Marshal(map[string]string{"method": "token", "token": auth["client_token"].(string), "ca_pem": string(server.ca)}, jsonwire.Stable)
 
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_manage','usr_alice','manage-adapters','`+cOrg+`','`+cPrj+`',NULL,`+ts+`)`)
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_reveal','usr_alice','reveal','`+cOrg+`','`+cPrj+`','`+cEnv+`',`+ts+`)`)
@@ -296,7 +297,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	drain := func() {
 		t.Helper()
 		for range 8 {
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			worked, err := worker.RunOnce(ctx)
 			if err != nil {
 				t.Fatalf("worker: %v", err)
@@ -367,7 +368,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatal(err)
 	}
 	drain()
-	if !reflect.DeepEqual(before, metadata()) {
+	if !reflectx.Equal(before, metadata()) {
 		t.Fatal("restarted outbox inferred an unknown writer or changed held metadata")
 	}
 	if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
@@ -414,7 +415,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		}
 		drain()
 		afterSentinel := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"]
-		if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous || !reflect.DeepEqual(beforeKey, metadata()) || !reflect.DeepEqual(beforeSentinel, afterSentinel) {
+		if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous || !reflectx.Equal(beforeKey, metadata()) || !reflectx.Equal(beforeSentinel, afterSentinel) {
 			t.Fatal("held target retry changed metadata/history or lost attention status")
 		}
 	}
@@ -463,7 +464,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	// from its durable successful prefix without re-delivering the sentinel.
 	failMetadata, metadataReads = true, 0
 	publish(kvSecretTwo)
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); !worked || err != nil {
 		t.Fatalf("partial attempt: worked=%v err=%v", worked, err)
 	}
@@ -514,7 +515,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 			moveID = moving.MoveID
 			runtime := store.NewAdapterRuntime(db, authorizePush)
 			loader := kvLoader{runtime: runtime, keyring: kr, build: build}
-			clock = clock.Add(time.Second)
+			clock = stepWorkerClock(clock, time.Second)
 			jobs := make(map[string]adapter.Job)
 			for range 2 {
 				job, ok, err := runtime.ClaimDue(ctx, "concurrent-move", clock, clock.Add(adapter.LeaseTime))
@@ -587,7 +588,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 			drain()
 		}
 		move, err := svc.Move(ctx, operator, scope, moveID)
-		if err != nil || move.State != "attention_required" || !reflect.DeepEqual(beforeHeld, metadata()) {
+		if err != nil || move.State != "attention_required" || !reflectx.Equal(beforeHeld, metadata()) {
 			t.Fatalf("review-held route lost old custody or cancellation: state=%s err=%v", move.State, err)
 		}
 		if queryInt(t, db, "SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id='"+moveID+"' AND kind='activate'") != 0 {
@@ -626,7 +627,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	publish(kvSecretOne)
 	// A conflict retries with backoff until an operator acts, so run one
 	// attempt rather than draining.
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); !worked || err != nil {
 		t.Fatalf("conflicting attempt: worked=%v err=%v", worked, err)
 	}
@@ -654,9 +655,8 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatalf("removal deleted metadata: %v", meta)
 	}
 
-	retainedMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
 	server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: "unknown"}})
-	retainedMetadata = server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
+	retainedMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
 	for _, wholeAdapter := range []bool{false, true} {
 		if wholeAdapter {
 			_, err = svc.Delete(ctx, operator, scope, created.Adapter.ID, false)
@@ -678,7 +678,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		if _, err := svc.Plan(ctx, operator, scope, retained.ID); err != nil {
 			t.Fatalf("held teardown cannot prepare version-bound review: %v", err)
 		}
-		if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+		if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflectx.Equal(retainedMetadata["data"], after["data"]) {
 			t.Fatal("review-held teardown changed provider metadata")
 		}
 		if !wholeAdapter {
@@ -693,7 +693,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 				t.Fatalf("adopt paused removal: %v", err)
 			}
 			drain()
-			if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+			if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflectx.Equal(retainedMetadata["data"], after["data"]) {
 				t.Fatal("adoption bypassed pause")
 			}
 			if _, err := svc.ResumeTarget(ctx, operator, scope, retained.ID); err != nil {
@@ -713,7 +713,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatalf("retain failed to name orphaned custody: %v", err)
 	}
 	drain()
-	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflectx.Equal(retainedMetadata["data"], after["data"]) {
 		t.Fatal("retain mutated provider version or metadata")
 	}
 	if got, ok := server.value(t, mount, "hikyo/retain/DATABASE_URL"); !ok || got != kvSecretOne {
@@ -746,7 +746,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if err != nil || legacyView.Target.State != "active" || legacyView.Target.PausedAt == nil || legacyView.Target.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
 		t.Fatalf("namespace refusal lost held teardown recovery: err=%v state=%s", err, legacyView.Target.State)
 	}
-	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/namespace-hold/DATABASE_URL", nil); !reflect.DeepEqual(legacyMetadata["data"], after["data"]) {
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/namespace-hold/DATABASE_URL", nil); !reflectx.Equal(legacyMetadata["data"], after["data"]) {
 		t.Fatal("namespace refusal mutated the root value history or markers")
 	}
 	if removed, err := svc.RemoveTarget(ctx, operator, scope, legacy.ID, true); err != nil || len(removed.Orphaned) == 0 {
@@ -815,7 +815,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if _, err := svc.Adopt(ctx, operator, otherScope, service.AdoptAdapterRequest{TargetID: contender.ID, ArtifactID: plan.ArtifactID, ExpectedGeneration: view.Target.Generation, ExpectedDestinationID: view.Target.DestinationID, ExpectedRepositoryID: view.Target.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "DATABASE_URL"}}}); !errors.Is(err, domain.ErrConflict) || !errors.Is(err, adapter.ErrOperatorReview) {
 		t.Fatalf("opposite-surface foreign adoption = %v, want conflict", err)
 	}
-	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/cross-surface/DATABASE_URL", nil)["data"]; !reflect.DeepEqual(foreignMetadata, after) {
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/cross-surface/DATABASE_URL", nil)["data"]; !reflectx.Equal(foreignMetadata, after) {
 		t.Fatal("foreign config custody was overwritten through secret adoption")
 	}
 	if _, err := svc.Delete(ctx, operator, otherScope, competing.Adapter.ID, true); err != nil {
@@ -864,7 +864,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); err != nil || !worked {
 		t.Fatalf("old-route scrub before revocation: worked=%t err=%v", worked, err)
 	}
@@ -878,7 +878,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	for i, capability := range []string{"manage-adapters", "reveal"} {
 		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_rescue_%d','%s','%s','%s','%s',NULL,%s)`, i, cAdmin, capability, cOrg, cPrj, ts))
 	}
-	clock = clock.Add(time.Second)
+	clock = stepWorkerClock(clock, time.Second)
 	if worked, err := worker.RunOnce(ctx); err != nil || !worked {
 		t.Fatalf("revoked activation: worked=%t err=%v", worked, err)
 	}

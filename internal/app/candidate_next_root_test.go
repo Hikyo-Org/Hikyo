@@ -1,12 +1,13 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -15,7 +16,7 @@ import (
 func TestCandidateHealthChecksEnrolledNextRootWithoutProvider(t *testing.T) {
 	d, srv, client := deploymentAdapterFixture(t, false)
 	cfg := *srv.owner.base
-	raw, err := json.Marshal(d.enrollment)
+	raw, err := json.Marshal(d.enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

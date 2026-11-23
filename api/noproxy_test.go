@@ -293,18 +293,29 @@ var pinnedContractSurface = map[string]bool{
 	// immutable origin stored on the addressed provider, and no request member
 	// selects an arbitrary upstream. The mint response relays the credential
 	// Hikyo itself just created at that provider, never a caller-selected read.
-	"GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                 true,
-	"POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                true,
-	"GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":                      true,
-	"DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":                   true,
-	"PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":           true,
-	"DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":        true,
-	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                 true,
-	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                true,
-	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}":         true,
-	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew":  true,
-	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke": true,
-	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle": true,
+	"GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                          true,
+	"POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                         true,
+	"GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":               true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":            true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":    true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential": true,
+	// Scheduled credential rotation configuration (#148): this instance's own
+	// rows only; no route fetches or forwards anything.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations":                          true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations":                         true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}":               true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}":            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume":       true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold": true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now":      true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs":          true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                             true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                            true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}":                     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew":              true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke":             true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle":             true,
 	// SSH user certificates (#155): CA, profile and certificate rows are this
 	// instance's own durable state; issuance signs in-process with the sealed
 	// CA key and contacts no upstream. No request member selects a remote.
@@ -491,6 +502,7 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish":                            true,
 	"POST /api/v1/auth/login/challenge/{challenge}/webauthn/start":                             true,
 	"POST /api/v1/auth/logout":                                                                 true,
+	"POST /api/v1/auth/oidc/{provider}/lifecycle":                                              true,
 	"POST /api/v1/auth/oidc/{provider}/start":                                                  true,
 	"POST /api/v1/auth/oauth2/{provider}/start":                                                true,
 	"POST /api/v1/auth/recovery-codes/regenerate":                                              true,

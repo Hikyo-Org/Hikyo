@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -382,7 +382,7 @@ func TestProviderSurfaceHasNoVariableReadOperation(t *testing.T) {
 func TestSecretWriteSendsCiphertextAndKeyIDOnly(t *testing.T) {
 	var got map[string]any
 	client, err := NewTestClient("https://api.github.com", "github_pat_fine", &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+		if err := json.UnmarshalRead(req.Body, &got); err != nil {
 			t.Fatal(err)
 		}
 		return response(http.StatusCreated, ``), nil

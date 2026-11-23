@@ -13,3 +13,7 @@ func fsyncRootPath(*os.Root, string) error { return nil }
 // ownerOf has no POSIX-uid equivalent on Windows, so ownership is not preserved
 // on this client platform.
 func ownerOf(os.FileInfo) (uid, gid int) { return -1, -1 }
+
+// checkRuntimeCustody has no POSIX owner or mode model on Windows; the runtime
+// dir's ACLs are the operator's boundary on this client platform.
+func checkRuntimeCustody(string, os.FileInfo, os.FileInfo) error { return nil }

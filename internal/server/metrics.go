@@ -140,6 +140,24 @@ const (
 	MetricPKIIssuersOnHold       = "hikyo_pki_issuers_on_hold"
 	MetricPKIGaugesKnown         = "hikyo_pki_gauges_known"
 
+	// Scheduled credential rotation gauges (#148). Label-free, cardinality one
+	// each, so no tenant, rotation or run id can multiply series. Each counts
+	// something that needs an operator and is alertable above zero: runs closed as
+	// quarantine, runs not settled with an unknown effect (a possibly live
+	// credential), runs whose superseded role could not be dropped, rotations a
+	// failed gate or exhausted retry window halted, active rotations due for over
+	// fifteen minutes with nothing started, and non-deleted rotations whose
+	// delivered credential expires within six hours. The known flag has the
+	// dynamic-gauge semantics: 0 means unmeasured and the values are omitted.
+	MetricRotationRunsQuarantined     = "hikyo_rotation_runs_quarantined"
+	MetricRotationRunsUnknownOutcome  = "hikyo_rotation_runs_unknown_outcome"
+	MetricRotationRunsRevokeRefused   = "hikyo_rotation_runs_revoke_refused"
+	MetricRotationHalted              = "hikyo_rotation_halted"
+	MetricRotationRestoreHeld         = "hikyo_rotation_restore_held"
+	MetricRotationOverdue             = "hikyo_rotation_overdue"
+	MetricRotationCredentialsExpiring = "hikyo_rotation_credentials_expiring"
+	MetricRotationGaugesKnown         = "hikyo_rotation_gauges_known"
+
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
 )
@@ -303,6 +321,7 @@ type Metrics struct {
 	ssh                         *sshCollector
 	transit                     *transitCollector
 	pki                         *pkiCollector
+	rotation                    *rotationCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -368,12 +387,13 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	sshc := newSSHCollector()
 	tr := newTransitCollector()
 	pkiGauges := newPKICollector()
-	registry.MustRegister(requests, errors, signupMailFailures, emailInvitationMailFailures, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
+	rotationGauges := newRotationCollector()
+	registry.MustRegister(requests, errors, signupMailFailures, emailInvitationMailFailures, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, rotationGauges, tr)
 
 	m := &Metrics{
 		registry: registry, inFlight: inFlight, signupMailFailures: signupMailFailures, emailInvitationMailFailures: emailInvitationMailFailures, emailFailureSource: emailFailureSource,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
-		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc, pki: pkiGauges, transit: tr,
+		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc, pki: pkiGauges, rotation: rotationGauges, transit: tr,
 	}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
@@ -808,6 +828,58 @@ func (c *pkiCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 	ch <- prometheus.MustNewConstMetric(c.known, prometheus.GaugeValue, known)
+}
+
+// RotationCounts are the rotation gauge values, in the order the collector emits
+// them.
+type RotationCounts struct {
+	Quarantined, UnknownOutcome, RevokeRefused, Halted, RestoreHeld, Overdue, CredentialsExpiring int64
+}
+
+// RotationSnapshotter is the scheduled-rotation gauge source, read at scrape time,
+// with the DynamicSnapshotter failure semantics.
+type RotationSnapshotter interface {
+	RotationSnapshot() (RotationCounts, error)
+}
+
+// SetRotationSource attaches the rotation gauge source once at boot.
+func (m *Metrics) SetRotationSource(source RotationSnapshotter) { m.rotation.source.Store(&source) }
+
+type rotationCollector struct {
+	source atomic.Pointer[RotationSnapshotter]
+	descs  [7]*prometheus.Desc
+	known  *prometheus.Desc
+}
+
+func newRotationCollector() *rotationCollector {
+	return &rotationCollector{descs: [7]*prometheus.Desc{
+		prometheus.NewDesc(MetricRotationRunsQuarantined, "Number of rotation runs closed as quarantine that still owe a drop.", nil, nil),
+		prometheus.NewDesc(MetricRotationRunsUnknownOutcome, "Number of unsettled rotation runs with an effect of unknown outcome, so a possibly live credential exists.", nil, nil),
+		prometheus.NewDesc(MetricRotationRunsRevokeRefused, "Number of rotation runs whose superseded role could not be dropped.", nil, nil),
+		prometheus.NewDesc(MetricRotationHalted, "Number of rotations halted by a failed gate or an exhausted retry window.", nil, nil),
+		prometheus.NewDesc(MetricRotationRestoreHeld, "Number of rotations a restore holds until an operator releases them.", nil, nil),
+		prometheus.NewDesc(MetricRotationOverdue, "Number of active rotations due for over fifteen minutes with no run started.", nil, nil),
+		prometheus.NewDesc(MetricRotationCredentialsExpiring, "Number of rotations whose delivered credential expires within the next six hours (already expired credentials are not counted).", nil, nil),
+	}, known: prometheus.NewDesc(MetricRotationGaugesKnown, "Whether the rotation gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
+}
+
+func (c *rotationCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+	ch <- c.known
+}
+
+func (c *rotationCollector) Collect(ch chan<- prometheus.Metric) {
+	var values [7]float64
+	measured := false
+	if p := c.source.Load(); p != nil && *p != nil {
+		if n, err := (*p).RotationSnapshot(); err == nil {
+			values = [7]float64{float64(n.Quarantined), float64(n.UnknownOutcome), float64(n.RevokeRefused), float64(n.Halted), float64(n.RestoreHeld), float64(n.Overdue), float64(n.CredentialsExpiring)}
+			measured = true
+		}
+	}
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
 // observe is the outer public-router leg for /api/v1 traffic. Its placement

@@ -3,7 +3,7 @@ package ci_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type coverageBaseline struct {
@@ -65,7 +67,7 @@ func coverageDigests(raw []byte, candidate bool) (map[string]string, error) {
 			}
 			job["steps"] = kept
 		}
-		encoded, err := json.Marshal(job)
+		encoded, err := json.Marshal(job, jsonwire.Stable)
 		if err != nil {
 			return nil, err
 		}

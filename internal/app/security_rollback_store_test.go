@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	trustfixture "github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -147,11 +148,11 @@ func (f *rollbackFixture) moveOn(t *testing.T, mutate func(*upgrade.State)) {
 	if err := state.Validate(); err != nil {
 		t.Fatalf("fixture row is not a valid control row: %v", err)
 	}
-	operation, err := json.Marshal(state.Pending)
+	operation, err := json.Marshal(state.Pending, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	applied, err := json.Marshal(state.Applied)
+	applied, err := json.Marshal(state.Applied, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

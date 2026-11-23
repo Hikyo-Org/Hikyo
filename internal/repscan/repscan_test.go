@@ -3,9 +3,11 @@ package repscan
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
+	"math/rand/v2"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -443,7 +445,7 @@ func TestOutputsCarryNoPlaintext(t *testing.T) {
 		t.Fatalf("findings = %v", locs(r))
 	}
 	var js, sarif bytes.Buffer
-	if err := json.NewEncoder(&js).Encode(r); err != nil {
+	if err := json.MarshalWrite(&js, r); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteSARIF(&sarif, r, "test"); err != nil {
@@ -483,15 +485,19 @@ func TestSARIFShape(t *testing.T) {
 				} `json:"driver"`
 			} `json:"tool"`
 			Results []struct {
-				RuleID              string                `json:"ruleId"`
-				RuleIndex           int                   `json:"ruleIndex"`
-				Level               string                `json:"level"`
-				Message             struct{ Text string } `json:"message"`
-				PartialFingerprints map[string]string     `json:"partialFingerprints"`
+				RuleID    string `json:"ruleId"`
+				RuleIndex int    `json:"ruleIndex"`
+				Level     string `json:"level"`
+				Message   struct {
+					Text string `json:"text"`
+				} `json:"message"`
+				PartialFingerprints map[string]string `json:"partialFingerprints"`
 				Locations           []struct {
 					PhysicalLocation struct {
-						ArtifactLocation struct{ URI string } `json:"artifactLocation"`
-						Region           struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+						Region struct {
 							StartLine int `json:"startLine"`
 						} `json:"region"`
 					} `json:"physicalLocation"`
@@ -586,10 +592,73 @@ func TestGlobMatching(t *testing.T) {
 		{"docs/*.txt", "docs/a.txt", true},
 		{"docs/*.txt", "docs/sub/a.txt", false},
 		{"**", "anything/at/all", true},
+		{"a/**/b", "a/b", true},
+		{"a/**/b", "a/x/y/b", true},
+		{"a/**/b", "a/x/y", false},
+		{"**/**/b", "b", true},
+		{"**/a/**", "x/a", true},
+		{"**/a/**", "x/y", false},
+		{"[", "a", false},
 	} {
 		if got := matchGlob(tc.pattern, tc.path); got != tc.want {
 			t.Errorf("matchGlob(%q, %q) = %v, want %v", tc.pattern, tc.path, got, tc.want)
 		}
+	}
+}
+
+// refMatchSegments is the original exponential matcher, kept as an oracle.
+func refMatchSegments(pat, name []string) bool {
+	for len(pat) > 0 {
+		if pat[0] == "**" {
+			for i := 0; i <= len(name); i++ {
+				if refMatchSegments(pat[1:], name[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(name) == 0 {
+			return false
+		}
+		if ok, _ := path.Match(pat[0], name[0]); !ok {
+			return false
+		}
+		pat, name = pat[1:], name[1:]
+	}
+	return len(name) == 0
+}
+
+func TestGlobMatchingAgreesWithReference(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	patSegs := []string{"**", "**", "a", "b", "*", "?", "[ab]", "["}
+	nameSegs := []string{"a", "b", "c"}
+	for range 20000 {
+		pat := make([]string, rng.IntN(7))
+		for i := range pat {
+			pat[i] = patSegs[rng.IntN(len(patSegs))]
+		}
+		name := make([]string, rng.IntN(7))
+		for i := range name {
+			name[i] = nameSegs[rng.IntN(len(nameSegs))]
+		}
+		if got, want := matchSegments(pat, name), refMatchSegments(pat, name); got != want {
+			t.Fatalf("matchSegments(%q, %q) = %v, reference %v", pat, name, got, want)
+		}
+	}
+}
+
+// TestGlobMatchingIsPolynomial: a repo-supplied exclude with many "**"
+// segments against a deep path took seconds-to-forever with the naive
+// recursion (C(depth+k, k) calls); the bound is generous.
+func TestGlobMatchingIsPolynomial(t *testing.T) {
+	pattern := strings.Repeat("**/", 12) + "z"
+	deep := strings.Repeat("a/", 40) + "b"
+	start := time.Now()
+	if matchGlob(pattern, deep) {
+		t.Fatal("pathological pattern matched")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("matching took %s; glob matcher is no longer polynomial", elapsed)
 	}
 }
 

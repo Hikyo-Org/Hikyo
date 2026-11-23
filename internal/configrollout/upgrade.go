@@ -2,7 +2,8 @@ package configrollout
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"path"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ type UpgradeCustodySource struct {
 
 func (s *UpgradeCustodySource) UnmarshalJSON(raw []byte) error {
 	type plain UpgradeCustodySource
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if json.Unmarshal(raw, &fields) != nil || len(fields) != 7 {
 		return ErrInvalid
 	}

@@ -1,0 +1,482 @@
+---
+title: Scheduled credential rotation
+description: Record the schedule for rotating one PostgreSQL credential pair, the first slice of scheduled provider-managed rotation.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/rotation.mdx
+---
+
+Scheduled rotation keeps one pair of secret keys (a PostgreSQL role name and
+its password) fresh without a person pasting values: it mints a new role,
+publishes it through an ordinary revision, waits for consumers to pick it up,
+then drops the old role. PostgreSQL is the only provider, one adapter at a
+time.
+
+:::caution[A configured rotation runs]
+Creating or resuming a rotation arms it: once its first run is due, the server
+mints, publishes and later revokes credentials on its own, with no person
+present. Read [How a run executes](#how-a-run-executes) before you create one.
+Pausing, deleting and run-now are run aware, and `hikyo rotation show` and
+`hikyo rotation runs` print an `ATTENTION` line on stderr for every run that still
+owes a provider role, with the time that role lapses on its own (when an extend of
+it is unsettled, the time is a lower bound and the line says so). One operator
+action is not built yet: a run held at `revoke_refused`, or closed as quarantine,
+has no release command. Its role expires at the time the line prints, or you drop
+it at the provider after checking that neither key serves that role, because a revision
+restore can put it back. A run refused as `published_versions_changed` is the case where
+a restore already did: leave it until the keys have moved off it. Watch `hikyo rotation list` (state), `hikyo
+doctor` and the audit log while rotations are enabled.
+:::
+
+## What a rotation records
+
+- The [dynamic provider](/docs/dynamic-secrets/) that will mint the role. It
+  must exist and have its admin credential set.
+- The **password key** that will receive the credential. It must be
+  secret-classified.
+- The **username key** that will receive the generated role name. It is
+  required: the password and the role name are delivered together, so a consumer
+  always reads a matching pair.
+- The **interval** between rotations: 1 hour to 90 days (`--interval`).
+- The **revocation delay**, how long the superseded credential stays valid after
+  the new one is published so consumers can pick it up: 5 minutes to 7 days, and
+  always shorter than the interval (`--revocation-delay`).
+- The **authority principal**: the person who created the rotation.
+
+A bound that is hit is refused as `invalid`, naming the flag. The server renders the
+value and the bound in the largest whole unit that divides them (`d`, then `h`, then
+`m`), whatever unit you typed: `--interval 90m` is shown as `90m`, while `--interval
+48h` is shown as `2d`, for example `--interval (interval_seconds) 30m is below the 1h
+minimum rotation interval`. The record holds no password, no role name and no handle
+for a minted credential.
+
+## Who may configure it
+
+Creating a rotation is a person's standing delegation, so the caller must be a
+signed-in human who currently holds **edit**, **publish** and **reveal** on both
+keys in the environment. A member access rule narrowed to specific keys applies:
+both keys must be covered. Machine principals and developer credentials are
+refused.
+
+Because no per-publish ceremony will ever gate the unattended publishes that
+follow, **creating and resuming a rotation each consume a publish
+reauthentication ceremony** over the environment and both keys, the same step a
+values publish of those keys takes. `hikyo rotation create` and `hikyo rotation
+resume` prompt for it through the usual browser handoff.
+
+The person who creates the rotation is recorded as the authority principal, and
+the executor will re-check their authority in full before every step that can still
+be rolled back; once a new credential is published, only fail-safe checks apply, so
+losing authority can never strand a live old credential. It never acts as a system
+principal. `resume` requires the caller to hold the same access on both keys, and
+requires the recorded authority principal to still hold it (including through a rule
+narrowed to those keys); if that authority was lost, `resume` refuses with a named
+error rather than rescheduling, and the denial is recorded against the person who
+asked, so a person who can only publish cannot re-arm someone else's delegation. A
+person whose access to the keys comes only from key-narrowed rules can create a
+rotation as long as the rules cover both keys. Such a person can run now, resume,
+pause, delete and release a hold only when they also hold `read` on the environment,
+because the rotation cannot be looked up without it (a `read` rule narrowed to those
+keys is enough: read applies to the whole environment); without `read` those
+transitions are refused under the operation. A rule that covers only one key refuses
+every one of them, and the refusal is recorded under the operation. Someone who holds
+the operation on the whole environment needs no extra `read`. Listing and showing
+rotations needs `read` on the environment, which a key-narrowed rule never narrows.
+
+A rotation publishes unattended, so it is refused, by name, in an environment that
+is **protected** (its publishes need a ceremony each time) or covered by an
+**approval policy** (its publishes become approval requests). The same check runs
+again at resume.
+
+A key can be driven by one live rotation at a time, whichever role (password or
+username) it plays. A key that belongs to a **key group** is refused: the
+rotation would publish a value the group does not own. A key with a **pending
+authority draft** (a staged change on either key) is also refused at create and
+resume; clear or publish the draft first. Pause and delete need `publish` on both keys (and
+`read` on the environment when that access comes only from key-narrowed rules); list and
+show need `read` on the environment.
+
+## Providers, keys and environments
+
+- Deleting a provider, or revoking its admin credential, **pauses** every active
+  rotation that mints from it, and the audit event names the reason. `resume`
+  refuses until the provider exists, is active and has its credential again.
+- Marking an environment **protected**, or creating or enabling an approval policy
+  that covers it (a project-wide policy covers every environment), **pauses** that
+  environment's active rotations in the same step and records the person who did it
+  and the reason (`environment_protected`, `approval_policy_enabled`). `resume` refuses
+  until the environment is unattended again.
+- `resume` also re-checks that both keys still exist and the password key is still
+  secret-classified, and refuses by name if not.
+- Deleting an environment is refused while a rotation in it is active, paused or
+  halted, or while any of its runs may still hold a live role: a run in flight, a
+  quarantined run, a revoke the provider refused, or a failed run that had already
+  published. The refusal names the blocking rotation ids (up to ten of each kind).
+  Delete each rotation first and let its runs finish; the history of deleted
+  rotations is removed with the environment.
+
+## How a run executes
+
+Each cycle is a run with a durable phase, so a restart resumes or rolls back
+cleanly:
+
+1. `minting`: the server records the new role handle, then creates the role with
+   a `VALID UNTIL` of the mint time plus a one-hour publish budget, the
+   interval, the revocation delay and a 24 hour slack.
+2. `minted` and publish: the new role is staged on both keys and published in one
+   transaction as the recorded authority principal. Before it, the executor
+   re-checks that authority and the environment in full (a gate).
+3. `published`, then `overlap`: the superseded role stays valid for the
+   revocation delay so consumers can pick up the new pair.
+4. `revoking`, then `done`: the superseded role is dropped on the provider that
+   minted it. Before it, the server confirms that neither key serves a value the
+   revoke would break (for example after `revision restore`). If one does, the run
+   is held in `revoke_refused` and nothing is dropped.
+
+A failed step before the publish attempts to drop the new role and leaves the keys
+unchanged. If that drop fails or its result is unknown, the run stays tracked
+(`quarantine` or `failed` with the drop unconfirmed) and is retried until the
+provider confirms the role gone, so the role can outlive the failure until then. A failure after the publish never fails the run: it keeps retrying
+the drop with backoff and stays visible until it settles. A superseded role that
+has already expired on its own (five minutes past its `VALID UNTIL`, to allow for
+clock skew against the database) skips the restore check and settles by expiry
+when the provider cannot be reached.
+
+Failed runs retry with a bounded exponential backoff (5 minutes doubling to 6
+hours, at most 12 attempts) inside a window that always leaves the superseded role
+valid for the overlap. When the window or the attempt cap is spent, the rotation
+moves to `halted` with a named reason, a fixed word the API returns as `halt_reason`
+(never free text, never a provider message):
+
+- `retries_exhausted`: the retry window ran out before a run could publish or extend the credential.
+- `authority_lost`: the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone.
+- `gate_failed`: a pre-publish gate refused: the environment became protected, a key changed or a draft appeared.
+- `unknown`: the server halted the rotation without a reason it can name (a halt recorded before the reason was kept, for one).
+
+A halted rotation does not extend the delivered credential. `hikyo rotation show` and
+`hikyo rotation list` print a `HALT REASON` column (a `-` when the rotation is not halted)
+and a `HALTED` line on stderr with the same sentence as the list above, and the
+browser says the same. A word this client does not know is printed quoted and
+never interpreted. `resume` starts a new cycle. As the delivered credential nears its
+expiry, the server extends its `VALID UNTIL` while the rotation is active and
+the gate still holds.
+
+If a publish succeeded but the keys later serve the old value again, the revoke
+stays held (`revoke_refused`) until the old role expires on its own. A restore
+never releases it. The server never drops a role that a key may be using.
+
+Pausing a rotation does not touch a run in flight: a run that has published
+continues to its end, and a run that has not published is rolled back by the next
+gate check. The rollback attempts to delete the unpublished role; it is not proof
+that the role is gone. A deletion that fails or whose result is unknown stays
+tracked on the run and is retried, so during incident cleanup check that the run
+has settled before treating the credential as removed.
+Infrastructure faults (database or keyring) back off with the same capped
+exponential schedule and do not spend the attempt cap; a rotation whose window has
+closed is still halted. A decryption failure is a definite fault and counts as an
+attempt.
+
+## When the delivered credential expires
+
+Pausing or deleting a rotation stops future rotations, but the credential it last
+delivered keeps its expiry. `show` and `list` report it as `credential_expires_at`
+(the `CREDENTIAL EXPIRES` column in the CLI), and `pause` and `delete` name it in
+their response and on stderr, so stopping a rotation never silently schedules an
+outage. A credential that was already in the keys before the first rotation ran is
+the operator's own and is never revoked by a rotation.
+
+## Create and manage
+
+```sh
+hikyo rotation create \
+  --provider dprov_0198... \
+  --key key_0198... --username-key key_0198... \
+  --interval 30d --revocation-delay 1d \
+  --env production
+
+hikyo rotation list --env production
+hikyo rotation list --env production --include-disabled
+hikyo rotation list --env production --limit 50 --after rot_0198...
+hikyo rotation show rot_0198... --env production
+hikyo rotation pause rot_0198... --env production
+hikyo rotation resume rot_0198... --env production
+hikyo rotation delete rot_0198... --env production
+hikyo rotation delete rot_0198... --env production --abandon
+hikyo rotation run-now rot_0198... --env production --confirm-destructive
+hikyo rotation runs rot_0198... --env production
+```
+
+`--interval` and `--revocation-delay` take Go durations (`90m`, `720h`) or a whole
+number of days with a `d` suffix (`30d`). `list` shows live rotations and any deleted
+one that still owns a run owing a provider role a drop (marked deleted); add
+`--include-disabled` to include all deleted history. A page holds up to `--limit`
+rotations (1 to 500, default 100) in id order; when more follow, the CLI prints the
+`--after` value that continues the list. `pause`, `resume` and `delete`
+accept `--expected-generation N`, which fails
+with a conflict if another change landed first. Resume schedules the next run one
+interval from now, or sooner (down to now) when the delivered credential would
+otherwise lapse first. Delete disables the rotation and keeps it as history; it
+frees the keys for another rotation.
+
+Delete is refused while a run is in flight. `--abandon` closes every unsettled run
+instead, loudly, and only a signed-in person may use it. A run that has not
+published is quarantined with its candidate role: nothing is revoked at that
+moment, and the candidate reconciler drops the candidate later once it confirms
+the role is gone. A run that still owes a revoke keeps its revoke obligation and
+is dropped when its delay ends. Each closed run is audited (see
+[Audit](#audit)).
+
+## Run now
+
+`hikyo rotation run-now` asks for a run outside the schedule. It is a person's act
+like `resume`: you must be signed in, hold **edit**, **publish** and **reveal** on
+both keys, and consume the publish ceremony over both keys, so a
+publisher without reveal cannot start a run. Like `resume`, it accepts access held
+through rules narrowed to those two keys. Machine credentials and the
+local principal are refused. Every run-now must carry `--confirm-destructive`
+(the API field `confirm_destructive`, which the server enforces): the run
+publishes a new credential now, off the schedule. A body without it, or
+with `false`, is refused by name. It runs nothing itself: it records the request and makes
+the rotation due, and the executor starts the run through the same path as a
+scheduled one, with the recorded authority principal, the pre-publish gate, the
+overlap and the revoke safety check. A manual run bypasses none of them. The result
+names the run id; `hikyo rotation runs` shows the run once the executor has started
+it.
+
+- The rotation must be active, with no run in flight and no earlier request still
+  waiting; a paused, halted or deleted rotation is refused. Pausing (by you or by
+  the system), resuming, deleting or halting a rotation drops a request that has
+  not started.
+- The request resets the next run time to now, so it also overrides a retry
+  backoff after a failed run. The attempt cap and the retry deadline still apply.
+- After the run publishes, the next scheduled run is one interval later.
+- `--skip-overlap` revokes the superseded credential right after the new one is
+  published, with no overlap (the delay is zero for that run only; the rotation's
+  own delay is untouched). A consumer that has not yet picked up the new credential
+  loses access.
+
+### Adapter targets that may not have converged
+
+A run that revokes a credential records `not_converged_adapter_targets`, the number
+of adapter (sync) targets that may still hold the superseded credential at that
+moment. It is written to the revoke outcome audit event and shown by
+`hikyo rotation runs` (the `NOT CONVERGED TARGETS` column), for every run that
+revokes, not only skip-overlap ones; a run that revoked nothing (the first run, with
+no superseded role) shows none. The run-now response lists no consumers, because
+nothing has been revoked yet when it answers.
+
+The count is the adapter (sync) targets, not deleted, that mirror either rotation
+key and have not converged to the run's published revision. It is computed just
+before the provider drop. It does **not** count machine principals or other clients
+that read the keys directly: Hikyo keeps no per-client record of what each one last
+read. A zero therefore means "no adapter target is known to be behind", and does
+not prove that machine consumers are unaffected.
+
+## Inspect runs
+
+`hikyo rotation runs <rotation>` lists a rotation's runs, newest first: the run id,
+its trigger (`schedule` or `manual`), phase, published revision, revocation delay,
+timestamps, the `not_converged_adapter_targets` count and, for a failed step, a
+fixed-word error code. It never shows a password, handle or provider message; a run
+id is public metadata. For a run held at `revoke_refused` or closed as quarantine,
+the run carries `credential_valid_until`: when the role it still owes a drop expires
+on its own. That is the superseded role once the run has published (the new credential
+is then the one in use and is never named), or the candidate of a run that never
+published. When an extend of that role has no settled outcome, the run also carries
+`credential_valid_until_lower_bound: true`: the role may outlive the time shown. The
+CLI repeats both in the `ATTENTION` line, and `hikyo rotation show` checks up to
+10,000 runs and warns beyond that. **A run with the error code
+`published_versions_changed` is different.** A restore put an earlier value back, so
+the keys may be serving that role again, and the run is held on purpose: its `ATTENTION`
+line says not to drop the role until the keys have moved off it. Every other refusal
+(`role_owns_objects`, `provider_unavailable`) records no later key change, and a restore
+can still put the role back, so before you drop it at the provider to end it sooner,
+check that neither key serves that role (and reassign what it owns, for
+`role_owns_objects`). A page holds up to `--limit` runs (1 to 500, default 100); when more
+follow, the CLI prints the `--after` value that continues the list. It needs only
+**read** on the environment.
+
+Each rotation also carries a summary of its runs, so a list or a show tells you at a
+glance without reading the run history: `last_run` (its id, phase, error code and last
+change) and two counts. `owed_drop_runs` is the number of runs that need your attention because they owe a
+provider role a drop: every run in the phase `revoke_refused` (held on purpose;
+Hikyo does not drop the role) or `quarantine` (Hikyo may still retry the drop, but
+it needs a person to look), whatever its error code (the same runs the per-run
+`ATTENTION` lines and the `hikyo_rotation_runs_{quarantined,revoke_refused}` gauges
+count). A run still in flight (`published`, `overlap` or `revoking`) also owes a drop,
+but the executor carries it out itself, so it is not counted and a zero does not mean
+no role is waiting to be dropped.
+`owed_drop_runs_versions_changed` is the part of that count a restore refused
+(`published_versions_changed`). The CLI prints `LAST RUN` and `OWED DROPS` columns
+and, when a rotation owes a drop, one rotation-level `ATTENTION` line that counts
+the runs and points at `hikyo rotation runs <rotation>` for each run's own line. That
+line carries the same key check as the run's own: check that neither key serves that
+role, because a revision restore can put it back. When any of them was refused after a
+restore, or a restore hold is on, it says **do NOT drop** the role until the keys have
+moved off it or you have checked; no rotation-level text ever tells you to drop a role.
+The CLI never shows the count as a yes or no. The browser badge says whether a rotation
+owes a drop (`Owes a drop`, or `Do not drop: restore`) and its notice carries the count.
+A deleted rotation can still owe a drop, and the count stays on it: the default list
+(CLI and browser) still shows a deleted rotation that owns such a run, with `deleted` in
+its state cell, so the warning is not lost with the delete. The CLI also marks it
+deleted on its `ATTENTION` line.
+
+## In the browser
+
+**Machine access** has a **Rotations** tab that shows an environment's rotations
+and the runs of one of them. It is status only: creating, pausing, resuming,
+running and deleting a rotation, and lifting a restore hold, are `hikyo rotation`
+commands, and the tab has no button for any of them. It needs **read** on the
+environment. A person who lacks it gets the API's answer (the same not-found for a
+rotation that is absent), which the tab words as "Listing them needs read on this
+environment" without saying whether anything exists.
+
+The list shows each rotation's id, keys (by name, with the key id on hover), provider
+(kind, origin and id), interval and overlap, its state as a word (`active`, `paused`,
+`halted` or `deleted`; the CLI table and the browser badge both say `deleted` for a
+deleted rotation, the API field is `disabled`), the next run, when the delivered credential expires, its last
+run (id, phase, error code and when it last changed) and its record: authority
+principal, creator, generation and created and updated times. That is everything the
+API returns for a rotation; the environment is the one you chose above the list. A halted
+rotation is flagged with the command that resumes it, the notice and the row name why
+it halted in the same words as the CLI (see the halt reasons above), and when it is also
+held after a restore the tab says to lift the hold first. A rotation with a run that owes
+a provider drop carries a badge in its state cell, "Owes a drop", and the rotation-level
+`ATTENTION` line the CLI prints, naming `hikyo rotation runs <rotation>`; when a
+restore refused any of those drops, or a restore hold is on, the badge reads "Do not
+drop: restore" and the line says **do NOT drop** the role until the keys have moved off
+it or you have checked. The badge is words, not
+only a colour. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
+`hikyo rotation release-hold <rotation>` command, and its next run reads "Held after a
+restore: no run starts". A deleted rotation that still owes a drop is listed by default, with
+`deleted` in its state cell; tick **Include all deleted rotations** to list every other
+deleted one too.
+
+**Show runs** opens the timeline of one rotation, newest first: phase, trigger,
+start and last change, the published revision, the overlap, the fixed-word error
+code, and `credential_valid_until` (read "At least" as the
+`credential_valid_until_lower_bound` caveat, the role may outlive the time shown).
+The tab reads every page, up to the same bound as `hikyo rotation show`, and warns
+when history remains beyond it. A run that owes a provider drop (`revoke_refused`
+or quarantine) gets the same `ATTENTION` text the CLI prints, including **do NOT
+drop it** while the keys may serve the role again (`published_versions_changed`),
+and that run carries a "Do not drop: restore" badge instead of "Owes a drop".
+The `not_converged_adapter_targets` count covers adapter (sync) targets only, as
+described above; it does not prove that other machine consumers are unaffected.
+
+## After a restore
+
+A restore can bring back a rotation whose provider grants, or whose delivered
+credential, no longer match the instance. So the restore **holds every rotation it
+brings back** (including paused and halted ones): a held rotation starts no run,
+does no pre-publish step and extends nothing, and `rotation resume` and
+`rotation run-now` refuse it with a named error. A run already past its publish
+continues to its revoke, because that only removes a role the instance has
+already replaced. A run found in flight that never published is left alone too:
+the archive may not know a publish the live instance made, so Hikyo issues no
+`DROP ROLE` for its candidate while the hold stands, and the role stays at the
+provider. **Releasing the hold ends that:** the executor then rolls the run back or
+reconciles it and drops the candidate, so read `rotation runs` before you
+release. A hold also refuses `rotation delete`, `--abandon` included, with a
+conflict: a delete would clear the hold and let the executor drop a candidate
+the live instance may have published. Release first, then delete. `rotation pause`
+stays allowed. `rotation show`, `rotation list` and `rotation runs` print a
+`RESTORE HOLD` line on stderr, and the JSON carries `restore_hold`. The delivered
+credential keeps lapsing at its `credential_expires_at`, which is the deadline:
+reconcile the rotation before then.
+
+When the grants and the provider credential are correct, a person releases the
+hold:
+
+```sh
+hikyo rotation release-hold <rotation> --env E [--expected-generation N]
+```
+
+It needs what resume needs (edit, publish and reveal, on both keys, so a
+key-narrowed operator can run it, provided they also hold `read` on the environment)
+and the publish ceremony, and it is audited as a `rotation.configured`
+event with `action` `hold_released`. It lifts the hold and writes nothing else: it
+does not resume a paused or halted rotation or drop a superseded role. The
+executor, though, takes the held runs up again at once: a run found minting or
+minted is rolled back, and a failed run with an unconfirmed candidate is
+reconciled, each by a `DROP ROLE` for the unpublished candidate. If the live
+instance published that candidate and consumers fetched it, the drop ends their
+access, so compare `rotation runs` with the live instance before you release.
+A hold that outlasts the delivered credential leaves the first run after release
+without a window, and the rotation halts; resume it once the credential is checked.
+This holds for a run already past its publish too. While the hold stands the run waits
+in its overlap and the executor looks at it again every five minutes, so it does not
+spin; it still revokes the superseded role at its deadline. If the release comes after
+the point where the run's window is spent (the credential would be extended too late
+to be renewed before it lapses), the first run after release halts the rotation with
+`retries_exhausted` instead of extending, and the credential lapses at its
+`credential_expires_at` as stated above. A release that comes sooner finds the run
+still due, and the rotation extends it as usual.
+A run held at `revoke_refused` because the keys served other values stays held
+until the old role expires, as above. An archive written before migration 00094
+has no hold column; its active rotations come back paused instead, and you resume
+them by hand (that pause advances the rotation's generation, unlike a hold). Its
+paused and halted rotations come back exactly as they were, **not held**, because
+there is nothing to hold them with; check them before you resume one. A contained
+authority principal is not a restore hold: its rotation halts at the next start
+because a contained principal loads no grants, and releasing the principal does not
+resume it.
+
+## Monitoring
+
+`hikyo doctor` and the metrics endpoint report what needs an operator. None of
+these counts carries a label, and each is omitted (doctor shows "unknown") when it
+could not be measured.
+
+| Metric | Meaning |
+|---|---|
+| `hikyo_rotation_runs_quarantined` | runs that still owe a provider role (alert on > 0) |
+| `hikyo_rotation_runs_unknown_outcome` | unsettled runs with a provider effect of unknown outcome (alert on > 0) |
+| `hikyo_rotation_runs_revoke_refused` | runs whose revoke was refused (alert on > 0) |
+| `hikyo_rotation_halted` | rotations the system halted |
+| `hikyo_rotation_restore_held` | rotations a restore holds, not yet released (alert on > 0) |
+| `hikyo_rotation_overdue` | active rotations more than 15 minutes past their next run with no run open |
+| `hikyo_rotation_credentials_expiring` | rotations whose delivered credential expires within the next 6 hours (lapsed credentials are not counted) |
+| `hikyo_rotation_gauges_known` | 1 when the counts above were measured; they are omitted otherwise, not when zero |
+
+`hikyo doctor` warns when any count is above zero. It reports counts only, never
+tenant or rotation ids, so it tells you where to look: `hikyo rotation list` shows
+halted, held and overdue rotations, and `hikyo rotation runs <rotation>` shows
+quarantined, refused and unknown-outcome runs. A held rotation's run-now request is
+dropped by the restore, so the first run after a release is an ordinary scheduled
+one, never a skip-overlap run.
+
+## API
+
+The routes live under
+`/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations`:
+`GET` (with the optional `include_disabled`, `limit` and `after` query parameters;
+the response carries `next_after` while more follow) and `POST` on the
+collection, `GET` and `DELETE` on
+`/{rotation}`, and `POST` on `/{rotation}/pause`, `/{rotation}/resume`, `/{rotation}/release-hold` and
+`/{rotation}/run-now` (body: the required `confirm_destructive`, which must be true,
+and the optional `expected_generation` and `skip_overlap`; answers `202` with the
+requested `run_id`), and `GET` on `/{rotation}/runs` (with
+`limit` and `after`). `DELETE` takes the optional `expected_generation` and
+`abandon` query parameters. They require a human session. See the [HTTP API](/docs/http-api/).
+
+## Audit
+
+Every tracked provider effect (mint, publish, extend, revoke and the candidate
+drop) is bracketed by an intent and an outcome event, a halt is
+audited as `rotation.configured`, and an abandon writes one event per run it
+closed (`rotation.quarantined` for a run that still owes a role, otherwise a
+`rotation.run_outcome` of phase `abandon`). The executor's run events use the
+rotation's authority and the run id as the correlation id, with origin `system`;
+the abandon events are authored by the operator who deleted the rotation, with
+the run id as the correlation id. `rotation.configured` records each create, pause, resume, hold release and delete with its
+`action` and the environment, and a pause the system caused (provider deleted or
+credential revoked, environment protected, approval policy enabled) with its
+`reason`. `rotation.run_now` records each run-now request with the requested
+`run_id` and `skip_overlap`. Reads are not audited events. Audit payloads carry identifiers and
+schedule values only, never a credential.
+
+The events cover tracked effects only. When a worker loses its claim on a run
+while the role is being created, it may issue a best-effort drop of that role
+with no intent or outcome event, because it no longer holds the run's fence; the
+worker that took the run drops the candidate under its own events. A missing event
+is therefore not proof that no provider call was made. Conversely, an extend outcome with the error code `extend_skipped` records that
+the extend ended before any provider call was made.

@@ -168,9 +168,17 @@ export function ruleFailureText(error: unknown): string {
   return refusalText(error);
 }
 
-/** Why the rule listing is not shown, in the membership listing's words. */
-export function rulesListingText(error: unknown): string {
-  if (error instanceof ApiError && error.status === 404) return 'You hold no manage-members here, so access rules are not shown.';
+/**
+ * Why the rule listing is not shown, in the membership listing's words. The
+ * Hikyo system organisation refuses every rule operation (selfConfigOperations
+ * is closed), so its 404 is not a missing manage-members grant.
+ */
+export function rulesListingText(error: unknown, systemOrg = false): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return systemOrg
+      ? 'Access rules do not apply to the Hikyo system configuration organisation: it is managed with scope-wide access only.'
+      : 'You hold no manage-members here, so access rules are not shown.';
+  }
   if (error instanceof ApiError && error.status === 403) return 'Access rules need a second factor. Present your authenticator code or passkey, then reload.';
   return refusalText(error);
 }

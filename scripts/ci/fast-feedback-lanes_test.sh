@@ -6,7 +6,7 @@ owner=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-feedback-lanes.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/repo" "$work/bin" "$work/tools/scripts/ci" "$work/tools/docs/site/scripts"
-cp "$script_dir/feedback-plan.sh" "$work/tools/scripts/ci/"
+cp "$script_dir/feedback-plan.sh" "$script_dir/check-docs-impact.sh" "$work/tools/scripts/ci/"
 cp "$owner/docs/site/scripts/prepare-content.mjs" "$work/tools/docs/site/scripts/"
 cd "$work/repo"
 git init -q
@@ -23,12 +23,12 @@ commit_fixture() {
 	fi
 	git update-ref HEAD "$revision"
 }
-for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE internal/cli/testdata/help.txt docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
 	mkdir -p "$(dirname "$path")"
 	cp "$owner/$path" "$path"
 done
 cp "$owner/.nvmrc" .nvmrc
-printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
+printf '{"packageManager":"pnpm@12.21.0"}\n' >package.json
 printf 'module fixture.invalid/lanes\n\ngo 1.27.2\n' >go.mod
 commit_fixture
 FAST_FEEDBACK_BASE=$(git rev-parse HEAD)
@@ -76,13 +76,14 @@ case "$1" in
 esac
 printf 'go %s\n' "$*" >>"$FIXTURE_WORK/commands"
 [ "${FIXTURE_FAILURE:-}" != compile ] || exit 31
+[ "${FIXTURE_FAILURE:-}" != desktop-compile ] || [ "$1" != -C ] || exit 35
 STUB
 cat >"$work/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 set -eu
 if [ "$1" = --version ]; then
 	[ "${FIXTURE_FAILURE:-}" != pnpm-version ] || { printf '0.0.0\n'; exit; }
-	printf '11.24.0\n'
+	printf '12.21.0\n'
 	[ "${FIXTURE_FAILURE:-}" != pnpm-status ] || exit 38
 	exit
 fi
@@ -202,4 +203,27 @@ commit_fixture
 run_lane --lane=frontend >/dev/null
 refuse --lane=go
 refuse
+# A contract change without user docs fails the application scope until a
+# commit carries the opt-out trailer.
+printf 'package lanes\n' >fixture.go
+mkdir -p api
+printf 'openapi: 3.1.0\n' >api/openapi.yaml
+commit_fixture
+refuse --lane=go --go-scope=application
+grep -F 'docs-impact: a user-visible surface changed' "$work/output" >/dev/null
+git add .
+git -c commit.gpgsign=false commit -q --allow-empty -m 'chore: fixture' -m 'Docs-Impact: none - fixture contract'
+run_lane --lane=go --go-scope=application >/dev/null
+grep -F 'docs-impact: opted out' "$work/output" >/dev/null
+# Last, because every earlier case assumes no desktop module: once it exists, the
+# go lane compiles it from inside with exactly the production command.
+mkdir -p desktop
+printf 'module fixture.invalid/lanes/desktop\n\ngo 1.27.2\n' >desktop/go.mod
+commit_fixture
+bash "$script_dir/fast-feedback.sh" --plan | jq -e '.lanes.go.checks | map(.id) | index("desktop-compile") != null' >/dev/null
+run_lane --lane=go --go-scope=application >"$work/desktop"
+grep -Fxq 'desktop-compile' "$work/checks"
+grep -Fxq 'go -C desktop test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./...' "$work/desktop"
+# A desktop compile failure alone refuses the lane.
+FIXTURE_FAILURE=desktop-compile refuse --lane=go --go-scope=application
 printf 'fast-feedback lane fixtures: complete lane/scope unions, ownership, invalid selections and independent failure refusal passed\n'

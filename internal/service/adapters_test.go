@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/sealfixture"
 )
 
 // adapterScope is the project scope every adapter test operates in.
@@ -48,11 +49,7 @@ func seedKey(t *testing.T, db *store.DB, id, name string) {
 // test's project sealer. The AAD matches the adapter fixture every test uses.
 func sealAdapterCredential(t *testing.T, sealer *crypto.ProjectSealer, value string) []byte {
 	t.Helper()
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte(value))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return sealed
+	return sealfixture.Field(t, sealer, adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte(value))
 }
 
 func adapterCLISession(t *testing.T, db *store.DB) string {

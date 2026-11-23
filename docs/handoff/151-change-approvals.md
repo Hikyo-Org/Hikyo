@@ -71,9 +71,10 @@ Full vertical, both engines (sqlite + postgres):
    refuses (commit-then-refuse), so the state change is not rolled back with the
    error.
 6. **Out-of-band value changes** (`values copy` / bulk-apply / clone-onto an
-   existing env / import) into a covered environment are **refused** with
-   `ErrApprovalRequired` via a single `republish` chokepoint. Structural
-   fan-outs (schema `declare`, `environment-create`, and the draft
+   existing env / import / supplied-value `values declare`) into a covered
+   environment are **refused** with `ErrApprovalRequired` via a single
+   `republish` chokepoint. Structural fan-outs (`environment-create`, the
+   schema key-create / key-rename / key-declaration triggers, and the draft
    `values`/`restore` publishes that already ran the gate) are exempt.
 7. **Vote, merge, and bypass use purpose-bound reauthentication ceremonies.**
    The browser and CLI bind `approve`, `reject`, `publish`, or `bypass` to the

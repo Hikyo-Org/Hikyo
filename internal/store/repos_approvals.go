@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -28,7 +29,7 @@ func marshalIDs(ids []string) (string, error) {
 	if ids == nil {
 		ids = []string{}
 	}
-	b, err := json.Marshal(ids)
+	b, err := json.Marshal(ids, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("store: encode approval version ids: %w", err)
 	}

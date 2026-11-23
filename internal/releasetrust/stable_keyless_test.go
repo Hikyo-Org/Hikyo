@@ -2,7 +2,7 @@ package releasetrust_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 
@@ -225,5 +225,45 @@ func TestRecoveryReauthorizationOverWorkflowSignedTrust(t *testing.T) {
 				t.Fatalf("re-authorized stable policy refused the next workflow release: %v", err)
 			}
 		})
+	}
+}
+
+func TestVerifyStableWorkflowBlobBindsTagCommitAndPayload(t *testing.T) {
+	f, material, _, sign := testfixture.StableWorkflow(t)
+	snapshot, err := releasetrust.VerifySnapshot(f.Pinned, material, releasetrust.SnapshotFloor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := f.Metadata.SourceCommit
+	payload := []byte(`{"inventory":true}`)
+	good := sign(payload, commit, "v1.0.0")
+	if err := snapshot.VerifyStableWorkflowBlob("1.0.0", commit, good, payload); err != nil {
+		t.Fatal(err)
+	}
+	for name, call := range map[string]func() error{
+		"substituted payload": func() error { return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, good, []byte("other")) },
+		"other version":       func() error { return snapshot.VerifyStableWorkflowBlob("1.0.1", commit, good, payload) },
+		"other commit": func() error {
+			return snapshot.VerifyStableWorkflowBlob("1.0.0", strings.Repeat("b", 40), good, payload)
+		},
+		"signed for other tag": func() error {
+			return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, sign(payload, commit, "v1.0.1"), payload)
+		},
+		"signed for desktop tag": func() error {
+			return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, sign(payload, commit, "desktop-v1.0.0"), payload)
+		},
+		"empty signature": func() error { return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, nil, payload) },
+		"nightly version": func() error { return snapshot.VerifyStableWorkflowBlob("1.0.0-nightly.1", commit, good, payload) },
+		"oversize payload": func() error {
+			big := make([]byte, releasetrust.MaxDocumentBytes+1)
+			return snapshot.VerifyStableWorkflowBlob("1.0.0", commit, sign(big, commit, "v1.0.0"), big)
+		},
+	} {
+		if call() == nil {
+			t.Fatalf("accepted %s", name)
+		}
+	}
+	if (releasetrust.Snapshot{}).VerifyStableWorkflowBlob("1.0.0", commit, good, payload) == nil {
+		t.Fatal("zero snapshot verified a blob")
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -30,6 +29,8 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // The Floci lane (#158): the real-AWS suite body against an emulator with IAM
@@ -126,7 +127,7 @@ func stripFlociUnsupportedConditions(doc string) (string, error) {
 			delete(st, "Condition")
 		}
 	}
-	out, err := json.Marshal(policy)
+	out, err := json.Marshal(policy, jsonwire.Stable)
 	return string(out), err
 }
 
@@ -327,7 +328,7 @@ func firstVersionCanary(t *testing.T, env awsEmulatorEnv, name string) {
 
 func writeEmulatorFile(t *testing.T, path string, v any) {
 	t.Helper()
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(v, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +432,7 @@ func TestAWSEmulatorPolicyStripping(t *testing.T) {
 		}
 		for i, st := range after.Statement {
 			if st["Effect"] == "Deny" {
-				if !reflect.DeepEqual(st, before.Statement[i]) {
+				if !reflectx.Equal(st, before.Statement[i]) {
 					t.Fatalf("%s: a Deny statement changed", file)
 				}
 				continue

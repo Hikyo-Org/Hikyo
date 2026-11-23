@@ -276,6 +276,9 @@ cmd_provision() {
 		--description "hikyo #158 smoke $run" \
 		--tags "TagKey=hikyo-smoke,TagValue=$run" \
 		--query KeyMetadata.Arn --output text)
+	# An emulator answers this call and render() splices the value into sed
+	# programs, so refuse anything but a key ARN of this account and region.
+	[[ $KMS_KEY_ARN =~ ^arn:aws:kms:$REGION:$ACCOUNT:key/[A-Za-z0-9-]+$ ]] || die "kms create-key returned an unexpected key ARN"
 	aws_ kms create-alias --alias-name "alias/hikyo-smoke-$run" --target-key-id "$KMS_KEY_ARN" >/dev/null
 
 	local actor user ak_json ak sk d

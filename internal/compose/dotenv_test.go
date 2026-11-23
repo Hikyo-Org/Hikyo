@@ -1,7 +1,7 @@
 package compose
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,9 +51,7 @@ func loadCorpus(t *testing.T) []corpusFile {
 			t.Fatalf("read %s: %v", e.Name(), err)
 		}
 		var cf corpusFile
-		dec := json.NewDecoder(strings.NewReader(string(b)))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&cf); err != nil {
+		if err := json.Unmarshal(b, &cf, json.RejectUnknownMembers(true), json.MatchCaseInsensitiveNames(true)); err != nil {
 			t.Fatalf("decode %s: %v", e.Name(), err)
 		}
 		if cf.Name == "" {

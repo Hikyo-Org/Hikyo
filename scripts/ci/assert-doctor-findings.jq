@@ -4,7 +4,7 @@
 def expected_codes:
   ["adapter-targets", "argon2-floor", "backup-retention", "backup-rpo", "data-volume",
    "database-durability", "pin-expiry", "pki", "project-storage", "reencrypt",
-   "restore-drill", "retention-prune", "root-escrow", "root-rotation"] | sort;
+   "restore-drill", "retention-prune", "root-escrow", "root-rotation", "rotation"] | sort;
 
 (.status == (if $volume_severity == "error" then "error" else "warning" end)) and
 ([.findings[].code] | sort == expected_codes) and

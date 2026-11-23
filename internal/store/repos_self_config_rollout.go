@@ -3,7 +3,8 @@ package store
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -32,7 +33,7 @@ func (r selfConfigRepo) PutRollout(ctx context.Context, p authz.Proof, want Self
 	if err != nil {
 		return err
 	}
-	if want.JobID == "" || want.EnrollmentID == "" || len(want.EnrollmentID) > 128 || want.Incarnation != b.Incarnation || want.Sequence < 1 || want.RowVersion < 0 || len(want.CommandJSON) > 64<<10 || !json.Valid([]byte(want.CommandJSON)) || len(want.ResponseJSON) > 64<<10 || (want.ResponseJSON != "" && !json.Valid([]byte(want.ResponseJSON))) {
+	if want.JobID == "" || want.EnrollmentID == "" || len(want.EnrollmentID) > 128 || want.Incarnation != b.Incarnation || want.Sequence < 1 || want.RowVersion < 0 || len(want.CommandJSON) > 64<<10 || !jsontext.Value(want.CommandJSON).IsValid() || len(want.ResponseJSON) > 64<<10 || (want.ResponseJSON != "" && !jsontext.Value(want.ResponseJSON).IsValid()) {
 		return domain.ErrInvalid
 	}
 	if want.ExternalPhase != "" && want.ExternalPhase != "applied" && want.ExternalPhase != "restored" {

@@ -3,11 +3,12 @@ package upgrade
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -27,7 +28,10 @@ type Catalog struct {
 }
 
 func (c Catalog) Digest() releaseidentity.Digest {
-	raw, _ := json.Marshal(c)
+	raw, err := json.Marshal(c, jsonwire.Stable)
+	if err != nil {
+		return "" // not a valid digest, so no pinned catalog can match it
+	}
 	return releaseidentity.Hash(raw)
 }
 

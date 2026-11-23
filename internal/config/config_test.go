@@ -313,7 +313,7 @@ func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
 	}
 
 	for _, missing := range []string{"cert", "key"} {
-		pairs := base
+		var pairs []string
 		if missing == "cert" {
 			pairs = []string{"HIKYO_TLS_KEY_FILE", keyPath}
 		} else {

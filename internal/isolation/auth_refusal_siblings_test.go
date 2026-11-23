@@ -2,7 +2,8 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +58,7 @@ func TestFailedLoginWithDeadCookieKeepsDedicatedOwnershipAndNoProse(t *testing.T
 			}
 		}
 		payload := queryString(t, db, "SELECT payload FROM audit_instance_events WHERE type='auth.login' AND outcome='failure' ORDER BY seq DESC LIMIT 1")
-		var fields map[string]json.RawMessage
+		var fields map[string]jsontext.Value
 		if err := json.Unmarshal([]byte(payload), &fields); err != nil {
 			t.Fatal(err)
 		}

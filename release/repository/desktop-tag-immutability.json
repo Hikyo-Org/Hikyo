@@ -1,0 +1,16 @@
+{
+  "name": "desktop release tags are immutable",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/desktop-v*"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {"type": "deletion"},
+    {"type": "update"}
+  ]
+}

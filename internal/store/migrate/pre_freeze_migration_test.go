@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	bundlefixture "github.com/Hikyo-Org/hikyo/internal/upgradebundle/testfixture"
@@ -259,7 +260,7 @@ func historicalPreparedArchive(t *testing.T, cfg store.Config) (*backupreceipt.A
 		t.Fatal(err)
 	}
 	receipt := backupreceipt.Receipt{Format: backupreceipt.ReceiptFormat, CiphertextSHA256: releaseidentity.Hash(ciphertext.Bytes()), CiphertextBytes: int64(ciphertext.Len()), ManifestSHA256: digest, Snapshot: archived.Upgrade.Clone()}
-	raw, err := json.Marshal(receipt)
+	raw, err := json.Marshal(receipt, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

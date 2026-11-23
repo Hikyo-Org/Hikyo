@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -168,7 +169,7 @@ func TestMCPDeploymentFixture(t *testing.T) {
 				t.Fatal(err)
 			}
 			credentials[name] = credential{Token: minted.Value, AccountID: c.AccountID, CredentialID: minted.Credential.ID}
-			b, err := json.Marshal(credentials)
+			b, err := json.Marshal(credentials, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -212,7 +213,7 @@ func TestMCPDeploymentFixture(t *testing.T) {
 		c := mintMCPAutomation(t, db, auth, projectScope, "proof-"+name, name != "ungranted")
 		credentials[name] = credential{Token: c.token, AccountID: c.AccountID, CredentialID: c.CredentialID}
 	}
-	b, err = json.Marshal(credentials)
+	b, err = json.Marshal(credentials, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net"
@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -877,7 +878,7 @@ func (s *Workspace) ApproveHandoff(ctx context.Context, actor Actor, state strin
 			// assurance the human actually met.
 			demonstrated = withFactor(demonstrated, factorClass)
 		}
-		factors, err := json.Marshal(demonstrated)
+		factors, err := json.Marshal(demonstrated, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

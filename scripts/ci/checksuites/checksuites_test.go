@@ -2,7 +2,8 @@ package checksuites
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 func source(suites int, holder int64, queries *[]string) Source {
 	return Source{
 		Owner: "o", Name: "n", RepoID: 1,
-		Diagnose: func([]json.RawMessage) error { return errors.New("diagnosed") },
+		Diagnose: func([]jsontext.Value) error { return errors.New("diagnosed") },
 		Read: func(_ context.Context, query string, out any) error {
 			*queries = append(*queries, query)
 			object := map[string]any{"oid": "abc", "checkSuites": map[string]any{"totalCount": suites}}
@@ -65,6 +66,30 @@ func TestListingsReadBySuiteOnlyAboveTheMargin(t *testing.T) {
 	got, err := Listings(context.Background(), source(Margin+1, 7, &queries), "abc", "report")
 	if err != nil || fmt.Sprint(got) != "[check-suites/7/check-runs]" || !strings.Contains(queries[len(queries)-1], `checkName:"report"`) {
 		t.Fatalf("listings = %v/%v", got, err)
+	}
+}
+
+// Suites added while a commit listing is read can push an older suite out of
+// REST's newest 1000, so the read is refused when the count has grown past the
+// margin, and a per-suite read needs no recount.
+func TestRecheckRefusesACommitListingAfterTheSuitesGrew(t *testing.T) {
+	commit := []string{"commits/abc/check-runs"}
+	for _, tc := range []struct {
+		suites  int
+		wantErr bool
+	}{
+		{suites: Margin},
+		{suites: Margin + 1, wantErr: true},
+	} {
+		var queries []string
+		err := Recheck(context.Background(), source(tc.suites, 7, &queries), "abc", commit)
+		if (err != nil) != tc.wantErr || len(queries) != 1 {
+			t.Fatalf("%d suites: err = %v after %d queries, want error %t after one count", tc.suites, err, len(queries), tc.wantErr)
+		}
+	}
+	var queries []string
+	if err := Recheck(context.Background(), source(Margin+1, 7, &queries), "abc", []string{"check-suites/7/check-runs"}); err != nil || len(queries) != 0 {
+		t.Fatalf("per-suite listing: err = %v after %d queries, want no recount", err, len(queries))
 	}
 }
 
@@ -144,7 +169,7 @@ func TestDefaultDiagnoseQuotesBoundsAndRedacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var errs []json.RawMessage
+	var errs []jsontext.Value
 	if err := json.Unmarshal(raw, &errs); err != nil {
 		t.Fatal(err)
 	}

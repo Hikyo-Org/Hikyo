@@ -12,7 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -341,7 +342,7 @@ func signatureBundle(t *testing.T, key *ecdsa.PrivateKey, payload []byte) []byte
 
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
-	raw, err := json.Marshal(value)
+	raw, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -28,6 +28,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	wencrypto "github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
 	"github.com/Hikyo-Org/hikyo/internal/samlsp"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -665,7 +666,7 @@ func assessSAMLMetadata(metadata samlsp.Metadata, previous *authz.SAMLProvider, 
 		}
 		assessment.MetadataFingerprint = &fingerprint
 	}
-	encoded, err := json.Marshal(ders)
+	encoded, err := json.Marshal(ders, jsonwire.Stable)
 	if err != nil {
 		return samlMetadataAssessment{}, err
 	}
@@ -699,7 +700,7 @@ func encodeSAMLPolicy(policy *[]string) (*string, error) {
 	if policy == nil {
 		return nil, nil
 	}
-	encoded, err := json.Marshal(*policy)
+	encoded, err := json.Marshal(*policy, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}

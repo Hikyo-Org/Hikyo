@@ -57,7 +57,7 @@ func (a *TxAuthorizer) RegistrationAuthorityHolds(ctx context.Context, principal
 		}
 		return a.principalInstanceHolds(ctx, principal, spec)
 	case ClassTenant:
-		_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, op, scope)
+		_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, op, scope, nil)
 		return holds, err
 	default:
 		return false, fmt.Errorf("authz: operation %q is not a grant-evaluated operation", op)

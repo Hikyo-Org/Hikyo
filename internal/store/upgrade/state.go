@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
@@ -110,7 +111,7 @@ type Operation struct {
 	Invalidated bool `json:"invalidated"`
 	// Preparation freezes a completed source before backup. It is removed
 	// before the first migration candidate starts, including historical builds.
-	Preparation *BackupPreparation `json:"preparation,omitempty"`
+	Preparation *BackupPreparation `json:"preparation,omitzero"`
 }
 
 // BackupPreparation binds the maintenance interval before a backup exists.
@@ -135,6 +136,11 @@ type State struct {
 	Maintenance         bool                          `json:"maintenance"`
 	Pending             *Operation                    `json:"pending"`
 }
+
+// Equal reports deep equality, following the Pending pointer. It stays on
+// reflect.DeepEqual: State nests Operation, Source, Acceptance and identity
+// values, and a field-wise copy would silently skip every field added later.
+func (s State) Equal(other State) bool { return reflect.DeepEqual(s, other) }
 
 func (s State) Validate() error {
 	if err := s.TrustDomain.Validate(); err != nil {

@@ -1,9 +1,9 @@
 package awssm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -86,7 +86,7 @@ type Descriptor struct {
 	Region         string   `json:"region,omitempty"`
 	RoleARN        string   `json:"role_arn,omitempty"`
 	ExternalID     string   `json:"external_id,omitempty"`
-	SessionSeconds int      `json:"session_seconds,omitempty"`
+	SessionSeconds int      `json:"session_seconds,omitzero"`
 	AccessKeyID    string   `json:"access_key_id,omitempty"`
 	SecretKey      string   `json:"secret_access_key,omitempty"`
 	SessionToken   string   `json:"session_token,omitempty"`
@@ -100,15 +100,13 @@ func ParseDescriptor(raw string) (Descriptor, error) {
 	if len(raw) == 0 || len(raw) > descriptorLimit {
 		return Descriptor{}, errors.New("aws-secrets-manager: credential must be a JSON access descriptor of at most 4096 bytes")
 	}
-	decoder := json.NewDecoder(bytes.NewReader([]byte(raw)))
-	decoder.DisallowUnknownFields()
+	decoder := jsontext.NewDecoder(strings.NewReader(raw))
 	var d Descriptor
-	if err := decoder.Decode(&d); err != nil {
+	if err := json.UnmarshalDecode(decoder, &d, json.RejectUnknownMembers(true)); err != nil {
 		// The decoder error can quote descriptor bytes; never surface it.
 		return Descriptor{}, errors.New("aws-secrets-manager: credential is not a valid JSON access descriptor")
 	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return Descriptor{}, errors.New("aws-secrets-manager: credential holds trailing data after the access descriptor")
 	}
 	return d, d.validate()

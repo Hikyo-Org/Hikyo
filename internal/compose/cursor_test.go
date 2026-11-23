@@ -19,12 +19,13 @@ func cursorSetup(t *testing.T) (state, runtime string) {
 
 func baseBinding() CursorBinding {
 	return CursorBinding{
-		CredentialID:   "cred_1",
-		Environment:    "env_1",
-		ConfigOnly:     false,
-		PinnedRevision: 0,
-		Projection:     []string{"read", "reveal"},
-		TargetKeyIDs:   map[string][]string{"api": {"key_1", "key_2"}},
+		CredentialID:    "cred_1",
+		Environment:     "env_1",
+		ConfigOnly:      false,
+		PinnedRevision:  0,
+		Projection:      []string{"read", "reveal"},
+		TargetKeyIDs:    map[string][]string{"api": {"key_1", "key_2"}},
+		LoaderAcksBound: true,
 	}
 }
 
@@ -89,6 +90,63 @@ func TestEligibleCursorBindingMismatches(t *testing.T) {
 		if _, ok := EligibleCursor(&cs, want, current, runtime); ok {
 			t.Errorf("%s mismatch should invalidate", name)
 		}
+	}
+}
+
+// TestEligibleCursorLoaderAckChange: adding, changing or removing a target's
+// loader-control acknowledgement invalidates the cursor; an empty list and a
+// missing member (a pre-existing cursor.json) are the same binding.
+func TestEligibleCursorLoaderAckChange(t *testing.T) {
+	_, runtime := cursorSetup(t)
+	cs, binding, current := buildEligible(t, runtime)
+	acked := binding
+	acked.TargetLoaderAcks = map[string][]string{"api": {"LD_PRELOAD"}}
+	cs.Binding = acked
+	if _, ok := EligibleCursor(&cs, acked, current, runtime); !ok {
+		t.Fatal("matching acknowledgements should be eligible")
+	}
+	for name, want := range map[string]map[string][]string{
+		"removed": nil,
+		"emptied": {"api": {}},
+		"changed": {"api": {"LD_LIBRARY_PATH"}},
+		"extra":   {"api": {"LD_PRELOAD", "LD_LIBRARY_PATH"}},
+	} {
+		w := binding
+		w.TargetLoaderAcks = want
+		if _, ok := EligibleCursor(&cs, w, current, runtime); ok {
+			t.Errorf("ack %s should invalidate", name)
+		}
+	}
+	cs.Binding = binding
+	if _, ok := EligibleCursor(&cs, acked, current, runtime); ok {
+		t.Error("ack added should invalidate")
+	}
+	empty := binding
+	empty.TargetLoaderAcks = map[string][]string{"api": {}}
+	if _, ok := EligibleCursor(&cs, empty, current, runtime); !ok {
+		t.Error("empty ack list should equal a missing member")
+	}
+}
+
+// TestEligibleCursorLegacyBindingWithoutAckMarker: a cursor saved before the
+// binding carried loader acknowledgements is never eligible, even when the
+// current config has none, because its acknowledgements at save time are unknown.
+func TestEligibleCursorLegacyBindingWithoutAckMarker(t *testing.T) {
+	_, runtime := cursorSetup(t)
+	cs, want, current := buildEligible(t, runtime)
+	cs.Binding.LoaderAcksBound = false
+	if _, ok := EligibleCursor(&cs, want, current, runtime); ok {
+		t.Fatal("legacy cursor without the acknowledgement marker should be ineligible")
+	}
+	// Even against an unmarked want: the stored marker itself is required.
+	unmarked := want
+	unmarked.LoaderAcksBound = false
+	if _, ok := EligibleCursor(&cs, unmarked, current, runtime); ok {
+		t.Fatal("unmarked stored cursor matched an unmarked want")
+	}
+	cs.Binding.LoaderAcksBound = true
+	if _, ok := EligibleCursor(&cs, want, current, runtime); !ok {
+		t.Fatal("marked cursor with matching acknowledgements should be eligible")
 	}
 }
 

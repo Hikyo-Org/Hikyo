@@ -53,16 +53,10 @@ func TestConsume(t *testing.T) {
 		"receipt_unknown_field": strings.Replace(valid, `"version":1,`, `"version":1,"extra":true,`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			// Model a collector: staging may contain partial rows; published
-			// evidence and its previous collection state must remain untouched.
-			published := "previous complete export"
+			// Staging may contain partial rows; an uncertain export is still refused.
 			var staged bytes.Buffer
 			if _, err := Consume(testResponse(body), &staged); err == nil {
-				published = staged.String()
 				t.Fatal("uncertain export accepted")
-			}
-			if published != "previous complete export" {
-				t.Fatal("incomplete export advanced collection")
 			}
 		})
 	}
