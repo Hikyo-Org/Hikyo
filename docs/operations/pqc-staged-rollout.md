@@ -224,20 +224,19 @@ sntrup761) and other SSH libraries without it. The sntrup761 option widens
 access back to 8.5 and later clients that offer
 `sntrup761x25519-sha512@openssh.com`. Check the algorithms clients actually
 offer, not their version: `ssh -G HOST | grep -i '^kexalgorithms'` on OpenSSH
-clients (`ssh -Q kex` lists only what the build supports). sshd does not
-log a client's KEX proposal at the default `LogLevel INFO`, so for other
-clients either run a test sshd on another port with the hybrid-only line and
-have those clients connect to it, or temporarily raise `LogLevel` to `DEBUG2`
-(the level that records the proposal; `INFO` and `VERBOSE` should not be
-relied on). sshd_config(5) says logging at a
-`DEBUG` level violates users' privacy and is not recommended, and it is
-high-volume, so keep it short, restrict log access, and restore the level.
-Run the test sshd in the foreground by absolute path, for example
-`/usr/sbin/sshd -D -f TESTFILE -p PORT`, and stop it when done. Give
-`TESTFILE` its own `ListenAddress` and port (a `ListenAddress` with a port
-overrides `-p`) and `PidFile none` (or its own path), so it neither collides
-with the production listener nor overwrites the production PID file that
-reloads signal.
+clients (`ssh -Q kex` lists only what the build supports). sshd does not log a
+client's KEX proposal at the default `LogLevel INFO`, so for other clients
+either run a test sshd on another port with the hybrid-only line and have those
+clients connect to it, or temporarily raise `LogLevel` to `DEBUG2` (the level
+that records the proposal; `INFO` and `VERBOSE` should not be relied on). Run
+the test sshd in the foreground by absolute path, for example
+`/usr/sbin/sshd -D -f TESTFILE -p PORT`, and stop it when done. Give `TESTFILE` its own
+`ListenAddress` and port (a `ListenAddress` with a port overrides `-p`) and
+`PidFile none` (or its own path), so it neither collides with the production
+listener nor overwrites the production PID file that reloads signal.
+sshd_config(5) says logging at a `DEBUG` level violates users' privacy and is
+not recommended, and it is high-volume, so keep it short, restrict log access,
+and restore the level.
 Do this before applying either line. The list syntax and the `+`, `-` and `^`
 prefixes are in [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms),
 read 2026-11-23. A hybrid key exchange protects session confidentiality only;
