@@ -130,6 +130,16 @@ export const MustAcknowledge: Story = {
       </Button>
     ),
   },
+  play: async ({ canvas, args }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Your new recovery codes' });
+    if (!(dialog instanceof HTMLDialogElement)) throw new Error('expected a native <dialog>');
+    // Chromium makes a repeated Escape without a click non-cancelable and
+    // closes the dialog regardless; replay that cancel and close.
+    dialog.dispatchEvent(new Event('cancel', { cancelable: false }));
+    await expect(args.onCancel).toHaveBeenCalled();
+    dialog.close();
+    await waitFor(() => expect(dialog.matches(':modal')).toBe(true));
+  },
 };
 
 const longBody = (

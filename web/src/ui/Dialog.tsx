@@ -33,7 +33,9 @@ import { useModalDialog } from './useModalDialog.ts';
  *   handler; acknowledgement and decision surfaces keep their existing exits.
  *
  * `onCancel` receives the platform's cancel (Escape); a dialog that must be
- * acknowledged before it closes calls `preventDefault()` there.
+ * acknowledged before it closes calls `preventDefault()` there. That refusal
+ * holds even when the platform marks the cancel non-cancelable and closes
+ * anyway: the dialog reopens, so the platform cannot outvote the caller.
  *
  * `onBackdropClick` is the editors' third way out, opt-in per dialog.
  *
@@ -124,6 +126,7 @@ export function Dialog({
   });
   const titleId = useId();
   const pressedScrim = useRef(false);
+  const refusedClose = useRef(false);
   const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
     if (event.target !== event.currentTarget) return false;
     const box = event.currentTarget.getBoundingClientRect();
@@ -143,7 +146,17 @@ export function Dialog({
       // a fully disabled in-flight form leaves nothing else Tab can reach,
       // which axe's scrollable-region-focusable rule requires.
       tabIndex={0}
-      onCancel={onCancel}
+      onCancel={(event) => {
+        onCancel?.(event);
+        // Chromium makes a repeated Escape's cancel non-cancelable (close-watcher
+        // anti-abuse) and closes anyway; a refused cancel reopens on that close.
+        refusedClose.current = event.isDefaultPrevented() && !event.nativeEvent.cancelable;
+      }}
+      onClose={(event) => {
+        if (!refusedClose.current) return;
+        refusedClose.current = false;
+        if (event.currentTarget.isConnected) event.currentTarget.showModal();
+      }}
       onMouseDown={
         onBackdropClick === undefined
           ? undefined
