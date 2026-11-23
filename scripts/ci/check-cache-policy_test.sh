@@ -303,9 +303,13 @@ for file in "$@"; do
 			if (index(block, "path: ~/.cache/go-build") > 0) {
                     build_hash = "hashFiles(\047go.mod\047, \047go.sum\047"
                     if (feedback_cache == "true") build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047"
-				# The lint driver seed family began after the v2 rotation.
+				# The generation belongs to the key line itself; restore-keys or
+				# comments elsewhere in the step must not satisfy it.
+				key_line = block
+				sub(/^.*key: go-/, "key: go-", key_line)
+				sub(/\n.*$/, "", key_line)
 				if (index(block, "key: go-") == 0 ||
-					(index(block, "-v2-") == 0 && index(block, "key: go-lintdriver-v1-") == 0) ||
+					key_line !~ /^key: go-[a-z0-9-]*-v2-/ ||
 					index(block, "${{ runner.os }}") == 0 ||
 					index(block, "${{ runner.arch }}") == 0 ||
 					index(block, "${{ steps.runner-cache-abi.outputs.value }}") == 0 ||
@@ -384,7 +388,7 @@ fi
 # the advisory invariants job read it with both fallback prefixes; no job that
 # names the family writes any cache.
 lint_cache_workflow="$workflows_dir/ci-lint-cache.yml"
-lint_runner_prefix='go-lintdriver-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
+lint_runner_prefix='go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
 lint_module_prefix="$lint_runner_prefix\${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
 lint_key="key: $lint_module_prefix\${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}"
 require_line "$lint_cache_workflow" "$lint_key"
@@ -395,11 +399,12 @@ require_line "$lint_cache_workflow" 'key: ${{ steps.lint-driver-seed.outputs.cac
 	fail 'the lint driver seed must have exactly one writer step'
 for reader in "$workflow:test_core_serial" "$workflows_dir/ci-invariants.yml:invariants"; do
 	block=$(workflow_job_block "${reader%:*}" "${reader##*:}")
-	printf '%s\n' "$block" | grep -Fx "          $lint_key" >/dev/null &&
-		printf '%s\n' "$block" | grep -Fx -A2 '          restore-keys: |' |
+	if ! printf '%s\n' "$block" | grep -Fx "          $lint_key" >/dev/null ||
+		! printf '%s\n' "$block" | grep -Fx -A2 '          restore-keys: |' |
 		grep -Fx -A1 "            $lint_module_prefix" |
-		grep -Fx "            $lint_runner_prefix" >/dev/null ||
+			grep -Fx "            $lint_runner_prefix" >/dev/null; then
 		fail "${reader##*:} must read the exact lint driver key with both fallback prefixes"
+	fi
 done
 for file in "$@"; do
 	# Every go-lintdriver line is the exact key or one of its two prefixes.

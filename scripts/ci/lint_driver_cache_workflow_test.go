@@ -11,8 +11,8 @@ import (
 const (
 	// The one key ci-lint-cache.yml writes and test_core_serial and the advisory
 	// invariants job read. It moves with modules, toolchain ABI and lint sources.
-	lintDriverModulePrefix = "go-lintdriver-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
-	lintDriverRunnerPrefix = "go-lintdriver-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+	lintDriverModulePrefix = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
+	lintDriverRunnerPrefix = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
 	lintDriverReuseKey     = lintDriverModulePrefix + "${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}"
 	lintDriverRestoreKeys  = lintDriverModulePrefix + "\n" + lintDriverRunnerPrefix + "\n"
 	lintDriverRestoreName  = "Restore lint driver Go cache"
@@ -90,7 +90,7 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		},
 		"key is per run":       func(w map[string]any) { setKey(w, lintDriverReuseKey+"-${{ github.run_id }}") },
 		"key is per commit":    func(w map[string]any) { setKey(w, lintDriverReuseKey+"-${{ github.sha }}") },
-		"restore keys widen":   func(w map[string]any) { seedStep(w, 4)["with"].(map[string]any)["restore-keys"] = "go-lintdriver-v1-" },
+		"restore keys widen":   func(w map[string]any) { seedStep(w, 4)["with"].(map[string]any)["restore-keys"] = "go-lintdriver-v2-" },
 		"compile reuses cache": editCompile("test ! -e \"$cache\"\n", ""),
 		"compile redirected":   editCompile("test \"$(go env GOCACHE)\" = \"$cache\"\n", ""),
 		"skips prepare":        editCompile("go run ./scripts/ci/prepare-lint-cache\n", ""),

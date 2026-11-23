@@ -53,8 +53,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-lintdriver-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}
-          restore-keys: go-lintdriver-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('internal/lint/**', 'scripts/ci/prepare-lint-cache/**') }}
+          restore-keys: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
           lookup-only: true
       # The guard runs before the disk script, which creates the cache directory.
       # A cold cache peaks near 10 GB raw before the save archives it.
