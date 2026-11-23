@@ -445,7 +445,9 @@ there is nothing to hold them with; check them before you resume one. A containe
 authority principal is not a restore hold: an incident opened on the account (or on
 an org that selects it) lists its rotations and halts each one with
 `incident_contained`, active or paused, and releasing the principal does not
-resume them. You resume a halted rotation yourself.
+resume them. A rotation a restore holds is the exception: the incident leaves it
+open until the hold clears, so do not read the incident as confirmation that a held
+rotation reached `halted`. You resume a halted rotation yourself.
 
 ## Monitoring
 

@@ -486,6 +486,34 @@ func TestIncidentRotationListingIsBoundedByTheLookupBudget(t *testing.T) {
 	}
 }
 
+// A member the lookup budget cannot reach is not silently skipped: each human
+// member is either listed as an account item or carries an open rotation
+// truncation row, at every budget (CodeRabbit on #1538).
+func TestIncidentOrgTruncationNamesEveryUnreachedMember(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		sawUnreached := false
+		for budget := 3; budget <= 30; budget++ {
+			r.w.svc.MaxLookups = budget
+			id := r.w.openOrg(t, incResponder)
+			got := r.w.itemMap(t, incResponder, id)
+			for _, p := range []domain.PrincipalID{alice, incTarget} {
+				_, listed := got["account.contain|account|"+string(p)]
+				_, truncated := got["rotation.halt|enumeration|"+string(p)]
+				if !listed && !truncated {
+					t.Errorf("budget %d: member %s neither listed nor marked truncated: %v", budget, p, got)
+				}
+				if !listed {
+					sawUnreached = true
+				}
+			}
+		}
+		if !sawUnreached {
+			t.Fatal("no budget left a member unreached")
+		}
+	})
+}
+
 func hasTruncatedRow(items map[string]string) bool {
 	for _, v := range items {
 		if v == "unknown/enumeration_truncated" {

@@ -482,6 +482,27 @@ func (s *Incidents) memberCanContain(ctx context.Context, az *authz.TxAuthorizer
 	return c.holds(ctx, az, caller, authz.OpIncidentInstance, domain.Scope{})
 }
 
+// truncateUnreachedRotations records, for each member the lookup budget or the
+// source cap never reached, an open truncation row under the rotation owner: the
+// member's rotations were not checked. Past the cap one row at the scope's own id
+// covers the members left over, so the cut is never silent and the row count stays
+// bounded. A member already reached was read and is skipped.
+func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reached map[domain.PrincipalID]bool, scopeID string, scope domain.Scope) {
+	seen, n := map[domain.PrincipalID]bool{}, 0
+	for _, p := range rest {
+		if seen[p] || reached[p] {
+			continue
+		}
+		seen[p] = true
+		if n >= maxSourceItems {
+			c.truncated(domain.OwnerRotationHalt, scopeID, scope)
+			return
+		}
+		c.truncated(domain.OwnerRotationHalt, string(p), scope)
+		n++
+	}
+}
+
 func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
 	scope := a.scope
 
@@ -514,16 +535,18 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 	if err != nil {
 		return err
 	}
-	members, listed := map[domain.PrincipalID]bool{}, 0
-	for _, p := range candidates {
+	members, reached, listed := map[domain.PrincipalID]bool{}, map[domain.PrincipalID]bool{}, 0
+	for i, p := range candidates {
 		if members[p] {
 			continue
 		}
 		members[p] = true
 		if listed >= maxSourceItems || !c.spend(3) {
 			c.truncated(domain.OwnerAccountContain, a.scopeID, scope)
+			c.truncateUnreachedRotations(candidates[i:], reached, a.scopeID, scope)
 			break
 		}
+		reached[p] = true
 		if _, err := az.AccountByPrincipal(ctx, p); errors.Is(err, domain.ErrNotFound) {
 			continue
 		} else if err != nil {

@@ -75,7 +75,9 @@ type IncidentOwnerServices struct {
 }
 
 // NewIncidentOwners returns the owner functions the incident ledger resumes
-// through. Owners that need a service the caller did not wire are omitted.
+// through. Owners that need a service the caller did not wire are omitted. No
+// production code builds an Incidents service before the operator surface
+// (slice 4), which installs this map in the app wiring and tests it there.
 func NewIncidentOwners(s *Incidents, svc IncidentOwnerServices) map[string]IncidentOwner {
 	o := &incidentOwners{s: s, svc: svc}
 	out := map[string]IncidentOwner{
