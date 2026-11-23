@@ -188,13 +188,22 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	}
 
 	snapshot := filepath.Join(workDir, "snapshot.db")
-	// VACUUM INTO refuses an existing target, which is the behaviour wanted:
-	// a stale snapshot must never be framed as this one.
+	// Create the target empty and owner-only first: SQLite would otherwise
+	// create it under the process umask, and VACUUM INTO accepts an existing
+	// empty file. The work directory is fresh per export, so a stale snapshot
+	// cannot be framed as this one. SQLite's -journal side files, if a kill
+	// leaves any, are created by SQLite itself and share the file's mode.
+	pre, err := os.OpenFile(snapshot, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
+	}
+	if err := pre.Close(); err != nil {
+		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
+	}
 	if _, err := db.sqWrite.ExecContext(ctx, "VACUUM INTO ?", snapshot); err != nil {
 		return fmt.Errorf("store: sqlite snapshot: %w", err)
 	}
-	// SQLite creates the target under the process umask; the plaintext copy
-	// must be owner-only from the first moment it exists.
+	// Belt and braces: the copy must be owner-only whatever SQLite did.
 	if err := os.Chmod(snapshot, 0o600); err != nil {
 		return fmt.Errorf("store: restrict sqlite snapshot: %w", err)
 	}

@@ -154,7 +154,9 @@ func sweepWorkDir(work string) error {
 	if err != nil || !before.Mode().IsRegular() {
 		// No marker: an export killed between mkdir and lock holds nothing,
 		// and rmdir refuses anything else.
-		_ = os.Remove(work)
+		if err := os.Remove(work); err != nil {
+			slog.Warn("backup export work directory has no liveness marker and was left in place; remove it by hand if no export is running", "path", work)
+		}
 		return nil
 	}
 	lock := flock.New(marker)
