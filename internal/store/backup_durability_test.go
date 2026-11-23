@@ -5,12 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.T) {

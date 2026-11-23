@@ -2,8 +2,9 @@ package service
 
 import (
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestReduceUserPatchAppliesCommandsInOrder(t *testing.T) {
