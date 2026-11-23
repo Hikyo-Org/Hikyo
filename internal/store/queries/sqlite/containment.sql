@@ -130,3 +130,24 @@ WHERE p.id = sqlc.arg(principal_id)
       SELECT 1 FROM personal_value_notices AS n
       WHERE n.org_id = sqlc.arg(org_id) AND n.project_id = sqlc.arg(project_id)
         AND n.environment_id = sqlc.arg(env_id) AND n.owner_principal_id = p.id));
+
+-- Release evidence (incident-containment ADR, O4 A). The newest establishment
+-- authority minted for the account after its containment was recorded: consumed
+-- means a credential establishment completed. A newer mint consumes older
+-- outstanding authorities, so only the newest row speaks for establishment.
+-- hikyo:reason Release reads the consumption time of the newest establishment authority minted for one principal's account after its containment; it returns a timestamp and no identifier or secret.
+-- hikyo:authn-resolution
+-- name: GetLatestAuthorityConsumedSince :one
+SELECT CAST(COALESCE(CAST(credential_authorities.consumed_at AS TEXT), '') AS TEXT) AS consumed_at FROM credential_authorities
+WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = sqlc.arg(principal_id)) AND credential_authorities.created_at > CAST(sqlc.arg(since) AS TEXT)
+ORDER BY credential_authorities.created_at DESC, credential_authorities.id DESC LIMIT 1;
+
+-- hikyo:reason Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else.
+-- hikyo:authn-resolution
+-- name: GetPrincipalContainedIncident :one
+SELECT contained_incident_id FROM principals WHERE id = sqlc.arg(principal_id) AND containment_state = 'contained';
+
+-- hikyo:reason Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else.
+-- hikyo:authn-resolution
+-- name: CountPasswordCredentialsForPrincipal :one
+SELECT COUNT(*) FROM password_credentials WHERE account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = sqlc.arg(principal_id));

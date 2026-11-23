@@ -470,6 +470,13 @@ func (a *TxAuthorizer) CredentialEstablish(ctx context.Context, sessionID string
 	return a.r.CredentialEstablish(ctx, sessionID, principal, at)
 }
 
+// CredentialEstablishedSince, PrincipalHasPassword and PrincipalContainedIncident are the release
+// evidence (O4 A): whether a credential establishment completed for the account
+// since a moment, and which incident contained the principal.
+func (a *TxAuthorizer) CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error) {
+	return a.r.CredentialEstablishedSince(ctx, p, since)
+}
+
 func (a *TxAuthorizer) CredentialPolicy(ctx context.Context) (CredentialPolicy, error) {
 	return a.r.CredentialPolicy(ctx)
 }
@@ -992,6 +999,10 @@ func (a *TxAuthorizer) PrincipalContainedAt(ctx context.Context, p domain.Princi
 	return a.r.PrincipalContainedAt(ctx, p)
 }
 
+func (a *TxAuthorizer) PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error) {
+	return a.r.PrincipalContainedIncident(ctx, p)
+}
+
 // PrincipalFootprintOrgs lists every org holding any row about a principal.
 func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error) {
 	return a.r.PrincipalFootprintOrgs(ctx, p)
@@ -1001,6 +1012,10 @@ func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.Prin
 // freshly minted session records the generation it was born under.
 func (a *TxAuthorizer) PrincipalGeneration(ctx context.Context, p domain.PrincipalID) (int64, error) {
 	return a.r.PrincipalGeneration(ctx, p)
+}
+
+func (a *TxAuthorizer) PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return a.r.PrincipalHasPassword(ctx, p)
 }
 
 // PrincipalPausedByContainment reports a principal held out of authority by

@@ -487,6 +487,28 @@ principal is contained, so a contained account would still have a scheduler acti
   cannot observe, not the caller's own containment), so a surface offers Attest only where the
   server would accept it.
 
+### Slice 5: release and restore (O4 A)
+
+- Release is `Incidents.ReleasePrincipal(incident, principal)`, a separate audited act
+  (`incident.principal_released`, correlated to the incident) and never part of closing. It
+  names the incident that contained the principal; a principal another incident (or none)
+  contained, an unknown principal and the incident's own account all answer not found.
+- It needs the O4 A evidence: for an account with a local password, a credential
+  establishment since containment (the newest establishment authority minted after the
+  containment was recorded is consumed; a newer mint consumes older authorities without
+  establishing, so only the newest speaks); and every linked-identity item of the containing
+  incident attested. An account with neither a password nor a linked identity is refused,
+  because nothing then records a replaced way to sign in. An unmet condition is a conflict
+  (`ErrReleaseNotReady`) and the principal stays contained.
+- Release revives and regrants nothing. The store setter advances the session generation
+  again and retires pending proofs, and a revoked delegation stays revoked.
+- A restore lists the contained principals among the unreconciled (`Status.Contained`, shown
+  by `hikyo restore status`). Reconciling a principal re-asserts its grants and never lifts
+  containment: the two acts stay apart. A restore from an archive that predates a
+  containment shows no containment, so the operator re-opens the incident for that account.
+- No HTTP route or CLI verb releases yet: the service is the capability, and the operator
+  surface for it is a later slice.
+
 ## Not decided here
 
 - Alert-driven or automatic containment. F3 ([#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038))

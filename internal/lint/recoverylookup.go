@@ -50,7 +50,7 @@ var RecoveryLookupRules = []RecoveryRule{
 // ContainmentSetterRules confines the two setters of the containment state.
 // Only the authz forwarders, the store resolver that implements them and the
 // incident service's single contain core may call ContainPrincipal; release
-// has no service caller until the release slice adds its own entry.
+// the release act has its own single caller.
 var ContainmentSetterRules = []RecoveryRule{
 	{Name: "ContainPrincipal", Allowed: map[string][]string{
 		Module + "/internal/authz":       {"TxAuthorizer.ContainPrincipal"},
@@ -59,6 +59,7 @@ var ContainmentSetterRules = []RecoveryRule{
 	}},
 	{Name: "ReleasePrincipalContainment", Allowed: map[string][]string{
 		Module + "/internal/authz":       {"TxAuthorizer.ReleasePrincipalContainment"},
+		Module + "/internal/service":     {"Incidents.ReleasePrincipal"},
 		Module + "/internal/store/authn": {"Resolver.ReleasePrincipalContainment"},
 	}},
 }

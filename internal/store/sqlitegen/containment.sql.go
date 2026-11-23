@@ -66,6 +66,19 @@ func (q *Queries) ContainPrincipal(ctx context.Context, arg ContainPrincipalPara
 	return result.RowsAffected()
 }
 
+const countPasswordCredentialsForPrincipal = `-- name: CountPasswordCredentialsForPrincipal :one
+SELECT COUNT(*) FROM password_credentials WHERE account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = ?1)
+`
+
+// hikyo:reason Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else.
+// hikyo:authn-resolution
+func (q *Queries) CountPasswordCredentialsForPrincipal(ctx context.Context, principalID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPasswordCredentialsForPrincipal, principalID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getAccountForRecovery = `-- name: GetAccountForRecovery :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
 WHERE (accounts.id = ?1 OR accounts.principal_id = ?2)
@@ -122,6 +135,43 @@ func (q *Queries) GetAccountIDForContainmentSweep(ctx context.Context, principal
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getLatestAuthorityConsumedSince = `-- name: GetLatestAuthorityConsumedSince :one
+SELECT CAST(COALESCE(CAST(credential_authorities.consumed_at AS TEXT), '') AS TEXT) AS consumed_at FROM credential_authorities
+WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = ?1) AND credential_authorities.created_at > CAST(?2 AS TEXT)
+ORDER BY credential_authorities.created_at DESC, credential_authorities.id DESC LIMIT 1
+`
+
+type GetLatestAuthorityConsumedSinceParams struct {
+	PrincipalID string
+	Since       string
+}
+
+// Release evidence (incident-containment ADR, O4 A). The newest establishment
+// authority minted for the account after its containment was recorded: consumed
+// means a credential establishment completed. A newer mint consumes older
+// outstanding authorities, so only the newest row speaks for establishment.
+// hikyo:reason Release reads the consumption time of the newest establishment authority minted for one principal's account after its containment; it returns a timestamp and no identifier or secret.
+// hikyo:authn-resolution
+func (q *Queries) GetLatestAuthorityConsumedSince(ctx context.Context, arg GetLatestAuthorityConsumedSinceParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getLatestAuthorityConsumedSince, arg.PrincipalID, arg.Since)
+	var consumed_at string
+	err := row.Scan(&consumed_at)
+	return consumed_at, err
+}
+
+const getPrincipalContainedIncident = `-- name: GetPrincipalContainedIncident :one
+SELECT contained_incident_id FROM principals WHERE id = ?1 AND containment_state = 'contained'
+`
+
+// hikyo:reason Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else.
+// hikyo:authn-resolution
+func (q *Queries) GetPrincipalContainedIncident(ctx context.Context, principalID string) (sql.NullString, error) {
+	row := q.db.QueryRowContext(ctx, getPrincipalContainedIncident, principalID)
+	var contained_incident_id sql.NullString
+	err := row.Scan(&contained_incident_id)
+	return contained_incident_id, err
 }
 
 const getPrincipalContainment = `-- name: GetPrincipalContainment :one

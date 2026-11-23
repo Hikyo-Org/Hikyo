@@ -163,3 +163,44 @@ func ignoreDomainNotFound(err error) error {
 	}
 	return err
 }
+
+// CredentialEstablishedSince reports whether a credential establishment
+// completed for the principal's account after the given moment (O4 A). Only the newest
+// authority minted since then speaks for it: minting a newer one consumes the
+// older outstanding authorities without establishing anything.
+func (r *Resolver) CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error) {
+	var at string
+	var err error
+	if r.sq != nil {
+		at, err = r.sq.GetLatestAuthorityConsumedSince(ctx, sqlitegen.GetLatestAuthorityConsumedSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+	} else {
+		at, err = r.pg.GetLatestAuthorityConsumedSince(ctx, pggen.GetLatestAuthorityConsumedSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+	}
+	if isNoRows(err) {
+		return false, nil
+	}
+	return at != "", err
+}
+
+// PrincipalContainedIncident names the incident that contained the principal,
+// empty when it recorded none. A principal that is not contained is not found.
+func (r *Resolver) PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error) {
+	if r.sq != nil {
+		id, err := r.sq.GetPrincipalContainedIncident(ctx, string(p))
+		return id.String, notFoundOr(err)
+	}
+	id, err := r.pg.GetPrincipalContainedIncident(ctx, string(p))
+	return id.String, notFoundOr(err)
+}
+
+// PrincipalHasPassword reports whether the principal's account holds a local password.
+func (r *Resolver) PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	var n int64
+	var err error
+	if r.sq != nil {
+		n, err = r.sq.CountPasswordCredentialsForPrincipal(ctx, string(p))
+	} else {
+		n, err = r.pg.CountPasswordCredentialsForPrincipal(ctx, string(p))
+	}
+	return n > 0, err
+}

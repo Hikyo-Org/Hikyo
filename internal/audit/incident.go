@@ -22,6 +22,9 @@ const (
 	// EventIncidentPrincipalContained records that one account entered the
 	// contained state under an incident. It is correlated to the incident.
 	EventIncidentPrincipalContained EventType = "incident.principal_contained"
+	// EventIncidentPrincipalReleased records the separate release act (O4 A). It
+	// is correlated to the incident that contained the principal.
+	EventIncidentPrincipalReleased EventType = "incident.principal_released"
 )
 
 // MaxIncidentResiduals bounds the residual item ids one incident.closed event
@@ -98,6 +101,13 @@ var incidentSpecs = map[EventType]TypeSpec{
 		},
 	},
 	EventIncidentPrincipalContained: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"principal": {Kind: KindString, Required: true},
+		},
+	},
+	EventIncidentPrincipalReleased: {
 		SchemaVersion: 1, Retention: RetentionSecurity,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
 		Schema: Schema{

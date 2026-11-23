@@ -1103,6 +1103,7 @@ var registry = map[EventType]TypeSpec{
 	EventIncidentItemOutcome:        incidentSpecs[EventIncidentItemOutcome],
 	EventIncidentClosed:             incidentSpecs[EventIncidentClosed],
 	EventIncidentPrincipalContained: incidentSpecs[EventIncidentPrincipalContained],
+	EventIncidentPrincipalReleased:  incidentSpecs[EventIncidentPrincipalReleased],
 
 	EventGrantDenied: {
 		SchemaVersion: 1,

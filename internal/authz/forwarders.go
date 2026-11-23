@@ -107,6 +107,13 @@ type txForwarded interface {
 	// it is not. Establishment refuses an authority minted before that moment.
 	PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error)
 
+	// CredentialEstablishedSince, PrincipalHasPassword and PrincipalContainedIncident are the release
+	// evidence (O4 A): whether a credential establishment completed for the account
+	// since a moment, and which incident contained the principal.
+	CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error)
+	PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error)
+	PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error)
+
 	// AccountCount answers the bootstrap path's one question. It has no network
 	// route: `hikyo admin create` runs on the server's own host.
 	AccountCount(ctx context.Context) (int64, error)
