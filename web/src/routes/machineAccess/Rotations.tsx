@@ -806,6 +806,8 @@ function CreateRotationDialog({
         ) : null}
         <fieldset className="machine__lock" disabled={busy}>
           <Select label="Provider" value={providerId} onChange={(event) => setProviderId(event.target.value)}>
+            {/* Without it, a provider that stops being eligible could leave the only remaining one unselectable. */}
+            <option value="">Choose a provider</option>
             {minting.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.kind} {p.origin}

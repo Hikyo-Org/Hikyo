@@ -798,6 +798,23 @@ it('sends nothing when the rotation changes while the ceremony is open', async (
   }
 });
 
+it('locks the run-now choice while the ceremony is open and frees it on cancel', async () => {
+  actStub({ ...reads(rotationList().items), [`GET ${windowPath}`]: closedWindow });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await click(buttonNamed(container, 'Run now DATABASE_PASSWORD'));
+    const skip = () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    await click(buttonNamed(dialog(), 'Run now'));
+    expect(document.querySelector('[data-ceremony]')).not.toBeNull();
+    expect(skip().disabled).toBe(true);
+    await click(buttonNamed(document.body, 'Cancel ceremony'));
+    expect(skip().disabled).toBe(false);
+  } finally {
+    await unmount();
+  }
+});
+
 it('sends nothing when the ceremony is cancelled', async () => {
   const sent = actStub({ ...reads([haltedRotation()]), [`GET ${windowPath}`]: closedWindow });
   const { container, unmount } = await mount();
@@ -1016,6 +1033,10 @@ it('refuses a provider that stopped being eligible while it stayed selected', as
     expect(dialog().textContent).toContain('A chosen provider or key is no longer eligible here: choose it again.');
     expect(document.querySelector('[data-ceremony]')).toBeNull();
     expect(acts(sent)).toEqual([]);
+    // The remaining provider can be chosen, and the act goes ahead with it.
+    await chooseOption(dialog().querySelectorAll('select')[0]!, other.id);
+    await click(buttonNamed(dialog(), 'Create rotation'));
+    expect(document.querySelector('[data-ceremony]')).not.toBeNull();
   } finally {
     await unmount();
   }
