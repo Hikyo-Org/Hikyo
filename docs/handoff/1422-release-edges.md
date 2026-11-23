@@ -63,7 +63,8 @@ with the edge present.
   one baseline edge: the full compatibility check reports the extra edge as a
   difference to confirm, and the patch planner refuses a patch whose
   `sources.json` gains more than the baseline edge, so that release must be a
-  minor one. Older edges would also accumulate.
+  minor one. The planner also needs the source release (v1.0.0) authenticated
+  in the bundle (`plan.go:183-186`). Older edges would also accumulate.
 
 **Recommendation: B if any v1.0.0 installation still has to be supported,
 otherwise A.** B fixes only the hop that is missing, leaves the release
@@ -75,9 +76,12 @@ installs exist is the deciding fact and is not known here.
 
 The tag workflow (`release.yml`) runs no edge check. The next stable release
 must be built from a commit that contains this edge: promote `dev` to `main`,
-or add the edge to `main` first through a same-repository `hotfix/` branch.
-The release planner (`security-patch-plan.sh`) checks the edge before offering a
-tag.
+or add the edge to `main` first through a same-repository `hotfix/` branch. That
+hotfix must carry the whole change (edge and `nightly sources` filter, e.g. by
+cherry-picking this commit): the scheduled nightly runs on `main` and fails on a
+stable edge without the filter. The edge is checked before tagging by the
+release planner (`security-patch-plan.sh`) and by the `release-compatibility-check`
+workflow (full `check-compatibility-unchanged.sh`).
 
 ## Remaining work
 

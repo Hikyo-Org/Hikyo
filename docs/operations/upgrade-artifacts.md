@@ -21,7 +21,8 @@ The catalog uses the same inspector as database admission. Independently
 validated gate control tables are excluded; unknown extra objects remain drift.
 
 `release/compatibility/sources.json` is the reviewed source declaration. Its
-initial edges name only the explicit empty and pinned pre-ledger genesis states.
+initial edges named only the explicit empty and pinned pre-ledger genesis states;
+see Release-source edges below.
 It does not invent a previous release or infer compatibility from SemVer.
 
 ### Release-source edges
@@ -45,7 +46,8 @@ route a stranded release. None is automatic, and each needs an owner decision:
   [bridges](../../release/trust/BRIDGES.md), which documents only legacy bridges.
 - **An extra edge in a later release.** That release's `sources.json` also
   names the stranded release. The planner accepts it when both releases were
-  signed under the same policy (v1.0.0 and v1.1.0 both use
+  signed under the same policy and the stranded release is authenticated in the
+  upgrade bundle (v1.0.0 and v1.1.0 both use
   `github-actions-stable`, so the policy skip in `plan.go` does not apply). The
   `--edges-only` check ignores it. The full check (without `--edges-only`)
   removes only the baseline's edge before comparing, so it reports the extra
@@ -79,8 +81,12 @@ whose sequence is not below the candidate's.
 The tag workflow (`release.yml`) runs no edge check. A stable release built from
 a commit that lacks the edge ships without it, so the edge must be on the tagged
 commit: either promote `dev` to `main` or merge a same-repository `hotfix/`
-branch that adds it. Only the release planner (`security-patch-plan.sh`) checks the
-edge before offering a tag.
+branch that adds it. The hotfix must carry the whole change (the edge and the
+`nightly sources` filter, for example by cherry-picking the commit that added
+them): the scheduled nightly runs on `main`, and its generator fails on a stable
+edge without the filter. The edge is checked before tagging by the release
+planner (`security-patch-plan.sh`) and by the `release-compatibility-check`
+workflow, which runs the full `check-compatibility-unchanged.sh`.
 
 Build the artifact before building any release binary:
 
