@@ -38,8 +38,9 @@ const (
 	// OwnerConfirmed means the owner confirmed the object is in its target
 	// state. Only this result writes done.
 	OwnerConfirmed
-	// OwnerFailed means the owner reported a definite failure. The ledger row
-	// keeps its open state and the failure is recorded in the trail.
+	// OwnerFailed means the owner reported a definite refusal. The ledger row
+	// keeps its open outcome and records the reason owner_failed, and the failure
+	// is recorded in the trail.
 	OwnerFailed
 	// OwnerBlocked means the caller lacks the owner's capability. The item is
 	// blocked: another operator must act, and nothing is performed on the
@@ -447,6 +448,73 @@ func (s *Incidents) Items(ctx context.Context, actor Actor, id, afterID string, 
 	return out, err
 }
 
+// IncidentItemView is a ledger item with what a surface needs beyond the row.
+type IncidentItemView struct {
+	authz.IncidentItem
+	// ObjectState is the rotation's own state read live at presentation time, for
+	// a rotation item only: active, paused, halted, disabled, or "gone" when the
+	// rotation no longer exists. It is empty for every other kind and for a
+	// rotation the caller cannot read. The ledger stores no copy of it.
+	ObjectState string
+	// Refused is true for an open item whose owner refused it (reason
+	// owner_failed), as opposed to one that has not run yet.
+	Refused bool
+}
+
+// ItemViews pages one incident's items like Items and adds each rotation item's
+// live state (#1471), so the surface shows what the rotation is now rather than
+// what it was when the incident was opened.
+func (s *Incidents) ItemViews(ctx context.Context, actor Actor, id, afterID string, limit int, openOnly bool) ([]IncidentItemView, error) {
+	now := s.now()
+	var out []IncidentItemView
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, inc, err := s.incidentByID(ctx, az, actor, id, now)
+		if err != nil {
+			return err
+		}
+		items, err := az.IncidentItems(ctx, inc.ID, afterID, limit, openOnly)
+		if err != nil {
+			return err
+		}
+		out = make([]IncidentItemView, 0, len(items))
+		for _, it := range items {
+			v := IncidentItemView{IncidentItem: it, Refused: it.Reason == domain.ReasonOwnerFailed && it.Outcome != domain.ItemDone}
+			if it.ObjectKind == domain.ObjectKindRotation {
+				v.ObjectState = rotationLiveState(ctx, r, az, caller, it)
+			}
+			out = append(out, v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// rotationLiveState reads a rotation item's current state under the incident's own
+// authority. A rotation the caller cannot read, or whose scope does not parse, has
+// no state to show. The capability is probed first so a presentation read never
+// records a denial.
+func rotationLiveState(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, it authz.IncidentItem) string {
+	scope, err := parseIncidentScope(it.Scope)
+	if err != nil || scope.Env == "" {
+		return ""
+	}
+	if holds, err := az.CallerHolds(ctx, caller, authz.OpIncidentRotationHalt, scope); err != nil || !holds {
+		return ""
+	}
+	proof, err := az.Authorize(ctx, caller, authz.OpIncidentRotationHalt, scope)
+	if err != nil {
+		return ""
+	}
+	cur, err := r.Rotations().Get(ctx, proof, it.ObjectID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return "gone"
+	}
+	if err != nil {
+		return ""
+	}
+	return cur.State
+}
+
 const resumePage = 100
 
 // Resume re-reads the ledger and re-runs only the open items through their
@@ -553,20 +621,23 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 		case OwnerBlocked:
 			next, reason, outcome, resultName = domain.ItemBlocked, domain.ReasonNeedsAnotherOperator, audit.OutcomeDenied, "blocked"
 		case OwnerFailed:
-			// A definite failure leaves the ledger row as it is (pending, unknown or
-			// blocked, all open, so resume runs it again). The event reports the
-			// row's actual state and the failure as its reason, so the trail never
-			// claims a state the ledger does not hold.
-			next, reason, outcome, resultName = domain.ItemPending, domain.ReasonOwnerFailed, audit.OutcomeFailure, string(item.Outcome)
+			// A definite refusal keeps the item's open outcome and records the closed
+			// reason owner_failed on the row, so a surface can tell a refused item from
+			// one that has not run yet. Resume still runs it again, and a later
+			// confirmation writes done with no reason.
+			// Only a pending item pairs with owner_failed; an unknown or blocked item
+			// keeps the reason it already has.
+			next, reason, outcome, resultName = item.Outcome, domain.ReasonOwnerFailed, audit.OutcomeFailure, string(item.Outcome)
 		}
-		applied := true
-		if next != domain.ItemPending {
-			applied, err = az.TransitionIncidentItem(ctx, authz.ItemTransition{
-				ID: item.ID, IncidentID: inc.ID, ExpectedVersion: item.RowVersion, Outcome: next, Reason: reason, At: now,
-			})
-			if err != nil {
-				return err
-			}
+		rowReason := reason
+		if result == OwnerFailed && item.Outcome != domain.ItemPending {
+			rowReason = item.Reason
+		}
+		applied, err := az.TransitionIncidentItem(ctx, authz.ItemTransition{
+			ID: item.ID, IncidentID: inc.ID, ExpectedVersion: item.RowVersion, Outcome: next, Reason: rowReason, At: now,
+		})
+		if err != nil {
+			return err
 		}
 		switch {
 		case !applied:

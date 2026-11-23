@@ -309,7 +309,7 @@ func (r *Resolver) IncidentItemCounts(ctx context.Context, incidentID string) (m
 // changes nothing, when the version moved, the item is already terminal or the
 // incident is closed: a stale writer or a repeated result never overwrites.
 func (r *Resolver) TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error) {
-	if !ValidItemState(t.Outcome, t.Reason) || t.Outcome == domain.ItemPending {
+	if !ValidItemState(t.Outcome, t.Reason) || (t.Outcome == domain.ItemPending && t.Reason != domain.ReasonOwnerFailed) {
 		return false, ErrIncidentItemState
 	}
 	if (t.Outcome == domain.ItemAttested) != (t.AttestedBy != "") {

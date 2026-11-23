@@ -164,8 +164,8 @@ func TestIncidentOwnerRefusesSelfContainment(t *testing.T) {
 		if s := w.containmentState(t, incResponder); s == "contained" {
 			t.Fatal("an operator contained their own account")
 		}
-		if got := w.itemMap(t, incResponder, v.Incident.ID)["account.contain|account|"+string(incResponder)]; got != "pending/" {
-			t.Errorf("self-containment item = %q, want pending", got)
+		if got := w.itemMap(t, incResponder, v.Incident.ID)["account.contain|account|"+string(incResponder)]; got != "pending/owner_failed" {
+			t.Errorf("self-containment item = %q, want pending/owner_failed", got)
 		}
 		// The refusal is the contain owner's alone: session and delegation items are
 		// independent owners and run on their own (ADR, Concurrency and fencing).
@@ -194,7 +194,7 @@ func TestIncidentOwnerRefusesLastManager(t *testing.T) {
 		got := w.itemMap(t, incResponder, v.Incident.ID)
 		// Only the contain owner refuses: the session and delegation items are
 		// independent owners, so they complete and the grants stay (ADR, Concurrency).
-		wantItems(t, got, map[string]string{keyContain: "pending/", keySession: "done/", keyDevCred: "done/"})
+		wantItems(t, got, map[string]string{keyContain: "pending/owner_failed", keySession: "done/", keyDevCred: "done/"})
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM grants WHERE principal_id='`+string(incTarget)+`'`); n == 0 {
 			t.Errorf("a refused containment removed the target's grants")
 		}
