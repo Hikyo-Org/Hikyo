@@ -101,6 +101,23 @@ func withRevealCeremony(ctx context.Context, client *Client, st *State, ios IO, 
 	return attempt()
 }
 
+// totpPromptSubject opens the TOTP prompt with what the code is for.
+func totpPromptSubject(purpose, env string) string {
+	switch purpose {
+	case "mint":
+		return fmt.Sprintf("Minting a credential over %s", env)
+	case "":
+		return fmt.Sprintf("Widening machine reveal access over %s", env)
+	case "access":
+		return fmt.Sprintf("Emergency access in %s", env)
+	case "publish":
+		return fmt.Sprintf("Publishing in %s", env)
+	case "approve", "reject", "bypass":
+		return fmt.Sprintf("An approval decision in %s", env)
+	}
+	return fmt.Sprintf("Disclosure in %s", env)
+}
+
 // ensureRevealWindow opens a live reauthentication window over env for the
 // acting session, or returns an error naming why it cannot. `refusal` is the
 // action's own error, returned unchanged when no window is live and CanReveal
@@ -170,6 +187,15 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		if d.purpose == "access" {
 			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
 		}
+		if d.purpose == "mint" {
+			// The unit of a mint is its environment, so it carries no keys (#1516).
+			if ios.OpenURL == nil {
+				return failf(ExitAuth, "a credential mint over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
+					"which this invocation cannot open; mint it in the browser's Machine access page%s", env, why, orRemedy(remedy))
+			}
+			fmt.Fprintf(ios.Stderr, "credential mint over %s: %s, so the ceremony is the browser's. Opening it to authorize the mint...\n", env, why)
+			return runCLIReauthHandoff(ctx, client, st, *artifact, d.purpose, "identity.credential-mint", []string{env}, nil, ios.OpenURL)
+		}
 		if d.authorized && d.purpose == "" {
 			// The browser has no machine rule editor yet (issue 1541), so only a window helps.
 			if remedy == "" {
@@ -205,8 +231,8 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		return runCLIDisclosureReauth(ctx, client, st, *artifact, d.purpose, operation, env, keyIDs, ios.OpenURL)
 	}
 	code, err := ios.readPassword(fmt.Sprintf(
-		"Disclosure in %s needs a reauthentication window (%ds). Enter the code from your authenticator: ",
-		env, window.EffectiveWindowSeconds))
+		"%s needs a reauthentication window (%ds). Enter the code from your authenticator: ",
+		totpPromptSubject(d.purpose, env), window.EffectiveWindowSeconds))
 	if err != nil {
 		return err
 	}

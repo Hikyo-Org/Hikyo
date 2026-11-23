@@ -130,6 +130,17 @@ describe('CLI authorization names', () => {
     } finally { await unmount(); }
   });
 
+  it('words a mint handoff as a machine credential decision and lists no keys', async () => {
+    route({ purpose: 'mint', operation: 'identity.credential-mint', key_ids: [] });
+    const { container, unmount } = await render();
+    try {
+      expect(container.textContent).toContain('mint a machine credential');
+      expect(container.textContent).toContain('can decrypt secret values in the environment below');
+      expect(container.querySelector('.ceremony__keys')).toBeNull();
+      expect(authorize(container).disabled).toBe(false);
+    } finally { await unmount(); }
+  });
+
   it('looks names up once per project when the environments span projects, and still allows approval', async () => {
     route({ environments: [policy(consentIds.environment), policy('env_00000000-0000-4000-8000-0000000000ff', consentIds.org, 'prj_00000000-0000-4000-8000-0000000000ee')] });
     const { container, unmount } = await render();

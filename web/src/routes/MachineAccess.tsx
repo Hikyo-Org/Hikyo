@@ -288,6 +288,7 @@ export function MachineAccessPage() {
         accountId: account.id,
         accountName: account.name,
         rotating,
+        lifetimeId: 'default',
         reach: postStateReach(scopeFor(account)),
       },
     });

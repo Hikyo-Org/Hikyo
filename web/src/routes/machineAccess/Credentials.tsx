@@ -1,9 +1,12 @@
 import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   expiryLabel,
   disclosureReachText,
+  CREDENTIAL_LIFETIMES,
+  DEFAULT_CREDENTIAL_LIFETIME_SECONDS,
   identityRefusalText,
+  lifetimeSecondsFor,
   mintCredential,
   mintFailureText,
   useRefreshAccount,
@@ -58,6 +61,11 @@ export function MintDialog({
   const disclosedValue = disclosed?.result.value ?? null;
   const busy = lifecycle.kind === 'submitting';
   const failure = lifecycle.kind === 'failed' ? lifecycle.error : null;
+  // Frozen at open: the date shown is the one the operator reviewed.
+  const [openedAt] = useState(() => Date.now());
+  const requestedExpiry = new Date(
+    openedAt + (lifetimeSecondsFor(request.lifetimeId) ?? DEFAULT_CREDENTIAL_LIFETIME_SECONDS) * 1000,
+  );
 
   // The panel the value arrives on replaces the control that was focused, so
   // focus goes to the one decision left: the stored-confirmation checkbox.
@@ -99,6 +107,7 @@ export function MintDialog({
       const minted = await mintCredential(
         { org: active.org, project: active.project },
         active.accountId,
+        lifetimeSecondsFor(active.lifetimeId),
       );
       move({ type: 'succeeded', requestId: active.id, result: minted });
       refresh(active.accountId);
@@ -181,6 +190,25 @@ export function MintDialog({
               lands and a revoke that does not leaves two live credentials rather than none.
             </p>
           ) : null}
+          <div className="field">
+            <label htmlFor="mint-lifetime">Credential lifetime</label>
+            <select
+              id="mint-lifetime"
+              value={request.lifetimeId}
+              disabled={busy}
+              onChange={(event) => move({ type: 'set-lifetime', lifetimeId: event.target.value })}
+            >
+              {CREDENTIAL_LIFETIMES.map((entry) => (
+                <option key={entry.id} value={entry.id} disabled={entry.disabled === true}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+            <p className="cred__meta">
+              Requested expiry: <time dateTime={requestedExpiry.toISOString()}>{requestedExpiry.toLocaleDateString()}</time>.
+              The instance lifetime ceiling may shorten it; this dialog says so after minting.
+            </p>
+          </div>
           {failure !== null ? (
             <Alert>{failure}</Alert>
           ) : null}
