@@ -173,8 +173,8 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			{Org: "org_missing", Project: prjB1, Env: envB1},
 		} {
 			n, err := countedAuthorize(t, db, mchA1, scope, domain.ClassWorkload)
-			if !errors.Is(err, domain.ErrNotFound) || n != 2 {
-				t.Fatalf("machine refusal issued %d queries, error=%v; want chain + grants", n, err)
+			if !errors.Is(err, domain.ErrNotFound) || n != 3 {
+				t.Fatalf("machine refusal issued %d queries, error=%v; want chain + grants + machine rules", n, err)
 			}
 		}
 	})
