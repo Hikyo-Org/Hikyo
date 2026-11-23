@@ -3,7 +3,8 @@
 Status: **not an operative capability claim. Owner authorized merge of this
 documentation on 2026-11-04 (maintainer security approval for this PR only). The owner
 recorded the dispositions for F-01 to F-11 on 2026-11-04 (see Follow-ups); F-01, F-04,
-F-05 and F-09 are decided; F-03, F-06, F-08 and F-10 are recorded in this file (2026-11-23); F-02, F-07 and F-11 stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
+F-05 and F-09 are decided; F-03, F-06, F-08 and F-10 are recorded in this file
+(2026-11-23); F-02, F-07 and F-11 stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
 under [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Stacked on the
 transport policy (PR #1156; the register was written and tested on its head
 `f5d5491829d6`; the base has since moved and the sweep was not rerun on it;
@@ -53,8 +54,9 @@ a row proves. "Read" means the primary source was read for this document on
    Optional", same dates. Migration says the JOSE identifier status "was not
    checked". `go-jose` v4.1.6, the pin when this was written, had no ML-DSA. v4.1.8
    (2026-11-02) added it behind a `go1.27` build tag and `dev` now pins v4.1.9
-   (rechecked 2026-11-23, F-06); Hikyo's key loader and signature allowlists still
-   accept no ML-DSA, so E-04 holds, but "no identifier exists" is no longer the reason.
+   (rechecked 2026-11-23, F-06); Hikyo's key loader and signature allowlists
+   still accept no ML-DSA, so E-04 holds, but "no identifier exists" is no
+   longer the reason.
 3. **WebAuthn Level 3 is a W3C Recommendation (2026-08-25).** Its full text
    contains no mention of ML-DSA or post-quantum (0 matches, whole document
    read locally). ML-DSA credentials ride the generic COSE algorithm field.
@@ -142,6 +144,12 @@ add a row.
 
 ## Table A: facts
 
+Versions in Tables A to C and the exception terms are candidate-time
+snapshots, for example `golang.org/x/crypto` v0.58.0 and Go 1.27.3; `dev`
+has since moved to v0.59.0 and Go 1.27.4, and those rows were not
+re-measured. The rows X10, X12, X15, X22, E-04 and E-13 were updated to the
+`dev` pins on 2026-11-23.
+
 Lifetime `H` is the confidentiality or verification horizon from the
 [inventory](inventory.md). "Chain" cells say "not observed" where no handshake
 was captured: Go's verifier also accepts ML-DSA chains (profiles.md TLS detail),
@@ -170,7 +178,7 @@ so a classical chain is never assumed.
 | X19 | Sealed webhook delivery to a receiver (I14, I21) | HTTPS push of an age-encrypted envelope (`sealedwebhook/client.go:118-120`, public-egress dialer) | Receiver build unknown; protocol 1 payload is age X25519 (first-party, PQ version is #1128) | Receiver retention; envelope at most 5 min | Payload: age X25519 (classical). TLS hop: receiver-controlled; unknown | Chain not observed; ack Ed25519 | Receiver CA or WebPKI | New generation moves the destination id |
 | X20 | Update check, release download, self-update (I11, I26) | HTTPS to GitHub release hosts (`updatecheck/source.go:88`, `releaseDownloadHost`; `selfupdate/selfupdate.go:61`), public dialer, TLS 1.2 minimum | GitHub endpoint unknown | Public data; authenticity is I26 | Peer-controlled; unknown | Authenticity is signed metadata (P-256, E-11, E-15), not the TLS chain | WebPKI plus pinned release trust | Reinstall |
 | X21 | Pairing: remote fetch, directory, identity probe, proxy leg (I11, I20) | HTTPS to another Hikyo instance with a leaf SPKI pin (`remotefetch/remotefetch.go:248`, `pairing.go`, `directory.go`, `pairing_identity.go:58`) | Peer is a Hikyo instance; its listener may be strict (#1127) | Pairing credentials | Client at compat (Go default offered); peer may be strict | Pin replaces chain verification (E-20); SRP and DPoP classical (E-01) | Pin read over a classical chain | Revoke, re-pair |
-| X22 | Kubernetes API and kubelet (I30) | Bearer-token HTTPS via client-go (`cmd/hikyo/config_rollout.go:59`, `app/self_config_deployment.go:106`, `operator/manager.go:124`, `storagehealth/kubernetes.go:60`) | `client-go` v0.37.1; API server and kubelet builds unknown | Short-lived tokens | Cluster-controlled; unknown | Cluster CA, chain not observed | Cluster CA | Token refresh |
+| X22 | Kubernetes API and kubelet (I30) | Bearer-token HTTPS via client-go (`cmd/hikyo/config_rollout.go:59`, `app/self_config_deployment.go:106`, `operator/manager.go:124`, `storagehealth/kubernetes.go:60`) | `client-go` v0.37.2; API server and kubelet builds unknown | Short-lived tokens | Cluster-controlled; unknown | Cluster CA, chain not observed | Cluster CA | Token refresh |
 | X23 | AWS STS and the ambient credential chain (I14) | Separate `sts.<region>` endpoint (`awssm/auth.go:265-267`) with its own client and `STSAllowedCIDRs` dialer (`client.go:162-168`); AssumeRole and WebIdentity (`auth.go:289-302`); `LoadDefaultConfig` (`auth.go:313`) whose SDK-owned sources (IMDS, ECS, IRSA files) keep the SDK transport (`auth.go:270-272`). **Read from code, not run** | `aws-sdk-go-v2` v1.47.5; STS is not named in the AWS blog (X05) | Temporary credentials until expiry | STS: peer-controlled, unknown. Default IMDS (`http://169.254.169.254`) and ECS (`http://169.254.170.2`) endpoints: plain HTTP, no TLS | STS chain not observed; no chain on the plain-HTTP default IMDS and ECS endpoints | WebPKI; link-local or private ambient endpoints | Re-assume the role |
 | X24 | Installer downloads (I26; Hikyo's Go TLS does not apply) | `curl --proto =https` to the release source (`install/install.sh.in:78`, which also sets `--tlsv1.2`), and to `api.github.com`, `github.com` releases including cosign, and `raw.githubusercontent.com` (`install/upgrade-nightly.sh:365-380`, no `--tlsv1.2`) | Host `curl` and its TLS library; versions unknown | Public artifacts | Host-library-defined; unknown | Authenticity is pinned root hash and signed metadata (E-11, E-15), not this transport | Pinned root hash | Reinstall |
 ## Table B: disposition
@@ -190,7 +198,7 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 | X07 | out of profile | local: OpenSSH 10.3p1 negotiated `mlkem768x25519-sha256`; classical-only client accepted by default sshd; refused with `KexAlgorithms mlkem768x25519-sha256`; github.com handshake (fact 5) | **Fired:** OpenSSH 10.6 offers a PQ signature by default; remaining: an operator names a fleet | The control is sshd `KexAlgorithms` (fixture). `WarnWeakCrypto` only logs a weak client and is not a control. Hikyo carries no SSH session | F-03 done (#1177): [runbook section](../../operations/pqc-staged-rollout.md#operator-owned-hybrid-only-ssh-key-exchange-x07-f-03) | E-02 limits only the signatures |
 | X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04 (decided 2026-11-04): the composite is not adopted (ML-DSA-44 is outside DEC-02, DEC-03 did not select composites) | E-02 |
 | X09 | unknown | source: IANA, W3C, go-webauthn; no primary authenticator or platform statement read | A primary authenticator statement; a change of position on credential parameters | RP creates classical credentials only; offering library PQC parameters would include ML-DSA-44 (excluded by DEC-02) | F-05 (decided 2026-11-04): classical credentials only | E-05 |
-| X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` v4.1.9 has ML-DSA (Go 1.27) but the allowlists and key loader refuse it | Hikyo widens key loading and the allowlist together (F-06, #1191); an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06: #1130/#1132 note | E-04 |
+| X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` v4.1.9 has ML-DSA (Go 1.27) but the allowlists and key loader refuse it | Hikyo widens key loading and the allowlist together (F-06, #1191); an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06 done: #1130 and #1132 notes posted 2026-11-23 | E-04 |
 | X11 | unknown | source only, including the SAML metadata proxy leg | As X02 | Unknown | F-02 | E-04, E-08 |
 | X12 | blocked | source: allowlist; ML-DSA identifier only in an Internet-Draft (-11, 2026-11-19); `goxmldsig` v1.6.1 has none | The identifier is published as an RFC; `goxmldsig` supports it | As X10 | F-06 | E-04 |
 | X13 | compatibility-only | source: PostgreSQL 18 docs; `verify-full` enforced; negotiated group NOTRUN | Authorized fixture; operator names the server build | Strict is not selectable; server-controlled | F-07 (HOLD until a hybrid-capable PostgreSQL is named) | E-08 |
@@ -211,14 +219,15 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 Each line is a title and a one-sentence body, filed as the linked issue. All
 are owned by Marc Went. Rows served are in Table B. On 2026-11-04 the owner accepted
 the dispositions proposed for F-01 to F-11. F-01, F-04, F-05 and F-09 are decided
-in their bodies below; F-03, F-06, F-08 and F-10 are recorded in this file (2026-11-23, #1177, #1180, #1182, #1184); F-02, F-07 and F-11 stay open as
+in their bodies below; F-03, F-06, F-08 and F-10 are recorded in this file
+(2026-11-23, #1177, #1180, #1182, #1184); F-02, F-07 and F-11 stay open as
 tracked work.
 
 | ID | Title | Body | Rows |
 | --- | --- | --- | --- |
 | [F-01](https://github.com/Hikyo-Org/Hikyo/issues/1175) | Decide what strict means for the GitHub sealed-box submission | Decided 2026-11-04: strict does not disable the GitHub Actions secret route, because the provider requires a libsodium sealed box (no PQ alternative, no second wrapper) and strict does not govern that route (F-09). It stays exception E-06, recorded in the migration register | X01 |
 | [F-02](https://github.com/Hikyo-Org/Hikyo/issues/1176) | Authorized read-only capture of the negotiated TLS group on external hops | In a named environment, capture the negotiated TLS group and certificate key type for each external hop, record peer and version, and update the matching exception row; no provider write. | X02 to X06, X11, X17, X19, X20, X22, X23, X24 |
-| [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. Done 2026-11-23: [runbook section](../../operations/pqc-staged-rollout.md#operator-owned-hybrid-only-ssh-key-exchange-x07-f-03) with OpenSSH versions checked against the release notes | X07 |
+| [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. Done 2026-11-23: [runbook section](../../operations/pqc-staged-rollout.md#operator-owned-hybrid-only-ssh-key-exchange-x07-f-03) recommends exactly that line, with an operator-owned sntrup761 option for pre-9.9 clients outside DEC-01, and OpenSSH versions checked against the release notes | X07 |
 | [F-04](https://github.com/Hikyo-Org/Hikyo/issues/1178) | Decide whether to track OpenSSH's composite SSH signature | Decided 2026-11-04: Hikyo does not adopt `ssh-mldsa44-ed25519`, because DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or `x/crypto` adds one. | X08 |
 | [F-05](https://github.com/Hikyo-Org/Hikyo/issues/1179) | Decide WebAuthn credential parameters and recovery for ML-DSA | Decided 2026-11-04: the relying party does not offer ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes). It stays on classical credentials under E-05, with no enrollment or recovery work. Recheck on a primary authenticator statement. | X09 |
 | [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. Decided 2026-11-13 (#1191): federation key loading (`jwkssource.decodeJWKS`) accepts only RSA, ECDSA and Ed25519 keys (the `oidcfed` allowlist has no EdDSA, so Ed25519 loads but verifies nothing today), so enabling federation ML-DSA must widen that key-type set and the `oidcfed` signature allowlist together. Recheck 2026-11-23: `go-jose` v4.1.8 added ML-DSA (Go 1.27 build tag), `dev` pins v4.1.9; `goxmldsig` v1.6.1 has none; an XML-DSig ML-DSA identifier exists only in an Internet-Draft (-11, 2026-11-19; E-04) | X10, X12 |
@@ -346,7 +355,7 @@ stays ineffective until the owner names its peer and version. A date of 180 days
 2026-11-03 would be **2027-05-02**, at most two renewals; the clock starts when the
 peer is named. Owner: Marc Went. Rows owned by other tickets (E-01, E-08, E-11,
 E-15, E-20) are not repeated. These terms are pointed to from the
-[migration register](migration.md#exception-terms-1134). Library and toolchain versions in Tables A to C and the exception rows other than E-04 and E-13 (for example `golang.org/x/crypto` v0.58.0, Go 1.27.3) are candidate-time snapshots; `dev` has since moved to v0.59.0 and Go 1.27.4 and the rows were not re-measured.
+[migration register](migration.md#exception-terms-1134).
 
 | ID | Routes (same as Table B) | Peer and version known | Why ineffective | Recheck trigger |
 | --- | --- | --- | --- | --- |

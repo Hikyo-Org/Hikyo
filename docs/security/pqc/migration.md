@@ -242,11 +242,13 @@ Update 2026-11-03 (#1134, [external compatibility](external-compatibility.md#fac
 OpenSSH 10.6 (2026-10-06) enables a composite PQ signature `ssh-mldsa44-ed25519`,
 so "no PQ signatures" above is stale. E-02 stands: the scheme is ML-DSA-44
 (excluded by DEC-02) and `x/crypto/ssh` v0.58.0 cannot produce it. RFC 9964
-registers the JOSE and COSE ML-DSA identifiers (the `go-jose` v4.1.6 statements here are candidate-time; see the 2026-11-23 recheck in [E-04](external-compatibility.md): `go-jose` v4.1.9 has ML-DSA); `go-jose` v4.1.6 still lacks
-them. The decision text is the owner's and is not edited here. On 2026-11-04 the owner
-decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes ML-DSA-44 and DEC-03
-did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or
-`x/crypto` adds one.
+registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 lacked
+them at candidate time (rechecked 2026-11-23: v4.1.9 has ML-DSA, see
+[E-04](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective)).
+The decision text is the owner's and is not edited here. On 2026-11-04 the
+owner decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes
+ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a
+composite without ML-DSA-44 or `x/crypto` adds one.
 
 ### Rollout authority (I23) and PKI root (I24)
 

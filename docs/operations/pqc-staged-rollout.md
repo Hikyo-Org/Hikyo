@@ -184,32 +184,43 @@ wants an sshd to refuse a classical-only key exchange, the control is sshd's
 `KexAlgorithms`, not `WarnWeakCrypto`, which only logs a weak client. This is
 operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
 
-1. Check the server supports the names: `ssh -Q kex | grep -E 'mlkem768x25519|sntrup761x25519'`.
+1. Check the server build supports the name. `ssh -Q kex` reports the build
+   of the `ssh` binary you run it with, so run it on the sshd host and make
+   sure the same OpenSSH build serves sshd: `ssh -Q kex | grep mlkem768x25519`.
+   Step 3 is the real server check.
 2. Set in `sshd_config` (or a `sshd_config.d` drop-in):
-   `KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com`
-   Use only the names step 1 lists. `mlkem768x25519-sha256` needs OpenSSH 9.9 or
-   later and is the default hybrid since 10.0. `sntrup761x25519-sha512@openssh.com`
-   was added in OpenSSH 8.5, enters the default list in 8.9 and is the preferred
-   default in 9.0; the unsuffixed `sntrup761x25519-sha512` alias
-   was added in 9.9 ([release notes](https://www.openssh.org/releasenotes.html),
-   read 2026-11-23). A name the server does not know can make `sshd -t` fail, so a
+   `KexAlgorithms mlkem768x25519-sha256`
+   This is the DEC-01 hybrid (X25519 with ML-KEM-768). It needs OpenSSH 9.9 or
+   later and is the default hybrid since 10.0 ([release notes][rn], read
+   2026-11-23). A name the server does not know can make `sshd -t` fail, so a
    fleet with mixed versions needs per-version drop-ins.
+   Compatibility option, operator-owned and outside DEC-01: for clients older
+   than 9.9, append `,sntrup761x25519-sha512@openssh.com` (added in OpenSSH
+   8.5, in the default list since 8.9, preferred in 9.0; the unsuffixed
+   `sntrup761x25519-sha512` alias arrived in 9.9). It is a different hybrid
+   (Streamlined NTRU Prime with X25519), so it widens what the operator
+   accepts beyond the selected profile.
 3. Validate before reload: `sshd -t`, then `sshd -T | grep -i '^kexalgorithms'`
-   and confirm the printed list contains only the hybrid names. Keep an existing
-   session open until a new login (`ssh -o ControlPath=none ...`) succeeds.
+   and confirm the printed list contains only the hybrid names. Keep an
+   existing session open until a new login (`ssh -o ControlPath=none ...`)
+   succeeds.
 4. Expected result: a client offering only classical algorithms (for example
-   `ssh -o ControlPath=none -o KexAlgorithms=curve25519-sha256`) is refused with no matching key
-   exchange method. This was observed locally against OpenSSH 10.3p1
-   (`internal/sshca/openssh_negotiation_test.go`); no deployed sshd was tested.
+   `ssh -o ControlPath=none -o KexAlgorithms=curve25519-sha256`) is refused
+   with no matching key exchange method. This was observed with
+   `KexAlgorithms mlkem768x25519-sha256` against OpenSSH 10.3p1
+   (`internal/sshca/openssh_negotiation_test.go`); nothing else was run,
+   including the sntrup761 option and any deployed sshd.
 
-Clients that offer no hybrid algorithm (OpenSSH before 8.9, unless 8.5 or later
-is configured to offer `sntrup761x25519-sha512@openssh.com`, and any other client or
-library without one) can no longer connect. Check the algorithms clients
-actually offer (`ssh -Q kex` on the client, server logs), not the version,
-before applying it. The list syntax and the `+`, `-` and `^` prefixes are in
-[sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms), read
-2026-11-23. A hybrid key exchange protects session confidentiality only; it
-does not make host or user signatures post-quantum (E-02).
+Clients that offer no hybrid algorithm (OpenSSH before 8.9, unless 8.5 or
+later is configured to offer `sntrup761x25519-sha512@openssh.com`, and any
+other client or library without one) can no longer connect. Check the
+algorithms clients actually offer (`ssh -Q kex` on the client, server logs),
+not the version, before applying it. The list syntax and the `+`, `-` and `^`
+prefixes are in [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms),
+read 2026-11-23. A hybrid key exchange protects session confidentiality only;
+it does not make host or user signatures post-quantum (E-02).
+
+[rn]: https://www.openssh.org/releasenotes.html
 
 ## Abort criteria (any one stops the stage)
 
