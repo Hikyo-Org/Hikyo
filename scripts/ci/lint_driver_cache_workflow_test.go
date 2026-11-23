@@ -22,7 +22,7 @@ const (
 	lintDriverRestoreName    = "Restore lint driver Go cache"
 	lintDriverSeedLintTests  = "go test -count=1 -timeout=20m ./internal/lint\n"
 	lintDriverSerialPackage  = "lint_package=$(go list ./internal/lint)\n"
-	lintDriverSerialLintTest = `go test -count=1 -timeout=20m "$lint_package"`
+	lintDriverSerialLintTest = `go test -count=1 -timeout=20m "$lint_package" || status=1`
 )
 
 var lintDriverSeedSpec = cacheSeedSpec{
@@ -257,17 +257,26 @@ func TestLintDriverReadersShareTheSeedKey(t *testing.T) {
 	}
 }
 
-// The seed compiles the lint package's tests with the flags test_core_serial
-// uses; a different flag set would build different actions and miss the seed.
+// The seed compiles the lint package's tests the way test_core_serial does. A
+// build flag or environment prefix on either side would build different
+// actions and miss the seed, so the serial line must match whole.
 func TestLintDriverSeedMatchesSerialLintTests(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts/ci/test-core-packages.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := string(raw)
+	serial := 0
+	for _, line := range strings.Split(script, "\n") {
+		if strings.Contains(line, "$lint_package") && strings.Contains(line, "go test") {
+			if strings.TrimLeft(line, " \t") != lintDriverSerialLintTest {
+				t.Fatalf("serial lint test line %q must be exactly %q", line, lintDriverSerialLintTest)
+			}
+			serial++
+		}
+	}
 	if !strings.Contains(lintDriverSeedSpec.compile, lintDriverSeedLintTests) ||
-		!strings.Contains(script, lintDriverSerialPackage) ||
-		strings.Count(script, lintDriverSerialLintTest) != 1 {
+		!strings.Contains(script, lintDriverSerialPackage) || serial != 1 {
 		t.Fatalf("test-core-packages.sh must run %q for ./internal/lint, as the lint driver seed does", lintDriverSerialLintTest)
 	}
 }

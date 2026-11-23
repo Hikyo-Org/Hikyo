@@ -306,8 +306,15 @@ for file in "$@"; do
 				# The generation belongs to the key line itself; restore-keys or
 				# comments elsewhere in the step must not satisfy it.
 				# The first version segment is the generation, so go-x-v1-v2- fails.
-				key_line = substr(block, index(block, "key: go-"))
-				sub(/\n.*$/, "", key_line)
+				key_line = ""
+				line_count = split(block, step_lines, "\n")
+				for (line = 1; line <= line_count; line++) {
+					if (step_lines[line] ~ /^[[:space:]]+key: go-/) {
+						key_line = step_lines[line]
+						sub(/^[[:space:]]+/, "", key_line)
+						break
+					}
+				}
 				generation = ""
 				if (match(key_line, /-v[0-9]+-/)) generation = substr(key_line, RSTART, RLENGTH)
 				if (index(block, "key: go-") == 0 || generation != "-v2-" ||
@@ -385,9 +392,9 @@ if workflow_job_block "$workflow" race_shard | grep -F 'actions/cache/save' >/de
 fi
 
 # One lint driver build cache has a single trusted writer, ci-lint-cache.yml.
-# Its key follows modules, toolchain ABI and lint sources. test_core_serial and
-# the advisory invariants job read it with both fallback prefixes; no job that
-# names the family writes any cache.
+# Its key follows modules, toolchain ABI and the ISO week. test_core_serial and
+# the advisory invariants job read it by module prefix, then runner prefix; no
+# job that names the family writes any cache.
 lint_cache_workflow="$workflows_dir/ci-lint-cache.yml"
 lint_runner_prefix='go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
 lint_module_prefix="$lint_runner_prefix\${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"

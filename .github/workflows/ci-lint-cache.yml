@@ -4,7 +4,7 @@
 # compiled the four-context lint matrix cold (prepare 700 to 925 s). This entry
 # takes the 10 GB Actions budget the release-snapshot Go cache used to hold.
 # The key moves with go.mod, go.sum, the tool modules, the runner toolchain ABI
-# and the lint sources; readers fall back to older entries of the same family,
+# and the ISO week; readers fall back to older entries of the same family,
 # whose content-addressed hits stay valid. No PR can publish here.
 name: cache-seed-lint
 
