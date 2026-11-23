@@ -681,7 +681,8 @@ whether or not its external ID carries the controller prefix; the reporter
 compares only records with the report's external ID. At 900 suites or fewer each
 owner reads the commit listing, then counts every app's suites again and
 refuses if the count has passed 900, since REST could then have left an older
-suite out of the listing.
+suite out of the listing. Retirement discovery does the same after its commit
+read and then reads by suite instead of refusing.
 Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
 cannot be completed, a run reported by two suites, or a check in more than 100
 suites refuses instead of listing partially. Discovery refuses all targets on
