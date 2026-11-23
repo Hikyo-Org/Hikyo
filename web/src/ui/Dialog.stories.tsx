@@ -130,6 +130,20 @@ export const MustAcknowledge: Story = {
       </Button>
     ),
   },
+  play: async ({ canvas, args }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Your new recovery codes' });
+    if (!(dialog instanceof HTMLDialogElement)) throw new Error('expected a native <dialog>');
+    const acknowledge = canvas.getByRole('checkbox', { name: 'I have stored these somewhere safe.' });
+    acknowledge.focus();
+    // Chromium makes a repeated Escape without a click non-cancelable and
+    // closes the dialog regardless; replay that cancel and close.
+    dialog.dispatchEvent(new Event('cancel', { cancelable: false }));
+    await expect(args.onCancel).toHaveBeenCalled();
+    dialog.close();
+    await waitFor(() => expect(dialog.matches(':modal')).toBe(true));
+    // The reopen hands focus back to the control it interrupted.
+    await expect(acknowledge).toHaveFocus();
+  },
 };
 
 const longBody = (
@@ -222,6 +236,14 @@ export const IsModalAndLabelled: Story = {
     // the event the platform would, and assert the handler is wired to it.
     dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
     await expect(args.onCancel).toHaveBeenCalled();
+    // A cancel the caller does not refuse closes for good, even a
+    // non-cancelable one: only a refusal reopens.
+    if (!(dialog instanceof HTMLDialogElement)) throw new Error('expected a native <dialog>');
+    const closed = new Promise((resolve) => dialog.addEventListener('close', resolve, { once: true }));
+    dialog.dispatchEvent(new Event('cancel', { cancelable: false }));
+    dialog.close();
+    await closed;
+    await expect(dialog.open).toBe(false);
   },
 };
 
