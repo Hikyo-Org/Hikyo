@@ -90,7 +90,11 @@ func runExportAfterInterruptedExport(t *testing.T, target drillTarget, c custody
 	if ok, err := live.TryLock(); err != nil || !ok {
 		t.Fatalf("hold live export lock: %v %v", ok, err)
 	}
-	defer live.Unlock()
+	defer func() {
+		if err := live.Unlock(); err != nil {
+			t.Error(err)
+		}
+	}()
 	partial := filepath.Join(t.TempDir(), "prefix.partial")
 	if err := os.WriteFile(partial, prefix, 0o600); err != nil {
 		t.Fatal(err)

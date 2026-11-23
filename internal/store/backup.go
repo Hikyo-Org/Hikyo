@@ -39,7 +39,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -193,7 +192,7 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	// empty file. The work directory is fresh per export, so a stale snapshot
 	// cannot be framed as this one. SQLite's -journal side files, if a kill
 	// leaves any, are created by SQLite itself and share the file's mode.
-	pre, err := os.OpenFile(snapshot, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	pre, err := createStaged(snapshot)
 	if err != nil {
 		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
 	}
@@ -293,7 +292,7 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		if !pathutil.Within(baseClean, targetClean) {
 			return fmt.Errorf("invalid file path")
 		}
-		f, err := os.OpenFile(targetClean, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		f, err := createStaged(targetClean)
 		if err != nil {
 			return fmt.Errorf("store: stage copy stream for %s: %w", table, err)
 		}
@@ -489,11 +488,16 @@ func writeManifest(tw *tar.Writer, m Manifest) error {
 	return nil
 }
 
+// createStaged creates a plaintext staging file owner-only, refusing an
+// existing one.
+func createStaged(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+}
+
 // writeFileMember archives one staged plaintext file and removes it as soon as
 // it is archived, so a killed export has less plaintext on disk. Nothing reads
 // a staged file again after this call, and every export stages into a fresh
-// directory, so no retry depends on the file surviving. It refuses a file that
-// is readable beyond its owner.
+// directory, so no retry depends on the file surviving.
 func writeFileMember(tw *tar.Writer, name, path string) error {
 	if err := copyFileMember(tw, name, path); err != nil {
 		return err
@@ -513,10 +517,6 @@ func copyFileMember(tw *tar.Writer, name, path string) error {
 	info, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("store: stat archive member %s: %w", name, err)
-	}
-	// Windows reports synthetic permission bits, so the check is POSIX only.
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("store: staged archive member %s is not owner-only (%v)", name, info.Mode().Perm())
 	}
 	hdr := &tar.Header{Name: name, Mode: 0o600, Size: info.Size(), ModTime: info.ModTime()}
 	if err := tw.WriteHeader(hdr); err != nil {

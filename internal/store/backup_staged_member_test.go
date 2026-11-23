@@ -9,9 +9,8 @@ import (
 	"testing"
 )
 
-// #1412: a staged plaintext file must be owner-only and is removed as soon as
-// it is archived.
-func TestWriteFileMemberRequiresOwnerOnlyAndRemovesStagedFile(t *testing.T) {
+// #1412: a staged plaintext file is removed as soon as it is archived.
+func TestWriteFileMemberRemovesStagedFile(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "good")
 	if err := os.WriteFile(good, []byte("data"), 0o600); err != nil {
@@ -24,20 +23,26 @@ func TestWriteFileMemberRequiresOwnerOnlyAndRemovesStagedFile(t *testing.T) {
 	if _, err := os.Lstat(good); !os.IsNotExist(err) {
 		t.Fatalf("archived staged file survived: %v", err)
 	}
-	if runtime.GOOS == "windows" {
-		return
-	}
-	loose := filepath.Join(dir, "loose")
-	if err := os.WriteFile(loose, []byte("data"), 0o644); err != nil {
+}
+
+func TestCreateStagedIsOwnerOnlyAndExclusive(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "copy-x")
+	f, err := createStaged(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(loose, 0o644); err != nil {
+	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileMember(tw, "loose", loose); err == nil {
-		t.Fatal("group/world-readable staged plaintext was archived")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Lstat(loose); err != nil {
-		t.Fatalf("refused file was removed without archiving: %v", err)
+	// Windows reports synthetic permission bits.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("staged file mode = %v, want 0600", info.Mode().Perm())
+	}
+	if _, err := createStaged(path); err == nil {
+		t.Fatal("createStaged replaced an existing staged file")
 	}
 }

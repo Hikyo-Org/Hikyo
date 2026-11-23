@@ -64,12 +64,10 @@ func stageExportWork(ctx context.Context, dir string) (string, func(), error) {
 	live := flock.New(filepath.Join(work, exportLiveLock))
 	ok, err := live.TryLock()
 	if err != nil {
-		os.RemoveAll(work)
-		return "", nil, fmt.Errorf("backup staging lock: %w", err)
+		return "", nil, errors.Join(fmt.Errorf("backup staging lock: %w", err), os.RemoveAll(work))
 	}
 	if !ok {
-		os.RemoveAll(work)
-		return "", nil, errors.New("backup staging lock: held by another process")
+		return "", nil, errors.Join(errors.New("backup staging lock: held by another process"), os.RemoveAll(work))
 	}
 	liveExportWork.Store(work, struct{}{})
 	return work, func() {
