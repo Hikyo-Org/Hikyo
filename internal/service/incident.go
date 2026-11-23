@@ -459,6 +459,10 @@ type IncidentItemView struct {
 	// Refused is true for an open item whose owner refused it (reason
 	// owner_failed), as opposed to one that has not run yet.
 	Refused bool
+	// Attestable is true when Attest would accept this item now: it is open, in an
+	// open incident, of a kind Hikyo cannot observe, and not the caller's own
+	// containment. A surface offers the attest action only when it is true.
+	Attestable bool
 }
 
 // ItemViews pages one incident's items like Items and adds each rotation item's
@@ -478,7 +482,11 @@ func (s *Incidents) ItemViews(ctx context.Context, actor Actor, id, afterID stri
 		}
 		out = make([]IncidentItemView, 0, len(items))
 		for _, it := range items {
-			v := IncidentItemView{IncidentItem: it, Refused: it.Reason == domain.ReasonOwnerFailed && it.Outcome != domain.ItemDone}
+			// owner_failed pairs only with a pending outcome (ValidItemState).
+			v := IncidentItemView{
+				IncidentItem: it, Refused: it.Reason == domain.ReasonOwnerFailed,
+				Attestable: attestable(it) && it.Outcome.Open() && inc.Status == domain.IncidentOpen && !ownIncident(caller, inc),
+			}
 			if it.ObjectKind == domain.ObjectKindRotation {
 				v.ObjectState = rotationLiveState(ctx, r, az, caller, it)
 			}

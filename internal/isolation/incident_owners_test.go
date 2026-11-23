@@ -373,6 +373,44 @@ func TestIncidentProjectScopeListsNoRotation(t *testing.T) {
 	})
 }
 
+// The live state is read under the caller's own authority over the rotation's
+// scope. A rotation the ledger names that no longer exists reads "gone"; one
+// whose scope the caller cannot reach reads nothing at all, so the presentation
+// read never tells a caller whether a rotation outside their reach exists
+// (#1471 m8). The ledger row is edited directly: the scope and id columns are the
+// only inputs the read takes from it.
+func TestIncidentRotationViewGoneAndUnreadable(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		v, err := r.w.svc.Open(t.Context(), r.w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: alice})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := v.Incident.ID
+		if got := r.w.rotationView(t, incResponder, id, r.rot.ID); got.ObjectState != store.RotationStateActive {
+			t.Fatalf("a live rotation read %q, want active", got.ObjectState)
+		}
+		// Gone: the rotation row no longer exists.
+		execRaw(t, db, `UPDATE incident_items SET object_id='rot_gone' WHERE incident_id='`+id+`' AND object_id='`+r.rot.ID+`'`)
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.ObjectState != "gone" {
+			t.Errorf("a rotation that no longer exists read %q, want gone", got.ObjectState)
+		}
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.Attestable {
+			t.Errorf("a halt item must not be offered for attestation")
+		}
+		// Unreadable: the item's scope is an environment the caller holds nothing on.
+		execRaw(t, db, `UPDATE incident_items SET scope='`+string(orgB)+`/`+string(prjB1)+`/`+string(envB1)+`' WHERE incident_id='`+id+`' AND object_id='rot_gone'`)
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.ObjectState != "" {
+			t.Errorf("a rotation outside the caller's reach read %q, want nothing", got.ObjectState)
+		}
+		// A scope that does not parse reads nothing either.
+		execRaw(t, db, `UPDATE incident_items SET scope='not-a-scope' WHERE incident_id='`+id+`' AND object_id='rot_gone'`)
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.ObjectState != "" {
+			t.Errorf("a malformed scope read %q, want nothing", got.ObjectState)
+		}
+	})
+}
+
 // An org incident inherits the rotations of the accounts it selects (#1471 B).
 func TestIncidentOrgListsAndHaltsSelectedMembersRotations(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {

@@ -920,6 +920,7 @@ export const zIncidentItem = z.object({
     ]),
     reason: z.string().optional(),
     refused: z.boolean(),
+    attestable: z.boolean(),
     object_state: z.string().optional(),
     attested_by: zId.optional(),
     attested_at: zTimestamp.optional(),

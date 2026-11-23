@@ -444,6 +444,20 @@ principal is contained, so a contained account would still have a scheduler acti
   Each dispatches between the org and instance incident operations inside the service, like
   credential reset, so the routes are human-session only and carry no single contract operation.
   The CLI verb is `hikyo incident` and the web surface is Incidents at `/orgs/:org/incidents`.
+- Probe class: the routes carry `x-hikyo-class: unauthenticated`, the credential-reset precedent,
+  and no org or instance class fits. An account target needs credential-reset at its single org
+  or at the instance, which only the service can resolve from the target, and an instance
+  incident has no org at all, so no path or body field names the tenant the probe harness would
+  need. The class is therefore a declaration that authority is dynamic, not that the routes are
+  open: every route needs a human session, and each service call authorizes inside its own
+  transaction. Because the harness does not reach them, `TestIncidentWireRefusalsAreUniformAcrossTenants`
+  is their probe: an operator of another org and a caller with no capability get a byte-identical
+  `404` for a foreign incident and a nonexistent one on get, items, resume, attest, close and open,
+  and the ledger does not move. `TestIncidentAuthorizationRefusals` covers the same at the service,
+  including the item views.
+- `attestable` on an item is the server's own verdict (open item, open incident, a kind Hikyo
+  cannot observe, not the caller's own containment), so a surface offers Attest only where the
+  server would accept it.
 
 ## Not decided here
 

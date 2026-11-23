@@ -1142,6 +1142,12 @@ export type IncidentItem = {
      */
     refused: boolean;
     /**
+     * True when attesting this item would be accepted now: it is open, in an open
+     * incident, of a kind Hikyo cannot observe, and not the caller's own containment.
+     *
+     */
+    attestable: boolean;
+    /**
      * A rotation item's own state, read live when the page is built and never
      * stored: `active`, `paused`, `halted`, `disabled`, or `gone` when the
      * rotation no longer exists. Absent for other kinds and for a rotation the

@@ -1511,3 +1511,48 @@ test.describe('open registration at organisation scope', () => {
     });
   }
 });
+
+// Incident containment (#1039): the whole operator flow on a real instance, at
+// both viewports the project matrix runs. Open an incident on a throwaway member,
+// read its ledger, resume the open items, and close it. The attest action is not
+// offered here because a plain member has no item Hikyo cannot observe; the
+// route and the gating are covered by the wire test and the story.
+test.describe('incident containment', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('opens an incident, works its ledger and closes it', async ({ page, browser }) => {
+    const account = await enrolledAccount(browser, 'incident-subject', 'org');
+    await page.goto(`/orgs/${seed.org}/incidents`);
+    await expect(page.getByRole('heading', { name: 'Incident containment', level: 1 })).toBeVisible();
+
+    await page.getByLabel('Account principal').fill(account.principal);
+    await page.getByRole('button', { name: 'Open incident' }).click();
+
+    // The ledger names the account and lists what its scope leaves behind.
+    const ledger = page.locator('#incident-ledger');
+    await expect(ledger.getByRole('heading', { name: 'Incident ledger' })).toBeVisible();
+    await expect(ledger).toContainText(account.principal);
+    const table = ledger.getByRole('table');
+    await expect(table).toContainText('account');
+    await expect(table).toContainText('Not yet run');
+    await expect(page).toHaveURL(/incident=inc_/);
+
+    // Resuming runs the open items through their owners: the account is contained.
+    await ledger.getByRole('button', { name: 'Resume open items' }).click();
+    await expect(ledger).toContainText(/Resume ran \d+ items/);
+    await expect(table).toContainText('Done');
+    await expect(table).not.toContainText('Not yet run');
+
+    // Closing says what it records and ends the ledger.
+    await ledger.getByRole('button', { name: /^Close (incident|with residuals)$/ }).click();
+    const confirm = page.getByRole('dialog');
+    await confirm.getByRole('button', { name: /^Close (incident|with residuals)$/ }).click();
+    await expect(confirm).toBeHidden();
+    await expect(ledger).toContainText('Incident closed.');
+    await expect(ledger.getByRole('button', { name: 'Resume open items' })).toHaveCount(0);
+
+    // A reload reads the same ledger back from the server.
+    await page.reload();
+    await expect(page.locator('#incident-ledger')).toContainText('closed');
+  });
+});

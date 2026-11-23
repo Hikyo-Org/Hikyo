@@ -1059,6 +1059,8 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 			assertUniformNotFound(t, getErr, errGhostID)
 			_, itemsErr := w.svc.Items(ctx, a, v.Incident.ID, "", 10, false)
 			assertUniformNotFound(t, itemsErr, errGhostID)
+			_, viewsErr := w.svc.ItemViews(ctx, a, v.Incident.ID, "", 10, false)
+			assertUniformNotFound(t, viewsErr, errGhostID)
 			_, resumeErr := w.svc.Resume(ctx, a, v.Incident.ID)
 			assertUniformNotFound(t, resumeErr, errGhostID)
 			_, closeErr := w.svc.Close(ctx, a, v.Incident.ID, true)

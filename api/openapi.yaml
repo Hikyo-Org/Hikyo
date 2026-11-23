@@ -18895,7 +18895,7 @@ components:
     IncidentItem:
       type: object
       additionalProperties: false
-      required: [id, owner_function, object_kind, object_id, outcome, refused, updated_at]
+      required: [id, owner_function, object_kind, object_id, outcome, refused, attestable, updated_at]
       properties:
         id: {$ref: "#/components/schemas/ID"}
         owner_function: {type: string, maxLength: 128}
@@ -18914,6 +18914,11 @@ components:
         refused:
           type: boolean
           description: An open item whose owner refused it, as opposed to one that has not run yet.
+        attestable:
+          type: boolean
+          description: |
+            True when attesting this item would be accepted now: it is open, in an open
+            incident, of a kind Hikyo cannot observe, and not the caller's own containment.
         object_state:
           type: string
           description: |

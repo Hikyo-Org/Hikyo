@@ -172,7 +172,7 @@ function Ledger({ id }: { id: string }) {
                   <td>{item.object_state === undefined ? '' : <Badge tone={item.object_state === 'active' ? 'ok' : item.object_state === 'gone' ? 'neutral' : 'danger'} mono>{item.object_state}</Badge>}</td>
                   <td>{item.reason === undefined ? '' : (REASON_TEXT[item.reason] ?? item.reason)}</td>
                   <td>
-                    {live && isOpenItem(item) ? (
+                    {live && item.attestable ? (
                       <Button type="button" disabled={actions.attest.isPending} onClick={() => { feedback.clear(); setAttesting(item); }}>
                         Attest <span className="visually-hidden">{item.object_id}</span>
                       </Button>

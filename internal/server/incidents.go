@@ -59,7 +59,7 @@ func wireIncident(v service.IncidentView) apigen.Incident {
 func wireIncidentItem(v service.IncidentItemView) apigen.IncidentItem {
 	out := apigen.IncidentItem{
 		Id: v.ID, OwnerFunction: v.OwnerFunction, ObjectKind: v.ObjectKind, ObjectId: v.ObjectID,
-		Outcome: apigen.IncidentItemOutcome(v.Outcome), Refused: v.Refused,
+		Outcome: apigen.IncidentItemOutcome(v.Outcome), Refused: v.Refused, Attestable: v.Attestable,
 		Reason: optStr(string(v.Reason)), ObjectState: optStr(v.ObjectState),
 		UpdatedAt: v.UpdatedAt,
 	}

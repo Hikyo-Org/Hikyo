@@ -10,6 +10,7 @@ function item(over: Partial<IncidentItem>): IncidentItem {
     object_id: 'usr_00000000-0000-0000-0000-00000000000b',
     outcome: 'pending',
     refused: false,
+    attestable: false,
     updated_at: '2026-11-23T09:00:00Z',
     ...over,
   };

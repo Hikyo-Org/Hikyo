@@ -8540,6 +8540,10 @@ type IncidentCloseRequest struct {
 
 // IncidentItem defines model for IncidentItem.
 type IncidentItem struct {
+	// Attestable True when attesting this item would be accepted now: it is open, in an open
+	// incident, of a kind Hikyo cannot observe, and not the caller's own containment.
+	Attestable bool `json:"attestable"`
+
 	// AttestedAt RFC 3339 UTC, microsecond precision.
 	AttestedAt *Timestamp `json:"attested_at,omitzero"`
 
