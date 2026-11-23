@@ -79,6 +79,7 @@ repos/o/r/compare/main...*)
 	;;
 repos/o/r/commits/*/check-runs\?*)
 	[ "${CHECKS_FAIL:-}" != 1 ] || fail_with 'x ##[error]forged'
+	[ "${CHECKS_FAIL:-}" != garbage ] || { printf 'not json\n'; exit 0; }
 	json=$CHECKS
 	if [ -n "${CHECKS2:-}" ]; then
 		# A second page: the filter runs on each page, as the paginated read does.
@@ -377,7 +378,7 @@ run
 
 # A listing by commit is only trusted for a head within checksuites.Margin; a head
 # that cannot be trusted is a stuck reason, so the superseded promotion is still replaced.
-margin=$(sed -n 's/^const Margin = \([0-9]*\)$/\1/p' "$(dirname "$script")/../ci/checksuites/checksuites.go")
+margin=$(sed -n 's/^const Margin = \([0-9]*\)$/\1/p' "$(CDPATH='' cd -- "$(dirname "$0")" && pwd)/../ci/checksuites/checksuites.go")
 [ "$margin" = 900 ] || fail "nightly-promote.sh margin 900 no longer matches checksuites.Margin ($margin)"
 stuck_pull() {
 	reset
@@ -416,6 +417,7 @@ suites 900 901
 run
 replaced 'head that outgrew the margin during the read'
 grep -F '(901 check suites, above 900)' "$work/err" >/dev/null || fail 'growth during the read gave the wrong reason'
+if grep -F 'Admission refused' "$work/err" >/dev/null; then fail 'a check read before the growth was still quoted'; fi
 
 for bad in error '' abc -1; do
 	stuck_pull
@@ -463,6 +465,14 @@ run
 replaced 'failed check run read after page one'
 grep -F 'the check runs cannot be read: gh: x ## [error]forged' "$work/err" >/dev/null || fail 'failure after page one gave no reason'
 
+# A listing that is not JSON is unreadable, not empty.
+stuck_pull
+CHECKS_FAIL=garbage
+export CHECKS_FAIL
+run
+replaced 'non-JSON check run listing'
+grep -F 'the check run listing is not valid JSON' "$work/err" >/dev/null || fail 'a non-JSON listing gave the wrong reason'
+
 # The suite count failure carries its error.
 stuck_pull
 suites error
@@ -475,6 +485,7 @@ suites 900 error
 run
 replaced 'count failing after the read'
 grep -F 'cannot be read reliably (the check suite count cannot be read' "$work/err" >/dev/null || fail 'count failing after the read gave the wrong reason'
+if grep -F 'Admission refused' "$work/err" >/dev/null; then fail 'a check read before the count failed was still quoted'; fi
 
 # An overflowing count is refused, not compared.
 stuck_pull
