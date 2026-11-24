@@ -262,6 +262,15 @@ signatures and the current catalog authorize it. An ordinary nightly legacy
 edge is an inspection candidate and cannot create an executable route. Fresh
 installs and existing stable-profile rules are unchanged.
 
+### Recovery bridges for a missing release edge
+
+When a shipped release pair has no ordinary edge, a recovery-signed bridge
+statement per engine can authorize it. `recovery-bridge.sh author` derives the
+statements from the published declarations, and `verify-recovery-bridge.sh`
+independently re-derives them. The signing procedure, constraints and
+revocation are in the [recovery bridge ceremony](recovery-bridge-ceremony.md).
+`assemble-upgrade --bridge DIR` adds each catalogued bridge to the offline bundle.
+
 Plans expose defensive copies. Their digest binds the exact route, schemas,
 migrations, inventory, policies and bridge statements. Unrelated later metadata
 updates do not alter that route digest, but application must reverify all proof

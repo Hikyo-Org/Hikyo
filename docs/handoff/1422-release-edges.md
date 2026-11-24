@@ -96,7 +96,11 @@ workflow (full `check-compatibility-unchanged.sh`).
 
 ## Remaining work
 
-- Bridge for v1.0.0 (option B): separate PR after key custody is decided; not implemented here.
+- Bridge for v1.0.0 (option B): tooling, independent verifier, rehearsal and
+  ceremony runbook are in the bridge PR (`docs/operations/recovery-bridge-ceremony.md`).
+  The ceremony itself (owner, #1560) is not done. Open: which key signs (see the
+  runbook, constraint 1), a real-signature database upgrade with operator
+  attestation, and restore through `VerifyEmbeddedUpgradeSource` are untested.
 - No supported command writes a stable release edge; it is still authored by
   hand (documented in `docs/operations/upgrade-artifacts.md`).
 - PostgreSQL 17 fails first migrate with `upgrade: corrupt control state`

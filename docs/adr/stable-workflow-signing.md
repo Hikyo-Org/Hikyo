@@ -89,6 +89,40 @@ the existing operator login avoids a new stored PAT or a second GitHub App. The
 helper checks the live setting before mutation and verifies the public release's
 immutable status afterward; it does not alter repository settings.
 
+## Recovery bridges (#1422)
+
+**Owner decisions 2026-11-24 on #1422.** Existing v1.0.0 installations have no
+ordinary edge to v1.1.0, so the owner chose a recovery-signed bridge per engine
+(option B). Custody and review:
+
+- A new offline or hardware key `recovery-2` is rotated in first. The
+  `recovery-1` exception is not extended to bridges. The owner holds the key
+  alone and every signing is witnessed and logged
+  ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
+- An independent verifier (`scripts/release/verify-recovery-bridge.sh`, jq,
+  cosign and sha256 only, no shared code with the authoring tool) re-derives every
+  statement field from the published declarations and compares bytes and digests.
+  It is the merge gate for the trust pull request.
+- Revocation is a new recovery-signed snapshot that drops the bridge
+  (`recovery-bridge.sh revoke`). A rehearsal with a throwaway key and a test root
+  precedes the real ceremony, and no other stable-policy change may be pending.
+
+**Constraints found while building it.**
+
+- Verifiers accept a recovery signature only from the key pinned in the running
+  binary's root. The shipped v1.1.0 pins `recovery-1`, so a `recovery-2` bridge
+  into it is refused; `recovery-2` bridges need a release that stamps a root
+  pinning it. The owner must re-decide: a narrow logged `recovery-1` exception
+  for these two statements, or a rotation release first.
+- Each statement binds the stable policy digest. Listing the statements in the
+  policy changes that digest, so the policy is never re-signed. The bridges are
+  authorized by a recovery-shaped metadata and catalog (next sequences, no
+  workflow identity). The fixed policy is therefore an input of the statements.
+- A workflow-signed catalog must equal the policy's bridge list, so
+  `stable prepare` withdraws recovery-only bridges: the route lasts until the next
+  stable release. Until it ships, `install.sh` can report "trust rollback
+  refused" for new stable installs.
+
 ## Accepted limitations and alternatives
 
 Keyless signing removes recurring custody of a long-lived release signing key.

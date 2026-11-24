@@ -301,6 +301,13 @@ func prepare(t publicTrust, directory string) error {
 		return err
 	}
 	catalog := t.catalog
+	// A workflow-signed catalog must list exactly the delegated policy's bridges
+	// (VerifySnapshot), so bridges only a recovery-signed catalog authorized end
+	// with that snapshot. Withdrawing them here is deliberate and documented in
+	// docs/operations/recovery-bridge-ceremony.md.
+	if policy, delegated := t.snapshot.StablePolicy(); delegated {
+		catalog.Bridges = slices.Clone(policy.Bridges)
+	}
 	catalog.Sequence++
 	catalog.StableMetadataSHA256 = releaseidentity.Hash(metadataRaw)
 	catalog.StablePolicySHA256 = releaseidentity.Hash(t.material.StablePolicy)
