@@ -18,15 +18,19 @@ you do not want to start, then resume them deliberately. See
 
 ## Bootstrap whitespace and mail password upgrade notes
 
-Every bootstrap value and imported file, including the SMTP password
-(`HIKYO_MAIL_PASSWORD`, `HIKYO_MAIL_PASSWORD_FILE`), now has its leading and
-trailing whitespace trimmed, as does every later write. Stored values are not
+Every bootstrap value and the contents of every imported file, including the
+SMTP password (`HIKYO_MAIL_PASSWORD`, or the file named by
+`HIKYO_MAIL_PASSWORD_FILE`), now has its leading and trailing whitespace
+trimmed, as does every later write. A `_FILE` variable's path is not trimmed and
+is opened exactly as given. Stored values are not
 rewritten. A bootstrap value or imported file that is only whitespace is empty after trimming, so adoption refuses it; remove the variable or file, or give it a real value, and restart.
 
 During a mixed-version rollout, managed-configuration adoption fails closed with
-a seed disagreement whenever any bootstrap value or imported file carries
-leading or trailing whitespace, because old nodes seed the padded text and new
-nodes the trimmed text. Rollouts where no value is padded are unaffected.
+a seed disagreement if a bootstrap value or imported file other than the mail
+password carries leading or trailing whitespace, because old nodes can seed the
+padded text and new nodes the trimmed text. Releases that already trim the mail
+password seed the same value as this one, and rollouts where no value is padded
+are unaffected.
 Finish the rollout, or remove the padding from the environment and files first.
 
 For the mail password specifically: restoring an older revision re-publishes its
