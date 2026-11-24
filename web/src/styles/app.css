@@ -3500,6 +3500,12 @@ fieldset.field > legend {
   overflow-x: auto;
 }
 
+/* The wrapper is a keyboard stop (ui/TableScroll.tsx), so its ring is drawn
+   inside the box: a card or panel that clips overflow would cut an outward one. */
+.table-scroll:focus-visible {
+  outline-offset: calc(var(--ring-width) * -1);
+}
+
 /* Mobile: every data table (not the environment matrix, which owns its own
    compact handling) fills its scrolling container, drops to the dense type
    size and tighter cell padding, one shared rule instead of a per-page

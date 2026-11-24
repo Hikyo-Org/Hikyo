@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { grantOutcomeSummary } from '../api/access.ts';
 import { useDeliveryTargets } from '../api/deliveryTargets.ts';
@@ -40,6 +40,7 @@ import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { TabPanel, Tabs, type TabItem } from '../ui/Tabs.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import {
   type IsMintSubmitting,
   type MintBoundary,
@@ -145,6 +146,9 @@ export function accountsRefusalText(error: unknown): string {
 export const MachineAccess = gateSystemScope('machine-access', MachineAccessPage);
 
 export function MachineAccessPage() {
+  const accountsCaptionId = useId();
+  const leasesCaptionId = useId();
+  const providersCaptionId = useId();
   const params = useParams();
   const project: ProjectRef = {
     org: params['org'] ?? '',
@@ -451,9 +455,9 @@ export function MachineAccessPage() {
                 Create service account
               </Button>
             </div>
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={accountsCaptionId}>
             <table className="values__table machine__table">
-              <caption className="visually-hidden">
+              <caption id={accountsCaptionId} className="visually-hidden">
                 The project&apos;s service accounts. Credential values are never listed: a value is
                 displayed once, at mint.
               </caption>
@@ -494,7 +498,7 @@ export function MachineAccessPage() {
                 })}
               </tbody>
             </table>
-            </div>
+            </TableScroll>
             {accounts.length === 0 && !accountsQuery.isPending && !accountsQuery.isError ? (
               <p role="status">
                 No service accounts on this project yet. Create one above: a browser operator seeds
@@ -598,9 +602,9 @@ export function MachineAccessPage() {
                 Configure provider
               </Button>
             </div>
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={providersCaptionId}>
             <table className="values__table machine__table">
-              <caption className="visually-hidden">
+              <caption id={providersCaptionId} className="visually-hidden">
                 The project&apos;s dynamic-secret providers. The admin credential is never listed.
               </caption>
               <thead>
@@ -685,7 +689,7 @@ export function MachineAccessPage() {
                 ))}
               </tbody>
             </table>
-            </div>
+            </TableScroll>
             {providersQuery.isError ? (
               <p role="status">The providers could not be read.</p>
             ) : providers.length === 0 && !providersQuery.isPending ? (
@@ -728,9 +732,9 @@ export function MachineAccessPage() {
                 Configure a provider with a credential first: a lease is minted against one.
               </p>
             ) : null}
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={leasesCaptionId}>
             <table className="values__table machine__table">
-              <caption className="visually-hidden">
+              <caption id={leasesCaptionId} className="visually-hidden">
                 The project&apos;s dynamic-secret leases across every environment. No secret value is
                 listed.
               </caption>
@@ -817,7 +821,7 @@ export function MachineAccessPage() {
                 })}
               </tbody>
             </table>
-            </div>
+            </TableScroll>
             {unknownLeases === 0 ? null : (
               <p role="status" className="machine__hint">
                 {`${String(unknownLeases)} lease${unknownLeases === 1 ? '' : 's'} awaiting reconcile`}
