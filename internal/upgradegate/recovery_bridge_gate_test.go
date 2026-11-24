@@ -170,14 +170,14 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 			mismatched.SourceMigrations.Engine, mismatched.TargetMigrations.Engine = other, other
 			rawMismatch := bridge(mismatched)
 			catalogue(rawMismatch)
-			attempt("bridge for another engine", bundleWith(signed(rawMismatch)), "")
+			attempt("bridge for another engine", bundleWith(signed(rawMismatch)), "no authenticated upgrade route")
 
 			// Validly signed and catalogued, but its source is not the installed release.
 			wrongSource := statement
 			wrongSource.Source.Version = "0.9.9"
 			rawWrong := bridge(wrongSource)
 			catalogue(rawWrong)
-			attempt("bridge from a different source version", bundleWith(signed(rawWrong)), "")
+			attempt("bridge from a different source version", bundleWith(signed(rawWrong)), "no authenticated upgrade route")
 
 			// A properly signed, catalogued bridge plans a route and is refused later,
 			// at the operator evidence; nothing is written. TestRecoveryBridgeNeedsAttestation

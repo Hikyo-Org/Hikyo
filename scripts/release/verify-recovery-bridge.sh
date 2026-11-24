@@ -77,6 +77,7 @@ check_statement() {
 		 source_policy_sha256: $policy, target_policy_sha256: $policy,
 		 source_migrations: $s.migrations, target_migrations: $t.migrations,
 		 source_schema_sha256: $s.schema_sha256, target_schema_sha256: $t.schema_sha256, mode: "maintenance"}' 2>/dev/null) || expected=
+	check "$digest ($engine): the independent derivation produced a statement" test -n "$expected"
 	check "$digest ($engine): every field equals the independent derivation" equal "$(jq -S . "$statement")" "$expected"
 	check "$digest ($engine): source migrations are a strict prefix of the target's" jq -e '(.source_migrations.entries | length) < (.target_migrations.entries | length) and (.target_migrations.entries[:(.source_migrations.entries | length)] == .source_migrations.entries)' "$statement"
 	check "$digest ($engine): target is a newer stable release" jq -e '.target.sequence > .source.sequence and .source.profile == "stable/v1" and .target.profile == "stable/v1"' "$statement"
@@ -97,14 +98,14 @@ check_authorized() {
 # unexpected_files BASE NEW ADDED lists changed or new files that no recovery
 # re-authorization may touch (everything but metadata, catalog and added bridges).
 unexpected_files() {
-	(cd "$2" && find . -type f | sort) | while IFS= read -r file; do
+	(cd "$2" && find . ! -type d | sort) | while IFS= read -r file; do
 		cmp -s "$2/$file" "$1/$file" 2>/dev/null && continue
 		case $file in
 		./metadata.json | ./metadata.sigstore.json | ./catalog.json | ./catalog.sigstore.json) continue ;;
 		esac
 		for digest in $3; do
 			case $file in
-			./bridges/"$digest"/*) continue 2 ;;
+			./bridges/"$digest"/statement.json | ./bridges/"$digest"/statement.sigstore.json) continue 2 ;;
 			esac
 		done
 		printf '%s\n' "$file"
@@ -133,12 +134,12 @@ check_chain() {
 	recovery_pub="$new/$(jq -r '.recovery.public_key' "$new/root.json")"
 	unexpected=$(unexpected_files "$base" "$new" "$added")
 	dropped=$(dropped_files "$base" "$new" "$removed")
-	check 'only metadata, catalog, their signatures and the added bridge directories changed' equal "$unexpected" ''
+	check 'only metadata, catalog, their signatures and the two files of each added bridge changed' equal "$unexpected" ''
+	check 'the new tree holds only regular files and directories (no symlinks)' equal "$(find "$new" ! -type f ! -type d)" ''
 	check 'no base trust file was removed except revoked bridge directories' equal "$dropped" ''
 	check 'stable-policy.json is byte-identical (statements bind its digest)' cmp -s "$base/stable-policy.json" "$new/stable-policy.json"
 	check 'stable-policy.sigstore.json is byte-identical' cmp -s "$base/stable-policy.sigstore.json" "$new/stable-policy.sigstore.json"
 	check 'root.json is byte-identical' cmp -s "$base/root.json" "$new/root.json"
-	check 'the recovery public key is byte-identical' cmp -s "$base/$(jq -r '.recovery.public_key' "$base/root.json")" "$recovery_pub"
 	check 'metadata signature verifies with the pinned recovery key' verify_blob "$new/metadata.json" "$new/metadata.sigstore.json"
 	check 'catalog signature verifies with the pinned recovery key' verify_blob "$new/catalog.json" "$new/catalog.sigstore.json"
 	check 'metadata sequence is the base sequence plus one' equal "$(jq '.sequence' "$new/metadata.json")" "$(($(jq '.sequence' "$base/metadata.json") + 1))"
@@ -150,9 +151,6 @@ check_chain() {
 	check 'catalog differs from the base only in sequence, metadata digest and bridges' equal \
 		"$(jq -S 'del(.sequence, .stable_metadata_sha256, .bridges)' "$new/catalog.json")" \
 		"$(jq -S 'del(.sequence, .stable_metadata_sha256, .bridges)' "$base/catalog.json")"
-	check 'catalog bridges are the base bridges plus the added minus the removed' equal \
-		"$(jq -c --argjson a "$(json_list $added)" --argjson r "$(json_list $removed)" '((.bridges + $a) - $r) | sort' "$base/catalog.json")" \
-		"$(jq -c '.bridges | sort' "$new/catalog.json")"
 	check 'catalog binds the new metadata digest' equal "$(jq -r '.stable_metadata_sha256' "$new/catalog.json")" "$(sha256_of "$new/metadata.json")"
 	check 'catalog binds the unchanged stable policy digest' equal "$(jq -r '.stable_policy_sha256' "$new/catalog.json")" "$(sha256_of "$new/stable-policy.json")"
 	check 'every catalogued bridge has a directory and no directory is uncatalogued' equal "$(find "$new/bridges" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | tr '\n' ' ')" "$(jq -r '.bridges[]' "$new/catalog.json" | sort | tr '\n' ' ')"

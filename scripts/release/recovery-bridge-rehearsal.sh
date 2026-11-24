@@ -167,6 +167,70 @@ cp "$scratch/listed-base-policy.json" "$scratch/listed-base/stable-policy.json"
 expect_fail 'the stable policy does not list it' 'a base policy that lists a statement' \
 	"$script_dir/verify-recovery-bridge.sh" unsigned "$scratch/listed-base" "$scratch/statements" "$proofs/rel100" "$proofs/rel110"
 
+step '6b. signed edits and structural tamperings: each is refused by its own integrity check'
+# edit_t FILE JQ...: edit a file in the scratch copy; resign_t KEY: bind the catalog to the
+# metadata digest and sign both with KEY, so the signatures are valid and only integrity can refuse.
+edit_t() {
+	file=$1
+	shift
+	jq "$@" "$scratch/t/$file" >"$scratch/t/$file.tmp"
+	mv "$scratch/t/$file.tmp" "$scratch/t/$file"
+}
+resign_t() {
+	jq --arg d "$(sha256_of "$scratch/t/metadata.json")" '.stable_metadata_sha256 = $d' "$scratch/t/catalog.json" >"$scratch/t/catalog.tmp"
+	mv "$scratch/t/catalog.tmp" "$scratch/t/catalog.json"
+	for name in metadata catalog; do
+		"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+			--key "$1" --bundle "$scratch/t/$name.sigstore.json" "$scratch/t/$name.json" >/dev/null 2>&1 </dev/null
+	done
+}
+proposal_fails() { # PATTERN DESCRIPTION
+	expect_fail "$1" "$2" "$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/t" "$proofs/rel100" "$proofs/rel110"
+	rm -rf "$scratch/t"
+}
+recovery_key=$scratch/key/cosign.key
+cp -R "$scratch/new" "$scratch/t"
+edit_t catalog.json '.nightly_policies += ["00000000000000000000000000000000000000000000000000000000000000bb"]'
+resign_t "$recovery_key"
+proposal_fails 'catalog differs from the base only' 'a validly signed catalog with an extra nightly policy'
+cp -R "$scratch/new" "$scratch/t"
+edit_t metadata.json '.surprise = 1'
+resign_t "$recovery_key"
+proposal_fails 'metadata differs from the base only' 'a validly signed metadata with an extra field'
+cp -R "$scratch/new" "$scratch/t"
+edit_t metadata.json '.sequence += 1'
+resign_t "$recovery_key"
+proposal_fails 'metadata sequence is the base sequence plus one' 'a validly signed metadata that skips a sequence'
+cp -R "$scratch/new" "$scratch/t"
+edit_t catalog.json '.sequence += 1'
+resign_t "$recovery_key"
+proposal_fails 'catalog sequence is the base sequence plus one' 'a validly signed catalog that skips a sequence'
+cp -R "$scratch/new" "$scratch/t"
+# shellcheck disable=SC2016
+edit_t catalog.json --arg d "$legacy_first" '.bridges -= [$d]'
+resign_t "$recovery_key"
+proposal_fails 'every catalogued bridge has a directory' 'a validly signed catalog that drops a legacy bridge but keeps its files'
+cp -R "$scratch/new" "$scratch/t"
+# shellcheck disable=SC2016
+edit_t catalog.json --arg d "$legacy_first" '.bridges -= [$d]'
+rm -rf "$scratch/t/bridges/$legacy_first"
+resign_t "$recovery_key"
+proposal_fails 'no base trust file was removed' 'a legacy bridge dropped from the catalog with its files removed'
+cp -R "$scratch/new" "$scratch/t"
+rm "$scratch/t/stable-trusted-root.json"
+proposal_fails 'no base trust file was removed' 'a base trust file deleted from the tree'
+cp -R "$scratch/new" "$scratch/t"
+cp "$scratch/key/other/cosign.pub" "$scratch/t/$(jq -r '.recovery.public_key' "$scratch/t/root.json")"
+resign_t "$scratch/key/other/cosign.key"
+proposal_fails 'only metadata, catalog' 'a swapped recovery key with root.json unchanged'
+cp -R "$scratch/new" "$scratch/t"
+rm "$scratch/t/$primary_pub"
+ln -s "$scratch/base/$primary_pub" "$scratch/t/$primary_pub"
+proposal_fails 'no symlinks' 'a primary key replaced by a symlink to identical bytes'
+cp -R "$scratch/new" "$scratch/t"
+printf 'x' >"$scratch/t/bridges/$first/extra.txt"
+proposal_fails 'only metadata, catalog' 'an extra file in a new bridge directory'
+
 step '7. revocation: a new recovery-signed snapshot drops the new bridges, keeps the legacy ones'
 # A bridge the stable policy lists needs a policy rotation, so revoke refuses it.
 if "$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/refused-revoke" "$legacy_first" >/dev/null 2>&1; then

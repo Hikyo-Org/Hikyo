@@ -93,9 +93,11 @@ immutable status afterward; it does not alter repository settings.
 
 **Owner decisions 2026-11-24 on #1422.** Existing v1.0.0 installations have no
 ordinary edge to v1.1.0, so the owner chose a recovery-signed bridge per engine
-(option B). Custody and review:
+(option B). Items marked **pending owner re-acceptance** are not settled: see
+the constraints below and the owner items on #1561. Custody and review:
 
-- A new offline or hardware key `recovery-2` is rotated in first. The
+- **Pending owner re-acceptance (R1 or R2):** a new offline or hardware key
+  `recovery-2` is rotated in first. The
   `recovery-1` exception is not extended to bridges. The owner holds the key
   alone and every signing is witnessed and logged
   ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
@@ -103,8 +105,10 @@ ordinary edge to v1.1.0, so the owner chose a recovery-signed bridge per engine
   cosign and sha256 only, no shared code with the authoring tool) re-derives every
   statement field from the published declarations and compares bytes and digests.
   It is the merge gate for the trust pull request.
-- Revocation is a new recovery-signed snapshot that drops the bridge
-  (`recovery-bridge.sh revoke`). A rehearsal with a throwaway key and a test root
+- **Pending owner re-acceptance:** revocation is a new recovery-signed snapshot
+  that drops the bridge from the catalog, not from the policy, which is never
+  re-signed (`recovery-bridge.sh revoke`). It binds only instances whose floor
+  advanced (see below). A rehearsal with a throwaway key and a test root
   precedes the real ceremony, and no other stable-policy change may be pending.
 
 **Constraints found while building it.**

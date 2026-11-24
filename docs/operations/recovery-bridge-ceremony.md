@@ -73,6 +73,7 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
 0. (Online) Confirm nothing else is pending (expect no PRs and no commits listed):
 
    ```sh
+   # --json files lists only each PR's first 100 files; also scan the PR titles by eye.
    gh pr list -R Hikyo-Org/Hikyo -L 500 --state open --json number,files --jq '.[] | select(any(.files[]?; .path | test("release/trust|stable-policy|internal/releasetrust"))) | .number'
    git fetch origin dev
    git log --oneline "$(git rev-parse HEAD)"..origin/dev -- release/trust internal/releasetrust
@@ -143,7 +144,7 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
 8. (Online) Hand over only public files: copy `metadata.json`,
    `metadata.sigstore.json`, `catalog.json`, `catalog.sigstore.json` and `bridges/`
    from `$WORK/new-trust` into a branch of `release/trust/` and open a pull
-   request. A second person re-runs step 6 against that branch, using the
+   request. A second person first runs step 1 (their own download of the proofs), then re-runs step 6 against that branch, using the
    pre-ceremony tree from the base branch as the base and the step 1 proofs
    (`$WORK/rel-1.0.0`, `$WORK/rel-1.1.0`, downloaded again independently):
 
