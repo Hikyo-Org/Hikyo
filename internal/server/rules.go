@@ -118,6 +118,8 @@ func (a *API) ListProjectRules(ctx context.Context, req apigen.ListProjectRulesR
 }
 
 func (a *API) ResolveAccess(ctx context.Context, req apigen.ResolveAccessRequestObject) (apigen.ResolveAccessResponseObject, error) {
+	// An empty `?key=` never gets here: the contract validator refuses it with
+	// 400 (the ID schema's minLength), as for every ID-typed query parameter.
 	var keyID string
 	if req.Params.Key != nil {
 		keyID = *req.Params.Key
