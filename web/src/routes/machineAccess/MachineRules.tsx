@@ -11,15 +11,6 @@ import { ALL, envName, newRule, type Rule, type World } from '../accessRules/mod
 import { RuleSummary } from '../accessRules/parts.tsx';
 import { RuleEditorDialog } from '../accessRules/RuleEditorDialog.tsx';
 
-/**
- * A service account's access rules (member-access-rules ADR D11): its rule
- * cards, and the Members rule editor for its class. A machine rule names this
- * project only and never limits keys. A workload rule lists its
- * environments; an automation rule may also cover environments added later.
- *
- * A save that makes plaintext newly reachable takes one passkey
- * reauthentication per such environment (see `saveRule`).
- */
 // ceremonyRefusalText speaks of codes and disclosures; a rule save uses a passkey only.
 function reauthText(error: unknown): string {
   if (error instanceof Error && error.name === 'NotAllowedError') return 'The passkey prompt was dismissed or timed out.';
@@ -29,6 +20,15 @@ function reauthText(error: unknown): string {
   return ceremonyRefusalText(error);
 }
 
+/**
+ * A service account's access rules (member-access-rules ADR D11): its rule
+ * cards, and the Members rule editor for its class. A machine rule names this
+ * project only and never limits keys. A workload rule lists its
+ * environments; an automation rule may also cover environments added later.
+ *
+ * A save that makes plaintext newly reachable takes one passkey
+ * reauthentication per such environment (see `saveRule`).
+ */
 export function MachineRules({
   org,
   project,
