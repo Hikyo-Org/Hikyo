@@ -218,7 +218,7 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	}
 	defer db.Close()
 
-	svc := &service.Backup{DB: db, Options: options}
+	svc := &service.Backup{DB: db, Options: options, Log: log}
 	diagnostics.Printf(ctx, 2, "backup: recipients=%d passphrase=%t", len(options.Recipients), options.Passphrase != "")
 	diagnostics.Printf(ctx, 1, "backup: exporting and encrypting consistent snapshot")
 	exportDone := diagnostics.Time(ctx, "backup snapshot export and encryption")
