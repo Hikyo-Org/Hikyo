@@ -234,7 +234,8 @@ An action approval is a server-side record:
 - the resolved state at refusal (see *Resolved state*);
 - the reauthentication intent(s) the action will also consume (see *The
   combined ceremony*);
-- the server-authored summary;
+- the server-authored summary and the complete affected list (see *The
+  server-authored summary*);
 - the proof it requires (code or passkey, or passkey only);
 - state, `requested_at`, `expires_at`, and on transition the approver's
   factor class and timestamps.
@@ -626,8 +627,8 @@ with a new pending approval. This is server-side only, so nothing changes on
 the wire. Capturing the copy entry ids needs the copy reordering under
 *Ordering inside operations*.
 
-**Why the retry must be identical.** The human approves the summary of one
-action. If a changed retry, or an unchanged retry against changed state,
+**Why the retry must be identical.** The human approves the summary and
+complete affected list of one action. If a changed retry, or an unchanged retry against changed state,
 could consume the approval, an agent could obtain approval for a harmless
 action and spend it on a harmful one with the same operation and target. The
 digest binds the request and its resolved ids, and the resolved state binds
@@ -647,11 +648,56 @@ set: for example "Publish 5 changes (3 selected, 2 added by key-group
 closure) to production (env_…) in project payments (prj_…)", or "Rotate the
 instance master key". Proposed (Open item 29): next to each count, the
 summary lists what it counts. Publish and copy list the affected key names
-with their ids; a mint lists the service account and the environment ids the
-credential can reach; a revoke names the credential id. Each list is capped,
-with "and N more" for the rest. A summary never contains secret material. An operation
-with no summary template gets the generic form: operation, target ids and the
-full digest.
+with their ids; a mint lists the service account and both the current and
+the historical environment ids the credential can reach (*Resolved state*);
+a revoke names the credential id. Each list in the
+summary is capped, with "and N more" for the rest, so the summary is only a
+preview. A summary never contains secret material. An operation with no
+summary template gets the generic form: operation, target ids and the full
+digest. Its target ids are not capped, so they are already the whole list
+and do not appear again in the complete affected list.
+
+**The complete affected list.** Proposed (Open item 29). A capped preview
+alone would let an agent order a copy or publish so that a sensitive key
+falls after the shown names, where "and N more" hides it. So the server
+also stores, with every pending approval, the complete affected list: every
+entry each capped list counts, each id quoted with its name as of refusal.
+The server generates it from the same stored inputs as the summary, not
+from a separate query: the digest (the resolved ids in `targets` and the
+canonical request, for example publish's `version_ids`, self-config's
+`plan_digest` or `preview_token`, or a policy write's replacement body) and
+the stored resolved state (for example publish's closed set). It serves
+through the approval read (*Approving*). The approval binds the ids, through
+the digest and the resolved-state comparison at consumption (*Resolved
+state*); the names are as of refusal and are display only.
+
+Every surface that accepts a proof shows the complete list before it takes
+one: the browser approval page, the CLI, the inline ceremony in the web
+sub-issue's existing dialogs (#1535), and any approve-by-id command. A
+surface that reaches an approval later, for example after a non-interactive
+CLI printed only the summary and approval id (Open item 10), shows the
+complete list then.
+
+- The browser approval page shows the complete list in full, never
+  truncated, next to the approve control. Proposed (Open item 10): where a
+  passkey is not required, the page also accepts the authenticator code, so
+  an account whose only possession factor is TOTP can approve a list the
+  CLI will not print inline.
+- The CLI prints the complete list in full before the code prompt. Proposed
+  (Open item 10), as a reading of Decision 6's "when no code is possible":
+  where the CLI will not print the list inline (a list longer than a bound
+  it sets, or output it cannot show in full), it takes no code and sends
+  the human to the browser approval page, as when a passkey is required.
+
+This holds only where the server or an unmodified client controls the
+display. The server cannot know what a client showed. The browser page
+shows what the server sends, and an unmodified CLI prints the complete
+list, but an agent that controls the human's channel can relay only the
+preview, or anything else, and an inline code does not bind to the action
+(*Approving*, what an inline code proves; Open item 12).
+
+Every rendering rule for the summary (Open item 24) applies to the complete
+list too.
 
 Names are user-controlled text, so the summary shows them quoted next to their
 immutable ids. Entity names refuse control characters and the bidi
@@ -676,15 +722,20 @@ item 29).*
 
 Per the decision, the human approves through new endpoints; the existing
 routes do not change. The minimum set is: read one approval (state, summary,
-accepted proofs); approve with an authenticator code; begin and finish a
-passkey assertion for one approval; and the browser approval page. A decline
+complete affected list, accepted proofs); approve with an authenticator
+code; begin and finish a passkey assertion for one approval; and the browser
+approval page. A decline
 endpoint is added only if Open item 11 adopts decline. The paths belong to
 the server sub-issue (Open item 10). What the page offers an account with no
 possession factor is Open item 6.
 
 - **Inline code first** (owner decision). Where the account has a confirmed
   authenticator and a passkey is not required, the CLI prints the summary and
-  asks for a code. The code is spent with the existing replay rule
+  the complete affected list and asks for a code. Proposed (Open item 10),
+  as a reading of Decision 6's "when no code is possible": a list the CLI
+  will not print inline sends the human to the browser page instead, which
+  also accepts the code where a passkey is not required (*The complete
+  affected list*). The code is spent with the existing replay rule
   (`ConsumeReauthEvidence`, `AdvanceTOTPStep` in `internal/service/reauth.go`).
 - **What an inline code proves, plainly.** A TOTP code does not bind to the
   action: only WebAuthn can bind its challenge to a decision (human-auth ADR
@@ -986,12 +1037,22 @@ operation.
   a window is consumable only together with its approval. Open item 3.
 - **Digest confusion and state drift:** see *The request digest* (names
   resolve to ids in `targets`) and *Resolved state*.
+- **Hiding an entry past the cap.** An agent that controls the request can
+  order its keys so a sensitive one falls after the summary's cap. On the
+  browser page and in an unmodified CLI, the human sees the complete
+  affected list before giving a proof, and the approval binds every id
+  (*The complete affected list*). An agent that controls the human's channel
+  can still show only the preview: that is the inline-code self-approval
+  threat (*Approving*; Open item 12). A residual risk remains even with the
+  full list shown: one entry buried in a very long list is easy to miss, and
+  the list can only expose it, not make the human read it.
 - **Approval-page spoofing.** Proposed: the CLI builds the page URL from its
   configured origin. A passkey assertion is bound to the relying-party id, so
   a look-alike origin cannot obtain a usable one. A phished code is useless
   without the human's session, because approving requires authenticating as
-  the requesting principal. Names in the summary are quoted next to their ids,
-  and control and format characters are shown as escapes (Open item 24).
+  the requesting principal. Names in the summary and in the complete
+  affected list are quoted next to their ids, and control and format
+  characters are shown as escapes (Open item 24).
 - **Race between approve and consume.** Both transitions are compare-and-set.
   Expiry is checked when consuming, with the clock read at that moment, as
   `requireCeremony` reads `auth.now()` at consumption rather than earlier
@@ -1308,9 +1369,14 @@ record proposes. Each needs the owner's confirmation.
 10. **Endpoints and the CLI flow.** Endpoint paths; how the CLI learns a
     browser approval completed (polling the read endpoint, or the human
     pressing Enter); what a non-interactive CLI does (proposed: print the
-    summary and approval id and exit with the existing refusal exit code);
-    and the proposed rule that the CLI opens the page only at its configured
-    origin.
+    summary and approval id and exit with the existing refusal exit code,
+    so the surface that later takes the proof shows the complete affected
+    list); the proposed routing rule that a CLI which will not print the
+    complete affected list inline takes no code and sends the human to the
+    browser page, and the bound that triggers it; the proposed rule that the
+    page accepts the authenticator code where a passkey is not required
+    (*The complete affected list*); and the proposed rule that the CLI opens
+    the page only at its configured origin.
 11. **Decline.** The epic lists `refused` as an audit event. Proposed: an
     explicit decline, through its own endpoint, moves a pending approval to
     the terminal `refused` state. Failed code attempts do not; the factor
@@ -1387,7 +1453,8 @@ record proposes. Each needs the owner's confirmation.
     a machine's staging publish refused?
 24. **Summary rendering.** Proposed under *The server-authored summary*:
     escape C0 and C1 controls (including ESC), bidi and other format
-    characters, and render as plain text. Should service-account names also
+    characters, and render as plain text, in the summary and in the
+    complete affected list. Should service-account names also
     gain the `checkText` checks?
 25. **Resolved-state binding.** Proposed under *Resolved state*, with the
     copy reordering under *Ordering inside operations*.
@@ -1439,6 +1506,7 @@ record proposes. Each needs the owner's confirmation.
   operation already authorizes before durable work, and a covered copy runs
   in the order under *Ordering inside operations*.
 - Web sub-issue (#1535): policy screen with the machine warning, inline
-  ceremony in existing dialogs.
+  ceremony in existing dialogs, which show the complete affected list before
+  taking a proof.
 - User docs in the implementation pull requests: `cli-reference.mdx`,
   `configuration.mdx` and the feature page, per AGENTS.md.
