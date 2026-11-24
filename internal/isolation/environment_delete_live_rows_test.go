@@ -10,6 +10,9 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // #1420: a minted lease, an issued certificate, an adapter target or a dynamic
@@ -296,6 +299,9 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 			t.Errorf("%s still has %d rows after the apply deleted the environment", table, got)
 		}
 	}
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.environment_deleted' AND project_id='"+project+"' AND CAST(payload AS TEXT) LIKE '%\"purged_certificates\":6%'"); got != 1 {
+		t.Errorf("apply's environment_deleted events recording 6 purged certificates = %d, want 1", got)
+	}
 }
 
 // One delete reports every blocking kind together: errors.Is matches each and
@@ -309,10 +315,14 @@ func TestEnvironmentDeleteReportsEveryBlockingKind(t *testing.T) {
 		seedCertificateRows(t, db, f, time.Now().UTC().Truncate(time.Second))
 		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_`+project+`','org_a','`+project+`','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
 		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO ssh_cas (id,org_id,project_id,environment_id,name,state,authority_principal_id,created_at) VALUES ('ssh_`+project+`','org_a','`+project+`','`+f.env+`','ca','active','usr_alice',`+ts+`)`)
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
 		detail := safeError(err)
-		for _, want := range []error{service.ErrEnvironmentHasLiveLease, service.ErrEnvironmentHasLiveCertificate, service.ErrEnvironmentHasAdapterTargets} {
+		if !strings.Contains(detail, "live SSH CA") {
+			t.Errorf("combined refusal %q lacks the SSH CA kind", detail)
+		}
+		for _, want := range []error{service.ErrEnvironmentHasLiveLease, service.ErrEnvironmentHasLiveCertificate, service.ErrEnvironmentHasAdapterTargets, store.ErrSSHLiveCA} {
 			if !errors.Is(err, want) {
 				t.Fatalf("combined refusal %v does not match %v", err, want)
 			}
@@ -324,6 +334,62 @@ func TestEnvironmentDeleteReportsEveryBlockingKind(t *testing.T) {
 		}
 		if got := count(t, db, "pki_certificates", f); got != 6 {
 			t.Errorf("certificates after the combined refusal = %d, want 6 (terminal purge rolled back)", got)
+		}
+	})
+}
+
+// Only terminal certificates plus a tombstoned adapter target and a live SSH CA:
+// the certificate purge runs before the refusal and must be rolled back with the
+// transaction, so every terminal row is still present afterwards.
+func TestEnvironmentDeleteRefusalRollsBackCertificatePurge(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedDefinitionsProject(t, db, "rollback", true)
+		project := string(f.project)
+		now := time.Now().UTC().Truncate(time.Second)
+		seedCertificateRows(t, db, f, now)
+		execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed') AND project_id='`+project+`'`)
+		execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE state='revoked' AND project_id='`+project+`'`)
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_`+project+`','org_a','`+project+`','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
+		for _, withSSH := range []bool{false, true} {
+			if withSSH {
+				execRaw(t, db, `INSERT INTO ssh_cas (id,org_id,project_id,environment_id,name,state,authority_principal_id,created_at) VALUES ('ssh_`+project+`','org_a','`+project+`','`+f.env+`','ca','active','usr_alice',`+ts+`)`)
+			}
+			envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+			err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+			if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || errors.Is(err, store.ErrSSHLiveCA) != withSSH {
+				t.Fatalf("delete (ssh=%v) = %v", withSSH, err)
+			}
+			if got := count(t, db, "pki_certificates", f); got != 6 {
+				t.Fatalf("terminal certificates after the refusal (ssh=%v) = %d, want 6", withSSH, got)
+			}
+		}
+	})
+}
+
+// The purge DELETE repeats the terminal predicate, so a live certificate that
+// appears after the service's live check is never purged. Run the generated
+// query directly with a live row present.
+func TestPKIPurgeQueryKeepsLiveCertificates(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedDefinitionsProject(t, db, "purgepred", true)
+		project := string(f.project)
+		now := time.Now().UTC().Truncate(time.Second)
+		seedCertificateRows(t, db, f, now)
+		var purged int64
+		var err error
+		if db.Engine() == store.EngineSQLite {
+			purged, err = sqlitegen.New(db.SQLiteWrite()).PKIPurgeTerminalEnvironmentCertificates(t.Context(), sqlitegen.PKIPurgeTerminalEnvironmentCertificatesParams{
+				ChainOrg: "org_a", ChainProject: project, ChainEnv: f.env, Now: store.CanonTime(now).Format("2006-01-02T15:04:05.000000Z")})
+		} else {
+			purged, err = pggen.New(db.PG()).PKIPurgeTerminalEnvironmentCertificates(t.Context(), pggen.PKIPurgeTerminalEnvironmentCertificatesParams{
+				ChainOrg: "org_a", ChainProject: project, ChainEnv: f.env, Now: pgtype.Timestamptz{Time: now, Valid: true}})
+		}
+		if err != nil || purged != 2 {
+			t.Fatalf("purged %d terminal rows, err %v; want the expired and failed rows only", purged, err)
+		}
+		if got := count(t, db, "pki_certificates", f); got != 4 {
+			t.Fatalf("live certificates after the purge = %d, want 4 (issued, issuing, renewed, unexpired revoked)", got)
 		}
 	})
 }

@@ -683,6 +683,21 @@ func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, re
 // history is purged instead (#1420, owner decision B 2026-11-23).
 var ErrPKILiveCertificate = fmt.Errorf("%w: the environment still has a live certificate; revoke it and let it expire first", domain.ErrPKICertificateRetention)
 
+// ErrPKICertificateAppeared is the environment-delete backstop: a certificate
+// row survived the purge, normally because one was issued after the live check
+// ran. It still matches domain.ErrPKICertificateRetention.
+var ErrPKICertificateAppeared error = pkiCertificateAppearedError{}
+
+type pkiCertificateAppearedError struct{}
+
+func (pkiCertificateAppearedError) Error() string {
+	return "store: a certificate remains in the environment"
+}
+func (pkiCertificateAppearedError) Unwrap() error { return domain.ErrPKICertificateRetention }
+func (pkiCertificateAppearedError) SafeDetail() string {
+	return "A certificate in this environment is still live or was issued while the delete ran. Revoke it and let it expire, then delete the environment again."
+}
+
 func (r pkiQueries) PurgeEnvironment(ctx context.Context, p authz.Proof, now time.Time) (int, error) {
 	chain, err := authz.Verify(p, authz.StorePKICertificatesPurgeEnvironment, r.tok)
 	if err != nil {

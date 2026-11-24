@@ -903,7 +903,7 @@ func (r sqliteEnvs) Delete(ctx context.Context, p authz.Proof) error {
 		return err
 	}
 	if count != 0 {
-		return domain.ErrPKICertificateRetention
+		return ErrPKICertificateAppeared
 	}
 	return affected(r.q.DeleteEnvironment(ctx, sqlitegen.DeleteEnvironmentParams{
 		OrgID:     string(chain.Org),
@@ -1660,7 +1660,7 @@ func (r pgEnvs) Delete(ctx context.Context, p authz.Proof) error {
 		return err
 	}
 	if count != 0 {
-		return domain.ErrPKICertificateRetention
+		return ErrPKICertificateAppeared
 	}
 	return affected(r.q.DeleteEnvironment(ctx, pggen.DeleteEnvironmentParams{
 		ChainOrgID:     string(chain.Org),
