@@ -814,7 +814,8 @@ func buildImpactPreview(ctx context.Context, r store.Repos, p authz.Proof, seale
 					if err != nil {
 						return ImpactPreview{}, err
 					}
-					value := string(plain)
+					// Publish normalizes the draft when it opens it; show that value.
+					value := schema.Normalize(string(plain))
 					change.After = &value
 				}
 			}

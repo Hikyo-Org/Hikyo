@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -77,11 +76,21 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 		return nil, err
 	}
 
-	values := maps.Clone(c.ManagedInputs)
-	delete(values, "HIKYO_TRUSTED_PROXY_CIDRS")
-	if values == nil {
-		values = make(map[string]string)
+	// schema-model.md trims every write path before validation; the seed is
+	// the bootstrap write path for these project cells (#1492). config is a
+	// leaf package, so strings.TrimSpace stands in for schema.Normalize.
+	values := make(map[string]string, len(c.ManagedInputs))
+	// File paths are not project values, so only their imported contents trim.
+	for key, value := range c.ManagedInputs {
+		if !strings.HasSuffix(key, "_FILE") {
+			value = strings.TrimSpace(value)
+		}
+		if value == "" {
+			return nil, fmt.Errorf("%s must not be empty or whitespace-only", key)
+		}
+		values[key] = value
 	}
+	delete(values, "HIKYO_TRUSTED_PROXY_CIDRS")
 	if values["HIKYO_UPDATE_CHANNEL"] == "" {
 		values["HIKYO_UPDATE_CHANNEL"] = c.UpdateChannel
 		if values["HIKYO_UPDATE_CHANNEL"] == "" {
@@ -136,12 +145,11 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 		if err != nil {
 			return nil, fmt.Errorf("%s: cannot import a regular file of at most 65536 bytes", source.file)
 		}
+		content = strings.TrimSpace(content)
+		if content == "" {
+			return nil, fmt.Errorf("%s must name a nonempty file", source.file)
+		}
 		values[source.value] = content
-	}
-	// schema-model.md trims every write path; the seed is the bootstrap write path (#1492).
-	// config is a leaf package, so this is schema.Normalize inlined.
-	if password, ok := values["HIKYO_MAIL_PASSWORD"]; ok {
-		values["HIKYO_MAIL_PASSWORD"] = strings.TrimSpace(password)
 	}
 	return values, nil
 }
