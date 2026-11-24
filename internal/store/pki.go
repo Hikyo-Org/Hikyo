@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 // Private-PKI request-path store (#154, docs/adr/pki.md). Every method is
@@ -211,6 +212,12 @@ type PKIRepo interface {
 	ReleaseRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error)
 	RevokeCertificate(ctx context.Context, p authz.Proof, id, reason string, at time.Time) (bool, error)
 	IssuerForSigning(ctx context.Context, p authz.Proof, id string) (PKIIssuer, []byte, uint32, error)
+	// PurgeEnvironment deletes the proof's environment's terminal certificate
+	// history (failed, expired, or past not_after) as part of the environment
+	// delete and returns how many rows it removed. It is a *LiveRowsError
+	// wrapping ErrPKILiveCertificate while a certificate is live (the
+	// CountLiveCertificates definition), which keeps its CRL entry.
+	PurgeEnvironment(ctx context.Context, p authz.Proof, now time.Time) (int, error)
 }
 
 // PKIRevokedEntry is one serial a CRL lists.
@@ -669,4 +676,44 @@ func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, re
 		err = r.db.pkiStoreQueries().pkiBumpCertificateRevocation(ctx, id)
 	}
 	return changed, err
+}
+
+// ErrPKILiveCertificate refuses an environment delete while a certificate in it
+// is still live: its row backs the CRL entry of a revoked serial. Terminal
+// history is purged instead (#1420, owner decision B 2026-11-23).
+var ErrPKILiveCertificate = fmt.Errorf("%w: the environment still has a live certificate; revoke it and let it expire first", domain.ErrPKICertificateRetention)
+
+// ErrPKICertificateAppeared is the environment-delete backstop: a certificate
+// row survived the purge, normally because one was issued after the live check
+// ran. It still matches domain.ErrPKICertificateRetention.
+var ErrPKICertificateAppeared error = pkiCertificateAppearedError{}
+
+type pkiCertificateAppearedError struct{}
+
+func (pkiCertificateAppearedError) Error() string {
+	return "store: a certificate remains in the environment"
+}
+func (pkiCertificateAppearedError) Unwrap() error { return domain.ErrPKICertificateRetention }
+func (pkiCertificateAppearedError) SafeDetail() string {
+	return "A certificate in this environment is still live or was issued while the delete ran. Revoke it and let it expire, then delete the environment again."
+}
+
+func (r pkiQueries) PurgeEnvironment(ctx context.Context, p authz.Proof, now time.Time) (int, error) {
+	chain, err := authz.Verify(p, authz.StorePKICertificatesPurgeEnvironment, r.tok)
+	if err != nil {
+		return 0, err
+	}
+	if chain.Env == "" {
+		return 0, ErrNotFound
+	}
+	q := r.db.pkiStoreQueries()
+	live, err := q.pkiListLiveEnvironmentCertificateIDs(ctx, chain, now, LiveRowsLimit+1)
+	if err != nil {
+		return 0, err
+	}
+	if len(live) > 0 {
+		return 0, newLiveRowsError(ErrPKILiveCertificate, live)
+	}
+	n, err := q.pkiPurgeTerminalEnvironmentCertificates(ctx, chain, now)
+	return int(n), err
 }
