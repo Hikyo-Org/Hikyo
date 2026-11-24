@@ -2,6 +2,8 @@
 
 Work: PR 1 of `docs/adr/lint-analysis-driver.md` (branch `dunky13/lint-vettool-driver`).
 
+**Status (2026-11-23): closed.** `redactfmt` was narrowed in #1468 and `handles` is covered by a reviewed per-file inventory in #1488 (owner decision 2026-11-23, option 1). `strictDeferred`, the ceiling and `deferred_sites.json` no longer exist; the text below is the historical record of the deferral.
+
 ## Why this exists
 
 The vet driver analyzes the in-package test variant of every package. The old go/packages harness kept one variant per package path (the production one), so it never saw in-package `_test.go` files. Two analyzers, `handles` and `redactfmt`, report many sites there. Per the owner's scope decision (option A), PR 1 ships these two analyzers in the vet driver for every context but does not gate on those sites yet.
