@@ -28,7 +28,7 @@ func TestCheckPostgresVersion(t *testing.T) {
 		t.Errorf("pre-10 version formatted wrongly: %v", err)
 	}
 	err := CheckPostgresVersion("170009")
-	if want := "unsupported PostgreSQL server version 17.9 (server_version_num 170009); Hikyo requires PostgreSQL 18 or later (server_version_num 180000)"; !strings.Contains(err.Error(), want) {
+	if want := "unsupported PostgreSQL server version 17.9 (server_version_num 170009); Hikyo requires PostgreSQL 18 or later (server_version_num 180000)"; err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("message = %v, want it to contain %q", err, want)
 	}
 }

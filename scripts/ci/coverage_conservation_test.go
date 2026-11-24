@@ -125,9 +125,6 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeDynamicRenewalFixture(workflow.Jobs["isolation_shard"]); err != nil {
 		return err
 	}
-	if err := normalizeOldPostgresFixture(workflow.Jobs); err != nil {
-		return err
-	}
 	if err := normalizeFlociEmulatorAddition(workflow.Jobs["isolation_shard"]); err != nil {
 		return err
 	}
