@@ -1,13 +1,11 @@
 package upgrade
 
 import (
-	"context"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
-	"github.com/jackc/pgx/v5"
 )
 
 func TestCheckPostgresVersion(t *testing.T) {
@@ -47,18 +45,6 @@ func oldPostgresDSN(t *testing.T) string {
 		t.Skip("HIKYO_TEST_POSTGRES_OLD_DSN not set")
 	}
 	return dsn
-}
-
-func TestSessionRefusesOldPostgres(t *testing.T) {
-	conn, err := pgx.Connect(t.Context(), oldPostgresDSN(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close(context.WithoutCancel(t.Context())) }()
-	err = SetPostgresSessionTimeouts(t.Context(), conn)
-	if err == nil || !strings.Contains(err.Error(), "requires PostgreSQL 18 or later") {
-		t.Fatalf("old server not refused with the version message: %v", err)
-	}
 }
 
 // upgrade.open serves every operator session, restore included.

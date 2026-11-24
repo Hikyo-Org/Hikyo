@@ -1904,6 +1904,8 @@ jobs:
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
         run: ./scripts/ci/start-ci-postgres.sh
+      - name: Start PostgreSQL 17 to prove the PostgreSQL 18 minimum is enforced
+        run: ./scripts/ci/start-old-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod

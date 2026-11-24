@@ -4,6 +4,7 @@
 # 18 image. Exports HIKYO_TEST_POSTGRES_OLD_DSN into $GITHUB_ENV; the tests that
 # read it fail under CI when it is missing. The runner is discarded afterwards.
 set -euo pipefail
+: "${GITHUB_ENV:?start-old-postgres.sh runs only in GitHub Actions}"
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 image=postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
