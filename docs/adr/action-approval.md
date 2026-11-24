@@ -715,12 +715,16 @@ alone would let an agent order a copy or publish so that a sensitive key
 falls after the shown names, where "and N more" hides it. So the server
 also stores, with every pending approval, the complete affected list: every
 entry each capped list counts, the generic form's included, each id quoted
-with its name as of refusal. The server generates it from the same stored
-inputs as the summary, not from a separate query: the digest (the resolved
-ids in `targets` and the canonical request, for example publish's
-`version_ids`, self-config apply's `revision` and `expected_generation`, or
-a policy write's replacement body) and the stored resolved state (for
-example publish's closed set or adopt's configured keys). It serves
+with its name as of refusal. The server generates it at refusal, before
+the refusal discards the request, from the same inputs as the summary, not
+from a separate query: the validated request the digest is computed over (the
+resolved ids in `targets` and the canonical request, for example
+publish's `version_ids`, self-config apply's `revision` and
+`expected_generation`, or a policy write's replacement body, which yields
+the entries the write adds) and the resolved state the record stores (for
+example publish's closed set, adopt's configured keys, or a policy write's
+prior coverage). The record stores the list itself, because the digest
+cannot return the request. It serves
 through the approval read (*Approving*). The approval binds the ids, through
 the digest and the resolved-state comparison at consumption (*Resolved
 state*); the names are as of refusal and are display only.
