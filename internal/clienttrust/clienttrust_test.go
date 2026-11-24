@@ -26,7 +26,9 @@ func TestTLSConfigPinAcceptsOnlyTheExactLeaf(t *testing.T) {
 	if err := config.VerifyConnection(peers(leaf)); err != nil {
 		t.Fatalf("matching pin refused: %v", err)
 	}
-	if err := TLSConfig(server.URL, ModeSPKI, "AAAA", "").VerifyConnection(peers(leaf)); err == nil || !strings.Contains(err.Error(), "does not match the pin") {
+	// The refusal also names the remedy for proxies that re-key on renewal.
+	if err := TLSConfig(server.URL, ModeSPKI, "AAAA", "").VerifyConnection(peers(leaf)); err == nil ||
+		!strings.Contains(err.Error(), "does not match the pin") || !strings.Contains(err.Error(), "system CA (system-ca) trust") {
 		t.Fatalf("wrong pin = %v", err)
 	}
 	if err := config.VerifyConnection(peers()); err == nil {

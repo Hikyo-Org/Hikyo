@@ -168,7 +168,7 @@ func expectedJobs(selected selectedRun) map[string]expectedJob {
 		wanted[fmt.Sprintf("%sisolation shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Test assigned isolation cases on SQLite and PostgreSQL"}}
 		wanted[fmt.Sprintf("%sfuzz shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Fuzz every target for bounded work"}}
 	}
-	for shard := 0; shard < 12; shard++ {
+	for shard := 0; shard < 18; shard++ {
 		wanted[fmt.Sprintf("%srace shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Race detector (all packages except the isolation suite)"}}
 	}
 	if selected.producer.Queue {

@@ -29,6 +29,7 @@ import {
   useUpdateKeyMetadata,
   type KeyImpact,
   type MatrixKey,
+  TIGHTEN_ADVISORY,
 } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
@@ -949,10 +950,9 @@ function ReclassifyKey({
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {doneClassification === null ? null : (
-        <Alert tone="done">
-          {doneClassification === 'config'
-            ? 'Reclassified as config.'
-            : 'Reclassified as secret. Tightening cannot un-disclose earlier values. Rotate the value if it was ever shown.'}
+        // Tightening must state what it cannot undo (schema-model.md § reclassification).
+        <Alert tone={doneClassification === 'config' ? 'done' : 'warn'}>
+          {doneClassification === 'config' ? 'Reclassified as config.' : `Reclassified as secret. ${TIGHTEN_ADVISORY}`}
         </Alert>
       )}
 
@@ -1012,10 +1012,13 @@ function ReclassifyKey({
               </p>
             </>
           ) : (
-            <p>
-              Every occurrence is re-secured and handled as a secret, and the key’s existing
-              config-scanning dismissals are dropped, so a value that looks secret will warn again.
-            </p>
+            <>
+              <p>
+                Every occurrence is re-secured and handled as a secret, and the key’s existing
+                config-scanning dismissals are dropped, so a value that looks secret will warn again.
+              </p>
+              <p>{TIGHTEN_ADVISORY}</p>
+            </>
           )}
           <ImpactPreview
             impact={impact}

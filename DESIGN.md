@@ -152,7 +152,7 @@ Text plus a chevron that turns right to down, no border or fill, `--control` tal
 
 ### Tables
 
-Every data table except the matrix sits in `.table-scroll`, so the table scrolls sideways and the page never does. At 700px tables inside it go compact: `--fs-xs` text (identifiers included) and `--space-1 --space-2` cell padding. Use the existing table and panel anatomy for listings before inventing one. Lists of people, keys or rules get a filter input from the start.
+Every data table except the matrix is wrapped in `ui/TableScroll`, a named, keyboard-focusable region (a Tab stop; name it with `aria-labelledby` pointing at the table caption, or `aria-label`), so the table scrolls sideways and the page never does. At 700px tables inside it go compact: `--fs-xs` text (identifiers included) and `--space-1 --space-2` cell padding. Use the existing table and panel anatomy for listings before inventing one. Lists of people, keys or rules get a filter input from the start.
 
 ## The matrix (`routes/Matrix.tsx`)
 

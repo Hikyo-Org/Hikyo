@@ -9,6 +9,7 @@ import type { ProjectRef } from '../api/identities.ts';
 import { useEnvironments } from '../api/settings.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
 import { ConsequencesDialog, Panel } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -42,7 +43,7 @@ export function ProjectDeveloperCredentials(ref: ProjectRef) {
     </div>
     {credentials.isSuccess && credentials.data.items.length === 0 ? <p role="status">No developer credentials in this project.</p> : null}
     {/* Focusable: on a phone the table scrolls, and once every credential is revoked it holds nothing else a keyboard can reach. */}
-    {credentials.isSuccess && credentials.data.items.length > 0 ? <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
+    {credentials.isSuccess && credentials.data.items.length > 0 ? <TableScroll aria-labelledby={captionId}>
       <table>
         <caption id={captionId}>Developer credential metadata, including expired and revoked credentials</caption>
         <thead><tr><th scope="col">Credential</th><th scope="col">Human delegator</th><th scope="col">Environment</th><th scope="col">Lifetime</th><th scope="col">Revocation</th></tr></thead>
@@ -54,7 +55,7 @@ export function ProjectDeveloperCredentials(ref: ProjectRef) {
           <td>{credential.revoked_at === undefined ? <Button type="button" disabled={revoke.isPending} onClick={() => { feedback.clear(); setSelected(credential.id); }}>Revoke <span className="visually-hidden">{credential.id}</span></Button> : <>Revoked <time dateTime={credential.revoked_at}>{credential.revoked_at}</time></>}</td>
         </tr>)}</tbody>
       </table>
-    </div> : null}
+    </TableScroll> : null}
     {target === undefined || target.revoked_at !== undefined ? null : <ConsequencesDialog
       title="Revoke developer credential?"
       confirmLabel="Revoke credential"

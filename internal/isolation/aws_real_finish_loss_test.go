@@ -45,7 +45,8 @@ func TestAWSRealFinishLossDrain(t *testing.T) {
 		h := newRealAWSDurableFixture(t, db, s, "static", string(raw))
 		h.origin = remote.URL
 		h.build = func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
-			client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, Deadline: time.Second, RootCAs: roots, AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
+			// Hang guard, not under test: matches the package's 5s; owner-authorised exception (#1436).
+			client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, Deadline: 5 * time.Second, RootCAs: roots, AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
 			if err != nil {
 				return nil, err
 			}

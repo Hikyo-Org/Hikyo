@@ -89,6 +89,11 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   built), accepted as recommended
 - [x] S3 SPA status surface (merged); parity flip of the mutating rows to #1440 and the
   halt reason and owed-drop summary in S4 (below)
+- [x] S2 Kubernetes operator e2e (`k8se2e`): `TestK8sOperator/credential_rotation_rollout`
+  (`internal/isolation/k8s_operator_rotation_e2e_test.go`) runs a rotation through the real
+  executor and publish path, then asserts the operator-managed Secret carries the rotated
+  credential and the opted-in Deployment rolled (new stamp, generation and ReplicaSet,
+  ready pod) while a bystander is untouched. Runs in the CI `k8s-e2e` job
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
 
@@ -1771,7 +1776,7 @@ Round 2 (two independent reviews of 9b8a104dc, cf58e58a7 and d12fc352c). Final f
 
 ### Left after S4
 
-- The management WebUI for the mutating verbs is #1440.
+- The management WebUI for the mutating verbs is #1440, built: see `1440-rotation-webui.md`.
 - Containment ledger B is still not built (see "Incident containment").
 - Remaining owner items from earlier slices are unchanged; S4 opened none.
 

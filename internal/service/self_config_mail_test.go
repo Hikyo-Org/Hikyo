@@ -1,16 +1,19 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/mailtest"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 func mailTestSeed(sink *mailtest.Sink) map[string]string {
@@ -138,5 +141,122 @@ func TestSelfConfigTrimsAStagedMailPassword(t *testing.T) {
 	messages := sink.Messages()
 	if len(messages) != 1 || messages[0].Password != "rotated secret" {
 		t.Fatalf("SMTP AUTH saw %d messages, or an untrimmed password", len(messages))
+	}
+}
+
+// A draft staged before the trim was uniform can hold a padded password. Publish
+// must seal the snapshot and the live cell from the same trimmed value.
+func TestPublishTrimsAPaddedPendingMailPassword(t *testing.T) {
+	t.Parallel()
+	sink := mailtest.New(t, "implicit")
+	s, local := selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "mail-padded.db")}, mailTestSeed(sink))
+	if err := s.LoadRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	actor, _ := selfConfigSession(t, s, local)
+	status, err := s.Status(t.Context(), actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
+	const name = "HIKYO_MAIL_PASSWORD"
+	keyTarget := authz.KeyByName(name)
+	sealer, err := sealerForKey(t.Context(), s.DB, s.Keyring, local, authz.OpValueStage, scope, &keyTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var versionID string
+	if err := tx.Write(t.Context(), s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, err := local.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		p, err := az.AuthorizeKey(ctx, caller, authz.OpValueStage, scope, keyTarget)
+		if err != nil {
+			return err
+		}
+		key, err := findKey(ctx, r.Catalogue(), p, name)
+		if err != nil {
+			return err
+		}
+		revision, err := currentRevision(ctx, r, p)
+		if err != nil {
+			return err
+		}
+		entry, err := r.Values().Get(ctx, p, key.ID)
+		if err != nil {
+			return err
+		}
+		if versionID, err = newID("pcv"); err != nil {
+			return err
+		}
+		sealed, err := sealer.SealField(pendingAAD(string(scope.Org), string(scope.Project), string(scope.Env), key.ID, versionID), []byte(" \t padded secret \r\n"))
+		if err != nil {
+			return err
+		}
+		if err := fenceProject(ctx, r, p, sealer, scope); err != nil {
+			return err
+		}
+		return r.Pending().Stage(ctx, p, store.NewPendingChange{
+			ID: versionID, KeyID: key.ID, OwnerID: string(caller.Principal), Operation: store.PendingSet, Ciphertext: sealed,
+			StagedFromRevision: revision, StagedFromEntry: entry.ID, CreatedAt: store.CanonTime(time.Now()),
+			Source: store.PendingSourceValues, Secret: true, MaterialSecret: true,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	revisions := &Revisions{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
+	if _, err := revisions.PublishPlanned(t.Context(), local, scope, PublishRequest{VersionIDs: []string{versionID}}); err != nil {
+		t.Fatal(err)
+	}
+	var live, snapshot string
+	if err := tx.Read(t.Context(), s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		caller, err := local.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		p, err := az.AuthorizeKey(ctx, caller, authz.OpValueStage, scope, keyTarget)
+		if err != nil {
+			return err
+		}
+		key, err := findKey(ctx, r.Catalogue(), p, name)
+		if err != nil {
+			return err
+		}
+		entry, err := r.Values().Get(ctx, p, key.ID)
+		if err != nil {
+			return err
+		}
+		if live, err = openCell(sealer, entry); err != nil {
+			return err
+		}
+		pp, err := az.AuthorizeKey(ctx, caller, authz.OpValuePublish, scope, keyTarget)
+		if err != nil {
+			return err
+		}
+		latest, err := r.Snapshots().Latest(ctx, pp)
+		if err != nil {
+			return err
+		}
+		entries, err := r.Snapshots().Entries(ctx, pp, latest)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if e.KeyID != key.ID {
+				continue
+			}
+			plain, err := sealer.OpenField(snapshotAAD(e.OrgID, e.ProjectID, e.EnvironmentID, e.KeyID, e.SnapshotID, e.ID), e.Ciphertext)
+			if err != nil {
+				return err
+			}
+			snapshot = string(plain)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if live != "padded secret" || snapshot != "padded secret" {
+		t.Fatalf("live %q and snapshot %q must both be trimmed", live, snapshot)
 	}
 }

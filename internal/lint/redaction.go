@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -25,8 +26,24 @@ import (
 //     (log, log/slog) takes an audit-content-typed argument anywhere: the
 //     ops log records audit-subsystem health, never event content.
 //
-// This is a guardrail with named evasion limits (reflection, in-package
-// extraction, custom serializers), per the ADR: never a proof.
+// This is a guardrail with named evasion limits, per the ADR: never a proof.
+// Reflection and custom serializers are not seen. In-package extraction is not
+// seen. Rule 2's walk skips the receiver of a field selection or a method call
+// whose result is plain data (readsPlainData): a holder field of an int, or a
+// method returning an int or time.Time, is not a leak. A holder method whose
+// result is an interface, a func, a chan or a type parameter, or carries a
+// string, byte, rune or a number slice, array or map at any depth ([]string,
+// []rune, []uint16, [4]uint64, *string, a map with text keys or values, a map
+// with number keys or elements, a struct with a string field, a math/big
+// value) keeps the holder flagged. Not seen: a plain-typed field the holder
+// fills from key material (h.text of type string is read as plain data), a
+// scalar numeric result (a uint64 derived from key material), a struct of
+// numeric fields, a []bool, the zone name and instant of a time.Time result,
+// and a renamed audit.Payload (type payAlias audit.Payload: a map type, not a
+// struct). An indexed holder (h.items[0].seq) stays flagged, which only
+// over-reports. A named struct type whose underlying struct is identical to a
+// pinned struct's is treated as that pinned type, so a conversion cannot
+// rename it away.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
 // redactionSurface pins name the same exported set. The synchronization test
@@ -103,59 +120,68 @@ var RedactSurfaces = &analysis.Analyzer{
 }
 
 // RedactFormat is the redactfmt analyzer.
-var RedactFormat = &analysis.Analyzer{
-	Name: "redactfmt",
-	Doc:  "sensitive types are not formatted outside crypto; audit content is not logged",
-	Run: func(pass *analysis.Pass) (any, error) {
-		if !inModule(pass.Pkg.Path()) {
-			return nil, nil
-		}
-		exemptSensitive := pass.Pkg.Path() == sensitiveOwner
-		for _, file := range pass.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				calleePkg := calleePackage(pass.TypesInfo, call)
-				if calleePkg == "" {
-					return true
-				}
-				fmtCall := formattingPackages[calleePkg]
-				logCall := loggingPackages[calleePkg]
-				if !fmtCall && !logCall {
-					return true
-				}
-				for _, arg := range call.Args {
-					// Static-type erasure is the obvious bypass: `any(ev)` and
-					// `ev.Payload["formula"]` both type as `any` at the argument
-					// position while still carrying the value. Every
-					// sub-expression's type is therefore checked, not just the
-					// argument's own.
-					argTypes := subexpressionTypes(pass.TypesInfo, arg)
-					if len(argTypes) == 0 {
-						continue
-					}
-					if !exemptSensitive {
-						if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
-							pass.Reportf(arg.Pos(),
-								"%s passes sensitive type %s to %s: formatting/marshaling sensitive types outside their owning package is banned",
-								pass.Pkg.Path(), name, calleePkg)
-						}
-					}
-					if logCall {
-						if name := mentionsAny(argTypes, auditContentTypes); name != "" {
-							pass.Reportf(arg.Pos(),
-								"%s logs audit content %s: audit events are never mirrored to the ops log (audit-model ADR)",
-								pass.Pkg.Path(), name)
-						}
-					}
-				}
-				return true
-			})
-		}
+var RedactFormat = newRedactFormat(subexpressionTypes)
+
+// newRedactFormat builds the analyzer around the function that collects an
+// argument's sub-expression types, so the differential test can run the
+// pre-narrowing collector (TestRedactFormatNarrowingDifferential).
+func newRedactFormat(collect func(*types.Info, ast.Expr) []types.Type) *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Name: "redactfmt",
+		Doc:  "sensitive types are not formatted outside crypto; audit content is not logged",
+		Run:  func(pass *analysis.Pass) (any, error) { return runRedactFormat(pass, collect) },
+	}
+}
+
+func runRedactFormat(pass *analysis.Pass, collect func(*types.Info, ast.Expr) []types.Type) (any, error) {
+	if !inModule(pass.Pkg.Path()) {
 		return nil, nil
-	},
+	}
+	exemptSensitive := pass.Pkg.Path() == sensitiveOwner
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			calleePkg := calleePackage(pass.TypesInfo, call)
+			if calleePkg == "" {
+				return true
+			}
+			fmtCall := formattingPackages[calleePkg]
+			logCall := loggingPackages[calleePkg]
+			if !fmtCall && !logCall {
+				return true
+			}
+			for _, arg := range call.Args {
+				// Static-type erasure is the obvious bypass: `any(ev)` and
+				// `ev.Payload["formula"]` both type as `any` at the argument
+				// position while still carrying the value. Every
+				// sub-expression's type is therefore checked, not just the
+				// argument's own.
+				argTypes := collect(pass.TypesInfo, arg)
+				if len(argTypes) == 0 {
+					continue
+				}
+				if !exemptSensitive {
+					if name := mentionsAny(argTypes, SensitiveTypes); name != "" {
+						pass.Reportf(arg.Pos(),
+							"%s passes sensitive type %s to %s: formatting/marshaling sensitive types outside their owning package is banned",
+							pass.Pkg.Path(), name, calleePkg)
+					}
+				}
+				if logCall {
+					if name := mentionsAny(argTypes, auditContentTypes); name != "" {
+						pass.Reportf(arg.Pos(),
+							"%s logs audit content %s: audit events are never mirrored to the ops log (audit-model ADR)",
+							pass.Pkg.Path(), name)
+					}
+				}
+			}
+			return true
+		})
+	}
+	return nil, nil
 }
 
 // calleePackage resolves the package path of a call's callee: a package
@@ -192,7 +218,7 @@ func mentionsNamed(t types.Type, pinned map[string]bool, seen map[types.Type]boo
 	}
 	switch u := t.(type) {
 	case *types.Named:
-		if key := namedKey(u); pinned[key] {
+		if key := pinnedKey(u, pinned); key != "" {
 			return key
 		}
 		obj := u.Obj()
@@ -226,18 +252,262 @@ func mentionsNamed(t types.Type, pinned map[string]bool, seen map[types.Type]boo
 // every sub-expression inside it. Without the sub-expressions, wrapping a
 // pinned value in a conversion to `any` (or indexing a pinned map) hides it
 // from the check while logging exactly the same content.
+//
+// One sub-expression is not collected: the receiver of a selection that reads
+// only plain data from a holder (readsPlainData), as in h.seq or h.now(). The
+// selected field or method result is still collected, so a harness struct that
+// merely holds a Keyring is not a leak when an int is formatted. Everything
+// else is still walked: a receiver that is itself pinned (ev.Actor.ID reads
+// audit content), a method or field that can carry any value (an `any`, a
+// func), a selection promoted from an embedded pinned type, and a receiver's
+// own call arguments and composite literal elements.
 func subexpressionTypes(info *types.Info, arg ast.Expr) []types.Type {
 	var out []types.Type
+	holders := map[ast.Expr]bool{}
 	ast.Inspect(arg, func(n ast.Node) bool {
 		expr, ok := n.(ast.Expr)
 		if !ok {
 			return true
 		}
+		if sel, ok := expr.(*ast.SelectorExpr); ok && readsPlainData(info.Selections[sel]) {
+			holders[sel.X] = true
+		}
+		if holders[expr] {
+			// A transparent wrapper passes the holder through unchanged.
+			switch e := expr.(type) {
+			case *ast.ParenExpr:
+				holders[e.X] = true
+			case *ast.StarExpr:
+				holders[e.X] = true
+			}
+		}
 		if tv, ok := info.Types[expr]; ok && tv.Type != nil {
+			if holders[expr] && pinnedDirectly(tv.Type) == "" {
+				return true
+			}
 			out = append(out, tv.Type)
 		}
 		return true
 	})
+	return out
+}
+
+// readsPlainData reports whether a selection reads only plain data: a field,
+// or a method result, whose type cannot carry an arbitrary value, reached
+// without passing through an embedded pinned type.
+func readsPlainData(sel *types.Selection) bool {
+	if sel == nil {
+		return false
+	}
+	var result []types.Type
+	switch obj := sel.Obj().(type) {
+	case *types.Var:
+		result = []types.Type{obj.Type()}
+	case *types.Func:
+		sig, ok := obj.Type().(*types.Signature)
+		if !ok {
+			return false
+		}
+		if recv := sig.Recv(); recv != nil && pinnedDirectly(recv.Type()) != "" {
+			return false
+		}
+		for v := range sig.Results().Variables() {
+			// A text or byte result, however nested, can carry key material a
+			// holder method built from what it holds (h.reveal()), which the
+			// type cannot show.
+			if carriesText(v.Type(), map[types.Type]bool{}) {
+				return false
+			}
+			result = append(result, v.Type())
+		}
+	default:
+		return false
+	}
+	cur := sel.Recv()
+	for _, i := range sel.Index()[:len(sel.Index())-1] {
+		st, ok := derefStruct(cur)
+		if !ok {
+			return false
+		}
+		cur = st.Field(i).Type()
+		if pinnedDirectly(cur) != "" {
+			return false
+		}
+	}
+	return !slices.ContainsFunc(result, func(t types.Type) bool { return !plainData(t, map[types.Type]bool{}) })
+}
+
+// carriesText reports whether a value of type t can carry text or bytes that a
+// holder method built from what it holds: a string or byte reachable through
+// pointers, slices, arrays, maps and struct fields, however deep, runes and
+// numeric slices, arrays and maps (a word or float encoding of the text)
+// included. time.Time is the one deliberate exception, kept so a plain
+// holder.now() stays unflagged; it is a named limit: its zone name
+// (time.FixedZone(h.keyring.String(), 0)) and instant are not inspected.
+// A scalar number is plain data: a uint64 derived from key material is not seen.
+func carriesText(t types.Type, seen map[types.Type]bool) bool {
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	t = types.Unalias(t)
+	if n, ok := t.(*types.Named); ok {
+		if namedKey(n) == "time.Time" {
+			return false
+		}
+		if obj := n.Obj(); obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == "math/big" {
+			return true
+		}
+	}
+	switch u := t.Underlying().(type) {
+	case *types.Basic:
+		// Int32 is rune: []rune(secret) is text. This over-reports plain int32.
+		return u.Info()&types.IsString != 0 || u.Kind() == types.Uint8 || u.Kind() == types.Int32
+	case *types.Pointer:
+		return carriesText(u.Elem(), seen)
+	case *types.Slice:
+		return numeric(u.Elem()) || carriesText(u.Elem(), seen)
+	case *types.Array:
+		return numeric(u.Elem()) || carriesText(u.Elem(), seen)
+	case *types.Map:
+		return numeric(u.Key()) || numeric(u.Elem()) || carriesText(u.Key(), seen) || carriesText(u.Elem(), seen)
+	case *types.Struct:
+		for f := range u.Fields() {
+			if carriesText(f.Type(), seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// numeric reports an integer, float or complex element type: a slice of them
+// can encode key material as words or floats.
+func numeric(t types.Type) bool {
+	b, ok := t.Underlying().(*types.Basic)
+	return ok && b.Info()&types.IsNumeric != 0
+}
+
+func derefStruct(t types.Type) (*types.Struct, bool) {
+	for {
+		t = types.Unalias(t)
+		p, ok := t.(*types.Pointer)
+		if !ok {
+			break
+		}
+		t = p.Elem()
+	}
+	st, ok := t.Underlying().(*types.Struct)
+	return st, ok
+}
+
+// plainData reports whether a value of type t cannot carry an arbitrary value:
+// no interface, func, channel or type parameter is reachable from it. A pinned
+// type is never plain.
+func plainData(t types.Type, seen map[types.Type]bool) bool {
+	if seen[t] {
+		return true
+	}
+	seen[t] = true
+	switch u := types.Unalias(t).(type) {
+	case *types.Basic:
+		return u.Kind() != types.UnsafePointer
+	case *types.Named:
+		return pinnedDirectly(u) == "" && plainData(u.Underlying(), seen)
+	case *types.Pointer:
+		return plainData(u.Elem(), seen)
+	case *types.Slice:
+		return plainData(u.Elem(), seen)
+	case *types.Array:
+		return plainData(u.Elem(), seen)
+	case *types.Map:
+		return plainData(u.Key(), seen) && plainData(u.Elem(), seen)
+	case *types.Struct:
+		for f := range u.Fields() {
+			if !plainData(f.Type(), seen) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// pinnedDirectly reports the pinned type t is (behind pointers), or "": a
+// pinned receiver is read whole, unlike a struct that merely holds one.
+func pinnedDirectly(t types.Type) string {
+	for {
+		t = types.Unalias(t)
+		p, ok := t.(*types.Pointer)
+		if !ok {
+			break
+		}
+		t = p.Elem()
+	}
+	if n, ok := t.(*types.Named); ok {
+		if key := pinnedKey(n, SensitiveTypes); key != "" {
+			return key
+		}
+		return pinnedKey(n, auditContentTypes)
+	}
+	return ""
+}
+
+// pinnedKey is the key of the pinned type n is, or "". A named struct whose
+// underlying type is identical to a pinned struct's counts as that type, so
+// `type evAlias audit.Event` and a conversion cannot rename it away.
+func pinnedKey(n *types.Named, pinned map[string]bool) string {
+	if key := namedKey(n); pinned[key] {
+		return key
+	}
+	st, ok := n.Underlying().(*types.Struct)
+	if !ok || st.NumFields() == 0 || n.Obj() == nil || n.Obj().Pkg() == nil {
+		return ""
+	}
+	for key, p := range pinnedTypesFrom(n.Obj().Pkg()) {
+		if pinned[key] && types.Identical(st, p.Underlying()) {
+			return key
+		}
+	}
+	return ""
+}
+
+// pinnedTypesCache maps a package to the pinned types reachable through its
+// imports (itself included), keyed like SensitiveTypes.
+var pinnedTypesCache sync.Map
+
+func pinnedTypesFrom(pkg *types.Package) map[string]*types.Named {
+	if v, ok := pinnedTypesCache.Load(pkg); ok {
+		return v.(map[string]*types.Named)
+	}
+	out := map[string]*types.Named{}
+	visited := map[*types.Package]bool{}
+	var walk func(*types.Package)
+	walk = func(p *types.Package) {
+		if visited[p] {
+			return
+		}
+		visited[p] = true
+		for _, set := range []map[string]bool{SensitiveTypes, auditContentTypes} {
+			for key := range set {
+				dot := strings.LastIndex(key, ".")
+				path, name := key[:dot], key[dot+1:]
+				if path != p.Path() {
+					continue
+				}
+				if tn, ok := p.Scope().Lookup(name).(*types.TypeName); ok {
+					if named, ok := tn.Type().(*types.Named); ok {
+						out[key] = named
+					}
+				}
+			}
+		}
+		for _, imp := range p.Imports() {
+			walk(imp)
+		}
+	}
+	walk(pkg)
+	pinnedTypesCache.Store(pkg, out)
 	return out
 }
 

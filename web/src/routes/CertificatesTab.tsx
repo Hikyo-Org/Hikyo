@@ -26,6 +26,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { selectOption } from './selectOption.ts';
 
 type ProjectRef = { readonly org: string; readonly project: string };
@@ -70,6 +71,7 @@ export function CertificatesTab({
   environments: readonly EnvOption[];
   view: { rows: readonly CertificateRow[]; isPending: boolean; isError: boolean };
 }) {
+  const certificatesCaptionId = useId();
   const [issuing, setIssuing] = useState(false);
   const [feedback, setFeedback] = useState<{ failure: string | null; done: string | null }>({ failure: null, done: null });
   const [crl, setCrl] = useState<string | null>(null);
@@ -105,9 +107,9 @@ export function CertificatesTab({
       {view.isError ? <Alert>At least one environment&apos;s certificates could not be listed; the table is incomplete.</Alert> : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
-      <div className="table-scroll">
+      <TableScroll aria-labelledby={certificatesCaptionId}>
         <table className="values__table machine__table">
-          <caption className="visually-hidden">
+          <caption id={certificatesCaptionId} className="visually-hidden">
             The project&apos;s certificates across every environment. No private key is listed.
           </caption>
           <thead>
@@ -183,7 +185,7 @@ export function CertificatesTab({
             })}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       {view.rows.length === 0 && !view.isPending && !view.isError ? (
         <p role="status">No certificates in this project yet.</p>
       ) : null}

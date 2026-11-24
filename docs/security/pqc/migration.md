@@ -166,15 +166,21 @@ Accepted as recommended on 2026-11-02. Owner: Marc Went. Not operative; see the
 ### Pairing and remote proofs (I20)
 
 2048-bit SRP and Ed25519 DPoP; no standards-backed maintained PQ PAKE in the
-pinned dependencies; `go-jose` v4.1.6 has no ML-DSA; a JOSE ML-DSA identifier's
-status was not checked. Decision: #1130 stays HOLD (E-01). Hybrid TLS
+pinned dependencies; `go-jose` was v4.1.6 at decision time (no ML-DSA); `dev`
+now pins v4.1.9, which has ML-DSA since v4.1.8 (Go 1.27 only), but Hikyo's key
+loader and allowlists refuse it
+([E-04](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective),
+rechecked 2026-11-23). [RFC 9964](https://www.rfc-editor.org/rfc/rfc9964)
+registers JOSE `ML-DSA-65`; the identifier's status was not checked at decision
+time. Decision: #1130 stays HOLD (E-01). Hybrid TLS
 stops **recording** of the exchange; it does not stop an **active** forger of the
 classical pinned leaf, who captures the SRP transcript. Pairing pins are read over
 a classical chain unless the operator supplies an override
 (`internal/remotefetch/pairing_identity.go:58`), so a read pin is only as authentic
 as that chain. No quantum-safe answer exists; claim limited: no PQ
 authenticity, pin or password-exchange claim for pairing. Not recommended: a
-KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now (no library path).
+KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now
+(Hikyo refuses ML-DSA keys).
 
 ### Release trust and install paths
 
@@ -242,11 +248,13 @@ Update 2026-11-03 (#1134, [external compatibility](external-compatibility.md#fac
 OpenSSH 10.6 (2026-10-06) enables a composite PQ signature `ssh-mldsa44-ed25519`,
 so "no PQ signatures" above is stale. E-02 stands: the scheme is ML-DSA-44
 (excluded by DEC-02) and `x/crypto/ssh` v0.58.0 cannot produce it. RFC 9964
-registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 still lacks
-them. The decision text is the owner's and is not edited here. On 2026-11-04 the owner
-decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes ML-DSA-44 and DEC-03
-did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or
-`x/crypto` adds one.
+registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 lacked
+them at candidate time (rechecked 2026-11-23: v4.1.9 has ML-DSA, see
+[E-04](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective)).
+The decision text is the owner's and is not edited here. On 2026-11-04 the
+owner decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes
+ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a
+composite without ML-DSA-44 or `x/crypto` adds one.
 
 ### Rollout authority (I23) and PKI root (I24)
 

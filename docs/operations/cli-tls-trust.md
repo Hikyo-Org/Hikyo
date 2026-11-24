@@ -189,6 +189,33 @@ and wrong hostnames before credentials are sent. SPKI mode continues to refuse
 missing pins and changed keys. No trust mode changes machine grants, login
 eligibility, token handling, reveal policy or server configuration.
 
+### Origins behind a re-keying proxy or CDN
+
+Use `system-ca` for an origin whose TLS a proxy or CDN terminates with its own
+key, for example a proxied Cloudflare record. Do not use a leaf pin there: the
+pin matches the proxy's edge key, which changes on renewal, and every consumer
+then refuses the origin. See the
+[accepted decision](../adr/api-cli-surface.md#proxied-origin-trust-decision).
+This trusts the runner's whole CA set, so keep private roots and TLS-inspecting
+egress proxies out of runners that use it.
+
+1. Add CAA records for the zone that allow only the CAs the proxy issues from.
+   For Cloudflare, take the list from its current documentation.
+2. Replace the protected bundle with the `system-ca` form, keeping its `name`
+   and `origin` and removing `spki_pin`. Keep an existing `tls_profile`
+   unchanged, and leave it out if the bundle had none:
+
+   ```json
+   {"name": "ci", "origin": "https://secrets.example.com", "tls_mode": "system-ca"}
+   ```
+
+3. Use a CLI release that supports `tls_mode`, and check that any wrapper
+   script accepts a bundle without `spki_pin`.
+4. On a runner that starts with fresh CLI state, run the protected
+   provisioning commands above. On a runner that keeps its trust store, first
+   run the deliberate deletion above. In both cases, `--instance` names the
+   bundle's `name`, or its origin URL.
+
 ## Signed release and consumer update
 
 Local tests and a signed Git commit do not establish a published CLI release.
