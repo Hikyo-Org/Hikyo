@@ -150,3 +150,9 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 		})
 	}
 }
+
+// WriteBridgeBundleForTest lets the external acceptance package build the same
+// throwaway-signed bridge bundles.
+func WriteBridgeBundleForTest(t *testing.T, f *trustfixture.Fixture, releases []trustfixture.SignedRelease, bridges []releasetrust.BridgeMaterial) string {
+	return writeBridgeBundle(t, f, releases, bridges)
+}
