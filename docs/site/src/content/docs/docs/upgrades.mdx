@@ -25,10 +25,11 @@ trimmed, as does every later write. A `_FILE` variable's path is not trimmed and
 is opened exactly as given. Stored values are not
 rewritten. A bootstrap value or imported file that is only whitespace is empty after trimming, so adoption refuses it; remove the variable or file, or give it a real value, and restart.
 
-During a mixed-version rollout, managed-configuration adoption fails closed with
-a seed disagreement if a bootstrap value or imported file other than the mail
-password carries leading or trailing whitespace, because old nodes can seed the
-padded text and new nodes the trimmed text. Releases that already trim the mail
+During a mixed-version rollout, managed-configuration adoption can fail closed
+with a seed disagreement if a bootstrap value or imported file other than the
+mail password carries leading or trailing whitespace: some older parsers already
+trim a value, but where an old node seeds the padded text, it disagrees with the
+trimmed text from new nodes. Releases that already trim the mail
 password seed the same value as this one, and rollouts where no value is padded
 are unaffected.
 Finish the rollout, or remove the padding from the environment and files first.
