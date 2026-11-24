@@ -39,14 +39,15 @@ jobs:
           SERVER_URL: ${{ github.server_url }}
         run: |
           set -euo pipefail
-          # 30 hours, not 24: GitHub starts scheduled runs 4 to 10 hours late. The
-          # window bounds the listing, which every merge to main also adds runs to.
-          since=$(date -u -d '30 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          # 36 hours, not 24: GitHub starts scheduled runs 4 to 10 hours late, and one
+          # promote-to-nightly gap measured 30h53m.
+          # The window bounds the listing, which every merge to main also adds runs to.
+          since=$(date -u -d '36 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           # The landing trigger is the only other event, and its runs are not promotions.
           latest=$(gh api --paginate "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since&per_page=100" --jq \
             '.workflow_runs[] | select(.event != "pull_request_target") | [.created_at, .id, (.conclusion // "-")] | @tsv' | sort | tail -n 1)
           if [ -z "$latest" ]; then
-            echo '::error::nightly-promote.yml has no completed scheduled or manual run on main in 30 hours, so promotion has stopped running.'
+            echo '::error::nightly-promote.yml has no completed scheduled or manual run on main in 36 hours, so promotion has stopped running.'
             exit 1
           fi
           IFS=$'\t' read -r _ run_id conclusion <<<"$latest"

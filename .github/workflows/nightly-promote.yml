@@ -30,6 +30,7 @@ jobs:
     concurrency:
       group: nightly-promote
       cancel-in-progress: false
+      queue: max
     permissions:
       actions: read
       checks: read
@@ -90,6 +91,7 @@ jobs:
     concurrency:
       group: nightly-promote
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       pull-requests: read

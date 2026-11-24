@@ -4,10 +4,13 @@
 # so a dev that never takes them back blocks the nightly. Runs from main's own
 # checkout and executes nothing from dev.
 #
-# The pull request has head `main` and base `dev`, with no snapshot branch:
-# ci-feedback.yml treats exactly that head as a back-merge, and the dev gate
-# admits policy paths that match main. Dev's ruleset needs ci-dev-required and
-# signed commits; GitHub signs the merge commit.
+# The pull request head is a dedicated backmerge/auto-<date>-<sha7> branch, never
+# main and never a branch at main's SHA (#1373): the dev gate posts
+# ci-dev-required on the head SHA, and a check run attaches to the SHA, so the
+# head must be a distinct merge commit, as in the manual #1550. The merge commit
+# is created by GitHub's merges API, not signed by this script. Whether dev's
+# required-signatures rule accepts it is verified at runtime: if it does not, the
+# pull request cannot merge and the age rule reports it stuck.
 #
 # Reads use GH_TOKEN (the workflow token). Every write uses APP_TOKEN, because a
 # pull request opened with the workflow token starts no CI.
@@ -17,6 +20,8 @@ set -eu
 GH_BIN=${GH_BIN:-gh}
 server=${GITHUB_SERVER_URL:-https://github.com}
 max_age=21600
+branch_re='^backmerge/auto-[0-9]{8}-[0-9a-f]{7}$'
+docs="$server/$GH_REPO/blob/main/docs/development/branching.md#manual-back-merge"
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-backmerge.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
@@ -40,23 +45,83 @@ branch_sha() {
 		return 1
 	fi
 }
-# The head is main and moves, so there is no head commit to match.
-arm() { write pr merge "$1" --repo "$GH_REPO" --auto --merge; }
+# $1 is what is stuck (a URL), $2 why. Only validated values reach the log.
+stuck() {
+	printf 'nightly-backmerge: back-merge %s is stuck: %s.\n  Resolve it by hand: %s\n' "$1" "$2" "$docs" >&2
+	exit 1
+}
+# Merges main into branch $1. Returns 1 on a conflict (HTTP 409); 201 is a new
+# merge commit and 204 (no output) means the branch already contains main.
+merge_main() {
+	if write api -X POST "repos/$GH_REPO/merges" -f "base=$1" -f "head=$GITHUB_SHA" \
+		-f "commit_message=Merge main $(printf '%.7s' "$GITHUB_SHA") into dev" >/dev/null 2>"$work/err"; then
+		return 0
+	elif grep -F '(HTTP 409)' "$work/err" >/dev/null; then
+		return 1
+	fi
+	cat "$work/err" >&2
+	exit 1
+}
+is_sha() { printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 
 printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || die 'invalid repository'
-printf '%s\n' "$GITHUB_SHA" | grep -Eq '^[0-9a-f]{40}$' || die 'invalid main commit'
+is_sha "$GITHUB_SHA" || die 'invalid main commit'
 now=${BACKMERGE_NOW:-$(date +%s)}
 printf '%s\n' "$now" | grep -Eq '^[0-9]+$' || die 'invalid clock'
+date_utc=${BACKMERGE_DATE:-$(date -u +%Y%m%d)}
+printf '%s\n' "$date_utc" | grep -Eq '^[0-9]{8}$' || die 'invalid date'
+short=$(printf '%.7s' "$GITHUB_SHA")
+tab=$(printf '\t')
 
 dev_sha=$(branch_sha dev)
 if [ -z "$dev_sha" ]; then
 	note 'nightly-backmerge: dev does not exist yet, so there is nothing to back-merge.'
 	exit 0
 fi
-printf '%s\n' "$dev_sha" | grep -Eq '^[0-9a-f]{40}$' || die 'invalid dev commit'
+is_sha "$dev_sha" || die 'invalid dev commit'
+
+# Only this repository's pull requests count. Refs are classified in jq, so a
+# branch name reaches the shell only after matching the exact pattern.
+repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
+"$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=dev&per_page=100" --jq \
+	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"backmerge/\"))) | (.head.ref | test(\"$branch_re\")) as \$auto | [.number, (if \$auto then \"auto\" else \"human\" end), (if \$auto then .head.ref else \"-\" end), (.head.sha // \"-\")] | @tsv" >"$work/open"
+auto='' auto_ref='' human=''
+while IFS=$tab read -r number kind ref head; do
+	[ -n "$number" ] || continue
+	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
+	if [ "$kind" = human ]; then
+		human=$number
+		continue
+	fi
+	[ -z "$auto" ] || die "pull requests #$auto and #$number are both automatic back-merges; close one by hand"
+	printf '%s\n' "$ref" | grep -Eq "$branch_re" || die "invalid head branch on #$number"
+	auto=$number auto_ref=$ref
+done <"$work/open"
+
+# Branches of finished back-merges. Only an auto branch that dev already contains
+# and no open pull request uses is deleted.
+"$GH_BIN" api --paginate "repos/$GH_REPO/git/matching-refs/heads/backmerge/auto-" --jq \
+	'.[] | [.ref, .object.sha] | @tsv' >"$work/refs"
+while IFS=$tab read -r ref sha; do
+	[ -n "$ref" ] || continue
+	branch=${ref#refs/heads/}
+	# Not one of ours (a human branch sharing the prefix): leave it alone.
+	printf '%s\n' "$branch" | grep -Eq "$branch_re" || continue
+	is_sha "$sha" || die "invalid commit on $branch"
+	[ "$branch" != "$auto_ref" ] || continue
+	state=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...$sha" --jq '.status')
+	case "$state" in
+	behind | identical) ;;
+	*) continue ;;
+	esac
+	if ! write api -X DELETE "repos/$GH_REPO/git/refs/heads/$branch" >/dev/null 2>"$work/err"; then
+		grep -E 'Reference does not exist|\(HTTP (404|422)\)' "$work/err" >/dev/null || { cat "$work/err" >&2; exit 1; }
+	fi
+	note "nightly-backmerge: deleted finished back-merge branch $branch."
+done <"$work/refs"
 
 # Commits main has that dev lacks.
-compare=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...main")
+compare=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...$GITHUB_SHA")
 status=$(printf '%s' "$compare" | jq -er '.status')
 case "$status" in
 behind | identical)
@@ -73,59 +138,53 @@ if printf '%s' "$compare" | jq -e '(.commits | length) as $listed | .total_commi
 	note 'nightly-backmerge: main leads dev by merge commits only, so there is nothing to back-merge.'
 	exit 0
 fi
-
-# Only this repository's pull requests count. The ref is classified in jq, so no
-# branch name reaches the shell.
-repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
-"$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=dev&per_page=100" --jq \
-	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\") | [.number, (.head.ref | if startswith(\"backmerge/\") then \"human\" elif . == \"main\" then \"auto\" else \"other\" end)] | @tsv" >"$work/open"
-tab=$(printf '\t')
-auto=
-while IFS=$tab read -r number kind; do
-	[ -n "$number" ] || continue
-	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
-	case "$kind" in
-	human)
-		note "nightly-backmerge: pull request #$number back-merges by hand, so no new one is opened."
-		exit 0
-		;;
-	auto) auto=$number ;;
-	esac
-done <"$work/open"
+if [ -n "$human" ]; then
+	note "nightly-backmerge: pull request #$human back-merges by hand, so no new one is opened."
+	exit 0
+fi
 
 if [ -n "$auto" ]; then
+	pr_url="$server/$GH_REPO/pull/$auto"
+	merge_main "$auto_ref" || stuck "$pr_url" 'main conflicts with its branch'
 	# mergeable is null while GitHub computes it: unknown, not stuck.
 	pr=$("$GH_BIN" api "repos/$GH_REPO/pulls/$auto" --jq \
-		'[(.mergeable | tostring), (.mergeable_state // "-"), (.auto_merge != null), ((.created_at | fromdateiso8601?) // "-")] | @tsv')
-	IFS=$tab read -r mergeable state armed created <<PR
+		'[(.mergeable | tostring), (.mergeable_state // "-"), (.auto_merge != null), ((.created_at | fromdateiso8601?) // "-"), (.head.sha // "-")] | @tsv')
+	IFS=$tab read -r mergeable state armed created head <<PR
 $pr
 PR
 	printf '%s\n' "$mergeable" | grep -Eq '^(true|false|null)$' || die "invalid mergeable value on #$auto"
 	printf '%s\n' "$state" | grep -Eq '^[a-z_-]{1,20}$' || die "invalid merge state on #$auto"
 	printf '%s\n' "$armed" | grep -Eq '^(true|false)$' || die "invalid auto-merge value on #$auto"
 	printf '%s\n' "$created" | grep -Eq '^[0-9]{1,12}$' || die "invalid creation time on #$auto"
-	reason=
+	is_sha "$head" || die "invalid head commit on #$auto"
 	if [ "$mergeable" = false ] || [ "$state" = dirty ]; then
-		reason='it conflicts with dev; resolve it on a backmerge/main-into-dev-<date> branch by hand, as in #1550'
-	elif [ $((now - created)) -gt "$max_age" ]; then
-		reason="it has not landed after more than $((max_age / 3600)) hours"
+		stuck "$pr_url" 'it conflicts with dev'
 	fi
-	if [ -n "$reason" ]; then
-		printf 'nightly-backmerge: back-merge %s/%s/pull/%s is stuck: %s.\n' "$server" "$GH_REPO" "$auto" "$reason" >&2
-		exit 1
-	fi
-	# Arming a conflicting pull request can fail, so a stuck one reports first.
+	# Re-arm before the age check, so an old pull request still gets its chance.
 	if [ "$armed" != true ]; then
-		arm "$auto"
+		write pr merge "$auto" --repo "$GH_REPO" --auto --merge --match-head-commit "$head"
 		note "nightly-backmerge: queued back-merge #$auto again."
 	fi
-	note "nightly-backmerge: back-merge #$auto is open and queued."
+	if [ $((now - created)) -gt "$max_age" ]; then
+		stuck "$pr_url" "it has not landed after more than $((max_age / 3600)) hours"
+	fi
+	note "nightly-backmerge: back-merge #$auto now carries main $short and is queued."
 	exit 0
 fi
 
-body="Opened by nightly-backmerge so dev contains main and promotion's CI-definition check passes. It merges on its own once ci-dev-required is green."
+branch="backmerge/auto-$date_utc-$short"
+existing=$(branch_sha "$branch")
+if [ -z "$existing" ]; then
+	write api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=$dev_sha" >/dev/null
+else
+	is_sha "$existing" || die "invalid commit on $branch"
+fi
+merge_main "$branch" || stuck "$server/$GH_REPO/tree/$branch" 'main conflicts with dev'
+head=$(branch_sha "$branch")
+is_sha "$head" || die "invalid commit on $branch"
+body=$(printf 'Merges main %s into dev so the next promotion'\''s CI-definition check passes.\n\nOpened and queued by nightly-promote.yml (nightly-backmerge). The head is its own merge commit, never main. Do not push to this branch.\n\nIf it conflicts, resolve it by hand: %s\n' "$short" "$docs")
 number=$(write api -X POST "repos/$GH_REPO/pulls" -f 'title=chore(release): back-merge main into dev' \
-	-f head=main -f base=dev -f "body=$body" --jq '.number')
+	-f "head=$branch" -f base=dev -f "body=$body" --jq '.number')
 printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number from GitHub'
-arm "$number"
-note "nightly-backmerge: opened and queued back-merge #$number."
+write pr merge "$number" --repo "$GH_REPO" --auto --merge --match-head-commit "$head"
+note "nightly-backmerge: opened and queued back-merge #$number from $branch."

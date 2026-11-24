@@ -74,7 +74,7 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 	if len(workflow.Jobs) != 3 || promote.If != "(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'" {
 		t.Fatal("promotion must run only for the schedule or a manual run on main, never for a closed pull request")
 	}
-	if promote.Environment != "nightly-release" || promote.Concurrency["group"] != "nightly-promote" || promote.Concurrency["cancel-in-progress"] != false ||
+	if promote.Environment != "nightly-release" || promote.Concurrency["group"] != "nightly-promote" || promote.Concurrency["cancel-in-progress"] != false || promote.Concurrency["queue"] != "max" ||
 		!reflect.DeepEqual(promote.Permissions, map[string]string{"actions": "read", "checks": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("promotion must hold the protected environment, run one at a time and read with the workflow token only")
 	}
@@ -118,7 +118,7 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 	if strings.Join(strings.Fields(backmerge.If), " ") != backmergeCondition {
 		t.Fatalf("the back-merge must require a merged same-repository pull request into main that is not a promotion: %q", backmerge.If)
 	}
-	if backmerge.Environment != "nightly-release" || backmerge.Concurrency["group"] != "nightly-promote" || backmerge.Concurrency["cancel-in-progress"] != false ||
+	if backmerge.Environment != "nightly-release" || backmerge.Concurrency["group"] != "nightly-promote" || backmerge.Concurrency["cancel-in-progress"] != false || backmerge.Concurrency["queue"] != "max" ||
 		!reflect.DeepEqual(backmerge.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) || len(backmerge.Steps) != 3 {
 		t.Fatal("the back-merge must hold the protected environment, share promotion's lock and read with the workflow token only")
 	}
@@ -221,7 +221,7 @@ func TestNightlyReportsBrokenPromotion(t *testing.T) {
 	if step.Uses != "" || !reflect.DeepEqual(step.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "SERVER_URL": "${{ github.server_url }}"}) || strings.Contains(step.Run, "${{") {
 		t.Fatal("promotion-health must be a checkout-free step with expressions only in env")
 	}
-	for _, required := range []string{"--paginate", "nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since", "'30 hours ago'", `.event != "pull_request_target"`, "::error::", `"$conclusion" != success`, "/actions/runs/$run_id"} {
+	for _, required := range []string{"--paginate", "nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since", "'36 hours ago'", `.event != "pull_request_target"`, "::error::", `"$conclusion" != success`, "/actions/runs/$run_id"} {
 		if !strings.Contains(step.Run, required) {
 			t.Fatalf("promotion-health lost %q", required)
 		}
