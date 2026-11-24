@@ -34,8 +34,10 @@ func seedLeaseRows(t *testing.T, db *store.DB, f definitionsFixture) {
 	}
 }
 
-// seedCertificateRows seeds one certificate per state that matters: four live
-// ones (issued, issuing, renewed, unexpired revoked) and two terminal ones.
+// seedCertificateRows seeds one certificate per state that matters: five live
+// ones (issued, issuing, renewed, unknown, unexpired revoked) and three terminal
+// ones (expired, failed, and an issued row whose not_after is exactly now, which
+// pins the boundary of the purge's not_after<=now).
 func seedCertificateRows(t *testing.T, db *store.DB, f definitionsFixture, now time.Time) {
 	t.Helper()
 	project := string(f.project)
@@ -56,7 +58,9 @@ func seedCertificateRows(t *testing.T, db *store.DB, f definitionsFixture, now t
 	cert(project+"_issued", "issued", future)
 	cert(project+"_issuing", "issuing", future)
 	cert(project+"_renewed", "renewed", future)
+	cert(project+"_unknown", "unknown", future)
 	cert(project+"_revoked", "revoked", future)
+	cert(project+"_boundary", "issued", now)
 	cert(project+"_expired", "expired", now.Add(-time.Hour))
 	cert(project+"_failed", "failed", now.Add(-time.Hour))
 }
@@ -144,8 +148,8 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 		if !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
 			t.Fatalf("delete with %s = %v (%q)", label, err, safeError(err))
 		}
-		if got := certificatesIn(t, db, f); got != 6 {
-			t.Fatalf("certificates after the %s refusal = %d, want 6", label, got)
+		if got := certificatesIn(t, db, f); got != 8 {
+			t.Fatalf("certificates after the %s refusal = %d, want 8", label, got)
 		}
 		if got := count(t, db, "environments", f); got != 2 {
 			t.Fatalf("environments after the %s refusal = %d", label, got)
@@ -155,13 +159,13 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	// Each live state refuses by name, one after the other as it lapses; a revoked
 	// certificate stays live until it expires because it keeps its CRL entry.
 	refused("an issued certificate", project+"_issued")
-	execRaw(t, db, `UPDATE pki_certificates SET state='unknown' WHERE id='`+project+`_issued'`)
-	refused("an unknown certificate", project+"_issued")
 	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_issued'`)
 	refused("an issuing certificate", project+"_issuing")
 	execRaw(t, db, `UPDATE pki_certificates SET state='failed' WHERE id='`+project+`_issuing'`)
 	refused("a renewed certificate", project+"_renewed")
 	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_renewed'`)
+	refused("an unknown certificate", project+"_unknown")
+	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE id='`+project+`_unknown'`)
 	refused("an unexpired revoked certificate", project+"_revoked")
 
 	// Only terminal history is left: it is purged with the environment, the
@@ -180,8 +184,8 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_issuers WHERE id='pki_iss_"+project+"'"); got != 1 {
 		t.Errorf("issuer rows = %d, want the issuer kept", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.environment_deleted' AND project_id='"+project+"' AND CAST(payload AS TEXT) LIKE '%\"purged_certificates\":6%'"); got != 1 {
-		t.Errorf("environment_deleted events recording 6 purged certificates = %d, want 1", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.environment_deleted' AND project_id='"+project+"' AND CAST(payload AS TEXT) LIKE '%\"purged_certificates\":8%'"); got != 1 {
+		t.Errorf("environment_deleted events recording 8 purged certificates = %d, want 1", got)
 	}
 }
 
@@ -315,7 +319,7 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 	if err := apply(); !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !strings.Contains(safeError(err), project+"_issued") {
 		t.Fatalf("apply with a live certificate = %v (%q)", err, safeError(err))
 	}
-	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed')`)
+	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed','unknown')`)
 	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE state='revoked'`)
 	if got := count(t, db, "environments", f); got != 2 {
 		t.Fatalf("environments after the refusals = %d", got)
@@ -337,8 +341,8 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 			t.Errorf("%s still has %d rows after the apply deleted the environment", table, got)
 		}
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.environment_deleted' AND project_id='"+project+"' AND CAST(payload AS TEXT) LIKE '%\"purged_certificates\":6%'"); got != 1 {
-		t.Errorf("apply's environment_deleted events recording 6 purged certificates = %d, want 1", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='settings.environment_deleted' AND project_id='"+project+"' AND CAST(payload AS TEXT) LIKE '%\"purged_certificates\":8%'"); got != 1 {
+		t.Errorf("apply's environment_deleted events recording 8 purged certificates = %d, want 1", got)
 	}
 }
 
@@ -370,8 +374,8 @@ func TestEnvironmentDeleteReportsEveryBlockingKind(t *testing.T) {
 				t.Errorf("combined refusal %q lacks %s", detail, id)
 			}
 		}
-		if got := count(t, db, "pki_certificates", f); got != 6 {
-			t.Errorf("certificates after the combined refusal = %d, want 6 (terminal purge rolled back)", got)
+		if got := count(t, db, "pki_certificates", f); got != 8 {
+			t.Errorf("certificates after the combined refusal = %d, want 8 (terminal purge rolled back)", got)
 		}
 	})
 }
@@ -385,7 +389,7 @@ func TestEnvironmentDeleteRefusalRollsBackCertificatePurge(t *testing.T) {
 		project := string(f.project)
 		now := time.Now().UTC().Truncate(time.Second)
 		seedCertificateRows(t, db, f, now)
-		execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed') AND project_id='`+project+`'`)
+		execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed','unknown') AND project_id='`+project+`'`)
 		execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE state='revoked' AND project_id='`+project+`'`)
 		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_`+project+`','org_a','`+project+`','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
 		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
@@ -398,8 +402,8 @@ func TestEnvironmentDeleteRefusalRollsBackCertificatePurge(t *testing.T) {
 			if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || errors.Is(err, store.ErrSSHLiveCA) != withSSH {
 				t.Fatalf("delete (ssh=%v) = %v", withSSH, err)
 			}
-			if got := count(t, db, "pki_certificates", f); got != 6 {
-				t.Fatalf("terminal certificates after the refusal (ssh=%v) = %d, want 6", withSSH, got)
+			if got := count(t, db, "pki_certificates", f); got != 8 {
+				t.Fatalf("terminal certificates after the refusal (ssh=%v) = %d, want 8", withSSH, got)
 			}
 		}
 	})
@@ -439,8 +443,8 @@ func TestPKIPurgeQueryKeepsLiveCertificates(t *testing.T) {
 		}
 		execRaw(t, db, statement)
 
-		if got := count(t, db, "pki_certificates", f); got != 4 {
-			t.Fatalf("certificates after the purge = %d, want the 4 live ones (issued, issuing, renewed, unexpired revoked)", got)
+		if got := count(t, db, "pki_certificates", f); got != 5 {
+			t.Fatalf("certificates after the purge = %d, want the 5 live ones (issued, issuing, renewed, unknown, unexpired revoked)", got)
 		}
 		if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE project_id='"+project+"' AND state IN ('expired','failed')"); got != 0 {
 			t.Fatalf("%d terminal certificates survived the purge", got)
