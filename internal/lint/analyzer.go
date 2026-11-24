@@ -183,7 +183,7 @@ func Analyzers() []*analysis.Analyzer {
 // reports but does not yet gate: they were never gated before the vet driver, and
 // the sites await a reviewed follow-up (docs/handoff/lint-vet-driver-pr1-deferred-test-sites.md).
 // Production files and external test packages stay strict.
-var strictDeferred = map[string]bool{"handles": true, "redactfmt": true}
+var strictDeferred = map[string]bool{"handles": true}
 
 // deferredCategory marks a diagnostic in an in-package _test.go file of a
 // strictDeferred analyzer. The analyzer decides it from the file on disk
