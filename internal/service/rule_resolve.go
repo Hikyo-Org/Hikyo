@@ -62,6 +62,11 @@ func (s *Rules) Resolve(ctx context.Context, actor Actor, scope domain.Scope, ca
 			return err
 		}
 		grantLines = append(grantLines, orgLines...)
+		// Inert today: rule.resolve admits only a manage-members grant at the
+		// project or above, and RulesManageable short-circuits on that grant, so
+		// every line passes (pinned by a_rule_delegated_manager_is_refused). Kept
+		// so the population cannot outgrow the rule listing if rule-delegated
+		// managers are ever admitted; that change needs an excluding test.
 		ruleLines, err := manageableProjectRules(ctx, az, caller, scope)
 		if err != nil {
 			return err
