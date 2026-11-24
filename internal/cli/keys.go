@@ -486,7 +486,7 @@ func reclassifyKey(ctx context.Context, ios IO, f Format, client *Client, target
 	warnFindings(ios, key.Findings)
 	// The server refuses a same-class reclassify, so success here means config -> secret.
 	if classification == string(apigen.KeyClassificationSecret) {
-		fmt.Fprintln(ios.Stderr, tightenAdvisory)
+		_, _ = fmt.Fprintln(ios.Stderr, tightenAdvisory)
 	}
 	return renderKey(ios, f, key)
 }
