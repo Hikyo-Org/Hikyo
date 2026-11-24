@@ -140,6 +140,8 @@ check_chain() {
 	check 'stable-policy.json is byte-identical (statements bind its digest)' cmp -s "$base/stable-policy.json" "$new/stable-policy.json"
 	check 'stable-policy.sigstore.json is byte-identical' cmp -s "$base/stable-policy.sigstore.json" "$new/stable-policy.sigstore.json"
 	check 'root.json is byte-identical' cmp -s "$base/root.json" "$new/root.json"
+	# Backstop behind the tree-diff allowlist; no negative can pin it alone.
+	check 'the recovery public key is byte-identical' cmp -s "$base/$(jq -r '.recovery.public_key' "$base/root.json")" "$recovery_pub"
 	check 'metadata signature verifies with the pinned recovery key' verify_blob "$new/metadata.json" "$new/metadata.sigstore.json"
 	check 'catalog signature verifies with the pinned recovery key' verify_blob "$new/catalog.json" "$new/catalog.sigstore.json"
 	check 'metadata sequence is the base sequence plus one' equal "$(jq '.sequence' "$new/metadata.json")" "$(($(jq '.sequence' "$base/metadata.json") + 1))"
@@ -151,6 +153,10 @@ check_chain() {
 	check 'catalog differs from the base only in sequence, metadata digest and bridges' equal \
 		"$(jq -S 'del(.sequence, .stable_metadata_sha256, .bridges)' "$new/catalog.json")" \
 		"$(jq -S 'del(.sequence, .stable_metadata_sha256, .bridges)' "$base/catalog.json")"
+	# Backstop behind the bridge-directory-to-catalog check; no negative can pin it alone.
+	check 'catalog bridges are the base bridges plus the added minus the removed' equal \
+		"$(jq -c --argjson a "$(json_list $added)" --argjson r "$(json_list $removed)" '((.bridges + $a) - $r) | sort' "$base/catalog.json")" \
+		"$(jq -c '.bridges | sort' "$new/catalog.json")"
 	check 'catalog binds the new metadata digest' equal "$(jq -r '.stable_metadata_sha256' "$new/catalog.json")" "$(sha256_of "$new/metadata.json")"
 	check 'catalog binds the unchanged stable policy digest' equal "$(jq -r '.stable_policy_sha256' "$new/catalog.json")" "$(sha256_of "$new/stable-policy.json")"
 	check 'every catalogued bridge has a directory and no directory is uncatalogued' equal "$(find "$new/bridges" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | tr '\n' ' ')" "$(jq -r '.bridges[]' "$new/catalog.json" | sort | tr '\n' ' ')"
