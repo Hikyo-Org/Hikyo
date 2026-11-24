@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -223,13 +224,82 @@ func TestIncidentOwnerHaltsRotationsAndReleaseNeverResumes(t *testing.T) {
 			t.Errorf("the rotation halt event does not carry the incident id as correlation")
 		}
 		// Release of the principal never resumes the rotation. The release is a raw
-		// UPDATE because the release service is a later slice; it proves only that the
-		// executor does not resume a halted rotation on its own.
+		// UPDATE because the release service is a later slice. Beyond staying halted,
+		// the halt must be untouched: same reason, same generation, and no run started
+		// after the executor was given a full day to act on a principal whose
+		// authority is back.
+		generation := queryInt(t, db, `SELECT generation FROM rotations WHERE id='`+r.rot.ID+`'`)
+		runs := queryInt(t, db, `SELECT COUNT(*) FROM rotation_runs WHERE rotation_id='`+r.rot.ID+`'`)
 		execRaw(t, db, `UPDATE principals SET containment_state='none' WHERE id='`+string(alice)+`'`)
 		r.x.advance(25 * 3600 * 1e9)
 		r.x.drain()
 		if r.state(t) != store.RotationStateHalted {
 			t.Errorf("release resumed the rotation: %q", r.state(t))
+		}
+		if got := queryInt(t, db, `SELECT generation FROM rotations WHERE id='`+r.rot.ID+`'`); got != generation {
+			t.Errorf("generation %d -> %d after release, want unchanged", generation, got)
+		}
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM rotation_runs WHERE rotation_id='`+r.rot.ID+`'`); got != runs {
+			t.Errorf("runs %d -> %d after release, want unchanged", runs, got)
+		}
+		if reason := queryString(t, db, `SELECT halt_reason FROM rotations WHERE id='`+r.rot.ID+`'`); reason != "incident_contained" {
+			t.Errorf("halt reason %q after release, want incident_contained", reason)
+		}
+	})
+}
+
+// An account whose footprint spans two orgs, or none, needs an instance holder, who
+// lists its rotations across orgs and halts them under the same credential-reset the
+// incident was opened with.
+func TestIncidentInstanceAccountIncidentListsAndHaltsRotations(t *testing.T) {
+	for name, prepare := range map[string]func(*testing.T, *store.DB){
+		"two orgs": func(t *testing.T, db *store.DB) {
+			execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_rot_b', '`+string(alice)+`', 'read', 'org_b', `+ts+`)`)
+		},
+		"no org": func(t *testing.T, db *store.DB) {
+			execRaw(t, db, `DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE principal_id='`+string(alice)+`')`)
+			execRaw(t, db, `DELETE FROM grants WHERE principal_id='`+string(alice)+`'`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				r := newRotationIncident(t, db)
+				prepare(t, db)
+				target := service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: alice}
+				if _, err := r.w.svc.Open(t.Context(), r.w.as(incResponder), target); err == nil {
+					t.Fatal("an org-scope responder opened an incident that spans orgs")
+				}
+				v, err := r.w.svc.Open(t.Context(), r.w.as(incInstance), target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if v.Incident.OrgID != "" {
+					t.Fatalf("incident org = %q, want an instance-owned incident", v.Incident.OrgID)
+				}
+				if got := r.w.itemMap(t, incInstance, v.Incident.ID)[r.key()]; got != "pending/" {
+					t.Fatalf("instance rotation item = %q, want pending (items: %v)", got, r.w.itemMap(t, incInstance, v.Incident.ID))
+				}
+				r.w.resume(t, incInstance, v.Incident.ID)
+				if r.state(t) != store.RotationStateHalted {
+					t.Errorf("rotation state = %q, want halted", r.state(t))
+				}
+			})
+		})
+	}
+}
+
+// Project and adapter scopes select no account, so they list no rotation of their own.
+func TestIncidentProjectScopeListsNoRotation(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		v, err := r.w.svc.Open(t.Context(), r.w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeProject, Scope: domain.Scope{Org: orgA, Project: prjA1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k := range r.w.itemMap(t, incResponder, v.Incident.ID) {
+			if strings.HasPrefix(k, "rotation.halt|") {
+				t.Errorf("a project incident lists a rotation item %q", k)
+			}
 		}
 	})
 }
@@ -488,7 +558,7 @@ func TestIncidentRotationListingIsBoundedByTheLookupBudget(t *testing.T) {
 
 // A member the lookup budget cannot reach is not silently skipped: each human
 // member is either listed as an account item or carries an open rotation
-// truncation row, at every budget (CodeRabbit on #1538).
+// truncation row, at every budget.
 func TestIncidentOrgTruncationNamesEveryUnreachedMember(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		r := newRotationIncident(t, db)

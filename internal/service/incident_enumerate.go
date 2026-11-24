@@ -486,21 +486,34 @@ func (s *Incidents) memberCanContain(ctx context.Context, az *authz.TxAuthorizer
 // source cap never reached, an open truncation row under the rotation owner: the
 // member's rotations were not checked. Past the cap one row at the scope's own id
 // covers the members left over, so the cut is never silent and the row count stays
-// bounded. A member already reached was read and is skipped.
-func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reached map[domain.PrincipalID]bool, scopeID string, scope domain.Scope) {
+// bounded. A member already reached was read and is skipped, and so is a
+// principal that is no account (a service account or a machine holds grants but
+// owns no scheduled rotation), which isAccount tells.
+//
+// shortcut: one account read per unreached candidate until the cap, upgrade to a
+// batched read when an org has far more unreached non-accounts than accounts.
+func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reached map[domain.PrincipalID]bool, scopeID string, scope domain.Scope, isAccount func(domain.PrincipalID) (bool, error)) error {
 	seen, n := map[domain.PrincipalID]bool{}, 0
 	for _, p := range rest {
 		if seen[p] || reached[p] {
 			continue
 		}
 		seen[p] = true
+		ok, err := isAccount(p)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
 		if n >= maxSourceItems {
 			c.truncated(domain.OwnerRotationHalt, scopeID, scope)
-			return
+			return nil
 		}
 		c.truncated(domain.OwnerRotationHalt, string(p), scope)
 		n++
 	}
+	return nil
 }
 
 func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
@@ -543,7 +556,16 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 		members[p] = true
 		if listed >= maxSourceItems || !c.spend(3) {
 			c.truncated(domain.OwnerAccountContain, a.scopeID, scope)
-			c.truncateUnreachedRotations(candidates[i:], reached, a.scopeID, scope)
+			isAccount := func(p domain.PrincipalID) (bool, error) {
+				_, err := az.AccountByPrincipal(ctx, p)
+				if errors.Is(err, domain.ErrNotFound) {
+					return false, nil
+				}
+				return err == nil, err
+			}
+			if err := c.truncateUnreachedRotations(candidates[i:], reached, a.scopeID, scope, isAccount); err != nil {
+				return err
+			}
 			break
 		}
 		reached[p] = true

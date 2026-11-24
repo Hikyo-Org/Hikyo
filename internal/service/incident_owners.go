@@ -199,8 +199,8 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	default:
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
-	// Pending owner confirmation (incident-containment ADR, amendment): an
-	// operator never contains their own account.
+	// Owner decision (incident-containment ADR, Owner decisions): an operator never
+	// contains their own account.
 	if target == w.caller.Principal {
 		return OwnerUnconfirmed, ErrIncidentSelfContainment
 	}
@@ -362,10 +362,17 @@ func developerCredentialLive(ctx context.Context, az *authz.TxAuthorizer, org do
 // independent owners that each read their own state (ADR, Concurrency and
 // fencing). It never resumes: a release of the principal leaves the rotation
 // halted, and the resume stays an explicit operator act with the rotation's own
-// authorization. A run already past its gate or a revoke in flight finishes under
-// the executor's own fence (the generation bump stales it); the credential
-// already delivered keeps its expiry. The item is confirmed only when the rotation
-// is halted or gone; a rotation a restore holds stays open.
+// authorization. The halt bumps the generation. A run that has not yet published
+// stops: its gate sees the halted state, and on PostgreSQL a halt that commits
+// inside the publish transaction aborts that publish whole (SERIALIZABLE, the
+// halt writes the row the publish writes), so the rerun finds the rotation
+// halted. A run already past its publish is not undone: an in-flight revoke
+// finishes under the executor's own fence and the credential already delivered
+// keeps its expiry. The item is confirmed only when the rotation is halted or gone;
+// a rotation a restore holds stays open. A rotation that no longer exists answers
+// confirmed (it schedules nothing), while one whose authority this incident does
+// not select answers not found: the first is a fact about the rotation, the second
+// about the incident, and neither reveals the other's existence.
 func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
 	return o.inTx(ctx, actor, item, domain.ObjectKindRotation, func(w ownerRun) (IncidentOwnerResult, error) {
 		if w.inc.ScopeKind != domain.IncidentScopeAccount && w.inc.ScopeKind != domain.IncidentScopeOrg {

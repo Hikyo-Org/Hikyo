@@ -1,6 +1,6 @@
 # Scoped incident containment and credential recovery (ADR, accepted 2026-11-12)
 
-> **Declared amendment (2026-11-23, [#1471](https://github.com/Hikyo-Org/Hikyo/issues/1471), owner decision B; operative upon the slice 3 implementation pull request merging):** scheduled rotations become an account-scope ledger object kind. A contained account's live rotations are listed by authority principal and halted with the dedicated halt word `incident_contained`, independently of the `account.contain` item. Org scope inherits through the accounts it selects, project and adapter scopes select no account and list no rotation, and release never resumes a halt. The normative text is the [amendment below](#amendment-scheduled-rotations-are-an-account-scope-object-kind-1471). Independent Standards and Spec review ran on the implementation and its findings were repaired; cross-provider review did not run and is not CLEAN. Maintainer security review and the human merge gate remain required. Historical text below is preserved.
+> **Declared amendment (2026-11-23, [#1471](https://github.com/Hikyo-Org/Hikyo/issues/1471), owner decision B; operative upon the slice 3 implementation pull request merging):** scheduled rotations become an account-scope ledger object kind. A contained account's live rotations are listed by authority principal and halted with the dedicated halt word `incident_contained`, independently of the `account.contain` item. Org scope inherits through the accounts it selects, project and adapter scopes select no account and list no rotation, and release never resumes a halt. The normative text is the [amendment below](#amendment-scheduled-rotations-are-an-account-scope-object-kind-1471). Independent Standards and Spec review ran in rounds on the implementation pull request, which records each round and its repairs; cross-provider review did not run and is not CLEAN. Maintainer security review and the human merge gate remain required. Historical text below is preserved.
 
 > **Status: accepted by the owner on 2026-11-12 as recommended, options O1 to O8 as listed in the [Decision record](#decision-record). Operative per scope only when the implementation pull requests merge.**
 > Accepting this ADR selects the options. It adds no command, capability or schema today,
@@ -395,10 +395,15 @@ principal is contained, so a contained account would still have a scheduler acti
 - `rotation` is an account-scope ledger object kind, owned by the `rotation.halt` owner
   function. The ledger lists the live (not disabled) rotations whose authority principal is
   a selected account, and halts each one. An active or a paused rotation is halted; a
-  rotation a restore holds stays open until the hold clears.
+  rotation a restore holds stays open until the hold clears. A blocked item (the caller
+  lacks the capability) needs an operator who holds it, and an unconfirmed one needs a
+  successful resume; neither can be attested.
 - Scope matrix. Account scope lists the account's rotations. Org scope inherits through the
   accounts it selects: each selected member's rotations are listed within the same lookup
-  budget, and a member the budget cannot reach is an open `enumeration_truncated` row. Project
+  budget, and a member the budget cannot reach is an open `enumeration_truncated` row. That row can be neither
+  attested nor resumed past, and opening again lists with the same budget and order, so the
+  operator pauses or deletes the unreached members' rotations through their own owners and
+  closes the incident with residuals. Project
   and adapter scopes select no account (see the scope matrix above), so they list no rotation
   of their own. An account incident bounded to one org lists that org's rotations; a rotation
   in an org the account no longer belongs to has lost its recorded authority and halts by
@@ -479,14 +484,14 @@ delegation failure tests, adversarial remint during containment, restart and con
 tests, an interface exercise on desktop, mobile and CLI, and an isolated recovery rehearsal)
 remain to be delivered by the implementation.
 
-## Pending owner confirmation
+## Owner decisions
 
-- The owner functions refuse containing the operator's own account (self-containment).
-  This keeps the lockout guard of O3 and is not an owner decision yet. An override would
-  need its own decision.
-- An org incident that lists the operator as a member yields a contain item that is always
-  refused, so that incident cannot close clean while the operator's own rotations (halted by
-  their independent items) stay halted. The operator hands the incident to another responder.
+- **Self-containment stays refused.** The owner functions refuse containing the operator's
+  own account. This keeps the lockout guard of O3. An override would need its own decision.
+- **An org incident that lists the operator hands off.** Such an incident yields a contain
+  item for the operator that is always refused, so it cannot close clean while the operator's
+  own rotations (halted by their independent items) stay halted. The operator hands the
+  incident to another responder.
 
 ## Review record
 

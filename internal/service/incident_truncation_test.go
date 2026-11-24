@@ -13,12 +13,16 @@ import (
 func TestTruncateUnreachedRotationsBoundsTheRowsAtTheSourceCap(t *testing.T) {
 	scope := domain.Scope{Org: "org_a"}
 	reached := map[domain.PrincipalID]bool{"usr_reached": true}
-	rest := []domain.PrincipalID{"usr_reached", "usr_dup", "usr_dup"}
+	rest := []domain.PrincipalID{"usr_reached", "usr_machine", "usr_dup", "usr_dup"}
 	for i := 0; i < maxSourceItems+5; i++ {
 		rest = append(rest, domain.PrincipalID(fmt.Sprintf("usr_%05d", i)))
 	}
 	c := newCollector(0)
-	c.truncateUnreachedRotations(rest, reached, "org_a", scope)
+	// A principal that is no account (usr_machine) never gets a row and takes no slot.
+	isAccount := func(p domain.PrincipalID) (bool, error) { return p != "usr_machine", nil }
+	if err := c.truncateUnreachedRotations(rest, reached, "org_a", scope, isAccount); err != nil {
+		t.Fatal(err)
+	}
 
 	var members, scopeRows int
 	seen := map[string]bool{}

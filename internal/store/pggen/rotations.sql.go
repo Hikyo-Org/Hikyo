@@ -841,7 +841,7 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 }
 
 const rotationListByAuthorityInInstance = `-- name: RotationListByAuthorityInInstance :many
-SELECT id,org_id,project_id,environment_id,state FROM rotations WHERE authority_principal_id=$1 AND state<>'disabled' AND id > $2 ORDER BY id LIMIT $3
+SELECT id,org_id,project_id,environment_id FROM rotations WHERE authority_principal_id=$1 AND state<>'disabled' AND id > $2 ORDER BY id LIMIT $3
 `
 
 type RotationListByAuthorityInInstanceParams struct {
@@ -855,7 +855,6 @@ type RotationListByAuthorityInInstanceRow struct {
 	OrgID         string
 	ProjectID     string
 	EnvironmentID string
-	State         string
 }
 
 // The same page across every org, for an account whose footprint spans several.
@@ -875,7 +874,6 @@ func (q *Queries) RotationListByAuthorityInInstance(ctx context.Context, arg Rot
 			&i.OrgID,
 			&i.ProjectID,
 			&i.EnvironmentID,
-			&i.State,
 		); err != nil {
 			return nil, err
 		}
@@ -888,7 +886,7 @@ func (q *Queries) RotationListByAuthorityInInstance(ctx context.Context, arg Rot
 }
 
 const rotationListByAuthorityInOrg = `-- name: RotationListByAuthorityInOrg :many
-SELECT id,project_id,environment_id,state FROM rotations WHERE org_id=$1 AND authority_principal_id=$2 AND state<>'disabled' AND id > $3 ORDER BY id LIMIT $4
+SELECT id,project_id,environment_id FROM rotations WHERE org_id=$1 AND authority_principal_id=$2 AND state<>'disabled' AND id > $3 ORDER BY id LIMIT $4
 `
 
 type RotationListByAuthorityInOrgParams struct {
@@ -902,7 +900,6 @@ type RotationListByAuthorityInOrgRow struct {
 	ID            string
 	ProjectID     string
 	EnvironmentID string
-	State         string
 }
 
 // Incident enumeration (#1471): one org's live rotations whose recorded authority
@@ -923,12 +920,7 @@ func (q *Queries) RotationListByAuthorityInOrg(ctx context.Context, arg Rotation
 	var items []RotationListByAuthorityInOrgRow
 	for rows.Next() {
 		var i RotationListByAuthorityInOrgRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectID,
-			&i.EnvironmentID,
-			&i.State,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.ProjectID, &i.EnvironmentID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

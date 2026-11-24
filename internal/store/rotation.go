@@ -201,11 +201,12 @@ type RotationRunRecord struct {
 	CredentialValidUntilLowerBound bool
 }
 
-// RotationAuthorityRef is the identifiers-and-state view of one live rotation
-// that the incident enumeration lists by its recorded authority principal. It
-// carries no key, provider or credential detail.
+// RotationAuthorityRef is the identifiers view of one live rotation that the
+// incident enumeration lists by its recorded authority principal. It carries no
+// key, provider or credential detail; a rotation's state is read live when an
+// item is viewed, so the ledger stores none.
 type RotationAuthorityRef struct {
-	ID, OrgID, ProjectID, EnvironmentID, State string
+	ID, OrgID, ProjectID, EnvironmentID string
 }
 
 // RotationReader is the read side.
@@ -875,7 +876,7 @@ func (q sqliteRotationQueries) listByAuthorityInOrg(ctx context.Context, chain d
 		return nil, err
 	}
 	return mapRows(rows, func(c sqlitegen.RotationListByAuthorityInOrgRow) (RotationAuthorityRef, error) {
-		return RotationAuthorityRef{ID: c.ID, OrgID: string(chain.Org), ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, State: c.State}, nil
+		return RotationAuthorityRef{ID: c.ID, OrgID: string(chain.Org), ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID}, nil
 	})
 }
 
@@ -888,7 +889,7 @@ func (q pgRotationQueries) listByAuthorityInOrg(ctx context.Context, chain domai
 		return nil, err
 	}
 	return mapRows(rows, func(c pggen.RotationListByAuthorityInOrgRow) (RotationAuthorityRef, error) {
-		return RotationAuthorityRef{ID: c.ID, OrgID: string(chain.Org), ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, State: c.State}, nil
+		return RotationAuthorityRef{ID: c.ID, OrgID: string(chain.Org), ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID}, nil
 	})
 }
 
