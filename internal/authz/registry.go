@@ -2650,7 +2650,7 @@ var operationTable = map[Operation]opSpec{
 			StoreRotationsPurgeEnvironment: true,
 			// Terminal dynamic leases go with it (#1420); a live lease, any
 			// certificate row or any adapter target or configure fence refuses.
-			StoreDynamicLeasesPurgeEnvironment:         true,
+			StoreDynamicLeasesPurgeEnvironment:   true,
 			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
@@ -3004,8 +3004,8 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreRotationsPurgeEnvironment:             true,
-			StoreDynamicLeasesPurgeEnvironment:         true,
+			StoreRotationsPurgeEnvironment:       true,
+			StoreDynamicLeasesPurgeEnvironment:   true,
 			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,

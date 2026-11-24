@@ -42,33 +42,67 @@ func (e *liveRowsRefusalError) Error() string      { return "service: " + e.deta
 func (e *liveRowsRefusalError) SafeDetail() string { return e.detail }
 func (e *liveRowsRefusalError) Unwrap() error      { return e.base }
 
+// liveRowsRefusalsError reports every blocking kind of one environment delete,
+// so a caller or test sees the full set: errors.Is matches each kind and the
+// detail lists every kind's ids.
+type liveRowsRefusalsError struct{ errs []error }
+
+func (e *liveRowsRefusalsError) Error() string { return "service: " + e.SafeDetail() }
+func (e *liveRowsRefusalsError) SafeDetail() string {
+	parts := make([]string, len(e.errs))
+	for i, err := range e.errs {
+		var d interface{ SafeDetail() string }
+		if errors.As(err, &d) {
+			parts[i] = d.SafeDetail()
+		} else {
+			parts[i] = "the environment still has a live SSH CA; delete it first"
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+func (e *liveRowsRefusalsError) Unwrap() []error { return e.errs }
+
 // purgeEnvironmentLiveRows removes a deleted environment's terminal dynamic
-// leases and terminal certificate history in the delete's own transaction and
-// refuses by name while a lease or live certificate, or an adapter target or
-// configure fence, remains (#1420). It returns the certificates purged.
+// leases, terminal certificate history and SSH rows in the delete's own
+// transaction. It refuses by name while a lease or live certificate, an adapter
+// target or configure fence, or a live SSH CA remains, reporting every blocking
+// kind together (#1420); the caller's transaction rolls the partial purge back.
+// It returns the certificates purged.
 func purgeEnvironmentLiveRows(ctx context.Context, r store.Repos, proof authz.Proof) (int, error) {
+	var refusals []error
 	err := r.Dynamic().PurgeEnvironment(ctx, proof)
 	if refusal := liveRowsRefusal(err, ErrEnvironmentHasLiveLease, store.ErrDynamicLiveLease,
 		"the environment still has a live dynamic lease; revoke it and let it settle first; leases not yet terminal: "); refusal != nil {
-		return 0, refusal
-	}
-	if err != nil {
+		refusals = append(refusals, refusal)
+	} else if err != nil {
 		return 0, err
 	}
 	purged, err := r.PKI().PurgeEnvironment(ctx, proof, time.Now().UTC())
 	if refusal := liveRowsRefusal(err, ErrEnvironmentHasLiveCertificate, store.ErrPKILiveCertificate,
 		"the environment still has a live certificate; revoke it and let it expire first; certificates still live: "); refusal != nil {
-		return 0, refusal
-	}
-	if err != nil {
+		refusals = append(refusals, refusal)
+	} else if err != nil {
 		return 0, err
 	}
 	err = r.Adapters().GuardEnvironmentDelete(ctx, proof)
 	if refusal := liveRowsRefusal(err, ErrEnvironmentHasAdapterTargets, store.ErrAdapterTargetsInEnvironment,
 		"the environment still has adapter targets (live or tombstoned) or configure fences, whose delivery records are retained; ids: "); refusal != nil {
-		return 0, refusal
+		refusals = append(refusals, refusal)
+	} else if err != nil {
+		return 0, err
 	}
-	return purged, err
+	if err := r.SSH().PurgeEnvironment(ctx, proof); errors.Is(err, store.ErrSSHLiveCA) {
+		refusals = append(refusals, err)
+	} else if err != nil {
+		return 0, err
+	}
+	switch len(refusals) {
+	case 0:
+		return purged, nil
+	case 1:
+		return 0, refusals[0]
+	}
+	return 0, &liveRowsRefusalsError{errs: refusals}
 }
 
 // purgeProjectProviders removes a deleted project's tombstoned dynamic

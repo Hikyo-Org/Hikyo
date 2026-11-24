@@ -1150,9 +1150,6 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return err
 		}
-		if err := r.SSH().PurgeEnvironment(ctx, p); err != nil {
-			return err
-		}
 		if err := purgePersonalForEnvironment(ctx, r, p, caller.Principal, scope.Env); err != nil {
 			return err
 		}

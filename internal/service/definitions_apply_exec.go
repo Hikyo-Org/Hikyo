@@ -722,9 +722,6 @@ func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *
 	if _, err := purgeEnvironmentLiveRows(ctx, r, ep); err != nil {
 		return err
 	}
-	if err := r.SSH().PurgeEnvironment(ctx, ep); err != nil {
-		return err
-	}
 	if err := purgePersonalForEnvironment(ctx, r, ep, caller.Principal, envScope.Env); err != nil {
 		return err
 	}

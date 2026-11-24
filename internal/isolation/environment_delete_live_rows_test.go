@@ -297,3 +297,33 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 		}
 	}
 }
+
+// One delete reports every blocking kind together: errors.Is matches each and
+// the detail names the ids of all, so neither a caller nor a test sees only the
+// first kind that happened to be checked.
+func TestEnvironmentDeleteReportsEveryBlockingKind(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedDefinitionsProject(t, db, "multi", true)
+		project := string(f.project)
+		seedLeaseRows(t, db, f)
+		seedCertificateRows(t, db, f, time.Now().UTC().Truncate(time.Second))
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_`+project+`','org_a','`+project+`','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
+		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+		detail := safeError(err)
+		for _, want := range []error{service.ErrEnvironmentHasLiveLease, service.ErrEnvironmentHasLiveCertificate, service.ErrEnvironmentHasAdapterTargets} {
+			if !errors.Is(err, want) {
+				t.Fatalf("combined refusal %v does not match %v", err, want)
+			}
+		}
+		for _, id := range []string{project + "_live", project + "_issued", "tgt_" + project} {
+			if !strings.Contains(detail, id) {
+				t.Errorf("combined refusal %q lacks %s", detail, id)
+			}
+		}
+		if got := count(t, db, "pki_certificates", f); got != 6 {
+			t.Errorf("certificates after the combined refusal = %d, want 6 (terminal purge rolled back)", got)
+		}
+	})
+}
