@@ -223,3 +223,52 @@ func TestAccessGrantRevealRoutesOnlyTheWideningRefusal(t *testing.T) {
 		})
 	}
 }
+
+// Where a code can be typed the grant takes its inline ceremony, named as a
+// machine widening, even though can_reveal is false: the server checked the
+// grantor's disclosure authority before asking for the window.
+func TestAccessGrantRevealOpensTheWindowInline(t *testing.T) {
+	bearer := "test-token"
+	posts := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: false, EffectiveWindowSeconds: 300, TotpOffered: true})
+		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
+		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
+			bearer = "hik_1_cli_rotated-grant"
+			_ = jsonwire.Encode(w, apigen.ReauthResult{
+				EnvironmentId: "env_70", SessionId: "ses_rotated", SessionToken: &bearer,
+				WindowExpires: apigen.Timestamp(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)),
+			})
+		case r.Method == http.MethodPost:
+			posts++
+			if r.Header.Get("Authorization") != "Bearer hik_1_cli_rotated-grant" {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"error":{"code":"conflict","message":"the current state of this resource refuses the request",` +
+					`"detail":"reauthenticate over the environments this operation makes reachable, then retry (env_70)"}}`))
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"outcome":"created"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	ios, _, stderr := definitionsTestIO(t, handler)
+	var prompts []string
+	ios.ReadPassword = func(prompt string) (string, error) {
+		prompts = append(prompts, prompt)
+		return "123456", nil
+	}
+	args := []string{"access", "grant", "add", "--principal", "mch_1", "--capability", "reveal",
+		"--instance", "local", "--org", "org_70", "--project", "prj_70", "--env", "env_70"}
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
+	}
+	if posts != 2 || len(prompts) != 1 || !strings.HasPrefix(prompts[0], "Widening machine reveal access over env_70") {
+		t.Fatalf("posts=%d prompts=%q, want 2 posts and one widening prompt", posts, prompts)
+	}
+}

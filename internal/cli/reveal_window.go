@@ -59,7 +59,9 @@ func forbidden(err error) bool {
 // disclosure names what a CLI disclosure is about to do, for the ceremony
 // that may have to precede it: the purpose and the keys per environment.
 type disclosure struct {
-	// purpose is a non-adapter service.ReauthPurpose on the wire.
+	// purpose is a non-adapter service.ReauthPurpose on the wire, or one of the
+	// CLI-only purposes "" (a machine rule change) and "grant" (a machine reveal
+	// grant), which never reach a browser handoff.
 	purpose string
 	// keys resolves the enumerated unit for one environment: the ids of the
 	// secret keys the act will open there. It is consulted only when a

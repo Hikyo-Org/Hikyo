@@ -32,10 +32,12 @@ Status: **pull request open against `dev`, not merged.** Closes
   current reveal) does not veto it.
   The ceremony itself still needs `read` over the environment (the window
   read and the handoff start), so a minter holding `reveal-history` without
-  `read` gets the server's 403; the built-in maintainer role includes `read`.
+  `read` gets the server's 403.
 - **`access grant` refusals.** The grant enters its ceremony only on the
   server's widening refusal (`withWideningCeremony`); a missing grant's 403 is
-  returned unchanged instead of advice about a window.
+  returned unchanged instead of advice about a window. Where a code can be
+  typed, the grant keeps its inline TOTP ceremony; like the mint, it needs
+  `read` over the environment for the window read.
 - **Server.** `internal/service/cli_reauth.go` admits purpose `mint`, which is not
   key-bound (its unit is the environment). Starting it needs `read` over the
   environment, as reveal does; the mint itself re-checks disclosure
