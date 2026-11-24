@@ -78,6 +78,14 @@ func newRotationFixture(t *testing.T, db *store.DB) *rotationFixture {
 		// service resolves the caller's session at its own clock.
 		now: time.Now().UTC().Truncate(time.Second),
 	}
+	return f.configure(prjScope(), alice)
+}
+
+// configure registers the fake PostgreSQL provider in project, builds the rotation
+// service and opens admin's signed-in ceremony session. The fixture's t, db, env,
+// scope and now must be set.
+func (f *rotationFixture) configure(project domain.Scope, admin domain.PrincipalID) *rotationFixture {
+	t, db, ctx := f.t, f.db, tctx(f.t)
 	f.dyn = &service.Dynamic{
 		DB: db, Keyring: probeKeyring(t, db), Runtime: store.NewDynamicRuntime(db),
 		LeaseDeadline: 5 * time.Second,
@@ -85,7 +93,7 @@ func newRotationFixture(t *testing.T, db *store.DB) *rotationFixture {
 			return fakeDynamicProvider{ctl: &fakeDynamicControl{}}, nil
 		},
 	}
-	provider, err := f.dyn.Configure(ctx, service.LocalPrincipal(alice), prjScope(), service.CreateDynamicProviderRequest{
+	provider, err := f.dyn.Configure(ctx, service.LocalPrincipal(admin), project, service.CreateDynamicProviderRequest{
 		Kind: string(dynamic.KindPostgres), Origin: "postgres://admin@db.rotation.example:5432/app",
 		GrantRole: "app_rw", Credential: []byte(rotAdminSecret),
 	})
@@ -98,7 +106,7 @@ func newRotationFixture(t *testing.T, db *store.DB) *rotationFixture {
 	// default, which is zero in this harness unless set.
 	auth.ReauthWindow = 15 * time.Minute
 	f.svc = &service.CredentialRotations{DB: db, Auth: auth, Now: func() time.Time { return f.now }}
-	f.actor = f.session(alice, true)
+	f.actor = f.session(admin, true)
 	return f
 }
 

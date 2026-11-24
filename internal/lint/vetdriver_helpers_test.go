@@ -7,38 +7,14 @@ import (
 	"testing"
 )
 
-func TestRaisedDeferred(t *testing.T) {
-	pinned := map[string]map[string]int{"handles": {"a_test.go": 2}}
-	tests := []struct {
-		name     string
-		observed map[string]map[string]int
-		want     int
-	}{
-		{"lowered", map[string]map[string]int{"handles": {"a_test.go": 1}}, 0},
-		{"removed", map[string]map[string]int{}, 0},
-		{"unchanged", map[string]map[string]int{"handles": {"a_test.go": 2}}, 0},
-		{"raised", map[string]map[string]int{"handles": {"a_test.go": 3}}, 1},
-		{"new file", map[string]map[string]int{"handles": {"a_test.go": 2, "b_test.go": 1}}, 1},
-		{"new analyzer", map[string]map[string]int{"redactfmt": {"a_test.go": 1}}, 1},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := raisedDeferred("linux", pinned, tc.observed); len(got) != tc.want {
-				t.Fatalf("raisedDeferred = %v, want %d findings", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestDecodeVetOutput(t *testing.T) {
 	const pkg = Module + "/internal/store [" + Module + "/internal/store.test]"
 	tree := func(analyzer, result string) string {
 		return `{"` + pkg + `":{"` + analyzer + `":` + result + `}}`
 	}
-	diagIn := func(category, extra string) string {
-		return `[{"category":"` + category + `","posn":"/r/a_test.go:1:2","end":"/r/a_test.go:1:3","message":"m"` + extra + `}]`
+	diag := func(extra string) string {
+		return `[{"category":"","posn":"/r/a_test.go:1:2","end":"/r/a_test.go:1:3","message":"m"` + extra + `}]`
 	}
-	diag := func(extra string) string { return diagIn("", extra) }
 	summary := func(message string) string {
 		return `[{"category":"summary","posn":"/r/a.go:1:1","end":"/r/a.go:1:1","message":"` + message + `"}]`
 	}
@@ -48,11 +24,10 @@ func TestDecodeVetOutput(t *testing.T) {
 	}{
 		{name: "empty output", raw: ""},
 		{
-			name: "deferred category after a header line", raw: "# " + pkg + "\n" + tree("handles", diagIn(deferredCategory, "")),
+			name: "a finding after a header line", raw: "# " + pkg + "\n" + tree("handles", diag("")),
 			check: func(t *testing.T, out *vetOutcome) {
-				want := "/r/a_test.go:1:2: handles: m"
-				if len(out.Findings) != 1 || out.Findings[0] != want || out.Deferred[want] != "handles" {
-					t.Fatalf("findings = %v, deferred = %v", out.Findings, out.Deferred)
+				if want := "/r/a_test.go:1:2: handles: m"; len(out.Findings) != 1 || out.Findings[0] != want {
+					t.Fatalf("findings = %v", out.Findings)
 				}
 			},
 		},
@@ -65,18 +40,10 @@ func TestDecodeVetOutput(t *testing.T) {
 			},
 		},
 		{
-			name: "a test-file position without the category stays strict", raw: tree("handles", diag("")),
-			check: func(t *testing.T, out *vetOutcome) {
-				if len(out.Findings) != 1 || len(out.Deferred) != 0 {
-					t.Fatalf("findings = %v, deferred = %v", out.Findings, out.Deferred)
-				}
-			},
-		},
-		{
 			name: "related and suggested fixes are accepted", raw: tree("forgeguard", diag(`,"related":[{"posn":"x","end":"y","message":"y"}],"suggested_fixes":[{"message":"z","edits":[{"filename":"f","start":1,"end":2,"new":"n"}]}]`)),
 			check: func(t *testing.T, out *vetOutcome) {
-				if len(out.Findings) != 1 || len(out.Deferred) != 0 {
-					t.Fatalf("findings = %v, deferred = %v", out.Findings, out.Deferred)
+				if len(out.Findings) != 1 {
+					t.Fatalf("findings = %v", out.Findings)
 				}
 			},
 		},
@@ -177,35 +144,6 @@ func TestInstallersFlagSet(t *testing.T) {
 	}
 	if err := f.Set("b=Y"); err != nil || f.String() != "b=Y" {
 		t.Fatalf("second Set replaces the first: %v %q", err, f.String())
-	}
-}
-
-func TestCheckDeferredCeiling(t *testing.T) {
-	pinned := map[string]map[string]int{"handles": {"a_test.go": 3, "b_test.go": 2}}
-	tests := []struct {
-		name     string
-		observed map[string]map[string]int
-		want     []string
-	}{
-		{"at the ceiling", map[string]map[string]int{"handles": {"a_test.go": 3, "b_test.go": 2}}, nil},
-		{"above the ceiling", map[string]map[string]int{"handles": {"a_test.go": 4, "b_test.go": 2}}, []string{"above its pinned ceiling 3"}},
-		{"new file", map[string]map[string]int{"handles": {"a_test.go": 3, "b_test.go": 2, "c_test.go": 1}}, []string{"c_test.go gained 1"}},
-		{"new analyzer", map[string]map[string]int{"handles": {"a_test.go": 3, "b_test.go": 2}, "redactfmt": {"a_test.go": 1}}, []string{"redactfmt: a_test.go gained 1"}},
-		{"dropped count", map[string]map[string]int{"handles": {"a_test.go": 2, "b_test.go": 2}}, []string{"lower the pin"}},
-		{"cleared file", map[string]map[string]int{"handles": {"a_test.go": 3}}, []string{"b_test.go has 0", "lower the pin"}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := strings.Join(checkDeferredCeiling("default", pinned, tc.observed), "\n")
-			if len(tc.want) == 0 && got != "" {
-				t.Fatalf("unexpected findings:\n%s", got)
-			}
-			for _, want := range tc.want {
-				if !strings.Contains(got, want) {
-					t.Fatalf("findings do not contain %q:\n%s", want, got)
-				}
-			}
-		})
 	}
 }
 

@@ -60,7 +60,8 @@ Because no per-publish ceremony will ever gate the unattended publishes that
 follow, **creating and resuming a rotation each consume a publish
 reauthentication ceremony** over the environment and both keys, the same step a
 values publish of those keys takes. `hikyo rotation create` and `hikyo rotation
-resume` prompt for it through the usual browser handoff.
+resume` prompt for it through the usual browser handoff, and the browser's
+**Rotations** tab asks for it before it sends the act.
 
 The person who creates the rotation is recorded as the authority principal, and
 the executor will re-check their authority in full before every step that can still
@@ -322,9 +323,33 @@ deleted on its `ATTENTION` line.
 ## In the browser
 
 **Machine access** has a **Rotations** tab that shows an environment's rotations
-and the runs of one of them. It is status only: creating, pausing, resuming,
-running and deleting a rotation, and lifting a restore hold, are `hikyo rotation`
-commands, and the tab has no button for any of them. It needs **read** on the
+and the runs of one of them, and takes the same acts as `hikyo rotation`, with the
+same authorization and refusals:
+
+- **Create rotation** asks for the provider (one that can mint: active, with its
+  admin credential set), the password key (a secret key outside any key group), the
+  role name key, the interval in hours and the overlap in minutes.
+- Each rotation row offers only the acts its state allows: **Pause** and **Run now**
+  on an active rotation, **Resume** on a paused or halted one, **Delete** on any live
+  one, and **Release hold** instead of resume, run-now and delete while a restore
+  holds it. A deleted rotation takes no act.
+- Create, resume, run-now and release-hold then ask you to confirm the publish over
+  the environment and both keys with a passkey, a code or your identity provider,
+  even in an unprotected environment; a live re-authentication window you opened in
+  this browser session covers it, unless it was a one-time passkey confirmation.
+  Pause and delete need no confirmation step beyond their dialog.
+- **Release hold** shows the reconcile-then-release instruction first, and its button
+  stays disabled until you tick that you have reconciled the grants and the provider
+  credential and read the runs. It never resumes a paused or halted rotation; an
+  active one publishes on its schedule again.
+- **Run now** can skip the overlap, which revokes the superseded credential as soon as
+  the new one is published. **Delete** can close the rotation's unsettled runs instead
+  of refusing while one is in flight; that revokes nothing.
+- Every act sends the generation the tab read, so a change someone made since is
+  refused as a conflict instead of overwritten, and every refusal is shown in the
+  sentence plus the server's named reason. The tab never shows or stores a credential.
+
+Reading the tab needs **read** on the
 environment. A person who lacks it gets the API's answer (the same not-found for a
 rotation that is absent), which the tab words as "Listing them needs read on this
 environment" without saying whether anything exists.

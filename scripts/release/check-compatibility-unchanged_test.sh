@@ -3,7 +3,8 @@
 # declaration with the previous stable release's published one. The declarations
 # here have the real shape: the migrations come from the declaration the real
 # generator produces for this source tree, and the source edges are copied from
-# the hand-reviewed release/compatibility/sources.json (genesis edges only).
+# the genesis edges of the hand-reviewed release/compatibility/sources.json (its release
+# edges name the real v1.1.0, which these fixtures replace with their own baseline).
 # Only release download and the signature verifier are faked; the comparison
 # itself is the real script.
 set -eu
@@ -17,7 +18,7 @@ export FIXTURE_SCRATCH="$scratch" FIXTURE_COMMIT="$c0"
 real_declaration() { # version sequence commit
 	jq -S --slurpfile sources "$repo_root/release/compatibility/sources.json" --arg v "$1" --argjson s "$2" --arg c "$3" '
 		.version = $v | .sequence = $s | .commit = $c |
-		.engines |= map(.sources = $sources[0].engines[.migrations.engine])' "$repo_root/internal/buildcompat/development.json"
+		.engines |= map(.sources = ($sources[0].engines[.migrations.engine] | map(select(.source.genesis != null))))' "$repo_root/internal/buildcompat/development.json"
 }
 jq -e '.engines.sqlite | length > 1' "$repo_root/release/compatibility/sources.json" >/dev/null ||
 	{ printf 'fixture: release/compatibility/sources.json lost its reviewed edges\n' >&2; exit 1; }
@@ -173,7 +174,7 @@ grep -F 'the compatibility declaration differs from the one v1.1.0 published' "$
 
 # --edges-only judges release/compatibility/sources.json alone, before anything is generated.
 sources_with() { # identity-json [jq filter applied to each edge]
-	jq -S --argjson id "$1" --slurpfile base "$scratch/baseline-decl.json" '.engines |= with_entries(.key as $k | .value += [($base[0].engines[] | select(.migrations.engine == $k) |
+	jq -S --argjson id "$1" --slurpfile base "$scratch/baseline-decl.json" '.engines |= with_entries(.key as $k | .value |= map(select(.source.genesis != null)) | .value += [($base[0].engines[] | select(.migrations.engine == $k) |
 		({source: {release: $id}, migrations: .migrations, schema_sha256: .schema_sha256, mode: "maintenance"} | '"${2:-.}"'))])' "$repo_root/release/compatibility/sources.json"
 }
 edges_check() { # mode sources-file want-exit want-fragment
@@ -188,7 +189,8 @@ edges_check() { # mode sources-file want-exit want-fragment
 sources_with "$baseline_identity" >"$scratch/sources-ok.json"
 edges_check same "$scratch/sources-ok.json" 0 'every engine carries its sound release-source edge from v1.1.0'
 if grep -q 'run ./scripts/ci\|compatibility --candidate' "$scratch/calls"; then printf 'compatibility fixture: --edges-only generated a declaration\n' >&2; exit 1; fi
-edges_check same "$repo_root/release/compatibility/sources.json" 1 'sqlite: no release-source edge from v1.1.0'
+jq -S '.engines |= map_values(map(select(.source.genesis != null)))' "$repo_root/release/compatibility/sources.json" >"$scratch/sources-genesis.json"
+edges_check same "$scratch/sources-genesis.json" 1 'sqlite: no release-source edge from v1.1.0'
 grep -F 'postgres: no release-source edge from v1.1.0' "$scratch/out" >/dev/null || { printf 'compatibility fixture: --edges-only did not name postgres\n' >&2; exit 1; }
 [ "$(tail -n 1 "$scratch/out")" = 'compatibility check: the release-source edge from v1.1.0 is missing or does not match what v1.1.0 published; add the reviewed edge per engine' ] || { printf 'compatibility fixture: --edges-only did not end on the edge refusal\n' >&2; exit 1; }
 sources_with "$baseline_identity" '.migrations.entries |= .[:-1]' >"$scratch/changed.json"

@@ -508,8 +508,8 @@ export const SshTab: Story = {
   },
 };
 
-// The Rotations tab, opened from the URL: status only, with the loud restore
-// hold naming the CLI command that lifts it.
+// The Rotations tab, opened from the URL: the loud restore hold names the CLI
+// command that lifts it, and the held row offers the browser's release act.
 export const RotationsTab: Story = {
   parameters: {
     app: app(
@@ -525,6 +525,7 @@ export const RotationsTab: Story = {
     await expect(await canvas.findByRole('tab', { name: 'Rotations' })).toHaveAttribute('aria-selected', 'true');
     await expect(await canvas.findByRole('heading', { name: 'Rotations', level: 2 })).toBeVisible();
     await expect(await canvas.findByText(new RegExp(`hikyo rotation release-hold ${HELD_ROTATION}`))).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Release hold REPORTING_PASSWORD' })).toBeEnabled();
   },
 };
 

@@ -17,7 +17,7 @@ import { zSshca, zSshCertificate, zSshProfile } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { commonRefusalText, statusText } from './statusText.ts';
+import { commonRefusalText, statusText, withDetail } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { useTransport, type TransportOptions } from './transport.tsx';
 
@@ -285,13 +285,6 @@ export function useRevokeSSHCertificate(e: EnvironmentRef) {
 }
 
 // ---- Refusal text -------------------------------------------------------------
-
-function withDetail(base: string, error: unknown): string {
-  if (error instanceof ApiError && error.detail !== undefined && error.detail !== '') {
-    return `${base} (${error.detail})`;
-  }
-  return base;
-}
 
 /** sshRefusalText names a refusal for one SSH act, in that act's words. */
 export function sshRefusalText(

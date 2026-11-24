@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strings"
 )
 
 // bootstrapManagedKeys includes startup file references as well as the
@@ -136,6 +137,11 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 			return nil, fmt.Errorf("%s: cannot import a regular file of at most 65536 bytes", source.file)
 		}
 		values[source.value] = content
+	}
+	// schema-model.md trims every write path; the seed is the bootstrap write path (#1492).
+	// config is a leaf package, so this is schema.Normalize inlined.
+	if password, ok := values["HIKYO_MAIL_PASSWORD"]; ok {
+		values["HIKYO_MAIL_PASSWORD"] = strings.TrimSpace(password)
 	}
 	return values, nil
 }
