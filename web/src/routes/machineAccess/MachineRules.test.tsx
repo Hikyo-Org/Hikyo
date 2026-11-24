@@ -62,7 +62,16 @@ it('says the reauthentication did not complete, with the ceremony cause, in the 
   const text = root.querySelector('[role="alert"]')?.textContent ?? '';
   expect(text).toContain('newly reaches plaintext in prod');
   expect(text).toContain('The passkey prompt was dismissed or timed out.');
+  expect(text).not.toContain('disclosed');
   expect(text).toContain('Nothing was saved.');
+});
+
+it('does not speak of codes when the passkey ceremony request is refused', async () => {
+  const root = await mount('automation');
+  await saveFailing(root, new RuleReauthFailure(IDS.payProd, new ApiError(401, 'request failed with 401', 'unauthorized')));
+  const text = root.querySelector('[role="alert"]')?.textContent ?? '';
+  expect(text).toContain('The passkey reauthentication was refused (server error 401).');
+  expect(text).not.toContain('code');
 });
 
 it('says the server refused again when the reauthentication completed', async () => {

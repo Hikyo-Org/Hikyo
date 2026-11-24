@@ -195,5 +195,5 @@ running product.
 - **Still open after stage C:** a person with neither a grant nor a rule is
   not listed on Members, so the first access for an invitee comes from the
   invite template or a grant; a server-side resolver operation (ADR
-  *First implementation slice*). The Machine access rule editor is part of
-  this change.
+  *First implementation slice*). The Machine access rule editor exists
+  (#1482).

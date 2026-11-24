@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { ServiceAccount } from '../../api/identities.ts';
+import { ApiError } from '../../api/client.ts';
 import { ceremonyRefusalText } from '../../api/values.ts';
 import { RuleReauthFailure, ruleFailureText, RuleSaveFailure, useRuleMutations, wideningEnvironment } from '../../api/rules.ts';
 import { Alert } from '../../ui/Alert.tsx';
@@ -19,6 +20,15 @@ import { RuleEditorDialog } from '../accessRules/RuleEditorDialog.tsx';
  * A save that makes plaintext newly reachable takes one passkey
  * reauthentication per such environment (see `saveRule`).
  */
+// ceremonyRefusalText speaks of codes and disclosures; a rule save uses a passkey only.
+function reauthText(error: unknown): string {
+  if (error instanceof Error && error.name === 'NotAllowedError') return 'The passkey prompt was dismissed or timed out.';
+  if (error instanceof ApiError && (error.status === 401 || error.status === 409)) {
+    return `The passkey reauthentication was refused (server error ${error.status}).`;
+  }
+  return ceremonyRefusalText(error);
+}
+
 export function MachineRules({
   org,
   project,
@@ -51,7 +61,7 @@ export function MachineRules({
   };
   const failureText = (error: unknown) => {
     if (error instanceof RuleReauthFailure) {
-      return `This rule newly reaches plaintext in ${envName(world, error.environment)}, which needs a passkey reauthentication over it. ${ceremonyRefusalText(error.cause)} Nothing was saved.`;
+      return `This rule newly reaches plaintext in ${envName(world, error.environment)}, which needs a passkey reauthentication over it. ${reauthText(error.cause)} Nothing was saved.`;
     }
     const environment = wideningEnvironment(error);
     return environment === undefined
