@@ -164,7 +164,7 @@ assert_planned_checks tooling
 run_lane --lane=frontend >"$work/frontend"
 assert_planned_checks frontend
 diff -u <(printf '%s\n' 'go mod verify' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' | sort) "$work/application"
-! grep -F static-invariants "$work/application"
+if grep -F static-invariants "$work/application"; then exit 1; fi
 diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' 'static-invariants' | sort) "$work/tooling"
 compile_prefix='go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null '
 sed -n "s|^$compile_prefix||p" "$work/scope-all" | tr ' ' '\n' | sort >"$work/all-owners"
