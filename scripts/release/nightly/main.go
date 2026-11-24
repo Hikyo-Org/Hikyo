@@ -126,6 +126,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if document.Schema != "hikyo.dev/upgrade-sources/v1" || len(document.Engines) != 2 {
 			return errors.New("invalid reviewed source inventory")
 		}
+		dropStableReleaseEdges(document.Engines)
 		// Every verified predecessor becomes an exact-schema source edge, so a
 		// route can skip a revoked or missing nightly as long as an older
 		// declared predecessor still exists (#700). Identities must be distinct
@@ -281,6 +282,17 @@ func loadTrust(directory string) (releasetrust.Snapshot, []byte, error) {
 // MaxPredecessors bounds how many signed predecessors one nightly declares as
 // direct upgrade sources. Each costs a full verified release download in CI.
 const MaxPredecessors = 8
+
+// dropStableReleaseEdges removes the reviewed stable release-source edges: a
+// nightly declaration cannot name a stable source (profile transitions need a
+// recovery bridge), and sources.json carries them for stable releases only.
+func dropStableReleaseEdges(engines map[releaseidentity.Engine][]upgradecompat.SourceEdge) {
+	for engine, edges := range engines {
+		engines[engine] = slices.DeleteFunc(edges, func(edge upgradecompat.SourceEdge) bool {
+			return edge.Source.IsRelease() && edge.Source.Release.Profile != releaseidentity.NightlyV1
+		})
+	}
+}
 
 type multiFlag []string
 

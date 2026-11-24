@@ -78,7 +78,10 @@ export type CeremonyPurpose =
   | 'reject'
   | 'bypass'
   | 'access'
-  | 'personal';
+  | 'personal'
+  | 'rotation'
+  | 'rotation-run'
+  | 'rotation-release';
 
 const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   reveal: 'reveal',
@@ -92,6 +95,9 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   bypass: 'bypass approvals in',
   access: 'take emergency access in',
   personal: 'set your personal value in',
+  rotation: 'hand scheduled publishing to a rotation in',
+  'rotation-run': 'publish a new credential now for a rotation in',
+  'rotation-release': 'release a restore hold on a rotation in',
 };
 
 /**
@@ -132,6 +138,12 @@ const SIGNED_OPERATION: Record<
   access: 'access',
   // A personal value uses the environment's reveal gate (personal-values ADR).
   personal: 'reveal',
+  // A scheduled rotation (#148) consumes the publish window over the environment
+  // and both its keys: it delegates publish authority to an unattended worker.
+  rotation: 'publish',
+  // Run-now and release-hold consume the same window, but are one act each, not a schedule.
+  'rotation-run': 'publish',
+  'rotation-release': 'publish',
 };
 
 /**
@@ -147,6 +159,17 @@ const LEDE_NOUN: Record<(typeof SIGNED_OPERATION)[CeremonyPurpose], string> = {
   reject: 'change decision',
   bypass: 'change decision',
   access: 'emergency access decision',
+};
+
+/**
+ * PURPOSE_LEDE overrides LEDE_NOUN where the signed operation's noun would be
+ * false: a rotation signs `publish`, but its environment is never protected.
+ */
+const PURPOSE_LEDE: Partial<Record<CeremonyPurpose, string>> = {
+  personal: 'change to your personal value',
+  rotation: 'standing publish authority over these keys for a scheduled rotation',
+  'rotation-run': 'one unscheduled publish of a new credential into these keys',
+  'rotation-release': 'lifting a restore hold: held runs are settled and an active rotation publishes on its schedule again; a paused or halted one stays stopped',
 };
 
 export type CeremonyRequest = {
@@ -263,7 +286,7 @@ export function Ceremony({
       title={title}
       lede={
         <>
-          This confirms a <strong>{request.purpose === 'personal' ? 'change to your personal value' : LEDE_NOUN[signed]}</strong>, not your account security. It is separate from
+          This confirms a <strong>{PURPOSE_LEDE[request.purpose] ?? LEDE_NOUN[signed]}</strong>, not your account security. It is separate from
           signing in and from any step-up you have already done.
           {workspace === null ? null : (
             <>

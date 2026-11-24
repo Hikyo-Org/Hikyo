@@ -21,7 +21,7 @@ import {
 } from '../testkit/rotations.ts';
 import { RotationsPanel } from './machineAccess/Rotations.tsx';
 
-// The Rotations tab of machine access (#148 S3): status only. Each story runs
+// The Rotations tab of machine access (#148 S3, management #1440). Each story runs
 // the real panel against the harness's fetch table, so the data code, the
 // paging and the refusal paths are the production ones. The list and runs rows
 // are the wire shapes (`testkit/rotations.ts`), parsed by the generated schema.
@@ -52,7 +52,7 @@ const meta = {
       ...topLayerDocs.docs,
       description: {
         component:
-          'Scheduled credential rotation status for one environment: the schedule, the state in words, a loud restore-hold line that names the release command, and a run timeline whose owed-drop runs carry the CLI safety wording. No mutation: every change is a hikyo rotation command.',
+          'Scheduled credential rotation for one environment: the schedule, the state in words, a loud restore-hold line, a run timeline whose owed-drop runs carry the CLI safety wording, and the six acts. Create, resume, run-now and release-hold ask for the publish ceremony over the environment and both keys; pause and delete do not. Each row offers only the acts its state allows, and every refusal is the server\'s, in its words.',
       },
     },
   },
@@ -64,9 +64,14 @@ export const Populated: Story = {
   play: async ({ canvas }) => {
     const table = await canvas.findByRole('table', { name: /credential rotations/ });
     await expect(within(table).getAllByRole('row')).toHaveLength(5);
-    // Status is a word, never only a colour, and the table has no act to take.
+    // Status is a word, never only a colour, and each row offers only the acts its state allows.
     await expect(within(table).getByText('halted')).toBeVisible();
-    await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Show runs', 'Show runs', 'Show runs', 'Show runs']);
+    await expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Show runs', 'Pause', 'Run now', 'Delete',
+      'Show runs', 'Release hold', 'Pause',
+      'Show runs', 'Resume', 'Delete',
+      'Show runs',
+    ]);
     await expect(within(table).getByRole('button', { name: 'Show runs of ANALYTICS_PASSWORD' })).toBeVisible();
     // The id is labelled (the CLI takes it) and the record fields are on the row.
     await expect(within(table).getAllByText('Rotation', { selector: 'dt' })).toHaveLength(4);
@@ -113,7 +118,8 @@ export const RestoreHold: Story = {
     await expect(alert).toBeVisible();
     await expect(alert).toHaveTextContent(`hikyo rotation release-hold ${HELD_ROTATION}`);
     await expect(alert.closest('[role="alert"]')).not.toBeNull();
-    await expect(canvas.queryByRole('button', { name: /release/i })).toBeNull();
+    // The held row offers the release act, never the acts a hold refuses.
+    await expect(canvas.getByRole('button', { name: 'Release hold REPORTING_PASSWORD' })).toBeEnabled();
   },
 };
 
@@ -273,5 +279,237 @@ export const LongKeyNameDesktop: Story = {
     await expect(canvas.getAllByText(LONG_PASSWORD_NAME, { selector: 'bdi' })[0]).toBeVisible();
     expectNoSideScroll(canvasElement);
     expectKeyNamesFit(canvasElement);
+  },
+};
+
+// ---- #1440: the acts -------------------------------------------------------
+
+const WINDOW = `${BASE}/environments/${PROD}/reveal-window`;
+const revealWindow = (live: boolean): MockRoute => ({
+  url: WINDOW,
+  body: { protected: false, effective_window_seconds: 300, live, single_decision: false, can_reveal: true, totp_offered: true },
+});
+// The error contract carries a detail only on bad_request and conflict, the two refusals used here.
+const refusal = (status: 400 | 409, detail: string) => ({ error: { code: status === 409 ? 'conflict' : 'bad_request', message: 'refused', detail } });
+const populated = [keys, list([...rotationList().items, haltedRotation(), deletedOwedRotation()]), runs(ROTATION, owedRuns)];
+
+export const CreateForm: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Create rotation' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Create rotation · production' });
+    await expect(within(dialog).getByLabelText('Provider')).toBeVisible();
+    await expect(within(dialog).getByLabelText('Password key')).toBeVisible();
+    await expect(within(dialog).getByLabelText('Interval (hours)')).toHaveValue(24);
+    await expect(within(dialog).getByLabelText('Overlap (minutes)')).toHaveValue(60);
+  },
+};
+
+// The obvious slips are named before any ceremony.
+export const CreateInvalid: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Create rotation' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Create rotation · production' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create rotation' }));
+    await expect(within(dialog).getByRole('alert')).toHaveTextContent('Choose a provider, a password key and a role name key. Nothing was created.');
+  },
+};
+
+export const CreateNoProvider: Story = {
+  args: { providers: [] },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Create rotation' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Create rotation · production' });
+    await expect(within(dialog).getByText(/No dynamic provider here can mint/)).toBeVisible();
+    await expect(within(dialog).getByRole('button', { name: 'Create rotation' })).toBeDisabled();
+  },
+};
+
+// A live publish window covers the act, so the server answers at once: a protected
+// environment is refused by name, with the server's named reason.
+export const CreateRefusedProtected: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        revealWindow(true),
+        { url: LIST, method: 'POST', status: 400, body: refusal(400, 'a scheduled rotation publishes unattended, so it cannot target a protected environment, whose publishes need a per-publish ceremony') },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Create rotation' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Create rotation · production' });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Password key'), 'DATABASE_PASSWORD');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Role name key'), 'DATABASE_USER');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create rotation' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('cannot target a protected environment');
+  },
+};
+
+// Resume hands publishing back to the rotation, so it asks for the publish ceremony
+// over both keys, even here where the environment is not protected.
+export const ResumeAsksForCeremony: Story = {
+  // The real modal reads the session, so the real AuthProvider is mounted.
+  parameters: {
+    app: {
+      auth: true,
+      responses: [
+        ...populated,
+        revealWindow(false),
+        { url: '/api/v1/auth/totp', body: { has_password: true, has_passkey: true, can_reauth_oidc: false, confirmed: true, pending: false } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Resume ANALYTICS_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Resume rotation · ANALYTICS_PASSWORD' });
+    await expect(within(dialog).getByText(/halted \(/)).toBeVisible();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Resume' }));
+    const ceremony = await canvas.findByRole('dialog', { name: 'hand scheduled publishing to a rotation in · production' });
+    const unit = within(ceremony).getByRole('list', { name: 'Keys this decision covers' });
+    await expect(within(unit).getAllByRole('listitem').map((item) => item.textContent?.trim())).toEqual(['secret ANALYTICS_PASSWORD', 'secret ANALYTICS_USER']);
+    await expect(ceremony).toHaveTextContent('standing publish authority over these keys for a scheduled rotation');
+  },
+};
+
+// The recorded authority no longer holds the access: refused by name.
+export const ResumeRefused: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        revealWindow(true),
+        { url: `${LIST}/${HALTED_ROTATION}/resume`, method: 'POST', status: 409, body: refusal(409, "the rotation's recorded authority principal no longer holds edit, publish and reveal on its keys; create the rotation again") },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Resume ANALYTICS_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Resume rotation · ANALYTICS_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Resume' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('create the rotation again');
+  },
+};
+
+export const ReleaseHoldInstruction: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Release hold REPORTING_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Release hold rotation · REPORTING_PASSWORD' });
+    await expect(dialog).toHaveTextContent('reconcile the rotation\'s grants and its provider credential, and read its runs');
+    const release = within(dialog).getByRole('button', { name: 'Release hold' });
+    await expect(release).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole('checkbox'));
+    await expect(release).toBeEnabled();
+  },
+};
+
+export const RunNowSkipOverlap: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Run now DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Run now rotation · DATABASE_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('checkbox'));
+    await expect(within(dialog).getByText(/loses access at once/)).toBeVisible();
+  },
+};
+
+export const PauseDone: Story = {
+  parameters: {
+    app: { responses: [...populated, { url: `${LIST}/${ROTATION}/pause`, method: 'POST', body: { ...rotationList().items[0], state: 'paused', generation: 2 } }] },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Pause DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Pause rotation · DATABASE_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Pause' }));
+    await expect(await canvas.findByText(new RegExp(`Rotation ${ROTATION} paused`))).toBeVisible();
+  },
+};
+
+// A run in flight refuses the delete unless its runs are closed; the server says so.
+export const DeleteRefusedInFlight: Story = {
+  parameters: {
+    app: { responses: [...populated, { url: `${LIST}/${ROTATION}`, method: 'DELETE', status: 409, body: refusal(409, 'the rotation has a run in flight; let it finish first') }] },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Delete DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Delete rotation · DATABASE_PASSWORD' });
+    await expect(dialog).toHaveTextContent('this revokes nothing');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('the rotation has a run in flight; let it finish first');
+  },
+};
+
+// A live window covers the act, yet the server refuses access: the 403 carries no
+// detail, so the page names what release-hold needs without claiming the cause.
+export const ReleaseHoldForbidden: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        revealWindow(true),
+        { url: `${LIST}/${HELD_ROTATION}/release-hold`, method: 'POST', status: 403, body: { error: { code: 'forbidden', message: 'Forbidden' } } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Release hold REPORTING_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Release hold rotation · REPORTING_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('checkbox'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Release hold' }));
+    await expect(await within(dialog).findByText(/you may lack access/)).toBeVisible();
+  },
+};
+
+export const RunNowRefused: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        revealWindow(true),
+        { url: `${LIST}/${ROTATION}/run-now`, method: 'POST', status: 409, body: refusal(409, 'a run of this rotation is already in flight') },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Run now DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Run now rotation · DATABASE_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Run now' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('a run of this rotation is already in flight');
+  },
+};
+
+// Someone changed the rotation since the tab read it: the generation fence refuses
+// the act as a conflict instead of acting on the newer state.
+export const StaleGenerationConflict: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        { url: `${LIST}/${ROTATION}/pause`, method: 'POST', status: 409, body: refusal(409, 'the rotation changed since generation 1; read it again') },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Pause DATABASE_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Pause rotation · DATABASE_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Pause' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('the rotation changed since generation 1; read it again');
+  },
+};
+
+// The ceremony lookup itself fails: nothing is sent and the dialog says so.
+export const CeremonyCouldNotStart: Story = {
+  parameters: {
+    app: {
+      responses: [
+        ...populated,
+        { url: WINDOW, status: 503, body: { error: { code: 'service_unavailable', message: 'Service unavailable' } } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Resume ANALYTICS_PASSWORD' }));
+    const dialog = await canvas.findByRole('dialog', { name: 'Resume rotation · ANALYTICS_PASSWORD' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Resume' }));
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent('The publish confirmation could not be started, so nothing was changed');
   },
 };

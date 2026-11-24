@@ -1771,7 +1771,7 @@ Round 2 (two independent reviews of 9b8a104dc, cf58e58a7 and d12fc352c). Final f
 
 ### Left after S4
 
-- The management WebUI for the mutating verbs is #1440.
+- The management WebUI for the mutating verbs is #1440, built: see `1440-rotation-webui.md`.
 - Containment ledger B is still not built (see "Incident containment").
 - Remaining owner items from earlier slices are unchanged; S4 opened none.
 

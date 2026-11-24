@@ -26,8 +26,8 @@ import type { PkiPolicy as PkiPolicyBody } from '@hikyo/client';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { commonRefusalText, statusText } from './statusText.ts';
-import { ApiError, ok, parsed, parsedPick } from './client.ts';
+import { commonRefusalText, statusText, withDetail } from './statusText.ts';
+import { ok, parsed, parsedPick } from './client.ts';
 import { type TransportOptions, useTransport } from './transport.tsx';
 
 // Private PKI (#154, docs/adr/pki.md). Issuers and profiles are instance
@@ -449,13 +449,6 @@ export async function fetchCertificateCrl(
 }
 
 // ---- Refusal text ---------------------------------------------------------------
-
-function withDetail(base: string, error: unknown): string {
-  if (error instanceof ApiError && error.detail !== undefined && error.detail !== '') {
-    return `${base} (${error.detail})`;
-  }
-  return base;
-}
 
 /** pkiAdminRefusalText names an issuer or profile refusal. */
 export function pkiAdminRefusalText(error: unknown, action: string): string {
