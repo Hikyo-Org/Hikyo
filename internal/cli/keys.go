@@ -224,13 +224,7 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 		return renderKey(ios, f, key)
 
 	case "reclassify":
-		var key apigen.Key
-		body := apigen.ReclassifyKeyRequest{Classification: apigen.KeyClassification(classification)}
-		if err := client.Do(ctx, http.MethodPut, target+"/classification", body, &key); err != nil {
-			return err
-		}
-		warnFindings(ios, key.Findings)
-		return renderKey(ios, f, key)
+		return reclassifyKey(ctx, ios, f, client, target, classification)
 
 	case "update":
 		// `update` carries the NON-semantic metadata only, and deliberately
@@ -481,6 +475,25 @@ func keyGroupRow(g apigen.KeyGroup) []string {
 // renderKey prints one key. The JSON document is the whole key — declaration
 // and presence included — because a rule an operator cannot read back is a
 // rule they cannot review.
+// tightenAdvisory is the advisory schema-model.md makes mandatory when a key
+// is tightened to secret. It matches web TIGHTEN_ADVISORY (web/src/api/matrix.ts).
+const tightenAdvisory = "Tightening cannot un-disclose: this key’s values were readable as config, so treat them as exposed and rotate them. " +
+	"Old values stay readable in history to anyone with read access."
+
+func reclassifyKey(ctx context.Context, ios IO, f Format, client *Client, target, classification string) error {
+	var key apigen.Key
+	body := apigen.ReclassifyKeyRequest{Classification: apigen.KeyClassification(classification)}
+	if err := client.Do(ctx, http.MethodPut, target+"/classification", body, &key); err != nil {
+		return err
+	}
+	warnFindings(ios, key.Findings)
+	// The server refuses a same-class reclassify, so success here means config -> secret.
+	if classification == string(apigen.KeyClassificationSecret) {
+		fmt.Fprintln(ios.Stderr, tightenAdvisory)
+	}
+	return renderKey(ios, f, key)
+}
+
 func renderKey(ios IO, f Format, key apigen.Key) error {
 	return Render(ios.Stdout, f, Table{Columns: keyColumns, Rows: [][]string{keyRow(key)}, JSON: key})
 }
