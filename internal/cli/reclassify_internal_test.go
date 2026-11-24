@@ -23,12 +23,13 @@ func TestReclassifyTightenPrintsAdvisoryOnStderrOnly(t *testing.T) {
 		{"config", false},
 	} {
 		t.Run(tc.classification, func(t *testing.T) {
+			key := apigen.Key{Id: "key_1", Name: "API_TOKEN", Classification: apigen.KeyClassification(tc.classification)}
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodPut || r.URL.Path != "/key/classification" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
 				}
 				w.Header().Set("Content-Type", "application/json")
-				_ = jsonwire.Encode(w, apigen.Key{Id: "key_1", Name: "API_TOKEN", Classification: apigen.KeyClassification(tc.classification)})
+				_ = jsonwire.Encode(w, key)
 			}))
 			defer srv.Close()
 			client := &Client{Entry: TrustEntry{Origin: srv.URL}, HTTP: srv.Client()}
@@ -39,8 +40,12 @@ func TestReclassifyTightenPrintsAdvisoryOnStderrOnly(t *testing.T) {
 			if got := strings.Contains(stderr.String(), tightenAdvisory); got != tc.advisory {
 				t.Fatalf("stderr advisory = %v, want %v; stderr %q", got, tc.advisory, stderr.String())
 			}
-			if strings.Contains(stdout.String(), "un-disclose") {
-				t.Fatalf("advisory leaked into stdout: %q", stdout.String())
+			var plain bytes.Buffer
+			if err := renderKey(IO{Stdout: &plain}, FormatJSON, key); err != nil {
+				t.Fatal(err)
+			}
+			if stdout.String() != plain.String() {
+				t.Fatalf("stdout changed:\n got %q\nwant %q", stdout.String(), plain.String())
 			}
 		})
 	}
@@ -52,12 +57,12 @@ func TestTightenAdvisoryMatchesWeb(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	decl := regexp.MustCompile(`(?s)export const TIGHTEN_ADVISORY =(.*?);`).FindSubmatch(src)
+	decl := regexp.MustCompile(`(?s)export const TIGHTEN_ADVISORY =(.*?)';\n`).FindSubmatch(src)
 	if decl == nil {
 		t.Fatal("TIGHTEN_ADVISORY not found in web/src/api/matrix.ts")
 	}
 	var web strings.Builder
-	for _, part := range regexp.MustCompile(`'([^']*)'`).FindAllSubmatch(decl[1], -1) {
+	for _, part := range regexp.MustCompile(`'([^']*)'`).FindAllSubmatch(append(decl[1], '\''), -1) {
 		web.Write(part[1])
 	}
 	if web.String() != tightenAdvisory {

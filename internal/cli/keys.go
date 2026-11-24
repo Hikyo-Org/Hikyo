@@ -472,9 +472,6 @@ func keyGroupRow(g apigen.KeyGroup) []string {
 	return []string{g.Id, g.Name, strings.Join(g.Members, ","), strconv.FormatBool(g.Inert)}
 }
 
-// renderKey prints one key. The JSON document is the whole key — declaration
-// and presence included — because a rule an operator cannot read back is a
-// rule they cannot review.
 // tightenAdvisory is the advisory schema-model.md makes mandatory when a key
 // is tightened to secret. It matches web TIGHTEN_ADVISORY (web/src/api/matrix.ts).
 const tightenAdvisory = "Tightening cannot un-disclose: this key’s values were readable as config, so treat them as exposed and rotate them. " +
@@ -494,6 +491,9 @@ func reclassifyKey(ctx context.Context, ios IO, f Format, client *Client, target
 	return renderKey(ios, f, key)
 }
 
+// renderKey prints one key. The JSON document is the whole key — declaration
+// and presence included — because a rule an operator cannot read back is a
+// rule they cannot review.
 func renderKey(ios IO, f Format, key apigen.Key) error {
 	return Render(ios.Stdout, f, Table{Columns: keyColumns, Rows: [][]string{keyRow(key)}, JSON: key})
 }
