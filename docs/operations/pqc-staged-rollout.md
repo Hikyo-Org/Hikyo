@@ -188,7 +188,10 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    of the `ssh` binary you run it with, so run it on the sshd host and make
    sure the same OpenSSH build serves sshd: `ssh -Q kex | grep mlkem768x25519`.
    Step 3 is the real server check.
-2. Set in `sshd_config` (or a `sshd_config.d` drop-in):
+2. First save copies of every sshd configuration file you will change (the
+   main file and any drop-ins), and note any drop-in you create, so the
+   previous configuration can be restored. Then set in `sshd_config` (or a
+   `sshd_config.d` drop-in):
    `KexAlgorithms mlkem768x25519-sha256`
    This is the DEC-01 hybrid (X25519 with ML-KEM-768). It needs OpenSSH 9.9 or
    later and is the default hybrid since 10.0 ([release notes][rn], read
@@ -200,10 +203,7 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    `sntrup761x25519-sha512` alias arrived in 9.9). It is a different hybrid
    (Streamlined NTRU Prime with X25519), so it widens what the operator
    accepts beyond the selected profile.
-3. Before step 2's edit, save copies of every sshd configuration file you
-   will change (the main file and any drop-ins), and note any drop-in you
-   create, so the previous configuration can be restored. Validate before
-   reload: `sshd -t -f FILE [-o ...]`, then
+3. Validate before reload: `sshd -t -f FILE [-o ...]`, then
    `sshd -T -f FILE [-o ...] | grep -i '^kexalgorithms'`, using the same `-f`
    and `-o` arguments the daemon starts with (a reload keeps them). `-C` is
    not needed because `KexAlgorithms` is not allowed inside `Match`. Confirm
@@ -239,7 +239,7 @@ with the production listener nor overwrites the production PID file that
 reloads signal. Before any client connects, check the test daemon's effective
 list with the same `-f` and `-o` arguments it starts with:
 `sshd -T -f TESTFILE [-o ...] | grep -i '^kexalgorithms'`. sshd uses the first
-value it reads for each keyword, so a `-o KexAlgorithms=`, an earlier
+value it reads for each keyword, so a `-o KexAlgorithms=...`, an earlier
 `KexAlgorithms` line, or an earlier `Include` that sets it would override the
 hybrid-only line and let a classical-only client look compatible. Only the
 hybrid names may appear; otherwise remove that setting or move the hybrid-only
