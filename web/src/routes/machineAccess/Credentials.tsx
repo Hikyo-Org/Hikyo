@@ -205,8 +205,9 @@ export function MintDialog({
               ))}
             </select>
             <p className="cred__meta">
-              Requested expiry: <time dateTime={requestedExpiry.toISOString()}>{requestedExpiry.toLocaleDateString()}</time>.
-              The instance lifetime ceiling may shorten it; this dialog says so after minting.
+              Estimated expiry: <time dateTime={requestedExpiry.toISOString()}>{requestedExpiry.toLocaleDateString()}</time>, counted from when
+              this dialog opened; the lifetime starts when you mint. The instance lifetime ceiling may shorten it;
+              this dialog says so after minting.
             </p>
           </div>
           {failure !== null ? (
