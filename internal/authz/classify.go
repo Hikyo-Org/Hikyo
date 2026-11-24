@@ -175,6 +175,13 @@ var caches = map[string]Cache{
 		KeyConstructor: "internal/parameters.compiledPattern: byte-exact pattern string",
 		ProofGatedAt:   "stored declarations require service authorization; caller-supplied syntax may compile before authorization; pure compiled programs contain no tenant results and are bounded to 128 entries",
 	},
+	"lint.pinned-types": {
+		// Build-time analyzer memo, never linked into the server: a package's
+		// reachable pinned types are a pure function of its type-checked imports.
+		// Entries hold type names only, no values, tenants or decisions.
+		KeyConstructor: "internal/lint.pinnedTypesFrom: *types.Package pointer identity",
+		ProofGatedAt:   "not proof-gated: lint tooling only (the vet tool, its tests and CI scripts), over source code; no runtime caller and no tenant data",
+	},
 	"selfupdate.nightly-downloads": {
 		// On-disk directories of a selfupdate.Installer state directory: the
 		// operator CLI's, and the StateDirectory/downloads used by security

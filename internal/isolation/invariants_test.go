@@ -505,6 +505,7 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		lint.Module + "/internal/store.auditActorCache":        "store.audit-actor-kind",
 		lint.Module + "/internal/app.cachedUnattendedImage":    "app.unattended-image",
 		lint.Module + "/internal/operator.capabilityCacheTTL":  "operator.delivery-capabilities",
+		lint.Module + "/internal/lint.pinnedTypesCache":        "lint.pinned-types",
 		// The Linux-only test of hostupgrade.PrepareCacheDirectory: that directory is a selfupdate installer cache.
 		lint.Module + "/internal/hostupgrade.TestLinuxSecurityCacheRequiresPrivateRootOwnedStorage": "selfupdate.nightly-downloads",
 	}
