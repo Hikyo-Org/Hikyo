@@ -97,11 +97,15 @@ check_authorized() {
 }
 
 # Tree hygiene helpers. find is run so that any error is visible to the caller.
-bad_names() { (cd "$1" && find . -name '*[!A-Za-z0-9._-]*'); }
-readable() { (cd "$1" && find . >/dev/null); }
+bad_names() { (cd "$1" && LC_ALL=C find . -name '*[!A-Za-z0-9._-]*'); }
+# A directory without owner read and search permission hides its contents from some finds
+# (BSD find silently skips a mode-644 directory), so refuse it as well as any find error.
+readable() { (cd "$1" && find . >/dev/null && [ -z "$(find . -type d ! -perm -500)" ]); }
 empty_dirs() { (cd "$1" && find . -mindepth 1 -type d -empty); }
 # no_duplicate_keys FILE: jq keeps the last of two equal keys, the runtime refuses both.
-no_duplicate_keys() { [ -z "$(jq -c --stream 'select(length == 2) | .[0]' "$1" | sort | uniq -d)" ]; }
+# The stream of the file as written keeps both duplicates; the stream of its parsed form
+# keeps the last. They differ exactly when a key repeats, whatever the earlier value was.
+no_duplicate_keys() { [ "$(jq -c --stream . "$1")" = "$(jq -c . "$1" | jq -c --stream .)" ]; }
 
 # unexpected_files BASE NEW ADDED lists changed or new files that no recovery
 # re-authorization may touch (everything but metadata, catalog and added bridges).

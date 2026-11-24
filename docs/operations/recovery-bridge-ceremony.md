@@ -150,13 +150,16 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
 
    ```sh
    git fetch origin dev <proposal-branch>
-   git worktree add "$WORK/base" "$(git merge-base origin/dev origin/<proposal-branch>)"
-   git checkout <proposal-branch>
+   base=$(git merge-base origin/dev origin/<proposal-branch>)
+   git worktree add "$WORK/base" "$base"
+   git diff --quiet "$base" origin/dev -- release/trust   # nonzero: dev changed the trust tree, rebase the proposal and stop
+   git checkout --detach origin/<proposal-branch>
    scripts/release/verify-recovery-bridge.sh proposal "$WORK/base/release/trust" release/trust "$WORK/rel-1.0.0" "$WORK/rel-1.1.0"
    ```
 
    The base is the proposal's merge base with `dev`, not the moving tip of `dev`,
-   so the check stays valid after `dev` advances. The verifier is the merge gate
+   so the check stays valid after `dev` advances, provided the `git diff --quiet` line above
+   shows that `dev` has not changed `release/trust` since that base. The verifier is the merge gate
    for that pull request; it refuses any file outside the four metadata and
    catalog files and the new bridge directories (two files each), any symlink,
    unreadable or empty directory, unusual file name or duplicate JSON key. Do not

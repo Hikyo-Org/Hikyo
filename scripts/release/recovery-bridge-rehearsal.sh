@@ -19,7 +19,7 @@ repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 # The throwaway key has an empty password; a real key prompts the signer instead.
 export COSIGN_PASSWORD=''
 scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
+trap 'chmod -R u+rwx "$scratch" 2>/dev/null; rm -rf "$scratch"' EXIT
 step() { printf '\n== %s\n' "$*"; }
 sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
@@ -252,27 +252,52 @@ proposal_fails 'no empty directories' 'an extra empty directory at the root'
 cp -R "$scratch/new" "$scratch/t"
 mkdir "$scratch/t/bridges/$first/empty"
 proposal_fails 'no empty directories' 'an extra empty directory inside a new bridge directory'
+# dupkey FILE TEXT: prepend a key to the top-level object, so FILE then repeats it. BSD and GNU safe.
+dupkey() {
+	sed "1s/{/{$2,/" "$1" >"$1.tmp"
+	mv "$1.tmp" "$1"
+}
+sign_t() { # NAME: sign a scratch file without rewriting it
+	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+		--key "$recovery_key" --bundle "$scratch/t/$1.sigstore.json" "$scratch/t/$1.json" >/dev/null 2>&1 </dev/null
+}
+# The earlier duplicate may be a scalar or a container; jq --stream leaf paths alone miss containers.
+for dup_value in '"schema":"duplicate"' '"releases":[]' '"event":null' '"event":{"zz":1}'; do
+	cp -R "$scratch/new" "$scratch/t"
+	dupkey "$scratch/t/metadata.json" "$dup_value"
+	resign_t "$recovery_key"
+	proposal_fails 'metadata has no duplicate keys' "a validly signed metadata that repeats $dup_value"
+done
+for dup_value in '"schema":"duplicate"' '"bridges":[]'; do
+	cp -R "$scratch/new" "$scratch/t"
+	dupkey "$scratch/t/catalog.json" "$dup_value"
+	sign_t catalog
+	proposal_fails 'catalog has no duplicate keys' "a validly signed catalog that repeats $dup_value"
+done
+for dup_value in '"mode":"restart"' '"source":{}'; do
+	cp -R "$scratch/new" "$scratch/t"
+	cp "$scratch/new/bridges/$first/statement.json" "$scratch/dup-statement.json"
+	dupkey "$scratch/dup-statement.json" "$dup_value"
+	dup=$(sha256_of "$scratch/dup-statement.json")
+	mkdir "$scratch/t/bridges/$dup"
+	cp "$scratch/dup-statement.json" "$scratch/t/bridges/$dup/statement.json"
+	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+		--key "$recovery_key" --bundle "$scratch/t/bridges/$dup/statement.sigstore.json" "$scratch/t/bridges/$dup/statement.json" >/dev/null 2>&1 </dev/null
+	rm -rf "$scratch/t/bridges/$first"
+	# shellcheck disable=SC2016
+	edit_t catalog.json --arg old "$first" --arg new "$dup" '.bridges |= map(if . == $old then $new else . end)'
+	resign_t "$recovery_key"
+	proposal_fails 'the statement has no duplicate keys' "a signed, catalogued statement that repeats $dup_value"
+	rm -f "$scratch/dup-statement.json"
+done
 cp -R "$scratch/new" "$scratch/t"
-sed -i '1s/{/{"schema":"duplicate",/' "$scratch/t/metadata.json"
-resign_t "$recovery_key"
-proposal_fails 'metadata has no duplicate keys' 'a validly signed metadata with a duplicate key'
+mkdir "$scratch/t/noexec"
+printf 'x' >"$scratch/t/noexec/extra"
+chmod 644 "$scratch/t/noexec"
+proposal_fails 'is readable' 'a mode-644 directory that BSD find would not descend into'
 cp -R "$scratch/new" "$scratch/t"
-sed -i '1s/{/{"schema":"duplicate",/' "$scratch/t/catalog.json"
-"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
-	--key "$recovery_key" --bundle "$scratch/t/catalog.sigstore.json" "$scratch/t/catalog.json" >/dev/null 2>&1 </dev/null
-proposal_fails 'catalog has no duplicate keys' 'a validly signed catalog with a duplicate key'
-cp -R "$scratch/new" "$scratch/t"
-sed '1s/{/{"mode":"restart",/' "$scratch/new/bridges/$first/statement.json" >"$scratch/dup-statement.json"
-dup=$(sha256_of "$scratch/dup-statement.json")
-mkdir "$scratch/t/bridges/$dup"
-cp "$scratch/dup-statement.json" "$scratch/t/bridges/$dup/statement.json"
-"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
-	--key "$recovery_key" --bundle "$scratch/t/bridges/$dup/statement.sigstore.json" "$scratch/t/bridges/$dup/statement.json" >/dev/null 2>&1 </dev/null
-rm -rf "$scratch/t/bridges/$first"
-# shellcheck disable=SC2016
-edit_t catalog.json --arg old "$first" --arg new "$dup" '.bridges |= map(if . == $old then $new else . end)'
-resign_t "$recovery_key"
-proposal_fails 'the statement has no duplicate keys' 'a signed, catalogued statement with a duplicate key'
+cp "$scratch/new/metadata.json" "$scratch/t/caf$(printf '\303\251')"
+proposal_fails 'plain name' 'a non-ASCII file name that a UTF-8 locale would accept'
 rm -f "$scratch/dup-statement.json"
 
 step '7. revocation: a new recovery-signed snapshot drops the new bridges, keeps the legacy ones'
