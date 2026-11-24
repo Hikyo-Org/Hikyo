@@ -30,37 +30,17 @@ jobs:
     timeout-minutes: 3
     permissions:
       actions: read
+      contents: read
     steps:
-      # No checkout, and nothing from the API reaches the shell unvalidated.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - name: Require a recent successful promotion run
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SERVER_URL: ${{ github.server_url }}
-        run: |
-          set -euo pipefail
-          # 36 hours, not 24: GitHub starts scheduled runs 4 to 10 hours late, and one
-          # promote-to-nightly gap measured 30h53m.
-          # The window bounds the listing, which every merge to main also adds runs to.
-          since=$(date -u -d '36 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          # The landing trigger is the only other event, and its runs are not promotions.
-          latest=$(gh api --paginate "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since&per_page=100" --jq \
-            '.workflow_runs[] | select(.event != "pull_request_target") | [.created_at, .id, (.conclusion // "-")] | @tsv' | sort | tail -n 1)
-          if [ -z "$latest" ]; then
-            echo '::error::nightly-promote.yml has no completed scheduled or manual run on main in 36 hours, so promotion has stopped running.'
-            exit 1
-          fi
-          IFS=$'\t' read -r _ run_id conclusion <<<"$latest"
-          if [[ ! "$run_id" =~ ^[1-9][0-9]*$ || ! "$conclusion" =~ ^[a-z_-]+$ ]]; then
-            echo '::error::nightly-promote.yml returned an unexpected run record.'
-            exit 1
-          fi
-          url="$SERVER_URL/$GH_REPO/actions/runs/$run_id"
-          if [ "$conclusion" != success ]; then
-            echo "::error::The latest nightly-promote.yml run ended '$conclusion', so main has stopped taking dev: $url"
-            exit 1
-          fi
-          echo "Promotion is healthy: $url"
+        run: ./scripts/release/promotion-health.sh
 
   # Every main commit passed the merge queue, and nightly-promote.yml lands the
   # last green dev commit through it. Nightly reuses that complete proof instead

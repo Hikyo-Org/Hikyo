@@ -169,6 +169,7 @@ python3 -I -B -m unittest discover -s "$repo_root/scripts/release" -p test_night
 "$repo_root/scripts/release/nightly-changelog_test.sh"
 "$repo_root/scripts/release/nightly-promote_test.sh"
 "$repo_root/scripts/release/nightly-backmerge_test.sh"
+"$repo_root/scripts/release/promotion-health_test.sh"
 # The committed, workflow-signed trust must reach the Go assembler with its
 # recovery-signed delegation; otherwise the snapshot is refused at assembly.
 assembly_fixture=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-assembly-fixture.XXXXXX")

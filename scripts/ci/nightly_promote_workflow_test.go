@@ -188,8 +188,8 @@ func TestNightlyBuildsOnlyTheTriggeringMainCommit(t *testing.T) {
 func TestNightlyReportsBrokenPromotion(t *testing.T) {
 	workflow, _ := readPromoteWorkflow(t, "nightly.yml")
 	health, ok := workflow.Jobs["promotion-health"]
-	if !ok || health.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(health.Permissions, map[string]string{"actions": "read"}) || len(health.Steps) != 1 {
-		t.Fatal("promotion-health must be a main-only, actions-read job with one step")
+	if !ok || health.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(health.Permissions, map[string]string{"actions": "read", "contents": "read"}) || len(health.Steps) != 2 {
+		t.Fatal("promotion-health must be a main-only, read-only job with a checkout and one script step")
 	}
 	var raw struct {
 		Jobs map[string]struct {
@@ -217,13 +217,11 @@ func TestNightlyReportsBrokenPromotion(t *testing.T) {
 			}
 		}
 	}
-	step := health.Steps[0]
-	if step.Uses != "" || !reflect.DeepEqual(step.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "SERVER_URL": "${{ github.server_url }}"}) || strings.Contains(step.Run, "${{") {
-		t.Fatal("promotion-health must be a checkout-free step with expressions only in env")
+	if step := health.Steps[0]; !strings.HasPrefix(step.Uses, "actions/checkout@") || step.With["ref"] != "${{ github.sha }}" || step.With["persist-credentials"] != "false" {
+		t.Fatalf("promotion-health may only check out main's own commit without credentials: %v", step.With)
 	}
-	for _, required := range []string{"--paginate", "nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since", "'36 hours ago'", `.event != "pull_request_target"`, "::error::", `"$conclusion" != success`, "/actions/runs/$run_id"} {
-		if !strings.Contains(step.Run, required) {
-			t.Fatalf("promotion-health lost %q", required)
-		}
+	if step := health.Steps[1]; step.Uses != "" || step.Run != "./scripts/release/promotion-health.sh" ||
+		!reflect.DeepEqual(step.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}"}) {
+		t.Fatal("promotion-health must run only the reviewed script with the workflow token")
 	}
 }

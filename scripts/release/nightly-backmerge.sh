@@ -12,6 +12,12 @@
 # required-signatures rule accepts it is verified at runtime: if it does not, the
 # pull request cannot merge and the age rule reports it stuck.
 #
+# Known limit: the dev gate's devPublisherContract lets dev's ci-dev-gate.yml
+# differ from main's only when the pull request head is main's exact SHA. A
+# hotfix that changes ci-dev-gate.yml therefore cannot flow through this branch:
+# the gate refuses it and, after six hours, it is reported stuck. That case needs
+# a manual back-merge, which the gate admits only from main's exact head.
+#
 # Reads use GH_TOKEN (the workflow token). Every write uses APP_TOKEN, because a
 # pull request opened with the workflow token starts no CI.
 set -eu
@@ -80,44 +86,50 @@ if [ -z "$dev_sha" ]; then
 fi
 is_sha "$dev_sha" || die 'invalid dev commit'
 
-# Only this repository's pull requests count. Refs are classified in jq, so a
-# branch name reaches the shell only after matching the exact pattern.
+# Only this repository's pull requests count. A back-merge is automatic only when
+# the release App opened it (the id the landed job pins); the same branch name
+# from anyone else is neither automatic nor manual, and is left alone. Refs are
+# classified in jq, so a branch name reaches the shell only after matching the
+# exact pattern.
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 "$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=dev&per_page=100" --jq \
-	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"backmerge/\"))) | (.head.ref | test(\"$branch_re\")) as \$auto | [.number, (if \$auto then \"auto\" else \"human\" end), (if \$auto then .head.ref else \"-\" end), (.head.sha // \"-\")] | @tsv" >"$work/open"
+	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\") | (.head.ref | test(\"$branch_re\")) as \$named | [.number, (if \$named and .user.id == 320493937 then \"auto\" elif \$named then \"other\" elif (.head.ref | startswith(\"backmerge/\")) then \"human\" else \"other\" end), .head.ref] | @tsv" >"$work/open"
 auto='' auto_ref='' human=''
-while IFS=$tab read -r number kind ref head; do
+: >"$work/heads"
+while IFS=$tab read -r number kind ref; do
 	[ -n "$number" ] || continue
 	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
-	if [ "$kind" = human ]; then
+	# Every open head is in use, whatever its kind.
+	printf '%s\n' "$ref" >>"$work/heads"
+	case "$kind" in
+	human)
 		human=$number
 		continue
-	fi
+		;;
+	auto) ;;
+	*) continue ;;
+	esac
 	[ -z "$auto" ] || die "pull requests #$auto and #$number are both automatic back-merges; close one by hand"
 	printf '%s\n' "$ref" | grep -Eq "$branch_re" || die "invalid head branch on #$number"
 	auto=$number auto_ref=$ref
 done <"$work/open"
 
-# Branches of finished back-merges. Only an auto branch that dev already contains
-# and no open pull request uses is deleted.
+# Orphaned back-merge branches (closed or conflicted pull requests, finished
+# merges). Runs share one concurrency group, so none can sit between creating a
+# branch and opening its pull request. Only exact-pattern refs no open pull
+# request uses are deleted.
 "$GH_BIN" api --paginate "repos/$GH_REPO/git/matching-refs/heads/backmerge/auto-" --jq \
-	'.[] | [.ref, .object.sha] | @tsv' >"$work/refs"
-while IFS=$tab read -r ref sha; do
+	'.[].ref' >"$work/refs"
+while IFS= read -r ref; do
 	[ -n "$ref" ] || continue
 	branch=${ref#refs/heads/}
 	# Not one of ours (a human branch sharing the prefix): leave it alone.
 	printf '%s\n' "$branch" | grep -Eq "$branch_re" || continue
-	is_sha "$sha" || die "invalid commit on $branch"
-	[ "$branch" != "$auto_ref" ] || continue
-	state=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...$sha" --jq '.status')
-	case "$state" in
-	behind | identical) ;;
-	*) continue ;;
-	esac
+	grep -Fxq -- "$branch" "$work/heads" && continue
 	if ! write api -X DELETE "repos/$GH_REPO/git/refs/heads/$branch" >/dev/null 2>"$work/err"; then
 		grep -E 'Reference does not exist|\(HTTP (404|422)\)' "$work/err" >/dev/null || { cat "$work/err" >&2; exit 1; }
 	fi
-	note "nightly-backmerge: deleted finished back-merge branch $branch."
+	note "nightly-backmerge: deleted orphaned back-merge branch $branch."
 done <"$work/refs"
 
 # Commits main has that dev lacks.
@@ -148,15 +160,17 @@ if [ -n "$auto" ]; then
 	merge_main "$auto_ref" || stuck "$pr_url" 'main conflicts with its branch'
 	# mergeable is null while GitHub computes it: unknown, not stuck.
 	pr=$("$GH_BIN" api "repos/$GH_REPO/pulls/$auto" --jq \
-		'[(.mergeable | tostring), (.mergeable_state // "-"), (.auto_merge != null), ((.created_at | fromdateiso8601?) // "-"), (.head.sha // "-")] | @tsv')
-	IFS=$tab read -r mergeable state armed created head <<PR
+		'[(.mergeable | tostring), (.mergeable_state // "-"), (.auto_merge != null), ((.created_at | fromdateiso8601?) // "-")] | @tsv')
+	IFS=$tab read -r mergeable state armed created <<PR
 $pr
 PR
 	printf '%s\n' "$mergeable" | grep -Eq '^(true|false|null)$' || die "invalid mergeable value on #$auto"
 	printf '%s\n' "$state" | grep -Eq '^[a-z_-]{1,20}$' || die "invalid merge state on #$auto"
 	printf '%s\n' "$armed" | grep -Eq '^(true|false)$' || die "invalid auto-merge value on #$auto"
 	printf '%s\n' "$created" | grep -Eq '^[0-9]{1,12}$' || die "invalid creation time on #$auto"
-	is_sha "$head" || die "invalid head commit on #$auto"
+	# The refs API is current right after the merge; the pull request's head can lag.
+	head=$(branch_sha "$auto_ref")
+	is_sha "$head" || die "invalid head commit on $auto_ref"
 	if [ "$mergeable" = false ] || [ "$state" = dirty ]; then
 		stuck "$pr_url" 'it conflicts with dev'
 	fi
@@ -173,12 +187,10 @@ PR
 fi
 
 branch="backmerge/auto-$date_utc-$short"
+# Cleanup removed any orphan, so an existing branch is unexpected.
 existing=$(branch_sha "$branch")
-if [ -z "$existing" ]; then
-	write api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=$dev_sha" >/dev/null
-else
-	is_sha "$existing" || die "invalid commit on $branch"
-fi
+[ -z "$existing" ] || die "$branch already exists at $existing, not $dev_sha"
+write api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=$dev_sha" >/dev/null
 merge_main "$branch" || stuck "$server/$GH_REPO/tree/$branch" 'main conflicts with dev'
 head=$(branch_sha "$branch")
 is_sha "$head" || die "invalid commit on $branch"
