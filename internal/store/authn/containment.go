@@ -169,17 +169,30 @@ func ignoreDomainNotFound(err error) error {
 // authority minted since then speaks for it: minting a newer one consumes the
 // older outstanding authorities without establishing anything.
 func (r *Resolver) CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error) {
-	var at string
+	var n int64
 	var err error
 	if r.sq != nil {
-		at, err = r.sq.GetLatestAuthorityConsumedSince(ctx, sqlitegen.GetLatestAuthorityConsumedSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+		n, err = r.sq.CountAuthorityEstablishmentsSince(ctx, sqlitegen.CountAuthorityEstablishmentsSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
 	} else {
-		at, err = r.pg.GetLatestAuthorityConsumedSince(ctx, pggen.GetLatestAuthorityConsumedSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+		n, err = r.pg.CountAuthorityEstablishmentsSince(ctx, pggen.CountAuthorityEstablishmentsSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+	}
+	return n > 0, err
+}
+
+// OtherOpenIncidentHolding names another open incident whose ledger recorded the
+// principal's containment as done, empty when there is none.
+func (r *Resolver) OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error) {
+	var id string
+	var err error
+	if r.sq != nil {
+		id, err = r.sq.GetOtherOpenIncidentHoldingPrincipal(ctx, sqlitegen.GetOtherOpenIncidentHoldingPrincipalParams{IncidentID: incidentID, PrincipalID: string(p)})
+	} else {
+		id, err = r.pg.GetOtherOpenIncidentHoldingPrincipal(ctx, pggen.GetOtherOpenIncidentHoldingPrincipalParams{IncidentID: incidentID, PrincipalID: string(p)})
 	}
 	if isNoRows(err) {
-		return false, nil
+		return "", nil
 	}
-	return at != "", err
+	return id, err
 }
 
 // PrincipalContainedIncident names the incident that contained the principal,

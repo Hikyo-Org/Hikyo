@@ -67,6 +67,29 @@ func (q *Queries) ContainPrincipal(ctx context.Context, arg ContainPrincipalPara
 	return result.RowsAffected(), nil
 }
 
+const countAuthorityEstablishmentsSince = `-- name: CountAuthorityEstablishmentsSince :one
+SELECT CAST(COUNT(*) AS BIGINT) AS establishments FROM credential_authorities
+WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = $1) AND credential_authorities.established_at > CAST(CAST($2 AS TEXT) AS TIMESTAMPTZ)
+`
+
+type CountAuthorityEstablishmentsSinceParams struct {
+	PrincipalID string
+	Since       string
+}
+
+// Release evidence (incident-containment ADR, O4 A). A credential establishment
+// stamps established_at on the authority it consumes; a sweep consumes without
+// stamping, so only an establishment after the containment counts, whatever the
+// clock that minted the authority read.
+// hikyo:reason Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret.
+// hikyo:authn-resolution
+func (q *Queries) CountAuthorityEstablishmentsSince(ctx context.Context, arg CountAuthorityEstablishmentsSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuthorityEstablishmentsSince, arg.PrincipalID, arg.Since)
+	var establishments int64
+	err := row.Scan(&establishments)
+	return establishments, err
+}
+
 const countPasswordCredentialsForPrincipal = `-- name: CountPasswordCredentialsForPrincipal :one
 SELECT COUNT(*) FROM password_credentials WHERE account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = $1)
 `
@@ -138,29 +161,27 @@ func (q *Queries) GetAccountIDForContainmentSweep(ctx context.Context, principal
 	return id, err
 }
 
-const getLatestAuthorityConsumedSince = `-- name: GetLatestAuthorityConsumedSince :one
-SELECT CAST(CASE WHEN credential_authorities.consumed_at > CAST(CAST($1 AS TEXT) AS TIMESTAMPTZ) THEN CAST(credential_authorities.consumed_at AS TEXT) ELSE '' END AS TEXT) AS consumed_at FROM credential_authorities
-WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = $2) AND credential_authorities.created_at > CAST(CAST($1 AS TEXT) AS TIMESTAMPTZ)
-ORDER BY credential_authorities.created_at DESC, credential_authorities.id DESC LIMIT 1
+const getOtherOpenIncidentHoldingPrincipal = `-- name: GetOtherOpenIncidentHoldingPrincipal :one
+SELECT incidents.id FROM incidents
+JOIN incident_items ON incident_items.incident_id = incidents.id
+WHERE incidents.status = 'open' AND incidents.id <> $1
+  AND incident_items.owner_function = 'account.contain' AND incident_items.object_kind = 'account'
+  AND incident_items.object_id = $2 AND incident_items.outcome = 'done'
+ORDER BY incidents.id LIMIT 1
 `
 
-type GetLatestAuthorityConsumedSinceParams struct {
-	Since       string
+type GetOtherOpenIncidentHoldingPrincipalParams struct {
+	IncidentID  string
 	PrincipalID string
 }
 
-// Release evidence (incident-containment ADR, O4 A). The newest establishment
-// authority minted for the account after its containment was recorded: consumed
-// means a credential establishment completed. A newer mint consumes older
-// outstanding authorities, so only the newest row speaks for establishment.
-// A consumption at or before the containment instant is the containment's own sweep, never an establishment, so a mint stamped after it by a skewed clock does not speak.
-// hikyo:reason Release reads the consumption time of the newest establishment authority minted for one principal's account after its containment; it returns a timestamp and no identifier or secret.
+// hikyo:reason Release names another open incident whose ledger recorded the principal's containment as done, because that incident's operator also holds a claim on the contained state; it returns one incident id and nothing else.
 // hikyo:authn-resolution
-func (q *Queries) GetLatestAuthorityConsumedSince(ctx context.Context, arg GetLatestAuthorityConsumedSinceParams) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestAuthorityConsumedSince, arg.Since, arg.PrincipalID)
-	var consumed_at string
-	err := row.Scan(&consumed_at)
-	return consumed_at, err
+func (q *Queries) GetOtherOpenIncidentHoldingPrincipal(ctx context.Context, arg GetOtherOpenIncidentHoldingPrincipalParams) (string, error) {
+	row := q.db.QueryRow(ctx, getOtherOpenIncidentHoldingPrincipal, arg.IncidentID, arg.PrincipalID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getPrincipalContainedIncident = `-- name: GetPrincipalContainedIncident :one

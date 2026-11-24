@@ -527,6 +527,7 @@ type CredentialAuthority struct {
 	ExpiresAt                 pgtype.Timestamptz
 	ConsumedAt                pgtype.Timestamptz
 	CreatedAt                 pgtype.Timestamptz
+	EstablishedAt             pgtype.Timestamptz
 }
 
 type CredentialEstablishEvidence struct {

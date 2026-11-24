@@ -968,6 +968,11 @@ func (a *TxAuthorizer) OrgEmailInvitationOrgName(ctx context.Context, org domain
 	return a.r.OrgEmailInvitationOrgName(ctx, org)
 }
 
+// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.
+func (a *TxAuthorizer) OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error) {
+	return a.r.OtherOpenIncidentHolding(ctx, p, incidentID)
+}
+
 // PasswordCredentialFor reads an account's verifier row.
 func (a *TxAuthorizer) PasswordCredentialFor(ctx context.Context, accountID string) (PasswordCredential, error) {
 	return a.r.PasswordCredential(ctx, accountID)

@@ -68,7 +68,8 @@ func TestAttestable(t *testing.T) {
 		"adapter move item":         {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterMove, Outcome: domain.ItemPending}, false},
 		"adapter scrub item":        {authz.IncidentItem{OwnerFunction: domain.OwnerAdapterScrub, Outcome: domain.ItemPending}, false},
 		"factor stays open":         {authz.IncidentItem{OwnerFunction: domain.OwnerFactorRemoval, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, false},
-		"truncated identity marker": {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindEnumeration, Outcome: domain.ItemUnknown, Reason: domain.ReasonEnumerationTruncated}, false},
+		"truncated identity marker": {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindEnumeration, Outcome: domain.ItemUnknown, Reason: domain.ReasonEnumerationTruncated}, true},
+		"truncated session marker":  {authz.IncidentItem{OwnerFunction: domain.OwnerSessionRevoke, ObjectKind: domain.ObjectKindEnumeration, Outcome: domain.ItemUnknown, Reason: domain.ReasonEnumerationTruncated}, false},
 		"linked identity":           {authz.IncidentItem{OwnerFunction: domain.OwnerExternalIdentity, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner}, true},
 	} {
 		if got := attestable(tc.item); got != tc.want {

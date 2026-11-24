@@ -232,6 +232,7 @@
   "OrgEmailInvitationOrgName": "func(ctx context.Context, org domain.OrgID) (string, error)",
   "OrgImageVisibleTo": "func(ctx context.Context, caller Identity, org domain.OrgID) (OrgImage, error)",
   "OrgsForPrincipal": "func(ctx context.Context, caller Identity) ([]OrgIdentity, error)",
+  "OtherOpenIncidentHolding": "func(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error)",
   "PasswordCredentialFor": "func(ctx context.Context, accountID string) (PasswordCredential, error)",
   "PeekDeveloperCredentialPolicy": "func(ctx context.Context) (time.Duration, error)",
   "PendingDenials": "func() []Denial",

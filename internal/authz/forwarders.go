@@ -113,6 +113,8 @@ type txForwarded interface {
 	CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error)
 	PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error)
 	PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error)
+	// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.
+	OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error)
 
 	// AccountCount answers the bootstrap path's one question. It has no network
 	// route: `hikyo admin create` runs on the server's own host.

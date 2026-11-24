@@ -15,10 +15,10 @@ import (
 type Recovery struct{ DB *store.RecoveryDB }
 
 func (s *Recovery) Status(ctx context.Context) (Status, error) {
-	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) })
+	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) }, false)
 }
 func (s *Recovery) Reconcile(ctx context.Context, principal domain.PrincipalID) (Status, error) {
-	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.RecoveryReconcile(ctx, s.DB, fn) }, principal)
+	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.RecoveryReconcile(ctx, s.DB, fn) }, principal, false)
 }
 func (s *Recovery) ProveValuesReadable(ctx context.Context, kr *crypto.Keyring) (bool, error) {
 	return proveValuesReadable(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) }, kr)

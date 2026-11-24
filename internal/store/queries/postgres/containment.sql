@@ -131,17 +131,15 @@ WHERE p.id = sqlc.arg(principal_id)
       WHERE n.org_id = sqlc.arg(org_id) AND n.project_id = sqlc.arg(project_id)
         AND n.environment_id = sqlc.arg(env_id) AND n.owner_principal_id = p.id));
 
--- Release evidence (incident-containment ADR, O4 A). The newest establishment
--- authority minted for the account after its containment was recorded: consumed
--- means a credential establishment completed. A newer mint consumes older
--- outstanding authorities, so only the newest row speaks for establishment.
--- A consumption at or before the containment instant is the containment's own sweep, never an establishment, so a mint stamped after it by a skewed clock does not speak.
--- hikyo:reason Release reads the consumption time of the newest establishment authority minted for one principal's account after its containment; it returns a timestamp and no identifier or secret.
+-- Release evidence (incident-containment ADR, O4 A). A credential establishment
+-- stamps established_at on the authority it consumes; a sweep consumes without
+-- stamping, so only an establishment after the containment counts, whatever the
+-- clock that minted the authority read.
+-- hikyo:reason Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret.
 -- hikyo:authn-resolution
--- name: GetLatestAuthorityConsumedSince :one
-SELECT CAST(CASE WHEN credential_authorities.consumed_at > CAST(CAST(sqlc.arg(since) AS TEXT) AS TIMESTAMPTZ) THEN CAST(credential_authorities.consumed_at AS TEXT) ELSE '' END AS TEXT) AS consumed_at FROM credential_authorities
-WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = sqlc.arg(principal_id)) AND credential_authorities.created_at > CAST(CAST(sqlc.arg(since) AS TEXT) AS TIMESTAMPTZ)
-ORDER BY credential_authorities.created_at DESC, credential_authorities.id DESC LIMIT 1;
+-- name: CountAuthorityEstablishmentsSince :one
+SELECT CAST(COUNT(*) AS BIGINT) AS establishments FROM credential_authorities
+WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = sqlc.arg(principal_id)) AND credential_authorities.established_at > CAST(CAST(sqlc.arg(since) AS TEXT) AS TIMESTAMPTZ);
 
 -- hikyo:reason Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else.
 -- hikyo:authn-resolution
@@ -152,3 +150,13 @@ SELECT contained_incident_id FROM principals WHERE id = sqlc.arg(principal_id) A
 -- hikyo:authn-resolution
 -- name: CountPasswordCredentialsForPrincipal :one
 SELECT COUNT(*) FROM password_credentials WHERE account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = sqlc.arg(principal_id));
+
+-- hikyo:reason Release names another open incident whose ledger recorded the principal's containment as done, because that incident's operator also holds a claim on the contained state; it returns one incident id and nothing else.
+-- hikyo:authn-resolution
+-- name: GetOtherOpenIncidentHoldingPrincipal :one
+SELECT incidents.id FROM incidents
+JOIN incident_items ON incident_items.incident_id = incidents.id
+WHERE incidents.status = 'open' AND incidents.id <> sqlc.arg(incident_id)
+  AND incident_items.owner_function = 'account.contain' AND incident_items.object_kind = 'account'
+  AND incident_items.object_id = sqlc.arg(principal_id) AND incident_items.outcome = 'done'
+ORDER BY incidents.id LIMIT 1;

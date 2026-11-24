@@ -3,6 +3,7 @@ package isolation
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -106,7 +107,7 @@ func TestIncidentReleaseNeedsEstablishmentForAPasswordAccount(t *testing.T) {
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with an unconsumed authority = %v, want ErrReleaseNotReady", err)
 		}
-		execRaw(t, db, `UPDATE credential_authorities SET consumed_at = `+farFuture+` WHERE id = 'ca_rel_1'`)
+		execRaw(t, db, `UPDATE credential_authorities SET consumed_at = `+farFuture+`, established_at = `+farFuture+` WHERE id = 'ca_rel_1'`)
 		if err := release(); err != nil {
 			t.Fatalf("release after establishment: %v", err)
 		}
@@ -217,11 +218,12 @@ func TestIncidentReleaseKeepsContainmentsOrgBound(t *testing.T) {
 	})
 }
 
-// Only a consumption after the containment is an establishment. A reset minted
-// before containment and swept by it is not one, an authority consumed after
-// being minted before containment is not one, and neither is a mint stamped
-// after containment by a skewed clock that the containment sweep consumed.
-func TestIncidentReleaseIgnoresAuthoritiesThatPredateOrWereSweptByContainment(t *testing.T) {
+// Only an establishment after the containment counts, and a sweep never is one.
+// A reset minted before containment and swept by it is not one; an authority
+// established before containment is not one; and a skewed-ahead node's mint (R1)
+// swept by a later correct reset (R2) is not one, though R1 outranks R2 by mint
+// time. Establishing R2 is, and releases.
+func TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
 		w := newIncidentWorld(t, db)
@@ -235,15 +237,101 @@ func TestIncidentReleaseIgnoresAuthoritiesThatPredateOrWereSweptByContainment(t 
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release after a pre-containment reset was swept = %v, want ErrReleaseNotReady", err)
 		}
-		// Minted before containment, consumed after it.
-		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_old', `+blobLit(db, []byte("ca-old"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+farFuture+`, `+ts+`)`)
+		// Established before the containment: the marker predates it.
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, established_at, created_at) VALUES ('ca_rel_old', `+blobLit(db, []byte("ca-old"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+ts+`, `+ts+`, `+ts+`)`)
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
-			t.Fatalf("release with an authority minted before containment = %v, want ErrReleaseNotReady", err)
+			t.Fatalf("release with an establishment before containment = %v, want ErrReleaseNotReady", err)
 		}
-		// Minted after containment on a clock ahead, then swept at the containment instant.
-		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_skew', `+blobLit(db, []byte("ca-skew"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, (SELECT contained_at FROM principals WHERE id = 'usr_itarget'), `+farFuture+`)`)
+		// R1: minted after containment by a clock far ahead. R2: the correct reset,
+		// which sweeps R1 and is minted with an earlier created_at than R1.
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_r1', `+blobLit(db, []byte("ca-r1"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, NULL, `+farFuture+`)`)
+		r2, err := auth.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
+		if err != nil {
+			t.Fatalf("second reset: %v", err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities WHERE id = 'ca_rel_r1' AND consumed_at IS NOT NULL AND established_at IS NULL`); n != 1 {
+			t.Fatal("the second reset did not sweep R1 without stamping it")
+		}
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
-			t.Fatalf("release with a swept skewed authority = %v, want ErrReleaseNotReady", err)
+			t.Fatalf("release with R1 swept and R2 unestablished = %v, want ErrReleaseNotReady", err)
+		}
+		if err := auth.EstablishCredential(ctx, r2.Authority, "a password established after the second reset"); err != nil {
+			t.Fatalf("establishing R2: %v", err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("release after establishing R2: %v", err)
+		}
+	})
+}
+
+// A cut keyed to one member holds that member only, and an attested cut covers
+// the identities it left unlisted, so release is decidable per target.
+func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_rel','acc_itarget','oidc','https://idp.example.test','subject-rel','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		w.realOwners()
+		id := w.openOrg(t, incResponder)
+		w.resume(t, incResponder, id)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		cut := func(itemID, member string) {
+			execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at) VALUES ('`+itemID+`', '`+id+`', 'external_identity.remove', 'enumeration', '`+member+`', 'org/org_a', 'unknown', 'enumeration_truncated', 1, `+ts+`, `+ts+`)`)
+		}
+		// Another member's cut does not hold this target, and an identity the
+		// enumeration never listed does.
+		cut("itm_cut_other", "usr_someone_else")
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_unlisted','acc_itarget','oidc','https://idp.example.test','subject-unlisted','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with an unlisted identity = %v, want ErrReleaseNotReady", err)
+		}
+		// A cut keyed to the target holds it until attested; attested, it covers
+		// the unlisted identity.
+		cut("itm_cut_target", string(incTarget))
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with the target's cut unattested = %v, want ErrReleaseNotReady", err)
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_target"); err != nil {
+			t.Fatal(err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("release with the target's cut attested: %v", err)
+		}
+	})
+}
+
+// Two incidents that both recorded the principal contained: the state belongs to
+// the first, but the second's ledger reads done. Release is refused, naming the
+// other incident, until it is closed.
+func TestIncidentReleaseWaitsForAnotherOpenIncidentHoldingThePrincipal(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_rel','acc_itarget','oidc','https://idp.example.test','subject-rel','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		w.realOwners()
+		// Both incidents enumerate before either contains, so both list the account.
+		first := w.openAccount(t, incResponder).Incident.ID
+		second := w.openOrg(t, incResponder)
+		w.resume(t, incResponder, first)
+		w.resume(t, incResponder, second)
+		if err := w.svc.Attest(ctx, w.as(incResponder), first, w.itemIDByKey(t, incResponder, first, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.itemMap(t, incResponder, second)["account.contain|account|usr_itarget"]; got != "done/" {
+			t.Fatalf("the second incident's account.contain item = %q, want done/", got)
+		}
+		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), first, incTarget)
+		if !errors.Is(err, service.ErrReleaseNotReady) || !strings.Contains(err.Error(), second) {
+			t.Fatalf("release while %s is open = %v, want ErrReleaseNotReady naming it", second, err)
+		}
+		if _, err := w.svc.Close(ctx, w.as(incResponder), second, true); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), first, incTarget); err != nil {
+			t.Fatalf("release after the other incident closed: %v", err)
 		}
 	})
 }

@@ -494,10 +494,9 @@ principal is contained, so a contained account would still have a scheduler acti
   names the incident that contained the principal; a principal another incident (or none)
   contained, an unknown principal and the incident's own account all answer not found.
 - It needs the O4 A evidence: for an account with a local password, a credential
-  establishment since containment (the newest establishment authority minted after the
-  containment was recorded is consumed; a newer mint consumes older authorities without
-  establishing, so only the newest speaks); and every linked-identity item of the containing
-  incident attested. An account with neither a password nor a linked identity is refused,
+  establishment since containment (an establishment stamps the authority it consumes; a
+  sweep, whether containment's or a newer reset's, consumes without stamping, so it never
+  counts); and every linked identity of the target attested in the containing incident. An account with neither a password nor a linked identity is refused,
   because nothing then records a replaced way to sign in. An unmet condition is a conflict
   (`ErrReleaseNotReady`) and the principal stays contained.
 - The ways back for a contained account are the operator reset (refused for a linked
@@ -507,15 +506,20 @@ principal is contained, so a contained account would still have a scheduler acti
   anything is spent or minted (tests: `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment`,
   `TestIncidentContainedAccountRefusesFederatedClaim`). Containment retires outstanding
   authorities and establishment refuses one minted before it, and password and factor writes of a
-  signed-in session need a session a contained account cannot hold. Only a consumption after
-  the containment instant counts: the containment sweep stamps that instant itself, so a swept
-  authority never reads as an establishment, whatever its mint clock.
+  signed-in session need a session a contained account cannot hold. An establishment stamps
+  `credential_authorities.established_at` on the authority it consumes (migration 00097); a
+  sweep consumes without stamping, so neither containment's sweep nor a newer reset's ever
+  reads as an establishment, whatever clock minted the authority.
 - Release is authorized as containment was: the same target classification applies, so a
   target in several orgs needs instance scope and an instance-capability target is refused. The
   linked-identity condition reads the target's own identities and needs an attested item for each
   in the containing incident; an org incident lists every member's identities for that purpose.
-  An unattested enumeration-truncation row for identities holds the release. A member with an
-  identity and no password is released once its identities are attested.
+  An org incident that cuts a member's identities records one truncation row keyed to that
+  member: unattested it holds that member's release only, attested it covers the unlisted
+  identities. A member with an identity and no password is released once its identities are
+  attested. Release is also refused while another open incident recorded the principal as
+  contained (its ledger item reads done though the state belongs to the first incident); the
+  refusal names that incident, and closing it lets the release proceed.
 - Release revives and regrants nothing. The store setter advances the session generation
   again and retires pending proofs, and a revoked delegation stays revoked.
 - A restore lists the contained principals among the unreconciled (`Status.Contained`, shown

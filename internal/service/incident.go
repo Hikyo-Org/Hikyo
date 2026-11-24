@@ -816,9 +816,14 @@ func ownIncident(caller authz.Identity, inc authz.Incident) bool {
 // holds its capability, so neither is attestable.
 func attestable(it authz.IncidentItem) bool {
 	// An enumeration marker stands for objects that were never listed, so no
-	// operator statement can resolve it.
-	if it.Outcome == domain.ItemBlocked || it.ObjectKind == domain.ObjectKindEnumeration {
+	// operator statement can resolve it, except the cut of a member's linked
+	// identities: those are resolved at the identity provider, which the operator
+	// attests for the person the marker names.
+	if it.Outcome == domain.ItemBlocked {
 		return false
+	}
+	if it.ObjectKind == domain.ObjectKindEnumeration {
+		return it.OwnerFunction == domain.OwnerExternalIdentity
 	}
 	if it.Reason == domain.ReasonUpstreamNotObservable {
 		return true

@@ -525,6 +525,7 @@ type CredentialAuthority struct {
 	ExpiresAt                 string
 	ConsumedAt                sql.NullString
 	CreatedAt                 string
+	EstablishedAt             sql.NullString
 }
 
 type CredentialEstablishEvidence struct {

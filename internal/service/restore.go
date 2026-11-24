@@ -62,10 +62,12 @@ type Status struct {
 
 // Status reads the instance's restore posture.
 func (s *Restore) Status(ctx context.Context) (Status, error) {
-	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.Read(ctx, s.DB, fn) })
+	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.Read(ctx, s.DB, fn) }, true)
 }
 
-func restoreStatus(ctx context.Context, run func(context.Context, tx.ReadFn) error) (Status, error) {
+// withContainment is false for the recovery drill, whose scratch database can
+// predate the containment columns, so it cannot be asked who is contained.
+func restoreStatus(ctx context.Context, run func(context.Context, tx.ReadFn) error, withContainment bool) (Status, error) {
 	var out Status
 	err := run(ctx, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		state, err := az.RestoreState(ctx)
@@ -79,6 +81,9 @@ func restoreStatus(ctx context.Context, run func(context.Context, tx.ReadFn) err
 		out.Pending, err = az.UnreconciledPrincipals(ctx)
 		if err != nil {
 			return err
+		}
+		if !withContainment {
+			return nil
 		}
 		out.Contained, err = containedAmong(ctx, az, out.Pending)
 		return err
@@ -110,10 +115,10 @@ func containedAmong(ctx context.Context, az *authz.TxAuthorizer, refs []authz.Pr
 // cost — a single "reconcile everything" would turn an informed assertion
 // about each identity into a keystroke.
 func (s *Restore) Reconcile(ctx context.Context, target domain.PrincipalID) (Status, error) {
-	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.Reconcile(ctx, s.DB, fn) }, target)
+	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.Reconcile(ctx, s.DB, fn) }, target, true)
 }
 
-func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreFn) error, target domain.PrincipalID) (Status, error) {
+func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreFn) error, target domain.PrincipalID, withContainment bool) (Status, error) {
 	if target == "" {
 		return Status{}, errors.New("reconciliation names exactly one principal")
 	}
@@ -137,9 +142,11 @@ func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreF
 		if err != nil {
 			return err
 		}
-		contained, err := containedAmong(ctx, az, pending)
-		if err != nil {
-			return err
+		var contained []domain.PrincipalID
+		if withContainment {
+			if contained, err = containedAmong(ctx, az, pending); err != nil {
+				return err
+			}
 		}
 		out = Status{State: state, Pending: pending, Contained: contained}
 		e, err := domainEvent(ctx, audit.EventRestorePrincipalReconciled, "",

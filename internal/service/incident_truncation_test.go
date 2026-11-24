@@ -127,3 +127,24 @@ func TestRotationListerCapsTheWholeSourceAcrossMembers(t *testing.T) {
 		t.Fatalf("listed %d rotations and %d scope cuts, want %d and 1", rotations, cuts, maxSourceItems)
 	}
 }
+
+// Past the cap a member's identities become one truncation row keyed to that
+// member, and a member with none gets no row.
+func TestAddMemberIdentitiesKeysTheCutToTheMember(t *testing.T) {
+	scope := domain.Scope{Org: "org_a"}
+	c := newCollector(0)
+	two := []authz.ExternalIdentity{{ID: "xid_1"}, {ID: "xid_2"}}
+	used := c.addMemberIdentities("usr_fits", two[:1], maxSourceItems-1, scope)
+	if used != maxSourceItems || len(c.cands) != 1 || c.cands[0].id != "xid_1" {
+		t.Fatalf("fitting member: used %d, rows %+v", used, c.cands)
+	}
+	used = c.addMemberIdentities("usr_cut", two, used, scope)
+	used = c.addMemberIdentities("usr_none", nil, used, scope)
+	if used != maxSourceItems || len(c.cands) != 2 {
+		t.Fatalf("after the cut: used %d, rows %+v", used, c.cands)
+	}
+	cut := c.cands[1]
+	if cut.id != "usr_cut" || cut.reason != domain.ReasonEnumerationTruncated || cut.owner != domain.OwnerExternalIdentity {
+		t.Fatalf("cut row %+v, want a truncation keyed to usr_cut", cut)
+	}
+}

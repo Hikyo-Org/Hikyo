@@ -204,7 +204,7 @@ func (q *Queries) ConsumeCLIReauthHandoff(ctx context.Context, arg ConsumeCLIRea
 }
 
 const consumeCredentialAuthority = `-- name: ConsumeCredentialAuthority :execrows
-UPDATE credential_authorities SET consumed_at = $1
+UPDATE credential_authorities SET consumed_at = $1, established_at = $1
 WHERE id = $2 AND consumed_at IS NULL
 `
 

@@ -495,6 +495,24 @@ func (s *Incidents) memberCanContain(ctx context.Context, az *authz.TxAuthorizer
 	return c.holds(ctx, az, caller, authz.OpIncidentInstance, domain.Scope{})
 }
 
+// addMemberIdentities lists one member's linked identities while the org's identity
+// rows stay under the source cap. A member whose identities no longer fit gets one
+// truncation row keyed to that member, so release stays decidable per member:
+// attesting it covers that member's unlisted identities and holds no other member.
+// It returns the running count of identity rows.
+func (c *collector) addMemberIdentities(p domain.PrincipalID, identities []authz.ExternalIdentity, used int, scope domain.Scope) int {
+	if used+len(identities) > maxSourceItems {
+		if len(identities) > 0 {
+			c.truncated(domain.OwnerExternalIdentity, string(p), scope)
+		}
+		return used
+	}
+	for _, x := range identities {
+		c.noRevokeOwner(domain.OwnerExternalIdentity, domain.ObjectKindExternalIdentity, x.ID, scope)
+	}
+	return used + len(identities)
+}
+
 // truncateUnreachedRotations records, for each member the lookup budget or the
 // source cap never reached, an open truncation row under the rotation owner: the
 // member's rotations were not checked. Past the cap one row at the scope's own id
@@ -610,14 +628,7 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 		if err != nil {
 			return err
 		}
-		for _, x := range identities {
-			if idItems >= maxSourceItems {
-				c.truncated(domain.OwnerExternalIdentity, a.scopeID, scope)
-				break
-			}
-			idItems++
-			c.noRevokeOwner(domain.OwnerExternalIdentity, domain.ObjectKindExternalIdentity, x.ID, scope)
-		}
+		idItems = c.addMemberIdentities(p, identities, idItems, scope)
 		// Org scope inherits through the accounts it selects (#1471, option B).
 		if err := rotations.page(ctx, a, p, c); err != nil {
 			return err

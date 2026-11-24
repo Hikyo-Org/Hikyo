@@ -30,8 +30,8 @@ Local only until slice 4 merges.
 
 - No HTTP route, CLI verb or web control for release: the operator surface is a later slice.
 - The recovery rehearsal on an isolated instance is not run.
-- The establishment signal is read from the authority rows: only a consumption after the
-  containment instant counts. The real ways back are the operator reset (refused for linked
+- The establishment signal is `credential_authorities.established_at`, stamped only when an
+  establishment consumes an authority (never by a sweep). The real ways back are the operator reset (refused for linked
   accounts) and the break-glass reset; recovery-code consumption and a federated claim refuse a
   contained account (negative tests). Release applies containment's org classification and reads
   the target's own identities, which an org incident now lists per member.

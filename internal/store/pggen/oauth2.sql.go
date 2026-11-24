@@ -31,7 +31,7 @@ func (q *Queries) BindSessionToOAuth2Provider(ctx context.Context, arg BindSessi
 }
 
 const claimFederatedAuthority = `-- name: ClaimFederatedAuthority :execrows
-UPDATE credential_authorities SET consumed_at = $1, established_credential_kind = $2
+UPDATE credential_authorities SET consumed_at = $1, established_at = $1, established_credential_kind = $2
 WHERE id = $3 AND consumed_at IS NULL AND issued_by <> 'recovery'
 `
 
@@ -140,7 +140,7 @@ func (q *Queries) DeleteSessionsForOAuth2Provider(ctx context.Context, oauth2Pro
 }
 
 const getCredentialAuthorityByID = `-- name: GetCredentialAuthorityByID :one
-SELECT id, verifier, account_id, purpose, issued_by, established_credential_kind, credential_epoch, expires_at, consumed_at, created_at FROM credential_authorities WHERE id = $1
+SELECT id, verifier, account_id, purpose, issued_by, established_credential_kind, credential_epoch, expires_at, consumed_at, created_at, established_at FROM credential_authorities WHERE id = $1
 `
 
 // hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.
@@ -159,6 +159,7 @@ func (q *Queries) GetCredentialAuthorityByID(ctx context.Context, id string) (Cr
 		&i.ExpiresAt,
 		&i.ConsumedAt,
 		&i.CreatedAt,
+		&i.EstablishedAt,
 	)
 	return i, err
 }

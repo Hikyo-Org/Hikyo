@@ -49,6 +49,13 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 		if err != nil || contained != inc.ID || ownIncident(caller, inc) {
 			return domain.ErrNotFound
 		}
+		// Another open incident that also recorded this principal contained keeps its
+		// own claim on the state, so its operator closes or releases it first.
+		if other, err := az.OtherOpenIncidentHolding(ctx, target, inc.ID); err != nil {
+			return err
+		} else if other != "" {
+			return fmt.Errorf("%w: incident %s also recorded this principal contained and is still open", ErrReleaseNotReady, other)
+		}
 		// The same classification containment ran: a target in several orgs needs
 		// instance scope, and an instance-capability target is host-local.
 		if err := authorizeReleaseTarget(ctx, az, caller, target); err != nil {
@@ -130,9 +137,9 @@ func authorizeReleaseTarget(ctx context.Context, az *authz.TxAuthorizer, caller 
 
 // identitiesNotAttested reads the target's own linked identities and counts the
 // ones the incident has no attested item for, so the condition holds for an org
-// incident as well as an account one. An unattested enumeration-truncated
-// identity row counts too: the cut means identities went unlisted. total is how
-// many identities the account holds.
+// incident as well as an account one. An unattested enumeration-truncated row
+// keyed to the target counts too (the cut means identities went unlisted), and
+// an attested one covers them. total is how many identities the account holds.
 func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, err error) {
 	account, err := az.RecoveryAccountByPrincipal(ctx, target)
 	if err != nil {
@@ -142,7 +149,7 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 	if err != nil {
 		return 0, 0, err
 	}
-	attested, truncated := map[string]bool{}, 0
+	attested, cutPending, cutAttested := map[string]bool{}, false, false
 	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, releasePageSize, false)
@@ -154,9 +161,15 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 				continue
 			}
 			switch {
-			case it.Reason == domain.ReasonEnumerationTruncated:
-				if it.Outcome != domain.ItemAttested {
-					truncated++
+			case it.ObjectKind == domain.ObjectKindEnumeration: // attesting rewrites the reason, so the kind marks the cut
+				// A cut keyed to another member leaves this target's identities listed.
+				if it.ObjectID != string(target) {
+					continue
+				}
+				if it.Outcome == domain.ItemAttested {
+					cutAttested = true
+				} else {
+					cutPending = true
 				}
 			case it.Outcome == domain.ItemAttested:
 				attested[it.ObjectID] = true
@@ -167,10 +180,14 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 		}
 		after = page[len(page)-1].ID
 	}
+	// An attested cut row for this target vouches for the identities it left unlisted.
 	for _, x := range identities {
-		if !attested[x.ID] {
+		if !attested[x.ID] && !cutAttested {
 			pending++
 		}
 	}
-	return pending + truncated, len(identities), nil
+	if cutPending {
+		pending++
+	}
+	return pending, len(identities), nil
 }
