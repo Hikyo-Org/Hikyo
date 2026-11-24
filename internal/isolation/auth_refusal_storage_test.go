@@ -23,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func refusalStorageSample(t *testing.T) audit.RefusalSample {
@@ -499,6 +500,72 @@ func TestRequestRefusalBlockedDatastoreHonorsDeadline(t *testing.T) {
 			t.Fatal("timed-out blocked update committed after returning")
 		}
 	})
+}
+
+// serverOnlyDeadline reports a deadline but never cancels, so the client cannot
+// abandon the transaction: only the server-side bound can stop it.
+type serverOnlyDeadline struct {
+	context.Context
+	at time.Time
+}
+
+func (c serverOnlyDeadline) Deadline() (time.Time, bool) { return c.at, true }
+func (serverOnlyDeadline) Done() <-chan struct{}         { return nil }
+func (serverOnlyDeadline) Err() error                    { return nil }
+
+// A client that gives up cannot be what frees the refusal row: the server must
+// abort the lock wait itself, leave no waiter behind, and not block later
+// refusals. lock_timeout and statement_timeout share the bound, so either may
+// fire. SQLite has no server to outlive the client, so only postgres runs.
+func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	release := holdRefusalWriter(t, db)
+	sample := refusalStorageSample(t)
+	// One second leaves time for the polling positive control below to see the waiter.
+	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(time.Second)}
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		done <- tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			_, err := az.UpdateRequestRefusals(ctx, &sample)
+			return err
+		})
+	}()
+	// Row-lock waiters wait on a transactionid lock, so look for blocked backends.
+	// Scoped to this database: other tests share the server and block deliberately.
+	const blocked = "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND cardinality(pg_blocking_pids(pid))>0"
+	for seen := false; !seen; {
+		select {
+		case err := <-done:
+			t.Fatalf("attempt finished without ever blocking behind the held writer: %v", err)
+		case <-time.After(10 * time.Millisecond):
+			seen = queryInt(t, db, blocked) > 0
+		}
+	}
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(3 * time.Second):
+		release() // unblock the writer so the goroutine and database can be torn down
+		t.Logf("released writer; attempt ended with: %v", <-done)
+		t.Fatal("server never aborted the lock-blocked attempt: no server-side bound")
+	}
+	var timedOut *pgconn.PgError
+	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("server did not abort the lock wait as a deadline error: %v after %s", err, time.Since(start))
+	}
+	if waiting := queryInt(t, db, blocked); waiting != 0 {
+		t.Fatalf("aborted attempt left %d blocked backends", waiting)
+	}
+	release()
+	signals := service.NewRefusalSignals(db)
+	signals.Deadline = 5 * time.Second
+	if err := signals.Record(t.Context(), sample); err != nil {
+		t.Fatalf("later refusal was blocked: %v", err)
+	}
+	if state := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1"); strings.Count(state, sample.RequestID) != 1 {
+		t.Fatalf("expected exactly the later sample in the window: %s", state)
+	}
 }
 
 func sealedRefusalCount(t *testing.T, db *store.DB) int64 {
