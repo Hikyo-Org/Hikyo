@@ -33,7 +33,9 @@ import { useModalDialog } from './useModalDialog.ts';
  *   handler; acknowledgement and decision surfaces keep their existing exits.
  *
  * `onCancel` receives the platform's cancel (Escape); a dialog that must be
- * acknowledged before it closes calls `preventDefault()` there.
+ * acknowledged before it closes calls `preventDefault()` there. That refusal
+ * holds even when the platform marks the cancel non-cancelable and closes
+ * anyway: the dialog reopens, so the platform cannot outvote the caller.
  *
  * `onBackdropClick` is the editors' third way out, opt-in per dialog.
  *
@@ -124,6 +126,33 @@ export function Dialog({
   });
   const titleId = useId();
   const pressedScrim = useRef(false);
+  // Chromium makes a repeated Escape's cancel non-cancelable (close-watcher
+  // anti-abuse) and closes anyway. A cancel the caller refused is remembered,
+  // with the focus it interrupted, and the close that follows reopens it.
+  const refusedClose = useRef<{ readonly focus: Element | null } | null>(null);
+  const holdRefusedCancel = (event: SyntheticEvent<HTMLDialogElement>) => {
+    const focus = document.activeElement;
+    const element = event.currentTarget;
+    try {
+      onCancel?.(event);
+    } finally {
+      const refused = event.isDefaultPrevented() && !event.nativeEvent.cancelable;
+      refusedClose.current = refused ? { focus } : null;
+      // Between the platform's close and the reopen below the dialog is not
+      // `[open]`: this marker keeps a surface behind it (SidePanel) from
+      // reading the next Escape as its own.
+      element.toggleAttribute('data-reopening', refused);
+    }
+  };
+  const reopenRefusedClose = (event: SyntheticEvent<HTMLDialogElement>) => {
+    const refused = refusedClose.current;
+    refusedClose.current = null;
+    const element = event.currentTarget;
+    element.removeAttribute('data-reopening');
+    if (refused === null || !element.isConnected) return;
+    element.showModal();
+    if (refused.focus instanceof HTMLElement && element.contains(refused.focus)) refused.focus.focus();
+  };
   const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
     if (event.target !== event.currentTarget) return false;
     const box = event.currentTarget.getBoundingClientRect();
@@ -143,7 +172,9 @@ export function Dialog({
       // a fully disabled in-flight form leaves nothing else Tab can reach,
       // which axe's scrollable-region-focusable rule requires.
       tabIndex={0}
-      onCancel={onCancel}
+      onCancel={holdRefusedCancel}
+      // The native close event, unrelated to the corner-close `onClose` prop.
+      onClose={reopenRefusedClose}
       onMouseDown={
         onBackdropClick === undefined
           ? undefined

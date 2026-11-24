@@ -487,17 +487,17 @@ operations:
   # id), schedule, next run, credential expiry, last run, the runs that still owe
   # a drop, authority principal, creator, generation and created/updated times.
   # The environment is the selector above the list, so the list read is the whole
-  # of showRotation. The runs read is the run timeline. The mutating verbs stay
-  # CLI-only until the management WebUI (#1440) takes them over, so their rows
-  # point at that issue.
+  # of showRotation. The runs read is the run timeline. The same tab takes the six
+  # acts (#1440): create, resume, run-now and release-hold behind the publish
+  # ceremony over the environment and both keys, pause and delete without one.
   listRotations:               {webui: machine-access}
-  createRotation:              {issue: 1440}
+  createRotation:              {webui: machine-access}
   showRotation:                {webui: machine-access, via: [listRotations]}
-  deleteRotation:              {issue: 1440}
-  pauseRotation:               {issue: 1440}
-  resumeRotation:              {issue: 1440}
-  releaseRotationHold:         {issue: 1440}
-  runRotationNow:              {issue: 1440}
+  deleteRotation:              {webui: machine-access}
+  pauseRotation:               {webui: machine-access}
+  resumeRotation:              {webui: machine-access}
+  releaseRotationHold:         {webui: machine-access}
+  runRotationNow:              {webui: machine-access}
   listRotationRuns:            {webui: machine-access}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)

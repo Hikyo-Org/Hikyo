@@ -242,6 +242,18 @@ describe('MatrixKeyCreate', () => {
     await view.unmount();
   });
 
+  it('refuses a whitespace-only first value instead of dropping it', async () => {
+    const view = await render();
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), ' \n\t '));
+    expect(view.container.textContent).toContain('This value is only whitespace, so trimming leaves it empty.');
+    await fillNameAndSubmit(view.container, 'LEVEL');
+    expect(view.onCreate).not.toHaveBeenCalled();
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Clear the first value to declare the key without one, or enter a value.',
+    );
+    await view.unmount();
+  });
+
   it('renders the Git notice and refuses to declare when git-managed', async () => {
     const view = await render({ gitManaged: true });
     expect(view.container.textContent).toContain('managed in Git');

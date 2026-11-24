@@ -2,7 +2,10 @@ package lint
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
+	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -128,4 +131,113 @@ func addImport(p *packages.Package, path string) {
 	})
 	p.Syntax = slices.Clone(p.Syntax)
 	p.Syntax[0] = &file
+}
+
+// Every inventoried file exists: a renamed or deleted harness file must leave
+// the inventory instead of silently keeping its authority for a same-named
+// successor.
+func TestDriverFilesExist(t *testing.T) {
+	for file := range driverFiles {
+		if _, err := os.Stat(filepath.Join(moduleRoot(), filepath.FromSlash(file))); err != nil {
+			t.Errorf("driverFiles entry %s: %v", file, err)
+		}
+	}
+}
+
+// externalTestFiles must match the package clauses on disk, and the file
+// scoping must accept the external package only for those entries.
+func TestExternalTestFilesMatchPackageClauses(t *testing.T) {
+	for file := range driverFiles {
+		if !strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(), filepath.FromSlash(file)), nil, parser.PackageClauseOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if external := strings.HasSuffix(parsed.Name.Name, "_test"); external != externalTestFiles[file] {
+			t.Errorf("%s: package %s but externalTestFiles=%v", file, parsed.Name.Name, externalTestFiles[file])
+		}
+	}
+	for file := range externalTestFiles {
+		if !driverFiles[file] {
+			t.Errorf("externalTestFiles entry %s is not inventoried", file)
+		}
+	}
+	files := token.NewFileSet()
+	external := files.AddFile("/owned/internal/store/keys_test.go", -1, 100)
+	inPackage := files.AddFile("/owned/internal/upgradegate/gate_test.go", -1, 100)
+	if !permittedHandlePosition(files, Module+"/internal/store_test", external.Pos(1)) {
+		t.Fatal("an external test entry was refused under its _test package")
+	}
+	if permittedHandlePosition(files, Module+"/internal/upgradegate_test", inPackage.Pos(1)) {
+		t.Fatal("an in-package-only entry was accepted under the external _test package")
+	}
+	if !permittedHandlePosition(files, Module+"/internal/upgradegate", inPackage.Pos(1)) {
+		t.Fatal("an in-package entry was refused under its own package")
+	}
+}
+
+// A //line directive cannot lend a file the authority of an inventoried path:
+// the decision reads the file on disk.
+func TestInventoriedPathClaimedByLineDirectiveIsRefused(t *testing.T) {
+	const claimed = "/owned/internal/isolation/oauth2_e2e_test.go"
+	if !driverFiles["internal/isolation/oauth2_e2e_test.go"] {
+		t.Fatal("the claimed path is no longer inventoried; pick another")
+	}
+	files := token.NewFileSet()
+	f := files.AddFile("/owned/internal/isolation/new_writer_test.go", -1, 100)
+	f.SetLines([]int{0})
+	f.AddLineInfo(0, claimed, 1)
+	if got := files.Position(f.Pos(1)).Filename; got != claimed {
+		t.Fatalf("directive not applied: %s", got)
+	}
+	if permittedHandlePosition(files, Module+"/internal/isolation", f.Pos(1)) {
+		t.Fatal("a //line claim received an inventoried file's authority")
+	}
+}
+
+// Every inventory entry still earns its place: with the inventory emptied,
+// each entry's file produces at least one handles diagnostic in some analysis
+// context. A file that no longer needs a raw handle must leave the inventory,
+// so the inventory only pays down.
+func TestDriverFilesAreAllUsed(t *testing.T) {
+	saved := driverFiles
+	driverFiles = map[string]bool{}
+	defer func() { driverFiles = saved }()
+	dirs := map[string]bool{}
+	for file := range saved {
+		dirs[Module+"/"+filepath.ToSlash(filepath.Dir(file))] = true
+	}
+	patterns := slices.Sorted(maps.Keys(dirs))
+	used := map[string]bool{}
+	root := filepath.ToSlash(moduleRoot()) + "/"
+	for _, ctx := range Contexts {
+		var pkgs []*packages.Package
+		for _, pattern := range patterns {
+			loaded, err := loadFixture(ctx, true, pattern)
+			if err != nil && strings.Contains(err.Error(), "build constraints exclude all Go files") {
+				continue // a package that does not build under this context
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			pkgs = append(pkgs, loaded...)
+		}
+		for _, finding := range checkDriverHandles(pkgs) {
+			posn, _, _ := strings.Cut(finding, ": handles: ")
+			if i := strings.LastIndex(posn, ":"); i >= 0 {
+				posn = posn[:i]
+			}
+			if i := strings.LastIndex(posn, ":"); i >= 0 {
+				posn = posn[:i]
+			}
+			used[strings.TrimPrefix(filepath.ToSlash(posn), root)] = true
+		}
+	}
+	for file := range saved {
+		if !used[file] {
+			t.Errorf("driverFiles entry %s produces no handles diagnostic without it; remove it from the inventory", file)
+		}
+	}
 }

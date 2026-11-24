@@ -70,6 +70,11 @@ type disclosure struct {
 	// window overrides the read-authorized reveal-window route for decisions
 	// whose own operation is authorized by publish instead.
 	window func(ctx context.Context, env string) (apigen.RevealWindow, error)
+	// authorized means the server already checked the caller's own disclosure
+	// authority and asked only for the window (a machine widening names
+	// reveal or reveal-history by what it reaches), so can_reveal, which is
+	// the current-plaintext question only, must not veto the ceremony.
+	authorized bool
 }
 
 // withRevealCeremony runs a disclosure, and on the server's refusal opens the
@@ -132,7 +137,7 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	if d.protectedOnly && !window.Protected {
 		return nil
 	}
-	exempt := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access" || d.purpose == "publish"
+	exempt := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access" || d.purpose == "publish" || d.authorized
 	if !window.CanReveal && !exempt {
 		return refusal
 	}
@@ -151,15 +156,27 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		inlineTOTP = status.Confirmed
 	}
 	if !inlineTOTP {
+		// remedy is the one step that can open a window here: a protected
+		// environment has none, so raising its window would change nothing.
 		why := "its reveal window is 0"
+		remedy := fmt.Sprintf("raise the window with `hikyo project-settings set --env %s --reauth-window-seconds 300`", env)
 		switch {
 		case window.Protected:
-			why = "it is a protected environment"
+			why, remedy = "it is a protected environment", ""
 		case window.EffectiveWindowSeconds > 0:
-			why = "no authenticator is enrolled on this account"
+			why, remedy = "no authenticator is enrolled on this account",
+				fmt.Sprintf("enroll an authenticator with `hikyo account factor enrol-totp` or at %s", accountSecurityURL(client))
 		}
 		if d.purpose == "access" {
 			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
+		}
+		if d.authorized && d.purpose == "" {
+			// The browser has no machine rule editor yet (issue 1541), so only a window helps.
+			if remedy == "" {
+				return failf(ExitAuth, "a rule change that widens a machine into the protected environment %s cannot be made yet: "+
+					"a protected environment has no reauthentication window, and the browser cannot edit machine rules yet", env)
+			}
+			return failf(ExitAuth, "a rule change that widens a machine in %s needs a reauthentication window and %s; %s, then retry", env, why, remedy)
 		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			if d.purpose == "publish" {
@@ -167,7 +184,7 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 					"which this invocation cannot open; complete the publish in the browser", env, why)
 			}
 			return failf(ExitAuth, "a disclosure in %s needs a reauthentication window and %s: the ceremony is the browser's, "+
-				"which this invocation cannot open; reveal it in the browser, or raise the window with `hikyo project-settings set --env %s --reauth-window-seconds 300`", env, why, env)
+				"which this invocation cannot open; reveal it in the browser%s", env, why, orRemedy(remedy))
 		}
 		keyIDs, err := d.keys(ctx, env)
 		if err != nil {
@@ -217,4 +234,12 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	client.Bearer = *opened.SessionToken
 	fmt.Fprintf(ios.Stderr, "reauthentication window open over %s until %s\n", env, opened.WindowExpires.Format("15:04:05 MST"))
 	return nil
+}
+
+// orRemedy appends a remedy as an alternative, or nothing when there is none.
+func orRemedy(remedy string) string {
+	if remedy == "" {
+		return ""
+	}
+	return ", or " + remedy
 }

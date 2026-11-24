@@ -608,15 +608,34 @@ No terminal check is reset, foreign checks are not patched, and complete
 historical scans and their existing bounds remain. These final mutable reads
 are not an atomic GitHub authority transaction.
 
-Race weights are recalibrated from all twelve JSON timing artifacts of successful
-full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
-discovery and database serialization are unchanged. The source snapshot contains
-800 planner units, including whole-package units; this is not a test count.
-The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
-is not hosted latency proof. PR #893 bootstrap copies the planner from its
-immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
-are exercised after landing; a later legitimate full group must establish the
-approximately 35-minute target.
+Race weights are recalibrated from all twelve `race-timings-*` JSON artifacts of
+ci-dev run 44901528773, attempt 1, on dev 4c7d11f6c; all twelve race shards
+passed. Complete target discovery and database serialization are unchanged.
+The planner prefers shards where each package's modelled `go test` invocation
+stays within a 600-second budget, half of the 20-minute `-timeout`, before it
+balances shard totals. The budget is a preference, not a guarantee: when no
+shard fits, `bestRaceShard` places the unit on the cheapest shard. The planner
+test fails if the repository's plan has any invocation over the budget, and it
+schedules every shard the way `test-race-packages.sh` runs it (two `xargs`
+lanes in shard order, then the filtered app and service suites one at a time),
+requiring 1.5 times that wall plus 120 seconds of job overhead to fit the
+30-minute job limit. Twelve shards schedule up to 1196 seconds on the Linux
+inventory, 1914 seconds with that margin. The race shard count is 18 because a
+merge group plans with the base branch's planner but takes the shard count from
+the merge ref. Main's previous planner put race shard 6 at the job limit in
+merge groups 45168962693 and 45175593611, at least about 1.2 times its
+scheduled wall (the app suite was cancelled 287 seconds in). At 18 shards that
+planner schedules at most 1101 seconds, 1772 seconds with margin, only about 28
+seconds under the limit. Its greedy placement is sensitive to the inventory:
+adding one 1-second package to main's tree moved its worst 18-shard plan to
+1189 seconds, 1903 seconds with margin. That residual risk lasts until this
+planner lands on main, because the ceiling test checks only the current
+planner.
+The current planner schedules at most 801 seconds at 18 shards, 1321 seconds
+with margin.
+This model is not hosted latency proof. Merge groups plan with the base
+branch's planner, so the new weights take effect after they land on main and
+are backmerged to dev.
 
 Trusted-main probes demonstrated that omitting terminal reset fields retains
 completed/success and that the explicit-null candidate is rejected. Those

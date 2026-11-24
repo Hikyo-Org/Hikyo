@@ -288,3 +288,54 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 	}
 	return !matched
 }
+
+// MachineRuleFault names why a machine principal may not hold a rule.
+type MachineRuleFault int
+
+const (
+	// MachineRuleOK admits the rule.
+	MachineRuleOK MachineRuleFault = iota
+	// MachineRuleCapability: the capability is not on the class's allowlist.
+	MachineRuleCapability
+	// MachineRuleKeys: the rule names keys or folders. The machine widening
+	// gate counts reach per environment, so a key-narrowed machine rule
+	// would be undercounted there; machine rules never narrow keys.
+	MachineRuleKeys
+	// MachineRuleDepth: the rule reaches shallower than the class's depth.
+	MachineRuleDepth
+)
+
+// CheckMachineRule is the machine half of rule validation, applied on every
+// write AND on every read like Validate. Only workload and automation
+// credentials hold rules, with the same allowlists and depth bound as their
+// grants. `reveal` and `reveal-history` stay on legacy grants: their machine
+// admission depends on a live opt-in and pin that a rule does not carry.
+//
+// A machine rule names exactly one project, its owning project. A rule that
+// names every project (present or future) is therefore never a machine's.
+func CheckMachineRule(c PrincipalClass, r Rule) MachineRuleFault {
+	if !IsServiceAccountKind(c) || !MachineMayHold(c, r.Capability) {
+		return MachineRuleCapability
+	}
+	w := r.Where
+	if w.KeyNarrowed() {
+		return MachineRuleKeys
+	}
+	depth, ok := MachineScopeDepth(c)
+	if !ok || len(w.Projects) != 1 {
+		return MachineRuleDepth
+	}
+	switch depth {
+	case LevelProject:
+		return MachineRuleOK
+	case LevelEnv:
+		// Explicit (project, environment) only: "all, except" includes
+		// environments created later, which is the opposite of explicit.
+		if w.EnvMode != AxisOnly || len(w.Envs[w.Projects[0]]) == 0 {
+			return MachineRuleDepth
+		}
+		return MachineRuleOK
+	default:
+		return MachineRuleDepth
+	}
+}

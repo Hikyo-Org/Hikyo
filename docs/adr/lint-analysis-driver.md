@@ -62,6 +62,43 @@ The spike also established that:
    [deferred test sites handoff](../handoff/lint-vet-driver-pr1-deferred-test-sites.md).
    Production files, external test packages and every other analyzer stay
    strict.)
+   (Amended by #1468: `redactfmt` no longer reads the receiver of a selection
+   whose result is plain data, so a field or method of a harness struct that
+   holds a `crypto.Keyring` is not flagged when only an int or similar is
+   formatted. The rule was narrowed, not exempted. Still flagged: a pinned
+   receiver, including a named struct type whose underlying type is identical
+   to a pinned struct's (`type evAlias audit.Event`); an `any`, interface, func,
+   chan or type-parameter field or method result; a selection promoted from an
+   embedded pinned type; a receiver's call arguments and literal elements; and
+   any method whose result carries text, bytes or numbers at any depth
+   (`string`, `[]byte`, `[]rune`, a byte array, `[]string`, `*string`, a map
+   with text keys or values, a struct with a string field, a slice, array or
+   map of integers or floats such as `[]uint16` or `[4]uint64`, a map with
+   number keys or elements, a `math/big` value), because a holder method such as `h.reveal()` may build that value
+   from the key material it holds. The differential test
+   `TestRedactFormatNarrowingDifferential` pins every dropped diagnostic.
+   `redactfmt` left `strictDeferred` (#1468).
+   Named limits that remain: reflection and custom serializers are not seen;
+   in-package extraction is not seen; a plain-typed field a holder fills from
+   key material (`h.secretText` of type string) is read as plain data; a
+   scalar numeric result (a `uint64` derived from key material), a struct of
+   numeric fields and a `[]bool` are plain data; a renamed `audit.Payload`
+   (`type payAlias audit.Payload`, a map type) is not recognised as pinned;
+   the zone name and instant of a `time.Time` result are not inspected
+   (`time.FixedZone(h.keyring.String(), 0)`); an indexed holder
+   (`h.items[0].seq`) stays flagged, which only over-reports.)
+   (Amended by #1488, owner decision 2026-11-23, option 1: the in-package
+   `_test.go` sites of `handles` are covered by a reviewed per-file inventory of
+   harness test files, the `driverFiles` allowlist in
+   `internal/lint/handle_positions.go`, each entry with a one-line
+   justification and no inline exemption markers. A test file outside the
+   inventory is reported like a production file; the `badhandle` fixture
+   (`harness_test.go`) pins that. The one exception is `externalTestFiles` in
+   the same file: the 10 reviewed inventory files whose package clause is
+   `<pkg>_test` may use their entry under the external test package, and every
+   other external test file stays strict. With both analyzers clean, `strictDeferred`,
+   the driver test's deferred-site bookkeeping and `deferred_sites.json` were
+   removed: every diagnostic in every file is now strict.)
 
    Owner decision (2026-11-20): no inline exemption markers. A nil
    `authz.Proof` is spelled only in `internal/authz`, which forgeguard exempts

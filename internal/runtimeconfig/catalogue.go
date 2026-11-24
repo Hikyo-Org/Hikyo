@@ -36,7 +36,7 @@ func Catalogue() []Key {
 		text("HIKYO_MAIL_ADDR", "SMTP host:port. Remove every mail value to disable email.", false),
 		choice("HIKYO_MAIL_TLS", "Mandatory SMTP TLS mode.", "implicit", "starttls"),
 		text("HIKYO_MAIL_USER", "Optional SMTP username. Requires a password.", false),
-		text("HIKYO_MAIL_PASSWORD", "SMTP password, preserved byte-for-byte. Requires a username.", true),
+		text("HIKYO_MAIL_PASSWORD", "SMTP password. Leading and trailing whitespace is trimmed. Requires a username.", true),
 		text("HIKYO_MAIL_FROM", "One RFC 5322 sender address, required when email is enabled.", false),
 		text("HIKYO_MAIL_EHLO", "Optional hostname sent in SMTP EHLO.", false),
 		text("HIKYO_MAIL_ALLOWED_CIDRS", "Optional comma-separated private-network exceptions for SMTP only.", false),

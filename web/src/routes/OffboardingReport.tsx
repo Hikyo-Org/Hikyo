@@ -8,6 +8,7 @@ import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { Input } from '../ui/Input.tsx';
 
 /**
@@ -93,7 +94,7 @@ export function ReportBody({ report }: { report: PersonalOffboardingReport }) {
         <p>No shared key is recorded as received in the evidence window.</p>
       ) : (
         // Focusable: on a phone the table scrolls and holds nothing else a keyboard can reach.
-        <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
+        <TableScroll aria-labelledby={captionId}>
           <table>
             <caption id={captionId} className="visually-hidden">Shared keys {report.username} is recorded as receiving, by environment.</caption>
             <thead>
@@ -119,7 +120,7 @@ export function ReportBody({ report }: { report: PersonalOffboardingReport }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       <h3>Service accounts they created</h3>
       {report.service_accounts.length === 0 ? (

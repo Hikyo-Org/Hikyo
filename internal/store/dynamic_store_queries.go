@@ -29,6 +29,10 @@ type dynamicStoreQueries interface {
 	dynamicReencryptProvider(ctx context.Context, chain domain.Scope, id string, newCiphertext, oldCiphertext []byte) (int64, error)
 	dynamicListProvidersForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error)
 	dynamicEnqueueTransition(ctx context.Context, chain domain.Scope, m DynamicLeaseTransition) (int64, error)
+	dynamicListLiveLeaseIDsForEnvironment(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
+	dynamicPurgeEnvironment(ctx context.Context, chain domain.Scope) error
+	dynamicListActiveProviderIDsForProject(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
+	dynamicPurgeTombstonedProviders(ctx context.Context, chain domain.Scope) error
 }
 type sqliteDynamicStoreQueries struct{ queries *sqlitegen.Queries }
 type pgDynamicStoreQueries struct{ queries *pggen.Queries }
@@ -379,4 +383,50 @@ func pgDynamicLease(c pggen.DynamicGetLeaseRow) (DynamicLease, error) {
 		return DynamicLease{}, err
 	}
 	return out, nil
+}
+
+func (q sqliteDynamicStoreQueries) dynamicListLiveLeaseIDsForEnvironment(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	return q.queries.DynamicListLiveLeaseIDsForEnvironment(ctx, sqlitegen.DynamicListLiveLeaseIDsForEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: int64(limit)})
+}
+
+func (q pgDynamicStoreQueries) dynamicListLiveLeaseIDsForEnvironment(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	rowLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	return q.queries.DynamicListLiveLeaseIDsForEnvironment(ctx, pggen.DynamicListLiveLeaseIDsForEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: rowLimit})
+}
+
+func (q sqliteDynamicStoreQueries) dynamicPurgeEnvironment(ctx context.Context, chain domain.Scope) error {
+	if err := q.queries.DynamicPurgeEffectsForEnvironment(ctx, sqlitegen.DynamicPurgeEffectsForEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)}); err != nil {
+		return constraint(err)
+	}
+	return constraint(q.queries.DynamicPurgeLeasesForEnvironment(ctx, sqlitegen.DynamicPurgeLeasesForEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)}))
+}
+
+func (q pgDynamicStoreQueries) dynamicPurgeEnvironment(ctx context.Context, chain domain.Scope) error {
+	if err := q.queries.DynamicPurgeEffectsForEnvironment(ctx, pggen.DynamicPurgeEffectsForEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)}); err != nil {
+		return constraint(err)
+	}
+	return constraint(q.queries.DynamicPurgeLeasesForEnvironment(ctx, pggen.DynamicPurgeLeasesForEnvironmentParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)}))
+}
+
+func (q sqliteDynamicStoreQueries) dynamicListActiveProviderIDsForProject(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	return q.queries.DynamicListActiveProviderIDsForProject(ctx, sqlitegen.DynamicListActiveProviderIDsForProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), RowLimit: int64(limit)})
+}
+
+func (q pgDynamicStoreQueries) dynamicListActiveProviderIDsForProject(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	rowLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	return q.queries.DynamicListActiveProviderIDsForProject(ctx, pggen.DynamicListActiveProviderIDsForProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), RowLimit: rowLimit})
+}
+
+func (q sqliteDynamicStoreQueries) dynamicPurgeTombstonedProviders(ctx context.Context, chain domain.Scope) error {
+	return constraint(q.queries.DynamicPurgeTombstonedProvidersForProject(ctx, sqlitegen.DynamicPurgeTombstonedProvidersForProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project)}))
+}
+
+func (q pgDynamicStoreQueries) dynamicPurgeTombstonedProviders(ctx context.Context, chain domain.Scope) error {
+	return constraint(q.queries.DynamicPurgeTombstonedProvidersForProject(ctx, pggen.DynamicPurgeTombstonedProvidersForProjectParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project)}))
 }

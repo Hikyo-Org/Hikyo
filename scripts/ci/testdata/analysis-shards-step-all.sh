@@ -9,7 +9,7 @@ else
 fi
 planner="$RUNNER_TEMP/analysis-shards"
 go build -o "$planner" "$trusted_planner"
-race_count=12
+race_count=18
 shard_count=6
 if "$planner" --supports-all-v1 >"$RUNNER_TEMP/planner-capability" 2>"$RUNNER_TEMP/planner-capability-error"; then
   test "$(cat "$RUNNER_TEMP/planner-capability")" = analysis-shards-all-v1

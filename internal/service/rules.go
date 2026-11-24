@@ -19,15 +19,17 @@ import (
 //
 // A rule is stored whole and never modified in place: an edit is a revoke
 // plus a create, so the session invalidation is exactly the grant surface's.
-// Rules are human-only; machines keep their legacy grants and allowlists.
+// Workload and automation credentials may hold rules under their class's
+// allowlist and depth, never narrowed by keys, and a machine rule change goes
+// through the machine widening gate like a machine grant.
 // Delegation checks run at the authorization chokepoint against the whole
 // selector; ordinary scope-wide grant operations remain blind to management rules.
 
 var (
-	// ErrRuleMachine refuses a rule for a machine principal. The machine
-	// widening gate diffs per-environment reach and would undercount a
-	// key-narrowed machine reveal, so machines keep legacy grants only.
-	ErrRuleMachine = fmt.Errorf("%w: service: member access rules are for people; machine principals keep their grants", domain.ErrInvalid)
+	// ErrRuleMachineKeys refuses a machine rule that names keys or folders.
+	// The machine widening gate diffs per-environment reach and would
+	// undercount a key-narrowed machine rule.
+	ErrRuleMachineKeys = fmt.Errorf("%w: service: a machine principal's rule covers every key; it cannot name keys or folders", domain.ErrInvalid)
 	// ErrNoSuchRule is a revoke of a rule that does not exist (or that the
 	// caller may not reach, indistinguishably).
 	ErrNoSuchRule = fmt.Errorf("%w: service: no such rule", domain.ErrNotFound)
@@ -158,10 +160,12 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 // mirroring MaxGrantsPerOrg: it makes runaway rule minting loud.
 const MaxRulesPerOrg = 1000
 
-// Rules owns the rule surface.
+// Rules owns the rule surface. Auth is the reauthentication seam a machine
+// rule widening consumes, as on Grants.
 type Rules struct {
-	DB  *store.DB
-	Now func() time.Time
+	DB   *store.DB
+	Auth *Auth
+	Now  func() time.Time
 }
 
 func (s *Rules) now() time.Time { return nowOr(s.Now) }
@@ -181,7 +185,12 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleVie
 	var out RuleView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
-		rule, caller, p, unheld, err := prepareRuleCreate(ctx, az, actor, spec, now)
+		add, err := prepareRuleCreate(ctx, az, actor, spec, now)
+		if err != nil {
+			return err
+		}
+		rule, caller, p := add.rule, add.caller, add.proof
+		widened, err := s.gateMachineRules(ctx, az, caller, add.class, nil, []domain.Rule{rule})
 		if err != nil {
 			return err
 		}
@@ -203,10 +212,7 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleVie
 		if err := invalidateGrantChange(ctx, az, spec.Target); err != nil {
 			return err
 		}
-		payload := rulePayload(rule)
-		payload["unheld"] = unheld
-		ev, err := domainEvent(ctx, audit.EventRuleCreated, caller.Principal, audit.Object{Type: "rule", ID: id}, payload)
-		if err != nil {
+		if err := insertRuleCreated(ctx, r, p, caller.Principal, rule, add.unheld, widened[0]); err != nil {
 			return err
 		}
 		name, err := newPrincipalNames().get(ctx, az, spec.Target)
@@ -215,80 +221,228 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleVie
 		}
 		out = RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: spec.Capability,
 			Org: spec.Org, Where: rule.Where, CreatedBy: caller.Principal, CreatedAt: now}
-		return r.Audit().InsertTenant(ctx, p, ev)
+		return nil
 	})
 	return out, err
 }
 
+// insertRuleCreated records rule.created and then, for a machine rule that
+// made plaintext newly reachable, identity.grant_widened: a separate fact,
+// as on the grant surface.
+func insertRuleCreated(ctx context.Context, r store.Repos, p authz.Proof, actor domain.PrincipalID,
+	rule domain.Rule, unheld bool, widened []audit.Payload) error {
+	payload := rulePayload(rule)
+	payload["unheld"] = unheld
+	object := audit.Object{Type: "rule", ID: rule.ID}
+	ev, err := domainEvent(ctx, audit.EventRuleCreated, actor, object, payload)
+	if err != nil {
+		return err
+	}
+	if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+		return err
+	}
+	for _, w := range widened {
+		ev, err := domainEvent(ctx, audit.EventMachineGrantWidened, actor, object, w)
+		if err != nil {
+			return err
+		}
+		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// gateMachineRules sends a rule change on a machine principal through the
+// machine widening gate. Per project the added rules name, the reach of the
+// target's grants and rules after the change (removed rules gone, added
+// rules in) is diffed against the reach before it. It returns, per added
+// rule, the identity.grant_widened payloads to record once the rule exists;
+// nil for a person or a change that reaches no new plaintext.
+func (s *Rules) gateMachineRules(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity,
+	class domain.PrincipalClass, removed []string, added []domain.Rule) ([][]audit.Payload, error) {
+	out := make([][]audit.Payload, len(added))
+	if !domain.IsMachineClass(class) || len(added) == 0 {
+		return out, nil
+	}
+	target, org := added[0].Principal, added[0].Org
+	actorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := az.GrantsOf(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	held, err := az.MachineRulesOf(ctx, target, class)
+	if err != nil {
+		return nil, err
+	}
+	kept := slices.DeleteFunc(slices.Clone(held), func(r domain.Rule) bool { return slices.Contains(removed, r.ID) })
+	var projects []domain.ProjectID
+	for _, rule := range added {
+		for _, project := range rule.Where.Projects {
+			if !slices.Contains(projects, project) {
+				projects = append(projects, project)
+			}
+		}
+	}
+	slices.Sort(projects)
+	for _, project := range projects {
+		scope := domain.Scope{Org: org, Project: project}
+		envs, err := az.EnvironmentsInProject(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		pre := append(slices.Clone(grants), authz.RuleGrants(held, scope, envs)...)
+		post := append(append(slices.Clone(grants), authz.RuleGrants(kept, scope, envs)...), authz.RuleGrants(added, scope, envs)...)
+		current, historical, err := gateMachineWidening(ctx, az, s.Auth, caller, actorGrants, scope, envs, pre, post, s.now())
+		if err != nil {
+			return nil, err
+		}
+		if len(current) == 0 && len(historical) == 0 {
+			continue
+		}
+		// Attribute the delta rule by rule: each event names what its rule
+		// adds on top of the pre-state and the rules before it, so the
+		// events together equal the gated delta without any rule claiming
+		// another's environments.
+		so := slices.Clone(pre)
+		for i, rule := range added {
+			if !slices.Contains(rule.Where.Projects, project) || rule.Capability != domain.CapRead {
+				continue
+			}
+			next := append(slices.Clone(so), authz.RuleGrants([]domain.Rule{rule}, scope, envs)...)
+			b, a := authz.ReachableFrom(scope, envs, so), authz.ReachableFrom(scope, envs, next)
+			so = next
+			cur, hist := newlyReachable(b.Current, a.Current), newlyReachable(b.Historical, a.Historical)
+			if len(cur) == 0 && len(hist) == 0 {
+				continue
+			}
+			out[i] = append(out[i], audit.Payload{
+				"target_principal":           string(target),
+				"principal_class":            string(class),
+				"capability":                 string(rule.Capability),
+				"scope":                      renderScope(scope),
+				"newly_reachable_current":    envStrings(cur),
+				"newly_reachable_historical": envStrings(hist),
+			})
+		}
+	}
+	return out, nil
+}
+
+// preparedRule is one authorized rule creation, before any write.
+type preparedRule struct {
+	rule   domain.Rule
+	caller authz.Identity
+	proof  authz.Proof
+	unheld bool
+	class  domain.PrincipalClass
+}
+
 // prepareRuleCreate validates authority before any rule or session mutation.
-func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor, spec RuleSpec, now time.Time) (rule domain.Rule, caller authz.Identity, proof authz.Proof, unheld bool, err error) {
-	rule = domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
+func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor, spec RuleSpec, now time.Time) (preparedRule, error) {
+	rule := domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
 	if err := rule.Validate(); err != nil {
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	for _, items := range spec.Where.Keys {
 		for _, it := range items {
 			if it.IsFolder {
 				if err := checkKeyFolderPath(it.Folder); err != nil {
-					return rule, caller, proof, unheld, err
+					return preparedRule{}, err
 				}
 			}
 		}
 	}
 	first := domain.Scope{Org: spec.Org, Project: spec.Where.Projects[0]}
-	caller, proof, err = authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, rule, now)
+	caller, proof, err := authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, rule, now)
 	if err != nil {
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	for _, project := range spec.Where.Projects[1:] {
 		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, rule); err != nil {
-			return rule, caller, proof, unheld, err
+			return preparedRule{}, err
 		}
 	}
 	grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
 	if err != nil {
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	if err := checkTargetFootprint(ctx, az, grantorGrants, caller.Principal, spec.Target, spec.Org); err != nil {
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	if err := az.LockTargetPrincipal(ctx, spec.Target); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return rule, caller, proof, unheld, ErrUnknownPrincipal
+			return preparedRule{}, ErrUnknownPrincipal
 		}
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	class, err := az.PrincipalClass(ctx, spec.Target)
 	if errors.Is(err, domain.ErrNotFound) {
-		return rule, caller, proof, unheld, ErrUnknownPrincipal
+		return preparedRule{}, ErrUnknownPrincipal
 	}
 	if err != nil {
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	if class != domain.ClassHuman {
-		return rule, caller, proof, unheld, ErrRuleMachine
+		if err := checkMachineRule(ctx, az, class, rule); err != nil {
+			return preparedRule{}, err
+		}
 	}
 	if err := checkRuleReferences(ctx, az, rule); err != nil {
-		return rule, caller, proof, unheld, err
+		return preparedRule{}, err
 	}
 	// Management and capability reach are independent. Only existing org-
 	// and instance-scope managers retain the grant-unheld exception.
-	unheld = false
+	unheld := false
 	for _, project := range spec.Where.Projects {
 		scope := domain.Scope{Org: spec.Org, Project: project}
 		held, err := az.RuleCapabilityHeld(ctx, caller, rule, project)
 		if err != nil {
-			return rule, caller, proof, unheld, err
+			return preparedRule{}, err
 		}
 		if held {
 			continue
 		}
 		if !mayGrantUnheld(grantorGrants, scope) {
-			return rule, caller, proof, unheld, ErrGrantorLacksCapability
+			return preparedRule{}, ErrGrantorLacksCapability
 		}
 		unheld = true
 	}
-	return
+	return preparedRule{rule: rule, caller: caller, proof: proof, unheld: unheld, class: class}, nil
+}
+
+// checkMachineRule holds a machine rule to the class's allowlist, to every
+// key, to the class's depth and to the owning project, with the grant
+// surface's named refusals.
+func checkMachineRule(ctx context.Context, az *authz.TxAuthorizer, class domain.PrincipalClass, rule domain.Rule) error {
+	switch domain.CheckMachineRule(class, rule) {
+	case domain.MachineRuleOK:
+	case domain.MachineRuleCapability:
+		if rule.Capability == domain.CapReveal || rule.Capability == domain.CapRevealHistory {
+			return fmt.Errorf("%w: class %q holds %q only through a grant under the project's machine-reveal opt-in", ErrMachineCapability, class, rule.Capability)
+		}
+		return fmt.Errorf("%w: class %q may not hold %q", ErrMachineCapability, class, rule.Capability)
+	case domain.MachineRuleKeys:
+		return ErrRuleMachineKeys
+	default:
+		depth, _ := domain.MachineScopeDepth(class)
+		if depth == domain.LevelEnv {
+			return fmt.Errorf("%w: a class %q rule names one project and only listed environments", ErrMachineScope, class)
+		}
+		return fmt.Errorf("%w: a class %q rule names exactly one project", ErrMachineScope, class)
+	}
+	// A rule's project comes only from the service-account row; the prior-grant
+	// fallback checkMachineProject keeps for grants would let a machine with no
+	// row (provisioning, instance, pre-table) hold a rule in any project.
+	if _, err := az.ServiceAccountByPrincipal(ctx, rule.Principal); errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("%w: this machine principal has no service-account row, so it may not hold a rule", ErrMachineProject)
+	} else if err != nil {
+		return err
+	}
+	return checkMachineProject(ctx, az, rule.Principal, domain.Scope{Org: rule.Org, Project: rule.Where.Projects[0]})
 }
 
 // RuleView is one rule on the listing surface. On a project listing Where

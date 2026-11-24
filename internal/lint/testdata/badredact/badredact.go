@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math/big"
 	"time"
+	"unicode/utf16"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -43,30 +45,84 @@ func LeakLocalKeys(value crypto.LocalKeys, pointer *crypto.LocalKeys) {
 	slog.Info("local keys", "keys", pointer) // want "passes sensitive type .*internal/crypto\\.LocalKeys to log/slog"
 }
 
+type inner struct{ name string }
+
 type holder struct {
 	keyring *crypto.Keyring
 	seq     int
 	ev      audit.Event
+	inner   inner
+	get     func() any
+	box     anybox
 }
 
-// Every sub-expression is checked, so a field of a struct that merely holds a
-// sensitive value is flagged too (h.seq, h.count()). That over-approximation is
-// deliberate until a narrower rule passes a differential test against these
-// fixtures (#1468); the other cases in Narrowing, and all of
-// NarrowingKeepsLeaks and Promoted, must stay flagged under any narrowing.
+// A field selected from a struct that merely holds a sensitive value is not a
+// leak: only the selected field is read (#1468). TestRedactFormatNarrowingDifferential
+// lists every diagnostic this drops. Narrowing, NarrowingKeepsLeaks and Promoted
+// must stay flagged.
+func NarrowingNonSensitive(h holder, hp *holder) {
+	_ = fmt.Sprintf("%d", h.seq)
+	_ = fmt.Sprintf("%s", h.inner.name)
+	_ = fmt.Sprintf("%d", (*hp).seq)
+	_ = fmt.Sprintf("%d", hp.seq)
+	_ = fmt.Sprintf("%d", mkHolder().seq)
+	slog.Info("n", "n", h.seq)
+	_ = fmt.Sprintf("%d", h.count())
+	_ = fmt.Sprintf("%v", h.when())
+}
+
+// A named type with a pinned type's underlying struct is that pinned type.
+func AliasLeak(ev audit.Event) {
+	a := evAlias(ev)
+	slog.Info("audit", "id", a.Actor.ID) // want "logs audit content .*internal/audit\\.Event"
+}
+
+func mkHolder() holder { return holder{} }
+
+// Selections that can still read the pinned value stay flagged: the pinned
+// field itself, a method on it, and an audit-content field of a holder.
 func Narrowing(h holder) {
-	_ = fmt.Sprintf("id_%d", h.seq)           // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", h.keyring)          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", any(h.keyring))     // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%d", h.count())          // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	_ = fmt.Sprintf("%v", h.keyring.String()) // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
-	slog.Info("audit", "actor", h.ev.Actor)   // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	_ = fmt.Sprintf("%v", h.keyring)              // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", any(h.keyring))         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.keyring.String())     // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	slog.Info("audit", "actor", h.ev.Actor)       // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	slog.Info("audit", "seq", h.ev.SchemaVersion) // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
 }
 
 func (h holder) count() int { return h.seq }
 
 func (h holder) anyKey() any { return h.keyring }
-func (h holder) evAny() any  { return h.ev }
+
+// reveal and revealBytes build text or bytes from the held key material.
+func (h holder) reveal() string       { return h.keyring.String() }
+func (h holder) revealBytes() []byte  { return []byte(h.keyring.String()) }
+func (h holder) revealArray() [4]byte { return [4]byte{} }
+
+type pair struct{ Key string }
+
+func (h holder) revealRunes() []rune       { return []rune(h.keyring.String()) }
+func (h holder) revealAll() []string       { return []string{h.keyring.String()} }
+func (h holder) revealPtr() *string        { s := h.keyring.String(); return &s }
+func (h holder) revealMap() map[string]int { return map[string]int{h.keyring.String(): 1} }
+func (h holder) revealPair() pair          { return pair{Key: h.keyring.String()} }
+
+type probeWords [4]uint64
+
+func (h holder) revealWords() probeWords { return probeWords{uint64(len(h.keyring.String()))} }
+func (h holder) revealBig() *big.Int     { return new(big.Int).SetBytes([]byte(h.keyring.String())) }
+func (h holder) revealUTF16() []uint16   { return utf16.Encode([]rune(h.keyring.String())) }
+func (h holder) revealSet() map[uint64]bool {
+	return map[uint64]bool{uint64(len(h.keyring.String())): true}
+}
+func (h holder) revealFloats() []float64 { return []float64{float64(len(h.keyring.String()))} }
+
+// when sets the zone name from held state; the zone name and instant of a
+// time.Time result are a named limit of the narrowing, not inspected.
+func (h holder) when() time.Time { return time.Unix(0, 0).In(time.FixedZone(h.keyring.String(), 0)) }
+
+type evAlias audit.Event
+
+func (h holder) evAny() any { return h.ev }
 
 type anybox struct{ v any }
 
@@ -80,6 +136,22 @@ func NarrowingKeepsLeaks(h holder, kr *crypto.Keyring, ev audit.Event, row store
 	_ = fmt.Sprintf("%v", struct{ v any }{kr}.v)                 // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "v", box(ev).v)                           // want "logs audit content .*internal/audit\\.Event"
 	slog.Info("audit", "v", h.evAny())                           // want "passes sensitive type .*internal/crypto\\.Keyring to log/slog" "logs audit content .*internal/audit\\.Event"
+	_ = fmt.Sprintf("%s", h.reveal())                            // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%x", h.revealBytes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%x", h.revealArray())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealRunes())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealWords())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealBig())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealUTF16())                       // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealSet())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealFloats())                      // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealAll())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", *h.revealPtr())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealMap())                         // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealPair())                        // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.revealPair().Key)                    // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.get())                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
+	_ = fmt.Sprintf("%v", h.box.v)                               // want "passes sensitive type .*internal/crypto\\.Keyring to fmt"
 	slog.Info("audit", "id", ev.Actor.ID)                        // want "logs audit content .*internal/audit\\.Event"
 	slog.Info("audit", "id", row.Actor.ID)                       // want "logs audit content .*internal/store\\.AuditEvent"
 	slog.Info("audit", "at", ev.OccurredAt.Format(time.RFC3339)) // want "logs audit content .*internal/audit\\.Event"

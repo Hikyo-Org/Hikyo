@@ -204,7 +204,8 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 				if err != nil {
 					return fmt.Errorf("service: snapshot entry %s: %w", targetEntry.ID, err)
 				}
-				value = string(plain)
+				// An older revision may hold a padded value; every write path trims (#1492).
+				value = schema.Normalize(string(plain))
 				if historical, ok := historicalSecrets[key.ID]; ok {
 					if err := auditSnapshotDisclosure(ctx, r.Audit(), p, caller.Principal,
 						historical, "restore", target.Revision); err != nil {

@@ -338,7 +338,7 @@ func (r *Resolver) ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([
 //
 //  1. resolve its audit facts and lock its principal against mint/grant writers;
 //  2. revoke, then remove, every credential;
-//  3. remove pin generations, grant origins, and grants;
+//  3. remove pin generations, rules, grant origins, and grants;
 //  4. remove the service-account identity, then its principal.
 //
 // Locking before the first mutation makes concurrent mint/delete serialize on
@@ -378,6 +378,26 @@ func (r *Resolver) DeleteServiceAccountAggregate(ctx context.Context, in DeleteS
 	}
 
 	result := ServiceAccountDeletion{Account: sa}
+	// rules.principal_id has no cascade: a machine that holds a rule would
+	// otherwise be undeletable, and the rule's authority must not outlive it.
+	// Schemas before 70 have no rule tables.
+	if !r.historicalRecoveryBeforeRules {
+		pid := string(sa.PrincipalID)
+		if r.sq != nil {
+			err = r.sq.PrivacyEraseRuleItems(ctx, pid)
+			if err == nil {
+				err = r.sq.PrivacyEraseRules(ctx, pid)
+			}
+		} else {
+			err = r.pg.PrivacyEraseRuleItems(ctx, pid)
+			if err == nil {
+				err = r.pg.PrivacyEraseRules(ctx, pid)
+			}
+		}
+		if err != nil {
+			return ServiceAccountDeletion{}, err
+		}
+	}
 	if r.sq != nil {
 		result.CredentialsRevoked, err = r.sq.RevokeAllMachineCredentials(ctx, sqlitegen.RevokeAllMachineCredentialsParams{
 			RevokedAt: nullString(encodeTime(in.RevokedAt)), ServiceAccountID: sa.ID,

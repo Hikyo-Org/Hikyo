@@ -308,12 +308,20 @@ feedback and one-minute targeted publisher bound controlled execution; provider
 queue and API delays remain outside that bound. Fresh full-group and activated
 per-commit acceptance are still required.
 
-Race weights use all twelve JSON artifacts of successful full group 38279650054,
-attempt 1, preserving twelve shards, packing, complete target discovery and
-database serialization. The source union is 800 planner units, not a test count.
-The measured-cost model maximum improves from 985.78 to 753.51 seconds; model
-redistribution is not hosted latency proof. This lifecycle repair changes none
-of those planner weights or application/full-suite tests.
+Race weights use all twelve JSON artifacts of ci-dev run 44901528773, attempt 1,
+on dev 4c7d11f6c, whose twelve race shards all passed. Complete target discovery
+and database serialization are preserved. Placement prefers shards that keep
+each package's modelled `go test` invocation within a 600-second budget, half of
+the 20-minute `-timeout`; when no shard fits, `bestRaceShard` falls back to the
+cheapest shard, and the planner test fails if the repository's plan exceeds the
+budget. The race shard count rises from 12 to 18 so that each shard's scheduled
+wall, times 1.5 for variance plus 120 seconds of job overhead, fits the
+30-minute job limit under both main's previous planner, which this change's own
+merge group uses (at most 1101 seconds instead of 1523, about 28 seconds of
+margin that one added package can erase), and the recalibrated planner (at most
+801 seconds instead of 1196); model redistribution is not hosted latency proof.
+The earlier lifecycle repair changed no planner weights or application/full-suite
+tests.
 
 ## Interpreting merged-PR status summaries
 
