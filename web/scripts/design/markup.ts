@@ -36,8 +36,9 @@ export type MarkupHit = { line: number; text: string } & (
 );
 
 /** A whole class token inside a className string literal (double, single, or braced): `"notice machine__policy"` is a notice. */
-const cls = (name: string) => {
-  const token = (quote: string) => `${quote}(?:[^${quote}]*\\s)?${name}(?:[\\s-][^${quote}]*)?${quote}`;
+// `after` is what may follow the name: the default also catches BEM-style `name-x` variants; pass '\\s' for an exact token.
+const cls = (name: string, after = '[\\s-]') => {
+  const token = (quote: string) => `${quote}(?:[^${quote}]*\\s)?${name}(?:${after}[^${quote}]*)?${quote}`;
   // "x", 'x', {"x"} and {'x'}; template literals and cx(...) stay out of scope.
   return new RegExp(`className=(?:${token('"')}|${token("'")}|\\{\\s*${token('"')}\\s*\\}|\\{\\s*${token("'")}\\s*\\})`);
 };
@@ -52,7 +53,7 @@ const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: cls('matrix-editor'), atom: 'ui/Dialog' },
   { pattern: cls('settings-tag'), atom: 'ui/Button variant="quiet"' },
   { pattern: cls('chip'), atom: 'ui/Badge or ui/ChoiceGroup' },
-  { pattern: cls('table-scroll'), atom: 'ui/TableScroll' },
+  { pattern: cls('table-scroll', '\\s'), atom: 'ui/TableScroll' },
   { pattern: /[🔒🔗🔑✓✕✗×Δ◌⋯⚠⚙⚲⚿⧉⊘⇅◆▾▸↺✎ℹ]/u, atom: 'ui/Glyph' },
 ];
 

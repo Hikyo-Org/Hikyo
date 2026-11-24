@@ -55,6 +55,8 @@ describe('scanMarkup', () => {
   it('flags a hand-written table-scroll wrapper in favour of ui/TableScroll', () => {
     expect(scanMarkup(lines(`<div className="table-scroll"><table /></div>`)).map((hit) => hit.atom)).toEqual(['ui/TableScroll']);
     expect(scanMarkup(lines(`<TableScroll aria-label="Keys"><table /></TableScroll>`))).toEqual([]);
+    expect(scanMarkup(lines(`<div className="table-scroll-controls"><button type="button" /></div>`))).toEqual([]);
+    expect(scanMarkup(lines(`<div className="wide table-scroll"><table /></div>`)).map((hit) => hit.atom)).toEqual(['ui/TableScroll']);
   });
 
   it('matches a banned class in single-quoted and braced string literals too', () => {
