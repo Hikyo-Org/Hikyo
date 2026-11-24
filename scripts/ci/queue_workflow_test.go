@@ -183,7 +183,7 @@ func queuePublisherContract(raw []byte) error {
 				return fmt.Errorf("read-only discovery cannot hold a head writer lock")
 			}
 		} else if j.Name != map[string]string{"publish": "publish-", "group": "group-"}[id]+jobHead || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+jobHead || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "" {
-			return fmt.Errorf("all check writers must share repository and exacthead FIFO lease without cancellation")
+			return fmt.Errorf("all check writers must share repository and exacthead lease without cancelling a running job")
 		}
 		if j.Timeout.Kind != yaml.ScalarNode || j.Timeout.Tag != "!!int" || j.Timeout.Value != budget || !reflect.DeepEqual(j.Permissions, permissions) {
 			return fmt.Errorf("writer/discovery budgets or minimumpermissions changed")

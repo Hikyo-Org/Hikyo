@@ -109,8 +109,13 @@ type groupRereads struct {
 	delay   time.Duration // the wait the loop was last asked to make
 }
 
+// The fence and hard stop run from process start, not loop start: repository
+// initialization (and any rate-limit wait in it) happens before the loop and
+// must come out of the same ten-minute job.
+var processStart = time.Now()
+
 func newGroupRereads(parent context.Context) *groupRereads {
-	wall := time.Now()
+	wall := processStart
 	return &groupRereads{parent: parent, started: groupRereadNow(), fence: wall.Add(groupRereadFence), hardEnd: wall.Add(groupRereadHardStop)}
 }
 

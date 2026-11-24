@@ -24,7 +24,8 @@ type groupClock struct {
 }
 
 func (c *groupClock) install() func() {
-	oldNow, oldWait := groupRereadNow, groupRereadWait
+	oldNow, oldWait, oldStart := groupRereadNow, groupRereadWait, processStart
+	processStart = time.Now()
 	groupRereadNow = func() time.Time { return c.now }
 	groupRereadWait = func(ctx context.Context, d time.Duration) error {
 		if err := ctx.Err(); err != nil {
@@ -39,7 +40,7 @@ func (c *groupClock) install() func() {
 		}
 		return nil
 	}
-	return func() { groupRereadNow, groupRereadWait = oldNow, oldWait }
+	return func() { groupRereadNow, groupRereadWait, processStart = oldNow, oldWait, oldStart }
 }
 
 func newGroupClock(t *testing.T) *groupClock {
@@ -875,8 +876,8 @@ func TestGroupRereadFencesLoopedWork(t *testing.T) {
 		}
 		readDeadlines = append(readDeadlines, deadline)
 	}
-	clock := newGroupClock(t)
 	start := time.Now()
+	clock := newGroupClock(t) // process start is stamped here, never before start
 	_ = f.group()
 	end := time.Now()
 	if len(readDeadlines) == 0 || len(clock.deadlines) == 0 {
@@ -1394,4 +1395,18 @@ func TestGroupRereadStillWaitsWhenRunlessRecordIsNotTheExpiryRefusal(t *testing.
 		t.Fatalf("waited %d times, want %d: the record settled a run it does not belong to", len(clock.waits), expectedWaits)
 	}
 	f.assertNoSuccess(t)
+}
+
+// Initialization (and a rate-limit wait inside it) runs before the loop, in the
+// same ten-minute job, so the fence and hard stop count from process start.
+func TestGroupRereadCapsCountFromProcessStart(t *testing.T) {
+	newGroupClock(t)
+	processStart = time.Now().Add(-3 * time.Minute)
+	g := newGroupRereads(context.Background())
+	if want := processStart.Add(groupRereadFence); !g.fence.Equal(want) {
+		t.Fatalf("fence %s is not process start + %s", g.fence, groupRereadFence)
+	}
+	if want := processStart.Add(groupRereadHardStop); !g.hardEnd.Equal(want) {
+		t.Fatalf("hard stop %s is not process start + %s", g.hardEnd, groupRereadHardStop)
+	}
 }

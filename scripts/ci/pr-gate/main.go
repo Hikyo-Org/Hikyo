@@ -557,18 +557,30 @@ func readBudgetEnd(ctx context.Context) (time.Time, bool) {
 // nil after waiting, errNoRateLimitWait when this is not an exhausted core limit
 // (a secondary limit), and a visible failure naming the reset when it cannot wait.
 func (a retryingAPI) awaitRateLimitReset(ctx context.Context, failure *githubReadError) error {
+	type bucket struct {
+		Remaining int   `json:"remaining"`
+		Reset     int64 `json:"reset"`
+	}
 	var limits struct {
 		Resources struct {
-			Core struct {
-				Remaining int   `json:"remaining"`
-				Reset     int64 `json:"reset"`
-			} `json:"core"`
+			Core    bucket `json:"core"`
+			GraphQL bucket `json:"graphql"`
 		} `json:"resources"`
 	}
-	if a.api.read(ctx, "rate_limit", &limits) != nil || limits.Resources.Core.Remaining > 0 || limits.Resources.Core.Reset <= 0 {
+	if a.api.read(ctx, "rate_limit", &limits) != nil {
 		return errNoRateLimitWait
 	}
-	reset := time.Unix(limits.Resources.Core.Reset, 0)
+	// GraphQL reads draw on their own bucket.
+	spent := limits.Resources.Core
+	if strings.HasPrefix(failure.path, "graphql:") {
+		spent = limits.Resources.GraphQL
+	}
+	// A reset more than a day out is not a window GitHub reports; refuse it
+	// before it can overflow the wait arithmetic.
+	if spent.Remaining > 0 || spent.Reset <= 0 || spent.Reset > rateLimitNow().Add(24*time.Hour).Unix() {
+		return errNoRateLimitWait
+	}
+	reset := time.Unix(spent.Reset, 0)
 	now := rateLimitNow()
 	wait := max(reset.Sub(now), 0) + rateLimitSkew
 	if end, ok := readBudgetEnd(ctx); !ok || now.Add(wait).After(end) {
@@ -656,11 +668,14 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 		}
 		// Output fills ExitError.Stderr (bounded) because gateCommand leaves
 		// Stderr unset. Only the parsed status is kept, never the text.
+		// gh also puts the JSON body (with its status) on stdout, so the status can
+		// come from there while the rate-limit wording is only on stderr.
 		var exit *exec.ExitError
-		if status == 0 && errors.As(err, &exit) {
+		hasStderr := errors.As(err, &exit)
+		if status == 0 && hasStderr {
 			status = stderrHTTPStatus(exit.Stderr)
 		}
-		limited := (status == 403 || status == 429) && exit != nil && bytes.Contains(bytes.ToLower(exit.Stderr), []byte("rate limit"))
+		limited := (status == 403 || status == 429) && hasStderr && bytes.Contains(bytes.ToLower(exit.Stderr), []byte("rate limit"))
 		return &githubReadError{path: path, status: status, cause: err, rateLimited: limited}
 	}
 	return decode(data, result)

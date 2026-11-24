@@ -41,7 +41,7 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Rerun failed head publishers with a new budget
+      - name: Rerun failed head publisher and group jobs with a new budget
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -74,8 +74,20 @@ jobs:
             echo "No head publisher or group job failed while reconciling; nothing to rerun."
             exit 0
           fi
+          # GitHub may refuse a later per-job rerun once the first one has restarted the run
+          # (unverified). A refusal must not hide the jobs after it: try every id, name each
+          # one that was not rerun, and fail the step so the result stays truthful. Only the
+          # id is printed, never GitHub's response text.
+          refused=""
           for id in $ids; do
             [[ "$id" =~ ^[1-9][0-9]*$ ]]
             echo "Rerunning job $id of run $RUN_ID (attempt $RUN_ATTEMPT)."
-            gh api --method POST "repos/$GH_REPO/actions/jobs/$id/rerun"
+            if ! gh api --method POST "repos/$GH_REPO/actions/jobs/$id/rerun" >/dev/null 2>&1; then
+              echo "Job $id was not rerun: GitHub refused the rerun request."
+              refused="$refused $id"
+            fi
           done
+          if [ -n "$refused" ]; then
+            echo "Not rerun:$refused. Reconcile them with: gh workflow run ci-queue-gate.yml -f pr_number=<n>"
+            exit 1
+          fi

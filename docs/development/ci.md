@@ -69,7 +69,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-dev.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and full validation have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-golangci.yml`, `ci-invariants.yml`, `ci-storybook.yml` | Read-only early signals for dependency bumps, new-code static analysis, repository-invariant suites that otherwise fail only in the serial queue, and the Storybook suite that otherwise runs only after merge to dev. None is a required context. |
-| Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-queue-retry.yml` | Trusted callbacks publish dev admission and queue admission/group proof; the retry workflow reruns a failed head publisher (see [Queue publisher head leases](#queue-publisher-head-leases)). Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
+| Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-queue-retry.yml` | Trusted callbacks publish dev admission and queue admission/group proof; the retry workflow reruns a failed head publisher or group job (see [Queue publisher head leases](#queue-publisher-head-leases)). Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
 | Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
 | Security feed freshness | `security-feed-freshness.yml` | Reads what installations read, on its own schedule and credentials, because the publisher cannot be trusted to report its own staleness. Inert until `HIKYO_SECURITY_FEED_ENABLED` is `true`. |
@@ -355,11 +355,18 @@ runner, so a pass can run out of them on a healthy head. That
 is a flake, not a verdict. While the run attempt (`GITHUB_RUN_ATTEMPT`) is below
 three, the reserve publishes a blocking, non-terminal "PR validation pending"
 record in place of the terminal refusal, and the run still fails.
-`ci-queue-retry.yml` then reruns only the failed jobs of that run (a new job,
-so a new sixty-second budget) when a publisher job's reconcile step failed,
-including a job its one-minute timeout then cancelled. Worker group jobs share
-the publisher's name and get the same reruns, and so does a failed setup, because
-reconcile always runs. The run attempt is the only loop bound: attempt 3 publishes
+`ci-queue-retry.yml` then reruns exactly the jobs of that run (each a new job,
+so a new sixty-second budget) whose reconcile step failed, by job id,
+including a job its one-minute timeout then cancelled. It never uses
+`gh run rerun --failed`, which also reruns cancelled jobs: a pending reconcile
+that a newer one replaced ends cancelled without running a step and is not
+rerun. Worker group jobs share the publisher's name and get the same reruns, so
+do the queue gate's own `group-<sha>` jobs, and so does a failed setup, because
+reconcile always runs. Before any rerun it reads `rate_limit` (which is not
+counted) and reruns nothing while less than a tenth of the core budget is left,
+printing the reset time. A refused rerun of one job does not stop the others; the
+step names each job not rerun and fails. A secondary limit is not detected and
+is rerun like any other failure, bounded by the attempt count. The run attempt is the only loop bound: attempt 3 publishes
 the terminal refusal, unless the PR, its base, the rules or the feedback attempt
 moved during it, and is never rerun, the retry workflow does not follow
 itself, and it holds only `actions: write`, checks nothing out and runs no
@@ -528,7 +535,10 @@ wait.
   repeat the complete reassessment once.
 - When other reads keep failing transiently, the full reassessment repeats
   after 20, 40, 80 and then 120 seconds.
-- A rate limit (HTTP 429) ends waiting at once.
+- A primary rate limit (HTTP 403 or 429 with the core, or for GraphQL the graphql,
+  budget spent) is waited out once when its reset plus 5 seconds fits the job's
+  budget (`PR_GATE_DEADLINE`, five minutes from the group step's start); otherwise
+  the read fails naming the reset time. A secondary limit ends waiting at once.
 
 If GitHub stays incomplete or unreadable for 6 minutes, the publisher writes
 the distinct terminal refusal "Merge group proof metadata unavailable", so the
