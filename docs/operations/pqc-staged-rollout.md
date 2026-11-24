@@ -200,14 +200,14 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    `sntrup761x25519-sha512` alias arrived in 9.9). It is a different hybrid
    (Streamlined NTRU Prime with X25519), so it widens what the operator
    accepts beyond the selected profile.
-3. Validate before reload: `sshd -t -f FILE [-o ...]`, then
+3. Before step 2's edit, save copies of every sshd configuration file you
+   will change (the main file and any drop-ins), and note any drop-in you
+   create, so the previous configuration can be restored. Validate before
+   reload: `sshd -t -f FILE [-o ...]`, then
    `sshd -T -f FILE [-o ...] | grep -i '^kexalgorithms'`, using the same `-f`
    and `-o` arguments the daemon starts with (a reload keeps them). `-C` is
    not needed because `KexAlgorithms` is not allowed inside `Match`. Confirm
-   the printed list contains only the hybrid names.
-   Before editing, save copies of every sshd configuration file you will
-   change (the main file and any drop-ins), and note any drop-in you create,
-   so the previous configuration can be restored. If `sshd -t` or `sshd -T`
+   the printed list contains only the hybrid names. If `sshd -t` or `sshd -T`
    fails, or the list shows any other name, do not reload: restore the saved
    copies, remove any drop-in you created, and validate again. Before
    reloading, open a session and keep it open. Reload, then test a fresh login
@@ -239,10 +239,11 @@ with the production listener nor overwrites the production PID file that
 reloads signal. Before any client connects, check the test daemon's effective
 list with the same `-f` and `-o` arguments it starts with:
 `sshd -T -f TESTFILE [-o ...] | grep -i '^kexalgorithms'`. sshd uses the first
-value it reads for each keyword, so an earlier `KexAlgorithms` line or an
-`Include` in `TESTFILE` would override the hybrid-only line and let a
-classical-only client look compatible. Only the hybrid names may appear;
-otherwise remove that earlier line or `Include` and check again.
+value it reads for each keyword, so a `-o KexAlgorithms=`, an earlier
+`KexAlgorithms` line, or an earlier `Include` that sets it would override the
+hybrid-only line and let a classical-only client look compatible. Only the
+hybrid names may appear; otherwise remove that setting or move the hybrid-only
+line above it, and check again.
 sshd_config(5) says logging at a `DEBUG` level violates users' privacy and is
 not recommended, and it is high-volume, so keep it short, restrict log access,
 and restore the level.
