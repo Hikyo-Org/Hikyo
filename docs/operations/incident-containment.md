@@ -356,6 +356,26 @@ compromise using independent evidence, because restore does not establish that f
    enhanced review for a period chosen from the exposure window and log coverage.
    Keep `HOLD` for any scope you could not verify.
 
+## The incident ledger commands
+
+`hikyo incident` and the `/api/v1/incidents` routes record an incident and work its
+items through the owner functions. They need a human session with `credential-reset`
+at the incident's organisation, or at the instance for an incident that spans
+organisations.
+
+- `hikyo incident open --scope account|org|project|adapter ...` lists what the scope
+  leaves behind and works it through the owner functions. Opening a scope that
+  already has an open incident adds only the missing objects.
+- `hikyo incident show <incident>` and `hikyo incident items <incident>` read the
+  ledger. An item its owner refused reads apart from one that has not yet run, and a
+  rotation shows its own state as the server read it just now.
+- `hikyo incident resume <incident>` retries the items that are still open.
+- `hikyo incident attest <incident> <item>` records your statement that an open item
+  was dealt with outside this system. It is a statement, not a confirmation.
+- `hikyo incident close <incident>` needs `--with-residuals` while items are open.
+
+An unknown incident and one outside your authority answer the same way.
+
 ## What the ADR would change
 
 None of the following exists yet. They are listed so the owner can see which manual
