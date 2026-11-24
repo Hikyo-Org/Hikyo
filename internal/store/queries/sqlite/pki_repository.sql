@@ -180,4 +180,4 @@ UPDATE pki_certificates SET state='revoked',revoked_at=sqlc.arg(at),revocation_r
 SELECT id FROM pki_certificates WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>sqlc.arg(now) ORDER BY id LIMIT sqlc.arg(row_limit);
 
 -- name: PKIPurgeTerminalEnvironmentCertificates :execrows
-DELETE FROM pki_certificates WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND NOT (state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>sqlc.arg(now));
+DELETE FROM pki_certificates WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND (state IN ('failed','expired') OR not_after<=sqlc.arg(now));

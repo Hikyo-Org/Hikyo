@@ -1104,7 +1104,7 @@ func (q *Queries) PKIPublishCRL(ctx context.Context, arg PKIPublishCRLParams) (i
 }
 
 const pKIPurgeTerminalEnvironmentCertificates = `-- name: PKIPurgeTerminalEnvironmentCertificates :execrows
-DELETE FROM pki_certificates WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND NOT (state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>$4)
+DELETE FROM pki_certificates WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND (state IN ('failed','expired') OR not_after<=$4)
 `
 
 type PKIPurgeTerminalEnvironmentCertificatesParams struct {
