@@ -36,7 +36,7 @@ func databaseGate(ctx context.Context, cfg *config.Config, root []byte, mode upg
 }
 
 func upgradeRequest(ctx context.Context, cfg *config.Config, root []byte, mode upgradegate.Mode) (upgradegate.Request, func(), error) {
-	request := upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(cfg.Store.Engine), Mode: mode, AllowMigrations: cfg.AutoMigrate, RootKey: root, LegacyWritersStopped: cfg.Upgrade.LegacyWritersStopped}
+	request := upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(cfg.Store.Engine), Mode: mode, AllowMigrations: cfg.AutoMigrate, RootKey: root, LegacyWritersStopped: cfg.Upgrade.LegacyWritersStopped, BridgeRevocation: bridgeRevocation(cfg)}
 	if mode == upgradegate.Boot {
 		request.CheckConfiguration = func(ctx context.Context, projection *upgrade.CandidateConfiguration, values map[string]string) error {
 			return checkCandidateConfiguration(ctx, cfg, projection, values)

@@ -66,6 +66,8 @@ type UpgradeConfiguration struct {
 	OperatorPublicKeyFile string
 	OperatorInstanceID    string
 	TargetManifestSHA256  string
+	RevocationCheck       string
+	RevocationURL         string
 	LegacyWritersStopped  bool
 }
 
@@ -330,6 +332,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":      true,
 	"HIKYO_UPGRADE_OPERATOR_INSTANCE":        true,
 	"HIKYO_UPGRADE_TARGET_MANIFEST":          true,
+	"HIKYO_UPGRADE_REVOCATION_CHECK":         true,
+	"HIKYO_UPGRADE_REVOCATION_URL":           true,
 	"HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED":   true,
 	"HIKYO_NEW_ROOT_KEY_FILE":                true,
 	"HIKYO_DIRECTORY_PROXY":                  true,
@@ -469,6 +473,8 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 			OperatorPublicKeyFile: getenv("HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY"),
 			OperatorInstanceID:    getenv("HIKYO_UPGRADE_OPERATOR_INSTANCE"),
 			TargetManifestSHA256:  getenv("HIKYO_UPGRADE_TARGET_MANIFEST"),
+			RevocationCheck:       getenv("HIKYO_UPGRADE_REVOCATION_CHECK"),
+			RevocationURL:         getenv("HIKYO_UPGRADE_REVOCATION_URL"),
 		},
 		Dev:                     *dev,
 		AutoMigrate:             *autoMigrate,

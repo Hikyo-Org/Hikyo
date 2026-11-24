@@ -146,6 +146,19 @@ read-only alongside the separately pinned `operator.pub` and any required
 backup evidence. The assembler's staging/output directories use mode 0700 and
 files use mode 0600, so assign runtime ownership during provisioning.
 
+A recovery bridge (v1.0.0 to the `recovery-2` release, see the
+[bridge ceremony](recovery-bridge-ceremony.md)) is time-limited and revocable.
+Its statement carries a signed `not_after` at most 30 days out; after it the
+route is refused offline ("no authenticated upgrade route") and the bundle must
+be rebuilt from a re-signed bridge. When a plan uses a bridge, the server also
+fetches the signed revocation list (default pinned URL, or the mirror in
+`HIKYO_UPGRADE_REVOCATION_URL`) and remembers the highest sequence it saw in
+`HIKYO_UPGRADE_STATE_DIR`, which is required for bridge routes. An unreachable
+endpoint falls back to `not_after` and is logged; a reachable but invalid answer
+refuses the route. `HIKYO_UPGRADE_REVOCATION_CHECK=off` skips the network and is
+your explicit decision to rely on `not_after` alone. Ordinary upgrades never
+contact the endpoint.
+
 Fresh installation pins the configured operator public key before database
 mutation and binds the generated instance identity at bootstrap. An existing
 datastore with missing external installation custody refuses. Keep its private

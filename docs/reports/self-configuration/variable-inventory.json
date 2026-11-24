@@ -625,6 +625,22 @@
     "import": "external"
   },
   {
+    "key": "HIKYO_UPGRADE_REVOCATION_CHECK",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_REVOCATION_URL",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
     "key": "HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN",
     "audience": "server",
     "scope": "node",

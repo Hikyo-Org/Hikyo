@@ -2,11 +2,13 @@ package upgradegate
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -184,6 +186,33 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 			// AndThenSucceeds shows the same route succeeds once the evidence is supplied.
 			catalogue(raw)
 			attempt("bridge without operator evidence", bundleWith(signed(raw)), "invalid closed upgrade artifact")
+
+			// v2 statements carry a signed expiry. The live one is the control: it
+			// plans and is refused only at the operator evidence, like the v1 case.
+			live := statement
+			live.Schema, live.NotAfter = releasetrust.BridgeSchemaV2, time.Now().UTC().Truncate(time.Second).Add(24*time.Hour).Format(time.RFC3339)
+			rawLive := bridge(live)
+			catalogue(rawLive)
+			attempt("live v2 bridge without operator evidence", bundleWith(signed(rawLive)), "invalid closed upgrade artifact")
+
+			expired := live
+			expired.NotAfter = "2020-01-01T00:00:00Z"
+			rawExpired := bridge(expired)
+			catalogue(rawExpired)
+			attempt("expired v2 bridge", bundleWith(signed(rawExpired)), "no authenticated upgrade route")
+
+			// A verified revocation list withdraws the live bridge; a reachable but
+			// invalid answer refuses every bridge route. Neither writes anything.
+			catalogue(rawLive)
+			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+				return []releaseidentity.Digest{releaseidentity.Hash(rawLive)}, nil
+			}
+			attempt("revoked v2 bridge", bundleWith(signed(rawLive)), "recovery bridge revoked")
+			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+				return nil, errors.New("revocation list rollback refused")
+			}
+			attempt("revocation endpoint answered invalidly", bundleWith(signed(rawLive)), "recovery bridge revocation check")
+			request.BridgeRevocation = nil
 		})
 	}
 }

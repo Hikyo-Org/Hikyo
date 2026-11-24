@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/recoverybridge"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -13,6 +14,17 @@ import (
 )
 
 var commit = strings.Repeat("a", 40)
+
+// window returns a derivation instant and an expiry ten days later, whole seconds.
+func window() (time.Time, time.Time) {
+	now := time.Now().UTC().Truncate(time.Second)
+	return now, now.Add(10 * 24 * time.Hour)
+}
+
+func derive(from, to recoverybridge.Evidence) ([]recoverybridge.Statement, error) {
+	now, expiry := window()
+	return recoverybridge.Derive(from, to, now, expiry)
+}
 
 func manifest(engine releaseidentity.Engine, count int, salt string) releaseidentity.MigrationManifest {
 	m := releaseidentity.MigrationManifest{Engine: engine, Entries: []releaseidentity.Migration{}}
@@ -58,7 +70,7 @@ func TestDeriveBindsExactEvidenceAndRoutesOnBothEngines(t *testing.T) {
 	b, db := release(t, f, 2, 4, "x", nil)
 	snapshot := f.Snapshot(t)
 	from, to := evidence(t, snapshot, a, da), evidence(t, snapshot, b, db)
-	statements, err := recoverybridge.Derive(from, to)
+	statements, err := derive(from, to)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +144,7 @@ func TestBridgeThenOrdinaryEdgeIsTwoHops(t *testing.T) {
 	}
 	c, _ := release(t, f, 3, 5, "x", edges)
 	snapshot := f.Snapshot(t)
-	statements, err := recoverybridge.Derive(evidence(t, snapshot, a, da), evidence(t, snapshot, b, db))
+	statements, err := derive(evidence(t, snapshot, a, da), evidence(t, snapshot, b, db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +212,7 @@ func TestDeriveRefusesUnsoundPairs(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := recoverybridge.Derive(c.from, c.to); err == nil || !strings.Contains(err.Error(), c.want) {
+			if _, err := derive(c.from, c.to); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("want %q, got %v", c.want, err)
 			}
 		})

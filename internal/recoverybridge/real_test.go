@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/recoverybridge"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -115,7 +116,8 @@ func (w *throwawayTrust) derived(t *testing.T) ([]recoverybridge.Statement, []up
 	if releases[0].PolicyDigest() != releaseidentity.Hash(w.policy) || releases[1].PolicyDigest() != releases[0].PolicyDigest() {
 		t.Fatal("both releases must share the stable policy digest")
 	}
-	statements, err := recoverybridge.Derive(recoverybridge.Evidence{Release: releases[0], Declaration: declarations[0]}, recoverybridge.Evidence{Release: releases[1], Declaration: declarations[1]})
+	now := time.Now().UTC().Truncate(time.Second)
+	statements, err := recoverybridge.Derive(recoverybridge.Evidence{Release: releases[0], Declaration: declarations[0]}, recoverybridge.Evidence{Release: releases[1], Declaration: declarations[1]}, now, now.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

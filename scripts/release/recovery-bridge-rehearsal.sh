@@ -138,7 +138,7 @@ if "$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/t"
 fi
 failed=$(grep '^FAIL' "$scratch/forged.out" | sed 's/^FAIL [0-9a-f]*//' | sort -u)
 case $failed in
-' (sqlite): every field equals the independent derivation' | ' (postgres): every field equals the independent derivation') printf 'refused by the re-derivation alone: a signed, catalogued statement with a wrong field\n' ;;
+' (sqlite): every field but not_after equals the independent derivation' | ' (postgres): every field but not_after equals the independent derivation') printf 'refused by the re-derivation alone: a signed, catalogued statement with a wrong field\n' ;;
 *) printf 'unexpected failures:\n%s\n' "$failed"; exit 1 ;;
 esac
 rm -rf "$scratch/t"
@@ -300,6 +300,100 @@ cp "$scratch/new/metadata.json" "$scratch/t/caf$(printf '\303\251')"
 proposal_fails 'plain name' 'a non-ASCII file name that a UTF-8 locale would accept'
 rm -f "$scratch/dup-statement.json"
 
+step '6c. expiry: a signed, catalogued statement with a bad not_after is refused by the not_after check'
+# forge_statement JQ_FILTER PATTERN DESCRIPTION: replace the first new bridge by a validly
+# signed, catalogued edit of it, so only the statement's own checks can refuse it.
+forge_statement() {
+	cp -R "$scratch/new" "$scratch/t"
+	jq -S "$1" "$scratch/new/bridges/$first/statement.json" >"$scratch/forged-sorted.json"
+	forged=$(sha256_of "$scratch/forged-sorted.json")
+	mkdir "$scratch/t/bridges/$forged"
+	cp "$scratch/forged-sorted.json" "$scratch/t/bridges/$forged/statement.json"
+	rm -rf "$scratch/t/bridges/$first"
+	(cd "$scratch/t/bridges/$forged" && "$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+		--key "$recovery_key" --bundle statement.sigstore.json statement.json >/dev/null 2>&1 </dev/null)
+	# shellcheck disable=SC2016
+	edit_t catalog.json --arg old "$first" --arg new "$forged" '.bridges |= map(if . == $old then $new else . end)'
+	resign_t "$recovery_key"
+	proposal_fails "$2" "$3"
+}
+# The honest statement carries a not_after inside the window.
+jq -e '.schema == "hikyo.dev/recovery-bridge/v2" and (.not_after | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' "$scratch/new/bridges/$first/statement.json" >/dev/null
+printf 'ok: the authored statement is v2 with a canonical not_after\n'
+forge_statement '.not_after = "2020-01-01T00:00:00Z"' 'not_after is canonical UTC, in the future' 'an expired not_after'
+forge_statement 'del(.not_after)' 'not_after is canonical UTC, in the future' 'a missing not_after'
+forge_statement '.not_after = "tomorrow"' 'not_after is canonical UTC, in the future' 'a malformed not_after'
+forge_statement '.not_after = "2099-02-30T00:00:00Z"' 'not_after is canonical UTC, in the future' 'a not_after that is not a real date'
+forge_statement '.not_after = "2099-01-01T00:00:00Z"' 'not_after is canonical UTC, in the future' 'a not_after more than 30 days out (an unbounded bridge)'
+forge_statement '.not_after = "2099-01-01T01:00:00+01:00"' 'not_after is canonical UTC, in the future' 'a not_after with an offset'
+forge_statement '.schema = "hikyo.dev/recovery-bridge/v1" | del(.not_after)' 'every field but not_after equals' 'a downgrade to the v1 statement without expiry'
+
+step '6d. revocation list: recovery-signed, root-bound, monotonic; the apply-time checker obeys it'
+check_out() { # WANT DESCRIPTION COMMAND...: the command succeeds and prints WANT
+	want=$1 description=$2
+	shift 2
+	out=$("$@" 2>&1) || { printf 'FAILED: %s\n%s\n' "$description" "$out"; exit 1; }
+	case $out in *"$want"*) printf 'ok: %s\n' "$description" ;; *) printf 'FAILED: %s: got %s\n' "$description" "$out"; exit 1 ;; esac
+}
+check_refused() { # WANT DESCRIPTION COMMAND...: the command fails and its error names WANT
+	want=$1 description=$2
+	shift 2
+	if out=$("$@" 2>&1); then printf 'NOT REFUSED: %s\n' "$description"; exit 1; fi
+	case $out in *"$want"*) printf 'refused: %s\n' "$description" ;; *) printf 'refused, but not as expected (%s): %s\n' "$want" "$out"; exit 1 ;; esac
+}
+"$ceremony" revocation-list "$recovery_key" "$scratch/new" 1 "$scratch/list1" "$first" >/dev/null
+"$ceremony" revocation-list "$recovery_key" "$scratch/new" 2 "$scratch/list2" >/dev/null
+"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/list1" 0 >/dev/null
+printf 'ok: the verifier accepts the first list\n'
+list_fails() { # PATTERN DESCRIPTION: the list in scratch/t must be refused by the targeted check
+	expect_fail "$1" "$2" "$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/t" "${3:-0}"
+	rm -rf "$scratch/t"
+}
+mkdir "$scratch/t"
+cp "$scratch/list1/recovery-revocations.json" "$scratch/t/"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$scratch/key/other/cosign.key" --bundle "$scratch/t/recovery-revocations.sigstore.json" "$scratch/t/recovery-revocations.json" >/dev/null 2>&1 </dev/null
+list_fails 'list signature verifies' 'a list signed by a different key'
+cp -R "$scratch/list1" "$scratch/t"
+list_fails 'sequence is the prior sequence plus one' 'an older or equal list sequence' 1
+cp -R "$scratch/list1" "$scratch/t"
+jq '.trust_root_sha256 = "00000000000000000000000000000000000000000000000000000000000000cc"' "$scratch/list1/recovery-revocations.json" >"$scratch/t/recovery-revocations.json"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$recovery_key" --bundle "$scratch/t/recovery-revocations.sigstore.json" "$scratch/t/recovery-revocations.json" >/dev/null 2>&1 </dev/null
+list_fails 'bound to the pinned trust root' 'a validly signed list bound to another root'
+cp -R "$scratch/list1" "$scratch/t"
+printf ' ' >>"$scratch/t/recovery-revocations.json"
+list_fails 'list signature verifies' 'a list edited after signing'
+"$ceremony" revocation-list "$recovery_key" "$scratch/new" 3 "$scratch/list-unsorted" "$first" "$second" >/dev/null
+mkdir "$scratch/t"
+jq '.revoked |= reverse' "$scratch/list-unsorted/recovery-revocations.json" >"$scratch/t/recovery-revocations.json"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$recovery_key" --bundle "$scratch/t/recovery-revocations.sigstore.json" "$scratch/t/recovery-revocations.json" >/dev/null 2>&1 </dev/null
+list_fails 'sorted, unique' 'a validly signed list that is not sorted' 2
+rm -rf "$scratch/list-unsorted"
+# The real apply-time checker, run on the ceremony's own lists. With no network the
+# fallback is the bridge's signed expiry; a reachable list revokes; replays are refused.
+mkdir "$scratch/state"
+check_out 'outcome=unreachable-fell-back-to-expiry sequence=0 revoked=[]' 'unreachable with nothing known falls back to expiry' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" - "$first"
+check_out "outcome=checked sequence=1 revoked=[$first]" 'a reachable list revokes the digest' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" "$scratch/list1" "$first" "$second"
+check_out "outcome=unreachable-fell-back-to-expiry sequence=1 revoked=[$first]" 'an offline installation keeps the last verified list' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" - "$first" "$second"
+check_out 'outcome=checked sequence=2 revoked=[]' 'a newer list advances the floor' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" "$scratch/list2" "$first"
+check_refused 'rollback' 'replaying the older list' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" "$scratch/list1" "$first"
+mkdir "$scratch/t"
+cp "$scratch/list1/recovery-revocations.json" "$scratch/t/"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$scratch/key/other/cosign.key" --bundle "$scratch/t/recovery-revocations.sigstore.json" "$scratch/t/recovery-revocations.json" >/dev/null 2>&1 </dev/null
+check_refused 'recovery-bridge:' 'a list with a bad signature (the endpoint answered, so fail closed)' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" "$scratch/t" "$first"
+rm -rf "$scratch/t"
+check_out 'outcome=checked sequence=2 revoked=[]' 'the refusals left the remembered floor unchanged' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state" "$scratch/list2" "$first"
+
 step '7. revocation: a new recovery-signed snapshot drops the new bridges, keeps the legacy ones'
 # A bridge the stable policy lists needs a policy rotation, so revoke refuses it.
 if "$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/refused-revoke" "$legacy_first" >/dev/null 2>&1; then
@@ -343,8 +437,8 @@ fi
 rm -rf "$scratch/t"
 "$ceremony" assemble "$scratch/revoked" "$scratch/revoked-bundle" "$proofs/rel100" "$proofs/rel110"
 jq -c '{releases: (.releases | length), bridges: (.bridges | length)}' "$scratch/revoked-bundle/index.json"
-# Limit: revocation binds only instances whose persisted floor has advanced past
-# the prior snapshot. An instance that never loaded the newer snapshot still
-# accepts an older bundle carrying the bridge, and statements have no expiry.
+# Residual limit: a snapshot revocation binds only instances whose persisted floor
+# has advanced past the prior snapshot; the signed list and the 30-day not_after
+# cover the rest (a withheld list still ends at the bridge's expiry).
 
 printf '\nRehearsal complete: ceremony steps, verifier and assembler agree; all tamperings refused.\n'

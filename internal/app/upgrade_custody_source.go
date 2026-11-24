@@ -102,7 +102,7 @@ func inspectUpgradeSource(ctx context.Context, cfg *config.Config, installed os.
 	if err != nil {
 		return upgradegate.ConfigurationProof{}, err
 	}
-	request := upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(cfg.Store.Engine), BundleDirectory: cfg.Upgrade.BundleDirectory, StateDirectory: cfg.Upgrade.StateDirectory, InitialOperatorPublicKey: public, Pinned: pinned, LegacyWritersStopped: cfg.Upgrade.LegacyWritersStopped}
+	request := upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(cfg.Store.Engine), BundleDirectory: cfg.Upgrade.BundleDirectory, StateDirectory: cfg.Upgrade.StateDirectory, InitialOperatorPublicKey: public, Pinned: pinned, LegacyWritersStopped: cfg.Upgrade.LegacyWritersStopped, BridgeRevocation: bridgeRevocation(cfg)}
 	if cfg.Upgrade.EvidenceDirectory != "" {
 		for _, item := range []struct {
 			name  string

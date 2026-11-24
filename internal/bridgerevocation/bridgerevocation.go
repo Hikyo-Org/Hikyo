@@ -1,0 +1,312 @@
+// Package bridgerevocation checks, at apply time, whether the recovery bridge a
+// route uses has been revoked. The list is signed by the pinned recovery key and
+// bound to the pinned root, so the endpoint is only a transport: it can withhold
+// an answer but cannot forge, roll back or redirect one. An unreachable endpoint
+// falls back to the bridge's own signed expiry; a reachable endpoint that answers
+// wrongly fails closed.
+package bridgerevocation
+
+import (
+	"context"
+	"crypto/x509"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
+	"time"
+
+	"encoding/json/v2"
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+)
+
+// DefaultURL is the pinned list location. The signed content, not the location,
+// carries the authority. The owner confirms the production host at the ceremony.
+const DefaultURL = "https://hikyo.dev/trust/recovery-revocations"
+
+const (
+	maxBody        = 64 << 10
+	connectTimeout = 5 * time.Second
+	requestTimeout = 10 * time.Second
+)
+
+// Mode selects the online check or the operator's explicit opt-out.
+type Mode string
+
+const (
+	Online Mode = "online"
+	Off    Mode = "off"
+)
+
+// ParseMode accepts the empty string as the default.
+func ParseMode(value string) (Mode, error) {
+	switch value {
+	case "", "online":
+		return Online, nil
+	case "off":
+		return Off, nil
+	}
+	return "", fmt.Errorf("revocation check must be online or off, not %q", value)
+}
+
+// Outcome is recorded locally for every check.
+type Outcome string
+
+const (
+	Checked     Outcome = "checked"
+	Unreachable Outcome = "unreachable-fell-back-to-expiry"
+	Disabled    Outcome = "disabled-by-operator"
+)
+
+// ErrUnreachable marks a transport failure: there was no authoritative answer.
+var ErrUnreachable = errors.New("revocation endpoint unreachable")
+
+// Fetcher returns the signed list and its detached signature.
+type Fetcher interface {
+	Fetch(ctx context.Context) (list, signature []byte, err error)
+}
+
+// HTTPFetcher reads <BaseURL>.json and <BaseURL>.sigstore.json over https.
+type HTTPFetcher struct {
+	BaseURL string
+	Client  *http.Client
+}
+
+// NewHTTPFetcher refuses anything but an https URL and follows no redirects.
+func NewHTTPFetcher(base string) (HTTPFetcher, error) {
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return HTTPFetcher{}, errors.New("revocation endpoint must be an https URL")
+	}
+	dialer := &net.Dialer{Timeout: connectTimeout}
+	client := &http.Client{
+		Timeout:       requestTimeout,
+		Transport:     &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: connectTimeout, Proxy: http.ProxyFromEnvironment},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	return HTTPFetcher{BaseURL: base, Client: client}, nil
+}
+
+func (f HTTPFetcher) Fetch(ctx context.Context) ([]byte, []byte, error) {
+	list, err := f.get(ctx, f.BaseURL+".json")
+	if err != nil {
+		return nil, nil, err
+	}
+	signature, err := f.get(ctx, f.BaseURL+".sigstore.json")
+	if err != nil {
+		return nil, nil, err
+	}
+	return list, signature, nil
+}
+
+func (f HTTPFetcher) get(ctx context.Context, target string) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := f.Client.Do(request)
+	if err != nil {
+		if transportFailure(err) {
+			return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
+		}
+		return nil, fmt.Errorf("revocation endpoint answered unusably: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	switch response.StatusCode {
+	case http.StatusOK:
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return nil, fmt.Errorf("%w: status %d", ErrUnreachable, response.StatusCode)
+	default:
+		return nil, fmt.Errorf("revocation endpoint answered status %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxBody+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: reading body: %v", ErrUnreachable, err)
+	}
+	if len(body) > maxBody {
+		return nil, errors.New("revocation response exceeds its byte bound")
+	}
+	return body, nil
+}
+
+// transportFailure is true for errors that mean "no authoritative answer":
+// name resolution, dialing, timeouts. A certificate or protocol error means a
+// server did answer, wrongly, and is not a fallback case.
+func transportFailure(err error) bool {
+	var unknownAuthority x509.UnknownAuthorityError
+	var invalidCertificate x509.CertificateInvalidError
+	var hostname x509.HostnameError
+	if errors.As(err, &unknownAuthority) || errors.As(err, &invalidCertificate) || errors.As(err, &hostname) {
+		return false
+	}
+	var dns *net.DNSError
+	var op *net.OpError
+	var network net.Error
+	return errors.As(err, &dns) || (errors.As(err, &op) && op.Op == "dial") || errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &network) && network.Timeout())
+}
+
+// Result is what a check learned. Revoked is the verified list's contents from
+// this fetch or, offline, from the last list this installation verified.
+type Result struct {
+	Outcome  Outcome
+	Sequence int64
+	Revoked  []releaseidentity.Digest
+}
+
+// Checker holds the fetcher and the local state paths.
+type Checker struct {
+	Mode      Mode
+	Fetcher   Fetcher
+	Directory string
+	Now       func() time.Time
+}
+
+const (
+	listFile      = "bridge-revocations.json"
+	signatureFile = "bridge-revocations.sigstore.json"
+	checkFile     = "bridge-revocations-check.json"
+)
+
+type checkRecord struct {
+	Outcome  Outcome `json:"outcome"`
+	Sequence int64   `json:"sequence"`
+	At       string  `json:"at"`
+}
+
+// Check verifies the last list this installation accepted, then (unless the
+// operator turned it off) asks the endpoint for a newer one. Any error means the
+// bridge must be refused; only an unreachable endpoint or an explicit opt-out
+// returns a result without a fresh list.
+func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Result, error) {
+	known, haveKnown, err := c.loadKnown(snapshot)
+	if err != nil {
+		return Result{}, err
+	}
+	result := Result{Outcome: Disabled}
+	if haveKnown {
+		result.Sequence, result.Revoked = known.Sequence(), known.Revoked()
+	}
+	if c.Mode == Off {
+		return result, c.record(result)
+	}
+	list, signature, err := c.Fetcher.Fetch(ctx)
+	if errors.Is(err, ErrUnreachable) {
+		result.Outcome = Unreachable
+		return result, c.record(result)
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	fresh, err := snapshot.VerifyRevocations(list, signature)
+	if err != nil {
+		return Result{}, err
+	}
+	if haveKnown {
+		if fresh.Sequence() < known.Sequence() {
+			return Result{}, errors.New("revocation list rollback refused")
+		}
+		if fresh.Sequence() == known.Sequence() && fresh.Digest() != known.Digest() {
+			return Result{}, errors.New("revocation list equivocation refused")
+		}
+	}
+	if !haveKnown || fresh.Sequence() > known.Sequence() {
+		if err := c.persist(list, signature); err != nil {
+			return Result{}, err
+		}
+	}
+	return Result{Outcome: Checked, Sequence: fresh.Sequence(), Revoked: fresh.Revoked()}, c.record(Result{Outcome: Checked, Sequence: fresh.Sequence()})
+}
+
+// Revoked adapts Check to the gate's hook: the revoked digests, or the error
+// that refuses the bridge.
+func (c Checker) Revoked(ctx context.Context, snapshot releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+	result, err := c.Check(ctx, snapshot)
+	return result.Revoked, err
+}
+
+func (c Checker) loadKnown(snapshot releasetrust.Snapshot) (releasetrust.VerifiedRevocations, bool, error) {
+	list, err := os.ReadFile(filepath.Join(c.Directory, listFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return releasetrust.VerifiedRevocations{}, false, nil
+	}
+	if err != nil {
+		return releasetrust.VerifiedRevocations{}, false, err
+	}
+	signature, err := os.ReadFile(filepath.Join(c.Directory, signatureFile))
+	if err != nil {
+		return releasetrust.VerifiedRevocations{}, false, fmt.Errorf("stored revocation list lacks its signature: %w", err)
+	}
+	verified, err := snapshot.VerifyRevocations(list, signature)
+	if err != nil {
+		return releasetrust.VerifiedRevocations{}, false, fmt.Errorf("stored revocation list no longer verifies: %w", err)
+	}
+	return verified, true, nil
+}
+
+// persist replaces the stored list; the signature lands first so a crash never
+// leaves a list without the signature that authenticates it.
+func (c Checker) persist(list, signature []byte) error {
+	if err := writeAtomic(filepath.Join(c.Directory, signatureFile), signature); err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(c.Directory, listFile), list)
+}
+
+func (c Checker) record(result Result) error {
+	now := time.Now
+	if c.Now != nil {
+		now = c.Now
+	}
+	raw, err := json.Marshal(checkRecord{Outcome: result.Outcome, Sequence: result.Sequence, At: now().UTC().Format(time.RFC3339)}, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(c.Directory, checkFile), raw)
+}
+
+func writeAtomic(path string, raw []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".revocation-*")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	if _, err := temporary.Write(raw); err != nil {
+		_ = temporary.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Rename(name, path)
+}
+
+// LastCheck returns the recorded outcome of the previous check, for logs.
+func LastCheck(directory string) (Outcome, int64, string, error) {
+	raw, err := os.ReadFile(filepath.Join(directory, checkFile))
+	if err != nil {
+		return "", 0, "", err
+	}
+	var record checkRecord
+	if err := definitions.DecodeStrict(raw, &record); err != nil {
+		return "", 0, "", err
+	}
+	return record.Outcome, record.Sequence, record.At, nil
+}
+
+// Contains reports whether any used bridge digest is revoked.
+func Contains(revoked, used []releaseidentity.Digest) bool {
+	return slices.ContainsFunc(used, func(d releaseidentity.Digest) bool { return slices.Contains(revoked, d) })
+}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -18,8 +19,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
 
-// Schema is the statement schema authorized by releasetrust.VerifyBridge.
-const Schema = "hikyo.dev/recovery-bridge/v1"
+// Schema is the statement schema Derive writes: v2, with a signed expiry.
+const Schema = releasetrust.BridgeSchemaV2
+
+// MaxWindow is the longest a new bridge may stay usable after it is derived.
+// A later upgrade needs a re-sign ceremony, which is the point of the bound.
+const MaxWindow = 30 * 24 * time.Hour
 
 // Evidence is one authenticated stable release and its parsed declaration.
 type Evidence struct {
@@ -36,11 +41,14 @@ type Statement struct {
 }
 
 // Derive returns one statement per engine that both declarations name, ordered
-// by engine. It refuses a pair whose engines differ, a declaration that does not
+// by engine, each expiring at notAfter. It refuses a pair whose engines differ, a declaration that does not
 // describe its authenticated release, a target that is not newer, and a source
 // migration inventory that is not a strict prefix of the target's (a bridge may
 // only extend the schema, never rewrite history).
-func Derive(source, target Evidence) ([]Statement, error) {
+func Derive(source, target Evidence, now, notAfter time.Time) ([]Statement, error) {
+	if !notAfter.After(now) || notAfter.Sub(now) > MaxWindow || notAfter.Nanosecond() != 0 {
+		return nil, fmt.Errorf("not_after must be a whole second after now and at most %s later", MaxWindow)
+	}
 	if !source.Release.Valid() || !target.Release.Valid() || source.Release.SnapshotDigest() != target.Release.SnapshotDigest() {
 		return nil, errors.New("bridge evidence must be two verified releases from one trust snapshot")
 	}
@@ -73,6 +81,7 @@ func Derive(source, target Evidence) ([]Statement, error) {
 			SourcePolicySHA256: source.Release.PolicyDigest(), TargetPolicySHA256: target.Release.PolicyDigest(),
 			SourceMigrations: s.Migrations.Clone(), TargetMigrations: t.Migrations.Clone(),
 			SourceSchemaSHA256: s.SchemaSHA256, TargetSchemaSHA256: t.SchemaSHA256, Mode: "maintenance",
+			NotAfter: notAfter.UTC().Format(time.RFC3339),
 		}
 		raw, err := json.Marshal(statement, jsonwire.Stable, jsontext.WithIndent("  "))
 		if err != nil {

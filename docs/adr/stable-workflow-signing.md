@@ -93,35 +93,54 @@ immutable status afterward; it does not alter repository settings.
 
 **Owner decisions 2026-11-24 on #1422.** Existing v1.0.0 installations have no
 ordinary edge to v1.1.0, so the owner chose a recovery-signed bridge per engine
-(option B). Items marked **pending owner re-acceptance** are not settled: see
-the constraints below and the owner items on #1561. Custody and review:
+(option B), signed with a rotated `recovery-2` (R2), with signed expiry and an
+apply-time revocation list (options (a) and (c) on
+[#1422](https://github.com/Hikyo-Org/Hikyo/issues/1422)). Custody and review:
 
-- **Pending owner re-acceptance (R1 or R2):** a new offline or hardware key
-  `recovery-2` is rotated in first. The
-  `recovery-1` exception is not extended to bridges. The owner holds the key
-  alone and every signing is witnessed and logged
+- **R2:** a new offline or hardware key `recovery-2` is rotated in first and a
+  release that pins it ships. The bridge target is that release, and only
+  `recovery-2` signs the bridge. The `recovery-1` exception is not extended to
+  bridges. The owner holds the key alone and every signing is witnessed and logged
   ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
 - An independent verifier (`scripts/release/verify-recovery-bridge.sh`, jq,
   cosign and sha256 only, no shared code with the authoring tool) re-derives every
   statement field from the published declarations and compares bytes and digests.
   It is the merge gate for the trust pull request.
-- **Pending owner re-acceptance:** revocation is a new recovery-signed snapshot
-  that drops the bridge from the catalog, not from the policy, which is never
-  re-signed (`recovery-bridge.sh revoke`). It binds only instances whose floor
-  advanced (see below). A rehearsal with a throwaway key and a test root
-  precedes the real ceremony, and no other stable-policy change may be pending.
+- **Signed expiry (a).** A bridge statement is
+  `hikyo.dev/recovery-bridge/v2` with a required canonical-UTC `not_after`, at most
+  30 days after signing. The gate compares it with the host clock at plan time,
+  offline and without a grace period. An expired bridge drops out of route
+  planning, not out of snapshot loading, so ordinary routes and the complete
+  bridge inventory check are unaffected. The v1 statement (no expiry) is kept
+  only for the legacy nightly bridges. A lapsed bridge is replaced by authoring
+  and signing a new statement with `recovery-2` (the re-sign path in the runbook).
+- **Revocation list (c).** Before a plan that uses a bridge is applied, the gate
+  fetches `hikyo.dev/recovery-revocations/v1`: a sequenced list of revoked
+  statement digests, signed by the pinned recovery key and bound to the pinned
+  root, so the endpoint is only a transport. A persisted floor refuses rollback
+  and equivocation. If the endpoint is unreachable (DNS, dial or timeout, HTTP
+  502, 503 or 504), the check falls back to the signed expiry and the last
+  verified list, and records that locally. A reachable but invalid answer (other
+  status, oversized body, bad signature, wrong root, older sequence, certificate
+  error) fails closed. `HIKYO_UPGRADE_REVOCATION_CHECK=off` is the explicit
+  operator opt-out, and `HIKYO_UPGRADE_REVOCATION_URL` points at a mirror.
+  Ordinary upgrades never contact the endpoint. The snapshot revocation
+  (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
+  re-signs the policy) remains and binds instances whose floor advanced.
+  A rehearsal with a throwaway key and a test root precedes the real ceremony,
+  and no other stable-policy change may be pending.
 
 **Constraints found while building it.**
 
 - Verifiers accept a recovery signature only from the key pinned in the running
   binary's root. The shipped v1.1.0 pins `recovery-1`, so a `recovery-2` bridge
-  into it is refused; `recovery-2` bridges need a release that stamps a root
-  pinning it. The owner must re-decide: a narrow logged `recovery-1` exception
-  for these two statements, or a rotation release first.
-- Revocation and expiry bind only instances whose persisted snapshot floor has
-  advanced (`upgrade_gate.go`): a v1.0.0 instance that never loaded the revoking
-  snapshot still accepts an older bundle carrying the bridge, and statements carry
-  no expiry. Revocation does not recall bundles already distributed.
+  into it is refused. Hence R2: rotate first, ship the pinning release, and
+  bridge into that release.
+- Residual limits, accepted by the owner: an instance that never reaches the
+  endpoint is bounded by the 30-day expiry, not recalled sooner; the check record
+  is local and unsigned; the list endpoint default is a placeholder until the
+  host is named; revocation does not recall bundles already distributed, but a
+  distributed bundle's bridge stops planning at `not_after` and when listed.
 - Each statement binds the stable policy digest. Listing the statements in the
   policy changes that digest, so the policy is never re-signed. The bridges are
   authorized by a recovery-shaped metadata and catalog (next sequences, no

@@ -48,6 +48,7 @@ type Bundle struct {
 	nodes          []upgradecompat.VerifiedNode
 	bridges        []releasetrust.VerifiedBridge
 	releases       map[releaseidentity.Identity]releasetrust.VerifiedRelease
+	bridgeGuard    func([]releaseidentity.Digest) error
 }
 
 // MaterialDigest binds every loaded public document, including index and
@@ -57,7 +58,23 @@ func (b Bundle) MaterialDigest() releaseidentity.Digest { return b.materialDiges
 func (b Bundle) Valid() bool                     { return b.snapshot.Valid() }
 func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
 func (b Bundle) Plan(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
-	return upgradecompat.PlanRoute(b.snapshot, source, target, b.nodes, b.bridges)
+	plan, err := upgradecompat.PlanRoute(b.snapshot, source, target, b.nodes, b.bridges)
+	if err != nil || b.bridgeGuard == nil || len(plan.BridgeDigests()) == 0 {
+		return plan, err
+	}
+	// Only a route that actually uses a recovery bridge consults the guard, so
+	// ordinary upgrades never touch the revocation endpoint.
+	if err := b.bridgeGuard(plan.BridgeDigests()); err != nil {
+		return upgradecompat.Plan{}, err
+	}
+	return plan, nil
+}
+
+// WithBridgeGuard returns a copy whose plans are refused when the guard
+// rejects the recovery bridges the route uses (for example a revoked one).
+func (b Bundle) WithBridgeGuard(guard func([]releaseidentity.Digest) error) Bundle {
+	b.bridgeGuard = guard
+	return b
 }
 func (b Bundle) Release(identity releaseidentity.Identity) (releasetrust.VerifiedRelease, error) {
 	release, ok := b.releases[identity]

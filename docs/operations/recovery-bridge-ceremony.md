@@ -12,11 +12,11 @@ reads production key material; this ceremony is the only step that does.
 
 ## Read first: constraints the rehearsal exposed
 
-1. **Which key signs is an open owner decision.** A verifier accepts a bridge
-   only if it is signed by the recovery key pinned in its own binary, and the
-   shipped v1.1.0 pins `recovery-1`. A bridge signed by another key is accepted
-   only by binaries that stamp a root pinning that key. This runbook is
-   key-agnostic: `RECOVERY_KEY` is whichever key the target binary pins.
+1. **`recovery-2` signs (R2, owner decision on #1422).** A verifier accepts a
+   bridge only if it is signed by the recovery key pinned in its own binary. Rotate
+   `recovery-2` in first, ship a release that pins it, and bridge into that
+   release. `recovery-1` never signs the bridge. `RECOVERY_KEY` below is
+   `recovery-2`.
 2. **The stable policy is not re-signed.** Each statement binds the stable policy
    digest. A policy that listed the statements would change that digest, so the
    bridges live only in a recovery-signed catalog and the policy file and its
@@ -29,14 +29,13 @@ reads production key material; this ceremony is the only step that does.
    Until that release ships, `install.sh` can refuse new stable installs with
    "trust rollback refused" (see [signed nightlies](signed-nightlies.md)). Run
    this ceremony close to the next release.
-4. **Revocation and expiry have a real limit.** An instance enforces the snapshot
-   floor it persisted, and the floor advances only when the instance loads a newer
-   snapshot. A v1.0.0 instance that never loaded the revoking snapshot still
-   accepts an older bundle that carries the bridge, and the statements carry no
-   expiry. Revocation protects bundles assembled from the current snapshot and
-   instances that have advanced; it does not recall a bundle already handed out.
-   Operators should be told to rebuild bundles from the latest trust tree, and
-   the next stable release removes the bridge from every newly built bundle.
+4. **Every bridge expires and can be revoked.** Statements are v2 with a signed
+   `not_after`, at most 30 days after signing (author's default is 29 days 23
+   hours). An expired bridge stops planning offline. A signed revocation list
+   (below) withdraws a bridge earlier on instances that can reach the endpoint;
+   unreachable falls back to the expiry, a bad answer refuses. Choose the window
+   at the ceremony and log it. A lapsed bridge is re-signed with the steps under
+   "Re-signing an expired bridge".
 
 Also required: no other stable-policy or release/trust change is pending
 (`gh pr list -L 500 --state open` and `git log HEAD..origin/dev -- release/trust internal/releasetrust`
@@ -95,8 +94,14 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
    Expect two lines, `postgres <digest>` and `sqlite <digest>`; record both digests:
 
    ```sh
-   scripts/release/recovery-bridge.sh author release/trust "$WORK/rel-1.0.0" "$WORK/rel-1.1.0" "$WORK/statements"
+   scripts/release/recovery-bridge.sh author release/trust "$WORK/rel-1.0.0" "$WORK/rel-1.1.0" "$WORK/statements" [NOT_AFTER]
    ```
+
+   `NOT_AFTER` is a canonical UTC RFC 3339 time (for example `2026-12-24T00:00:00Z`)
+   at most 30 days away; omit it for 29 days 23 hours from now. It is signed into
+   both statements. Record the chosen window in the ceremony log. The verifier
+   refuses a `not_after` that is past or more than 30 days from the verification
+   time, so verify close to signing.
 
 3. (Online, and again on the offline machine) Run the independent verifier on the
    **unsigned** statements before anything is signed. jq re-derives every field
@@ -196,8 +201,36 @@ scripts/release/verify-recovery-bridge.sh revocation "$WORK/new-trust" "$WORK/re
 ```
 
 It bumps both sequences, removes the digests from the catalog and deletes their
-files. The limit in constraint 4 applies: it binds instances and bundles that
-use the new snapshot, not an older bundle already in an operator's hands.
+files. This binds instances and bundles that use the new snapshot, not an older
+bundle already in an operator's hands: use the revocation list for those.
+
+## Revocation list (apply-time)
+
+Sign and publish the list with the recovery key, then verify it. `SEQUENCE` is the
+published list's sequence plus one (1 for the first), `PRIOR` the published
+sequence (0 if none). Publish `recovery-revocations.json` and
+`recovery-revocations.sigstore.json` at the pinned endpoint (the default is a
+placeholder until the owner names the host; operators may mirror it with
+`HIKYO_UPGRADE_REVOCATION_URL`):
+
+```sh
+scripts/release/recovery-bridge.sh revocation-list "$RECOVERY_KEY" "$WORK/new-trust" <SEQUENCE> "$WORK/list" <digest>...
+scripts/release/verify-recovery-bridge.sh revocation-list "$WORK/new-trust" "$WORK/list" <PRIOR>
+scripts/release/recovery-bridge.sh check-revocations "$WORK/new-trust" "$WORK/state" "$WORK/list" <digest>...
+```
+
+The list is signed by the pinned recovery key and bound to the root, so a host
+compromise can withhold it but not forge, roll back or redirect it. A list with a
+lower sequence is refused by every instance that saw a higher one. `check-revocations`
+runs the real checker against a local list directory (`-` for the unreachable case).
+
+## Re-signing an expired bridge
+
+When `not_after` is near or has passed, repeat steps 1 to 6 against the same
+published proofs with a fresh window (`author ... [NOT_AFTER]`), signed with
+`recovery-2`. The new statement has a new digest, so it is a new catalog entry;
+revoke the lapsed digest (snapshot revocation or the list) if it is still
+catalogued.
 
 ## Using the bridge (operators)
 
@@ -221,6 +254,10 @@ a policy edited to list a bridge; validly signed metadata or catalog edits, skip
 sequences, dropped base files, swapped recovery keys; symlinks, extra files or empty
 directories, unusual file names, unreadable directories, duplicate JSON keys; and a
 properly signed and catalogued statement with one wrong field (caught by the
-re-derivation alone). The rehearsal also covers the production shape (two legacy
+re-derivation alone); expired, missing, malformed, impossible, offset and over-30-day
+`not_after` values and a v1 downgrade; and the revocation list (bad signature, older
+sequence, another root, unsorted, edited after signing) plus the real checker's
+unreachable fallback, revocation, offline memory, rollback refusal and bad-signature
+refusal. The rehearsal also covers the production shape (two legacy
 bridges plus two new). It also checks that revoking a policy-listed bridge is
 refused.

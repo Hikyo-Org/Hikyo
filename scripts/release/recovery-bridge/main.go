@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/recoverybridge"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -25,10 +26,13 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, out io.Writer) error {
-	if len(args) == 0 || args[0] != "author" {
-		return errors.New("usage: recovery-bridge author --root FILE --recovery-key FILE --snapshot DIR --keys DIR --source DIR --target DIR --out DIR")
+	if len(args) > 0 && args[0] == "check-revocations" {
+		return checkRevocations(ctx, args[1:], out)
 	}
-	var root, recovery, snapshot, keys, source, target, output string
+	if len(args) == 0 || args[0] != "author" {
+		return errors.New("usage: recovery-bridge author --root FILE --recovery-key FILE --snapshot DIR --keys DIR --source DIR --target DIR --not-after TIME --out DIR\n       recovery-bridge check-revocations --root FILE --recovery-key FILE --snapshot DIR --keys DIR --state DIR (--list DIR | --unreachable) [DIGEST...]")
+	}
+	var root, recovery, snapshot, keys, source, target, output, notAfter string
 	fs := flag.NewFlagSet("recovery-bridge author", flag.ContinueOnError)
 	fs.SetOutput(out)
 	fs.StringVar(&root, "root", "", "independently pinned release root.json")
@@ -37,12 +41,13 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	fs.StringVar(&keys, "keys", "", "directory containing only metadata-named public primary keys")
 	fs.StringVar(&source, "source", "", "directory with the source stable release proofs")
 	fs.StringVar(&target, "target", "", "directory with the target stable release proofs")
+	fs.StringVar(&notAfter, "not-after", "", "canonical UTC RFC 3339 expiry (at most 30 days from now), e.g. 2026-12-24T00:00:00Z")
 	fs.StringVar(&output, "out", "", "new directory; one <digest>/statement.json per engine")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || root == "" || recovery == "" || snapshot == "" || keys == "" || source == "" || target == "" || output == "" {
-		return errors.New("require --root, --recovery-key, --snapshot, --keys, --source, --target and --out")
+	if fs.NArg() != 0 || root == "" || recovery == "" || snapshot == "" || keys == "" || source == "" || target == "" || output == "" || notAfter == "" {
+		return errors.New("require --root, --recovery-key, --snapshot, --keys, --source, --target, --not-after and --out")
 	}
 	rootRaw, err := upgradeassembly.ReadDocument(root)
 	if err != nil {
@@ -56,9 +61,13 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	expiry, err := time.Parse(time.RFC3339, notAfter)
+	if err != nil || expiry.UTC().Format(time.RFC3339) != notAfter {
+		return errors.New("--not-after must be canonical UTC RFC 3339 (...Z)")
+	}
 	statements, err := recoverybridge.Derive(
 		recoverybridge.Evidence{Release: releases[0], Declaration: declarations[0]},
-		recoverybridge.Evidence{Release: releases[1], Declaration: declarations[1]})
+		recoverybridge.Evidence{Release: releases[1], Declaration: declarations[1]}, time.Now(), expiry)
 	if err != nil {
 		return err
 	}

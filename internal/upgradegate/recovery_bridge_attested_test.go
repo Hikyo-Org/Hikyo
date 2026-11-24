@@ -2,6 +2,7 @@ package upgradegate_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -77,9 +78,10 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw := trustfixture.JSON(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/recovery-bridge/v1", Source: a.Identity, Target: b.Identity,
+			raw := trustfixture.JSON(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, Source: a.Identity, Target: b.Identity,
 				SourcePolicySHA256: verifiedA.PolicyDigest(), TargetPolicySHA256: verifiedB.PolicyDigest(),
-				SourceMigrations: manifest.Clone(), TargetMigrations: manifest.Clone(), SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+				SourceMigrations: manifest.Clone(), TargetMigrations: manifest.Clone(), SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance",
+				NotAfter: time.Now().UTC().Truncate(time.Second).Add(24 * time.Hour).Format(time.RFC3339)})
 			f.Catalog.Bridges = append(f.Catalog.Bridges, releaseidentity.Hash(raw))
 			f.Catalog.Sequence++
 			request.BundleDirectory = upgradegate.WriteBridgeBundleForTest(t, f, []trustfixture.SignedRelease{a, b}, []releasetrust.BridgeMaterial{{Statement: raw, Signature: trustfixture.Sign(t, f.RecoverySigner, raw)}})
@@ -140,8 +142,21 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 			if err != nil || !after.Equal(before) {
 				t.Fatalf("the refusal changed the installation: %v", err)
 			}
-			// Same request with the evidence: the bridge route runs to the target.
+			// With the evidence but a verified revocation of this bridge: refused,
+			// installation untouched.
 			request.Evidence = backupreceipt.EvidenceMaterial{Receipt: receipt, Attestation: drill.Attestation, Signature: trustfixture.Sign(t, f.PrimarySigner, drill.Attestation)}
+			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+				return []releaseidentity.Digest{releaseidentity.Hash(raw)}, nil
+			}
+			if _, err := upgradegate.RunSignedGateProcessFixture(t, request, b.Material.Compatibility); err == nil || !strings.Contains(err.Error(), "recovery bridge revoked") {
+				t.Fatalf("a revoked bridge must be refused even with the evidence: %v", err)
+			}
+			if after, err := upgrade.InspectControl(t.Context(), cfg); err != nil || !after.Equal(before) {
+				t.Fatalf("the revoked refusal changed the installation: %v", err)
+			}
+			// Endpoint unreachable and nothing revoked (the expiry fallback): the
+			// live bridge route runs to the target.
+			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) { return nil, nil }
 			result, err := upgradegate.RunSignedGateProcessFixture(t, request, b.Material.Compatibility)
 			if err != nil || !result.Admission.Valid() || result.State.Maintenance || result.State.Applied.Release != b.Identity {
 				t.Fatalf("with the attestation the bridge route must reach the target: %v %+v", err, result.State.Applied)

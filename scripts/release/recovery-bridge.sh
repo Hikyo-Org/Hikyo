@@ -1,14 +1,19 @@
 #!/bin/sh
 # Recovery-bridge ceremony steps for one stable release pair (#1422).
 #
-#   recovery-bridge.sh author      TRUST SOURCE_PROOFS TARGET_PROOFS STATEMENTS
+#   recovery-bridge.sh author      TRUST SOURCE_PROOFS TARGET_PROOFS STATEMENTS [NOT_AFTER]
 #   recovery-bridge.sh sign        KEY STATEMENTS
 #   recovery-bridge.sh reauthorize KEY TRUST STATEMENTS OUT
 #   recovery-bridge.sh assemble    TRUST OUT RELEASE_PROOFS...
 #   recovery-bridge.sh revoke      KEY TRUST OUT DIGEST...
+#   recovery-bridge.sh revocation-list KEY TRUST SEQUENCE OUT DIGEST...
+#   recovery-bridge.sh check-revocations TRUST STATE LIST_DIR|- [DIGEST...]
 #
-# author derives the unsigned statements from authenticated public release
-# proofs. sign and reauthorize use the recovery private key KEY and must run on
+# author derives the unsigned v2 statements from authenticated public release
+# proofs. Each carries a signed not_after, at most 30 days out (default: 29 days
+# 23 hours from now; pass NOT_AFTER, canonical UTC RFC 3339, to choose). An
+# expired bridge stops planning offline, so a lapsed one is re-authored and
+# re-signed with the same steps (the re-sign path; see the runbook). sign and reauthorize use the recovery private key KEY and must run on
 # the offline signing machine; they never print or copy it. reauthorize writes a
 # new trust tree and leaves TRUST untouched. stable-policy.json is deliberately
 # never re-signed: a statement binds the stable policy digest, so a policy that
@@ -40,8 +45,9 @@ stage_trust() {
 }
 
 author() {
-	[ "$#" -eq 4 ] || fail 'usage: author TRUST SOURCE_PROOFS TARGET_PROOFS STATEMENTS'
+	[ "$#" -eq 4 ] || [ "$#" -eq 5 ] || fail 'usage: author TRUST SOURCE_PROOFS TARGET_PROOFS STATEMENTS [NOT_AFTER]'
 	trust=$1 source=$2 target=$3 out=$4
+	not_after=${5:-$(jq -nr '(now | floor) + 2592000 - 3600 | todate')}
 	recovery=$(jq -r '.recovery.public_key' "$trust/root.json")
 	scratch=$(mktemp -d)
 	trap 'rm -rf "$scratch"' EXIT
@@ -49,7 +55,7 @@ author() {
 	(cd "$repo_root" && go run ./scripts/release/recovery-bridge author \
 		--root "$trust/root.json" --recovery-key "$trust/$recovery" \
 		--snapshot "$scratch/snapshot" --keys "$scratch/keys" \
-		--source "$source" --target "$target" --out "$out")
+		--source "$source" --target "$target" --not-after "$not_after" --out "$out")
 }
 
 # assemble TRUST OUT PROOFS... builds the offline bundle an operator passes as
@@ -147,10 +153,50 @@ revoke() {
 	printf 'revoked; new trust tree: %s\n' "$final"
 }
 
-[ "$#" -ge 1 ] || fail 'usage: recovery-bridge.sh author|sign|reauthorize|assemble|revoke ...'
+# revocation_list KEY TRUST SEQUENCE OUT DIGEST... writes OUT/recovery-revocations.json
+# and its signature: the list the bridge guard fetches. It is bound to the pinned
+# trust root and signed by the recovery key. SEQUENCE must be the published
+# list's sequence plus one (1 for the first list); a client refuses anything
+# lower. Publish both files at the pinned endpoint.
+revocation_list() {
+	[ "$#" -ge 4 ] || fail 'usage: revocation-list KEY TRUST SEQUENCE OUT DIGEST...'
+	key=$1 trust=$2 sequence=$3 out=$4
+	shift 4
+	case "$sequence" in '' | *[!0-9]* | 0*) fail 'SEQUENCE must be a positive integer' ;; esac
+	[ ! -e "$out" ] || fail "$out already exists"
+	revoked=$(for digest in "$@"; do printf '%s\n' "$digest"; done | sort -u | jq -R . | jq -s .)
+	mkdir -p "$out"
+	jq -n --argjson sequence "$sequence" --arg root "$(sha256_of "$trust/root.json")" --argjson revoked "$revoked" \
+		'{schema: "hikyo.dev/recovery-revocations/v1", sequence: $sequence, trust_root_sha256: $root, revoked: ($revoked | map(select(. != "")))}' \
+		>"$out/recovery-revocations.json"
+	cosign_sign "$key" "$out/recovery-revocations.json" "$out/recovery-revocations.sigstore.json"
+	printf 'revocation list: %s\n' "$out"
+}
+
+# check_revocations TRUST STATE LIST_DIR|- DIGEST... runs the apply-time check with
+# the real checker against a published list directory ("-" means the endpoint is
+# unreachable) and prints which digests it revokes. STATE holds the remembered
+# list and sequence floor, as an installation's state directory does.
+check_revocations() {
+	[ "$#" -ge 3 ] || fail 'usage: check-revocations TRUST STATE LIST_DIR|- [DIGEST...]'
+	trust=$1 state=$2 list=$3
+	shift 3
+	recovery=$(jq -r '.recovery.public_key' "$trust/root.json")
+	scratch=$(mktemp -d)
+	trap 'rm -rf "$scratch"' EXIT
+	stage_trust "$trust" "$scratch"
+	if [ "$list" = - ]; then set -- --unreachable "$@"; else set -- --list "$list" "$@"; fi
+	(cd "$repo_root" && go run ./scripts/release/recovery-bridge check-revocations \
+		--root "$trust/root.json" --recovery-key "$trust/$recovery" \
+		--snapshot "$scratch/snapshot" --keys "$scratch/keys" --state "$state" "$@")
+}
+
+[ "$#" -ge 1 ] || fail 'usage: recovery-bridge.sh author|sign|reauthorize|assemble|revoke|revocation-list|check-revocations ...'
 command=$1
 shift
 case "$command" in
 author | assemble | sign | reauthorize | revoke) "$command" "$@" ;;
+revocation-list) revocation_list "$@" ;;
+check-revocations) check_revocations "$@" ;;
 *) fail "unknown command $command" ;;
 esac

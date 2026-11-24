@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -113,6 +114,14 @@ func (p Plan) RequiresOperatorAttestation() bool { return len(p.BridgeDigests())
 // PlanRoute chooses the fewest edges, breaking equal-length ties by ascending
 // release sequence. Current-snapshot identity is mandatory for cached nodes.
 func PlanRoute(snapshot releasetrust.Snapshot, source InstalledSource, target releaseidentity.Identity, nodes []VerifiedNode, bridges []releasetrust.VerifiedBridge) (Plan, error) {
+	return PlanRouteAt(snapshot, source, target, nodes, bridges, time.Now(), nil)
+}
+
+// PlanRouteAt is PlanRoute with an explicit clock and the bridge statements a
+// verified revocation list withdrew. An expired or revoked bridge still counts
+// toward the complete-inventory check but is never used as an edge, so the route
+// falls back to the ordinary graph or is refused as unauthenticated.
+func PlanRouteAt(snapshot releasetrust.Snapshot, source InstalledSource, target releaseidentity.Identity, nodes []VerifiedNode, bridges []releasetrust.VerifiedBridge, now time.Time, revoked []releaseidentity.Digest) (Plan, error) {
 	if !snapshot.Valid() || source.Identity.Validate() != nil || source.Migrations.Validate() != nil || target.Validate() != nil {
 		return Plan{}, errors.New("unverified snapshot or invalid source/target")
 	}
@@ -217,6 +226,9 @@ func PlanRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 			return Plan{}, errors.New("duplicate recovery bridge pair")
 		}
 		seenBridgePairs[pair] = true
+		if bridge.Expired(now) || slices.Contains(revoked, bridge.Digest()) {
+			continue
+		}
 		if statement.SourceMigrations.Engine != engine {
 			continue
 		}

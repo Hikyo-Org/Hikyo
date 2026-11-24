@@ -3,6 +3,7 @@ package releasetrust
 import (
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Masterminds/semver/v3"
@@ -20,6 +21,35 @@ type BridgeStatement struct {
 	SourceSchemaSHA256 releaseidentity.Digest            `json:"source_schema_sha256"`
 	TargetSchemaSHA256 releaseidentity.Digest            `json:"target_schema_sha256"`
 	Mode               string                            `json:"mode"`
+	// NotAfter is the canonical UTC instant (RFC 3339, "Z") after which a v2
+	// bridge is no longer usable. v1 statements carry none and never expire.
+	NotAfter string `json:"not_after,omitempty"`
+}
+
+// BridgeSchemaV2 adds a signed expiry to the recovery bridge.
+const BridgeSchemaV2 = "hikyo.dev/recovery-bridge/v2"
+
+// notAfter parses the canonical expiry; only the exact "Z" form is accepted so
+// the signed bytes have one spelling.
+func notAfter(value string) (time.Time, error) {
+	at, err := time.Parse(time.RFC3339, value)
+	if err != nil || at.UTC().Format(time.RFC3339) != value {
+		return time.Time{}, errors.New("recovery bridge not_after must be canonical UTC RFC 3339")
+	}
+	return at, nil
+}
+
+// Expired reports whether the bridge may no longer be used at now. A v1
+// statement has no expiry. The host clock is the only clock consulted.
+func (b VerifiedBridge) Expired(now time.Time) bool {
+	if b.state == nil {
+		return true
+	}
+	if b.state.statement.NotAfter == "" {
+		return false
+	}
+	at, err := notAfter(b.state.statement.NotAfter)
+	return err != nil || !now.Before(at)
 }
 
 // SourceIdentity preserves the inspected legacy genesis without inventing a
@@ -81,7 +111,15 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 		return VerifiedBridge{}, errors.New("invalid recovery bridge identity or mode")
 	}
 	switch statement.Schema {
-	case "hikyo.dev/recovery-bridge/v1":
+	case "hikyo.dev/recovery-bridge/v1", BridgeSchemaV2:
+		if (statement.Schema == BridgeSchemaV2) == (statement.NotAfter == "") {
+			return VerifiedBridge{}, errors.New("recovery bridge v2 requires not_after and v1 forbids it")
+		}
+		if statement.NotAfter != "" {
+			if _, err := notAfter(statement.NotAfter); err != nil {
+				return VerifiedBridge{}, err
+			}
+		}
 		if statement.SourceGenesis != "" || statement.Source.Validate() != nil || statement.Target.Sequence <= statement.Source.Sequence || statement.SourcePolicySHA256.Validate() != nil {
 			return VerifiedBridge{}, errors.New("invalid recovery bridge source")
 		}
@@ -93,7 +131,7 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 			}
 		}
 	case "hikyo.dev/legacy-nightly-bridge/v1":
-		if statement.SourceGenesis != releaseidentity.LegacyGenesisV1 || statement.Source != (releaseidentity.Identity{}) || statement.SourcePolicySHA256 != "" || statement.Target.Profile != releaseidentity.NightlyV1 || len(statement.SourceMigrations.Entries) == 0 {
+		if statement.NotAfter != "" || statement.SourceGenesis != releaseidentity.LegacyGenesisV1 || statement.Source != (releaseidentity.Identity{}) || statement.SourcePolicySHA256 != "" || statement.Target.Profile != releaseidentity.NightlyV1 || len(statement.SourceMigrations.Entries) == 0 {
 			return VerifiedBridge{}, errors.New("invalid legacy nightly bridge source or target")
 		}
 	default:

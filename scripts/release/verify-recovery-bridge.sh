@@ -4,6 +4,7 @@
 #   verify-recovery-bridge.sh unsigned   BASE_TRUST STATEMENTS SOURCE_PROOFS TARGET_PROOFS
 #   verify-recovery-bridge.sh proposal   BASE_TRUST NEW_TRUST  SOURCE_PROOFS TARGET_PROOFS
 #   verify-recovery-bridge.sh revocation PRIOR_TRUST NEW_TRUST DIGEST...
+#   verify-recovery-bridge.sh revocation-list TRUST LIST_DIR PRIOR_SEQUENCE
 #
 # BASE_TRUST is the committed trust tree before the ceremony, NEW_TRUST the
 # proposal. SOURCE_PROOFS and TARGET_PROOFS hold the published
@@ -22,11 +23,20 @@
 # applies the same tree, root, metadata and catalog integrity checks to a revoke
 # output against the tree it revoked from. This script shares no code with the Go
 # authoring tool and needs only jq, cosign and sha256. Any mismatch exits non-zero.
+#
+# Statements are v2 and carry a signed not_after. The verifier checks it is canonical
+# UTC, in the future and at most 30 days away at the verification time (VERIFY_NOW,
+# epoch seconds, defaults to the current time), and compares everything else to the
+# derivation. `revocation-list` checks a signed revocation list (LIST_DIR holds
+# recovery-revocations.json and recovery-revocations.sigstore.json): the recovery
+# signature, the binding to the root.json of TRUST, the schema, sorted unique digests
+# and a sequence of PRIOR_SEQUENCE plus one (0 when none was published).
 # shellcheck disable=SC2016,SC2086
 set -eu
 
 : "${COSIGN_BIN:=cosign}"
 failures=0
+now=${VERIFY_NOW:-$(date +%s)}
 fail() { printf 'FAIL %s\n' "$*"; failures=$((failures + 1)); }
 ok() { printf 'ok   %s\n' "$*"; }
 sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
@@ -37,7 +47,7 @@ check() { # DESCRIPTION COMMAND [ARGUMENT...]
 }
 equal() { [ "$1" = "$2" ]; }
 usage() {
-	printf 'usage: %s unsigned|proposal|revocation ... (see the header)\n' "$0" >&2
+	printf 'usage: %s unsigned|proposal|revocation|revocation-list ... (see the header)\n' "$0" >&2
 	exit 2
 }
 verify_blob() { "$COSIGN_BIN" verify-blob --insecure-ignore-tlog --key "$recovery_pub" --bundle "$2" "$1"; }
@@ -72,14 +82,15 @@ check_statement() {
 		--arg smd "$source_manifest" --arg tmd "$target_manifest" --arg policy "$policy_digest" --arg engine "$engine" '
 		def identity($c; $cd; $md): {profile: $c.profile, version: $c.version, sequence: $c.sequence, commit: $c.commit, compatibility_sha256: $cd, manifest_sha256: $md};
 		($sc[0].engines[] | select(.migrations.engine == $engine)) as $s | ($tc[0].engines[] | select(.migrations.engine == $engine)) as $t |
-		{schema: "hikyo.dev/recovery-bridge/v1",
+		{schema: "hikyo.dev/recovery-bridge/v2",
 		 source: identity($sc[0]; $sd; $smd), target: identity($tc[0]; $td; $tmd),
 		 source_policy_sha256: $policy, target_policy_sha256: $policy,
 		 source_migrations: $s.migrations, target_migrations: $t.migrations,
 		 source_schema_sha256: $s.schema_sha256, target_schema_sha256: $t.schema_sha256, mode: "maintenance"}' 2>/dev/null) || expected=
 	check "$digest ($engine): the statement has no duplicate keys" no_duplicate_keys "$statement"
 	check "$digest ($engine): the independent derivation produced a statement" test -n "$expected"
-	check "$digest ($engine): every field equals the independent derivation" equal "$(jq -S . "$statement")" "$expected"
+	check "$digest ($engine): every field but not_after equals the independent derivation" equal "$(jq -S 'del(.not_after)' "$statement")" "$expected"
+	check "$digest ($engine): not_after is canonical UTC, in the future and at most 30 days out" jq -e --argjson now "$now" '.not_after | (type == "string") and ((fromdateiso8601 | todate) == .) and (fromdateiso8601 > $now) and (fromdateiso8601 <= $now + 2592000)' "$statement"
 	check "$digest ($engine): source migrations are a strict prefix of the target's" jq -e '(.source_migrations.entries | length) < (.target_migrations.entries | length) and (.target_migrations.entries[:(.source_migrations.entries | length)] == .source_migrations.entries)' "$statement"
 	check "$digest ($engine): target is a newer stable release" jq -e '.target.sequence > .source.sequence and .source.profile == "stable/v1" and .target.profile == "stable/v1"' "$statement"
 }
@@ -231,6 +242,18 @@ revocation)
 	for digest in "$@"; do
 		check "$digest: its files are gone" test ! -e "$new/bridges/$digest"
 	done
+	finish
+	;;
+revocation-list)
+	[ "$#" -eq 3 ] || usage
+	trust=$1 list=$2/recovery-revocations.json prior=$3
+	recovery_pub="$trust/$(jq -r '.recovery.public_key' "$trust/root.json")"
+	check 'the list has no duplicate keys' no_duplicate_keys "$list"
+	check 'the list signature verifies with the pinned recovery key' verify_blob "$list" "$2/recovery-revocations.sigstore.json"
+	check 'the list has exactly the schema, sequence, trust_root_sha256 and revoked fields' jq -e '(keys == ["revoked", "schema", "sequence", "trust_root_sha256"]) and .schema == "hikyo.dev/recovery-revocations/v1"' "$list"
+	check 'the list is bound to the pinned trust root' equal "$(jq -r '.trust_root_sha256' "$list")" "$(sha256_of "$trust/root.json")"
+	check 'the list sequence is the prior sequence plus one' equal "$(jq '.sequence' "$list")" "$((prior + 1))"
+	check 'revoked digests are sorted, unique, 64 hex characters and at most 256' jq -e '(.revoked | length <= 256) and (.revoked == (.revoked | unique)) and all(.revoked[]; test("^[0-9a-f]{64}$"))' "$list"
 	finish
 	;;
 *) usage ;;
