@@ -207,8 +207,10 @@ operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
    the printed list contains only the hybrid names.
    Before editing, save copies of every sshd configuration file you will
    change (the main file and any drop-ins), and note any drop-in you create,
-   so the previous configuration can be restored. Before reloading, open a
-   session and keep it open. Reload, then test a fresh login
+   so the previous configuration can be restored. If `sshd -t` or `sshd -T`
+   fails, or the list shows any other name, do not reload: restore the saved
+   copies, remove any drop-in you created, and validate again. Before
+   reloading, open a session and keep it open. Reload, then test a fresh login
    (`ssh -o ControlPath=none ...`). If that login fails, restore the saved
    copies, remove any drop-in you created, and reload from the kept session.
 4. Expected result: a client offering only classical algorithms (for example
@@ -230,10 +232,17 @@ either run a test sshd on another port with the hybrid-only line and have those
 clients connect to it, or temporarily raise `LogLevel` to `DEBUG2` (the level
 that records the proposal; `INFO` and `VERBOSE` should not be relied on). Run
 the test sshd in the foreground by absolute path, for example
-`/usr/sbin/sshd -D -f TESTFILE -p PORT`, and stop it when done. Give `TESTFILE` its own
-`ListenAddress` and port (a `ListenAddress` with a port overrides `-p`) and
-`PidFile none` (or its own path), so it neither collides with the production
-listener nor overwrites the production PID file that reloads signal.
+`/usr/sbin/sshd -D -f TESTFILE -p PORT`, and stop it when done. Give
+`TESTFILE` its own `ListenAddress` and port (a `ListenAddress` with a port
+overrides `-p`) and `PidFile none` (or its own path), so it neither collides
+with the production listener nor overwrites the production PID file that
+reloads signal. Before any client connects, check the test daemon's effective
+list with the same `-f` and `-o` arguments it starts with:
+`sshd -T -f TESTFILE [-o ...] | grep -i '^kexalgorithms'`. sshd uses the first
+value it reads for each keyword, so an earlier `KexAlgorithms` line or an
+`Include` in `TESTFILE` would override the hybrid-only line and let a
+classical-only client look compatible. Only the hybrid names may appear;
+otherwise remove that earlier line or `Include` and check again.
 sshd_config(5) says logging at a `DEBUG` level violates users' privacy and is
 not recommended, and it is high-volume, so keep it short, restrict log access,
 and restore the level.
