@@ -34,6 +34,12 @@ printf 'package common\n' >second/common/fixture.go
 printf 'export const fixture = true;\n' >web/fixture.ts
 printf 'export const fixture = true;\n' >clients/ts/fixture.ts
 commit_fixture
+# The static suites need the real repository and would overwrite the controlled go.command;
+# this fixture only supervises the compile and frontend commands below.
+mkdir -p "$work/tools/scripts/ci"
+cp "$script_dir/feedback-plan.sh" "$work/tools/scripts/ci/"
+printf '#!/usr/bin/env bash\n' >"$work/tools/scripts/ci/static-invariants.sh"
+export FAST_FEEDBACK_TOOLS_DIR="$work/tools/scripts/ci"
 FIXTURE_REAL_GO=$(command -v go)
 export FIXTURE_REAL_GO FIXTURE_WORK=$work
 cat >"$work/bin/go" <<'STUB'

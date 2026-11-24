@@ -50,7 +50,7 @@ plan() {
 		"release-admission": ["python", "releaseDependencies"],
 		"go-format": ["go"], "go-mod-verify": ["go"], "go-compile": ["go"], "desktop-compile": ["go"],
 		"shellcheck": ["shellcheck"], "actionlint": ["go", "shellcheck"],
-		"docs": ["node"],
+		"docs": ["node"], "static-invariants": ["go"],
 		"client-typecheck": ["clientDependencies", "node", "pnpm", "jq"],
 		"client-test": ["clientDependencies", "node", "pnpm", "jq"],
 		"web-typecheck": ["clientDependencies", "webDependencies", "node", "pnpm", "jq"],
@@ -62,17 +62,17 @@ expect() { "$real_jq" -e "$1" "$work/plan" >/dev/null || { cat "$work/plan" >&2;
 plan all
 expect '([del(.lanes)[]] | all(. == false)) and all(.lanes[]; .checks == [])'
 plan all app/owner.go
-expect '.go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"] and .lanes.tooling.checks == [] and .lanes.go.prerequisites.go'
+expect '.go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"] and (.lanes.tooling.checks | map(.id)) == ["static-invariants"] and .lanes.go.prerequisites.go'
 plan application scripts/tool/owner.go
-expect '.go == false and .lanes.go.checks == [] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile"]'
+expect '.go == false and .lanes.go.checks == [] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "static-invariants"]'
 plan tooling app/owner.go
-expect '.go == false and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"] and .lanes.tooling.checks == []'
+expect '.go == false and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"] and (.lanes.tooling.checks | map(.id)) == ["static-invariants"]'
 plan application scripts/owner.go
-expect '.go == false and .lanes.go.checks == [] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile"]'
+expect '.go == false and .lanes.go.checks == [] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "static-invariants"]'
 feedback_plan_select go tooling
 [ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./scripts ]
 plan tooling go.mod
-expect '.go and .lanes.tooling.checks == [] and (.lanes.go.checks | map(.id)) == ["go-mod-verify"]'
+expect '.go and (.lanes.tooling.checks | map(.id)) == ["static-invariants"] and (.lanes.go.checks | map(.id)) == ["go-mod-verify"]'
 plan all .github/workflows/check.yml
 expect '.workflows and (.lanes.tooling.checks | map(.id)) == ["actionlint"] and .lanes.tooling.prerequisites.go and .lanes.tooling.prerequisites.shellcheck and (.lanes.go.prerequisites.go | not)'
 plan all CONTRIBUTING.md
@@ -84,7 +84,7 @@ expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and .docs and (.lanes.t
 plan all internal/config/variables.go
 expect '(.lanes.go.checks | map(.id)) == ["go-format", "go-compile", "docs-impact"]'
 plan tooling internal/cli/testdata/help.txt scripts/owner.go
-expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "docs"]'
+expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "docs", "static-invariants"]'
 plan all api/openapi.yaml
 # desktop/ does not exist yet on this tree (main, dev before the shell lands): even
 # root packages the module imports select no desktop check.
@@ -99,7 +99,7 @@ expect '.auditCollector and .releaseAdmission and (.lanes.tooling.checks | map(.
 plan all app/owner.go scripts/tool/owner.go "scripts/tool/line
 break.go" go.sum '-space name.sh' "line
 break.sh" .github/workflows/check.yml scripts/ci/release-admission/run_checks.py docs/site/a.md clients/ts/a.ts docs/operations/audit-collector.md desktop/probes/driven/main.go
-expect 'all(del(.lanes)[]; . == true) and (.lanes.go.checks | map(.id)) == ["go-format", "go-mod-verify", "go-compile", "desktop-compile"] and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission", "go-format", "go-compile", "shellcheck", "actionlint", "docs"]'
+expect 'all(del(.lanes)[]; . == true) and (.lanes.go.checks | map(.id)) == ["go-format", "go-mod-verify", "go-compile", "desktop-compile"] and (.lanes.tooling.checks | map(.id)) == ["audit-collector", "release-admission", "go-format", "go-compile", "shellcheck", "actionlint", "docs", "static-invariants"]'
 feedback_plan_select go tooling
 [ "${#go_files[@]}" -eq 2 ] && [ "${#go_packages[@]}" -eq 1 ] && [ "${#shell_files[@]}" -eq 2 ]
 [ "${go_files[1]}" = "./scripts/tool/line
@@ -151,6 +151,22 @@ plan all desktop/main_darwin.go
 expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
 plan all desktop/internal/shell/shellroutes.go
 expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
+# The static registry and lint suites read Go sources and the store and lint-fixture inputs
+# ci-invariants.yml lists. They run on the tooling runner only, so the application lane's
+# critical path never carries them, and they never select on unrelated paths.
+plan all internal/store/migrations/0001_init.sql
+expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"] and .lanes.tooling.prerequisites.go and .lanes.go.checks == []'
+plan all internal/lint/testdata/fixture/want.txt
+expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"] and .lanes.go.checks == []'
+plan all removed/final.go
+expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"]'
+plan all go.sum
+expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"] and (.lanes.go.checks | map(.id)) == ["go-mod-verify"]'
+plan all README.md docs/guide.md internal/cli/testdata/help.txt web/file.ts
+expect '(.lanes.tooling.checks | map(.id) | index("static-invariants")) == null and (.lanes.go.checks | map(.id) | index("static-invariants")) == null'
+plan application app/owner.go
+feedback_plan_select go application
+[ "${#feedback_checks[@]}" -eq 2 ] && [ "${feedback_checks[1]}" = go-compile ]
 # Unknown declarative identifiers must never become silent successful no-ops.
 if (feedback_check_prerequisites unknown) >"$work/output" 2>&1; then fail 'accepted unknown check'; fi
 if (feedback_plan_hosted_lane unknown) >"$work/output" 2>&1; then fail 'accepted unknown hosted lane'; fi

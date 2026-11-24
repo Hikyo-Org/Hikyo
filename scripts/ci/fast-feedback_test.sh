@@ -37,6 +37,30 @@ cat >scripts/ci/source-fixture.sh <<'EOF'
 fixture_message() { printf 'source fixture reached\n'; }
 fixture_invalid() {
 EOF
+# The packages static-invariants.sh runs. Its selection is exact: every TestInvariant*
+# in isolation and TestVetDriverRepo's default context run; a test outside those
+# (a database suite, another vet context) must stay unselected.
+mkdir -p internal/boundary internal/isolation internal/lint
+printf 'package boundary\n\nimport "testing"\n\nfunc TestBoundary(t *testing.T) {}\n' >internal/boundary/boundary_test.go
+cat >internal/isolation/invariants_test.go <<'EOF'
+package isolation
+
+import "testing"
+
+func TestInvariant01Fixture(t *testing.T) {}
+
+func TestDatabaseSuiteFixture(t *testing.T) { t.Fatal("database suites must not run in feedback") }
+EOF
+cat >internal/lint/vetdriver_test.go <<'EOF'
+package lint
+
+import "testing"
+
+func TestVetDriverRepo(t *testing.T) {
+	t.Run("default", func(t *testing.T) {})
+	t.Run("windows", func(t *testing.T) { t.Fatal("only the default context runs in feedback") })
+}
+EOF
 commit_fixture
 base=$(git rev-parse HEAD)
 export FAST_FEEDBACK_BASE="$base"
@@ -97,6 +121,14 @@ gofmt -w 'space name.go'
 commit_fixture
 run_feedback
 grep -F 'Go formatting passed (1 files)' "$work/output" >/dev/null
+# A Go change also runs the static invariants, and a failing one fails feedback.
+grep -F 'static-invariants.sh' "$work/output" >/dev/null
+printf 'package isolation\n\nimport "testing"\n\nfunc TestInvariant01Fixture(t *testing.T) { t.Fatal("static invariant broken") }\n' >internal/isolation/invariants_test.go
+commit_fixture
+refuse 'static invariant broken'
+printf 'package isolation\n\nimport "testing"\n\nfunc TestInvariant01Fixture(t *testing.T) {}\n\nfunc TestDatabaseSuiteFixture(t *testing.T) { t.Fatal("database suites must not run in feedback") }\n' >internal/isolation/invariants_test.go
+commit_fixture
+run_feedback
 
 cat >compile_test.go <<'EOF'
 package fixture

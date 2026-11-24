@@ -29,7 +29,7 @@ feedback_plan_build() {
 	local path package existing duplicate
 	local remaining_go=()
 	web=false client=false workflows=false docs=false all_go=false
-	release_admission=false audit_collector=false docs_impact=false desktop=false
+	release_admission=false audit_collector=false docs_impact=false desktop=false static_invariants=false
 	feedback_go_files=() feedback_go_packages=() shell_files=()
 	while IFS= read -r -d '' path; do
 		case "$path" in
@@ -48,6 +48,12 @@ feedback_plan_build() {
 		case "$path" in
 			internal/cli/testdata/help.txt | api/openapi.yaml | internal/config/variables.go) docs_impact=true ;;
 			desktop/main_darwin.go | desktop/internal/shell/shellroutes.go) docs_impact=true ;;
+		esac
+		# The static suites read Go sources and the store/lint-fixture inputs ci-invariants.yml
+		# lists. desktop/ is a nested module they never load.
+		case "$path" in
+			desktop/*) ;;
+			*.go | go.mod | go.sum | internal/store/* | internal/lint/testdata/*) static_invariants=true ;;
 		esac
 		case "$path" in
 			web/*) web=true ;;
@@ -114,6 +120,9 @@ feedback_plan_select() {
 				if [ "${#shell_files[@]}" -gt 0 ]; then feedback_checks+=(shellcheck); fi
 				if [ "$workflows" = true ]; then feedback_checks+=(actionlint); fi
 				if [ "$docs" = true ]; then feedback_checks+=(docs); fi
+				# Last, so the cheap checks report first. It rides the tooling runner, which the
+				# application lane's compile never waits for: the lane's critical path is unchanged.
+				if [ "$static_invariants" = true ]; then feedback_checks+=(static-invariants); fi
 			fi
 			;;
 		frontend)
@@ -139,6 +148,7 @@ feedback_check_prerequisites() {
 		shellcheck) feedback_check_needs=(shellcheck) ;;
 		actionlint) feedback_check_needs=(go shellcheck) ;;
 		docs) feedback_check_needs=(node) ;;
+		static-invariants) feedback_check_needs=(go) ;;
 		client-typecheck | client-test) feedback_check_needs=(clientDependencies node pnpm jq) ;;
 		web-typecheck | web-lint | web-test) feedback_check_needs=(clientDependencies webDependencies node pnpm jq) ;;
 		*) fail "unknown feedback check: $1" ;;

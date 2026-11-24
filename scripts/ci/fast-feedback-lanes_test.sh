@@ -122,6 +122,13 @@ printf 'actionlint\n' >>"$FIXTURE_WORK/commands"
 printf 'actionlint\n' >>"$FIXTURE_WORK/checks"
 [ "${FIXTURE_FAILURE:-}" != actionlint ] || exit 37
 STUB
+# The static suites need the real repository; the fixture only proves selection and ordering.
+cat >"$work/tools/scripts/ci/static-invariants.sh" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+printf 'static-invariants\n' >>"$FIXTURE_WORK/commands"
+printf 'static-invariants\n' >>"$FIXTURE_WORK/checks"
+STUB
 chmod +x "$work/bin/"* "$work/tools/scripts/ci/run-go-tool.sh"
 export PATH="$work/bin:$PATH" FAST_FEEDBACK_TOOLS_DIR="$work/tools/scripts/ci"
 run_lane() {
@@ -141,7 +148,7 @@ FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=go >"$work/go"
 FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=frontend >"$work/frontend"
 cat "$work/go" "$work/frontend" | sort >"$work/union"
 cmp "$work/all" "$work/union"
-diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' 'shellcheck' | sort) "$work/go"
+diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' 'shellcheck' 'static-invariants' | sort) "$work/go"
 diff -u <(printf '%s\n' 'pnpm --dir clients/ts run typecheck' 'pnpm --dir clients/ts run test' 'pnpm --dir web run typecheck' 'pnpm --dir web run lint' 'pnpm --dir web run test' | sort) "$work/frontend"
 # The hosted Go scopes partition package owners and read-only tooling. Local
 # unscoped Go feedback retains its complete single build graph.
@@ -157,7 +164,8 @@ assert_planned_checks tooling
 run_lane --lane=frontend >"$work/frontend"
 assert_planned_checks frontend
 diff -u <(printf '%s\n' 'go mod verify' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' | sort) "$work/application"
-diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' | sort) "$work/tooling"
+! grep -F static-invariants "$work/application"
+diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' 'static-invariants' | sort) "$work/tooling"
 compile_prefix='go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null '
 sed -n "s|^$compile_prefix||p" "$work/scope-all" | tr ' ' '\n' | sort >"$work/all-owners"
 cat "$work/application" "$work/tooling" | sed -n "s|^$compile_prefix||p" | tr ' ' '\n' | sort >"$work/split-owners"
