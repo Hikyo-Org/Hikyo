@@ -289,7 +289,7 @@ Tightening a lifetime ceiling enumerates affected credentials before clamping (l
 3. Metrics: registered families ≤ 1 000 series budget; forbidden label keys (`key`, `principal`, `credential`, `env`, `org`, `project`, or values thereof) fail the build.
 4. Air-gap: server boots and serves with outbound network denied.
 5. JSON-Schema-Test-Suite subset (exactly the § 8 allowlist) passes against the pinned library version.
-6. Postgres durability boot checks (`fsync=on`, `synchronous_commit=on`) and sqlite pragmas (`synchronous=FULL`) — restates #24/#22; values live in those ADRs, presence of the check is asserted here.
+6. Postgres durability boot checks (`fsync=on`, `synchronous_commit=on`) and sqlite pragmas (`synchronous=FULL`) — restates #24/#22; values live in those ADRs, presence of the check is asserted here. Dated note (2026-11-24, #1552): the minimum supported PostgreSQL is 18; every PostgreSQL session reads `server_version_num` and refuses a server below 180000 before migrate, serve, restore or any write.
 7. Keyword allowlist in code matches the § 8 enumeration (single source, generated or diffed).
 8. `run --` preflight covers the composite `_SC_ARG_MAX` bound (unit-tested against a synthetic near-limit environment).
 

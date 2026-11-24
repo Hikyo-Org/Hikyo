@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -233,12 +234,36 @@ func open(cfg Config, readonly bool) (*sql.DB, error) {
 	return db, nil
 }
 
-// SetPostgresSessionTimeouts makes the server drop this session within about 90 seconds once its
+// MinPostgresVersionNum is the oldest supported server, PostgreSQL 18 (owner decision 2026-11-24).
+const MinPostgresVersionNum = 180000
+
+// CheckPostgresVersion refuses a server whose server_version_num is below PostgreSQL 18, and an
+// unparsable value, so an unsupported server fails closed before any migration or write.
+func CheckPostgresVersion(versionNum string) error {
+	n, err := strconv.Atoi(versionNum)
+	if err != nil {
+		return fmt.Errorf("upgrade: postgres server_version_num %q is not a number; PostgreSQL 18 or later is required", versionNum)
+	}
+	if n < MinPostgresVersionNum {
+		return fmt.Errorf("upgrade: unsupported PostgreSQL server version %d.%d (server_version_num %d); Hikyo requires PostgreSQL 18 or later (server_version_num %d)",
+			n/10000, n%10000, n, MinPostgresVersionNum)
+	}
+	return nil
+}
+
+// SetPostgresSessionTimeouts first refuses an unsupported server, then makes the server drop this session within about 90 seconds once its
 // client vanishes without closing it, such as a deleted Pod. Otherwise the session holds off a
 // rollback, which refuses while another session is connected, for up to two hours. It runs
 // set_config after connecting rather than sending startup parameters, which poolers such as
 // PgBouncer refuse.
 func SetPostgresSessionTimeouts(ctx context.Context, conn *pgx.Conn) error {
+	var versionNum string
+	if err := conn.QueryRow(ctx, "SHOW server_version_num").Scan(&versionNum); err != nil {
+		return fmt.Errorf("upgrade: read postgres server_version_num: %w", err)
+	}
+	if err := CheckPostgresVersion(versionNum); err != nil {
+		return err
+	}
 	_, err := conn.Exec(ctx, `SELECT set_config('tcp_user_timeout', '30000', false),
 		set_config('tcp_keepalives_idle', '60', false), set_config('tcp_keepalives_interval', '10', false),
 		set_config('tcp_keepalives_count', '3', false)`)

@@ -2124,8 +2124,11 @@
       "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions."
     },
     "internal/store/upgrade/lock.go:SetPostgresSessionTimeouts": {
-      "hash": "9bac4740ed23105dec2790695dd89da8047186adca6e02eeb7c4dd0d704f1e2a",
-      "reason": "Session keepalive protocol sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads and writes no data."
+      "hash": "d67068d61635247564bd36fd2a8116bc1ad47288cf278e29874129e8ab37afce",
+      "reason": "Session keepalive protocol sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads and writes no data.",
+      "dependencies": [
+        "internal/store/upgrade/lock.go:CheckPostgresVersion"
+      ]
     },
     "internal/store/upgrade/lock.go:WithLock": {
       "hash": "c26d7dd4d4d3d7902ea061bdfec33038d5f9def003c5baed9e018ed59cdf39a6",
@@ -3104,7 +3107,7 @@
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bindSQLite": "d34e6f251c6c47cb1e7a6ef0726410bfb6351750b192b4ff548734d8210e9e68",
     "internal/store/backup_upgrade_restore.go:matchRestoredUpgradeSnapshot": "16e2035cd4726f22ba1fef62a6e7e2009af6a7090e882bbd162cd7acec9d7600",
     "internal/store/backup_upgrade_restore.go:matchUpgradePlan": "8088976d6e852ff94c31e03a7fdfff307b484cf42d4f1b8c882f5b557ce62926",
-    "internal/store/migrate/migrate.go:withProvider": "36eef91b430bcd394ca77794628027a2090b731650cd12da29a638960c6f3fd5",
+    "internal/store/migrate/migrate.go:withProvider": "2dc4688534cece20da242e2e7d476aef9ccf99e8f8360b5ce54eacc23d15648a",
     "internal/store/preparation.go:upgradeConfig": "5839d281290ead85c6b9dda89de1b38c052469b17333c1627f56b5385188eb8e",
     "internal/store/recovery.go:RecoveryDB.Engine": "3ce2266b37a91e0c33fab6bcf52e6ec1ccb042f138d575c6c9ebf41c44bc5c81",
     "internal/store/sqlitegen/snapshot_statements.go:SnapshotInsertSlot": "cc921f9eff01a60fedb875f0a219b9ce511f5d8a4ad706a3723e7fb4649a582c",
@@ -3143,6 +3146,7 @@
     "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
     "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
     "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+    "internal/store/upgrade/lock.go:CheckPostgresVersion": "6476012f8e0112c8448b7ef01ea3e1b3f5363f08a8fd4197639f1df8a0785caa",
     "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
     "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
     "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
