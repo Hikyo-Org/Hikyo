@@ -159,28 +159,67 @@ func TestServiceAccountMintWithoutABrowserNamesTheMachineAccessPage(t *testing.T
 }
 
 // `access grant add --capability reveal` has no CLI handoff, so where no code
-// can be typed the refusal names the Machine access page, not a reveal.
-func TestAccessGrantRevealWithoutAWindowNamesTheMachineAccessPage(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, Protected: true})
-		case r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(`{"error":{"code":"conflict","message":"the current state of this resource refuses the request",` +
-				`"detail":"reauthenticate over the environments this operation makes reachable, then retry (env_70)"}}`))
-		default:
-			http.NotFound(w, r)
-		}
-	})
-	ios, _, stderr := definitionsTestIO(t, handler)
-	args := []string{"access", "grant", "add", "--principal", "mch_1", "--capability", "reveal",
-		"--instance", "local", "--org", "org_70", "--project", "prj_70", "--env", "env_70"}
-	if code := cli.Run(t.Context(), ios, args); code != cli.ExitAuth {
-		t.Fatalf("exit %d, want auth; stderr=%s", code, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "machine reveal grant over env_70") || !strings.Contains(stderr.String(), "Machine access page") {
-		t.Errorf("the refusal does not name the grant's browser path: %s", stderr.String())
+// can be typed the widening refusal names the Machine access page, not a
+// reveal, with the one remedy that can open a window there. Any other refusal,
+// such as a missing grant's 403, is the server's answer: no ceremony.
+func TestAccessGrantRevealRoutesOnlyTheWideningRefusal(t *testing.T) {
+	const widening = `{"error":{"code":"conflict","message":"the current state of this resource refuses the request",` +
+		`"detail":"reauthenticate over the environments this operation makes reachable, then retry (env_70)"}}`
+	const denied = `{"error":{"code":"forbidden","message":"not permitted"}}`
+	for _, tc := range []struct {
+		name   string
+		window apigen.RevealWindow
+		status int
+		body   string
+		exit   int
+		want   []string
+		lacks  []string
+	}{
+		{"protected", apigen.RevealWindow{CanReveal: true, Protected: true}, http.StatusConflict, widening, cli.ExitAuth,
+			[]string{"machine reveal grant over env_70", "Machine access page", "no handoff for grants"}, []string{"reauth-window-seconds"}},
+		{"zero_window", apigen.RevealWindow{CanReveal: false}, http.StatusConflict, widening, cli.ExitAuth,
+			[]string{"machine reveal grant over env_70", "--reauth-window-seconds 300"}, nil},
+		{"not_permitted", apigen.RevealWindow{CanReveal: true, Protected: true}, http.StatusForbidden, denied, cli.ExitRefused,
+			[]string{"not permitted"}, []string{"machine reveal grant", "reauthentication window"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			windowRead := false
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/reveal-window"):
+					windowRead = true
+					_ = jsonwire.Encode(w, tc.window)
+				case r.Method == http.MethodPost:
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+				default:
+					http.NotFound(w, r)
+				}
+			})
+			ios, _, stderr := definitionsTestIO(t, handler)
+			ios.ReadPassword = func(string) (string, error) {
+				t.Fatal("a grant with no usable window must not prompt for a code")
+				return "", nil
+			}
+			args := []string{"access", "grant", "add", "--principal", "mch_1", "--capability", "reveal",
+				"--instance", "local", "--org", "org_70", "--project", "prj_70", "--env", "env_70"}
+			if code := cli.Run(t.Context(), ios, args); code != tc.exit {
+				t.Fatalf("exit %d, want %d; stderr=%s", code, tc.exit, stderr.String())
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("refusal lacks %q: %s", want, stderr.String())
+				}
+			}
+			for _, lack := range tc.lacks {
+				if strings.Contains(stderr.String(), lack) {
+					t.Errorf("refusal says %q, which does not apply: %s", lack, stderr.String())
+				}
+			}
+			if tc.status == http.StatusForbidden && windowRead {
+				t.Error("a refusal that is not the widening's read the reveal window")
+			}
+		})
 	}
 }

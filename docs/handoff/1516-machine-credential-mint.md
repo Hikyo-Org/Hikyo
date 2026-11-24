@@ -30,10 +30,16 @@ Status: **pull request open against `dev`, not merged.** Closes
   The mint's ceremony is `authorized`: the server's mint check accepts
   `reveal-history` for history-only reach, so the CLI's `can_reveal` (read and
   current reveal) does not veto it.
+  The ceremony itself still needs `read` over the environment (the window
+  read and the handoff start), so a minter holding `reveal-history` without
+  `read` gets the server's 403; the built-in maintainer role includes `read`.
+- **`access grant` refusals.** The grant enters its ceremony only on the
+  server's widening refusal (`withWideningCeremony`); a missing grant's 403 is
+  returned unchanged instead of advice about a window.
 - **Server.** `internal/service/cli_reauth.go` admits purpose `mint`, which is not
   key-bound (its unit is the environment). Starting it needs `read` over the
-  environment, as reveal does; the mint itself re-checks reveal and
-  identity-management authority.
+  environment, as reveal does; the mint itself re-checks disclosure
+  authority (reveal or reveal-history per reach) and manage-identities.
 - **Migration 00097** (Postgres and SQLite) admits `mint` rows with an empty key
   set. It also fixes a pre-existing bug: since 00074 the checks refused publish,
   approve, reject and bypass handoff rows. `cli_reauth_schema_test.go` now derives

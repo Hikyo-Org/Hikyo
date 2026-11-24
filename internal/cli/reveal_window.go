@@ -106,7 +106,7 @@ func totpPromptSubject(purpose, env string) string {
 	switch purpose {
 	case "mint":
 		return fmt.Sprintf("Minting a credential over %s", env)
-	case "":
+	case "", "grant":
 		return fmt.Sprintf("Widening machine reveal access over %s", env)
 	case "access":
 		return fmt.Sprintf("Emergency access in %s", env)
@@ -204,13 +204,13 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 			}
 			return failf(ExitAuth, "a rule change that widens a machine in %s needs a reauthentication window and %s; %s, then retry", env, why, remedy)
 		}
-		if d.purpose == "" {
+		if d.purpose == "grant" {
 			// A machine reveal grant (`access grant`) has no CLI handoff: its
 			// ceremony runs on the browser's Machine access page.
 			return failf(ExitAuth, "a machine reveal grant over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
-				"which this invocation cannot open; make the grant in the browser's Machine access page%s", env, why, orRemedy(remedy))
+				"and the CLI has no handoff for grants; make the grant in the browser's Machine access page%s", env, why, orRemedy(remedy))
 		}
-		if d.keys == nil || ios.OpenURL == nil {
+		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			if d.purpose == "publish" {
 				return failf(ExitAuth, "a publish in %s needs a reauthentication ceremony and %s: the ceremony is the browser's, "+
 					"which this invocation cannot open; complete the publish in the browser", env, why)
