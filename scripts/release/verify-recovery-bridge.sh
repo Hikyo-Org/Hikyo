@@ -77,6 +77,7 @@ check_statement() {
 		 source_policy_sha256: $policy, target_policy_sha256: $policy,
 		 source_migrations: $s.migrations, target_migrations: $t.migrations,
 		 source_schema_sha256: $s.schema_sha256, target_schema_sha256: $t.schema_sha256, mode: "maintenance"}' 2>/dev/null) || expected=
+	check "$digest ($engine): the statement has no duplicate keys" no_duplicate_keys "$statement"
 	check "$digest ($engine): the independent derivation produced a statement" test -n "$expected"
 	check "$digest ($engine): every field equals the independent derivation" equal "$(jq -S . "$statement")" "$expected"
 	check "$digest ($engine): source migrations are a strict prefix of the target's" jq -e '(.source_migrations.entries | length) < (.target_migrations.entries | length) and (.target_migrations.entries[:(.source_migrations.entries | length)] == .source_migrations.entries)' "$statement"
@@ -94,6 +95,13 @@ check_authorized() {
 	check "metadata authorizes the source manifest ($source_version)" equal "$(jq -r --arg v "$source_version" --arg d "$source_manifest" '[.releases[] | select(.version == $v and .manifest_sha256 == $d)] | length' "$1")" 1
 	check "metadata authorizes the target manifest ($target_version)" equal "$(jq -r --arg v "$target_version" --arg d "$target_manifest" '[.releases[] | select(.version == $v and .manifest_sha256 == $d)] | length' "$1")" 1
 }
+
+# Tree hygiene helpers. find is run so that any error is visible to the caller.
+bad_names() { (cd "$1" && find . -name '*[!A-Za-z0-9._-]*'); }
+readable() { (cd "$1" && find . >/dev/null); }
+empty_dirs() { (cd "$1" && find . -mindepth 1 -type d -empty); }
+# no_duplicate_keys FILE: jq keeps the last of two equal keys, the runtime refuses both.
+no_duplicate_keys() { [ -z "$(jq -c --stream 'select(length == 2) | .[0]' "$1" | sort | uniq -d)" ]; }
 
 # unexpected_files BASE NEW ADDED lists changed or new files that no recovery
 # re-authorization may touch (everything but metadata, catalog and added bridges).
@@ -132,6 +140,11 @@ dropped_files() {
 check_chain() {
 	base=$1 new=$2 added=$3 removed=$4
 	recovery_pub="$new/$(jq -r '.recovery.public_key' "$new/root.json")"
+	check 'every path in the new tree is readable' readable "$new"
+	check 'every path in the new tree has a plain name (letters, digits, dot, dash, underscore)' equal "$(bad_names "$new")" ''
+	check 'the new tree has no empty directories' equal "$(empty_dirs "$new")" ''
+	check 'metadata has no duplicate keys' no_duplicate_keys "$new/metadata.json"
+	check 'catalog has no duplicate keys' no_duplicate_keys "$new/catalog.json"
 	unexpected=$(unexpected_files "$base" "$new" "$added")
 	dropped=$(dropped_files "$base" "$new" "$removed")
 	check 'only metadata, catalog, their signatures and the two files of each added bridge changed' equal "$unexpected" ''

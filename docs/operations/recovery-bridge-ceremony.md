@@ -149,14 +149,21 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
    (`$WORK/rel-1.0.0`, `$WORK/rel-1.1.0`, downloaded again independently):
 
    ```sh
-   git fetch origin dev && git worktree add "$WORK/base" origin/dev
+   git fetch origin dev <proposal-branch>
+   git worktree add "$WORK/base" "$(git merge-base origin/dev origin/<proposal-branch>)"
    git checkout <proposal-branch>
    scripts/release/verify-recovery-bridge.sh proposal "$WORK/base/release/trust" release/trust "$WORK/rel-1.0.0" "$WORK/rel-1.1.0"
    ```
 
-   The verifier is the merge gate for that pull request.
+   The base is the proposal's merge base with `dev`, not the moving tip of `dev`,
+   so the check stays valid after `dev` advances. The verifier is the merge gate
+   for that pull request; it refuses any file outside the four metadata and
+   catalog files and the new bridge directories (two files each), any symlink,
+   unreadable or empty directory, unusual file name or duplicate JSON key. Do not
+   add `BRIDGES.md` or any other file to the trust pull request; if a record there
+   must change, do it in a separate pull request after the trust one merges.
 
-## Ceremony log (fill in; commit the public part with the pull request)
+## Ceremony log (fill in; attach the public part to #1560, or commit it in a separate docs-only pull request, never in the trust pull request)
 
 ```text
 date/time (UTC):            location:
@@ -205,9 +212,12 @@ scripts/release/recovery-bridge-rehearsal.sh [PROOFS_DIR]
 It generates a throwaway key and re-roots a copy of the committed trust tree
 under it, runs steps 2 to 7 plus revocation against the real published
 v1.0.0 and v1.1.0 proofs (authenticated by their own Sigstore signatures, never
-re-signed), and checks that the verifier refuses seven tamperings: an edited
-statement, a wrong schema digest, a missing bridge, an unsigned catalog change,
-a policy edited to list a bridge, a statement signed by another key, and a
+re-signed), and checks that the verifier refuses each tampering by the check that targets
+it: statements edited, mis-derived, missing, unsigned or signed by another key;
+a policy edited to list a bridge; validly signed metadata or catalog edits, skipped
+sequences, dropped base files, swapped recovery keys; symlinks, extra files or empty
+directories, unusual file names, unreadable directories, duplicate JSON keys; and a
 properly signed and catalogued statement with one wrong field (caught by the
-re-derivation alone). It also checks that revoking a policy-listed bridge is
+re-derivation alone). The rehearsal also covers the production shape (two legacy
+bridges plus two new). It also checks that revoking a policy-listed bridge is
 refused.

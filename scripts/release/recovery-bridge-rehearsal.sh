@@ -186,6 +186,7 @@ resign_t() {
 }
 proposal_fails() { # PATTERN DESCRIPTION
 	expect_fail "$1" "$2" "$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/t" "$proofs/rel100" "$proofs/rel110"
+	chmod -R u+rwx "$scratch/t" 2>/dev/null
 	rm -rf "$scratch/t"
 }
 recovery_key=$scratch/key/cosign.key
@@ -230,6 +231,49 @@ proposal_fails 'no symlinks' 'a primary key replaced by a symlink to identical b
 cp -R "$scratch/new" "$scratch/t"
 printf 'x' >"$scratch/t/bridges/$first/extra.txt"
 proposal_fails 'only metadata, catalog' 'an extra file in a new bridge directory'
+
+nl=$(printf '\n_')
+nl=${nl%_}
+cp -R "$scratch/new" "$scratch/t"
+cp "$scratch/new/metadata.json" "$scratch/t/metadata.json$nl"
+proposal_fails 'plain name' 'a file whose name is an allowed name plus a newline'
+cp -R "$scratch/new" "$scratch/t"
+cp "$scratch/new/bridges/$first/statement.json" "$scratch/t/bridges/$first/statement.json$nl"
+proposal_fails 'plain name' 'a newline-suffixed file inside a new bridge directory'
+cp -R "$scratch/new" "$scratch/t"
+mkdir "$scratch/t/locked"
+printf 'x' >"$scratch/t/locked/extra"
+ln -s extra "$scratch/t/locked/link"
+chmod 000 "$scratch/t/locked"
+proposal_fails 'is readable' 'an unreadable directory hiding an extra file and a symlink'
+cp -R "$scratch/new" "$scratch/t"
+mkdir "$scratch/t/empty-root"
+proposal_fails 'no empty directories' 'an extra empty directory at the root'
+cp -R "$scratch/new" "$scratch/t"
+mkdir "$scratch/t/bridges/$first/empty"
+proposal_fails 'no empty directories' 'an extra empty directory inside a new bridge directory'
+cp -R "$scratch/new" "$scratch/t"
+sed -i '1s/{/{"schema":"duplicate",/' "$scratch/t/metadata.json"
+resign_t "$recovery_key"
+proposal_fails 'metadata has no duplicate keys' 'a validly signed metadata with a duplicate key'
+cp -R "$scratch/new" "$scratch/t"
+sed -i '1s/{/{"schema":"duplicate",/' "$scratch/t/catalog.json"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$recovery_key" --bundle "$scratch/t/catalog.sigstore.json" "$scratch/t/catalog.json" >/dev/null 2>&1 </dev/null
+proposal_fails 'catalog has no duplicate keys' 'a validly signed catalog with a duplicate key'
+cp -R "$scratch/new" "$scratch/t"
+sed '1s/{/{"mode":"restart",/' "$scratch/new/bridges/$first/statement.json" >"$scratch/dup-statement.json"
+dup=$(sha256_of "$scratch/dup-statement.json")
+mkdir "$scratch/t/bridges/$dup"
+cp "$scratch/dup-statement.json" "$scratch/t/bridges/$dup/statement.json"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$recovery_key" --bundle "$scratch/t/bridges/$dup/statement.sigstore.json" "$scratch/t/bridges/$dup/statement.json" >/dev/null 2>&1 </dev/null
+rm -rf "$scratch/t/bridges/$first"
+# shellcheck disable=SC2016
+edit_t catalog.json --arg old "$first" --arg new "$dup" '.bridges |= map(if . == $old then $new else . end)'
+resign_t "$recovery_key"
+proposal_fails 'the statement has no duplicate keys' 'a signed, catalogued statement with a duplicate key'
+rm -f "$scratch/dup-statement.json"
 
 step '7. revocation: a new recovery-signed snapshot drops the new bridges, keeps the legacy ones'
 # A bridge the stable policy lists needs a policy rotation, so revoke refuses it.
