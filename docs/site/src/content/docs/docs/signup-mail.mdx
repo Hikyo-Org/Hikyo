@@ -11,7 +11,7 @@ been tested. Startup, health checks and configuration Apply do not probe SMTP.
 
 ## Configure the transport
 
-Before managed adoption, supply these bootstrap inputs to the server process.
+Before managed adoption, supply these bootstrap inputs to the server process. Leading and trailing whitespace is trimmed from every value and every imported file, as for any value written later.
 After adoption, edit, publish and Apply the corresponding managed values through
 [Hikyo configuration](/docs/managed-configuration/). Changing an old environment
 variable cannot override the applied managed snapshot.
