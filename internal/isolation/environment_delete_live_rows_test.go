@@ -3,6 +3,8 @@ package isolation
 import (
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -10,9 +12,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
-	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // #1420: a minted lease, an issued certificate, an adapter target or a dynamic
@@ -407,28 +406,44 @@ func TestEnvironmentDeleteRefusalRollsBackCertificatePurge(t *testing.T) {
 }
 
 // The purge DELETE repeats the terminal predicate, so a live certificate that
-// appears after the service's live check is never purged. Run the generated
-// query directly with a live row present.
+// appears after the service's live check is never purged. The sqlc source of the
+// query (the generated code is CI-checked fresh against it) runs here with its
+// parameters bound to literals, so no driver handle or generated package is
+// named, and a live row sits next to the terminal ones.
 func TestPKIPurgeQueryKeepsLiveCertificates(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		f := seedDefinitionsProject(t, db, "purgepred", true)
 		project := string(f.project)
 		now := time.Now().UTC().Truncate(time.Second)
 		seedCertificateRows(t, db, f, now)
-		var purged int64
-		var err error
-		if db.Engine() == store.EngineSQLite {
-			purged, err = sqlitegen.New(db.SQLiteWrite()).PKIPurgeTerminalEnvironmentCertificates(t.Context(), sqlitegen.PKIPurgeTerminalEnvironmentCertificatesParams{
-				ChainOrg: "org_a", ChainProject: project, ChainEnv: f.env, Now: store.CanonTime(now).Format("2006-01-02T15:04:05.000000Z")})
-		} else {
-			purged, err = pggen.New(db.PG()).PKIPurgeTerminalEnvironmentCertificates(t.Context(), pggen.PKIPurgeTerminalEnvironmentCertificatesParams{
-				ChainOrg: "org_a", ChainProject: project, ChainEnv: f.env, Now: pgtype.Timestamptz{Time: now, Valid: true}})
+
+		dir := "sqlite"
+		if db.Engine() == store.EnginePostgres {
+			dir = "postgres"
 		}
-		if err != nil || purged != 2 {
-			t.Fatalf("purged %d terminal rows, err %v; want the expired and failed rows only", purged, err)
+		source, err := os.ReadFile("../store/queries/" + dir + "/pki_repository.sql")
+		if err != nil {
+			t.Fatal(err)
 		}
+		_, after, found := strings.Cut(string(source), "-- name: PKIPurgeTerminalEnvironmentCertificates :execrows\n")
+		statement, _, ended := strings.Cut(after, ";")
+		if !found || !ended {
+			t.Fatal("PKIPurgeTerminalEnvironmentCertificates is missing from the sqlc source")
+		}
+		args := map[string]string{"chain_org": "'org_a'", "chain_project": "'" + project + "'", "chain_env": "'" + f.env + "'", "now": pkiStamp(db, now)}
+		statement = regexp.MustCompile(`sqlc\.arg\((\w+)\)`).ReplaceAllStringFunc(statement, func(m string) string {
+			return args[regexp.MustCompile(`\w+`).FindAllString(m, -1)[2]]
+		})
+		if strings.Contains(statement, "sqlc.") {
+			t.Fatalf("unbound parameter in %q", statement)
+		}
+		execRaw(t, db, statement)
+
 		if got := count(t, db, "pki_certificates", f); got != 4 {
-			t.Fatalf("live certificates after the purge = %d, want 4 (issued, issuing, renewed, unexpired revoked)", got)
+			t.Fatalf("certificates after the purge = %d, want the 4 live ones (issued, issuing, renewed, unexpired revoked)", got)
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE project_id='"+project+"' AND state IN ('expired','failed')"); got != 0 {
+			t.Fatalf("%d terminal certificates survived the purge", got)
 		}
 	})
 }
