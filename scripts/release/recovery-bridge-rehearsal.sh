@@ -61,6 +61,9 @@ ceremony=$script_dir/recovery-bridge.sh
 step '1. author: derive unsigned statements from the published evidence'
 "$ceremony" author "$scratch/base" "$proofs/rel100" "$proofs/rel110" "$scratch/statements"
 
+step '1b. independent verifier on the unsigned statements, before any signing'
+"$script_dir/verify-recovery-bridge.sh" unsigned "$scratch/base" "$scratch/statements" "$proofs/rel100" "$proofs/rel110"
+
 step '2. sign: the recovery key signs each statement'
 "$ceremony" sign "$scratch/key/cosign.key" "$scratch/statements"
 
@@ -68,7 +71,7 @@ step '3. reauthorize: recovery-shaped metadata and catalog; the stable policy is
 "$ceremony" reauthorize "$scratch/key/cosign.key" "$scratch/base" "$scratch/statements" "$scratch/new"
 
 step '4. independent verifier (jq, cosign and sha256 only)'
-"$script_dir/verify-recovery-bridge.sh" "$scratch/base" "$scratch/new" "$proofs/rel100" "$proofs/rel110"
+"$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/new" "$proofs/rel100" "$proofs/rel110"
 
 step '5. the proposal is consumed by the same assembler operators use'
 "$ceremony" assemble "$scratch/new" "$scratch/bundle" "$proofs/rel100" "$proofs/rel110"
@@ -76,7 +79,7 @@ jq -c '{releases: (.releases | length), bridges: (.bridges | length)}' "$scratch
 
 step '6. the verifier refuses every tampering'
 refused() { # DESCRIPTION
-	if "$script_dir/verify-recovery-bridge.sh" "$scratch/base" "$scratch/t" "$proofs/rel100" "$proofs/rel110" >/dev/null 2>&1; then
+	if "$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/t" "$proofs/rel100" "$proofs/rel110" >/dev/null 2>&1; then
 		printf 'NOT REFUSED: %s\n' "$1"
 		exit 1
 	fi
@@ -105,11 +108,46 @@ cp -R "$scratch/new" "$scratch/t"
 	--key "$scratch/key/other/cosign.key" --bundle "$scratch/t/bridges/$first/statement.sigstore.json" "$scratch/t/bridges/$first/statement.json" >/dev/null 2>&1 </dev/null
 refused 'a statement signed by a different key'
 
+# A statement with one wrong field that is properly signed and catalogued: every
+# signature and digest check passes, so only the independent re-derivation catches it.
+cp -R "$scratch/new" "$scratch/t"
+jq '.target_schema_sha256 = .source_schema_sha256' "$scratch/new/bridges/$first/statement.json" >"$scratch/forged.json"
+forged=$(jq -S . "$scratch/forged.json" >"$scratch/forged-sorted.json" && sha256_of "$scratch/forged-sorted.json")
+mkdir "$scratch/t/bridges/$forged"
+cp "$scratch/forged-sorted.json" "$scratch/t/bridges/$forged/statement.json"
+rm -rf "$scratch/t/bridges/$first"
+(cd "$scratch/t/bridges/$forged" && "$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$scratch/key/cosign.key" --bundle statement.sigstore.json statement.json >/dev/null 2>&1)
+jq --arg old "$first" --arg new "$forged" '.bridges |= map(if . == $old then $new else . end)' "$scratch/new/catalog.json" >"$scratch/t/catalog.json"
+"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+	--key "$scratch/key/cosign.key" --bundle "$scratch/t/catalog.sigstore.json" "$scratch/t/catalog.json" >/dev/null 2>&1
+if "$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/t" "$proofs/rel100" "$proofs/rel110" >"$scratch/forged.out" 2>&1; then
+	printf 'NOT REFUSED: a signed, catalogued statement with a wrong field\n'
+	exit 1
+fi
+failed=$(grep '^FAIL' "$scratch/forged.out" | sed 's/^FAIL [0-9a-f]*//' | sort -u)
+case $failed in
+' (sqlite): every field equals the independent derivation' | ' (postgres): every field equals the independent derivation') printf 'refused by the re-derivation alone: a signed, catalogued statement with a wrong field\n' ;;
+*) printf 'unexpected failures:\n%s\n' "$failed"; exit 1 ;;
+esac
+rm -rf "$scratch/t"
+
 step '7. revocation: a new recovery-signed snapshot drops the bridges'
-"$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/revoked" "$first" "$(jq -r '.bridges[1]' "$scratch/new/catalog.json")"
-jq -c '{metadata: input.sequence, bridges: (.bridges | length)}' "$scratch/revoked/catalog.json" "$scratch/revoked/metadata.json" 2>/dev/null || true
+second=$(jq -r '.bridges[1]' "$scratch/new/catalog.json")
+# A bridge the stable policy lists needs a policy rotation, so revoke refuses it.
+cp -R "$scratch/new" "$scratch/policy-listed"
+jq --arg d "$first" '.bridges = [$d]' "$scratch/new/stable-policy.json" >"$scratch/policy-listed/stable-policy.json"
+if "$ceremony" revoke "$scratch/key/cosign.key" "$scratch/policy-listed" "$scratch/refused-revoke" "$first" >/dev/null 2>&1; then
+	printf 'NOT REFUSED: revoking a policy-listed bridge\n'
+	exit 1
+fi
+printf 'refused: revoking a bridge the stable policy lists\n'
+"$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/revoked" "$first" "$second"
+"$script_dir/verify-recovery-bridge.sh" revocation "$scratch/new" "$scratch/revoked" "$first" "$second"
 "$ceremony" assemble "$scratch/revoked" "$scratch/revoked-bundle" "$proofs/rel100" "$proofs/rel110"
 jq -c '{releases: (.releases | length), bridges: (.bridges | length)}' "$scratch/revoked-bundle/index.json"
-# The old bundle (with the bridges) no longer authenticates against the revoked, higher-sequence floor.
+# Limit: revocation binds only instances whose persisted floor has advanced past
+# the prior snapshot. An instance that never loaded the newer snapshot still
+# accepts an older bundle carrying the bridge, and statements have no expiry.
 
 printf '\nRehearsal complete: ceremony steps, verifier and assembler agree; all tamperings refused.\n'

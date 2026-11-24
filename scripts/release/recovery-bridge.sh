@@ -83,6 +83,9 @@ reauthorize() {
 	[ "$#" -eq 4 ] || fail 'usage: reauthorize KEY TRUST STATEMENTS OUT'
 	key=$1 trust=$2 statements=$3 out=$4
 	[ ! -e "$out" ] || fail "$out already exists"
+	# Build beside the target and rename, so a failed signing leaves no partial tree.
+	final=$out out=$out.partial
+	rm -rf "$out"
 	mkdir -p "$out"
 	for path in "$trust"/*; do
 		name=$(basename "$path")
@@ -112,18 +115,26 @@ reauthorize() {
 		'.sequence += 1 | .stable_metadata_sha256 = $metadata | .stable_policy_sha256 = $policy | .bridges = ((.bridges + $added) | unique)' \
 		"$trust/catalog.json" >"$out/catalog.json"
 	cosign_sign "$key" "$out/catalog.json" "$out/catalog.sigstore.json"
-	printf 'new trust tree: %s\n' "$out"
+	mv "$out" "$final"
+	printf 'new trust tree: %s\n' "$final"
 }
 
 # revoke KEY TRUST OUT DIGEST... drops bridges from a recovery-shaped snapshot:
 # the next sequences, the digests removed from the catalog, their files removed.
+# Refuses digests the stable policy lists (those need a policy rotation).
 revoke() {
 	[ "$#" -ge 4 ] || fail 'usage: revoke KEY TRUST OUT DIGEST...'
 	key=$1 trust=$2 out=$3
 	shift 3
 	[ ! -e "$out" ] || fail "$out already exists"
+	final=$out out=$out.partial
+	rm -rf "$out"
 	removed=$(for digest in "$@"; do printf '%s\n' "$digest"; done | jq -R . | jq -s .)
 	jq -e --argjson removed "$removed" '($removed - .bridges) | length == 0' "$trust/catalog.json" >/dev/null || fail 'a digest is not in the catalog'
+	# Only recovery-only bridges can be revoked here: a bridge the stable policy lists
+	# is part of the workflow-signed inventory and needs a policy rotation instead.
+	jq -e --argjson removed "$removed" '(.bridges // []) as $listed | ($removed - ($removed - $listed)) | length == 0' "$trust/stable-policy.json" >/dev/null ||
+		fail 'a digest is listed by the stable policy; revoking it needs a policy rotation'
 	cp -R "$trust" "$out"
 	for digest in "$@"; do rm -rf "${out:?}/bridges/$digest"; done
 	recovery_id=$(jq -r '.recovery.id' "$trust/root.json")
@@ -132,7 +143,8 @@ revoke() {
 	jq --arg metadata "$(sha256_of "$out/metadata.json")" --argjson removed "$removed" \
 		'.sequence += 1 | .stable_metadata_sha256 = $metadata | .bridges -= $removed' "$trust/catalog.json" >"$out/catalog.json"
 	cosign_sign "$key" "$out/catalog.json" "$out/catalog.sigstore.json"
-	printf 'revoked; new trust tree: %s\n' "$out"
+	mv "$out" "$final"
+	printf 'revoked; new trust tree: %s\n' "$final"
 }
 
 [ "$#" -ge 1 ] || fail 'usage: recovery-bridge.sh author|sign|reauthorize|assemble|revoke ...'

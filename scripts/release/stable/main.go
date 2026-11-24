@@ -303,10 +303,15 @@ func prepare(t publicTrust, directory string) error {
 	catalog := t.catalog
 	// A workflow-signed catalog must list exactly the delegated policy's bridges
 	// (VerifySnapshot), so bridges only a recovery-signed catalog authorized end
-	// with that snapshot. Withdrawing them here is deliberate and documented in
-	// docs/operations/recovery-bridge-ceremony.md.
+	// with that snapshot (docs/operations/recovery-bridge-ceremony.md). A bridge
+	// the policy lists but the catalog dropped was revoked; resurrecting it here
+	// would undo the revocation, so that needs a policy rotation instead.
 	if policy, delegated := t.snapshot.StablePolicy(); delegated {
-		catalog.Bridges = slices.Clone(policy.Bridges)
+		bridges, err := retainedBridges(catalog.Bridges, policy.Bridges)
+		if err != nil {
+			return err
+		}
+		catalog.Bridges = bridges
 	}
 	catalog.Sequence++
 	catalog.StableMetadataSHA256 = releaseidentity.Hash(metadataRaw)
@@ -359,4 +364,15 @@ func writeNew(path string, raw []byte) error {
 	}
 	_, err = io.Copy(f, bytes.NewReader(raw))
 	return errors.Join(err, f.Sync(), f.Close())
+}
+
+// retainedBridges returns the policy's bridges, refusing when the catalog no
+// longer lists one of them.
+func retainedBridges(catalog, policy []releaseidentity.Digest) ([]releaseidentity.Digest, error) {
+	for _, bridge := range policy {
+		if !slices.Contains(catalog, bridge) {
+			return nil, fmt.Errorf("stable policy lists bridge %s that the catalog revoked; rotate the policy first", bridge)
+		}
+	}
+	return slices.Clone(policy), nil
 }

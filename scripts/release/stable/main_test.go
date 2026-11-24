@@ -296,3 +296,14 @@ func TestPrepareWithdrawsBridgesOnlyARecoveryCatalogAuthorized(t *testing.T) {
 		t.Fatalf("workflow-signed snapshot without the recovery-only bridge must verify: %v", err)
 	}
 }
+
+func TestRetainedBridgesRefusesResurrectingARevokedPolicyBridge(t *testing.T) {
+	listed, recoveryOnly := releaseidentity.Hash([]byte("policy bridge")), releaseidentity.Hash([]byte("recovery-only"))
+	kept, err := retainedBridges([]releaseidentity.Digest{listed, recoveryOnly}, []releaseidentity.Digest{listed})
+	if err != nil || len(kept) != 1 || kept[0] != listed {
+		t.Fatalf("a recovery-only bridge is withdrawn and a policy bridge kept: %v %v", kept, err)
+	}
+	if _, err := retainedBridges([]releaseidentity.Digest{recoveryOnly}, []releaseidentity.Digest{listed}); err == nil {
+		t.Fatal("a policy bridge the catalog revoked must not be restored")
+	}
+}

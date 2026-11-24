@@ -114,13 +114,19 @@ ordinary edge to v1.1.0, so the owner chose a recovery-signed bridge per engine
   into it is refused; `recovery-2` bridges need a release that stamps a root
   pinning it. The owner must re-decide: a narrow logged `recovery-1` exception
   for these two statements, or a rotation release first.
+- Revocation and expiry bind only instances whose persisted snapshot floor has
+  advanced (`upgrade_gate.go`): a v1.0.0 instance that never loaded the revoking
+  snapshot still accepts an older bundle carrying the bridge, and statements carry
+  no expiry. Revocation does not recall bundles already distributed.
 - Each statement binds the stable policy digest. Listing the statements in the
   policy changes that digest, so the policy is never re-signed. The bridges are
   authorized by a recovery-shaped metadata and catalog (next sequences, no
   workflow identity). The fixed policy is therefore an input of the statements.
 - A workflow-signed catalog must equal the policy's bridge list, so
   `stable prepare` withdraws recovery-only bridges: the route lasts until the next
-  stable release. Until it ships, `install.sh` can report "trust rollback
+  stable release. It refuses when the policy lists a bridge the catalog dropped
+  (restoring it would undo a revocation), and `revoke` refuses policy-listed
+  digests: both need a policy rotation. Until it ships, `install.sh` can report "trust rollback
   refused" for new stable installs.
 
 ## Accepted limitations and alternatives
