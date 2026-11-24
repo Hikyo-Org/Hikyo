@@ -372,8 +372,18 @@ that a newer one replaced ends cancelled without running a step and is not
 rerun. Worker group jobs share the publisher's name and get the same reruns, so
 do the queue gate's own `group-<sha>` jobs, and so does a failed setup, because
 reconcile always runs. Before any rerun it reads `rate_limit` (which is not
-counted) and reruns nothing while less than a tenth of the core budget is left,
-printing the reset time. A refused rerun of one job does not stop the others; the
+counted) and, while less than a tenth of the core budget is left, reruns nothing and
+hands the run to the `rerun-after-reset` job. That job is a designed wait: it sleeps
+until the window's reset plus 5 seconds (refusing a reset more than 61 minutes away),
+re-reads `rate_limit`, then reruns by job id every qualifying failed job of the last
+three hours from the three publisher workflows, under the same trust rule and attempt
+bound. Its 70-minute `timeout-minutes` is one primary window plus the sweep and is the
+only deliberately long timeout in these workflows; the merge-queue timeout is
+unchanged. One repo-wide concurrency group (`queue-retry-after-reset`, no cancel) lets
+one sleeper run with one behind it, so a burst of failures costs at most one waiting
+runner. A merge-group head gets no later event, so this wait, not the cron, completes
+its `ci-queue-required` check after a rate-limited group or publish job; a window that
+is still spent after the wait fails the job visibly. A refused rerun of one job does not stop the others; the
 step names each job not rerun and fails. A secondary limit is not detected and
 is rerun like any other failure, bounded by the attempt count. The run attempt is the only loop bound: attempt 3 publishes
 the terminal refusal, unless the PR, its base, the rules or the feedback attempt
@@ -489,8 +499,16 @@ base's copy against main's and a backmerge that repairs it must release PRs
 refused earlier. The push's `before` and `after` are compared through the compare
 API. A zero or missing `before`, a force push, an invalid SHA, a failed compare, a
 range that is neither ahead nor identical, an ahead range with no listed files or a
-file list at GitHub's 300-file limit all reassess every PR. A push to `main`, the schedule, feedback callbacks, manual
-dispatch and PR events are unchanged. An empty selection leaves the run green and
+file list at GitHub's 300-file limit all reassess every PR. A push to `main`, feedback callbacks, manual
+dispatch and PR events are unchanged. The hourly schedule re-proves at most five
+open dev PRs per run (`DEV_SWEEP_CAP`), the ones whose newest `ci-dev-required`
+record on their current head is oldest (a head with none first, ties by PR number),
+read from GitHub in one GraphQL query so no state of ours is kept. An event
+re-proof writes a newer record and so moves that PR to the back. If the query fails,
+the sweep rotates by hour over PRs sorted by number, so either way every open PR is
+re-proved within ceil(open/5) sweeps. The cap delays drift detection and recovery of a
+missed event by up to that many hours; it removes neither, and no correctness depends
+on it, because events and the retry path settle checks first. An empty selection leaves the run green and
 skips the publisher job.
 
 A dev publisher whose final checks see `dev`, the rules, the feedback attempt, the

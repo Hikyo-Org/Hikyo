@@ -22,7 +22,13 @@ type queueRetryWorkflow struct {
 		Cancel bool   `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
-		If          string            `yaml:"if"`
+		If          string `yaml:"if"`
+		Needs       string `yaml:"needs"`
+		Timeout     int    `yaml:"timeout-minutes"`
+		Concurrency struct {
+			Group  string `yaml:"group"`
+			Cancel bool   `yaml:"cancel-in-progress"`
+		} `yaml:"concurrency"`
 		Permissions map[string]string `yaml:"permissions"`
 		Steps       []struct {
 			Uses string `yaml:"uses"`
@@ -78,8 +84,8 @@ func TestQueueRetryWorkflowIsBoundedAndMinimal(t *testing.T) {
 	if !reflect.DeepEqual(trigger.Workflows, want) || !reflect.DeepEqual(trigger.Types, []string{"completed"}) {
 		t.Fatalf("retry must follow exactly the three publishers and never itself: %+v want %v", trigger, want)
 	}
-	if len(w.Jobs) != 1 {
-		t.Fatalf("one rerun job expected: %d", len(w.Jobs))
+	if len(w.Jobs) != 2 {
+		t.Fatalf("the rerun job and its post-reset wait expected: %d", len(w.Jobs))
 	}
 	job := w.Jobs["rerun"]
 	if !reflect.DeepEqual(job.Permissions, map[string]string{"actions": "write"}) {
@@ -181,7 +187,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := exec.Command("bash", "-c", script)
-			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT="+tc.attempt)
+			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT="+tc.attempt, "GITHUB_OUTPUT="+filepath.Join(dir, "output"))
 			out, err := cmd.CombinedOutput()
 			if tc.fails != (err != nil) {
 				t.Fatalf("exit mismatch (want failure=%t): %v\n%s", tc.fails, err, out)
@@ -202,6 +208,11 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("reruns %v want %v\ncalls:\n%s\noutput:\n%s", got, want, recorded, out)
+			}
+			// Declining on a spent budget is what hands the run to the post-reset wait job.
+			handed, _ := os.ReadFile(filepath.Join(dir, "output"))
+			if (tc.says != "") != strings.Contains(string(handed), "exhausted=true") {
+				t.Fatalf("exhausted=true must be set exactly when the rerun declines on a spent budget: %q", handed)
 			}
 			if tc.says != "" && !strings.Contains(string(out), tc.says) {
 				t.Fatalf("output must say why nothing reran (%q):\n%s", tc.says, out)

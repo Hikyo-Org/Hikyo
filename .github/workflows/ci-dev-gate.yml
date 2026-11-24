@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      checks: read
     outputs:
       work: ${{ steps.targets.outputs.work }}
     steps:

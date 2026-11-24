@@ -58,7 +58,7 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 	if publish.If != "needs.discover.outputs.work != '[]'" {
 		t.Fatal("dev workers must stay skipped when discovery is skipped or fails")
 	}
-	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) {
+	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read", "checks": "read"}) {
 		t.Fatal("routing discovery must not write checks")
 	}
 	if !reflect.DeepEqual(publish.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read", "checks": "write"}) || publish.Timeout != 1 {

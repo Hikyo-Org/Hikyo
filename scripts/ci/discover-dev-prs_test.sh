@@ -13,6 +13,12 @@ if [ "$1" = api ] && [ "${2#repos/owner/repo/compare/}" != "$2" ]; then
   cat "$DEV_DISCOVERY_FIXTURE/compare.json"
   exit 0
 fi
+if [ "$1" = api ] && [ "$2" = graphql ]; then
+  printf 'graphql\n' >>"$DEV_DISCOVERY_FIXTURE/graphql.calls"
+  [ ! -e "$DEV_DISCOVERY_FIXTURE/graphql.fail" ] || exit 1
+  cat "$DEV_DISCOVERY_FIXTURE/graphql.json"
+  exit 0
+fi
 [ "$1" = api ] && [ "$2" = --paginate ] && [ "$3" = --slurp ]
 [ "$4" = 'repos/owner/repo/pulls?state=open&per_page=100' ]
 cat "$DEV_DISCOVERY_FIXTURE/pulls.json"
@@ -169,4 +175,63 @@ for mutation in "${bad_stacks[@]}"; do
     run | jq -e "sort_by(.pr) == $want" >/dev/null || { printf 'dev discovery mishandled malformed stack %s on PR index %s\n' "$mutation" "$index" >&2; exit 1; }
   done
 done
-printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, malformed stacks skipped without stalling, and malformed pagination refusals passed\n'
+# The hourly sweep re-proves at most DEV_SWEEP_CAP (5) PRs, oldest ci-dev-required
+# record first, and an event re-proof sends a PR to the back, so every open PR is
+# covered within ceil(open/cap) sweeps even when events re-prove PRs in between.
+GITHUB_EVENT_NAME=schedule
+reset
+open=21
+cap=5
+sweeps=$(((open + cap - 1) / cap))
+phead() { printf '%040x' "$1"; }
+jq -n --argjson n "$open" '[[range(1; $n + 1) | {number:., state:"open", base:{ref:"dev",repo:{full_name:"owner/repo"}}, head:{sha:((tostring) as $s | ([range(40 - ($s | length)) | "0"] | join("")) + $s)}}]]' >"$work/pulls.json"
+jq -n '{}' >"$work/proofs.json"
+stamp() { printf '2026-01-01T%02d:%02d:00Z' $(($1 / 60)) $(($1 % 60)); }
+write_graphql() { # nodes carry the proof time of each PR's current head, if any
+  jq -n --slurpfile proofs "$work/proofs.json" --slurpfile pulls "$work/pulls.json" '[{data:{repository:{pullRequests:{pageInfo:{hasNextPage:false,endCursor:null},
+    nodes:[$pulls[0][0][] | . as $p | {number:$p.number, commits:{nodes:[{commit:{oid:$p.head.sha, checkSuites:{nodes:
+      (if $proofs[0][($p.number | tostring)] then [{checkRuns:{nodes:[{startedAt:$proofs[0][($p.number | tostring)],completedAt:$proofs[0][($p.number | tostring)]}]}}] else [] end)}}}]}}]}}}}]' >"$work/graphql.json"
+}
+prove() { jq --arg n "$1" --arg at "$(stamp "$2")" '.[$n]=$at' "$work/proofs.json" >"$work/proofs.new"; mv "$work/proofs.new" "$work/proofs.json"; }
+rm -f "$work/graphql.fail" "$work/graphql.calls"
+t=1
+covered=''
+for ((sweep = 1; sweep <= sweeps; sweep++)); do
+  write_graphql
+  out=$(run)
+  count=$(jq -r 'length' <<<"$out")
+  [ "$count" -le "$cap" ] || { printf 'sweep %s selected %s PRs, above the cap of %s\n' "$sweep" "$count" "$cap" >&2; exit 1; }
+  if [ "$sweep" = 2 ] && jq -e --argjson n "$ev" 'any(.[]; .pr == $n)' <<<"$out" >/dev/null; then
+    printf 'a PR re-proved by an event must go to the back of the sweep order\n' >&2; exit 1
+  fi
+  for pr in $(jq -r '.[].pr' <<<"$out"); do prove "$pr" "$t"; t=$((t + 1)); covered="$covered $pr"; done
+  # an event re-proves the PR the sweep would have reached next; the sweep must then skip it
+  ev=$(((sweep * 7) % open + 1)); prove "$ev" "$t"; t=$((t + 1)); covered="$covered $ev"
+done
+[ "$(printf '%s\n' $covered | sort -un | wc -l | tr -d " ")" = "$open" ] || { printf 'sweeps plus events covered %s of %s PRs in %s sweeps\n' "$(printf '%s\n' $covered | sort -un | wc -l | tr -d " ")" "$open" "$sweeps" >&2; exit 1; }
+[ "$(wc -l <"$work/graphql.calls" | tr -d " ")" = "$sweeps" ] || { printf 'a sweep must read proof times in exactly one bulk query\n' >&2; exit 1; }
+# Without events the rotation covers everything in exactly ceil(open/cap) sweeps.
+jq -n '{}' >"$work/proofs.json"
+covered=''
+for ((sweep = 1; sweep <= sweeps; sweep++)); do
+  write_graphql
+  for pr in $(run | jq -r '.[].pr'); do prove "$pr" "$sweep"; covered="$covered $pr"; done
+done
+[ "$(printf '%s\n' $covered | sort -n | uniq -d | wc -l | tr -d " ")" = "$(((sweeps * cap) - open))" ] || { printf 'oldest-first sweeps must not repeat a PR before every PR is covered\n' >&2; exit 1; }
+[ "$(printf '%s\n' $covered | sort -un | wc -l | tr -d " ")" = "$open" ] || { printf 'eventless sweeps did not cover every PR\n' >&2; exit 1; }
+# A failed bulk read rotates deterministically by hour over PRs sorted by number.
+: >"$work/graphql.fail"
+covered=''
+for ((sweep = 0; sweep < sweeps; sweep++)); do
+  out=$(DEV_DISCOVERY_NOW=$((sweep * 3600 + 17)) run 2>/dev/null)
+  [ "$(jq -r length <<<"$out")" = "$cap" ] || { printf 'rotation fallback must still be capped\n' >&2; exit 1; }
+  [ "$out" = "$(DEV_DISCOVERY_NOW=$((sweep * 3600 + 3000)) run 2>/dev/null)" ] || { printf 'rotation fallback must be deterministic within an hour\n' >&2; exit 1; }
+  covered="$covered $(jq -r '.[].pr' <<<"$out" | tr '\n' ' ')"
+done
+[ "$(printf '%s\n' $covered | sort -un | wc -l | tr -d " ")" = "$open" ] || { printf 'hour rotation did not cover every PR in %s sweeps\n' "$sweeps" >&2; exit 1; }
+# Events, dispatch and main/dev pushes still reach every PR; only the schedule is capped.
+GITHUB_EVENT_NAME=workflow_dispatch
+jq -n '{repository:{full_name:"owner/repo"},inputs:{}}' >"$work/event.json"
+[ "$(run | jq length)" = "$open" ] || { printf 'a manual dispatch must still reach every PR\n' >&2; exit 1; }
+rm -f "$work/graphql.fail"
+printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, malformed stacks skipped without stalling, and malformed pagination refusals, and the capped oldest-proof-first rotating sweep passed\n'
