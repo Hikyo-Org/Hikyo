@@ -15,10 +15,12 @@
  * with the reason a rule falls short added for Who can...?. Keep them in step.
  */
 
-import type { zRuleCapability } from '@hikyo/zod';
+import type { zRuleCapability, zServiceAccountKind } from '@hikyo/zod';
 import type { z } from 'zod';
 
 export type PermId = z.infer<typeof zRuleCapability>;
+/** The machine classes that may hold rules: a service account's kind. */
+export type MachineClass = z.infer<typeof zServiceAccountKind>;
 
 type PermGroup = 'Values' | 'Secrets' | 'Administration';
 
@@ -62,6 +64,9 @@ export const PERM_GROUPS: readonly PermGroup[] = ['Values', 'Secrets', 'Administ
  */
 export const NOT_ON_RULES = 'Manage projects needs all projects, which a rule cannot name yet: it stays an organisation grant.';
 
+/** Where a machine's rule is changed, said wherever Members shows one (D11). */
+export const MACHINE_RULE_HINT = "A machine's rules are edited on Machine access, under its class's limits.";
+
 const PERM_BY_ID = new Map(PERMS.map((p) => [p.id, p]));
 
 export function perm(id: PermId): Perm {
@@ -80,6 +85,28 @@ const SHAPE_WHY: Record<Exclude<PermShape, 'key'>, string> = {
   env: 'needs all keys of an environment',
   project: 'needs a whole project (all environments, all keys)',
 };
+
+/**
+ * The rule permissions each machine class may hold: `domain.MachineMayHold`
+ * over the rule vocabulary. Reveal and Reveal history stay environment grants
+ * (`domain.CheckMachineRule`). Keep them in step.
+ */
+const MACHINE_HOLDS: Record<MachineClass, readonly PermId[]> = {
+  workload: ['read'],
+  automation: ['read', 'edit', 'publish', 'definitions-edit'],
+};
+
+const MACHINE_ONLY: Record<MachineClass, string> = {
+  workload: 'Not for a workload account: it holds See only.',
+  automation: 'Not for an automation account: it holds See, Edit, Publish and Define keys only.',
+};
+
+/** Why a machine of this class can never hold this permission on a rule, or undefined when it can. */
+export function machineRefusal(id: PermId, machine: MachineClass | undefined): string | undefined {
+  if (machine === undefined || MACHINE_HOLDS[machine].includes(id)) return undefined;
+  if (id === 'reveal' || id === 'reveal-history') return `Not on a machine rule: a machine gets ${label(id)} only from an environment grant, under the project's machine-reveal opt-in.`;
+  return MACHINE_ONLY[machine];
+}
 
 /** What each non-key shape needs, as the glossary and the permission list word it. */
 export const SHAPE_NEEDS: Record<Exclude<PermShape, 'key'>, string> = {
@@ -130,7 +157,8 @@ type Env = { readonly id: string; readonly name: string; readonly protected: boo
 /** `keys` is null when the caller may not read the project's key catalogue (it needs See). */
 export type Project = { readonly id: string; readonly name: string; readonly envs: readonly Env[]; readonly keys: readonly Key[] | null };
 type MemberKind = 'person' | 'machine';
-export type Person = { readonly id: string; readonly kind: MemberKind; readonly name: string };
+/** `machine` is the service account's class, where the surface knows it (Machine access does, Members does not). */
+export type Person = { readonly id: string; readonly kind: MemberKind; readonly name: string; readonly machine?: MachineClass };
 
 export type World = {
   readonly people: readonly Person[];
@@ -138,7 +166,7 @@ export type World = {
   readonly rules: readonly Rule[];
 };
 
-/** Machine principal ids carry the `mch_` prefix; rules are for people only in this slice. */
+/** Machine principal ids carry the `mch_` prefix. A machine's rules are edited on Machine access (D11). */
 export const kindOfId = (id: string): MemberKind => (id.startsWith('mch_') ? 'machine' : 'person');
 
 export const personName = (world: World, id: string) => world.people.find((p) => p.id === id)?.name ?? id;
@@ -200,15 +228,34 @@ export const narrowKeys = (rule: Pick<Rule, 'keys'>) => rule.keys.mode === 'only
 
 type Shaped = Pick<Rule, 'envs' | 'keys'>;
 
-/** Can a rule of this Where carry this permission, and if not, why: exactly what the server refuses. */
-export function availability(id: PermId, rule: Shaped): { ok: true } | { ok: false; why: string } {
+/**
+ * Can a rule of this Where carry this permission, and if not, why: exactly
+ * what the server refuses. `machine` is the holder's class when the holder is
+ * a service account.
+ */
+export function availability(id: PermId, rule: Shaped, machine?: MachineClass): { ok: true } | { ok: false; why: string } {
+  const refused = machineRefusal(id, machine);
+  if (refused !== undefined) return { ok: false, why: refused };
   const { shape } = perm(id);
   if (shape === 'env' && narrowKeys(rule)) return { ok: false, why: `Not available here: ${SHAPE_WHY.env}` };
   if (shape === 'project' && (narrowKeys(rule) || narrowEnvs(rule))) return { ok: false, why: `Not available here: ${SHAPE_WHY.project}` };
   return { ok: true };
 }
 
-export const allowed = (id: PermId, rule: Shaped) => availability(id, rule).ok;
+export const allowed = (id: PermId, rule: Shaped, machine?: MachineClass) => availability(id, rule, machine).ok;
+
+/**
+ * Why this Where cannot be a machine rule, or undefined when it can: the Where
+ * half of `domain.CheckMachineRule`. A machine rule names its own project only
+ * and no keys or folders; a workload rule lists its environments.
+ */
+export function machineWhereRefusal(rule: Pick<Rule, 'projects' | 'envs' | 'keys'>, machine: MachineClass | undefined): string | undefined {
+  if (machine === undefined) return undefined;
+  if (narrowKeys(rule)) return 'A machine rule covers every key of its environments: key limits are for people.';
+  if (rule.projects === '*' || rule.projects.length !== 1) return 'A machine rule names its own project only.';
+  if (machine === 'workload' && rule.envs.mode !== 'only') return 'A workload rule lists its environments: pick Only… and tap each one.';
+  return undefined;
+}
 
 /**
  * The standing condition on a permission row, or undefined. It depends on the
@@ -224,8 +271,8 @@ export function requirement(id: PermId): string | undefined {
 }
 
 /** The ticked permissions this rule can actually carry, in vocabulary order. */
-export const effective = (rule: Pick<Rule, 'perms' | 'envs' | 'keys'>): PermId[] =>
-  PERMS.map((p) => p.id).filter((id) => rule.perms.includes(id) && allowed(id, rule));
+export const effective = (rule: Pick<Rule, 'perms' | 'envs' | 'keys'>, machine?: MachineClass): PermId[] =>
+  PERMS.map((p) => p.id).filter((id) => rule.perms.includes(id) && allowed(id, rule, machine));
 
 /** The preset this rule matches exactly, after its shape drops what it cannot carry. */
 export function presetOf(rule: Pick<Rule, 'perms' | 'envs' | 'keys'>): string | null {

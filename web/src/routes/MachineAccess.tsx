@@ -31,6 +31,8 @@ import {
   type LeaseMinted,
 } from '../api/dynamic.ts';
 import { useMachineReveal } from '../api/machineReveal.ts';
+import { rulesListingText, useRules } from '../api/rules.ts';
+import { useProjects } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { useEnvironments } from '../api/values.ts';
@@ -54,6 +56,8 @@ import { MintDialog } from './machineAccess/Credentials.tsx';
 import { useTabParam } from './Sections.tsx';
 import { BindingDialog, BindingCard } from './machineAccess/FederationBindings.tsx';
 import { GrantDialog } from './machineAccess/EnvironmentGrants.tsx';
+import { MachineRules } from './machineAccess/MachineRules.tsx';
+import { rulesFromServer, type World } from './accessRules/model.ts';
 import { CreateAccountDialog, DeleteAccountDialog } from './machineAccess/AccountDialogs.tsx';
 import {
   CreateProviderDialog,
@@ -207,6 +211,9 @@ export function MachineAccessPage() {
   );
   const grants = useMemo(() => grantsQuery.data?.items ?? [], [grantsQuery.data]);
   const credentials = useCredentials(project, accounts);
+  // Access rules need manage-members on the project; a refusal hides only them.
+  const rulesQuery = useRules(project.org, project.project);
+  const projectsQuery = useProjects(project.org);
 
   const [tab, setTab] = useTabParam(TABS.map((entry) => entry.id));
   const [panelAccountId, setPanelAccountId] = useState<string | null>(null);
@@ -374,6 +381,30 @@ export function MachineAccessPage() {
       },
     );
   };
+
+  // This project and its service accounts as the rule model reads them.
+  // Environment protection is not read here, so it stays unknown.
+  const ruleWorld: World = {
+    people: accounts.map((sa) => ({ id: sa.principal_id, kind: 'machine', name: sa.name, machine: sa.kind })),
+    projects: [{
+      id: project.project,
+      name: projectsQuery.data?.items.find((p) => p.id === project.project)?.name ?? project.project,
+      envs: environments.map((environment) => ({ id: environment.id, name: environment.name, protected: null })),
+      keys: null,
+    }],
+    rules: rulesFromServer(
+      (rulesQuery.isError ? [] : (rulesQuery.data?.items ?? [])).filter((rule) =>
+        accounts.some((sa) => sa.principal_id === rule.principal_id),
+      ),
+    ),
+  };
+  const rulesUnavailable = rulesQuery.isError
+    ? rulesListingText(rulesQuery.error)
+    : rulesQuery.isSuccess
+      ? null
+      : 'Reading access rules…';
+  const rulesReady =
+    liveSessionId !== null && rulesQuery.isSuccess && !rulesQuery.isFetching && environmentsKnown;
 
   const activeMintLifecycle = mint.active;
   // The account whose detail the side panel shows; gone from the listing (a
@@ -896,6 +927,14 @@ export function MachineAccessPage() {
             }
             onDelete={() => setDialog({ kind: 'delete', account: panelAccount })}
             onLeave={() => setPanelAccountId(null)}
+          />
+          <MachineRules
+            org={project.org}
+            project={project.project}
+            account={panelAccount}
+            world={ruleWorld}
+            unavailable={rulesUnavailable}
+            ready={rulesReady}
           />
         </SidePanel>
       )}

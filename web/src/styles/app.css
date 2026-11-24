@@ -7952,6 +7952,16 @@ label.chk:has(input:disabled) {
   background: var(--bg);
 }
 
+/* A rule's hint is prose, not an action: it takes its own line below the
+   summary instead of squeezing Where into an unreadable sliver. */
+.access-rule:has(> .access-hint) {
+  flex-wrap: wrap;
+}
+
+.access-rule > .access-hint {
+  flex-basis: 100%;
+}
+
 .access-rule__main {
   flex: 1;
   min-width: 0;
