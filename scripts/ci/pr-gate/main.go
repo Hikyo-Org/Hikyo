@@ -654,7 +654,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				Errors []json.RawMessage `json:"errors"`
 			}
 			if decode(data, &response) == nil && len(response.Errors) > 0 {
-				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true, rateLimited: graphQLRateLimited(response.Errors)})
+				return fmt.Errorf("%w: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true, rateLimited: graphQLRateLimited(response.Errors)})
 			}
 		}
 		var failure struct {

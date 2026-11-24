@@ -145,7 +145,7 @@ func (f *rerunAfterResetFixture) run() (string, string, error) {
 		cases.String() + "esac\n"
 	write("gh", stub)
 	script := readQueueRetryWorkflow(f.t).Jobs["rerun-after-reset"].Steps[0].Run
-	cmd := exec.Command("bash", "-c", script)
+	cmd := exec.CommandContext(f.t.Context(), "bash", "-c", script)
 	cmd.Env = append(os.Environ(), "PATH="+f.dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo")
 	out, err := cmd.CombinedOutput()
 	recorded, _ := os.ReadFile(calls)
@@ -216,7 +216,7 @@ func TestQueueRetryHandsARateLimitedGroupJobToTheWaitAndReruns(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.dir, "gh"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("bash", "-c", script)
+	cmd := exec.CommandContext(t.Context(), "bash", "-c", script)
 	cmd.Env = append(os.Environ(), "PATH="+f.dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=7001", "RUN_ATTEMPT=1", "GITHUB_OUTPUT="+output)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the retry job must decline cleanly on a spent window: %v\n%s", err, out)

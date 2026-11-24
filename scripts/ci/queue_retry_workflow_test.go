@@ -246,7 +246,7 @@ func TestQueueRetryKeepsGoingWhenARerunIsRefused(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("bash", "-c", script)
+	cmd := exec.CommandContext(t.Context(), "bash", "-c", script)
 	cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT=1")
 	out, err := cmd.CombinedOutput()
 	if err == nil {

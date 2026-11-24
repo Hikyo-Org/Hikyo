@@ -200,7 +200,7 @@ for open in 1 4 5 6 21 22 40; do
         [ "$out" = "$(DEV_DISCOVERY_NOW=$(((start_hour + sweep) * 3600 + 3500)) run 2>/dev/null)" ] || { printf 'a sweep must be deterministic within an hour\n' >&2; exit 1; }
         covered="$covered $(jq -r '.[].pr' <<<"$out" | tr '\n' ' ')"
       done
-      [ "$(printf '%s\n' $covered | sort -un | wc -l | tr -d ' ')" = "$open" ] || { printf '%s open PRs from #%s were not all covered in %s sweeps starting at hour %s\n' "$open" "$first" "$sweeps" "$start_hour" >&2; exit 1; }
+      [ "$(tr ' ' '\n' <<<"$covered" | grep . | sort -un | wc -l | tr -d ' ')" = "$open" ] || { printf '%s open PRs from #%s were not all covered in %s sweeps starting at hour %s\n' "$open" "$first" "$sweeps" "$start_hour" >&2; exit 1; }
     done
   done
 done
