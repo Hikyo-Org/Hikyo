@@ -445,9 +445,21 @@ there is nothing to hold them with; check them before you resume one. A containe
 authority principal is not a restore hold: an incident opened on the account (or on
 an org that selects it) lists its rotations and halts each one with
 `incident_contained`, active or paused, and releasing the principal does not
-resume them. A rotation a restore holds is the exception: the incident leaves it
-open until the hold clears, so do not read the incident as confirmation that a held
-rotation reached `halted`. You resume a halted rotation yourself.
+resume them. Three cases leave a rotation active, so do not read an incident as
+confirmation that every rotation of its members reached `halted`:
+
+- A rotation a restore holds: the incident leaves its item open until the hold clears.
+- A halt that is blocked or unconfirmed (an owner error, or a rotation whose
+  authority the incident does not select): the item stays open and the rotation
+  stays active until you resume the incident and the halt succeeds, or you
+  attest the item.
+- A truncated enumeration: when an org has more members' rotations than one pass
+  can list, the unreached members' rotations are not halted. Hikyo records an open
+  `enumeration_truncated` row for them instead, and they stay active until you
+  close that gap (open the incident again, or halt them yourself).
+
+Check the incident's items, not its status, before you rely on a halt. You resume a
+halted rotation yourself.
 
 ## Monitoring
 
