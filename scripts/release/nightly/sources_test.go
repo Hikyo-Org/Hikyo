@@ -10,13 +10,22 @@ import (
 
 func TestDropStableReleaseEdgesKeepsGenesisAndNightlyEdges(t *testing.T) {
 	release := func(profile releaseidentity.Profile) releaseidentity.Source {
+		version := "1.1.0"
+		if profile == releaseidentity.NightlyV1 {
+			version = "1.1.0-nightly.1" // NightlyV1 rejects versions without a nightly. prerelease
+		}
 		return releaseidentity.Source{Release: releaseidentity.Identity{
-			Profile: profile, Version: "1.1.0", Sequence: 2, Commit: strings.Repeat("a", 40),
+			Profile: profile, Version: version, Sequence: 2, Commit: strings.Repeat("a", 40),
 			CompatibilitySHA256: releaseidentity.Hash([]byte("compat")), ManifestSHA256: releaseidentity.Hash([]byte("manifest")),
 		}}
 	}
 	genesis := upgradecompat.SourceEdge{Source: releaseidentity.Source{Genesis: releaseidentity.FreshGenesisV1}}
 	nightly := upgradecompat.SourceEdge{Source: release(releaseidentity.NightlyV1)}
+	for _, edge := range []upgradecompat.SourceEdge{nightly, {Source: release(releaseidentity.StableV1)}} {
+		if err := edge.Source.Release.Validate(); err != nil {
+			t.Fatalf("fixture must be a valid release identity: %v", err)
+		}
+	}
 	engines := map[releaseidentity.Engine][]upgradecompat.SourceEdge{
 		releaseidentity.SQLite:   {genesis, {Source: release(releaseidentity.StableV1)}, nightly},
 		releaseidentity.Postgres: {genesis, {Source: release(releaseidentity.StableV1)}},
