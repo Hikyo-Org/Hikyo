@@ -62,6 +62,32 @@ func seedCertificateRows(t *testing.T, db *store.DB, f definitionsFixture, now t
 	cert(project+"_failed", "failed", now.Add(-time.Hour))
 }
 
+// seedSiblingCertificate puts an expired certificate in a second environment of
+// the same project: deleting f's environment must purge only its own history.
+func seedSiblingCertificate(t *testing.T, db *store.DB, f definitionsFixture, now time.Time) {
+	t.Helper()
+	project := string(f.project)
+	execRaw(t, db, `INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('`+f.env+`_sib','org_a','`+project+`','sibling','',`+ts+`,1)`)
+	der := "'\\x00'::bytea"
+	if db.Engine() != store.EnginePostgres {
+		der = "x'00'"
+	}
+	execRaw(t, db, `INSERT INTO pki_certificates (id,org_id,project_id,environment_id,profile_id,profile_name,issuer_id,serial,state,key_source,key_algorithm,key_fingerprint,sans,not_before,not_after,certificate_der,principal_id,principal_class,issuing_deadline,created_at,updated_at) VALUES ('`+project+`_sibling','org_a','`+project+`','`+f.env+`_sib','pkip_x','web','pki_iss_`+project+`','`+project+`_sibling','expired','csr','ecdsa-p256','sha256:x','{"dns":[],"ip":[],"uri":[]}',`+pkiStamp(db, now.Add(-48*time.Hour))+`,`+pkiStamp(db, now.Add(-time.Hour))+`,`+der+`,'usr_alice','human',`+pkiStamp(db, now)+`,`+pkiStamp(db, now)+`,`+pkiStamp(db, now)+`)`)
+}
+
+// certificatesIn counts the project's certificates outside the sibling environment.
+func certificatesIn(t *testing.T, db *store.DB, f definitionsFixture) int64 {
+	t.Helper()
+	return queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE project_id='"+string(f.project)+"' AND environment_id='"+f.env+"'")
+}
+
+func requireSiblingCertificate(t *testing.T, db *store.DB, f definitionsFixture) {
+	t.Helper()
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE id='"+string(f.project)+"_sibling'"); got != 1 {
+		t.Fatalf("sibling environment certificate rows = %d, want 1: the purge crossed environments", got)
+	}
+}
+
 func count(t *testing.T, db *store.DB, table string, f definitionsFixture) int64 {
 	t.Helper()
 	return queryInt(t, db, "SELECT COUNT(*) FROM "+table+" WHERE project_id='"+string(f.project)+"'")
@@ -110,6 +136,7 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	f := seedDefinitionsProject(t, db, "cert", true)
 	now := time.Now().UTC().Truncate(time.Second)
 	seedCertificateRows(t, db, f, now)
+	seedSiblingCertificate(t, db, f, now)
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	project := string(f.project)
 	refused := func(label, id string) {
@@ -118,10 +145,10 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 		if !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
 			t.Fatalf("delete with %s = %v (%q)", label, err, safeError(err))
 		}
-		if got := count(t, db, "pki_certificates", f); got != 6 {
+		if got := certificatesIn(t, db, f); got != 6 {
 			t.Fatalf("certificates after the %s refusal = %d, want 6", label, got)
 		}
-		if got := count(t, db, "environments", f); got != 1 {
+		if got := count(t, db, "environments", f); got != 2 {
 			t.Fatalf("environments after the %s refusal = %d", label, got)
 		}
 	}
@@ -144,10 +171,11 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()); err != nil {
 		t.Fatalf("delete with only terminal certificate history: %v", err)
 	}
-	if got := count(t, db, "pki_certificates", f); got != 0 {
+	if got := certificatesIn(t, db, f); got != 0 {
 		t.Errorf("%d certificates outlived the environment", got)
 	}
-	if got := count(t, db, "environments", f); got != 0 {
+	requireSiblingCertificate(t, db, f)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE id='"+f.env+"'"); got != 0 {
 		t.Errorf("environment survived the delete: %d", got)
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_issuers WHERE id='pki_iss_"+project+"'"); got != 1 {
@@ -262,11 +290,18 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 	now := time.Now().UTC().Truncate(time.Second)
 	seedLeaseRows(t, db, f)
 	seedCertificateRows(t, db, f, now)
+	seedSiblingCertificate(t, db, f, now)
 	svc := definitionsService(t, db)
 	project := string(f.project)
 
 	bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
-	bundle.Environments = nil
+	kept := bundle.Environments[:0]
+	for _, e := range bundle.Environments {
+		if e.Name == "sibling" {
+			kept = append(kept, e)
+		}
+	}
+	bundle.Environments = kept
 	raw := encodeDefinitions(t, bundle)
 	apply := func() error {
 		plan := planDefinitions(t, svc, f, raw)
@@ -283,7 +318,7 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 	}
 	execRaw(t, db, `UPDATE pki_certificates SET state='expired' WHERE state IN ('issued','issuing','renewed')`)
 	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE state='revoked'`)
-	if got := count(t, db, "environments", f); got != 1 {
+	if got := count(t, db, "environments", f); got != 2 {
 		t.Fatalf("environments after the refusals = %d", got)
 	}
 	if got := count(t, db, "dynamic_leases", f); got != 4 {
@@ -294,7 +329,11 @@ func runDefinitionsApplyEnvironmentDeleteLiveRows(t *testing.T, db *store.DB) {
 	if err := apply(); err != nil {
 		t.Fatalf("apply with only terminal leases and certificates: %v", err)
 	}
-	for _, table := range []string{"dynamic_leases", "dynamic_effects", "pki_certificates", "environments"} {
+	requireSiblingCertificate(t, db, f)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE id='"+f.env+"'"); got != 0 {
+		t.Errorf("environment survived the apply: %d", got)
+	}
+	for _, table := range []string{"dynamic_leases", "dynamic_effects"} {
 		if got := count(t, db, table, f); got != 0 {
 			t.Errorf("%s still has %d rows after the apply deleted the environment", table, got)
 		}
