@@ -336,6 +336,51 @@ func TestIncidentReleaseWaitsForAnotherOpenIncidentHoldingThePrincipal(t *testin
 	})
 }
 
+// The other incident is named only to a caller who can read it. One in another
+// org still holds the release, with a generic reason.
+func TestIncidentReleaseDoesNotNameAnUnreadableOtherIncident(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		id := w.containedIncident(t, true)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, `INSERT INTO incidents (id, scope_kind, scope_id, org_id, status, opened_by, opened_at) VALUES ('inc_foreign_holder', 'org', 'org_b', 'org_b', 'open', 'usr_irspb', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at) VALUES ('itm_foreign_hold', 'inc_foreign_holder', 'account.contain', 'account', 'usr_itarget', 'org/org_b', 'done', '', 1, `+ts+`, `+ts+`)`)
+		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget)
+		if !errors.Is(err, service.ErrReleaseNotReady) || strings.Contains(err.Error(), "inc_foreign_holder") {
+			t.Fatalf("release with an unreadable other holder = %v, want ErrReleaseNotReady without its id", err)
+		}
+	})
+}
+
+// An attested cut row vouches only for the identities the enumeration left
+// unlisted: a listed identity still needs its own item attested.
+func TestIncidentReleaseCutDoesNotStandInForAListedIdentity(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_rel','acc_itarget','oidc','https://idp.example.test','subject-rel','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		w.realOwners()
+		id := w.openOrg(t, incResponder)
+		w.resume(t, incResponder, id)
+		execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at) VALUES ('itm_cut_target', '`+id+`', 'external_identity.remove', 'enumeration', '`+string(incTarget)+`', 'org/org_a', 'unknown', 'enumeration_truncated', 1, `+ts+`, `+ts+`)`)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_target"); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with only the cut attested = %v, want ErrReleaseNotReady", err)
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); err != nil {
+			t.Fatalf("release with the listed identity and the cut attested: %v", err)
+		}
+	})
+}
+
 // A restore lists a contained principal as such, and reconciling it re-asserts
 // its grants without lifting containment: release is the separate incident act.
 func TestRestoreReconcileDoesNotLiftContainment(t *testing.T) {

@@ -49,17 +49,17 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 		if err != nil || contained != inc.ID || ownIncident(caller, inc) {
 			return domain.ErrNotFound
 		}
+		// The same classification containment ran: a target in several orgs needs
+		// instance scope, and an instance-capability target is host-local.
+		if err := authorizeReleaseTarget(ctx, az, caller, target); err != nil {
+			return err
+		}
 		// Another open incident that also recorded this principal contained keeps its
 		// own claim on the state, so its operator closes or releases it first.
 		if other, err := az.OtherOpenIncidentHolding(ctx, target, inc.ID); err != nil {
 			return err
 		} else if other != "" {
-			return fmt.Errorf("%w: incident %s also recorded this principal contained and is still open", ErrReleaseNotReady, other)
-		}
-		// The same classification containment ran: a target in several orgs needs
-		// instance scope, and an instance-capability target is host-local.
-		if err := authorizeReleaseTarget(ctx, az, caller, target); err != nil {
-			return err
+			return otherHolderRefusal(ctx, az, caller, other)
 		}
 		at, ok, err := az.PrincipalContainedAt(ctx, target)
 		if err != nil {
@@ -135,6 +135,21 @@ func authorizeReleaseTarget(ctx context.Context, az *authz.TxAuthorizer, caller 
 	return nil
 }
 
+// otherHolderRefusal names the other open incident only to a caller who can read
+// it, so the refusal is no existence oracle for an incident outside their scope.
+func otherHolderRefusal(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, other string) error {
+	if o, err := az.IncidentByID(ctx, other); err == nil {
+		if _, err := authorizeIncidentOp(ctx, az, caller, o.OrgID); err == nil {
+			return fmt.Errorf("%w: incident %s also recorded this principal contained and is still open", ErrReleaseNotReady, other)
+		} else if !errors.Is(err, domain.ErrUnauthorized) && !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	return fmt.Errorf("%w: another open incident also recorded this principal contained", ErrReleaseNotReady)
+}
+
 // identitiesNotAttested reads the target's own linked identities and counts the
 // ones the incident has no attested item for, so the condition holds for an org
 // incident as well as an account one. An unattested enumeration-truncated row
@@ -149,7 +164,7 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 	if err != nil {
 		return 0, 0, err
 	}
-	attested, cutPending, cutAttested := map[string]bool{}, false, false
+	attested, listed, cutPending, cutAttested := map[string]bool{}, map[string]bool{}, false, false
 	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, releasePageSize, false)
@@ -171,8 +186,9 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 				} else {
 					cutPending = true
 				}
-			case it.Outcome == domain.ItemAttested:
-				attested[it.ObjectID] = true
+			default:
+				listed[it.ObjectID] = true
+				attested[it.ObjectID] = it.Outcome == domain.ItemAttested
 			}
 		}
 		if len(page) < releasePageSize {
@@ -180,9 +196,10 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 		}
 		after = page[len(page)-1].ID
 	}
-	// An attested cut row for this target vouches for the identities it left unlisted.
+	// An identity with a ledger item needs that item attested; an attested cut row
+	// for this target vouches only for the identities it left unlisted.
 	for _, x := range identities {
-		if !attested[x.ID] && !cutAttested {
+		if listed[x.ID] && !attested[x.ID] || !listed[x.ID] && !cutAttested {
 			pending++
 		}
 	}
