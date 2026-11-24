@@ -306,4 +306,15 @@ func TestRetainedBridgesRefusesResurrectingARevokedPolicyBridge(t *testing.T) {
 	if _, err := retainedBridges([]releaseidentity.Digest{recoveryOnly}, []releaseidentity.Digest{listed}); err == nil {
 		t.Fatal("a policy bridge the catalog revoked must not be restored")
 	}
+	// Production shape: two legacy policy bridges plus two recovery-only ones.
+	l1, l2 := releaseidentity.Hash([]byte("legacy 1")), releaseidentity.Hash([]byte("legacy 2"))
+	n1, n2 := releaseidentity.Hash([]byte("new 1")), releaseidentity.Hash([]byte("new 2"))
+	policy := []releaseidentity.Digest{l1, l2}
+	kept, err = retainedBridges([]releaseidentity.Digest{l1, l2, n1, n2}, policy)
+	if err != nil || len(kept) != 2 || kept[0] != l1 || kept[1] != l2 {
+		t.Fatalf("only the two policy bridges survive a workflow-signed snapshot: %v %v", kept, err)
+	}
+	if _, err := retainedBridges([]releaseidentity.Digest{l1, n1, n2}, policy); err == nil {
+		t.Fatal("a recovery-signed snapshot that dropped a legacy policy bridge must be refused")
+	}
 }

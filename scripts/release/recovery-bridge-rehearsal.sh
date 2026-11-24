@@ -47,15 +47,23 @@ jq --arg id "$recovery_id" --arg sha "$(sha256_of "$scratch/base/recovery-rehear
 jq --arg id "$recovery_id" --arg sha "$(sha256_of "$scratch/base/recovery-rehearsal.pub")" \
 	'.recovery = {id: $id, sha256: $sha} | .event.signed_by = $id | del(.source_commit, .release_tag)' "$production/metadata.json" >"$scratch/base/metadata.json"
 cp "$production/stable-policy.json" "$scratch/base/stable-policy.json"
-# The production catalog's two legacy nightly bridges are signed by the real
-# recovery key, so the rehearsal catalog starts without bridges.
+# Production shape: the catalog and the stable policy both list the two legacy
+# nightly bridges. Their statements are re-signed with the throwaway key (the real
+# signatures belong to the real recovery key), so the base tree stays loadable.
 jq --arg m "$(sha256_of "$scratch/base/metadata.json")" --arg p "$(sha256_of "$scratch/base/stable-policy.json")" \
-	'.stable_metadata_sha256 = $m | .stable_policy_sha256 = $p | .bridges = []' "$production/catalog.json" >"$scratch/base/catalog.json"
+	'.stable_metadata_sha256 = $m | .stable_policy_sha256 = $p' "$production/catalog.json" >"$scratch/base/catalog.json"
+mkdir "$scratch/base/bridges"
+for digest in $(jq -r '.bridges[]' "$scratch/base/catalog.json"); do
+	mkdir "$scratch/base/bridges/$digest"
+	cp "$production/bridges/$digest/statement.json" "$scratch/base/bridges/$digest/statement.json"
+	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+		--key "$scratch/key/cosign.key" --bundle "$scratch/base/bridges/$digest/statement.sigstore.json" "$scratch/base/bridges/$digest/statement.json" >/dev/null 2>&1
+done
+legacy_first=$(jq -r '.bridges[0]' "$scratch/base/catalog.json")
 for name in metadata catalog stable-policy; do
 	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
 		--key "$scratch/key/cosign.key" --bundle "$scratch/base/$name.sigstore.json" "$scratch/base/$name.json" >/dev/null 2>&1
 done
-mkdir "$scratch/base/bridges"
 
 ceremony=$script_dir/recovery-bridge.sh
 step '1. author: derive unsigned statements from the published evidence'
@@ -86,7 +94,10 @@ refused() { # DESCRIPTION
 	printf 'refused: %s\n' "$1"
 	rm -rf "$scratch/t"
 }
-first=$(jq -r '.bridges[0]' "$scratch/new/catalog.json")
+# The two new bridges (the production-shaped base already lists two legacy ones).
+new_bridges=$(jq -r --slurpfile base "$scratch/base/catalog.json" '.bridges - $base[0].bridges | .[]' "$scratch/new/catalog.json")
+first=$(printf '%s\n' "$new_bridges" | sed -n 1p)
+second=$(printf '%s\n' "$new_bridges" | sed -n 2p)
 cp -R "$scratch/new" "$scratch/t"
 jq '.mode = "restart"' "$scratch/new/bridges/$first/statement.json" >"$scratch/t/bridges/$first/statement.json"
 refused 'a statement edited after signing'
@@ -132,18 +143,71 @@ case $failed in
 esac
 rm -rf "$scratch/t"
 
-step '7. revocation: a new recovery-signed snapshot drops the bridges'
-second=$(jq -r '.bridges[1]' "$scratch/new/catalog.json")
+# expect_fail PATTERN DESCRIPTION COMMAND...: the verifier must fail and one of its
+# FAIL lines must match PATTERN, so a negative is caught by the check it targets.
+expect_fail() {
+	pattern=$1 description=$2
+	shift 2
+	if "$@" >"$scratch/expect.out" 2>&1; then
+		printf 'NOT REFUSED: %s\n' "$description"
+		exit 1
+	fi
+	grep -q "^FAIL.*$pattern" "$scratch/expect.out" || { printf 'refused, but not by the targeted check (%s):\n' "$pattern"; grep '^FAIL' "$scratch/expect.out"; exit 1; }
+	printf 'refused by %s: %s\n' "\"$pattern\"" "$description"
+}
+
+step '2b. faked target proofs: the unsigned verifier binds proofs to the base metadata'
+cp -R "$proofs/rel110" "$scratch/fake110"
+jq '.version = "9.9.9"' "$proofs/rel110/release-manifest.json" >"$scratch/fake110/release-manifest.json"
+expect_fail 'metadata authorizes the target manifest' 'target proofs not authorized by the base metadata' \
+	"$script_dir/verify-recovery-bridge.sh" unsigned "$scratch/base" "$scratch/statements" "$proofs/rel100" "$scratch/fake110"
+jq --arg d "$first" '.bridges = [$d]' "$scratch/base/stable-policy.json" >"$scratch/listed-base-policy.json"
+cp -R "$scratch/base" "$scratch/listed-base"
+cp "$scratch/listed-base-policy.json" "$scratch/listed-base/stable-policy.json"
+expect_fail 'the stable policy does not list it' 'a base policy that lists a statement' \
+	"$script_dir/verify-recovery-bridge.sh" unsigned "$scratch/listed-base" "$scratch/statements" "$proofs/rel100" "$proofs/rel110"
+
+step '7. revocation: a new recovery-signed snapshot drops the new bridges, keeps the legacy ones'
 # A bridge the stable policy lists needs a policy rotation, so revoke refuses it.
-cp -R "$scratch/new" "$scratch/policy-listed"
-jq --arg d "$first" '.bridges = [$d]' "$scratch/new/stable-policy.json" >"$scratch/policy-listed/stable-policy.json"
-if "$ceremony" revoke "$scratch/key/cosign.key" "$scratch/policy-listed" "$scratch/refused-revoke" "$first" >/dev/null 2>&1; then
-	printf 'NOT REFUSED: revoking a policy-listed bridge\n'
+if "$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/refused-revoke" "$legacy_first" >/dev/null 2>&1; then
+	printf 'NOT REFUSED: revoking a policy-listed (legacy) bridge\n'
 	exit 1
 fi
 printf 'refused: revoking a bridge the stable policy lists\n'
 "$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/revoked" "$first" "$second"
 "$script_dir/verify-recovery-bridge.sh" revocation "$scratch/new" "$scratch/revoked" "$first" "$second"
+jq -e --argjson n "$(jq '.bridges | length' "$scratch/base/catalog.json")" '(.bridges | length) == $n' "$scratch/revoked/catalog.json" >/dev/null
+
+# An existing bridge file may not change in a proposal: only new bridge directories.
+cp -R "$scratch/new" "$scratch/t"
+printf ' ' >>"$scratch/t/bridges/$legacy_first/statement.json"
+expect_fail 'only metadata, catalog' 'a proposal that edits an existing bridge file' \
+	"$script_dir/verify-recovery-bridge.sh" proposal "$scratch/base" "$scratch/t" "$proofs/rel100" "$proofs/rel110"
+rm -rf "$scratch/t"
+
+# The revocation verifier carries the proposal's integrity checks: a tree with an
+# added primary key file, and a re-rooted tree whose metadata and catalog are
+# validly signed by another key, are refused by the integrity checks, not by luck.
+cp -R "$scratch/revoked" "$scratch/t"
+printf 'extra' >"$scratch/t/primary-extra.pub"
+expect_fail 'only metadata, catalog' 'a revoke output with an added primary key file' \
+	"$script_dir/verify-recovery-bridge.sh" revocation "$scratch/new" "$scratch/t" "$first" "$second"
+rm -rf "$scratch/t"
+cp -R "$scratch/revoked" "$scratch/t"
+recovery_file=$(jq -r '.recovery.public_key' "$scratch/t/root.json")
+cp "$scratch/key/other/cosign.pub" "$scratch/t/$recovery_file"
+jq --arg sha "$(sha256_of "$scratch/t/$recovery_file")" '.recovery.sha256 = $sha' "$scratch/revoked/root.json" >"$scratch/t/root.json"
+for name in metadata catalog; do
+	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+		--key "$scratch/key/other/cosign.key" --bundle "$scratch/t/$name.sigstore.json" "$scratch/t/$name.json" >/dev/null 2>&1 </dev/null
+done
+expect_fail 'root.json is byte-identical' 'a re-rooted revoke output signed by another key' \
+	"$script_dir/verify-recovery-bridge.sh" revocation "$scratch/new" "$scratch/t" "$first" "$second"
+if grep -q '^FAIL.*signature verifies' "$scratch/expect.out"; then
+	printf 'the re-rooted tree must pass the signature checks so only integrity catches it\n'
+	exit 1
+fi
+rm -rf "$scratch/t"
 "$ceremony" assemble "$scratch/revoked" "$scratch/revoked-bundle" "$proofs/rel100" "$proofs/rel110"
 jq -c '{releases: (.releases | length), bridges: (.bridges | length)}' "$scratch/revoked-bundle/index.json"
 # Limit: revocation binds only instances whose persisted floor has advanced past

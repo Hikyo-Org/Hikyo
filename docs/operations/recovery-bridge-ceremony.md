@@ -39,7 +39,7 @@ reads production key material; this ceremony is the only step that does.
    the next stable release removes the bridge from every newly built bundle.
 
 Also required: no other stable-policy or release/trust change is pending
-(`gh pr list --state open` and `git log -- release/trust internal/releasetrust`
+(`gh pr list -L 500 --state open` and `git log HEAD..origin/dev -- release/trust internal/releasetrust`
 are clean), so the sequences below are exact.
 
 ## Roles and custody
@@ -48,13 +48,15 @@ are clean), so the sequences below are exact.
 - A witness watches the signing steps and countersigns the ceremony log.
 - **Online machine** (steps 0 to 3 and 6 to 8): network, `gh`, `go`, `jq`, `cosign`.
   It holds no key. **Offline signing machine** (steps 4 and 5): the key, `cosign`,
-  `jq`, `go`, a checkout of the same commit and the public working files carried
+  `jq`, a checkout of the same commit and the public working files carried
   over on removable media. Nothing returns from the offline machine except public
   files (statements, signatures, metadata, catalog).
 - **Hardware keys.** `sign`, `reauthorize` and `revoke` pass `RECOVERY_KEY` to
-  `cosign sign-blob --key`, so a key URI that cosign supports (for example a
-  `pkcs11:` or KMS URI) works in place of a file path; cosign handles the PIN
-  prompt. The authoring and verifier steps need only the public key.
+  `cosign sign-blob --key`, so a PIV or PKCS#11 hardware key works in place of a
+  file path. That needs the separate Linux cosign build with the
+  `pivkey`/`pkcs11key` tags, a `pkcs11:` key URI and a module path (the URI's
+  `module-path` or `COSIGN_PKCS11_MODULE_PATH`); cosign handles the PIN prompt.
+  KMS URIs are out of scope because they contradict offline custody. The authoring and verifier steps need only the public key.
 
 ## Steps
 
@@ -71,8 +73,9 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
 0. (Online) Confirm nothing else is pending (expect no PRs and no commits listed):
 
    ```sh
-   gh pr list -R Hikyo-Org/Hikyo --state open --json number,files --jq '.[] | select(any(.files[]?; .path | test("release/trust|stable-policy|internal/releasetrust"))) | .number'
-   git log --oneline origin/dev -5 -- release/trust internal/releasetrust
+   gh pr list -R Hikyo-Org/Hikyo -L 500 --state open --json number,files --jq '.[] | select(any(.files[]?; .path | test("release/trust|stable-policy|internal/releasetrust"))) | .number'
+   git fetch origin dev
+   git log --oneline "$(git rev-parse HEAD)"..origin/dev -- release/trust internal/releasetrust
    ```
 
 1. (Online) Download the published evidence for both releases. Steps 2 and 7
@@ -130,7 +133,7 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
    scripts/release/verify-recovery-bridge.sh proposal release/trust "$WORK/new-trust" "$WORK/rel-1.0.0" "$WORK/rel-1.1.0"
    ```
 
-7. (Online) Prove an operator can consume it (expect `{"releases":2,"bridges":2}`):
+7. (Online) Prove an operator can consume it (expect `releases` 2 and `bridges` equal to the base catalog's bridges plus the two new ones):
 
    ```sh
    scripts/release/recovery-bridge.sh assemble "$WORK/new-trust" "$WORK/bundle" "$WORK/rel-1.0.0" "$WORK/rel-1.1.0"
@@ -141,7 +144,8 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
    `metadata.sigstore.json`, `catalog.json`, `catalog.sigstore.json` and `bridges/`
    from `$WORK/new-trust` into a branch of `release/trust/` and open a pull
    request. A second person re-runs step 6 against that branch, using the
-   pre-ceremony tree from the base branch as `BASE_TRUST`:
+   pre-ceremony tree from the base branch as the base and the step 1 proofs
+   (`$WORK/rel-1.0.0`, `$WORK/rel-1.1.0`, downloaded again independently):
 
    ```sh
    git fetch origin dev && git worktree add "$WORK/base" origin/dev

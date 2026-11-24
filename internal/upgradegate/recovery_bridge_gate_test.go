@@ -58,8 +58,9 @@ func writeBridgeBundle(t *testing.T, f *trustfixture.Fixture, releases []trustfi
 
 // TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged installs a release
 // through the real gate on each engine, then offers a route that exists only as
-// a recovery bridge. Every refusal must leave the control row (applied release,
-// generation, floor) and the inspected schema exactly as they were.
+// a recovery bridge. Every refusal must leave the control state (applied release,
+// schema and migration digests, generation, floor, pending operation) exactly as
+// it was.
 // Postgres runs when HIKYO_TEST_POSTGRES_DSN is set (CI uses PostgreSQL 18).
 func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
@@ -132,21 +133,57 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 				}
 			}
 
+			bridge := func(st releasetrust.BridgeStatement) []byte { return trustfixture.JSON(t, st) }
+			catalogue := func(raw []byte) {
+				f.Catalog.Bridges, f.Catalog.Sequence = []releaseidentity.Digest{releaseidentity.Hash(raw)}, f.Catalog.Sequence+1
+			}
+			signed := func(raw []byte) releasetrust.BridgeMaterial {
+				return releasetrust.BridgeMaterial{Statement: raw, Signature: trustfixture.Sign(t, f.RecoverySigner, raw)}
+			}
+			bundleWith := func(m ...releasetrust.BridgeMaterial) string {
+				return writeBridgeBundle(t, f, []trustfixture.SignedRelease{a, b}, m)
+			}
+			raw := bridge(statement)
+
 			// No bridge: the planner never invents a route.
-			attempt("no bridge", writeBridgeBundle(t, f, []trustfixture.SignedRelease{a, b}, nil), "no authenticated upgrade route")
+			attempt("no bridge", bundleWith(), "no authenticated upgrade route")
+
+			// A statement the catalog does not list is refused at the offline index.
+			attempt("bridge not in the catalog", bundleWith(signed(raw)), "omits or substitutes")
+
+			// A statement edited after signing no longer matches the catalogued digest.
+			catalogue(raw)
+			edited := statement
+			edited.TargetSchemaSHA256 = releaseidentity.Hash([]byte("edited"))
+			attempt("statement edited after signing", bundleWith(releasetrust.BridgeMaterial{Statement: bridge(edited), Signature: signed(raw).Signature}), "omits or substitutes")
 
 			// A catalogued bridge signed by a different throwaway key fails verification.
 			forged := trustfixture.New(t)
-			raw := trustfixture.JSON(t, statement)
-			f.Catalog.Bridges = append(f.Catalog.Bridges, releaseidentity.Hash(raw))
-			f.Catalog.Sequence++
-			attempt("bridge signed by another key", writeBridgeBundle(t, f, []trustfixture.SignedRelease{a, b}, []releasetrust.BridgeMaterial{{Statement: raw, Signature: trustfixture.Sign(t, forged.RecoverySigner, raw)}}), "signature verification failed")
+			attempt("bridge signed by another key", bundleWith(releasetrust.BridgeMaterial{Statement: raw, Signature: trustfixture.Sign(t, forged.RecoverySigner, raw)}), "signature verification failed")
 
-			// A properly signed bridge plans a route, but it requires the operator
-			// attestation evidence, which this request does not carry. The route is past
-			// "no route" (the bridge was accepted) and still nothing is written.
-			good := releasetrust.BridgeMaterial{Statement: raw, Signature: trustfixture.Sign(t, f.RecoverySigner, raw)}
-			attempt("bridge without operator attestation", writeBridgeBundle(t, f, []trustfixture.SignedRelease{a, b}, []releasetrust.BridgeMaterial{good}), "invalid closed upgrade artifact")
+			// Validly signed and catalogued, but for the other engine: no route for this database.
+			other := releaseidentity.SQLite
+			if engine == releaseidentity.SQLite {
+				other = releaseidentity.Postgres
+			}
+			mismatched := statement
+			mismatched.SourceMigrations.Engine, mismatched.TargetMigrations.Engine = other, other
+			rawMismatch := bridge(mismatched)
+			catalogue(rawMismatch)
+			attempt("bridge for another engine", bundleWith(signed(rawMismatch)), "")
+
+			// Validly signed and catalogued, but its source is not the installed release.
+			wrongSource := statement
+			wrongSource.Source.Version = "0.9.9"
+			rawWrong := bridge(wrongSource)
+			catalogue(rawWrong)
+			attempt("bridge from a different source version", bundleWith(signed(rawWrong)), "")
+
+			// A properly signed, catalogued bridge plans a route and is refused later,
+			// at the operator evidence; nothing is written. TestRecoveryBridgeNeedsAttestation
+			// AndThenSucceeds shows the same route succeeds once the evidence is supplied.
+			catalogue(raw)
+			attempt("bridge without operator evidence", bundleWith(signed(raw)), "invalid closed upgrade artifact")
 		})
 	}
 }

@@ -8,16 +8,21 @@
 # BASE_TRUST is the committed trust tree before the ceremony, NEW_TRUST the
 # proposal. SOURCE_PROOFS and TARGET_PROOFS hold the published
 # release-manifest.json and upgrade-compatibility.json of the two releases
-# (the release proofs are authenticated by their own Sigstore signatures).
+# Authenticating those release proofs (Sigstore signatures, pinned root) is the
+# job of the authoring and assemble steps, not of this script. What it does check
+# is that both manifests are the ones the metadata authorizes and bind the
+# declarations the statements are derived from.
 #
-# `unsigned` runs before anything is signed: it re-derives every statement field
-# from the published declarations and compares the statement, normalized with
-# `jq -S`, to that derivation. `proposal` runs that same derivation on the signed
-# statements and also checks signatures, digests and inventories. `revocation`
-# checks a revoke output against the tree it revoked from. This script shares no
-# code with the Go authoring tool and needs only jq, cosign and sha256. Any
-# mismatch exits non-zero.
-# shellcheck disable=SC2016
+# `unsigned` runs before anything is signed: it checks the manifests against the
+# BASE_TRUST metadata, that the stable policy does not list the statements, and
+# re-derives every statement field from the published declarations, comparing the
+# statement, normalized with `jq -S`, to that derivation. `proposal` runs that on
+# the signed statements and the proposal's metadata, and also checks signatures,
+# digests, inventories and that nothing else in the tree changed. `revocation`
+# applies the same tree, root, metadata and catalog integrity checks to a revoke
+# output against the tree it revoked from. This script shares no code with the Go
+# authoring tool and needs only jq, cosign and sha256. Any mismatch exits non-zero.
+# shellcheck disable=SC2016,SC2086
 set -eu
 
 : "${COSIGN_BIN:=cosign}"
@@ -81,41 +86,59 @@ engines_of() { # FILE...
 	for file in "$@"; do jq -r '.source_migrations.engine' "$file"; done | sort | tr '\n' ,
 }
 
-mode=${1:-}
-[ -n "$mode" ] || usage
-shift
-case "$mode" in
-unsigned)
-	[ "$#" -eq 4 ] || usage
-	base=$1 statements=$2
-	load_releases "$3" "$4"
-	policy_digest=$(sha256_of "$base/stable-policy.json")
-	count=0
-	for directory in "$statements"/*/; do
-		count=$((count + 1))
-		check_statement "$(basename "$directory")" "${directory}statement.json" "$policy_digest"
+json_list() { for item in "$@"; do printf '%s\n' "$item"; done | jq -R . | jq -s -c .; }
+
+# check_authorized METADATA: the published releases are the ones the metadata authorizes.
+check_authorized() {
+	check "metadata authorizes the source manifest ($source_version)" equal "$(jq -r --arg v "$source_version" --arg d "$source_manifest" '[.releases[] | select(.version == $v and .manifest_sha256 == $d)] | length' "$1")" 1
+	check "metadata authorizes the target manifest ($target_version)" equal "$(jq -r --arg v "$target_version" --arg d "$target_manifest" '[.releases[] | select(.version == $v and .manifest_sha256 == $d)] | length' "$1")" 1
+}
+
+# unexpected_files BASE NEW ADDED lists changed or new files that no recovery
+# re-authorization may touch (everything but metadata, catalog and added bridges).
+unexpected_files() {
+	(cd "$2" && find . -type f | sort) | while IFS= read -r file; do
+		cmp -s "$2/$file" "$1/$file" 2>/dev/null && continue
+		case $file in
+		./metadata.json | ./metadata.sigstore.json | ./catalog.json | ./catalog.sigstore.json) continue ;;
+		esac
+		for digest in $3; do
+			case $file in
+			./bridges/"$digest"/*) continue 2 ;;
+			esac
+		done
+		printf '%s\n' "$file"
 	done
-	check 'exactly two statements, one per engine' equal "$count:$(engines_of "$statements"/*/statement.json)" '2:postgres,sqlite,'
-	finish
-	;;
-proposal)
-	[ "$#" -eq 4 ] || usage
-	base=$1 new=$2
+}
+
+# dropped_files BASE NEW REMOVED lists base files missing from NEW other than revoked bridges.
+dropped_files() {
+	(cd "$1" && find . -type f | sort) | while IFS= read -r file; do
+		[ -f "$2/$file" ] && continue
+		for digest in $3; do
+			case $file in
+			./bridges/"$digest"/*) continue 2 ;;
+			esac
+		done
+		printf '%s\n' "$file"
+	done
+}
+
+# check_chain BASE NEW ADDED REMOVED: the integrity checks shared by a proposal and a
+# revocation. ADDED and REMOVED are space-separated bridge digests. The new tree may
+# differ from BASE only in the recovery-shaped metadata, the catalog, their signatures,
+# the ADDED bridge directories and the absence of the REMOVED ones.
+check_chain() {
+	base=$1 new=$2 added=$3 removed=$4
 	recovery_pub="$new/$(jq -r '.recovery.public_key' "$new/root.json")"
-	# 1. The trust tree changed only where a recovery re-authorization may change it.
-	unexpected=$(
-		(cd "$new" && find . -type f | sort) | while IFS= read -r file; do
-			cmp -s "$new/$file" "$base/$file" 2>/dev/null || printf '%s\n' "$file"
-		done | grep -vE '^\./(bridges/.*|catalog\.json|catalog\.sigstore\.json|metadata\.json|metadata\.sigstore\.json)$' || true
-	)
-	dropped=$(cd "$base" && find . -type f | sort | while IFS= read -r file; do [ -f "$new/$file" ] || printf '%s\n' "$file"; done)
-	check 'only metadata, catalog, their signatures and bridges/ changed' equal "$unexpected" ''
-	check 'no base trust file was removed' equal "$dropped" ''
+	unexpected=$(unexpected_files "$base" "$new" "$added")
+	dropped=$(dropped_files "$base" "$new" "$removed")
+	check 'only metadata, catalog, their signatures and the added bridge directories changed' equal "$unexpected" ''
+	check 'no base trust file was removed except revoked bridge directories' equal "$dropped" ''
 	check 'stable-policy.json is byte-identical (statements bind its digest)' cmp -s "$base/stable-policy.json" "$new/stable-policy.json"
 	check 'stable-policy.sigstore.json is byte-identical' cmp -s "$base/stable-policy.sigstore.json" "$new/stable-policy.sigstore.json"
 	check 'root.json is byte-identical' cmp -s "$base/root.json" "$new/root.json"
 	check 'the recovery public key is byte-identical' cmp -s "$base/$(jq -r '.recovery.public_key' "$base/root.json")" "$recovery_pub"
-	# 2. Metadata and catalog are the recovery re-authorization shape and bind each other.
 	check 'metadata signature verifies with the pinned recovery key' verify_blob "$new/metadata.json" "$new/metadata.sigstore.json"
 	check 'catalog signature verifies with the pinned recovery key' verify_blob "$new/catalog.json" "$new/catalog.sigstore.json"
 	check 'metadata sequence is the base sequence plus one' equal "$(jq '.sequence' "$new/metadata.json")" "$(($(jq '.sequence' "$base/metadata.json") + 1))"
@@ -124,50 +147,69 @@ proposal)
 	check 'metadata differs from the base only in sequence, signer and delegated identity' equal \
 		"$(jq -S 'del(.sequence, .event.signed_by, .source_commit, .release_tag)' "$new/metadata.json")" \
 		"$(jq -S 'del(.sequence, .event.signed_by, .source_commit, .release_tag)' "$base/metadata.json")"
+	check 'catalog differs from the base only in sequence, metadata digest and bridges' equal \
+		"$(jq -S 'del(.sequence, .stable_metadata_sha256, .bridges)' "$new/catalog.json")" \
+		"$(jq -S 'del(.sequence, .stable_metadata_sha256, .bridges)' "$base/catalog.json")"
+	check 'catalog bridges are the base bridges plus the added minus the removed' equal \
+		"$(jq -c --argjson a "$(json_list $added)" --argjson r "$(json_list $removed)" '((.bridges + $a) - $r) | sort' "$base/catalog.json")" \
+		"$(jq -c '.bridges | sort' "$new/catalog.json")"
 	check 'catalog binds the new metadata digest' equal "$(jq -r '.stable_metadata_sha256' "$new/catalog.json")" "$(sha256_of "$new/metadata.json")"
 	check 'catalog binds the unchanged stable policy digest' equal "$(jq -r '.stable_policy_sha256' "$new/catalog.json")" "$(sha256_of "$new/stable-policy.json")"
-	check 'catalog keeps the base nightly policies' equal "$(jq -c '.nightly_policies' "$new/catalog.json")" "$(jq -c '.nightly_policies' "$base/catalog.json")"
-	# 3. The published releases are the ones the metadata authorizes.
+	check 'every catalogued bridge has a directory and no directory is uncatalogued' equal "$(find "$new/bridges" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | tr '\n' ' ')" "$(jq -r '.bridges[]' "$new/catalog.json" | sort | tr '\n' ' ')"
+}
+
+mode=${1:-}
+[ -n "$mode" ] || usage
+shift
+case "$mode" in
+unsigned)
+	[ "$#" -eq 4 ] || usage
+	base=$1 statements=$2
 	load_releases "$3" "$4"
-	check "metadata authorizes the source manifest ($source_version)" equal "$(jq -r --arg v "$source_version" --arg d "$source_manifest" '[.releases[] | select(.version == $v and .manifest_sha256 == $d)] | length' "$new/metadata.json")" 1
-	check "metadata authorizes the target manifest ($target_version)" equal "$(jq -r --arg v "$target_version" --arg d "$target_manifest" '[.releases[] | select(.version == $v and .manifest_sha256 == $d)] | length' "$new/metadata.json")" 1
-	# 4. Every new bridge is catalogued, signed and exactly the derivation of the published evidence.
-	policy_digest=$(sha256_of "$new/stable-policy.json")
-	new_bridges=$(jq -r --slurpfile base "$base/catalog.json" '.bridges - $base[0].bridges | .[]' "$new/catalog.json")
+	check_authorized "$base/metadata.json"
+	policy_digest=$(sha256_of "$base/stable-policy.json")
 	count=0
+	for directory in "$statements"/*/; do
+		count=$((count + 1))
+		digest=$(basename "$directory")
+		check "$digest: the stable policy does not list it (it would change the digest the statement binds)" jq -e --arg d "$digest" '(.bridges // []) | index($d) | not' "$base/stable-policy.json"
+		check_statement "$digest" "${directory}statement.json" "$policy_digest"
+	done
+	check 'exactly two statements, one per engine' equal "$count:$(engines_of "$statements"/*/statement.json)" '2:postgres,sqlite,'
+	finish
+	;;
+proposal)
+	[ "$#" -eq 4 ] || usage
+	base=$1 new=$2
+	new_bridges=$(jq -r --slurpfile base "$base/catalog.json" '.bridges - $base[0].bridges | .[]' "$new/catalog.json")
+	check_chain "$base" "$new" "$new_bridges" ''
+	load_releases "$3" "$4"
+	check_authorized "$new/metadata.json"
+	policy_digest=$(sha256_of "$new/stable-policy.json")
+	count=0
+	listed=
 	for digest in $new_bridges; do
 		count=$((count + 1))
 		statement="$new/bridges/$digest/statement.json"
-			check "$digest: the stable policy does not list it (it would change the digest the statement binds)" jq -e --arg d "$digest" '.bridges | index($d) | not' "$new/stable-policy.json"
+		listed="$listed $statement"
+		check "$digest: the stable policy does not list it (it would change the digest the statement binds)" jq -e --arg d "$digest" '(.bridges // []) | index($d) | not' "$new/stable-policy.json"
 		check "$digest: recovery signature verifies" verify_blob "$statement" "$new/bridges/$digest/statement.sigstore.json"
 		check_statement "$digest" "$statement" "$policy_digest"
 	done
-	listed=
-	for digest in $new_bridges; do listed="$listed $new/bridges/$digest/statement.json"; done
-	# shellcheck disable=SC2086
 	check 'exactly two new bridges, one per engine' equal "$count:$(engines_of $listed)" '2:postgres,sqlite,'
-	check 'no bridge directory is uncatalogued' equal "$(find "$new/bridges" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | tr '\n' ' ')" "$(jq -r '.bridges[]' "$new/catalog.json" | sort | tr '\n' ' ')"
 	finish
 	;;
 revocation)
 	[ "$#" -ge 3 ] || usage
 	prior=$1 new=$2
 	shift 2
-	recovery_pub="$new/$(jq -r '.recovery.public_key' "$new/root.json")"
-	check 'metadata signature verifies with the pinned recovery key' verify_blob "$new/metadata.json" "$new/metadata.sigstore.json"
-	check 'catalog signature verifies with the pinned recovery key' verify_blob "$new/catalog.json" "$new/catalog.sigstore.json"
-	check 'metadata sequence is the prior sequence plus one' equal "$(jq '.sequence' "$new/metadata.json")" "$(($(jq '.sequence' "$prior/metadata.json") + 1))"
-	check 'catalog sequence is the prior sequence plus one' equal "$(jq '.sequence' "$new/catalog.json")" "$(($(jq '.sequence' "$prior/catalog.json") + 1))"
-	check 'catalog binds the new metadata digest' equal "$(jq -r '.stable_metadata_sha256' "$new/catalog.json")" "$(sha256_of "$new/metadata.json")"
-	check 'stable-policy.json is byte-identical' cmp -s "$prior/stable-policy.json" "$new/stable-policy.json"
-	removed=$(for digest in "$@"; do printf '%s\n' "$digest"; done | jq -R . | jq -s -c 'sort')
-	check 'the catalog lost exactly the revoked digests' equal "$(jq -c --argjson r "$removed" '(.bridges - $r) | sort' "$prior/catalog.json")" "$(jq -c '.bridges | sort' "$new/catalog.json")"
+	check_chain "$prior" "$new" '' "$*"
+	removed=$(json_list "$@")
 	check 'every revoked digest was catalogued before' jq -e --argjson r "$removed" '($r - .bridges) | length == 0' "$prior/catalog.json"
 	check 'no revoked digest is listed by the stable policy' jq -e --argjson r "$removed" '(.bridges // []) as $b | ($r - ($r - $b)) | length == 0' "$new/stable-policy.json"
 	for digest in "$@"; do
 		check "$digest: its files are gone" test ! -e "$new/bridges/$digest"
 	done
-	check 'no other bridge directory changed' equal "$(cd "$new/bridges" && find . -type f | sort | xargs shasum -a 256 2>/dev/null)" "$(cd "$prior/bridges" && find . -type f | sort | grep -vE "$(printf '%s\n' "$@" | paste -sd'|' -)" | xargs shasum -a 256 2>/dev/null)"
 	finish
 	;;
 *) usage ;;
