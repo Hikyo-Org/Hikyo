@@ -590,7 +590,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 				if err != nil {
 					return fmt.Errorf("service: pending change %s: %w", applies[i].versionID, err)
 				}
-				applies[i].value = string(plain)
+				// A draft staged before the trim was uniform may hold padding;
+				// normalize here so validation, the snapshot and the live cell
+				// (putCell) all see the same value.
+				applies[i].value = schema.Normalize(string(plain))
 			}
 			published, err := materialize(ctx, r, ep, sealer, s.Keyring, envScope,
 				caller.Principal, now, applies, s.storageLimit(), groupIndex, nil)

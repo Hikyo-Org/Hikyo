@@ -16,6 +16,17 @@ rotations in each environment (`hikyo rotation list --env <env>`) and pause any
 you do not want to start, then resume them deliberately. See
 [Scheduled credential rotation](/docs/rotation/).
 
+## Mail password upgrade notes
+
+The SMTP password (`HIKYO_MAIL_PASSWORD`) now has its leading and trailing
+whitespace trimmed on every write path. Stored
+passwords are not rewritten. During a mixed-version rollout of several nodes,
+managed-configuration adoption can fail closed with a seed disagreement until
+every node runs the new version, so finish the rollout first. Restoring an
+older revision re-publishes its password trimmed. If your relay password
+intentionally begins or ends with whitespace, change it to one without before
+upgrading. See [Mail](/docs/signup-mail/).
+
 ## Dynamic provider and SSH CA upgrade notes
 
 Dynamic secrets providers whose origin names several hosts (for example
