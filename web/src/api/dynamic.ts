@@ -20,7 +20,7 @@ import {
 } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { commonRefusalText, statusText } from './statusText.ts';
+import { commonRefusalText, statusText, withDetail } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { useTransport } from './transport.tsx';
 
@@ -318,14 +318,6 @@ export async function mintLease(
 }
 
 // ---- Refusal text --------------------------------------------------------
-
-/** withDetail appends the server's safe detail sentence when it carried one. */
-function withDetail(base: string, error: unknown): string {
-  if (error instanceof ApiError && error.detail !== undefined && error.detail !== '') {
-    return `${base} (${error.detail})`;
-  }
-  return base;
-}
 
 /**
  * createProviderRefusalText names a provider-create refusal in its own

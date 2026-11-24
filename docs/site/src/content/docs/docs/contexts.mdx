@@ -36,7 +36,9 @@ hikyo context create production \
 
 For a new HTTPS URL, explicitly choose `--tls-mode system-ca` for trusted-chain,
 validity and hostname verification, or `--tls-mode spki` to inspect and confirm
-the leaf fingerprint without those CA checks. The CLI requires confirmation on
+the leaf fingerprint without those CA checks. Use `system-ca` when a proxy or
+CDN, such as a proxied Cloudflare record, terminates TLS: it re-keys its
+certificate on renewal, and a leaf pin then refuses the instance. The CLI requires confirmation on
 a controlling terminal. Omitting the mode refuses before connecting. Existing
 stored and provisioned pins retain their behavior. Automation must receive a
 trust bundle through the credential's protected channel.

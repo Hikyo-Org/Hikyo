@@ -230,7 +230,8 @@ func TLSConfig(origin string, mode Mode, pin string, profile Profile) *tls.Confi
 				return fmt.Errorf(
 					"certificate identity for %s does not match the pin recorded at establishment (%s). "+
 						"This is what an interception looks like; it is also what a re-keyed certificate looks like. "+
-						"If the change is legitimate, re-establish the instance deliberately",
+						"If the change is legitimate, re-establish the instance deliberately. "+
+						"An origin behind a TLS-terminating proxy or CDN that re-keys on renewal needs system CA (system-ca) trust, not a leaf pin",
 					origin, ShortPin(pin))
 			},
 			// Chain verification is intentionally replaced by the exact leaf

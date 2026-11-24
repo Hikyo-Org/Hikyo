@@ -192,6 +192,15 @@
         "postgres": "7ed3956a6c8fc12fc771e746104f099229017a1cb25204022f981c22d90c45a4"
       }
     },
+    "BoundAuthRefusalTransaction": {
+      "authority": "refusal accounting bounds each lock wait and statement server-side so an abandoned attempt cannot keep waiting on or holding the singleton row past the caller's deadline",
+      "sql_hash": {
+        "postgres": "e26b6ab9aa461c6055a594797c353244a141d1f954a0b89ac7198c6d1e268af5"
+      },
+      "api_hash": {
+        "postgres": "649860f2494629133d2869895f1782e0fd9982dca0d8723ecdf1fb5692c60c5f"
+      }
+    },
     "CoordinationCountForeignNodes": {
       "authority": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert.",
       "sql_hash": {
@@ -1115,7 +1124,7 @@
       ]
     },
     "internal/store/backup.go:exportPostgres": {
-      "hash": "34118449c64cc2b6fa30abfcb852661ad931591e7abdad1f49dac769777fcef6",
+      "hash": "4bb7124d52a577ef74263b8fd225b39e36c614955ca6fd457a7eee3630319f54",
       "reason": "Authenticated backup snapshot uses READ ONLY transaction protocol and COPY TO STDOUT over structurally discovered archive tables, which can differ from the current runtime schema.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
@@ -1136,6 +1145,7 @@
         "internal/releaseidentity/identity.go:Source.IsRelease",
         "internal/releaseidentity/identity.go:Source.Validate",
         "internal/releaseidentity/identity.go:ValidateTarget",
+        "internal/store/backup.go:copyFileMember",
         "internal/store/backup.go:isMissingGooseTable",
         "internal/store/backup.go:pgIdent",
         "internal/store/backup.go:schemaVersionResult",
@@ -1155,21 +1165,25 @@
       ],
       "build_dependencies": {
         "darwin": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ],
         "default": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ],
         "ui": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ],
         "windows": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ]
       }
     },
     "internal/store/backup.go:exportSQLite": {
-      "hash": "3a0882821bf8ca6d01caecaea2512cffd0530288078f0c07f14aba93e2bd1593",
+      "hash": "ed94b635d6473c5fe39ccf33fa52716e0f4146daefc2225ff80823e85b849218",
       "reason": "SQLite VACUUM INTO is the engine snapshot protocol used to publish a consistent owned backup file; no ordinary runtime table query.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
@@ -1190,6 +1204,7 @@
         "internal/releaseidentity/identity.go:Source.IsRelease",
         "internal/releaseidentity/identity.go:Source.Validate",
         "internal/releaseidentity/identity.go:ValidateTarget",
+        "internal/store/backup.go:copyFileMember",
         "internal/store/backup.go:isMissingGooseTable",
         "internal/store/backup.go:schemaVersionResult",
         "internal/store/backup.go:writeFileMember",
@@ -1212,15 +1227,19 @@
       ],
       "build_dependencies": {
         "darwin": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_unix.go:requireSingleLink"
         ],
         "default": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_unix.go:requireSingleLink"
         ],
         "ui": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_unix.go:requireSingleLink"
         ],
         "windows": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_windows.go:requireSingleLink"
         ]
       }
@@ -3070,13 +3089,15 @@
     "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "e42f1f0336abd0454755e02234745bcfcf887b0880a299e3dd6d78b8f36643d9",
     "internal/store/authn/restore.go:Resolver.retireRestoredPendingHumanProofs": "e800fdaa927c583afcb18837dce8295bf047b1924245fd89fbb8107ae826ce47",
     "internal/store/authn/restore.go:nextEpoch": "79b068b0a5ca75782267913fe318b89d2eae303c07bd8a26205760ce848e28aa",
+    "internal/store/backup.go:copyFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
+    "internal/store/backup.go:createStaged": "f5a5b03e5df0f3ace822210df418818f658883ee1214f7ab1ac422bf1a6a7f2d",
     "internal/store/backup.go:isMissingGooseTable": "1281c742cb5d6fe8f7b608f0ff0ff450b5188394bd4e1e7043f991d55d74fd04",
     "internal/store/backup.go:openArchive": "6ac827716511836815ebf834947eaa935229cf24f667766beb92d7679393524f",
     "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef",
     "internal/store/backup.go:schemaVersionResult": "9f167bfcf31686969db027a9b8edf202a5505778ac941338d8132d49fefa0755",
     "internal/store/backup.go:topoSort": "d705562d3a08af977ee82a0f055f653959956650ad4d26dfb6098ea0f5c96bd7",
     "internal/store/backup.go:validRestoredSequencePosition": "cd037cc970df599ed2245dd94f08a10558528d8be7bd8c8d84407569f3fe11fa",
-    "internal/store/backup.go:writeFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
+    "internal/store/backup.go:writeFileMember": "3bf9b1f4e5252e6f4378c55547ac77aca3258cc3902067280fb63beb7c89dbc9",
     "internal/store/backup.go:writeManifest": "d49030fa5164b997bf402f6320e270e10b9e21595651f8e2c9b85dee41068ac6",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bind": "7ccd3c6770a31f070a24cdf4b3d94805dd1ece9d23195104974bb8115ae6fa11",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bindPostgres": "7fb1400ca76c108232a43b012d5e607f05f32556837e9abe7a18a9622664c54d",
@@ -3184,6 +3205,7 @@
   },
   "build_helpers": {
     "darwin": {
+      "internal/store/backup.go:createStaged": "db6884bb94c71b08de02474ff514fbb2b58ca14a7cce4ee33d45c20cdd062555",
       "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting": "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b"
     },
     "windows": {

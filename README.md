@@ -278,13 +278,3 @@ Hikyo is licensed under the [Mozilla Public License 2.0](./LICENSE).
     </picture>
   </a>
 </p>
-
-<p align="center">
-  <a href="https://mergewatch.ai/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mergewatch/mergewatch.ai/main/docs-site/logo/wordmark-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/mergewatch/mergewatch.ai/main/docs-site/logo/wordmark-light.svg">
-      <img alt="MergeWatch logo" src="https://raw.githubusercontent.com/mergewatch/mergewatch.ai/main/docs-site/logo/wordmark-light.svg" width="150">
-    </picture>
-  </a>
-</p>

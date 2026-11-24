@@ -22,6 +22,7 @@ func TestFailedLoginWithDeadCookieKeepsDedicatedOwnershipAndNoProse(t *testing.T
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		admin := bootstrapFactorAdmin(t, db)
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		h := server.New(&server.API{Auth: admin.auth, Refusals: signals}, nil)
 		cookie, _, err := crypto.NewArtifact(crypto.ArtifactBrowserSession)
 		if err != nil {
@@ -72,6 +73,7 @@ func TestFederationDedicatedRefusalIsNotDuplicated(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		rig := newFedRig(t, db)
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		h := server.New(&server.API{Refusals: signals, Delivery: rig.del}, nil)
 		path := api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/delivery"
 		r := httptest.NewRequest(http.MethodGet, path, nil)
@@ -94,6 +96,7 @@ func TestSCIMRefusalOwnershipAcrossRealWire(t *testing.T) {
 		auth := authService(t, db)
 		svc := &service.SCIM{DB: db}
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		execRaw(t, db, fmt.Sprintf("INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('%s','refusal-scim',TRUE,'{}',%s)", wireOrg, ts))
 		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_refusal_scim','usr_orgadmin','manage-members','%s',NULL,NULL,%s)", wireOrg, ts))
 		execRaw(t, db, "INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_refusal_scim','g_refusal_scim','manual','usr_orgadmin',"+ts+")")
@@ -167,6 +170,7 @@ func TestRequestRefusalConnectionAndWorkspaceWire(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		auth := authService(t, db)
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		h := server.New(&server.API{Auth: auth, Workspace: &service.Workspace{DB: db}, Refusals: signals}, nil)
 		var proofID string
 		for _, kind := range []string{"instance", "paired", "workspace"} {
@@ -214,6 +218,7 @@ func TestRequestRefusalDeveloperRevokedKeepsDedicatedOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		h := server.New(&server.API{Auth: fixture.admin.auth, Settings: &service.ProjectSettings{DB: db, Auth: fixture.admin.auth}, Refusals: signals}, nil)
 		path := api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/settings"
 		r := httptest.NewRequest(http.MethodGet, path, nil)

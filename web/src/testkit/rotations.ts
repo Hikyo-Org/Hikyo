@@ -1,4 +1,11 @@
-import type { zCredentialRotationList, zKeyList, zRotationRunList } from '@hikyo/zod';
+import {
+  zCreateRotationRequest,
+  zRotationStateRequest,
+  zRunRotationNowRequest,
+  type zCredentialRotationList,
+  type zKeyList,
+  type zRotationRunList,
+} from '@hikyo/zod';
 import type { z } from 'zod';
 
 import { dynamicProvider } from './machineAccess.ts';
@@ -198,3 +205,17 @@ export const owedRuns = {
 export const settledRuns = {
   items: [run(1, { not_converged_adapter_targets: 0 }), run(2, {})],
 } satisfies z.input<typeof zRotationRunList>;
+
+/**
+ * rotationRequestBody parses a rotation act's recorded request body with the
+ * API's own request schema for that path, strictly, so an extra field (a
+ * credential, say) fails the test instead of being stripped. int64 fields come
+ * back as bigint. A bodiless request (DELETE) is undefined.
+ */
+export function rotationRequestBody(method: string, path: string, text: string | null) {
+  if (text === null || text === '') return undefined;
+  const wire: unknown = JSON.parse(text);
+  if (method === 'POST' && path.endsWith('/rotations')) return zCreateRotationRequest.strict().parse(wire);
+  if (path.endsWith('/run-now')) return zRunRotationNowRequest.strict().parse(wire);
+  return zRotationStateRequest.strict().parse(wire);
+}

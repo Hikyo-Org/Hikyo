@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -66,6 +67,8 @@ type Backup struct {
 	// unlink without needing an unwritable directory (which fails every
 	// unlink and cannot distinguish stop-on-first from delete-all-fail).
 	removeFile func(string) error
+	// Log receives sweep warnings; nil uses slog.Default.
+	Log *slog.Logger
 	// syncDirectory defaults to filedurability.SyncDirectory. The seam lets tests fail
 	// after publication, proving the recoverable artifact is retained without
 	// reporting success when its directory entry may not survive a crash.
@@ -113,7 +116,12 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	if dir == "" {
 		return ExportResult{}, errors.New("backup export needs a destination directory")
 	}
-	// Recipient policy first: refusing before a temp file exists keeps a
+	// Debris of a killed export is swept before anything can fail early.
+	// Best effort: a sweep problem must not block a backup, but it is loud.
+	if err := s.sweepDirectory(ctx, dir); err != nil {
+		s.logger().Warn("backup export debris sweep failed", "dir", dir, "error", err)
+	}
+	// Recipient policy: refusing before a temp file exists keeps a
 	// zero-recipient refusal from leaving debris behind.
 	if err := s.Options.Validate(); err != nil {
 		return ExportResult{}, err
@@ -125,17 +133,20 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup destination %s: %w", dir, err)
 	}
-	work, err := os.MkdirTemp(dir, ".export-")
+	work, releaseWork, err := stageExportWork(ctx, s.logger(), dir)
 	if err != nil {
-		return ExportResult{}, fmt.Errorf("backup staging directory: %w", err)
+		return ExportResult{}, err
 	}
-	defer os.RemoveAll(work)
+	// Removes the plaintext, then drops the liveness lock, then the directory.
+	defer releaseWork()
 
 	// The staging file is unique per export (CreateTemp), never a fixed
 	// `<final>.partial`: two exports in the same second — an operator export
 	// racing an automatic pre-migration one — must not write the same inode
-	// and publish each other's half-written bytes.
-	f, err := os.CreateTemp(dir, ".hikyo-export-*.partial")
+	// and publish each other's half-written bytes. It lives inside the work
+	// directory so one sweep covers it, and link(2) still stays on one
+	// filesystem.
+	f, err := os.CreateTemp(work, ".hikyo-export-*.partial")
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup staging file: %w", err)
 	}
