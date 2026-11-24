@@ -157,6 +157,12 @@ this record's reading; the epic does not state it.
    summary before asking for a code; the browser page shows the same summary;
    an operation without a summary falls back to operation, target and digest.
    *Recorded rationale:* text the client composes is text the agent controls.
+   *Recorded reading:* Proposed, policy-level (Open item 29): the fallback
+   also enumerates the operation's affected entries, capped like every
+   summary list, and an operation is approvable only once the server
+   captures them. Until the owner answers Open item 29, the approvability
+   rule does not apply, and every operation Decision 4 names stays
+   approvable (*The server-authored summary*).
 8. **Combined ceremony.** When an action also needs reauthentication, one
    passkey signature covers both.
    *Recorded rationale:* two prompts for one action train people to click
@@ -575,7 +581,7 @@ Per operation:
 | `self-config.adopt` | instance | `preview_token`, `idempotency_key` |
 | `self-config.apply` | instance and the environment chain | every `InstanceConfigApplyRequest` member, including `plan_digest`, `prepare_only`, `confirm_restored_credentials`, `restore_deployment`, `idempotency_key` |
 | `value.publish` | org, project, the addressed environment and every affected environment | `version_ids`, `preview_token`, `confirmed_protected_environments`, `approval_request_id`, `bypass`, `purpose` |
-| `value.copy-destination` | org, project, source and destination environments, the resolved key ids | `source_environment_id`, `keys`, `destination_environment_ids`, `confirm_protected` |
+| `value.copy-destination`, `value.copy-destination-config` | org, project, source and destination environments, the resolved key ids | `source_environment_id`, `keys`, `destination_environment_ids`, `confirm_protected` |
 | `remote.remove` | instance, remote | none (no body) |
 | `identity.credential-mint` | org, project, service account | every `MintCredentialRequest` member |
 | `identity.credential-revoke` | org, project, service account, credential | none (no body) |
@@ -596,7 +602,10 @@ different things at different times:
   rewrite mints a new one (`internal/store/values.go`), so the entry ids
   serve as the source versions.
 - **Run-now.** An omitted `expected_generation` means the current generation
-  (`RunRotationNowRequest`).
+  (`RunRotationNowRequest`). The rotation's secret and username key ids are
+  stored too, so the summary can list them; no statement in
+  `internal/store/queries` updates a rotation's `key_id` or
+  `username_key_id`, so they are fixed for the rotation's life.
 - **Mint.** The environments a new credential can reach, current and
   historical, are computed from live state after authorization
   (`internal/service/identities.go`, `postStateReach`), and a grant or
@@ -606,11 +615,19 @@ different things at different times:
 - **Credential-policy update.** The server enumerates the live credentials
   the change affects (`internal/service/identities.go`, `SetPolicy`,
   `Affected`); a credential minted between approval and retry joins that set.
+  The prior policy is stored too, so the summary can show each changed
+  field's old value.
 - **Developer-credential policy update.** The update clamps the expiry of
   every live developer credential the new ceiling shortens
   (`internal/service/developer_credentials.go`,
   `ClampDeveloperCredentialExpiry`); a credential issued between approval and
-  retry joins that clamp set.
+  retry joins that clamp set. The prior policy is stored too, so the summary
+  can show the old ceiling.
+- **Self-config adopt.** `preview_token` is a keyed token over the seed
+  values (`ownerSeedToken`, `internal/service/self_config_seed_nodes.go`), so
+  the configured keys cannot be rebuilt from it; they are stored as the
+  adopt preview lists them (`ConfiguredKeys`,
+  `internal/service/self_config_provision.go`).
 - **Policy writes.** The digest binds the full replacement body, but what it
   removes depends on the policy current at retry: an entry another admin adds
   between approval and retry would be removed by the same body. The prior
@@ -618,14 +635,15 @@ different things at different times:
 
 At refusal, the pending record stores the resolved state: the closed version
 set for publish, the source entry id of each copied key, the concrete
-generation for run-now, the reachable current and historical environment
-sets for mint, the affected-credential set for a credential-policy update,
-the clamp set for a developer-credential policy update, and the prior
-coverage for a policy write. Consumption
-recomputes it inside the operation's transaction and refuses on any mismatch
-with a new pending approval. This is server-side only, so nothing changes on
-the wire. Capturing the copy entry ids needs the copy reordering under
-*Ordering inside operations*.
+generation and the rotation's secret and username key ids for run-now, the
+reachable current and historical environment sets for mint, the
+affected-credential set and the prior policy for a credential-policy update,
+the clamp set and the prior policy for a developer-credential policy update,
+the seed's configured keys for adopt, and the prior coverage for a policy
+write. Consumption recomputes it inside the operation's transaction and
+refuses on any mismatch with a new pending approval. This is server-side
+only, so nothing changes on the wire. Capturing the copy entry ids needs the
+copy reordering under *Ordering inside operations*.
 
 **Why the retry must be identical.** The human approves the summary and
 complete affected list of one action. If a changed retry, or an unchanged retry against changed state,
@@ -639,7 +657,8 @@ preconditions against it.
 ## The server-authored summary
 
 *Proposed implementation design for #1534 (Open item 29), except the
-rendering rule (Open item 24).*
+rendering rule (Open item 24) and the affected-entries rule, which is
+policy-level (Open item 29).*
 
 The server writes the summary when it records the pending approval, from the
 resolved targets, the validated request and the resolved state. Clients render
@@ -650,23 +669,58 @@ instance master key". Proposed (Open item 29): next to each count, the
 summary lists what it counts. Publish and copy list the affected key names
 with their ids; a mint lists the service account and both the current and
 the historical environment ids the credential can reach (*Resolved state*);
-a revoke names the credential id. Each list in the
-summary is capped, with "and N more" for the rest, so the summary is only a
-preview. A summary never contains secret material. An operation with no
-summary template gets the generic form: operation, target ids and the full
-digest. Its target ids are not capped, so they are already the whole list
-and do not appear again in the complete affected list.
+a revoke names the credential id. A summary never contains secret material.
+
+Proposed, policy-level (Open item 29): an operation with no summary template
+gets the generic form: operation, target ids, the full digest, and its
+affected entries as the table below defines them, for example the
+credentials a credential-policy update affects (its affected-credential
+set), the developer credentials whose expiry it clamps (the clamp set), and
+each changed policy field with its old and new value. Every list in a
+summary, the generic form's included, is capped, with "and N more" for the
+rest, so the summary is only a preview, also where a non-interactive CLI
+prints it (Open item 10).
+
+Proposed, policy-level (Open item 29), the affected entries of each
+approvable operation:
+
+| Operation | Affected entries | Captured from |
+| --- | --- | --- |
+| `value.publish` | the key of every version in the closed set, per affected environment | `targets`, `version_ids` (request) and the closed set (resolved state) |
+| `value.copy-destination`, `value.copy-destination-config` | the copied keys and every destination environment | the resolved key ids and destination environments (`targets`) and the source entry ids (resolved state) |
+| `identity.credential-mint` | the service account, and the current and historical environments the credential can reach | `targets` and the reach sets (resolved state) |
+| `identity.credential-revoke` | the credential | `targets` |
+| `rotation.run_now` | the rotation at the concrete generation, its rotated secret and username keys (`cur.KeyID`, `cur.UsernameKeyID`, `internal/service/credential_rotation.go`), and `skip_overlap` | `targets`, `skip_overlap` (request), and the generation and the rotation's key ids (resolved state) |
+| the five crypto rotations | the key being rotated, with the root-key `phase` and the DEK rotation's `scope` | `targets` and request members |
+| `remote.remove` | the remote | `targets` |
+| `identity.credential-policy-update` | each changed policy field with its old and new value, and the live credentials the change affects. The affected set is filled only when the ceiling drops or indefinite credentials are withdrawn (`SetPolicy`, `internal/service/identities.go`), so the field values keep a loosening update from showing an empty list | the replacement body (request), the prior policy and the affected-credential set (resolved state) |
+| `developer-credential.policy-update` | the changed `max_lifetime_seconds` with its old and new value, and the developer credentials whose expiry it clamps; only a shorter ceiling clamps (`internal/service/developer_credentials.go`) | the replacement body (request), the prior policy and the clamp set (resolved state) |
+| floor and project-addition policy writes | the entries the body adds and the prior coverage it removes | the replacement body (request) and the prior coverage (resolved state) |
+| `self-config.adopt` | the seed's configured keys | the seed's configured keys (resolved state), as the adopt preview lists them (`ConfiguredKeys`, `internal/service/self_config_provision.go`); `preview_token` (request) binds the seed values but is a keyed token (`ownerSeedToken`, `internal/service/self_config_seed_nodes.go`), so the keys cannot be rebuilt from it |
+| `self-config.apply` | the changes in configuration revision `revision` against `expected_generation`, and the environment chain | `targets`, and `revision`, `expected_generation`, `schema_version` and `confirm_restored_credentials` (request); `plan_digest` names the deployment plan, not the configuration changes. The revision diff is not captured yet (Open item 25) |
+| `project.delete` | the rule items it prunes (`releaseProjectRules`, `internal/service/rules.go`); the tombstoned dynamic providers it purges, refused while one is active (`purgeProjectProviders`, `internal/service/environment_purge.go`); the rules `pruneRules` revokes because they no longer validate after pruning, whether every item went or the rest no longer validates (both revoked as `emptied-by-deletion`, `internal/service/rules.go`); the plan ledger (`definitions_plans`) and the catalogue revision row (`project_schema_revisions`), which the store's `Projects.Delete` removes explicitly on both engines (`internal/store/repos.go`); and the rows removed by `ON DELETE CASCADE` on both engines: `approval_policies`, `access_policies`, `pki_profile_bindings` and `delivery_target_quota_notices`, and through the two policy tables `approval_policy_approvers`, `approval_policy_bypassers`, `access_policy_approvers` and `access_policy_bypassers`. No other row cascades: environments, folders, keys, key groups, grants, service accounts and adapters reference `projects` without cascade on both engines, and `Projects.Delete` (`internal/service/hierarchy.go`) clears none of them, so any of them refuses the delete by foreign key instead | not captured yet: no request members and no resolved state (Open item 25) |
+
+Proposed, policy-level (Open item 29): an operation is not marked
+approvable until the server captures its affected entries (*Resolved
+state*), so its summary can list them and no approval rests on target ids
+and a digest alone. This rule does not apply until the owner answers Open
+item 29; until then every operation Decision 4 names stays approvable.
+Two of them do not meet it yet: `self-config.apply` (the revision diff)
+and `project.delete` (no capture at all). If the rule is accepted, Open
+item 29 also asks whether those two wait for the capture or stay
+approvable meanwhile with what is captured today.
 
 **The complete affected list.** Proposed (Open item 29). A capped preview
 alone would let an agent order a copy or publish so that a sensitive key
 falls after the shown names, where "and N more" hides it. So the server
 also stores, with every pending approval, the complete affected list: every
-entry each capped list counts, each id quoted with its name as of refusal.
-The server generates it from the same stored inputs as the summary, not
-from a separate query: the digest (the resolved ids in `targets` and the
-canonical request, for example publish's `version_ids`, self-config's
-`plan_digest` or `preview_token`, or a policy write's replacement body) and
-the stored resolved state (for example publish's closed set). It serves
+entry each capped list counts, the generic form's included, each id quoted
+with its name as of refusal. The server generates it from the same stored
+inputs as the summary, not from a separate query: the digest (the resolved
+ids in `targets` and the canonical request, for example publish's
+`version_ids`, self-config apply's `revision` and `expected_generation`, or
+a policy write's replacement body) and the stored resolved state (for
+example publish's closed set or adopt's configured keys). It serves
 through the approval read (*Approving*). The approval binds the ids, through
 the digest and the resolved-state comparison at consumption (*Resolved
 state*); the names are as of refusal and are display only.
@@ -1046,6 +1100,14 @@ operation.
   threat (*Approving*; Open item 12). A residual risk remains even with the
   full list shown: one entry buried in a very long list is easy to miss, and
   the list can only expose it, not make the human read it.
+- **Interim approvals without affected entries.** Until the server captures
+  their affected entries, unless the owner has them wait for the capture
+  (Open item 29), a `project.delete` approval shows only the org and project
+  ids and the digest, and a `self-config.apply` approval shows `revision`
+  against `expected_generation` but not the revision's changes, so the human
+  approves those effects without seeing them. If the owner has them wait,
+  neither is approvable meanwhile, so no policy can name them (*Policy*) and
+  nothing requires an approval before they run.
 - **Approval-page spoofing.** Proposed: the CLI builds the page URL from its
   configured origin. A passkey assertion is bound to the relying-party id, so
   a look-alike origin cannot obtain a usable one. A phished code is useless
@@ -1167,8 +1229,20 @@ close this table. #1534 adds a test that every operation in
 `internal/authz/registry.go` declares exactly one of: `approvable`;
 equivalent-of a covered operation, with its disposition; or excluded, with a
 reason code. An operation with no declaration, including a newly added one,
-fails CI. Routes with no `x-hikyo-operation`, the authentication and factor
-routes (for example `setPassword`, `enrolTotpStart`, `stepUpTotp`,
+fails CI. An approvable operation also declares the members its affected
+entries are captured from, as its row's "Captured from" column names them
+(*The server-authored summary*), whether a summary template or the generic
+form renders them; the test checks each named member against the digest's
+target ids (`targets`), the operation's request type and its resolved-state
+capture. A declaration may also carry a not-yet-captured marker naming the
+member it still lacks; only `project.delete` (every member) and
+`self-config.apply` (the revision diff) may carry it, as Open item 29's
+interim exception, listed by name. An empty declaration without that marker
+fails CI, as does the marker on any other operation. The test cannot see a
+list that is empty at run time, such as a credential-policy update that only
+raises the ceiling; the old and new policy values in the affected entries
+avoid that. Routes with no `x-hikyo-operation`, the authentication and
+factor routes (for example `setPassword`, `enrolTotpStart`, `stepUpTotp`,
 `reauthTotp` and the CLI login and reauthentication handoffs in
 `api/openapi.yaml`), are included in the same test. A per-operation
 declaration alone is not enough, because an approvable operation is also
@@ -1457,7 +1531,12 @@ record proposes. Each needs the owner's confirmation.
     complete affected list. Should service-account names also
     gain the `checkText` checks?
 25. **Resolved-state binding.** Proposed under *Resolved state*, with the
-    copy reordering under *Ordering inside operations*.
+    copy reordering under *Ordering inside operations*. Also: should the
+    resolved state capture the diff of the configuration revision a
+    self-config apply names (`revision` against `expected_generation`), and
+    project delete's pruned rule items, purged providers and cascaded rows,
+    so their affected entries can be listed (*The server-authored summary*)?
+    Adopt's configured keys are captured (*Resolved state*).
 26. **Agent-enrolled passkeys.** One relayed code enrols a passkey the agent
     controls (*Approving*); on an account with no local proof, a CLI
     session that obtains a credential-establishment stamp through a relayed
@@ -1493,9 +1572,20 @@ record proposes. Each needs the owner's confirmation.
     operations*, *The request digest* and *Resolved state*, *The
     server-authored summary*, *The combined ceremony*, *Audit* and the
     registry-completeness test) are design for #1534, including which
-    mechanism commits each operation's
-    pending record (*Committing the pending record*). Does the owner accept them as the starting design,
-    with #1534's review free to revise them?
+    mechanism commits each operation's pending record (*Committing the
+    pending record*). Does the owner accept them as the starting design,
+    with #1534's review free to revise them? Separately, and policy-level
+    rather than revisable design, because it can narrow Decision 4's set and
+    extends Decision 7: does the owner accept that every summary, the
+    generic form included, enumerates the operation's affected entries, and
+    the rule that an operation is approvable only once the server captures
+    them? Until this is answered the approvability rule does not apply. If
+    it is accepted, do `self-config.apply` and `project.delete` wait for the
+    capture, or stay approvable meanwhile? Staying approvable means a
+    `project.delete` approval shows only the org and project ids plus the
+    digest, and a `self-config.apply` approval shows `revision` against
+    `expected_generation` without the revision's changes (*Threat-model
+    notes*).
 
 ## Propagations
 
