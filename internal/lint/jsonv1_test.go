@@ -1,0 +1,58 @@
+package lint
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// jsonV1Findings is the jsonv1 rule over every Go file under root, as
+// checkUnanalyzedGoFiles applies it to the files no vet pass saw.
+func jsonV1Findings(root string) []string {
+	findings, exceptionImports := walkJSONv1(root, nil)
+	if !exceptionImports {
+		findings = append(findings, staleJSONv1Exception())
+	}
+	return findings
+}
+
+func TestJSONv1WalkCatchesViolations(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, src string) {
+		t.Helper()
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("fresh/new.go", "//go:build ignore\n\npackage fresh\n\nimport stdjson \"encoding/json\"\n\nvar _ = stdjson.Marshal\n")
+	write("fresh/v2.go", "package fresh\n\nimport \"encoding/json/v2\"\n\nvar _ = json.Marshal\n")
+	write("fresh/testdata/fixture.go", "package fixture\n\nimport \"encoding/json\"\n")
+	assertFindings(t, jsonV1Findings(root), []string{
+		"jsonv1: fresh/new.go imports encoding/json",
+		"jsonv1: api/apigen no longer imports encoding/json",
+	})
+	for _, f := range jsonV1Findings(root) {
+		if f == "jsonv1: fresh/v2.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext" ||
+			f == "jsonv1: fresh/testdata/fixture.go imports encoding/json; use encoding/json/v2 and encoding/json/jsontext" {
+			t.Errorf("unexpected finding: %s", f)
+		}
+	}
+}
+
+func TestJSONv1WalkAllowsOnlyGeneratedAPI(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "api", "apigen")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gen.go"), []byte("package apigen\n\nimport \"encoding/json\"\n\nvar _ = json.Marshal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := jsonV1Findings(root); len(got) != 0 {
+		t.Fatalf("api/apigen must be allowed: %v", got)
+	}
+}

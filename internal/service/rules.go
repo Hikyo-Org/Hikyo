@@ -303,13 +303,20 @@ func (s *Rules) gateMachineRules(ctx context.Context, az *authz.TxAuthorizer, ca
 		if len(current) == 0 && len(historical) == 0 {
 			continue
 		}
+		// Attribute the delta rule by rule: each event names what its rule
+		// adds on top of the pre-state and the rules before it, so the
+		// events together equal the gated delta without any rule claiming
+		// another's environments.
+		so := slices.Clone(pre)
 		for i, rule := range added {
-			if !slices.Contains(rule.Where.Projects, project) {
+			if !slices.Contains(rule.Where.Projects, project) || rule.Capability != domain.CapRead {
 				continue
 			}
-			switch rule.Capability {
-			case domain.CapRead, domain.CapReveal, domain.CapRevealHistory:
-			default:
+			next := append(slices.Clone(so), authz.RuleGrants([]domain.Rule{rule}, scope, envs)...)
+			b, a := authz.ReachableFrom(scope, envs, so), authz.ReachableFrom(scope, envs, next)
+			so = next
+			cur, hist := newlyReachable(b.Current, a.Current), newlyReachable(b.Historical, a.Historical)
+			if len(cur) == 0 && len(hist) == 0 {
 				continue
 			}
 			out[i] = append(out[i], audit.Payload{
@@ -317,8 +324,8 @@ func (s *Rules) gateMachineRules(ctx context.Context, az *authz.TxAuthorizer, ca
 				"principal_class":            string(class),
 				"capability":                 string(rule.Capability),
 				"scope":                      renderScope(scope),
-				"newly_reachable_current":    envStrings(current),
-				"newly_reachable_historical": envStrings(historical),
+				"newly_reachable_current":    envStrings(cur),
+				"newly_reachable_historical": envStrings(hist),
 			})
 		}
 	}
@@ -426,6 +433,14 @@ func checkMachineRule(ctx context.Context, az *authz.TxAuthorizer, class domain.
 			return fmt.Errorf("%w: a class %q rule names one project and only listed environments", ErrMachineScope, class)
 		}
 		return fmt.Errorf("%w: a class %q rule names exactly one project", ErrMachineScope, class)
+	}
+	// A rule's project comes only from the service-account row; the prior-grant
+	// fallback checkMachineProject keeps for grants would let a machine with no
+	// row (provisioning, instance, pre-table) hold a rule in any project.
+	if _, err := az.ServiceAccountByPrincipal(ctx, rule.Principal); errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("%w: this machine principal has no service-account row, so it may not hold a rule", ErrMachineProject)
+	} else if err != nil {
+		return err
 	}
 	return checkMachineProject(ctx, az, rule.Principal, domain.Scope{Org: rule.Org, Project: rule.Where.Projects[0]})
 }

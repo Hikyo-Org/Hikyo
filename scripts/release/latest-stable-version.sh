@@ -14,7 +14,9 @@ stable=$(jq -r '
   if type != "array" or any(.[]; type != "array") then
     error("expected an array of GitHub release pages")
   else
-    [.[][] | select(.draft == false and .prerelease == false)] |
+    # The desktop series (desktop-v<version>) is not a hikyo release.
+    [.[][] | select(.draft == false and .prerelease == false and
+      ((.tag_name | type) != "string" or (.tag_name | startswith("desktop-v") | not)))] |
     if length == 0 then
       ""
     elif (.[0].tag_name | type) == "string" then

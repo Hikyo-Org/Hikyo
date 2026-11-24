@@ -10,23 +10,12 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 func privateWindowsAttributes(inherit bool) (*windows.SecurityAttributes, error) {
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
-	if err != nil {
-		return nil, err
-	}
-	flags := ""
-	if inherit {
-		flags = "OICI"
-	}
-	sid := user.User.Sid.String()
-	sd, err := windows.SecurityDescriptorFromString("O:" + sid + "D:P(A;" + flags + ";FA;;;" + sid + ")(A;" + flags + ";FA;;;SY)(A;" + flags + ";FA;;;BA)")
-	if err != nil {
-		return nil, err
-	}
-	return &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: sd}, nil
+	return securefile.PrivateSecurityAttributes(inherit)
 }
 
 func readPrivateStateFile(dir, name string) ([]byte, error) {

@@ -16,11 +16,12 @@ const workflowSchema = z.object({
   }),
 });
 
-// Approved notification body from a5059c93f13d475b30c6eae6629c67f7a4b7aba3,
-// .github/workflows/security-channel.yml, now unchanged in reliability.yml.
-// Pin executable behavior, not shell-looking comment/string decoys. Intentional
-// notification changes require a reviewed update to this locked OSS contract.
-const approvedNotificationDigest = 'bc350bf6f590df8e846acac2f691f601e56f17144366889a182990c308ea002f';
+// Approved notification body from a786ff5668b20d1488f7a8bf1b4f71a62a50708d
+// (#1410), .github/workflows/reliability.yml, which binds the alert lookup to the
+// workflow bot's numeric id. Pin executable behavior, not shell-looking
+// comment/string decoys. Intentional notification changes require a reviewed
+// update to this locked OSS contract.
+const approvedNotificationDigest = 'c8467744a67573d92b50b5a35bae75ca4b612ec0983d31d66641862067963da0';
 
 try {
   if (process.argv.length !== 3) throw new Error('expected one fallback workflow path');

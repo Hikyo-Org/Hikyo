@@ -140,6 +140,13 @@ func admitFederatedPersonalWindow(ctx context.Context, az *authz.TxAuthorizer, w
 // purgePersonalValues deletes the owner's personal values in this
 // authentication transaction and records the purge on the instance trail.
 func purgePersonalValues(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID, cause string, now time.Time) error {
+	return purgePersonalValuesBy(ctx, az, owner, cause, false, now)
+}
+
+// purgePersonalValuesBy is purgePersonalValues with the event's actor chosen:
+// bySystem attributes it to the system, for a purge no Hikyo principal caused
+// (an external directory deleted the user).
+func purgePersonalValuesBy(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID, cause string, bySystem bool, now time.Time) error {
 	n, err := az.PurgePersonalValues(ctx, owner, cause, now)
 	if err != nil || n == 0 {
 		return err
@@ -148,6 +155,9 @@ func purgePersonalValues(ctx context.Context, az *authz.TxAuthorizer, owner doma
 		audit.OutcomeSuccess, "", audit.Payload{"owner_principal_id": string(owner), "cause": cause, "count": int(n)})
 	if err != nil {
 		return err
+	}
+	if bySystem {
+		e.Actor = audit.Actor{Class: audit.ActorSystem}
 	}
 	return az.RecordAuthEvent(ctx, e)
 }

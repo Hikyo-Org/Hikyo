@@ -1,7 +1,7 @@
 package selfupdate
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 )
@@ -160,7 +161,7 @@ func TestPlatformBundleRejectsInventoryModeSubstitution(t *testing.T) {
 			case "downgrade":
 				index.Format, index.NightlyPlatform = upgradebundle.IndexFormat, ""
 			}
-			changed, err := json.Marshal(index)
+			changed, err := json.Marshal(index, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

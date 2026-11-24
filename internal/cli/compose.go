@@ -29,10 +29,10 @@ import (
 // behind a small helper here so the snapshot/generation format rework can be
 // reconciled in one place per primitive.
 //
-// Test seam: HIKYO_COMPOSE_DOCKER overrides the resolved `docker` executable for
-// `compose sync|doctor`. It is deliberately kept out of the help text — not part
-// of the CLI's stable surface, only a test/override hook — documented here and
-// in the api-cli-spellings "Compose delivery" section.
+// HIKYO_COMPOSE_DOCKER overrides the resolved `docker` executable for
+// `compose sync|doctor`. It is a documented environment override (client
+// variables in the user docs), kept out of the help text because it is not a
+// flag; it is also the seam tests use.
 
 const (
 	composeConfigName = "hikyo-compose.yaml"
@@ -560,6 +560,20 @@ func (s *composeStack) newSnapshotBinding(targetNames []string) (crypto.Snapshot
 	})
 }
 
+// localCursorBinding is the locally knowable part of the binding, shared by
+// cursorBinding and saveCursor so the saved and the presented bindings cannot
+// drift apart.
+func (s *composeStack) localCursorBinding() compose.CursorBinding {
+	return compose.CursorBinding{
+		CredentialID:     credentialFingerprint(s.token),
+		Environment:      s.env,
+		ConfigOnly:       s.configOnly,
+		TargetKeyIDs:     targetKeyIDs(s.cfg),
+		TargetLoaderAcks: targetLoaderAcks(s.cfg),
+		LoaderAcksBound:  true,
+	}
+}
+
 // cursorBinding builds the eligibility binding. The credential identity is the
 // LOCAL fingerprint of the PRESENTED token (finding 8) — not a stored value, so
 // swapping tokens invalidates the cursor before it is presented. The env,
@@ -567,12 +581,7 @@ func (s *composeStack) newSnapshotBinding(targetNames []string) (crypto.Snapshot
 // revision and projection are server-asserted (unknowable pre-fetch, and the
 // server re-binds anyway), so they come from the stored cursor when present.
 func (s *composeStack) cursorBinding(stored *compose.CursorState) compose.CursorBinding {
-	b := compose.CursorBinding{
-		CredentialID: credentialFingerprint(s.token),
-		Environment:  s.env,
-		ConfigOnly:   s.configOnly,
-		TargetKeyIDs: targetKeyIDs(s.cfg),
-	}
+	b := s.localCursorBinding()
 	if stored != nil {
 		b.PinnedRevision = stored.Binding.PinnedRevision
 		b.Projection = stored.Binding.Projection
@@ -586,14 +595,9 @@ func (s *composeStack) saveCursor(resp apigen.DeliveryResponse, stamps map[strin
 	if resp.PinnedRevision != nil {
 		pinned = *resp.PinnedRevision
 	}
-	binding := compose.CursorBinding{
-		CredentialID:   credentialFingerprint(s.token),
-		Environment:    s.env,
-		ConfigOnly:     s.configOnly,
-		PinnedRevision: pinned,
-		Projection:     deliveryProjection(resp.Keys),
-		TargetKeyIDs:   targetKeyIDs(s.cfg),
-	}
+	binding := s.localCursorBinding()
+	binding.PinnedRevision = pinned
+	binding.Projection = deliveryProjection(resp.Keys)
 	return compose.SaveCursor(s.stateDir, compose.CursorState{
 		Cursor: resp.Cursor, Binding: binding, GenerationStamps: stamps,
 	})
@@ -772,6 +776,14 @@ func targetKeyIDs(cfg *compose.Config) map[string][]string {
 	out := make(map[string][]string, len(cfg.Targets))
 	for name, t := range cfg.Targets {
 		out[name] = append([]string(nil), t.Keys...)
+	}
+	return out
+}
+
+func targetLoaderAcks(cfg *compose.Config) map[string][]string {
+	out := make(map[string][]string, len(cfg.Targets))
+	for name, t := range cfg.Targets {
+		out[name] = append([]string(nil), t.AcknowledgeLoaderControl...)
 	}
 	return out
 }

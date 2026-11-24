@@ -2,7 +2,8 @@ package config
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -77,12 +78,11 @@ func loadSealedWebhookConfig(path string) (*SealedWebhookConfig, error) {
 
 func parseSealedWebhookConfig(raw []byte, baseDir string, readKey func(string) ([]byte, error)) (*SealedWebhookConfig, error) {
 	var file sealedWebhookFile
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&file); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, &file, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("%s: invalid JSON: %w", sealedWebhookSetting, err)
 	}
-	if _, err := dec.Token(); err != io.EOF {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%s: trailing data after the JSON object", sealedWebhookSetting)
 	}
 	if file.InstanceID == "" || file.SigningKeyFile == "" || len(file.Targets) == 0 {

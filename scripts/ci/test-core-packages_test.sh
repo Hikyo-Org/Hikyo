@@ -45,8 +45,8 @@ elif [[ "$1" == test && "$2" == -count=1 ]]; then
     printf '%s\n' "$3" >>"$CORE_TEST_EXECUTED"
     [[ "$CORE_TEST_FAIL" != "$call" ]] || exit 92
   elif [[ "$*" == *internal/lint* ]]; then
-    [[ "$#" == 1 && $(wc -l <"$CORE_TEST_CALLS") -eq 3 ]] || exit 95
-    printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"
+    [[ "$#" == 2 && "$1" == -timeout=20m && $(wc -l <"$CORE_TEST_CALLS") -eq 3 ]] || exit 95
+    printf '%s\n' "$2" >>"$CORE_TEST_EXECUTED"
     [[ "$CORE_TEST_FAIL" != lint ]] || exit 96
   else
     printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"

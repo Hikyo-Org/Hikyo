@@ -1,7 +1,8 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 func TestRuleRequestBindsItemsToProjects(t *testing.T) {
@@ -67,19 +70,19 @@ func TestAccessRuleVerbs(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		requests = append(requests, r.Method+" "+r.URL.Path)
 		switch r.Method {
 		case http.MethodPost:
-			if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
+			if err := json.UnmarshalRead(r.Body, &posted); err != nil {
 				t.Error(err)
 			}
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(apigen.Rule{Id: "rul_1", PrincipalId: posted.Principal, Capability: posted.Capability, Where: posted.Where})
+			_ = jsonwire.Encode(w, apigen.Rule{Id: "rul_1", PrincipalId: posted.Principal, Capability: posted.Capability, Where: posted.Where})
 		case http.MethodGet:
-			_ = json.NewEncoder(w).Encode(apigen.RuleList{Items: []apigen.Rule{}})
+			_ = jsonwire.Encode(w, apigen.RuleList{Items: []apigen.Rule{}})
 		default:
 			w.WriteHeader(http.StatusNoContent)
 		}
@@ -141,14 +144,14 @@ func TestAccessRuleVerbsNeedHumanSession(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 			return
 		}
 		if r.Method != http.MethodGet {
 			writes++
 		}
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(apigen.Rule{})
+		_ = jsonwire.Encode(w, apigen.Rule{})
 	}))
 	defer srv.Close()
 	_, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
@@ -170,9 +173,20 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 		refusals int
 		wantCode int
 		wantPost int
+		noReveal bool
+		window   apigen.RevealWindow
+		wantErr  string
 	}{
-		{"retries_after_the_window_opens", 1, ExitOK, 2},
-		{"stops_on_a_repeated_environment", 2, ExitRefused, 2},
+		{"retries_after_the_window_opens", 1, ExitOK, 2, false, apigen.RevealWindow{Live: true}, ""},
+		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false, apigen.RevealWindow{Live: true}, ""},
+		// A history-only widening needs reveal-history, not reveal, so the
+		// window's can_reveal being false must not stop the ceremony.
+		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true, apigen.RevealWindow{Live: true}, ""},
+		// With no window and no inline TOTP, the CLI names the one step that can
+		// open a window for this cause, never a reveal or a browser rule editor.
+		{"asks_to_raise_a_zero_window", 1, ExitAuth, 1, false, apigen.RevealWindow{}, "--reauth-window-seconds 300`, then retry"},
+		{"asks_to_enroll_without_an_authenticator", 1, ExitAuth, 1, false, apigen.RevealWindow{EffectiveWindowSeconds: 300, TotpOffered: true}, "enroll an authenticator with `hikyo account factor enrol-totp`"},
+		{"says_a_protected_environment_cannot_widen_yet", 1, ExitAuth, 1, false, apigen.RevealWindow{Protected: true}, "cannot be made yet"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posts, windows := 0, 0
@@ -180,10 +194,15 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
 				case r.URL.Path == api.PathPrefix+"/meta":
-					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+					_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
 				case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_dev/reveal-window":
 					windows++
-					_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: true, CanReveal: true})
+					window := tc.window
+					window.CanReveal = !tc.noReveal
+					_ = jsonwire.Encode(w, window)
+				case r.URL.Path == api.PathPrefix+"/auth/totp":
+					// A window above 0 offers TOTP; no authenticator is confirmed here.
+					_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {
@@ -193,11 +212,11 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 						body.Error.Message = "conflict"
 						body.Error.Detail = &detail
 						w.WriteHeader(http.StatusConflict)
-						_ = json.NewEncoder(w).Encode(body)
+						_ = jsonwire.Encode(w, body)
 						return
 					}
 					w.WriteHeader(http.StatusCreated)
-					_ = json.NewEncoder(w).Encode(apigen.Rule{Id: "rul_1", PrincipalId: "mch_one", Capability: "read"})
+					_ = jsonwire.Encode(w, apigen.Rule{Id: "rul_1", PrincipalId: "mch_one", Capability: "read"})
 				default:
 					http.NotFound(w, r)
 				}
@@ -214,19 +233,42 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 				t.Fatalf("exit=%d posts=%d windows=%d, want exit=%d posts=%d windows=1; out=%s%s",
 					code, posts, windows, tc.wantCode, tc.wantPost, stdout, stderr)
 			}
+			if !strings.Contains(stderr.String(), tc.wantErr) {
+				t.Fatalf("stderr = %q, want %q", stderr, tc.wantErr)
+			}
 		})
 	}
 }
 
+// serverConflict is the CLI error for a 409 the server answers, built by the
+// client's own response conversion rather than by hand.
+func serverConflict(t *testing.T, code apigen.ErrorCode, detail string) error {
+	t.Helper()
+	var body apigen.Error
+	body.Error.Code = code
+	body.Error.Message = "conflict"
+	if detail != "" {
+		body.Error.Detail = &detail
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return errorFromResponse(http.StatusConflict, http.Header{}, payload)
+}
+
 func TestWideningEnvReadsOnlyTheWideningRefusal(t *testing.T) {
-	widening := failf(ExitRefused, "conflict (reauthenticate over the environments this operation makes reachable, then retry (env_a))")
-	if got := wideningEnv(widening); got != "env_a" {
-		t.Fatalf("wideningEnv = %q, want env_a", got)
+	if got := wideningEnv(serverConflict(t, apigen.ErrorCodeConflict, fmt.Sprintf(service.WideningReauthDetail, "env_a"))); got != "env_a" {
+		t.Fatalf("wideningEnv over the service wording = %q, want env_a", got)
 	}
 	for _, err := range []error{
 		nil,
 		failf(ExitRefused, "not permitted"),
-		failf(ExitAuth, "conflict (reauthenticate over the environments this operation makes reachable, then retry (env_a))"),
+		serverConflict(t, apigen.ErrorCodeConflict, ""),
+		serverConflict(t, apigen.ErrorCodeConflict, "another conflict (env_a)"),
+		serverConflict(t, apigen.ErrorCodeUnauthenticated, fmt.Sprintf(service.WideningReauthDetail, "env_a")),
+		// The text alone, with no structured detail, is not the refusal.
+		failf(ExitRefused, "conflict (%s)", fmt.Sprintf(service.WideningReauthDetail, "env_a")),
 	} {
 		if got := wideningEnv(err); got != "" {
 			t.Errorf("wideningEnv(%v) = %q, want empty", err, got)

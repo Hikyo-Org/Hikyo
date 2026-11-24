@@ -2,12 +2,13 @@ package releasetrust
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -42,7 +43,10 @@ func (p StablePolicy) Validate() error {
 // PrimaryKeysDigest gives policy authors the canonical digest used to prevent
 // delegated CI from rewriting primary-key or bootstrap authority.
 func PrimaryKeysDigest(keys []Primary) releaseidentity.Digest {
-	raw, _ := json.Marshal(keys)
+	raw, err := json.Marshal(keys, jsonwire.Stable)
+	if err != nil {
+		return "" // not a valid digest, so no policy can match it
+	}
 	return releaseidentity.Hash(raw)
 }
 
@@ -117,6 +121,20 @@ func VerifyStableArtifactSignatureReader(snapshot Snapshot, release VerifiedRele
 		return errors.New("stable artifact exceeds byte bound")
 	}
 	return err
+}
+
+// VerifyStableWorkflowBlob verifies a blob the stable release workflow signed for
+// an exact version and source commit, using the delegated policy and the pinned
+// Sigstore root. It authenticates no release manifest; callers bind the payload.
+// Only the maintainer release tool (scripts/release/stable) calls it.
+func (s Snapshot) VerifyStableWorkflowBlob(version, commit string, signature, payload []byte) error {
+	if !s.StableKeylessEnabled() {
+		return errors.New("stable keyless policy is not authorized")
+	}
+	if len(payload) > MaxDocumentBytes || len(signature) > MaxDocumentBytes {
+		return errors.New("stable workflow blob exceeds byte bound")
+	}
+	return s.state.workflowPolicy.verify(s.state.stableTrustedRoot, signature, payload, commit, "v"+version)
 }
 
 func sameDigests(a, b []releaseidentity.Digest) bool { return slices.Equal(a, b) }

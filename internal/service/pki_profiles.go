@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pki"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -71,7 +72,7 @@ func encodePKIPolicy(p pki.Policy) (string, error) {
 		MaxTTLSeconds: int64(p.MaxTTL / time.Second), DefaultTTLSeconds: int64(p.DefaultTTL / time.Second),
 		RenewWindowSeconds: int64(p.RenewWindow / time.Second), AllowCSR: p.AllowCSR,
 		AllowGeneratedKey: p.AllowGeneratedKey, MachineIssuance: p.MachineIssuance, Organization: p.Organization,
-	})
+	}, jsonwire.Stable)
 	return string(body), err
 }
 

@@ -165,7 +165,7 @@ func withWideningCeremony(ctx context.Context, client *Client, st *State, ios IO
 			}
 			session = &s
 		}
-		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{}, err); cerr != nil {
+		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{authorized: true}, err); cerr != nil {
 			return cerr
 		}
 		err = attempt()
@@ -179,13 +179,12 @@ func wideningEnv(err error) string {
 	if !errors.As(err, &e) || e.Code != ExitRefused {
 		return ""
 	}
-	const marker = "reauthenticate over the environments this operation makes reachable, then retry ("
-	msg := err.Error()
-	i := strings.Index(msg, marker)
-	if i < 0 {
+	const prefix = "reauthenticate over the environments this operation makes reachable, then retry ("
+	rest, ok := strings.CutPrefix(e.Detail, prefix)
+	if !ok {
 		return ""
 	}
-	env, _, ok := strings.Cut(msg[i+len(marker):], ")")
+	env, ok := strings.CutSuffix(rest, ")")
 	if !ok {
 		return ""
 	}

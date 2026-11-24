@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -152,6 +153,11 @@ func TestDoctorRuntimeChecks(t *testing.T) {
 	in.RuntimeDir = "relative/runtime"
 	if !hasCode(Doctor(in), "runtime_dir_not_absolute") {
 		t.Error("expected runtime_dir_not_absolute")
+	}
+	in = fullyHealthyInput(t)
+	in.RuntimeCustody = errors.New("runtime dir is owned by uid 1001, not the effective uid 0; refusing")
+	if f := codes(Doctor(in)); f["runtime_dir_custody"].Severity != SeverityError {
+		t.Errorf("expected runtime_dir_custody error, got %+v", f["runtime_dir_custody"])
 	}
 }
 

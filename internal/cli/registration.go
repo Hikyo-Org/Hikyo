@@ -3,7 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // `hikyo access registration show|set|delete` (#606, api-cli-spellings
@@ -117,24 +119,23 @@ func readRegistrationPolicyFile(path string) (apigen.RegistrationPolicyPutReques
 	if err != nil {
 		return body, failf(ExitUsage, "reading the registration policy %s: %v", path, err)
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil {
+	// The proof check runs first: v1 matched member names case-insensitively, so
+	// "PROOF" reached the proof field and earned this refusal, and the strict
+	// decode below would now report it as just another unknown member.
+	var members map[string]jsontext.Value
+	if err := jsonwire.Decode(bytes.NewReader(raw), &members); err != nil {
+		if errors.Is(err, jsonwire.ErrTrailing) {
+			return body, failf(ExitUsage, "the registration policy %s holds more than one JSON document", path)
+		}
 		return body, failf(ExitUsage, "the registration policy %s is not a policy document: %v", path, err)
 	}
-	if dec.More() {
-		return body, failf(ExitUsage, "the registration policy %s holds more than one JSON document", path)
-	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &members); err != nil {
-		return body, failf(ExitUsage, "the registration policy %s is not a policy document: %v", path, err)
-	}
-	// encoding/json matches member names case-insensitively, so "Proof" and
-	// "PROOF" decode into the proof as surely as "proof" does.
 	for key := range members {
 		if strings.EqualFold(key, "proof") {
 			return body, failf(ExitUsage, "the registration policy %s carries a proof: the proof is prompted for, never read from a file", path)
 		}
+	}
+	if err := decodeStrictDocument(bytes.NewReader(raw), &body); err != nil {
+		return body, failf(ExitUsage, "the registration policy %s is not a policy document: %v", path, err)
 	}
 	if body.External == nil {
 		body.External = []apigen.RegistrationExternalEntry{}

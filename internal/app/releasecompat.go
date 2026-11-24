@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -102,5 +103,5 @@ func GenerateReleaseCompatibility(ctx context.Context, request ReleaseCompatibil
 	if err := declaration.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(declaration)
+	return json.Marshal(declaration, jsonwire.Stable)
 }

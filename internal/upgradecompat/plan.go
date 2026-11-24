@@ -1,10 +1,11 @@
 package upgradecompat
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"slices"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 )
@@ -317,7 +318,7 @@ func makePlan(snapshot releasetrust.Snapshot, source InstalledSource, target rel
 		Source InstalledSource          `json:"source"`
 		Target releaseidentity.Identity `json:"target"`
 		Steps  []Step                   `json:"steps"`
-	}{"hikyo.dev/upgrade-route/v1", source, target, steps})
+	}{"hikyo.dev/upgrade-route/v1", source, target, steps}, jsonwire.Stable)
 	if err != nil {
 		return Plan{}, err
 	}

@@ -778,6 +778,35 @@ type HaNode struct {
 	HeartbeatAt        string
 }
 
+type Incident struct {
+	ID         string
+	ScopeKind  string
+	ScopeID    string
+	OrgID      string
+	Status     string
+	OpenedBy   string
+	OpenedAt   string
+	ClosedBy   sql.NullString
+	ClosedAt   sql.NullString
+	RowVersion int64
+}
+
+type IncidentItem struct {
+	ID            string
+	IncidentID    string
+	OwnerFunction string
+	ObjectKind    string
+	ObjectID      string
+	Scope         string
+	Outcome       string
+	Reason        string
+	AttestedBy    sql.NullString
+	AttestedAt    sql.NullString
+	RowVersion    int64
+	CreatedAt     string
+	UpdatedAt     string
+}
+
 type InstanceConnection struct {
 	ID              string
 	PrincipalID     string
@@ -941,21 +970,23 @@ type OfflineRecord struct {
 }
 
 type OidcProvider struct {
-	ID              string
-	Slug            string
-	DisplayName     string
-	Kind            string
-	Issuer          string
-	ClientID        string
-	ClientSecret    []byte
-	Scopes          string
-	RedirectUri     string
-	AssurancePolicy sql.NullString
-	Enabled         int64
-	DekVersion      int64
-	RowVersion      int64
-	CreatedAt       string
-	UpdatedAt       string
+	ID               string
+	Slug             string
+	DisplayName      string
+	Kind             string
+	Issuer           string
+	ClientID         string
+	ClientSecret     []byte
+	Scopes           string
+	RedirectUri      string
+	AssurancePolicy  sql.NullString
+	Enabled          int64
+	DekVersion       int64
+	RowVersion       int64
+	CreatedAt        string
+	UpdatedAt        string
+	LifecycleProfile sql.NullString
+	LifecycleSecret  []byte
 }
 
 type OidcTransaction struct {
@@ -1166,13 +1197,16 @@ type PkiProfileBinding struct {
 }
 
 type Principal struct {
-	ID                string
-	Kind              string
-	CreatedAt         string
-	SessionGeneration int64
-	Class             sql.NullString
-	ReconciledEpoch   int64
-	PrivacyState      string
+	ID                  string
+	Kind                string
+	CreatedAt           string
+	SessionGeneration   int64
+	Class               sql.NullString
+	ReconciledEpoch     int64
+	PrivacyState        string
+	ContainmentState    string
+	ContainedAt         sql.NullString
+	ContainedIncidentID sql.NullString
 }
 
 type Project struct {
@@ -1362,6 +1396,78 @@ type RevisionPin struct {
 	AuthorizedAt         string
 	HistoryAuthorized    int64
 	SchemaOverride       int64
+}
+
+type Rotation struct {
+	ID                     string
+	OrgID                  string
+	ProjectID              string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	HaltReason             sql.NullString
+	NextRunAt              sql.NullString
+	Generation             int64
+	CreatedAt              string
+	UpdatedAt              string
+	ManualRunID            sql.NullString
+	ManualSkipOverlap      int64
+	RestoreHold            int64
+	DeferredFrom           sql.NullString
+}
+
+type RotationEffect struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	RunID          string
+	Kind           string
+	IntentAuditID  string
+	OutcomeAuditID sql.NullString
+	Outcome        sql.NullString
+	CreatedAt      string
+	FinishedAt     sql.NullString
+}
+
+type RotationKeyClaim struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	RotationID    string
+}
+
+type RotationRun struct {
+	ID                         string
+	OrgID                      string
+	ProjectID                  string
+	EnvironmentID              string
+	RotationID                 string
+	Generation                 int64
+	RunTrigger                 string
+	Phase                      string
+	CandidateHandle            string
+	SupersededHandle           sql.NullString
+	CandidateValidUntil        sql.NullString
+	PublishedRevision          sql.NullInt64
+	RevocationDelaySeconds     int64
+	StartedAt                  string
+	PhaseAt                    string
+	LeaseOwner                 sql.NullString
+	LeaseExpiresAt             sql.NullString
+	LeaseClaimToken            int64
+	AttemptCount               int64
+	NextAttemptAt              string
+	LastError                  sql.NullString
+	RevokeNotBeforeAt          sql.NullString
+	NotConvergedAdapterTargets sql.NullInt64
 }
 
 type Rule struct {

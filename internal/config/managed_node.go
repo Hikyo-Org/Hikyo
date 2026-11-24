@@ -3,7 +3,8 @@ package config
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const ManagedNewRootSourceKey = "HIKYO_NEW_ROOT_SOURCE"
@@ -159,7 +162,7 @@ func (c *Config) SeedNodeValues() (map[string]string, error) {
 				encoded[origin] = append(encoded[origin], cidr.String())
 			}
 		}
-		raw, err := json.Marshal(encoded)
+		raw, err := json.Marshal(encoded, jsonwire.Stable)
 		if err != nil {
 			return nil, errors.New("cannot serialize managed node policy")
 		}
@@ -329,7 +332,7 @@ func parseManagedEgress(raw, kind string) (map[string][]netip.Prefix, error) {
 	if err := validateManagedJSON(raw); err != nil {
 		return nil, errors.New("managed egress policy contains invalid JSON")
 	}
-	var shape map[string]json.RawMessage
+	var shape map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(raw), &shape); err != nil || shape == nil {
 		return nil, errors.New("managed egress policy must be an origin-to-CIDR-array object")
 	}
@@ -363,31 +366,26 @@ func validateManagedJSON(raw string) error {
 	if !utf8.ValidString(raw) || len(raw) == 0 || len(raw) > MaxManagedNodeValueBytes {
 		return errors.New("invalid managed JSON size")
 	}
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.UseNumber()
+	decoder := jsontext.NewDecoder(strings.NewReader(raw), jsontext.AllowDuplicateNames(true))
 	var value func(int) error
 	value = func(depth int) error {
 		if depth > 16 {
 			return errors.New("managed JSON nesting limit")
 		}
-		token, err := decoder.Token()
+		token, err := decoder.ReadToken()
 		if err != nil {
 			return err
 		}
-		delimiter, compound := token.(json.Delim)
-		if !compound {
-			return nil
-		}
-		switch delimiter {
+		switch token.Kind() {
 		case '{':
 			seen := make(map[string]bool)
-			for decoder.More() {
-				token, err := decoder.Token()
+			for decoder.PeekKind() != '}' {
+				token, err := decoder.ReadToken()
 				if err != nil {
 					return err
 				}
-				name, ok := token.(string)
-				if !ok || seen[name] {
+				name := token.String()
+				if token.Kind() != '"' || seen[name] {
 					return errors.New("duplicate managed JSON member")
 				}
 				seen[name] = true
@@ -396,21 +394,21 @@ func validateManagedJSON(raw string) error {
 				}
 			}
 		case '[':
-			for decoder.More() {
+			for decoder.PeekKind() != ']' {
 				if err := value(depth + 1); err != nil {
 					return err
 				}
 			}
 		default:
-			return errors.New("invalid managed JSON delimiter")
+			return nil
 		}
-		_, err = decoder.Token()
+		_, err = decoder.ReadToken()
 		return err
 	}
 	if err := value(0); err != nil {
 		return err
 	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return errors.New("trailing managed JSON input")
 	}
 	return nil

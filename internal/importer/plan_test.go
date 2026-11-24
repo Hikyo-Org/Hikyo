@@ -2,8 +2,9 @@ package importer
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -305,6 +306,29 @@ func TestBuildProjectPlanRefusesCreatedEnvironmentWithID(t *testing.T) {
 		}},
 	})
 	wantCode(t, err, CodeMalformed)
+}
+
+// TestBuildProjectPlanRefusesRepeatedTargets: ParseTemplate refuses a target
+// named twice, so the plan must refuse it up front rather than write an artifact
+// that cannot be replayed. Existing ids and created names share one set.
+func TestBuildProjectPlanRefusesRepeatedTargets(t *testing.T) {
+	rec := []Record{{SourceName: "API_KEY", Value: "k", Type: schema.TypeString}}
+	for name, envs := range map[string][]EnvInput{
+		"existing": {{EnvID: "env_a", Records: rec}, {EnvID: "env_a", Records: rec}},
+		"created":  {{Create: true, EnvName: "staging", Records: rec}, {Create: true, EnvName: "staging", Records: rec}},
+		// mapping.json writes both as `target`, which ParseTemplate checks in one set.
+		"existing id named as created": {{EnvID: "env_a", Records: rec}, {Create: true, EnvName: "env_a", Records: rec}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := BuildProjectPlan(ProjectPlanInput{
+				Source: k8sSource, Project: "prj_1", DefinitionsRevision: 7, Envs: envs,
+			})
+			wantCode(t, err, CodeMalformed)
+			if !strings.Contains(err.Error(), "already mapped") {
+				t.Errorf("refusal does not name the repeated target: %v", err)
+			}
+		})
+	}
 }
 
 // TestBucketsAreNewAndSetOnly pins the flat-model amendment: two buckets, and a
@@ -882,6 +906,52 @@ func TestArtifactsRejectTrailingDocumentsAndDuplicateMembers(t *testing.T) {
 	wantCode(t, err, CodeDuplicateKey)
 	if !strings.Contains(strings.ToLower(err.Error()), `"source_identity"`) {
 		t.Fatalf("case-variant duplicate refusal does not name source_identity: %v", err)
+	}
+}
+
+func TestParseRefusesDuplicateEnvironmentTargets(t *testing.T) {
+	plan, err := planFrom(t, "k8s-multi.yaml", state(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template := plan.Template
+	template.Environments = append(slices.Clone(template.Environments), template.Environments[0])
+	raw, err := Encode(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ParseTemplate(raw)
+	wantCode(t, err, CodeMalformed)
+	if !strings.Contains(err.Error(), "already mapped") {
+		t.Errorf("duplicate template target refusal does not say so: %v", err)
+	}
+
+	// A created name equal to a mapped existing target is claimed once, as in the wizard.
+	twin := template.Environments[0]
+	twin.Create = !twin.Create
+	template.Environments = append(slices.Clone(plan.Template.Environments), twin)
+	if raw, err = Encode(template); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ParseTemplate(raw)
+	wantCode(t, err, CodeMalformed)
+
+	for name, mutate := range map[string]func(*Manifest){
+		"existing": func(m *Manifest) { m.Target.Environments = []string{"prod", "prod"} },
+		"created":  func(m *Manifest) { m.Target.CreatedEnvironments = []string{"new", "new"} },
+	} {
+		manifest := plan.Manifest
+		mutate(&manifest)
+		raw, err := Encode(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = ParseManifest(raw)
+		wantCode(t, err, CodeMalformed)
+		if !strings.Contains(err.Error(), "already mapped") {
+			t.Errorf("%s: duplicate manifest target refusal does not say so: %v", name, err)
+		}
 	}
 }
 

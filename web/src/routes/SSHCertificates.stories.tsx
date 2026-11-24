@@ -16,13 +16,16 @@ const meta = {
   title: 'Features/SSH/SSHCertificatesPanel',
   component: SSHCertificatesPanel,
   tags: ['ai-generated'],
-  args: { org: 'org_acme', project: 'prj_app', sessionId: 'ses_storybook', environments: [{ id: 'env_prod', name: 'production' }], requesterOptions: [] },
+  args: { org: 'org_acme', project: 'prj_app', sessionId: 'ses_storybook', environments: [{ id: 'env_prod', name: 'production' }], environmentsRead: 'ready', requesterOptions: [] },
   parameters: { ...topLayerDocs, app: { responses: empty }, docs: { ...topLayerDocs.docs, description: { component: 'Environment-scoped SSH CA, profile and certificate lifecycle. CA and generated user private keys remain excluded from fixture responses. Browser passkey issuance is human-only.' } } },
 } satisfies Meta<typeof SSHCertificatesPanel>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const Empty: Story = { play: async ({ canvas }) => { await expect(await canvas.findByText('No SSH CA in this environment yet. Create one to issue certificates.')).toBeVisible(); } };
-export const NoEnvironments: Story = { args: { environments: [] } };
+export const NoEnvironments: Story = { args: { environments: [] }, play: async ({ canvas }) => { await expect(await canvas.findByText('This project has no environments, so it has no SSH CAs.')).toBeVisible(); } };
+// A read still in flight, or refused, is not an empty project.
+export const EnvironmentsLoading: Story = { args: { environments: [], environmentsRead: 'loading' }, play: async ({ canvas }) => { await expect(await canvas.findByText('Loading environments…')).toBeVisible(); await expect(canvas.queryByText(/no environments/)).toBeNull(); } };
+export const EnvironmentsUnreadable: Story = { args: { environments: [], environmentsRead: 'unavailable' }, play: async ({ canvas }) => { await expect(await canvas.findByRole('alert')).toHaveTextContent('environments could not be read'); await expect(canvas.queryByText(/no environments/)).toBeNull(); } };
 export const SessionRequired: Story = { args: { sessionId: null } };
 const populated = [{ url: `${base}/ssh-cas`, body: { items: [ca] } }, ...empty.slice(1)];
 // One card per subsection, each holding its own action and its table, the

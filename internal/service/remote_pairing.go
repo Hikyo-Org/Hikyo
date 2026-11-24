@@ -6,7 +6,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pairing"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -139,12 +141,11 @@ func decodePairingJSON(raw []byte, limit int, out any) error {
 	if len(raw) == 0 || len(raw) > limit {
 		return ErrPairingInvalid
 	}
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(out); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(d, out, json.RejectUnknownMembers(true)); err != nil {
 		return ErrPairingInvalid
 	}
-	if d.Decode(new(any)) != io.EOF {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return ErrPairingInvalid
 	}
 	return nil
@@ -207,7 +208,7 @@ func (s *RemotePairings) Prepare(ctx context.Context, actor Actor, req PreparePa
 		if err != nil {
 			return err
 		}
-		raw, err := json.Marshal(requesterCapsule{Version: 1, Principal: string(caller.Principal), Epoch: epoch, ExpiresAt: expires, Phrase: phrase, PrivateKey: key})
+		raw, err := json.Marshal(requesterCapsule{Version: 1, Principal: string(caller.Principal), Epoch: epoch, ExpiresAt: expires, Phrase: phrase, PrivateKey: key}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -281,7 +282,7 @@ func (s *RemotePairings) CreateInvite(ctx context.Context, actor Actor, req Crea
 	if _, err := rand.Read(salt); err != nil {
 		return PairingInviteCreated{}, err
 	}
-	secret, err := json.Marshal(invitationSecret{Phrase: phrase, Salt: salt})
+	secret, err := json.Marshal(invitationSecret{Phrase: phrase, Salt: salt}, jsonwire.Stable)
 	if err != nil {
 		return PairingInviteCreated{}, err
 	}
@@ -336,7 +337,7 @@ func (s *RemotePairings) CreateInvite(ctx context.Context, actor Actor, req Crea
 		if err := az.CreateRemotePairingInvite(ctx, i); err != nil {
 			return err
 		}
-		bundle, err := json.Marshal(invitationBundle{Version: 1, ID: id, Origin: origin, SPKIPin: spkiPin, Capability: capability, ExpiresAt: expires})
+		bundle, err := json.Marshal(invitationBundle{Version: 1, ID: id, Origin: origin, SPKIPin: spkiPin, Capability: capability, ExpiresAt: expires}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -469,7 +470,7 @@ func (s *RemotePairings) Start(ctx context.Context, capability, publicJWK string
 		if err != nil {
 			return err
 		}
-		state, err := json.Marshal(exchangeSecret{Enrollment: enrollment, Secret: challenge.Secret, PublicJWK: publicJWK, Thumbprint: jkt, Nonce: nonce})
+		state, err := json.Marshal(exchangeSecret{Enrollment: enrollment, Secret: challenge.Secret, PublicJWK: publicJWK, Thumbprint: jkt, Nonce: nonce}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -485,7 +486,7 @@ func (s *RemotePairings) Start(ctx context.Context, capability, publicJWK string
 		if err := az.CreateRemotePairingExchange(ctx, authz.RemotePairingExchange{ID: id, InviteID: i.ID, StateSealed: sealed, CredentialEpoch: epoch, CreatedAt: now, ExpiresAt: expires}); err != nil {
 			return err
 		}
-		message, err := json.Marshal(pairingChallenge{Context: context, ServerEphemeral: challenge.Ephemeral, Nonce: nonce})
+		message, err := json.Marshal(pairingChallenge{Context: context, ServerEphemeral: challenge.Ephemeral, Nonce: nonce}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -718,7 +719,7 @@ func (s *RemotePairings) Pair(ctx context.Context, actor Actor, req PairRemoteRe
 	if err != nil {
 		return RemoteView{}, err
 	}
-	publicJSON, err := json.Marshal(public)
+	publicJSON, err := json.Marshal(public, jsonwire.Stable)
 	if err != nil {
 		return RemoteView{}, err
 	}
@@ -745,7 +746,7 @@ func (s *RemotePairings) Pair(ctx context.Context, actor Actor, req PairRemoteRe
 	if err != nil {
 		return RemoteView{}, ErrPairingInvalid
 	}
-	message, err := json.Marshal(pairingClientProof{ClientEphemeral: proofs.ClientEphemeral, ClientProof: proofs.ClientProof})
+	message, err := json.Marshal(pairingClientProof{ClientEphemeral: proofs.ClientEphemeral, ClientProof: proofs.ClientProof}, jsonwire.Stable)
 	if err != nil {
 		return RemoteView{}, err
 	}
@@ -754,9 +755,9 @@ func (s *RemotePairings) Pair(ctx context.Context, actor Actor, req PairRemoteRe
 		return RemoteView{}, err
 	}
 	var finished struct {
-		ServerMessage string          `json:"server_message"`
-		Credential    string          `json:"credential"`
-		Connection    json.RawMessage `json:"connection"`
+		ServerMessage string         `json:"server_message"`
+		Credential    string         `json:"credential"`
+		Connection    jsontext.Value `json:"connection"`
 	}
 	if !s.now().Before(capsule.ExpiresAt) {
 		return RemoteView{}, ErrPairingInvalid

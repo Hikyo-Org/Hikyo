@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // PKIRuntime is the private-PKI worker's system boundary (#154, pki ADR D6-D8).
@@ -116,7 +118,7 @@ func (r *PKIRuntime) ExpireDue(ctx context.Context, now time.Time, limit int) (i
 }
 
 func insertPKITenantAudit(ctx context.Context, tx adapterDBTX, row pkiSweptRow, outcome string, at time.Time, payload pkiTransitionPayload) error {
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(payload, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -151,7 +153,7 @@ func (r *PKIRuntime) PublishCRL(ctx context.Context, candidate PKICRLCandidate, 
 			return err
 		}
 		published = true
-		body, err := json.Marshal(map[string]any{"issuer": candidate.Name, "version": candidate.Version, "crl_number": number, "entries": entries})
+		body, err := json.Marshal(map[string]any{"issuer": candidate.Name, "version": candidate.Version, "crl_number": number, "entries": entries}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}
@@ -200,7 +202,7 @@ func (r *PKIRuntime) SignAndPublishCRL(ctx context.Context, candidate PKICRLCand
 			return err
 		}
 		published = true
-		body, err := json.Marshal(map[string]any{"issuer": fresh.Name, "version": fresh.Version, "crl_number": number, "entries": len(entries)})
+		body, err := json.Marshal(map[string]any{"issuer": fresh.Name, "version": fresh.Version, "crl_number": number, "entries": len(entries)}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

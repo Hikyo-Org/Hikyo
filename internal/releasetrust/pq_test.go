@@ -3,7 +3,7 @@ package releasetrust_test
 import (
 	"bytes"
 	"crypto/mldsa"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"

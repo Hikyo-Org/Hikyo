@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func (f *fixture) repairWork() reportWork {
@@ -242,7 +244,7 @@ func TestRepairCLIRequiresTrustedRetirementContext(t *testing.T) {
 			t.Setenv("GH_REPO", "owner/repo")
 			e := f.e
 			e.Ref = "refs/heads/main"
-			work, err := json.Marshal(f.repairWork())
+			work, err := json.Marshal(f.repairWork(), jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -264,7 +266,7 @@ func TestRepairCLIRequiresTrustedRetirementContext(t *testing.T) {
 			case "unexpected argument":
 				args = append(args, "extra")
 			}
-			raw, err := json.Marshal(e)
+			raw, err := json.Marshal(e, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

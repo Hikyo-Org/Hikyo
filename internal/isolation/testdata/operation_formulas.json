@@ -985,6 +985,46 @@
     ]
   },
   {
+    "operation": "incident.adapter-work",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-adapters@project"
+    ]
+  },
+  {
+    "operation": "incident.instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "credential-reset@instance"
+    ]
+  },
+  {
+    "operation": "incident.leases-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "credential-reset@instance"
+    ]
+  },
+  {
+    "operation": "incident.leases-project",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "credential-reset@org"
+    ]
+  },
+  {
+    "operation": "incident.org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "credential-reset@org"
+    ]
+  },
+  {
     "operation": "key-group.create",
     "class": "tenant",
     "level": "project",
@@ -1908,6 +1948,89 @@
   },
   {
     "operation": "revision.signals",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "rotation.create",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
+    ]
+  },
+  {
+    "operation": "rotation.delete",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "rotation.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "rotation.pause",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "rotation.release_hold",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "rotation.resume",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "rotation.run",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "rotation.run_now",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment",
+      "publish@environment",
+      "reveal@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "rotation.runs",
     "class": "tenant",
     "level": "environment",
     "formula": [

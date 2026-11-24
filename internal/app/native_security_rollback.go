@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -64,7 +65,7 @@ type nativeSourceRecord struct {
 	Runtime      hostupgrade.RuntimeEvidence `json:"runtime"`
 	// RolledBack is written once the snapshot is back. It outlives the journal, because the coordinator can
 	// die before it records the rollback; a later Reconcile reads it and the next Prepare removes it.
-	RolledBack bool `json:"rolled_back,omitempty"`
+	RolledBack bool `json:"rolled_back,omitzero"`
 }
 
 func nativeSourceRecordPath(stateDirectory string) string {
@@ -72,7 +73,7 @@ func nativeSourceRecordPath(stateDirectory string) string {
 }
 
 func writeNativeSourceRecord(stateDirectory string, record nativeSourceRecord) error {
-	raw, err := json.Marshal(record)
+	raw, err := json.Marshal(record, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

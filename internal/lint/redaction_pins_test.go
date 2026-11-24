@@ -2,13 +2,9 @@ package lint
 
 import (
 	"fmt"
-	"go/ast"
-	"go/types"
 	"maps"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/go/packages"
 )
 
 // These private implementation holders are compile-time pinned but cannot be
@@ -19,38 +15,12 @@ var internalOnlyRedactionPins = map[string]bool{
 	Module + "/internal/crypto.dekEntry":  true,
 }
 
-// redactionPins reads actual typed assertions, including pointer and value
-// expressions, rather than introducing a third hand-maintained sensitive set.
-func redactionPins(t *testing.T, pkgs []*packages.Package) map[string]bool {
+func pinSet(t *testing.T, summaries []Summary) map[string]bool {
 	t.Helper()
 	pins := map[string]bool{}
-	for _, p := range pkgs {
-		if p.PkgPath != sensitiveOwner || p.TypesInfo == nil {
-			continue
-		}
-		for _, file := range p.Syntax {
-			ast.Inspect(file, func(n ast.Node) bool {
-				v, ok := n.(*ast.ValueSpec)
-				if !ok || v.Type == nil {
-					return true
-				}
-				surface, ok := p.TypesInfo.TypeOf(v.Type).(*types.Named)
-				if !ok || surface.Obj().Name() != "redactionSurface" || surface.Obj().Pkg().Path() != sensitiveOwner {
-					return true
-				}
-				for _, value := range v.Values {
-					typ := types.Unalias(p.TypesInfo.TypeOf(value))
-					if pointer, ok := typ.(*types.Pointer); ok {
-						typ = types.Unalias(pointer.Elem())
-					}
-					named, ok := typ.(*types.Named)
-					if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != sensitiveOwner {
-						t.Fatalf("unexpected redaction pin at %s", p.Fset.Position(value.Pos()))
-					}
-					pins[namedKey(named)] = true
-				}
-				return false
-			})
+	for _, s := range summaries {
+		if s.Kind == summaryPin {
+			pins[s.Subject] = true
 		}
 	}
 	if len(pins) == 0 {
@@ -80,8 +50,13 @@ func compareRedactionPins(pins, sensitive map[string]bool) []string {
 }
 
 func TestRedactionPinsMatchSensitiveTypes(t *testing.T) {
-	eachContext(t, sensitiveOwner, func(t *testing.T, pkgs []*packages.Package) {
-		pins := redactionPins(t, pkgs)
+	// The real pins are compared with SensitiveTypes by TestVetDriverRepo; this
+	// proves the comparison fails in every direction from a consistent baseline.
+	{
+		pins := maps.Clone(SensitiveTypes)
+		for name := range internalOnlyRedactionPins {
+			pins[name] = true
+		}
 		for _, finding := range compareRedactionPins(pins, SensitiveTypes) {
 			t.Error(finding)
 		}
@@ -113,5 +88,5 @@ func TestRedactionPinsMatchSensitiveTypes(t *testing.T) {
 				}
 			})
 		}
-	})
+	}
 }

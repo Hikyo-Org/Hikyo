@@ -3,8 +3,9 @@
 # real Helm install/readiness suite. Keeping both behind the existing k8s-e2e
 # required job lets trusted base-branch CI execute a PR-head chart gate even in
 # the same PR that introduces or changes the gate. The `kind`
-# binary comes from PATH; the node image is digest-pinned to the default for the
-# pinned kind release (v0.32.0), so the API-server version is reproducible.
+# binary comes from PATH; the node image is digest-pinned to the Kubernetes 1.36
+# image published for the pinned kind release (v0.33.0, whose default is 1.37),
+# so the API-server version is reproducible.
 #
 # The cluster is created fresh and deleted in a trap. It never adopts or deletes
 # a pre-existing `hikyo-e2e` cluster: a parallel session might own it, and
@@ -16,9 +17,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 CLUSTER=hikyo-e2e
-# kindest/node for kind v0.32.0 (kubernetes-sigs/kind v0.32.0 release notes).
+# kindest/node for kind v0.33.0 (kubernetes-sigs/kind v0.33.0 release notes).
 # Digest-pinned: the tag alone is not a stable identity for a given kind build.
-NODE_IMAGE="kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+NODE_IMAGE="kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed"
 
 if ! command -v kind >/dev/null 2>&1; then
 	echo "k8s-e2e: kind not found on PATH" >&2
@@ -123,5 +124,8 @@ echo "k8s-e2e: building authenticated unattended replacement fixtures"
 go test -count=1 -run '^TestWriteUnattendedContainerFixture$' ./scripts/ci/unattendedfixture
 echo "k8s-e2e: checking actual Docker SQLite image replacements"
 ./scripts/ci/unattended-docker.sh
+echo "k8s-e2e: checking operator commands inside admitted SQLite and PostgreSQL containers"
+./scripts/ci/unattended-operator.sh sqlite
+./scripts/ci/unattended-operator.sh postgres
 echo "k8s-e2e: checking actual singleton Kubernetes PostgreSQL replacements"
 ./scripts/ci/unattended-kind.sh

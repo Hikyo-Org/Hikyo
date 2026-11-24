@@ -3,7 +3,7 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,7 +28,7 @@ func BenchmarkAuthenticatedAPIRequests(b *testing.B) {
 			list: func(context.Context, service.Actor) ([]service.Org, error) {
 				return []service.Org{org}, nil
 			},
-			create: func(context.Context, service.Actor, string, bool, json.RawMessage) (service.Org, error) {
+			create: func(context.Context, service.Actor, string, bool, jsontext.Value) (service.Org, error) {
 				return org, nil
 			},
 		},

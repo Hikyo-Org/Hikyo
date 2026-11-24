@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/parameters"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -158,7 +159,37 @@ type PublishRequest struct {
 	ApprovalRequestID string
 	Bypass            *ApprovalBypass
 	Purpose           string
+
+	// rotation, when set, makes this publish a scheduled rotation's own
+	// transaction (#148, S2): the executor stages the candidate credential, the
+	// publish materializes it and the run row records it in ONE transaction, so a
+	// candidate is never a durable draft and a crash leaves no half-published
+	// state. Unexported: no transport can set it.
+	rotation *rotationPublish
 }
+
+// rotationPublish carries the executor's three in-transaction steps. Each runs
+// inside the publish transaction and so must be safe to re-run when the
+// transaction retries on a serialization failure.
+type rotationPublish struct {
+	// key is the first rotated key, used for the sealer preflight and the first
+	// per-key authorization.
+	key authz.KeyTarget
+	// begin runs after authorization and BEFORE the project lock: the run row's
+	// fenced touch, so a takeover's fenced claim write waits for this commit.
+	begin func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time) error
+	// stage stages the candidate values (under the project lock) and returns the
+	// pending version ids this publish commits.
+	stage func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time) ([]string, error)
+	// commit records the publish on the run row once every environment has
+	// published, in the same transaction.
+	commit func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, now time.Time, out PublishResult) error
+}
+
+// errRotationNotPublished reports a rotation publish that would have created an
+// approval request or been refused by the approval gate: it publishes nothing and
+// rolls the staged candidate back.
+var errRotationNotPublished = fmt.Errorf("%w: a scheduled rotation cannot publish into an environment with an approval policy", domain.ErrConflict)
 
 // ApprovalBypass carries an emergency bypasser's mandatory reason (#151).
 type ApprovalBypass struct {
@@ -256,7 +287,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	}
 	// A merge or bypass names an approval request, not a selection: the reviewed
 	// version ids are loaded from the request inside the transaction (#151).
-	if len(versionIDs) == 0 && request.ApprovalRequestID == "" {
+	if len(versionIDs) == 0 && request.ApprovalRequestID == "" && request.rotation == nil {
 		return PublishResult{}, fmt.Errorf("%w: a publish names the pending changes it commits", domain.ErrInvalid)
 	}
 	if dup, ok := firstDuplicate(versionIDs); ok {
@@ -274,7 +305,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	// The complete change set, including approval-pinned selections, is proved
 	// inside the transaction before any detail or material is returned.
 	var publishKey *authz.KeyTarget
-	if request.ApprovalRequestID != "" {
+	if request.rotation != nil {
+		key := request.rotation.key
+		publishKey = &key
+	} else if request.ApprovalRequestID != "" {
 		key := authz.KeyApprovalRequest(request.ApprovalRequestID)
 		publishKey = &key
 	} else if len(versionIDs) > 0 {
@@ -316,6 +350,11 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		if err := s.Budget.chargeOnce(&rateCharged, budgetPublishRate, budgetKeys{Principal: caller.Principal}); err != nil {
 			return err
 		}
+		if request.rotation != nil && request.rotation.begin != nil {
+			if err := request.rotation.begin(ctx, r, az, caller, now); err != nil {
+				return err
+			}
+		}
 		if s.PublishProbe != nil {
 			s.PublishProbe.BeforeProjectLock(slices.Clone(versionIDs))
 		}
@@ -323,6 +362,21 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		// and authorization re-checks (schema-model ADR).
 		if err := r.Projects().Lock(ctx, p); err != nil {
 			return err
+		}
+		if request.rotation != nil {
+			// The project lock can take a long time. A scheduled rotation's budget
+			// check and publish stamps use the time the lock was won, not the time
+			// the transaction began. (Its overlap deadline is anchored later still,
+			// in the commit hook and after the commit.) The authorization above
+			// keeps the earlier read: that is the authentication this publish rides.
+			now = s.now()
+		}
+		if request.rotation != nil && request.rotation.stage != nil {
+			staged, err := request.rotation.stage(ctx, r, az, caller, now)
+			if err != nil {
+				return err
+			}
+			versionIDs = staged
 		}
 
 		// Secret-change approvals (#151): a merge or bypass names an existing
@@ -451,6 +505,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		if err != nil {
 			return err
 		}
+		if request.rotation != nil && (approval.refusal != nil || approval.created != nil) {
+			return errRotationNotPublished
+		}
 		if approval.refusal != nil {
 			// The gate committed an invalidation; commit the transaction so it
 			// persists, then surface the refusal after the tx returns.
@@ -533,7 +590,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 				if err != nil {
 					return fmt.Errorf("service: pending change %s: %w", applies[i].versionID, err)
 				}
-				applies[i].value = string(plain)
+				// A draft staged before the trim was uniform may hold padding;
+				// normalize here so validation, the snapshot and the live cell
+				// (putCell) all see the same value.
+				applies[i].value = schema.Normalize(string(plain))
 			}
 			published, err := materialize(ctx, r, ep, sealer, s.Keyring, envScope,
 				caller.Principal, now, applies, s.storageLimit(), groupIndex, nil)
@@ -579,6 +639,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 
 		out.ClosedIn = closed
 		slices.Sort(out.Published)
+		if request.rotation != nil && request.rotation.commit != nil {
+			return request.rotation.commit(ctx, r, az, caller, now, out)
+		}
 		return nil
 	})
 	if err != nil {
@@ -653,7 +716,7 @@ func publishPreviewToken(ctx context.Context, r store.Repos, proofs map[string]a
 		slices.SortFunc(env.Changes, func(a, b previewTokenChange) int { return strings.Compare(a.VersionID, b.VersionID) })
 		input.Environments = append(input.Environments, env)
 	}
-	encoded, err := json.Marshal(input)
+	encoded, err := json.Marshal(input, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("service: encode publish preview: %w", err)
 	}
@@ -751,7 +814,8 @@ func buildImpactPreview(ctx context.Context, r store.Repos, p authz.Proof, seale
 					if err != nil {
 						return ImpactPreview{}, err
 					}
-					value := string(plain)
+					// Publish normalizes the draft when it opens it; show that value.
+					value := schema.Normalize(string(plain))
 					change.After = &value
 				}
 			}
@@ -846,6 +910,20 @@ func republishWithStorage(ctx context.Context, r store.Repos, az *authz.TxAuthor
 	return republishAuthorized(ctx, r, az, caller, sealer, kr, scope, now, trigger, groups, storage, p)
 }
 
+// refuseCoveredEnvironment returns ErrApprovalRequired when an approval policy
+// covers env. Callers that ask for a ceremony check it first, so a covered
+// environment refuses before prompting for one.
+func refuseCoveredEnvironment(ctx context.Context, r store.Repos, p authz.Proof, env domain.EnvID) error {
+	_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(env))
+	if err != nil {
+		return err
+	}
+	if covered {
+		return ErrApprovalRequired
+	}
+	return nil
+}
+
 // republishAuthorized materializes after the changed-key authority has been
 // checked in this transaction. Schema deletion uses a proof minted before the
 // key and its selector rows disappear; no broader authority is substituted.
@@ -853,19 +931,16 @@ func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
 	now time.Time, trigger string, groups *groupIndexPhase, storage *schemaPublishStorage, p authz.Proof) (PublishedEnvironment, error) {
 	// Secret-change approvals (#151): the out-of-band value-change paths (copy,
-	// bulk-apply, clone-onto-an-existing-env, import) write cells and publish
-	// directly, sidestepping the draft→publish gate. Where a policy covers the
-	// destination they are refused with ErrApprovalRequired: a covered
-	// environment's changes must go through the reviewed draft flow. The
-	// structural fan-outs (schema `declare`, `environment-create`, and the
-	// draft `values`/`restore` publishes that already ran the gate) are exempt.
+	// bulk-apply, clone-onto-an-existing-env, import, supplied-value declare)
+	// write cells and publish directly, sidestepping the draft→publish gate.
+	// Where a policy covers the destination they are refused with
+	// ErrApprovalRequired: a covered environment's changes must go through the
+	// reviewed draft flow. The structural fan-outs (`environment-create`, the
+	// schema key triggers, and the draft `values`/`restore` publishes that
+	// already ran the gate) are exempt.
 	if approvalGatedTrigger(trigger) {
-		_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(scope.Env))
-		if err != nil {
+		if err := refuseCoveredEnvironment(ctx, r, p, scope.Env); err != nil {
 			return PublishedEnvironment{}, err
-		}
-		if covered {
-			return PublishedEnvironment{}, ErrApprovalRequired
 		}
 	}
 	groupIndex, err := groups.snapshot(ctx, r.Catalogue(), p)
@@ -885,7 +960,7 @@ func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	return published, nil
 }
 
-// fanOutSchemaPublish materializes EVERY environment in the project.
+// fanOutSchemaPublishProofs materializes EVERY environment in the project.
 //
 // A semantic schema change -- a key created, renamed, deleted, reclassified,
 // retyped, re-scoped by presence, or moved between groups -- does NOT narrow to
@@ -916,12 +991,7 @@ func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthori
 // project data key on first use, and minting opens a write transaction that
 // would wait forever on sqlite's single write connection for the transaction
 // that asked for it.
-func fanOutSchemaPublish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
-	p authz.Proof, sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
-	now time.Time, trigger string) ([]PublishedEnvironment, error) {
-	return fanOutSchemaPublishProofs(ctx, r, az, caller, p, sealer, kr, scope, now, trigger, nil)
-}
-
+//
 // fanOutSchemaPublishProofs uses pre-mutation key-aware proofs only when a
 // single-key schema operation supplied them. Bulk schema operations retain
 // their whole-environment authorization. Missing supplied proofs fail closed.
@@ -1229,7 +1299,7 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 			contract.Schemas[cell.key.Name] = cell.key.Declaration
 		}
 	}
-	contractJSON, err := json.Marshal(contract)
+	contractJSON, err := json.Marshal(contract, jsonwire.Stable)
 	if err != nil {
 		return PublishedEnvironment{}, err
 	}
@@ -1568,7 +1638,7 @@ func putCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.P
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
 	}
-	sealed, err := sealer.SealValue(valueAAD(entry), []byte(normalizeStoredValue(p, key, value)))
+	sealed, err := sealer.SealValue(valueAAD(entry), []byte(schema.Normalize(value)))
 	if err != nil {
 		return "", err
 	}

@@ -3,7 +3,8 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -276,7 +277,7 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 			Result struct {
 				Tools []struct {
 					InputSchema struct {
-						Properties map[string]json.RawMessage `json:"properties"`
+						Properties map[string]jsontext.Value `json:"properties"`
 					} `json:"inputSchema"`
 				} `json:"tools"`
 			} `json:"result"`
@@ -457,13 +458,15 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 		for _, replica := range []http.Handler{handler, other} {
 			restored := mcpCall(t, replica, granted.token, mcpserver.ToolListDefinitions, `{"org_id":"org_a","project_id":"prj_a1"}`)
 			var response struct {
-				Error  json.RawMessage
+				Error  jsontext.Value `json:"error"`
 				Result struct {
-					IsError           bool
+					IsError           bool `json:"isError"`
 					StructuredContent struct {
-						Definitions []struct{ Name string }
-					}
-				}
+						Definitions []struct {
+							Name string `json:"name"`
+						} `json:"definitions"`
+					} `json:"structuredContent"`
+				} `json:"result"`
 			}
 			decodeErr := json.Unmarshal(restored.Body.Bytes(), &response)
 			found := false

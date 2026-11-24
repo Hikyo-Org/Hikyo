@@ -2,13 +2,10 @@
 
 # Source-owned declaration is generated before the binary; its enclosing
 # signed manifest supplies the nonrecursive artifact identity.
-validate_release_compatibility() {
-	compatibility_file=$1
-	compatibility_candidate=$2
-	jq -e --slurpfile candidate "$compatibility_candidate" '
+# Shape only: a complete two-engine declaration. Binding to a candidate is separate.
+validate_compatibility_shape() {
+	jq -e '
 		.schema == "hikyo.dev/upgrade-compatibility/v1" and .profile == "stable/v1" and
-		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
-		.commit == $candidate[0].commit and
 		(.engines | type == "array" and length == 2) and
 		([.engines[].migrations.engine] | sort) == ["postgres", "sqlite"] and
 		all(.engines[];
@@ -17,7 +14,42 @@ validate_release_compatibility() {
 			all(.migrations.entries[]; (.version | type == "number") and .version > 0 and
 				(.version | floor) == .version and (.sha256 | test("^[0-9a-f]{64}$"))) and
 			(.sources | type == "array"))
+	' "$1" >/dev/null
+}
+
+validate_release_compatibility() {
+	compatibility_file=$1
+	compatibility_candidate=$2
+	validate_compatibility_shape "$compatibility_file" || return 1
+	jq -e --slurpfile candidate "$compatibility_candidate" '
+		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
+		.commit == $candidate[0].commit
 	' "$compatibility_file" >/dev/null
+}
+
+# release_source_edge_problems IDENTITY_JSON BASELINE_DECLARATION EDGES_JSON
+# IDENTITY_JSON is the release identity `stable verify` printed for the baseline (its
+# .identity object): the one an installed release is recorded under and an edge must name.
+# EDGES_JSON is {"sqlite": [edge...], "postgres": [edge...]}, the source edges a
+# candidate declares (or a sources.json carries) per engine. An installed
+# baseline release is only routed to the next release by an edge whose source is
+# that exact release (genesis edges never match a release-identified install), so
+# every engine needs exactly one, with the migrations and schema digest the
+# baseline itself published. Prints one problem per line; nothing when sound.
+release_source_edge_problems() {
+	jq -r --argjson id "$1" --slurpfile baseline "$2" '
+		. as $edges | ("v" + $id.version) as $from | ["sqlite", "postgres"][] | . as $engine |
+		($baseline[0].engines[] | select(.migrations.engine == $engine)) as $published |
+		# The source must be that release and nothing else: Source.Validate refuses a source that also names a genesis.
+		[($edges[$engine] // [])[] | select(.source == {release: $id})] as $own |
+		[($edges[$engine] // [])[] | select(.source.release? != null and .source.release.version? == $id.version and .source != {release: $id})] as $lookalike |
+		if ($own | length) == 0 then
+			"\($engine): no release-source edge from \($from)" + (if ($lookalike | length) > 0 then " (an edge names \($from) with a different release identity or another source field)" else "" end)
+		elif ($own | length) > 1 then "\($engine): more than one release-source edge from \($from)"
+		elif $own[0].migrations != $published.migrations then "\($engine): the edge from \($from) lists migrations other than the ones \($from) published"
+		elif $own[0].schema_sha256 != $published.schema_sha256 then "\($engine): the edge from \($from) names a schema digest other than the one \($from) published"
+		elif ($own[0].mode != "restart" and $own[0].mode != "maintenance") then "\($engine): the edge from \($from) has no valid mode"
+		else empty end' "$3"
 }
 
 verify_release_compatibility_artifact() {

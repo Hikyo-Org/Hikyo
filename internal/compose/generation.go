@@ -323,48 +323,11 @@ func (rl *RenderLock) WriteGeneration(runtimeDir string, keys *crypto.LocalKeys,
 	stamp := TargetStamp(keys, target, content)
 	envName := target + ".env"
 
-	parent, err := os.OpenRoot(filepath.Dir(runtimeDir))
+	root, err := openRuntimeRoot(runtimeDir, true)
 	if err != nil {
-		return "", false, fmt.Errorf("compose: open runtime dir parent: %w", err)
-	}
-	defer parent.Close()
-	base := filepath.Base(runtimeDir)
-	created := false
-	if err := parent.Mkdir(base, 0o700); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return "", false, fmt.Errorf("compose: create runtime dir: %w", err)
-		}
-	} else {
-		created = true
-	}
-	// Bootstrap search permission before opening the directory: on macOS an
-	// os.Root cannot Stat, Chmod, or OpenFile(".") when a hostile umask made a
-	// freshly-created directory 0600. Limit this bootstrap to the entry this
-	// call created; existing entries go directly through the identity checks.
-	if created {
-		if err := parent.Chmod(base, 0o700); err != nil {
-			return "", false, fmt.Errorf("compose: bootstrap runtime dir mode %s: %w", runtimeDir, err)
-		}
-	}
-	info, err := parent.Lstat(base)
-	if err != nil {
-		return "", false, fmt.Errorf("compose: lstat runtime dir %s: %w", runtimeDir, err)
-	}
-	if !info.IsDir() {
-		return "", false, fmt.Errorf("compose: runtime dir %s is not a directory; refusing", runtimeDir)
-	}
-	root, err := parent.OpenRoot(base)
-	if err != nil {
-		return "", false, fmt.Errorf("compose: open runtime dir %s: %w", runtimeDir, err)
+		return "", false, err
 	}
 	defer root.Close()
-	st, err := root.Stat(".")
-	if err != nil {
-		return "", false, fmt.Errorf("compose: stat opened runtime dir %s: %w", runtimeDir, err)
-	}
-	if !os.SameFile(info, st) {
-		return "", false, fmt.Errorf("compose: runtime dir %s was swapped while opening; refusing", runtimeDir)
-	}
 	if err := root.Chmod(".", 0o700); err != nil {
 		return "", false, fmt.Errorf("compose: chmod runtime dir %s: %w", runtimeDir, err)
 	}
@@ -426,10 +389,130 @@ func (rl *RenderLock) WriteGeneration(runtimeDir string, keys *crypto.LocalKeys,
 	return stamp, true, nil
 }
 
-// writeFileFsyncRoot writes name relative to root (truncating), chmods to perm
-// explicitly (umask-independent), and fsyncs the file.
+// openRuntimeRoot opens runtimeDir as an os.Root after verifying custody: it
+// is a clean absolute path to a directory (not a symlink), the opened handle is the
+// entry that was checked, it passes checkRuntimeCustody, and runtimeDir still
+// names the opened handle after that check. With create it makes the dir
+// first. A missing dir returns an error wrapping os.ErrNotExist. Every consumer
+// of plaintext generations (write, recover, GC, cursor eligibility) opens the
+// runtime dir through here.
+func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
+	if err := refuseUncleanRuntimeDir(runtimeDir); err != nil {
+		return nil, err
+	}
+	parent, err := os.OpenRoot(filepath.Dir(runtimeDir))
+	if err != nil {
+		return nil, fmt.Errorf("compose: open runtime dir parent: %w", err)
+	}
+	defer func() { _ = parent.Close() }()
+	base := filepath.Base(runtimeDir)
+	created := false
+	if create {
+		if err := parent.Mkdir(base, 0o700); err != nil {
+			if !errors.Is(err, os.ErrExist) {
+				return nil, fmt.Errorf("compose: create runtime dir: %w", err)
+			}
+		} else {
+			created = true
+		}
+	}
+	// Bootstrap search permission before opening the directory: on macOS an
+	// os.Root cannot Stat, Chmod, or OpenFile(".") when a hostile umask made a
+	// freshly-created directory 0600. Limit this bootstrap to the entry this
+	// call created; existing entries go directly through the identity checks.
+	if created {
+		if err := parent.Chmod(base, 0o700); err != nil {
+			return nil, fmt.Errorf("compose: bootstrap runtime dir mode %s: %w", runtimeDir, err)
+		}
+	}
+	info, err := parent.Lstat(base)
+	if err != nil {
+		return nil, fmt.Errorf("compose: lstat runtime dir %s: %w", runtimeDir, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%w: runtime dir %s is not a directory", ErrRuntimeCustody, runtimeDir)
+	}
+	root, err := parent.OpenRoot(base)
+	if err != nil {
+		return nil, fmt.Errorf("compose: open runtime dir %s: %w", runtimeDir, err)
+	}
+	st, err := root.Stat(".")
+	if err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("compose: stat opened runtime dir %s: %w", runtimeDir, err)
+	}
+	if !os.SameFile(info, st) {
+		_ = root.Close()
+		return nil, fmt.Errorf("%w: runtime dir %s was swapped while opening", ErrRuntimeCustody, runtimeDir)
+	}
+	pinfo, err := parent.Stat(".")
+	if err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("compose: stat runtime dir parent: %w", err)
+	}
+	runtimeOpened()
+	if err := checkRuntimeCustody(runtimeDir, st, pinfo); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	// The ancestor walk resolves the path after the open, top-down, so once it
+	// passes no other user can rename any component; the path must then still
+	// name the opened root, or a swap during the walk vetted another hierarchy.
+	if now, err := os.Lstat(runtimeDir); err != nil || !os.SameFile(now, st) {
+		_ = root.Close()
+		return nil, fmt.Errorf("%w: runtime dir %s moved during the custody check", ErrRuntimeCustody, runtimeDir)
+	}
+	return root, nil
+}
+
+// refuseUncleanRuntimeDir refuses a path the custody check would vet in a
+// lexically cleaned or $PWD-joined form while the kernel, and Compose, resolve
+// `..` after a symlink physically.
+func refuseUncleanRuntimeDir(runtimeDir string) error {
+	if !filepath.IsAbs(runtimeDir) || filepath.Clean(runtimeDir) != runtimeDir {
+		return fmt.Errorf("%w: runtime dir %s is not a clean absolute path", ErrRuntimeCustody, runtimeDir)
+	}
+	return nil
+}
+
+// runtimeOpened runs between opening the runtime dir and its custody check; a
+// seam so tests can move the hierarchy inside that window.
+var runtimeOpened = func() {}
+
+// ErrRuntimeCustody marks a runtime dir another user could control (foreign
+// owner, unsafe parent, non-directory or swapped entry); render refuses it.
+var ErrRuntimeCustody = errors.New("compose: runtime dir custody refused")
+
+// RuntimeDirCustody reports why runtimeDir would be refused (an
+// ErrRuntimeCustody refusal, or an error inspecting it), or nil. A missing dir
+// is not a failure; doctor uses this read-only form of the openRuntimeRoot check.
+func RuntimeDirCustody(runtimeDir string) error {
+	if err := refuseUncleanRuntimeDir(runtimeDir); err != nil {
+		return err
+	}
+	info, err := os.Lstat(runtimeDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("compose: lstat runtime dir %s: %w", runtimeDir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: runtime dir %s is not a directory", ErrRuntimeCustody, runtimeDir)
+	}
+	pinfo, err := os.Stat(filepath.Dir(runtimeDir))
+	if err != nil {
+		return fmt.Errorf("compose: stat runtime dir parent: %w", err)
+	}
+	return checkRuntimeCustody(runtimeDir, info, pinfo)
+}
+
+// writeFileFsyncRoot creates name relative to root exclusively (O_EXCL: both
+// callers write into a generation dir they just made, so an existing entry is a
+// planted file and must fail, not be reused), chmods to perm explicitly
+// (umask-independent), and fsyncs the file.
 func writeFileFsyncRoot(root *os.Root, name string, data []byte, perm os.FileMode) error {
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
 	if err != nil {
 		return err
 	}
@@ -827,12 +910,12 @@ func generationTargetRoot(root *os.Root, stamp string) (string, error) {
 // openRuntimeEntries opens runtimeDir as an os.Root and lists its top-level
 // entries. A missing runtime dir returns (nil, nil, nil) — nothing to do.
 func openRuntimeEntries(runtimeDir string) (*os.Root, []os.DirEntry, error) {
-	root, err := os.OpenRoot(runtimeDir)
+	root, err := openRuntimeRoot(runtimeDir, false)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, nil
 		}
-		return nil, nil, fmt.Errorf("compose: open runtime dir: %w", err)
+		return nil, nil, err
 	}
 	d, err := root.Open(".")
 	if err != nil {

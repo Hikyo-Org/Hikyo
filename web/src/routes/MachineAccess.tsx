@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { grantOutcomeSummary } from '../api/access.ts';
 import { useDeliveryTargets } from '../api/deliveryTargets.ts';
@@ -19,7 +19,9 @@ import {
 import { useCertificates } from '../api/pki.ts';
 import { CertificatesTab, certificateCount } from './CertificatesTab.tsx';
 import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
+import { RotationsPanel } from './machineAccess/Rotations.tsx';
 import { SSHCertificatesPanel } from './SSHCertificates.tsx';
+import type { EnvironmentsRead } from './machineAccess/EnvironmentsRead.tsx';
 import { ApiError } from '../api/client.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 import {
@@ -40,6 +42,7 @@ import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { TabPanel, Tabs, type TabItem } from '../ui/Tabs.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import {
   type IsMintSubmitting,
   type MintBoundary,
@@ -98,7 +101,15 @@ import {
 
  */
 
-type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases' | 'ssh' | 'certificates';
+type Tab =
+  | 'accounts'
+  | 'federation'
+  | 'kubernetes'
+  | 'providers'
+  | 'leases'
+  | 'ssh'
+  | 'certificates'
+  | 'rotations';
 
 /** The route's one-at-a-time dialog selector (not the `ui/Dialog` atom). */
 type DialogState =
@@ -119,6 +130,7 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'leases', label: 'Leases' },
   { id: 'ssh', label: 'SSH certificates' },
   { id: 'certificates', label: 'Certificates' },
+  { id: 'rotations', label: 'Rotations' },
 ];
 
 /**
@@ -138,6 +150,9 @@ export function accountsRefusalText(error: unknown): string {
 export const MachineAccess = gateSystemScope('machine-access', MachineAccessPage);
 
 export function MachineAccessPage() {
+  const accountsCaptionId = useId();
+  const leasesCaptionId = useId();
+  const providersCaptionId = useId();
   const params = useParams();
   const project: ProjectRef = {
     org: params['org'] ?? '',
@@ -161,6 +176,11 @@ export function MachineAccessPage() {
   );
   const environmentsKnown = environmentsQuery.isSuccess && environmentsQuery.data !== null;
   const environmentsUnavailable = !environmentsKnown && !environmentsQuery.isPending;
+  const environmentsRead: EnvironmentsRead = environmentsQuery.isPending
+    ? 'loading'
+    : environmentsUnavailable
+      ? 'unavailable'
+      : 'ready';
   const leaseListings = useLeases(project, environments);
   const certificateListings = useCertificates(project, environments);
   // An empty fan-out is only a known empty inventory after the hierarchy read
@@ -325,9 +345,9 @@ export function MachineAccessPage() {
     mintableProviders.length > 0 &&
     environments.length > 0;
 
-  // SSH objects are read per environment inside the SSH tab; a project-wide
-  // count would need a fan-out of new reads, so that tab carries none.
-  const tabCount: Record<Exclude<Tab, 'ssh'>, number | 'unknown'> = {
+  // SSH objects and rotations are read per environment inside their tabs; a
+  // project-wide count would need a fan-out of new reads, so those tabs carry none.
+  const tabCount: Record<Exclude<Tab, 'ssh' | 'rotations'>, number | 'unknown'> = {
     accounts: accountsQuery.isSuccess ? accounts.length : 'unknown',
     // Unknown is rendered as unknown: "Federation (0)" on a failed listing
     // reads as "there are none", which is the one thing it does not know.
@@ -345,7 +365,7 @@ export function MachineAccessPage() {
   const countedTabs: readonly TabItem<Tab>[] = TABS.map((entry) => ({
     id: entry.id,
     label: entry.label,
-    ...(entry.id === 'ssh' ? {} : { count: tabCount[entry.id] }),
+    ...(entry.id === 'ssh' || entry.id === 'rotations' ? {} : { count: tabCount[entry.id] }),
   }));
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
@@ -466,9 +486,9 @@ export function MachineAccessPage() {
                 Create service account
               </Button>
             </div>
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={accountsCaptionId}>
             <table className="values__table machine__table">
-              <caption className="visually-hidden">
+              <caption id={accountsCaptionId} className="visually-hidden">
                 The project&apos;s service accounts. Credential values are never listed: a value is
                 displayed once, at mint.
               </caption>
@@ -509,7 +529,7 @@ export function MachineAccessPage() {
                 })}
               </tbody>
             </table>
-            </div>
+            </TableScroll>
             {accounts.length === 0 && !accountsQuery.isPending && !accountsQuery.isError ? (
               <p role="status">
                 No service accounts on this project yet. Create one above: a browser operator seeds
@@ -613,9 +633,9 @@ export function MachineAccessPage() {
                 Configure provider
               </Button>
             </div>
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={providersCaptionId}>
             <table className="values__table machine__table">
-              <caption className="visually-hidden">
+              <caption id={providersCaptionId} className="visually-hidden">
                 The project&apos;s dynamic-secret providers. The admin credential is never listed.
               </caption>
               <thead>
@@ -700,7 +720,7 @@ export function MachineAccessPage() {
                 ))}
               </tbody>
             </table>
-            </div>
+            </TableScroll>
             {providersQuery.isError ? (
               <p role="status">The providers could not be read.</p>
             ) : providers.length === 0 && !providersQuery.isPending ? (
@@ -743,9 +763,9 @@ export function MachineAccessPage() {
                 Configure a provider with a credential first: a lease is minted against one.
               </p>
             ) : null}
-            <div className="table-scroll">
+            <TableScroll aria-labelledby={leasesCaptionId}>
             <table className="values__table machine__table">
-              <caption className="visually-hidden">
+              <caption id={leasesCaptionId} className="visually-hidden">
                 The project&apos;s dynamic-secret leases across every environment. No secret value is
                 listed.
               </caption>
@@ -832,7 +852,7 @@ export function MachineAccessPage() {
                 })}
               </tbody>
             </table>
-            </div>
+            </TableScroll>
             {unknownLeases === 0 ? null : (
               <p role="status" className="machine__hint">
                 {`${String(unknownLeases)} lease${unknownLeases === 1 ? '' : 's'} awaiting reconcile`}
@@ -854,12 +874,22 @@ export function MachineAccessPage() {
             project={project.project}
             sessionId={liveSessionId}
             environments={environments.map((environment) => ({ id: environment.id, name: environment.name }))}
+            environmentsRead={environmentsRead}
             requesterOptions={[
               ...(auth.identity === null || auth.identity === undefined
                 ? []
                 : [{ id: auth.identity.principal.id, label: 'me' }]),
               ...accounts.map((account) => ({ id: account.principal_id, label: account.name })),
             ]}
+          />
+        ) : null}
+        {tab === 'rotations' ? (
+          <RotationsPanel
+            org={project.org}
+            project={project.project}
+            environments={environments.map((environment) => ({ id: environment.id, name: environment.name }))}
+            environmentsRead={environmentsRead}
+            providers={providers}
           />
         ) : null}
       </TabPanel>

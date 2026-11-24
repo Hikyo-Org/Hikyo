@@ -57,7 +57,7 @@ func custodyDirectory(path string, create bool, owner int) (*os.File, error) {
 	return current, nil
 }
 
-func publish(dir *os.File, ciphertext []byte, replace bool) error {
+func publish(dir *os.File, name string, ciphertext []byte, replace bool) error {
 	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX); err != nil {
 		return errors.New("lock operator custody directory")
 	}
@@ -66,14 +66,14 @@ func publish(dir *os.File, ciphertext []byte, replace bool) error {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return errors.New("create encrypted custody temporary name")
 	}
-	name := ".operator-" + hex.EncodeToString(nonce[:])
-	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
+	temporary := ".operator-" + hex.EncodeToString(nonce[:])
+	fd, err := unix.Openat(int(dir.Fd()), temporary, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
 	if err != nil {
 		return errors.New("create encrypted operator custody")
 	}
-	f := os.NewFile(uintptr(fd), name)
+	f := os.NewFile(uintptr(fd), temporary)
 	defer f.Close()
-	defer unix.Unlinkat(int(dir.Fd()), name, 0)
+	defer func() { _ = unix.Unlinkat(int(dir.Fd()), temporary, 0) }()
 	if _, err := f.Write(ciphertext); err != nil {
 		return errors.New("write encrypted operator custody")
 	}
@@ -86,16 +86,16 @@ func publish(dir *os.File, ciphertext []byte, replace bool) error {
 	if replace {
 		// Rewrapping replaces the whole file atomically; the record inside is
 		// the same, so a crash leaves either the old or the new container.
-		if err := unix.Renameat(int(dir.Fd()), name, int(dir.Fd()), fileName); err != nil {
+		if err := unix.Renameat(int(dir.Fd()), temporary, int(dir.Fd()), name); err != nil {
 			return errors.New("replace encrypted operator custody")
 		}
 	} else {
 		// linkat is the atomic no-overwrite publication point. A crash may leave an
 		// encrypted temporary file, never a plaintext secret or a partial final file.
-		if err := unix.Linkat(int(dir.Fd()), name, int(dir.Fd()), fileName, 0); err != nil {
+		if err := unix.Linkat(int(dir.Fd()), temporary, int(dir.Fd()), name, 0); err != nil {
 			return errors.New("publish operator custody: existing custody is never replaced")
 		}
-		if err := unix.Unlinkat(int(dir.Fd()), name, 0); err != nil {
+		if err := unix.Unlinkat(int(dir.Fd()), temporary, 0); err != nil {
 			return errors.New("remove encrypted operator custody temporary link")
 		}
 	}
@@ -105,16 +105,16 @@ func publish(dir *os.File, ciphertext []byte, replace bool) error {
 	return nil
 }
 
-func read(dir *os.File, owner int) ([]byte, error) {
+func read(dir *os.File, name string, owner int) ([]byte, error) {
 	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX); err != nil {
 		return nil, errors.New("lock operator custody directory")
 	}
 	defer unix.Flock(int(dir.Fd()), unix.LOCK_UN)
-	fd, err := unix.Openat(int(dir.Fd()), fileName, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, errors.New("open encrypted operator custody")
 	}
-	f := os.NewFile(uintptr(fd), fileName)
+	f := os.NewFile(uintptr(fd), name)
 	defer f.Close()
 	var st unix.Stat_t
 	if unix.Fstat(fd, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Mode&07777 != 0600 || st.Uid != uint32(owner) || st.Size <= 0 || st.Size > maxCiphertext {
@@ -181,4 +181,31 @@ func recoverInterruptedPublication(dir *os.File, final unix.Stat_t, owner int) e
 		return errors.New("sync recovered operator custody directory")
 	}
 	return nil
+}
+
+// promoteStaged atomically makes the staged vault the live one.
+func promoteStaged(dir *os.File) error {
+	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX); err != nil {
+		return errors.New("lock operator custody directory")
+	}
+	defer func() { _ = unix.Flock(int(dir.Fd()), unix.LOCK_UN) }()
+	if err := unix.Renameat(int(dir.Fd()), stagedFileName, int(dir.Fd()), fileName); err != nil {
+		return errors.New("promote staged operator custody")
+	}
+	if err := dir.Sync(); err != nil {
+		return errors.New("sync operator custody directory")
+	}
+	return nil
+}
+
+// discardStaged removes a staged vault that is no longer needed. Absence is success.
+func discardStaged(dir *os.File) error {
+	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX); err != nil {
+		return errors.New("lock operator custody directory")
+	}
+	defer func() { _ = unix.Flock(int(dir.Fd()), unix.LOCK_UN) }()
+	if err := unix.Unlinkat(int(dir.Fd()), stagedFileName, 0); err != nil && !errors.Is(err, unix.ENOENT) {
+		return errors.New("remove staged operator custody")
+	}
+	return dir.Sync()
 }

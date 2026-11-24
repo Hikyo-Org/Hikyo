@@ -26,8 +26,10 @@ No database schema or migration changed.
   its side-by-side TypeScript 7 CLI and TypeScript 6 API arrangement.
 - Same-hour npm releases were not exempted from pnpm's minimum-release-age
   policy. No `minimumReleaseAgeExclude` entries were added.
-- `@hey-api/openapi-ts` remains at 0.97.3. Version 0.99.0 generates `as`
-  assertions and an ESLint suppression, both forbidden by repository standards.
+- `@hey-api/openapi-ts` remained at 0.97.3 here. Superseded by the 0.99.0 bump
+  in `docs/handoff/openapi-ts-0.99.md`: 0.97.3 already generated `as`
+  assertions, and 0.99.0's one new suppression is upstream's intended
+  `ClientMeta` augmentation point.
 
 ## Verification
 

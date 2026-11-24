@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The A6 formatting-surface coverage test: each of String / GoString /
@@ -82,7 +84,7 @@ func TestRedactionSurfacesAgainstPlantedSecret(t *testing.T) {
 			assertClean(name, "slog handler", out.String())
 		}
 
-		b, err := json.Marshal(v)
+		b, err := json.Marshal(v, jsonwire.Stable)
 		if err != nil {
 			t.Fatalf("%s: json.Marshal: %v", name, err)
 		}

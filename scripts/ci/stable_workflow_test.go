@@ -4,11 +4,49 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+// sourceProofOutputs lists every value of the flag package's output flag: - or --,
+// space or = separator, quoted or unquoted. Single quotes are kept: bash does not expand
+// variables inside them. Values containing spaces are not supported.
+func sourceProofOutputs(run string) []string {
+	var values []string
+	for _, match := range regexp.MustCompile(`(?:^|\s)--?output(?:=|\s+|$)(\S*)`).FindAllStringSubmatch(run, -1) {
+		values = append(values, strings.Trim(match[1], `"`))
+	}
+	return values
+}
+
+func TestSourceProofOutputsMatchEveryFlagForm(t *testing.T) {
+	for run, want := range map[string]int{
+		`--mode main --output "$RUNNER_TEMP/a.json"`:                                  1,
+		`--output "$RUNNER_TEMP/a.json" --output "$RUNNER_TEMP/b.json"`:               2,
+		`--output "$RUNNER_TEMP/a.json" --output $RUNNER_TEMP/b.json`:                 2,
+		`--output "$RUNNER_TEMP/a.json" --output=$RUNNER_TEMP/b.json`:                 2,
+		`--output "$RUNNER_TEMP/a.json" -output "$RUNNER_TEMP/b.json"`:                2,
+		`--output "$RUNNER_TEMP/a.json" --output=`:                                    2,
+		`--output "$RUNNER_TEMP/a.json" --output`:                                     2,
+		`--output="$RUNNER_TEMP/a.json"`:                                              1,
+		`--mode main --commit "$GITHUB_SHA"`:                                          0,
+		`--mode main --github-output "$GITHUB_OUTPUT" --output "$RUNNER_TEMP/a.json"`: 1,
+	} {
+		if got := sourceProofOutputs(run); len(got) != want {
+			t.Errorf("%q: got %q, want %d output flags", run, got, want)
+		}
+	}
+}
+
+func TestSourceProofOutputsKeepSingleQuotes(t *testing.T) {
+	got := sourceProofOutputs(`--output '$RUNNER_TEMP/a.json'`)
+	if len(got) != 1 || got[0] != `'$RUNNER_TEMP/a.json'` {
+		t.Fatalf("single-quoted value must stay quoted so it cannot equal an expanded path, got %q", got)
+	}
+}
 
 func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 	type step struct {
@@ -70,6 +108,10 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 		evidence.With["path"] != "${{ runner.temp }}/release-source-proof.json" {
 		t.Fatal("successful release source proof must be retained as exact small evidence")
 	}
+	outputs := sourceProofOutputs(source.Run)
+	if len(outputs) != 1 || strings.ReplaceAll(outputs[0], "$RUNNER_TEMP", "${{ runner.temp }}") != evidence.With["path"] {
+		t.Fatal("release source proof must have one --output, the exact file the evidence uploader retains")
+	}
 	signer := build.Jobs["build-signed-draft"]
 	if signer.Permissions["id-token"] != "write" {
 		t.Fatal("tag build requires OIDC")
@@ -111,5 +153,21 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 		if strings.Contains(publish, forbidden) {
 			t.Fatalf("local publication must not sign or delegate unsupported permissions: %s", forbidden)
 		}
+	}
+	// publish-stable-draft.sh refuses the staged placeholder by its prefix; keep both in step.
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := regexp.MustCompile(`(?m)^[^#\n]*--notes "([^"]*)"`).FindAllSubmatch(workflow, -1)
+	if len(notes) != 1 || !strings.HasPrefix(string(notes[0][1]), "Signed draft.") {
+		t.Fatalf("release.yml must stage exactly one draft whose notes start with the guarded prefix, got %q", notes)
+	}
+	guard, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "release", "publish-stable-draft.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m)^jq -e .*startswith\("Signed draft\."\)`).Match(guard) {
+		t.Fatal("publish-stable-draft.sh no longer refuses the staged placeholder prefix")
 	}
 }

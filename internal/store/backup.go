@@ -31,7 +31,8 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +46,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pathutil"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
@@ -69,7 +71,7 @@ const (
 // Manifest describes an archive: what produced it, and what a restore needs
 // to know before it commits anything.
 type Manifest struct {
-	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitempty"`
+	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitzero"`
 	Format  string                  `json:"format"`
 	Engine  Engine                  `json:"engine"`
 	// SchemaVersion is the highest applied goose migration. Restore refuses
@@ -185,10 +187,24 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	}
 
 	snapshot := filepath.Join(workDir, "snapshot.db")
-	// VACUUM INTO refuses an existing target, which is the behaviour wanted:
-	// a stale snapshot must never be framed as this one.
+	// Create the target empty and owner-only first: SQLite would otherwise
+	// create it under the process umask, and VACUUM INTO accepts an existing
+	// empty file. The work directory is fresh per export, so a stale snapshot
+	// cannot be framed as this one. SQLite's -journal side files, if a kill
+	// leaves any, are created by SQLite itself and share the file's mode.
+	pre, err := createStaged(snapshot)
+	if err != nil {
+		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
+	}
+	if err := pre.Close(); err != nil {
+		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
+	}
 	if _, err := db.sqWrite.ExecContext(ctx, "VACUUM INTO ?", snapshot); err != nil {
 		return fmt.Errorf("store: sqlite snapshot: %w", err)
+	}
+	// Belt and braces: the copy must be owner-only whatever SQLite did.
+	if err := os.Chmod(snapshot, 0o600); err != nil {
+		return fmt.Errorf("store: restrict sqlite snapshot: %w", err)
 	}
 	// Read the archived database itself. Reading the live version before
 	// VACUUM can attach an older schema version to a newer snapshot.
@@ -276,7 +292,7 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		if !pathutil.Within(baseClean, targetClean) {
 			return fmt.Errorf("invalid file path")
 		}
-		f, err := os.Create(targetClean)
+		f, err := createStaged(targetClean)
 		if err != nil {
 			return fmt.Errorf("store: stage copy stream for %s: %w", table, err)
 		}
@@ -458,7 +474,7 @@ func pgSequenceBounds(ctx context.Context, tx pgx.Tx) (map[string]pgSequenceBoun
 }
 
 func writeManifest(tw *tar.Writer, m Manifest) error {
-	body, err := json.MarshalIndent(m, "", "  ")
+	body, err := json.Marshal(m, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return fmt.Errorf("store: encode manifest: %w", err)
 	}
@@ -472,7 +488,27 @@ func writeManifest(tw *tar.Writer, m Manifest) error {
 	return nil
 }
 
+// createStaged creates a plaintext staging file owner-only, refusing an
+// existing one.
+func createStaged(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+}
+
+// writeFileMember archives one staged plaintext file and removes it as soon as
+// it is archived, so a killed export has less plaintext on disk. Nothing reads
+// a staged file again after this call, and every export stages into a fresh
+// directory, so no retry depends on the file surviving.
 func writeFileMember(tw *tar.Writer, name, path string) error {
+	if err := copyFileMember(tw, name, path); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("store: remove staged archive member %s: %w", name, err)
+	}
+	return nil
+}
+
+func copyFileMember(tw *tar.Writer, name, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("store: read archive member %s: %w", name, err)

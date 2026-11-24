@@ -8,6 +8,7 @@ import {
   zKey,
   zKeyGroupList,
   zKeyList,
+  zPendingChange,
   zPendingDraftList,
   zPersonalValueCounts,
   zPersonalValueList,
@@ -20,7 +21,7 @@ import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { Matrix } from './Matrix.tsx';
 
-import { tokenColor } from '../../.storybook/tokens.ts';
+import { tokenColor, tokenPx } from '../../.storybook/tokens.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The whole-project environment matrix. On mount it reads the project catalogue
@@ -376,7 +377,7 @@ function alphaOf(css: string): number {
 // opaque behind every scrolled environment column, for the header, a group
 // row and an ordinary key row; and for the group row specifically, which has
 // no cells of its own to protect, the label itself (chevron, folder name,
-// count, problem badge, "+ Key") stays over the left edge instead of
+// count, problem badge) stays over the left edge instead of
 // scrolling away with the rest of the row. The tinted right border marks a
 // KEY row's own edge, and only at the phone breakpoint: the header and group
 // rows still carry the full-width key column there, not an edge to mark.
@@ -404,6 +405,17 @@ const expectStickyKeyColumn = async (root: HTMLElement) => {
   for (const cell of [headerCell, groupCell, keyCell, groupLabel]) {
     await expect(Math.abs(cell.getBoundingClientRect().left - scrollerLeft)).toBeLessThanOrEqual(1);
   }
+  // The label's "+ Key" holds the visible right end: still wholly inside the
+  // scroller after the scroll, clear of the folder name's toggle.
+  const add = groupLabel.querySelector<HTMLElement>('.matrix__add-key');
+  const toggle = groupLabel.querySelector<HTMLElement>('.matrix__group-toggle');
+  if (add === null || toggle === null) throw new Error('group add-key button missing');
+  const addBox = add.getBoundingClientRect();
+  await expect(addBox.right).toBeLessThanOrEqual(scrollerLeft + scroller.clientWidth);
+  await expect(addBox.left).toBeGreaterThanOrEqual(toggle.getBoundingClientRect().right);
+  // The bar overruns its pinned cell to the visible width, so it is opaque too:
+  // rows scrolling up under the stuck group row must not show through it.
+  await expect(alphaOf(getComputedStyle(groupLabel).backgroundColor)).toBe(1);
   scroller.scrollLeft = 0;
 };
 
@@ -506,6 +518,273 @@ export const Populated: Story = {
   },
 };
 
+// Sentinels that must never be printed anywhere, attribute or text: a secret key
+// whose wire carries a revealed value, and a config key with a secret cell.
+const LEAK = 'leaky-secret-sentinel';
+const LEAK_CELL = 'leaky-secret-cell-sentinel';
+const tipDevValues = values(devValues.items.map((item): Values['items'][number] => {
+  if (item.key_id === keyId(6)) return { ...item, revealed: true, value: LEAK };
+  if (item.key_id === keyId(11)) return { ...item, classification: 'secret', revealed: true, value: LEAK_CELL };
+  if (item.key_id === keyId(2)) return { ...item, value: `https://${'preview-'.repeat(12)}app.example.com` };
+  return item;
+}));
+
+// A config value the cell clips shows its full text in a tip on hover and on
+// keyboard focus; one that fits shows none; Escape closes it from anywhere and
+// only one is open at a time; a secret, even one whose wire carries a revealed
+// value, puts nothing of itself anywhere in the DOM.
+export const ValueTip: Story = {
+  parameters: app([
+    ...catalogue({}),
+    ...readyRows(DEV, { values: tipDevValues, signals: devSignals, pending: devDrafts, protected: false }),
+    ...allReady,
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const tipOf = (button: HTMLElement) => {
+      const tip = button.nextElementSibling;
+      return tip instanceof HTMLElement && tip.matches('.matrix__key-tip--value') ? tip : null;
+    };
+    const flags = await canvas.findByRole('button', { name: /^FEATURE_FLAGS in development:/ });
+    const flagsValue = flags.querySelector<HTMLElement>('.matrix-cell__value');
+    if (flagsValue === null) throw new Error('value span missing');
+    flagsValue.style.width = '3ch';
+    await expect(flagsValue.scrollWidth).toBeGreaterThan(flagsValue.clientWidth);
+    const tip = tipOf(flags);
+    if (tip === null) throw new Error('tip missing');
+    await expect(tip).toHaveTextContent('checkout-v2,search-rerank');
+    await expect(tip.matches(':popover-open')).toBe(false);
+    const isOpen = () => tip.matches(':popover-open');
+    // A tap's compatibility events are not a hover.
+    flags.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'touch' }));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(isOpen()).toBe(false);
+    // A mouse hover waits a moment, so passing over cells opens nothing.
+    await userEvent.hover(flags);
+    await expect(isOpen()).toBe(false);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    // It sits within the viewport at its full width, not squeezed by the edge.
+    const box = tip.getBoundingClientRect();
+    await expect(box.width).toBeGreaterThan(150);
+    await expect(box.left).toBeGreaterThanOrEqual(0);
+    await expect(box.right).toBeLessThanOrEqual(window.innerWidth);
+    // Escape closes a hover-opened tip too.
+    await userEvent.keyboard('{Escape}');
+    await expect(isOpen()).toBe(false);
+    await userEvent.unhover(flags);
+    // Keyboard focus (the last input was a key) shows it too.
+    flags.focus();
+    await expect(tip.matches(':popover-open')).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    await expect(tip.matches(':popover-open')).toBe(false);
+    // Escape also cancels another cell's pending hover open.
+    const baseUrl = canvas.getByRole('button', { name: /^PUBLIC_BASE_URL in development:/ });
+    const baseTip = tipOf(baseUrl);
+    if (baseTip === null) throw new Error('PUBLIC_BASE_URL is not clipped');
+    // Control: an ordinary hover opens it, once the pointer has moved since the
+    // last Escape.
+    baseUrl.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    baseUrl.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    await waitFor(() => expect(baseTip.matches(':popover-open')).toBe(true));
+    baseUrl.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    await waitFor(() => expect(baseTip.matches(':popover-open')).toBe(false));
+    flags.blur();
+    flags.focus();
+    await expect(isOpen()).toBe(true);
+    baseUrl.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    await userEvent.keyboard('{Escape}');
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(baseTip.matches(':popover-open')).toBe(false);
+    baseUrl.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse' }));
+    flags.blur();
+    // Escape holds hover off until the pointer really moves.
+    await userEvent.hover(canvasElement);
+    await userEvent.hover(flags);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    // Pointing at the tip itself keeps it open.
+    await userEvent.hover(tip);
+    await expect(tip.matches(':popover-open')).toBe(true);
+    await userEvent.unhover(tip);
+    await expect(tip.matches(':popover-open')).toBe(false);
+    // Scrolling keeps it attached to its cell: it is fixed, so it is re-placed.
+    await userEvent.hover(flags);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    canvasElement.querySelector('.matrix__scroll')?.dispatchEvent(new Event('scroll'));
+    await expect(tip.matches(':popover-open')).toBe(true);
+    await userEvent.unhover(flags);
+
+    // Keyboard focus on a cell below the fold scrolls it into view, and the tip
+    // stays open beside it rather than closing on that scroll.
+    flags.blur();
+    const spacer = document.createElement('div');
+    spacer.style.height = '300vh';
+    canvasElement.prepend(spacer);
+    window.scrollTo(0, 0);
+    await expect(flags.getBoundingClientRect().top).toBeGreaterThan(window.innerHeight);
+    await userEvent.keyboard('{Shift}');
+    flags.focus();
+    await waitFor(() => expect(flags.getBoundingClientRect().top).toBeLessThan(window.innerHeight));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await expect(tip.matches(':popover-open')).toBe(true);
+    const [cellBox, tipBox] = [flags.getBoundingClientRect(), tip.getBoundingClientRect()];
+    const gap = Math.min(Math.abs(tipBox.top - cellBox.bottom), Math.abs(cellBox.top - tipBox.bottom));
+    await expect(gap).toBeLessThanOrEqual(1);
+    flags.blur();
+    spacer.remove();
+    await expect(tip.matches(':popover-open')).toBe(false);
+
+    // A tip that fits is not cut (no fade); one past the cap is, and scrolls.
+    await userEvent.hover(flags);
+    await waitFor(() => expect(isOpen()).toBe(true));
+    await expect(tip).not.toHaveAttribute('data-cut');
+    const original = tip.textContent;
+    tip.style.whiteSpace = 'pre-wrap';
+    tip.textContent = 'LINE\n'.repeat(120);
+    window.dispatchEvent(new Event('resize'));
+    await waitFor(() => expect(tip).toHaveAttribute('data-cut'));
+    // Cut, not clipped: the reader can scroll it, and it stays open meanwhile.
+    tip.scrollTop = 40;
+    await waitFor(() => expect(tip.scrollTop).toBeGreaterThan(0));
+    await expect(isOpen()).toBe(true);
+    await userEvent.unhover(flags);
+    tip.style.whiteSpace = '';
+    tip.textContent = original;
+
+    // Closing the editor with the keyboard returns focus to the cell, and its tip.
+    await userEvent.keyboard('{Shift}');
+    flags.focus();
+    await waitFor(() => expect(isOpen()).toBe(true));
+    await userEvent.keyboard('{Enter}');
+    // Escape on a modal dialog is its cancel event, which the browser's own key
+    // handling would fire.
+    const editor = await waitFor(() => {
+      const open = canvasElement.querySelector('dialog[open]');
+      if (open === null) throw new Error('editor not open');
+      return open;
+    });
+    await userEvent.keyboard('{Escape}');
+    editor.dispatchEvent(new Event('cancel', { cancelable: true }));
+    await waitFor(() => expect(flags).toHaveFocus());
+    await waitFor(() => expect(isOpen()).toBe(true));
+    flags.blur();
+
+    // A cell scrolled under the sticky header keeps its tip while any of it
+    // shows (the header's cells are sticky, not its box), and loses it once the
+    // header covers the cell entirely; it returns with the cell while focused.
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    const headCell = canvasElement.querySelector<HTMLElement>('.matrix__table thead th');
+    if (scroller === null || headCell === null) throw new Error('matrix scroller missing');
+    scroller.style.maxHeight = '220px';
+    scroller.scrollTop = 0;
+    flags.focus();
+    await waitFor(() => expect(isOpen()).toBe(true));
+    // What stays pinned over a value cell: the header's cells, and under them
+    // the cell's stuck group bar, which spans the visible width.
+    // Every group bar is one height; FEATURE_FLAGS sits under the first.
+    const bar = canvasElement.querySelector<HTMLElement>('.matrix__group-row-inner');
+    if (bar === null) throw new Error('group bar missing');
+    const covered = () => headCell.getBoundingClientRect().bottom + bar.getBoundingClientRect().height;
+    const under = flags.getBoundingClientRect();
+    scroller.scrollTop += under.top - covered() + under.height * 0.8;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(flags.getBoundingClientRect().bottom).toBeGreaterThan(covered() + 1);
+    await expect(isOpen()).toBe(true);
+    scroller.scrollTop += under.height;
+    await waitFor(() => expect(isOpen()).toBe(false));
+    scroller.scrollTop = 0;
+    await waitFor(() => expect(isOpen()).toBe(true));
+    flags.blur();
+    scroller.style.maxHeight = '';
+
+    // A value that fits opens no tip.
+    const fits = canvas.getByRole('button', { name: /^PAYMENT_PROVIDER in development:/ });
+    await userEvent.hover(fits);
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await expect(tipOf(fits)?.matches(':popover-open')).toBe(false);
+    await userEvent.unhover(fits);
+
+    // A secret key, and a config key with a secret cell: masked in the text and
+    // the accessible name, no tip, no plaintext anywhere in the DOM.
+    for (const name of [/^DATABASE_READ_REPLICA_URL in development:/, /^OTEL_EXPORTER_OTLP_ENDPOINT in development:/]) {
+      const secret = canvas.getByRole('button', { name });
+      await expect(secret.querySelector('.matrix-cell__value')).toHaveTextContent('••••••••');
+      await expect(secret).toHaveAccessibleName(/••••••••/);
+      await expect(tipOf(secret)).toBeNull();
+    }
+    await expect(canvasElement.innerHTML).not.toContain(LEAK);
+    await expect(canvasElement.innerHTML).not.toContain(LEAK_CELL);
+  },
+};
+
+// The key tip opens on keyboard focus where the name is hidden (a phone), with
+// no hover: a tap focuses without :focus-visible and keeps its first-tap preview.
+export const PhoneKeyTipFocus: Story = {
+  parameters: app([...catalogue({}), ...allReady]),
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas }) => {
+    // The runner reports (hover: hover) however narrow the viewport; a phone
+    // does not, and the tip must open on keyboard focus without it.
+    const realMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query: string) =>
+      query.includes('hover') ? realMatchMedia('not all') : realMatchMedia(query);
+    try {
+      const link = await canvas.findByRole('link', { name: 'Declaration of DATABASE_READ_REPLICA_URL, secret' });
+      const tip = link.parentElement?.querySelector('.matrix__key-tip');
+      if (tip === null || tip === undefined) throw new Error('key tip missing');
+      await expect(tip.matches(':popover-open')).toBe(false);
+      await userEvent.keyboard('{Shift}');
+      link.focus();
+      await waitFor(() => expect(tip.matches(':popover-open')).toBe(true));
+      await expect(tip).toHaveTextContent('DATABASE_READ_REPLICA_URL');
+      // A pointer passing off the link does not take the tip from keyboard focus.
+      link.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body }));
+      await expect(tip.matches(':popover-open')).toBe(true);
+      link.blur();
+      await expect(tip.matches(':popover-open')).toBe(false);
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  },
+};
+
+// Saving a value into a cell that is secret under a config key must not hand
+// the value to the config-only scan warning, even when the write returns
+// findings; the same write into a plain config cell does warn.
+const PENDING_CHANGE = (key: number, name: string, classification: 'config' | 'secret') => ({
+  version_id: VER_OWN,
+  key_id: keyId(key),
+  name,
+  classification,
+  operation: 'set',
+  staged_from_revision: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  findings: [{ rule_id: 'postgres-uri', surface: 'edit', locator: name }],
+}) satisfies z.input<typeof zPendingChange>;
+export const SecretCellScanWarning: Story = {
+  parameters: app([
+    ...catalogue({}),
+    ...readyRows(DEV, { values: tipDevValues, signals: devSignals, pending: devDrafts, protected: false }),
+    ...allReady,
+    { url: `${PROJECT_URL}/environments/${DEV}/reveal-window`, body: { effective_window_seconds: 600, protected: false, totp_offered: false, live: false, single_decision: false, can_reveal: false } },
+    { url: `${PROJECT_URL}/environments/${DEV}/values/OTEL_EXPORTER_OTLP_ENDPOINT`, method: 'PUT', body: PENDING_CHANGE(11, 'OTEL_EXPORTER_OTLP_ENDPOINT', 'config') },
+    { url: `${PROJECT_URL}/environments/${DEV}/values/PAYMENT_PROVIDER`, method: 'PUT', body: PENDING_CHANGE(10, 'PAYMENT_PROVIDER', 'config') },
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const save = async (cell: RegExp, value: string) => {
+      await userEvent.click(await canvas.findByRole('button', { name: cell }));
+      const field = await canvas.findByRole('textbox', { name: /value$/ });
+      await userEvent.clear(field);
+      await userEvent.type(field, value);
+      await userEvent.click(canvas.getByRole('button', { name: /^Save 1 draft/ }));
+    };
+    await save(/^OTEL_EXPORTER_OTLP_ENDPOINT in development:/, 'postgres://u:p@h/db');
+    await waitFor(() => expect(canvasElement.querySelector('dialog[open]')).toBeNull());
+    await expect(canvas.queryByText('Possible secret in a config value')).toBeNull();
+    await expect(canvasElement.innerHTML).not.toContain('postgres://u:p@h/db');
+    await save(/^PAYMENT_PROVIDER in development:/, 'adyen');
+    await expect(await canvas.findByText('Possible secret in a config value')).toBeVisible();
+  },
+};
+
 export const EmptyFolderSuggestion: Story = {
   parameters: app([
     ...catalogue({}), ...allReady,
@@ -528,7 +807,7 @@ export const EmptyFolderSuggestion: Story = {
 
 // The sticky key column at a laptop width (760px, still the desktop layout):
 // three environments leave it less than its full 236px, so it compacts to its
-// 160px floor and a long name ellipsises, while the row title and the link's
+// 188px floor and a long name ellipsises, while the row title and the link's
 // accessible name keep the full name. The environment columns give up their
 // spare width (the filler goes to 0) and the table scrolls in its own well.
 export const CompactKeyColumn: Story = {
@@ -540,19 +819,40 @@ export const CompactKeyColumn: Story = {
     const keyCell = link.closest('th');
     const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
     if (keyCell === null || heading === null) throw new Error('key column missing');
-    await expect(Math.abs(heading.getBoundingClientRect().width - 160)).toBeLessThanOrEqual(1);
-    await expect(Math.abs(keyCell.getBoundingClientRect().width - 160)).toBeLessThanOrEqual(1);
+    // The floor: Key label and envs picker (164px with the start padding), then the handle.
+    const floor = 164 + tokenPx('--hit-min');
+    await expect(Math.abs(heading.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1);
+    await expect(Math.abs(keyCell.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1);
     await expect(getComputedStyle(link).textOverflow).toBe('ellipsis');
     await expect(link.scrollWidth).toBeGreaterThan(link.clientWidth);
     await expect(keyCell).toHaveAttribute('title', name);
-    // The envs picker still fits beside "Key" at the floor.
-    await expect(heading.querySelector('.matrix__environment-picker')).not.toBeNull();
+    // The envs picker still fits beside "Key" at the floor, clear of the resize handle.
+    const picker = heading.querySelector('.matrix__environment-picker');
+    const handle = heading.querySelector('.matrix__resizer');
+    if (picker === null || handle === null) throw new Error('envs picker or resize handle missing');
+    await expect(picker.getBoundingClientRect().right).toBeLessThanOrEqual(handle.getBoundingClientRect().left + 0.5);
+    // A click on the handle fits the column to its names (WCAG 2.5.7's
+    // single-pointer widen), capped to the well; a second click restores the floor.
+    const nameRoom = link.clientWidth;
+    await userEvent.click(handle);
+    await waitFor(() => expect(link.clientWidth).toBeGreaterThan(nameRoom + 100));
+    await userEvent.click(handle);
+    await waitFor(() => expect(Math.abs(heading.getBoundingClientRect().width - floor)).toBeLessThanOrEqual(1));
     // Short of room: the table scrolls, the filler has nothing left, and a
     // value ellipsises rather than widening its column.
     const { overflows, truncated, fillerWidth } = await expectColumnLayout(canvasElement);
     await expect(overflows).toBe(true);
     await expect(fillerWidth).toBeLessThanOrEqual(1);
     await expect(truncated.length).toBeGreaterThan(0);
+    // A click on that value's column handle fits the column to it; a second click restores the shrink.
+    const cut = truncated[0];
+    const column = cut?.closest('td')?.cellIndex;
+    const envHandle = column === undefined ? null : canvasElement.querySelector<HTMLElement>(`.matrix__table thead th:nth-child(${String(column + 1)}) .matrix__resizer`);
+    if (cut === undefined || envHandle === null) throw new Error('truncated value column missing');
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(cut.scrollWidth).toBeLessThanOrEqual(cut.clientWidth + 1));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(cut.scrollWidth).toBeGreaterThan(cut.clientWidth + 1));
     // Desktop still: pencils stay.
     await expect(canvasElement.querySelector('.matrix-cell__edit')).toBeVisible();
   },
@@ -631,8 +931,22 @@ export const GroupRows: Story = {
     await expect(linkedRow.querySelector('.matrix__linked-keys')).toHaveTextContent('Linked keys: stripe');
     await expect(Math.round(linkedRow.getBoundingClientRect().height)).toBe(Math.round(plainRow.getBoundingClientRect().height));
 
-    const toggle = add.closest('tr')?.querySelector<HTMLElement>('.matrix__group-toggle');
-    if (toggle == null) throw new Error('payments toggle missing');
+    // The add action sits at the row's visible right end, one compact control
+    // shorter than the row, not beside the folder name at the row's height.
+    const groupRow = add.closest('tr');
+    const groupToggle = groupRow?.querySelector<HTMLElement>('.matrix__group-toggle');
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    if (groupRow == null || groupToggle == null || scroller === null) throw new Error('payments group row missing');
+    const addBox = add.getBoundingClientRect();
+    const visibleEnd = scroller.getBoundingClientRect().left + scroller.clientWidth;
+    await expect(visibleEnd - addBox.right).toBeGreaterThan(0);
+    await expect(visibleEnd - addBox.right).toBeLessThanOrEqual(tokenPx('--space-3') + 1);
+    await expect(addBox.left).toBeGreaterThanOrEqual(groupToggle.getBoundingClientRect().right);
+    // A fine pointer, as in this story's browser; a coarse one keeps the touch floor.
+    await expect(addBox.height).toBe(tokenPx('--hit-min'));
+    await expect(addBox.height).toBeLessThan(groupRow.getBoundingClientRect().height);
+
+    const toggle = groupToggle;
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(canvas.queryByRole('button', { name: 'Add key to payments' })).toBeNull();
@@ -734,10 +1048,70 @@ export const PhoneLegendStaysOnScreenMinimum: Story = {
   },
 };
 
+// A folder name longer than a phone row is cut short before the group's
+// "+ Key", which stays whole at the row's visible right end and is the topmost
+// thing under its own centre, so a tap on it never lands on the toggle. The
+// story's browser has a fine pointer, so this covers layout, not the touch size.
+const longFolder = 'accounts/billing/webhooks/production-read-replicas';
+const longFolderKeys = [...keys, key(90, 'BILLING_REPLICA_URL', longFolder, 'config')];
+export const PhoneLongFolderName: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: app([
+    ...catalogue({ keys: { body: { items: longFolderKeys, count: longFolderKeys.length, schema_revision: 12 } satisfies z.input<typeof zKeyList> } }),
+    ...allReady,
+  ]),
+  play: async ({ canvas, canvasElement }) => {
+    const add = await canvas.findByRole('button', { name: /^Add key to accounts\/billing/ });
+    const row = add.closest('tr');
+    const name = row?.querySelector<HTMLElement>('.matrix__group-name');
+    const scroller = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    if (name == null || scroller === null) throw new Error('long folder row missing');
+    // Hit-testing needs the row on screen; the group sorts below the fold.
+    add.scrollIntoView({ block: 'center' });
+    await expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    const addBox = add.getBoundingClientRect();
+    await expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(addBox.left);
+    await expect(addBox.right).toBeLessThanOrEqual(scroller.getBoundingClientRect().left + scroller.clientWidth);
+    const hit = document.elementFromPoint(addBox.left + addBox.width / 2, addBox.top + addBox.height / 2);
+    await expect(hit?.closest('.matrix__add-key')).toBe(add);
+  },
+};
+
+// Collapsed on a phone, the key list gives way first: the folder name stays
+// whole while the list beside it is cut short.
+export const PhoneCollapsedGroup: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('link', { name: 'Declaration of PAYMENT_PROVIDER' });
+    const toggle = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__group-toggle')]
+      .find((candidate) => candidate.querySelector('.matrix__group-name')?.textContent === 'payments');
+    if (toggle === undefined) throw new Error('payments group missing');
+    await userEvent.click(toggle);
+    const name = toggle.querySelector<HTMLElement>('.matrix__group-name');
+    const summary = await waitFor(() => {
+      const found = toggle.querySelector<HTMLElement>('.matrix__group-summary');
+      if (found === null) throw new Error('summary missing');
+      return found;
+    });
+    if (name === null) throw new Error('payments name missing');
+    await expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth);
+    await expect(summary.scrollWidth).toBeGreaterThan(summary.clientWidth);
+  },
+};
+
 // A phone: the sticky key column drops to the touch target, one
 // glyph per key; the name moves into a tap/hover popover anchored to the icon,
 // and the envs picker moves out of the now icon-only header into the head row.
 // The full name stays the link's accessible name throughout.
+// A touch tap: the click a finger produces, which a mouse click is not.
+const tap = (element: HTMLElement) =>
+  element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, pointerType: 'touch' }));
+const penTap = (element: HTMLElement) => {
+  element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen' }));
+  element.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'pen', relatedTarget: document.body }));
+  element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, pointerType: 'pen' }));
+};
+
 export const PhoneCompactKeyColumn: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas, canvasElement }) => {
@@ -751,8 +1125,19 @@ export const PhoneCompactKeyColumn: Story = {
     const realMatchMedia = window.matchMedia.bind(window);
     window.matchMedia = (query: string) =>
       query.includes('hover') || query.includes('pointer: fine')
-        ? ({ matches: false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false } as MediaQueryList)
+        ? realMatchMedia('not all')
         : realMatchMedia(query);
+    // Likewise a script-driven focus after untrusted events counts as keyboard
+    // focus here, where a real tap's does not: a keyboard focus would open the
+    // preview before the tap does. Only the key links are told otherwise.
+    const realMatches = Element.prototype.matches;
+    Object.defineProperty(Element.prototype, 'matches', {
+      configurable: true,
+      writable: true,
+      value(this: Element, selector: string) {
+        return selector === ':focus-visible' && this.classList.contains('matrix__key') ? false : realMatches.call(this, selector);
+      },
+    });
 
     try {
       const name = 'Declaration of DATABASE_READ_REPLICA_URL, secret';
@@ -773,7 +1158,7 @@ export const PhoneCompactKeyColumn: Story = {
       if (tip === null || tip === undefined) throw new Error('key tip missing');
       await expect(tip).not.toBeVisible();
       // A tap shows the name, in the popover, not by growing the column.
-      await userEvent.click(link);
+      tap(link);
       await waitFor(() => expect(tip).toBeVisible());
       await expect(tip).toHaveTextContent('DATABASE_READ_REPLICA_URL');
       await expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(48);
@@ -848,17 +1233,139 @@ export const PhoneCompactKeyColumn: Story = {
       // Escape closes the name; a tap shows it again.
       await userEvent.keyboard('{Escape}');
       await waitFor(() => expect(tip).not.toBeVisible());
-      await userEvent.click(link);
+      tap(link);
       await waitFor(() => expect(tip).toBeVisible());
+      // A pen that cannot hover leaves the link before each tap's click lands:
+      // its first tap shows the name, and that leave must not hide it again.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(tip).not.toBeVisible());
+      penTap(link);
+      await waitFor(() => expect(tip).toBeVisible());
+      // A pen enters the link before it presses it, which arms the hover
+      // delay. A press held past that delay must not let the delay open the
+      // name under the pen, or the tap's click would navigate on first contact.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(tip).not.toBeVisible());
+      link.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'pen' }));
+      link.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'pen' }));
+      link.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen' }));
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      penTap(link);
+      await waitFor(() => expect(tip).toBeVisible());
+      await expect(link).toBeInTheDocument();
       // The second tap, with the name shown, opens the declaration detail: the
       // matrix route unmounts (this story mounts only the matrix route). The
       // real-touch proof (an auto popover light-dismissing between the tap's
       // pointer events and its click) is in e2e/matrix.spec.ts.
-      await userEvent.click(link);
+      penTap(link);
       await waitFor(() => expect(link).not.toBeInTheDocument());
     } finally {
       window.matchMedia = realMatchMedia;
+      Object.defineProperty(Element.prototype, 'matches', { configurable: true, writable: true, value: realMatches });
     }
+  },
+};
+
+// A phone's key column widens on demand (ColumnResizer): drag its handle,
+// tap it, or use the arrow keys. Past twice the touch target the names come
+// back and a tap on one opens the declaration directly. An environment column
+// resizes the same way, and a tap on its handle restores its default width.
+export const PhoneWidenedKeyColumn: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    const name = 'Declaration of DATABASE_READ_REPLICA_URL, secret';
+    const link = await canvas.findByRole('link', { name });
+    const table = canvasElement.querySelector<HTMLElement>('.matrix__table');
+    const heading = canvasElement.querySelector<HTMLElement>('.matrix__table thead th:first-child');
+    const well = canvasElement.querySelector<HTMLElement>('.matrix__scroll');
+    const nameSpan = link.querySelector('.matrix__key-name');
+    if (table === null || heading === null || well === null || nameSpan === null) throw new Error('matrix parts missing');
+    // A phone has a coarse pointer, this browser a fine one: take the coarse
+    // handle width (app.css, `--matrix-resizer`) the way a phone would.
+    table.style.setProperty('--matrix-resizer', 'var(--touch)');
+    const touch = tokenPx('--touch');
+    const iconOnly = async () => {
+      await waitFor(() => expect(heading.getBoundingClientRect().width).toBeLessThanOrEqual(touch + 1));
+      await expect(nameSpan.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    };
+    const namesShown = () => waitFor(() => expect(nameSpan.getBoundingClientRect().width).toBeGreaterThan(40));
+    await iconOnly();
+    // The handle inside does not join the header's name.
+    await expect(heading).toHaveAccessibleName('Key');
+    const handle = canvas.getByRole('separator', { name: 'Resize Key column' });
+    // The icon-only key header is the handle, edge to edge.
+    await expect(handle.getBoundingClientRect().width).toBeCloseTo(touch, 0);
+    // Every environment header's own controls end before its handle.
+    for (const envHandle of canvas.getAllByRole('separator', { name: /^Resize (?!Key)/ })) {
+      const history = envHandle.parentElement?.querySelector('.matrix__history-link');
+      if (history !== null && history !== undefined) {
+        await expect(history.getBoundingClientRect().right).toBeLessThanOrEqual(envHandle.getBoundingClientRect().left + 0.5);
+      }
+    }
+
+    const dragBy = async (target: HTMLElement, dx: number) => {
+      const box = target.getBoundingClientRect();
+      const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+      await userEvent.pointer([
+        { keys: '[MouseLeft>]', target, coords: at },
+        { target, coords: { ...at, clientX: at.clientX + dx } },
+        { keys: '[/MouseLeft]', target },
+      ]);
+    };
+
+    // A drag far past the well stops a touch target short of its edge.
+    await dragBy(handle, 600);
+    await waitFor(() => expect(heading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth - touch, 0));
+    await namesShown();
+    await waitFor(() => expect(handle).toHaveAttribute('aria-valuenow', String(Math.round(heading.getBoundingClientRect().width))));
+    await expect(handle).toHaveAttribute('aria-valuemax', String(well.clientWidth));
+    await expect(link).toHaveAccessibleName(name);
+    // The row's own marks return with the name.
+    const required = link.closest('.matrix__key-cell')?.querySelector('.matrix__required');
+    if (required !== null && required !== undefined) await expect(required).toBeVisible();
+
+    // Arrow keys narrow it back to icon-only.
+    handle.focus();
+    for (let step = 0; step < 24; step += 1) await userEvent.keyboard('{ArrowLeft}');
+    await iconOnly();
+
+    // A tap fits it to the names; a second tap closes it again. Enter does the same.
+    await userEvent.click(handle);
+    await namesShown();
+    await userEvent.click(handle);
+    await iconOnly();
+    handle.focus();
+    await userEvent.keyboard('{Enter}');
+    await namesShown();
+    await userEvent.keyboard('{Enter}');
+    await iconOnly();
+
+    const envHandle = canvas.getByRole('separator', { name: 'Resize development column' });
+    const envHeading = envHandle.parentElement;
+    if (envHeading === null) throw new Error('environment heading missing');
+    const before = envHeading.getBoundingClientRect().width;
+    await dragBy(envHandle, 32);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before + 32, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+    // From the default, a tap fits the column to its longest value; a second tap restores it.
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeGreaterThan(before + 32));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+    // A drag far past the well stops at the well's width.
+    await dragBy(envHandle, 2000);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(well.clientWidth, 0));
+    await userEvent.click(envHandle);
+    await waitFor(() => expect(envHeading.getBoundingClientRect().width).toBeCloseTo(before, 0));
+
+    // With the names shown, the first tap on a key opens it: no name preview.
+    await userEvent.click(handle);
+    await namesShown();
+    const tip = link.parentElement?.querySelector('.matrix__key-tip');
+    await userEvent.click(link);
+    await waitFor(() => expect(link).not.toBeInTheDocument());
+    await expect(tip).not.toBeVisible();
   },
 };
 

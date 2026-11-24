@@ -166,7 +166,8 @@ func preparationExportUsesLiveSession(t *testing.T, algorithm string, generate f
 				t.Fatal("expired owner retained export authority")
 			}
 			entries, err := os.ReadDir(output)
-			if err != nil || len(entries) != 0 {
+			// The retention lock file is the one durable name an attempt may leave.
+			if err != nil || len(entries) > 1 || (len(entries) == 1 && entries[0].Name() != ".hikyo-backup-retention.lock") {
 				t.Fatal("refused export published debris", err)
 			}
 		})

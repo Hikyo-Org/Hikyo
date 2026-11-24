@@ -3,10 +3,12 @@ package crypto
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // SnapshotBindingScope is the locally known identity of one offline snapshot.
@@ -141,7 +143,7 @@ func (b SnapshotBinding) storageKey(includeLocator bool) (string, error) {
 		// Moving the complete state directory must retain the same cache slot.
 		scope.StorageDir = ""
 	}
-	raw, err := json.Marshal(scope)
+	raw, err := json.Marshal(scope, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("crypto: marshal snapshot storage scope: %w", err)
 	}

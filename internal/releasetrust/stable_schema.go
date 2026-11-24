@@ -38,7 +38,7 @@ type Primary struct {
 	ValidFromReleaseSequence    int64  `json:"valid_from_release_sequence"`
 	ValidThroughReleaseSequence *int64 `json:"valid_through_release_sequence"`
 	Revoked                     bool   `json:"revoked"`
-	Pending                     *bool  `json:"pending,omitempty"`
+	Pending                     *bool  `json:"pending,omitzero"`
 }
 
 type Metadata struct {

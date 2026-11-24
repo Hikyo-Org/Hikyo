@@ -6,7 +6,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -111,7 +112,7 @@ func writeDeploymentFixture(t *testing.T, path, value string, mode os.FileMode) 
 
 func deploymentBundle(t *testing.T, sources config.ManagedBootstrapSources) *runtimeconfig.Bundle {
 	t.Helper()
-	raw, err := json.Marshal(sources)
+	raw, err := json.Marshal(sources, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +377,7 @@ func TestBootstrapDeploymentEnrollmentPinsStandaloneNode(t *testing.T) {
 	d, srv, _ := deploymentAdapterFixture(t, false)
 	enrollment := d.enrollment
 	enrollment.Target.StableNodeID = "another-node"
-	raw, err := json.Marshal(enrollment)
+	raw, err := json.Marshal(enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +459,7 @@ func TestBootstrapDeploymentRefusesSignerThatIsNotTheEnrolledKey(t *testing.T) {
 	_, _, authority := strictDeploymentKeys(t)
 	enrollment := d.enrollment
 	enrollment.Authority = authority
-	raw, err := json.Marshal(enrollment)
+	raw, err := json.Marshal(enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +495,7 @@ func TestBootstrapDeploymentRefusesSignerThatIsNotTheEnrolledKey(t *testing.T) {
 	}
 
 	// A compatibility enrollment refuses a strict signer file.
-	plain, _ := json.Marshal(d.enrollment)
+	plain, _ := json.Marshal(d.enrollment, jsonwire.Stable)
 	writeDeploymentFixture(t, enrollmentPath, string(plain), 0444)
 	cfg.ConfigRolloutSigningKey = filepath.Join(dir, "other-key-pair.key")
 	if _, err := configureBootstrapDeployment(t.Context(), &cfg, srv.db, srv.keyring); !errors.Is(err, configrollout.ErrConflict) {

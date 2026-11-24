@@ -30,10 +30,9 @@ func prepare() error {
 		if err != nil {
 			return fmt.Errorf("%s overlay: %w", ctx.Name, err)
 		}
-		args := []string{"list", "-export"}
-		if !ctx.ProductionOnly {
-			args = append(args, "-test")
-		}
+		// -test in every context: the vet driver analyzes test variants in all of
+		// them, so their compiles must land here and not inside the test timeout.
+		args := []string{"list", "-export", "-test"}
 		args = append(args, ctx.BuildFlags...)
 		if overlay != "" {
 			args = append(args, "-overlay="+overlay)

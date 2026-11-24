@@ -5,7 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestAuditSeedCannotReuseMCPDatastoreOrOtherInstallation(t *testing.T) {
@@ -138,7 +140,7 @@ func TestAuditSeedSupportedBothEngines(t *testing.T) {
 		// Retain only nonsecret outcome IDs and measured trust mode. Curl custody
 		// remains in test-owned scratch and is deleted by testing's cleanup.
 		summary := map[string]any{"engine": engine, "outcome": "PASS", "evidence_class": "local_supported_service_seeding_only", "source_id": receipt.SourceID, "tenant_event_id": receipt.TenantEventID, "trust_mode": receipt.TrustMode, "public_deployment": "NOTRUN", "supervised_instance_export": "HOLD"}
-		data, _ := json.Marshal(summary)
+		data, _ := json.Marshal(summary, jsonwire.Stable)
 		if err := os.WriteFile(filepath.Join(output, engine+"-seed-receipt.json"), data, 0600); err != nil {
 			t.Fatal(err)
 		}

@@ -100,6 +100,10 @@ mint time plus the new ceiling. Some may expire immediately. Raising it later
 does not extend or revive them. The form explains these consequences before
 applying the change.
 
+The same ceiling is available from the CLI:
+`hikyo instance-config developer-credential-policy get` and
+`set --max-lifetime 8h` (a positive whole-second duration, at most 8h).
+
 These administration pages do not mint credentials or replace your personal
 CLI lifecycle. Continue to use `hikyo dev session`, `hikyo dev session list`,
 and `hikyo dev session revoke` for your own delegations.

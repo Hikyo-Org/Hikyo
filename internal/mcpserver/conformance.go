@@ -2,7 +2,7 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -67,12 +67,10 @@ func missingCapabilityDiagnostic(_ context.Context, request *mcp.CallToolRequest
 	if capabilities != nil && capabilities.Sampling != nil {
 		return diagnosticResult(), nil, nil
 	}
-	data, err := json.Marshal(mcp.MissingRequiredClientCapabilityData{
-		RequiredCapabilities: &mcp.ClientCapabilities{Sampling: &mcp.SamplingCapabilities{}},
-	})
-	if err != nil {
-		return nil, nil, err
-	}
+	// mcp.MissingRequiredClientCapabilityData carries encoding/json v1
+	// omitempty tags: encoded by v2 it would drop the empty sampling object this
+	// error exists to name, so the v1 bytes are spelled out.
+	data := jsontext.Value(`{"requiredCapabilities":{"roots":{},"sampling":{}}}`)
 	return nil, nil, &jsonrpc.Error{
 		Code: mcp.CodeMissingRequiredClientCapabilities, Message: "sampling capability required", Data: data,
 	}

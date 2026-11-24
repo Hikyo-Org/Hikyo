@@ -1,7 +1,7 @@
 package schema_test
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 
@@ -67,7 +67,7 @@ func TestDeclarationRefusals(t *testing.T) {
 			Type: schema.TypeString, Schemes: []string{"https"},
 		}), "schemes"},
 		{"json schema on a non-json type", rule(schema.Rule{
-			Type: schema.TypeString, JSONSchema: json.RawMessage(`{}`),
+			Type: schema.TypeString, JSONSchema: jsontext.Value(`{}`),
 		}), "json_schema"},
 		{"nested any_of", schema.Declaration{AnyOf: []schema.Rule{
 			{Type: schema.TypeString}, {Type: "any_of"},
@@ -127,21 +127,21 @@ func TestCompileClassified(t *testing.T) {
 		{
 			name:           "secret nested json schema const is refused",
 			classification: schema.Secret,
-			decl: rule(schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(
+			decl: rule(schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(
 				`{"properties":{"nested":{"allOf":[{"const":"live-value"}]}}}`)}),
 			wantErr: "const",
 		},
 		{
 			name:           "secret nested json schema enum is refused",
 			classification: schema.Secret,
-			decl: rule(schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(
+			decl: rule(schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(
 				`{"$defs":{"nested":{"enum":["live-value"]}}}`)}),
 			wantErr: "enum",
 		},
 		{
 			name:           "secret nested json schema examples is refused",
 			classification: schema.Secret,
-			decl: rule(schema.Rule{Type: schema.TypeJSON, JSONSchema: json.RawMessage(
+			decl: rule(schema.Rule{Type: schema.TypeJSON, JSONSchema: jsontext.Value(
 				`{"items":{"examples":["live-value"]}}`)}),
 			wantErr: "examples",
 		},
@@ -182,7 +182,7 @@ func TestCompileClassified(t *testing.T) {
 func TestCompiledValidationUsesConstructorClassification(t *testing.T) {
 	compiled, err := schema.CompileClassified(schema.Secret, rule(schema.Rule{
 		Type: schema.TypeJSON,
-		JSONSchema: json.RawMessage(
+		JSONSchema: jsontext.Value(
 			`{"type":"object","additionalProperties":false,"properties":{"declared":{"type":"string"}}}`),
 	}))
 	if err != nil {
@@ -288,7 +288,7 @@ func TestJSONSchemaProfileRefusals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := schema.CompileClassified(schema.Config, rule(schema.Rule{
-				Type: schema.TypeJSON, JSONSchema: json.RawMessage(tc.schema),
+				Type: schema.TypeJSON, JSONSchema: jsontext.Value(tc.schema),
 			}))
 			if err == nil {
 				t.Fatalf("Compile accepted %s", tc.schema)
@@ -304,7 +304,7 @@ func TestJSONSchemaBoundRefusals(t *testing.T) {
 	deep := strings.Repeat(`{"properties":{"a":`, schema.MaxJSONSchemaDepth+2) + `{}` +
 		strings.Repeat(`}}`, schema.MaxJSONSchemaDepth+2)
 	if _, err := schema.CompileClassified(schema.Config, rule(schema.Rule{
-		Type: schema.TypeJSON, JSONSchema: json.RawMessage(deep),
+		Type: schema.TypeJSON, JSONSchema: jsontext.Value(deep),
 	})); err == nil || !strings.Contains(err.Error(), "depth") {
 		t.Fatalf("deep schema refusal = %v, want a depth bound", err)
 	}
@@ -319,7 +319,7 @@ func TestJSONSchemaBoundRefusals(t *testing.T) {
 	}
 	defs.WriteString(`}}`)
 	_, err := schema.CompileClassified(schema.Config, rule(schema.Rule{
-		Type: schema.TypeJSON, JSONSchema: json.RawMessage(defs.String()),
+		Type: schema.TypeJSON, JSONSchema: jsontext.Value(defs.String()),
 	}))
 	if err == nil || !strings.Contains(err.Error(), "subschema") {
 		t.Fatalf("wide schema refusal = %v, want a subschema bound", err)
@@ -332,7 +332,7 @@ func TestJSONSchemaBoundRefusals(t *testing.T) {
 
 	big := `{"description":"` + strings.Repeat("x", schema.MaxJSONSchemaBytes) + `"}`
 	if _, err := schema.CompileClassified(schema.Config, rule(schema.Rule{
-		Type: schema.TypeJSON, JSONSchema: json.RawMessage(big),
+		Type: schema.TypeJSON, JSONSchema: jsontext.Value(big),
 	})); err == nil || !strings.Contains(err.Error(), "bytes") {
 		t.Fatalf("large schema refusal = %v, want a byte bound", err)
 	}
@@ -347,7 +347,7 @@ func TestJSONSchemaProfileAccepts(t *testing.T) {
 		`{"anyOf":[{"type":"string"},{"type":"integer"}]}`,
 	} {
 		if _, err := schema.CompileClassified(schema.Config, rule(schema.Rule{
-			Type: schema.TypeJSON, JSONSchema: json.RawMessage(s),
+			Type: schema.TypeJSON, JSONSchema: jsontext.Value(s),
 		})); err != nil {
 			t.Fatalf("Compile(%s) refused an in-profile schema: %v", s, err)
 		}

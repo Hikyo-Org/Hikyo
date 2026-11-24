@@ -492,6 +492,58 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	if cause := queryString(t, db, "SELECT invalidated_cause FROM approval_requests WHERE id = '"+quorumRequestID+"'"); cause != "approver_removed" {
 		t.Fatalf("quorum-lost invalidation cause = %s, want approver_removed", cause)
 	}
+
+	// (h) A supplied-value declare overwrites cells and republishes outside the
+	// draft flow, so a covered destination refuses it and nothing is written in
+	// any destination of the same call, while uncovered environments still work.
+	_, declareCovered := newCoveredEnv("edges-declare-covered")
+	open1, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-declare-open1", nil)
+	if err != nil {
+		t.Fatalf("create declare open env: %v", err)
+	}
+	open2, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-declare-open2", nil)
+	if err != nil {
+		t.Fatalf("create second declare open env: %v", err)
+	}
+	if _, err := keys.Create(ctx, service.LocalPrincipal(alice), projectScope, service.KeySpec{
+		Name: "EDGE_DECLARE", Classification: string(schema.Config),
+		Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}},
+		Presence:    schema.DefaultPresenceRules(),
+	}, nil); err != nil {
+		t.Fatalf("create declare key: %v", err)
+	}
+	if _, _, err := values.Declare(ctx, service.LocalPrincipal(alice), projectScope, []string{open1.ID}, "EDGE_DECLARE", "ok"); err != nil {
+		t.Fatalf("declare into an uncovered environment = %v, want success", err)
+	}
+	if _, _, err := values.Declare(ctx, service.LocalPrincipal(alice), projectScope,
+		[]string{open2.ID, string(declareCovered.Env)}, "EDGE_DECLARE", "overwrite"); !errors.Is(err, service.ErrApprovalRequired) {
+		t.Fatalf("declare into a covered destination = %v, want approval required", err)
+	}
+	for _, env := range []string{open2.ID, string(declareCovered.Env)} {
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM value_entries WHERE environment_id = '"+env+"'"); n != 0 {
+			t.Fatalf("refused declare left %d value rows in %s, want 0", n, env)
+		}
+	}
+	// A covered AND protected destination refuses on the approval gate before
+	// it asks for (or consumes) a ceremony or a machine confirmation.
+	execRaw(t, db, "UPDATE environments SET protected = TRUE WHERE id = '"+string(declareCovered.Env)+"'")
+	if _, _, err := values.Declare(ctx, service.LocalPrincipal(alice), projectScope,
+		[]string{string(declareCovered.Env)}, "EDGE_DECLARE", "overwrite"); !errors.Is(err, service.ErrApprovalRequired) {
+		t.Fatalf("declare into a covered protected destination = %v, want approval required", err)
+	}
+	// Import checks coverage the same way, before the machine refusal.
+	if _, err := values.Import(ctx, service.LocalPrincipal(alice), declareCovered, service.ImportRequest{
+		Entries: []service.ImportEntry{{Key: "EDGE_DECLARE", Value: "imported"}}, Overwrite: []string{"EDGE_DECLARE"},
+	}); !errors.Is(err, service.ErrApprovalRequired) {
+		t.Fatalf("import into a covered protected destination = %v, want approval required", err)
+	}
+	// Coverage is checked for every destination first: a protected uncovered
+	// destination named before a covered one must not ask for its ceremony.
+	execRaw(t, db, "UPDATE environments SET protected = TRUE WHERE id = '"+open1.ID+"'")
+	if _, _, err := values.Declare(ctx, service.LocalPrincipal(alice), projectScope,
+		[]string{open1.ID, string(declareCovered.Env)}, "EDGE_DECLARE", "overwrite"); !errors.Is(err, service.ErrApprovalRequired) {
+		t.Fatalf("declare into [protected uncovered, covered] = %v, want approval required", err)
+	}
 }
 
 func TestApprovalEdges(t *testing.T) {

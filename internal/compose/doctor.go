@@ -1,7 +1,7 @@
 package compose
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path"
@@ -100,6 +100,7 @@ type DoctorInput struct {
 	ManagedStamps  map[string]string
 	RuntimeDir     string
 	RuntimeTmpfs   bool              // CLI probes IsTmpfs(RuntimeDir) and passes the result
+	RuntimeCustody error             // CLI passes RuntimeDirCustody(RuntimeDir): non-nil = custody refusal or inspection error
 	ServerStamps   map[string]string // target -> stamp over the server's current content
 	ConfigTargets  map[string]Target
 	ExistingKeyIDs map[string]bool // server's current key ids
@@ -144,7 +145,7 @@ func checkComposeVersion(v string) []Finding {
 	return nil
 }
 
-// checkRuntime verifies the runtime dir is absolute and tmpfs-backed. The
+// checkRuntime verifies the runtime dir is absolute, tmpfs-backed and not controllable by another uid. The
 // renderer does NOT refuse a non-tmpfs path (the CLI decides — a default path
 // must be tmpfs, an explicitly configured one is the operator's call); doctor
 // surfaces it so the operator sees plaintext is landing on persistent disk.
@@ -157,6 +158,9 @@ func checkRuntime(in DoctorInput) []Finding {
 	if !in.RuntimeTmpfs {
 		f = append(f, Finding{SeverityError, "runtime_not_tmpfs",
 			fmt.Sprintf("runtime_dir %q is not backed by tmpfs; rendered plaintext must live only on tmpfs (ops-spec § 6)", in.RuntimeDir)})
+	}
+	if in.RuntimeCustody != nil {
+		f = append(f, Finding{SeverityError, "runtime_dir_custody", in.RuntimeCustody.Error()})
 	}
 	return f
 }

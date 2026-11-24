@@ -16,6 +16,10 @@ const RefusalDeadline = 100 * time.Millisecond
 // RefusalSignals owns bounded work and health, never authentication or quotas.
 // Staging and sealing are coordinated by one locked datastore row across nodes.
 type RefusalSignals struct {
+	// Deadline bounds one accounting attempt; zero means RefusalDeadline.
+	// Production never sets it: it is a seam for tests that count every sample
+	// on a loaded runner, where the 100 ms bound may legitimately drop one.
+	Deadline time.Duration
 	db       *store.DB
 	slots    chan struct{}
 	waiters  chan struct{}
@@ -44,7 +48,16 @@ func (s *RefusalSignals) RefusalHealth() RefusalHealth {
 // update bounds queue acquisition and the durable transaction by one deadline.
 // Health records unconfirmed results without changing authentication responses.
 func (s *RefusalSignals) update(ctx context.Context, sample *audit.RefusalSample) (err error) {
-	ctx, cancel := context.WithTimeout(ctx, RefusalDeadline)
+	// The refusal is already decided and its response is written regardless, so
+	// the caller hanging up must not cancel its accounting: a client that
+	// half-closes after sending would otherwise hide its own refusals. The
+	// deadline alone bounds the work. Seal shares this path, so a shutdown waits
+	// at most that deadline for a seal already in progress.
+	deadline := s.Deadline
+	if deadline == 0 {
+		deadline = RefusalDeadline
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deadline)
 	defer cancel()
 	defer func() {
 		if err != nil {

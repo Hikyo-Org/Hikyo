@@ -1,8 +1,8 @@
 package adapter
 
 import (
-	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"regexp"
 	"slices"
@@ -138,14 +138,13 @@ func AWSJSONDocument(prefix string, entries []ManifestEntry) (string, error) {
 		}
 		members[name] = entry.Value
 	}
-	var out bytes.Buffer
-	encoder := json.NewEncoder(&out)
-	encoder.SetEscapeHTML(false)
-	// encoding/json sorts map keys, which is what makes the document stable.
-	if err := encoder.Encode(members); err != nil {
+	// Sorted keys make the document stable. v1 with SetEscapeHTML(false) still
+	// escaped U+2028 and U+2029, so keep EscapeForJS.
+	out, err := json.Marshal(members, json.Deterministic(true), jsontext.EscapeForHTML(false), jsontext.EscapeForJS(true))
+	if err != nil {
 		return "", fmt.Errorf("aws-secrets-manager: encode json-object document: %w", err)
 	}
-	return strings.TrimSuffix(out.String(), "\n"), nil
+	return string(out), nil
 }
 
 // AWSDesiredRows maps a manifest onto the AWS secrets one target owns. In

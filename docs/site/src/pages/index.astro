@@ -42,12 +42,12 @@ const faq = [
   {
     question: 'Is Hikyo ready for a stable production rollout?',
     answer:
-      `Hikyo ${stableVersion} is published as a stable release. Install a verified signed release and its authenticated public bundle, then follow the self-hosting checklist for your deployment. The 1.0.0 release notes record remaining qualification and operational follow-ups; signed nightlies remain unsupported prereleases.`,
+      `Hikyo ${stableVersion} is published as a stable release. Install a verified signed release and its authenticated public bundle, then follow the self-hosting checklist for your deployment. The implementation status records remaining qualification and operational follow-ups; signed nightlies remain unsupported prereleases.`,
   },
   {
     question: 'Does self-hosting require a Hikyo cloud account?',
     answer:
-      'No Hikyo cloud account is required. You run the Go binary and embedded web UI on infrastructure you operate, with SQLite or PostgreSQL as the datastore.',
+      'No Hikyo cloud account is required. You run the Go server binary and embedded web UI on infrastructure you operate, with SQLite or PostgreSQL as the datastore. The CLI is a client and needs no server on your Mac; a macOS desktop app is planned and not published yet.',
   },
   {
     question: 'When can a workload receive secret plaintext?',
@@ -202,7 +202,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       <section class="hero">
         <div class="wrap hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="live" aria-hidden="true"></span> {stableVersion} released · one Go binary · self-hosted</p>
+            <p class="eyebrow"><span class="live" aria-hidden="true"></span> {stableVersion} released · one Go server binary · self-hosted</p>
             <h1>Every environment<br /><span>answers for itself.</span></h1>
             <p class="lede">
               Hikyo gives <strong>self-hosting</strong> teams one view of validated configuration and secrets. Every value is
@@ -432,7 +432,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             <p class="kicker">// runs where you do</p>
             <h2 id="self-host-heading">Own the keys. Own the data.</h2>
             <p class="section-lede">
-              Self-hosting is the product, <strong>not a paid tier</strong>. Run one binary with its embedded web UI, choose SQLite
+              Self-hosting is the product, <strong>not a paid tier</strong>. Run one server binary with its embedded web UI, choose SQLite
               or PostgreSQL, and hold the root key <strong>outside the datastore</strong> it protects.
             </p>
             <div class="section-actions">
@@ -441,7 +441,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             </div>
           </div>
           <dl class="specs">
-            <div><dt>runtime</dt><dd><strong>One Go binary</strong> with an embedded web interface.</dd></div>
+            <div><dt>runtime</dt><dd><strong>One Go server binary</strong> with an embedded web interface.</dd></div>
             <div><dt>storage</dt><dd><strong>SQLite or PostgreSQL</strong>, selected explicitly.</dd></div>
             <div><dt>encryption</dt><dd>Envelope encryption with <strong>operator-held root key material</strong>.</dd></div>
             <div><dt>deploy</dt><dd>A first-party <strong>Helm chart</strong> for Kubernetes and K3s.</dd></div>
@@ -1039,7 +1039,8 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       .matrix th,
       .matrix td {
         padding-block: 0;
-        padding-inline: 0.5rem;
+        /* Tight enough that one-line state pills fit the hero matrix without inner scroll. */
+        padding-inline: 0.25rem;
         vertical-align: middle;
       }
       .matrix th:first-child,
@@ -1060,17 +1061,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
         position: relative;
       }
       .state {
-        padding-inline: 0.4rem;
-      }
-      /* The two longest pills wrap to two lines inside the fixed 40px row so
-         the full matrix fits beside the copy at 1280 without inner scroll. */
-      .state.missing,
-      .state.forbidden {
-        max-width: 5.75rem;
-        border-radius: 0.6rem;
-        line-height: 1.3;
-        text-align: start;
-        white-space: normal;
+        padding-inline: 0.3rem;
       }
       .state.draft {
         background: color-mix(in oklab, var(--warning) 16%, transparent);

@@ -45,6 +45,7 @@ type applicationGeneration struct {
 	scheduler                         *Scheduler
 	adapterWorker                     *adapter.Worker
 	dynamicWorker                     *dynamicWorker
+	rotationWorker                    *rotationWorker
 	sshSweeper                        *sshSweeper
 	pkiWorker                         *pkiWorker
 	updateReconciler                  *service.Updates
@@ -157,8 +158,9 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		diagnostics.Volume = postgresStorage.Read
 	}
 	pkiRuntime := store.NewPKIRuntime(db)
-	retentionSvc := &service.Retention{DB: db, PKI: pkiRuntime, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
-	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
+	rotationRuntime := store.NewRotationRuntime(db)
+	retentionSvc := &service.Retention{DB: db, PKI: pkiRuntime, Rotation: rotationRuntime, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
+	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}, Log: log}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	accessSvc := &service.Access{DB: db, Auth: authSvc}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
@@ -200,6 +202,10 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
 	}
+	rotationExecutor := &service.RotationExecutor{
+		DB: db, Runtime: rotationRuntime, Keyring: kr,
+		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), ProviderDeadline: dynamicProviderDeadline, Log: log,
+	}
 	sshService := &service.SSH{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: store.NewSSHRuntime(db)}
 
 	// Transit (#156): software custody only. The external-custody seam has no
@@ -236,6 +242,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	metrics.SetTransitSource(transitGaugeSource{runtime: transitRuntime, log: log})
 	pkiService := &service.PKI{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: pkiRuntime}
 	metrics.SetPKISource(pkiGaugeSource{runtime: pkiRuntime, log: log})
+	metrics.SetRotationSource(rotationGaugeSource{runtime: rotationRuntime, log: log})
 	// The hierarchy, value, and revision services are named here so the read-only
 	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
 	// keyring, one budget, one authorization path.
@@ -246,6 +253,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// they ride the same credential, federation cache and budget.
 	deliverySvc := &service.Delivery{DB: db, Keyring: kr, Federation: federation, Budget: budget}
 	revisionsSvc := &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget}
+	rotationExecutor.Values, rotationExecutor.Revisions = valuesSvc, revisionsSvc
 	// The registration policy (#606): reauth through the one Auth; the
 	// `no-public-origin` and `mailer-unconfigured` preconditions read the
 	// operator's explicit origin and the active runtime mail transport. A
@@ -302,7 +310,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// mean a subscriber saw half the events.
 		Values:    valuesSvc,
 		Revisions: revisionsSvc,
-		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rotationSource, Budget: budget},
+		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rotationSource, Custody: unattendedRootCustody(cfg), Budget: budget},
 		Reencrypt: reencryptSvc,
 		Pins:      &service.Pins{DB: db, Keyring: kr, Auth: authSvc},
 		Reveal:    &service.Reveal{DB: db, Auth: authSvc},
@@ -338,17 +346,18 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log,
 			FederationPolicy: federationPolicy,
 		},
-		OAuth2Providers: &service.OAuth2Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin},
-		SAMLProviders:   samlProviders,
-		Adapters:        adapterService,
-		FileTargets:     &service.FileTargets{DB: db},
-		Dynamic:         dynamicService,
-		SSH:             sshService,
-		Transit:         transitService,
-		PKI:             pkiService,
-		Audits:          &service.Audits{DB: db, Budget: budget},
-		Approvals:       approvalsSvc,
-		Access:          accessSvc,
+		OAuth2Providers:     &service.OAuth2Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin},
+		SAMLProviders:       samlProviders,
+		Adapters:            adapterService,
+		FileTargets:         &service.FileTargets{DB: db},
+		Dynamic:             dynamicService,
+		CredentialRotations: &service.CredentialRotations{DB: db, Auth: authSvc},
+		SSH:                 sshService,
+		Transit:             transitService,
+		PKI:                 pkiService,
+		Audits:              &service.Audits{DB: db, Budget: budget},
+		Approvals:           approvalsSvc,
+		Access:              accessSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
 		// table and the same bounds. Two instances would let the wire clamp a
@@ -522,6 +531,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		}}},
 		adapterWorker:    adapterWorker,
 		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log, selfConfig: selfConfig},
+		rotationWorker:   &rotationWorker{svc: rotationExecutor, id: "rotation-worker-" + uuid.Must(uuid.NewV7()).String(), log: log, selfConfig: selfConfig},
 		sshSweeper:       &sshSweeper{svc: sshService, log: log, selfConfig: selfConfig},
 		pkiWorker:        &pkiWorker{svc: pkiService, log: log, selfConfig: selfConfig},
 		updateReconciler: updatesService,

@@ -6,6 +6,8 @@
 
 The ops-spec inventory carries **two rows numbered 15** (the secret-scanning post-lock insertion collided with plans/pins/grants). Rows are referenced by *name* throughout the corpus, so no reference is ambiguous; renumbering the locked ADR's inventory is an editorial amendment under the oss-mechanics procedure, not a synthesis act — recorded here and in [open-items.md](./open-items.md), values untouched.
 
+*Corrected 2026-11-20 ([#32](https://github.com/Hikyo-Org/Hikyo/issues/32)):* the ops-spec editorial amendment renumbers the second row 15 (plans/pins/grants) and every later row by one, so the inventory now runs 15, 15a, 16 to 22; its banner maps old numbers to new.
+
 ## Authentication refusal summaries (#1034)
 
 Owner-approved 2026-10-28; operative with the
@@ -29,6 +31,22 @@ five fixed health series, sample/correlation lookup and explicit uncertainty on
 failed accounting. Pending evidence is never overwritten to start another
 window. Existing dedicated refusals and authenticated denials keep their own
 durability and cardinality.
+
+## Scheduled credential rotation (#148)
+
+Operative when the pull request implementing the first slice of
+[#148](https://github.com/Hikyo-Org/Hikyo/issues/148) merges. These are
+configuration bounds validated at create time; each hit is a named refusal
+(`invalid`, naming the bound). Mechanics: `docs/handoff/148-credential-rotation.md`.
+
+| Entry | Value | Scope |
+| --- | --- | --- |
+| Minimum rotation interval | 1 hour | fixed |
+| Maximum rotation interval | 90 days | fixed |
+| Minimum revocation delay | 5 minutes | fixed |
+| Maximum revocation delay | 7 days | fixed |
+| Overdue grace (a due rotation with no run counts as overdue after it) | 15 minutes | fixed |
+| Credential expiry horizon (a delivered credential counts as expiring inside it) | 6 hours | fixed |
 
 ## SAML (defaults fixed in [saml-sp.md](../adr/saml-sp.md); catalogued here as tunable entries)
 
@@ -80,7 +98,7 @@ durability and cardinality.
 
 ## GitHub adapter ([github-adapter.md](../adr/github-adapter.md) ops delegation)
 
-GitHub's own headers drive runtime pacing (the ADR's decision tree); these values size the defaults and bounds around it, composable with the adapter-outbox rows (row 19: outbox 30 s → 1 h jittered, depth 1000/target, concurrency 1/target · 4/org):
+GitHub's own headers drive runtime pacing (the ADR's decision tree); these values size the defaults and bounds around it, composable with the adapter-outbox rows (row 20: outbox 30 s → 1 h jittered, depth 1000/target, concurrency 1/target · 4/org):
 
 | Entry | Default | Scope |
 |---|---|---|

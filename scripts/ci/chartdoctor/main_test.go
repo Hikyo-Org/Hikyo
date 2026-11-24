@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestRunReachesOnlyPinnedLoopbackCredentialEndpoint(t *testing.T) {
@@ -23,7 +23,7 @@ func TestRunReachesOnlyPinnedLoopbackCredentialEndpoint(t *testing.T) {
 				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
 						w.Header().Set("Content-Type", "application/json")
-						_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
+						_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture", ApiRevision: api.Revision})
 						return
 					}
 					requests <- r.Method + " " + r.URL.Path

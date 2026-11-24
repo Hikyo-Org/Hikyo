@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RevealWindow } from '../api/values.ts';
 import { deferred, revealWindow } from '../testkit/ceremony.ts';
 import { renderForm, settle } from '../testkit/renderForm.tsx';
-import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
+import { type ProtectedPublishTarget, useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 
 const mocks = vi.hoisted(() => ({
   fetchRevealWindow: vi.fn(),
@@ -171,6 +171,54 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
     });
 
     expect(guard().request?.purpose).toBe('restore');
+    expect(complete).not.toHaveBeenCalled();
+    await unmount();
+  });
+});
+
+describe('useProtectedPublishCeremony rotation purpose', () => {
+  const rotationTarget: ProtectedPublishTarget[] = [{
+    environmentId: 'development',
+    environmentName: 'Development',
+    keys: [{ id: 'key-a', name: 'KEY_A' }, { id: 'key-b', name: 'KEY_B' }],
+    purpose: 'rotation',
+  }];
+
+  async function runRotation(window: RevealWindow) {
+    mocks.fetchRevealWindow.mockResolvedValueOnce(window);
+    const rendered = await renderForm(<Harness />);
+    const complete = vi.fn();
+    await act(async () => {
+      await guard().run(rotationTarget, complete, 'guard failed');
+    });
+    return { complete, unmount: rendered.unmount };
+  }
+
+  it('prompts in an unprotected environment with no live window', async () => {
+    const { complete, unmount } = await runRotation({ ...revealWindow(false), protected: false });
+    expect(guard().request?.purpose).toBe('rotation');
+    expect(complete).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('skips the prompt when a live sliding window already covers the act', async () => {
+    const { complete, unmount } = await runRotation({ ...revealWindow(true), protected: false });
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(guard().request).toBeNull();
+    await unmount();
+  });
+
+  it('prompts when the live window is single-decision', async () => {
+    const { complete, unmount } = await runRotation({ ...revealWindow(true), single_decision: true });
+    expect(guard().request?.purpose).toBe('rotation');
+    expect(complete).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('prompts over a workspace transport even with a live window', async () => {
+    mocks.transport.client = {};
+    const { complete, unmount } = await runRotation(revealWindow(true));
+    expect(guard().request?.purpose).toBe('rotation');
     expect(complete).not.toHaveBeenCalled();
     await unmount();
   });

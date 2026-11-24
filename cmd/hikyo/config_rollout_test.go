@@ -6,7 +6,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"io"
 	"os"
@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestStageRolloutAuthorityUsesPrivateRuntimeFile(t *testing.T) {
@@ -161,7 +162,7 @@ func TestConfigRolloutRefusesKeyFilesThatAreNotTheEnrolledKeys(t *testing.T) {
 		CommandSecret: "command", CommandSecretUID: "c-1", ResponseSecret: "response", ResponseSecretUID: "r-1", JournalSecret: "journal", JournalSecretUID: "j-1", LeaseName: "lease", LeaseUID: "l-1", ExecutorPod: "executor-0",
 		Authority: &configrollout.Authority{Profile: "pqc-auth/1", Generation: 1, Required: []string{"ed25519", "mldsa65"}, KeyIDs: []string{ids["ed25519"], ids["mldsa65"]}},
 	}
-	raw, err := json.Marshal(enrollment)
+	raw, err := json.Marshal(enrollment, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

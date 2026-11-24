@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
@@ -91,5 +92,35 @@ func TestPublicCapRefusalIsObservedBeforeRouting(t *testing.T) {
 	wg.Wait()
 	if w.Code != http.StatusTooManyRequests || sample.Stage != audit.RefusalAdmission || w.Header().Get("Retry-After") == "" {
 		t.Fatal("public cap bypassed refusal observer")
+	}
+}
+
+// Every anonymous discovery operation that answers an exhausted source with 429
+// reaches the signal as an admission refusal, not only the metadata document.
+func TestDiscoveryThrottleRefusalsAreObserved(t *testing.T) {
+	for _, path := range []string{"/api/v1/meta", "/api/v1/auth/methods", "/api/v1/runtime/status"} {
+		t.Run(path, func(t *testing.T) {
+			limiter, err := admission.New(admission.Config{BudgetMiB: admission.DefaultBudgetMiB, ArgonMemoryKiB: 64 * 1024})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for limiter.AdmitDiscovery("192.0.2.103") == nil {
+			}
+			var got []audit.RefusalSample
+			a := &API{Admission: limiter, Refusals: refusalRecorderFunc(func(_ context.Context, s audit.RefusalSample) error {
+				got = append(got, s)
+				return nil
+			})}
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+			r.RemoteAddr = "192.0.2.103:1234"
+			w := httptest.NewRecorder()
+			New(a, nil).ServeHTTP(w, r)
+			if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
+				t.Fatalf("throttled discovery: %d %s", w.Code, w.Body)
+			}
+			if len(got) != 1 || got[0].Stage != audit.RefusalAdmission || got[0].SourceIP != "192.0.2.103" {
+				t.Fatalf("throttle not recorded exactly once as admission: %+v", got)
+			}
+		})
 	}
 }

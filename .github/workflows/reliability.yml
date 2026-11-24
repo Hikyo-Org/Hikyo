@@ -259,9 +259,9 @@ jobs:
         id: plan
         shell: bash
         run: |
-          # These invariants share lint.LoadRepo's process-local cache. Keep
-          # them together until golang/go#81122 is fixed in our toolchain.
-          analyzers='["TestInvariant07ProofSignatures","TestInvariant09ForgeryGuard","TestInvariant09aDriverHandleConfinement","TestInvariant09bTransactionResultsAreDetached","TestInvariant12CacheDiscipline","TestInvariantAuditRedaction"]'
+          # Whole-module static sweeps run serially in their own job, apart from
+          # the database-backed shards.
+          analyzers='["TestInvariant12CacheDiscipline","TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles"]'
           matrix='[]'
           for shard in $(seq 0 7); do
             targets=$(./scripts/ci/analysis-shards isolation-race --root . --shard "$shard" --shards 8 |
@@ -412,9 +412,13 @@ jobs:
           marker='<!-- hikyo-security-channel-alert -->'
           gh label create "$label" --force --color B60205 \
             --description 'Automation-owned fallback security channel alert'
-          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
-            --json number,title,author,body \
-            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
+          # The workflow's bot is bound by its numeric user id and type: gh spells its login
+          # `app/github-actions` and REST spells it `github-actions[bot]`, so a login match is
+          # fragile, and a person can write the same title and marker.
+          # A failed listing stops the step; it must never read as "no issue".
+          listing=$(gh api --paginate --slurp "repos/$GH_REPO/issues?state=open&labels=$label&creator=github-actions%5Bbot%5D&per_page=100")
+          issue_number=$(printf '%s' "$listing" |
+            jq -r --arg title "$title" --arg marker "$marker" '[.[][] | select(.pull_request == null and .user.type == "Bot" and .user.id == 41898282 and .title == $title and ((.body // "") | contains($marker)))][0].number // empty')
           if [ -n "$issue_number" ]; then
             gh issue comment "$issue_number" --body "The scheduled fallback-channel gate failed again: $RUN_URL"
             exit 0
@@ -433,9 +437,13 @@ jobs:
           title='Fallback security channel health check failed'
           label='security-channel-alert'
           marker='<!-- hikyo-security-channel-alert -->'
-          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
-            --json number,title,author,body \
-            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
+          # The workflow's bot is bound by its numeric user id and type: gh spells its login
+          # `app/github-actions` and REST spells it `github-actions[bot]`, so a login match is
+          # fragile, and a person can write the same title and marker.
+          # A failed listing stops the step; it must never read as "no issue".
+          listing=$(gh api --paginate --slurp "repos/$GH_REPO/issues?state=open&labels=$label&creator=github-actions%5Bbot%5D&per_page=100")
+          issue_number=$(printf '%s' "$listing" |
+            jq -r --arg title "$title" --arg marker "$marker" '[.[][] | select(.pull_request == null and .user.type == "Bot" and .user.id == 41898282 and .title == $title and ((.body // "") | contains($marker)))][0].number // empty')
           if [ -n "$issue_number" ]; then
             gh issue close "$issue_number" \
               --comment 'The scheduled fallback-channel gate is healthy again.'

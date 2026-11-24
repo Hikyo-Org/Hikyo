@@ -2,8 +2,10 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The Compose delivery verbs (#63). These exercise the CLI wiring against a
@@ -33,7 +36,7 @@ func deliveryJSON(t *testing.T, resp apigen.DeliveryResponse) string {
 			resp.Keys[index].SnapshotReceipt = strPtr("server-receipt-" + resp.Keys[index].KeyId)
 		}
 	}
-	b, err := json.Marshal(resp)
+	b, err := json.Marshal(resp, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1102,6 +1105,72 @@ func TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(t *test
 	}
 }
 
+// TestComposeSyncRefusesPendingLoaderControlGenerationAfterAckRemoval: a
+// generation carrying LD_PRELOAD was published under an acknowledgement but
+// never applied. Removing the acknowledgement must make the saved cursor
+// ineligible, so sync re-fetches, refuses at render, and never reaches Docker
+// even though the server would otherwise answer "current".
+func TestComposeSyncRefusesPendingLoaderControlGenerationAfterAckRemoval(t *testing.T) {
+	body := func(current bool) string {
+		return deliveryJSON(t, apigen.DeliveryResponse{
+			ChangeToken: "v1:t1", CredentialId: "cred_1", Current: current, Cursor: "v1:c1",
+			IssuedAt: time.Now().UTC(), SnapshotExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+			SchemaRevision: 1,
+			Keys: []apigen.DeliveredKey{{
+				KeyId: "key_1", Name: "LD_PRELOAD", Classification: apigen.KeyClassificationConfig,
+				Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("/tmp/x.so"),
+			}},
+		})
+	}
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.HasSuffix(r.URL.Path, "/delivery") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(body(r.URL.Query().Get("cursor") == "v1:c1")))
+	}))
+	var configPath string
+	ios, projectDir, stateDir := syncSecurityFixtureServer(t, server, func(path string) {
+		configPath = path
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw = []byte(strings.Replace(string(raw), "keys: [key_1]\n", "keys: [key_1]\n    acknowledge_loader_control: [LD_PRELOAD]\n", 1))
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !applyPendingExists(stateDir) {
+		t.Fatal("precondition: seed render must leave the generation pending apply")
+	}
+	published, err := compose.CurrentStamps(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The operator removes the acknowledgement.
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(strings.Replace(string(raw), "    acknowledge_loader_control: [LD_PRELOAD]\n", "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run(t.Context(), ios, []string{"compose", "sync"}); code != ExitRefused {
+		t.Fatalf("sync exit=%d, want ExitRefused; stderr=%v", code, ios.Stderr)
+	}
+	if strings.Contains(fmt.Sprint(ios.Stderr), "fixture-docker-apply") {
+		t.Fatal("Docker applied a loader-control generation whose acknowledgement was removed")
+	}
+	if !applyPendingExists(stateDir) {
+		t.Fatal("refused sync cleared the pending marker")
+	}
+	if after, err := compose.CurrentStamps(projectDir); err != nil || !maps.Equal(after, published) {
+		t.Fatalf("stamps changed across refused sync: %v err=%v", after, err)
+	}
+}
+
 func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T) {
 	origin := "https://hikyo.example"
 	projectDir := t.TempDir()
@@ -1541,4 +1610,23 @@ func envFilter(env []string, prefix string) []string {
 		}
 	}
 	return out
+}
+
+// The saved and presented binding must carry the loader-ack marker, or a
+// legacy cursor (marker absent) would match again.
+func TestLocalCursorBindingMarksLoaderAcks(t *testing.T) {
+	s := &composeStack{cfg: &compose.Config{}}
+	if !s.localCursorBinding().LoaderAcksBound {
+		t.Fatal("localCursorBinding does not set LoaderAcksBound")
+	}
+}
+
+func TestRuntimeExitRefusesCustodyOnly(t *testing.T) {
+	custody := fmt.Errorf("publish: %w", fmt.Errorf("%w: runtime dir /r is not a directory", compose.ErrRuntimeCustody))
+	if got := runtimeExit(custody); got != ExitRefused {
+		t.Errorf("custody refusal exit = %d, want ExitRefused", got)
+	}
+	if got := runtimeExit(errors.New("disk full")); got != ExitInternal {
+		t.Errorf("other runtime error exit = %d, want ExitInternal", got)
+	}
 }

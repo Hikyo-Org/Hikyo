@@ -5,7 +5,8 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -27,6 +28,8 @@ import (
 
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 	opclient "github.com/Hikyo-Org/hikyo/internal/operator/client"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const (
@@ -169,7 +172,7 @@ func run() error {
 		PhaseLimitSeconds int           `json:"phase_limit_seconds"`
 		Phases            []phaseResult `json:"phases"`
 	}{"hikyo.dev/operator-floor/v1", objects, keys, valueBytes, int(phaseLimit.Seconds()), results}
-	raw, err := json.MarshalIndent(report, "", "  ")
+	raw, err := json.Marshal(report, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}
@@ -250,7 +253,7 @@ func serve() error {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(out)
+		_ = jsonwire.Encode(w, out)
 	})
 	srv := httptest.NewUnstartedServer(h)
 	_ = srv.Listener.Close()

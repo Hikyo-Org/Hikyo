@@ -72,6 +72,17 @@ is a storage-level property, not an override guarantee: a repository-
 level secret or variable with the same name shadows the organization-level
 value for workflows in that repository.
 
+Warning for GitHub: values written to a repository or organization target are
+readable by any workflow run that can reference secrets, from any branch, for
+example through `toJSON(secrets)`. Keep production secrets out of CI. Prefer
+environment targets protected by deployment-branch rules and, where your plan
+offers them, required reviewers, and let production workloads fetch at runtime.
+GitHub Free, Pro and Team offer required reviewers only on public repositories;
+deployment-branch rules also work on private repositories with Pro or Team.
+Where neither is available, keep the value out of GitHub and let the workload
+fetch it at runtime. See
+[Keep production secrets out of CI](/docs/machine-identities/#keep-production-secrets-out-of-ci).
+
 For GitHub, a repository environment is the recommended multi-environment
 shape: map dev, stage, and production to separate GitHub environments with no
 prefix. A missing environment is created during the reauthenticated target-add
@@ -131,6 +142,13 @@ names and dispositions only. Existing provider names are never captured
 silently: adoption requires an exact conflict artifact, generation,
 destination, and `(surface, name)` pairs. If multiple exact-match artifacts are
 eligible, pass `--artifact` explicitly.
+
+A retried converge raises each conflict once, per target, generation, surface
+and name, instead of minting a new artifact per attempt, and `adapter show` lists
+only conflicts for the target's current generation; older ones stay in the audit
+history but can no longer be adopted. Adoption retries a transient provider lease; genuine
+contention on a ledger name or provider lease is a conflict (HTTP `409`), not a
+server error.
 
 `hikyo adapter show` includes every target's sync status, converged revision,
 failed names, and pending conflict artifacts. Its table view prints the pending
@@ -308,7 +326,10 @@ catch-up converge, and prints the published revision it reaches.
 newest wins, a second request supersedes the first, and neither bypasses
 adoption nor prunes beyond the ledger.
 
-**Removal** keeps the explicit retain-or-prune decision described above. The
+**Removal** keeps the explicit retain-or-prune decision described above. A
+deleted adapter releases its origin: you can create a new adapter at the same
+origin in the same project at once, while an active or moving adapter still
+reserves it. The
 browser offers the same choice in a dialog with neither option preselected, for
 one target (*Remove*) and for the whole adapter (*Delete adapter*).
 

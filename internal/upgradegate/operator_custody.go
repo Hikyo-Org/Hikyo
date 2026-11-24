@@ -2,11 +2,13 @@ package upgradegate
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
@@ -31,15 +33,14 @@ type operatorJournal struct {
 
 func decodeOperatorCustody(raw []byte) (operatorCustody, error) {
 	var c operatorCustody
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&c); err != nil {
+	d := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(d, &c, json.RejectUnknownMembers(true)); err != nil {
 		return c, err
 	}
-	if err := d.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return c, errors.New("invalid operator custody trailer")
 	}
-	canonical, err := json.Marshal(c)
+	canonical, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil || !bytes.Equal(canonical, raw) || c.Format != "hikyo-operator-custody/v1" || c.EpochFloor < 0 {
 		return c, errors.New("invalid operator custody")
 	}

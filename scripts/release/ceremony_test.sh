@@ -48,6 +48,10 @@ stable_publish_output=$(printf '5\n1.0.0\n' | env \
 	XDG_STATE_HOME="$fixture_dir/state" \
 	"$script_dir/ceremony.sh" --dry-run)
 printf '%s\n' "$stable_publish_output" | grep -F 'protected homebrew-tap PR only after public release verification' >/dev/null
+printf '%s\n' "$stable_publish_output" | grep -F 'publish-desktop-draft.sh' >/dev/null
+if printf '%s\n' "$publish_output" | grep -F 'publish-desktop-draft.sh' >/dev/null; then
+	printf 'release ceremony fixture: a prerelease mentions the desktop draft\n' >&2; exit 1
+fi
 
 tag_output=$(printf '3\n1.0.0-alpha.0\n' | env \
 	PATH="$fixture_dir/bin:$PATH" \
@@ -203,6 +207,38 @@ chmod +x "$fixture_dir/bin/fdesetup" "$fixture_dir/bin/hdiutil" \
 		exit 1
 	fi
 
+	# The offline publish path gates on the staged desktop draft, stable versions only.
+	# ceremony.sh resets script_dir to its own directory when sourced; point the
+	# gate at a fixture directory so the real helper is never touched.
+	script_dir=$fixture_dir/gate/scripts/release
+	mkdir -p "$script_dir" "$fixture_dir/gate/scripts/lib"
+	cp "$source_dir/../lib/release.sh" "$fixture_dir/gate/scripts/lib/release.sh"
+	cp "$source_dir/release-channel.sh" "$script_dir/release-channel.sh"
+	cat >"$script_dir/publish-desktop-draft.sh" <<'SH'
+#!/bin/sh
+printf 'desktop helper %s\n' "$*" >>"$DESKTOP_LOG"
+[ "${DESKTOP_FAILS:-}" != true ]
+SH
+	chmod +x "$script_dir/publish-desktop-draft.sh"
+	DESKTOP_LOG=$fixture_dir/desktop.log
+	export DESKTOP_LOG
+	repository=Hikyo-Org/Hikyo version=1.0.0 tag=v1.0.0
+	: >"$DESKTOP_LOG"
+	desktop_gate
+	[ "$(cat "$DESKTOP_LOG")" = 'desktop helper --check-only Hikyo-Org/Hikyo 1.0.0 release/trust' ] || exit 1
+	DESKTOP_FAILS=true
+	export DESKTOP_FAILS
+	if (desktop_gate) >"$fixture_dir/gate-desktop.out" 2>&1; then exit 1; fi
+	grep -F 'desktop-v1.0.0 draft is not ready' "$fixture_dir/gate-desktop.out" >/dev/null || exit 1
+	version=1.0.0-alpha.0 tag=v1.0.0-alpha.0
+	: >"$DESKTOP_LOG"
+	desktop_gate
+	[ ! -s "$DESKTOP_LOG" ] || exit 1
+	[ -z "$(desktop_followup)" ] || exit 1
+	version=1.0.0 tag=v1.0.0
+	desktop_followup | grep -F 'publish-desktop-draft.sh Hikyo-Org/Hikyo 1.0.0 release/trust' >/dev/null || exit 1
+	unset DESKTOP_FAILS
+
 	ram_device=/dev/disk-test
 	FAKE_DETACH_FAILURE=true
 	export FAKE_DETACH_FAILURE
@@ -318,3 +354,17 @@ EOF
 )
 
 printf 'release ceremony fixture: resume and security gates fail closed\n'
+
+# In phase_publish the gate precedes the confirmation and the edit that makes v public,
+# and a resumed (already published) run still prints the follow-up.
+publish_body=$(awk '/^phase_publish\(\) \{/ {on=1} on {print} on && /^}/ {exit}' "$source_dir/ceremony.sh")
+gate_line=$(printf '%s\n' "$publish_body" | grep -n '^	desktop_gate$' | head -1 | cut -d: -f1)
+# shellcheck disable=SC2016
+confirm_line=$(printf '%s\n' "$publish_body" | grep -n 'confirm_exact "publish \$tag"' | cut -d: -f1)
+edit_line=$(printf '%s\n' "$publish_body" | grep -n -- '--draft=false --prerelease=false' | head -1 | cut -d: -f1)
+[ -n "$gate_line" ] && [ "$gate_line" -lt "$confirm_line" ] && [ "$confirm_line" -lt "$edit_line" ] || {
+	printf 'release ceremony fixture: the desktop gate does not precede offline publication\n' >&2; exit 1
+}
+[ "$(printf '%s\n' "$publish_body" | grep -c 'desktop_followup')" -eq 2 ] || {
+	printf 'release ceremony fixture: both publish exits must print the desktop follow-up\n' >&2; exit 1
+}

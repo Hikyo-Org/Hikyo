@@ -269,6 +269,7 @@ operations:
 
   oidcStart:                   {webui: login}
   oidcCallback:                {exception: identity-protocol}
+  oidcLifecycle:               {exception: identity-protocol}
   samlStart:                   {webui: login}
   samlACS:                     {exception: identity-protocol}
   samlMetadata:                {exception: identity-protocol}
@@ -478,6 +479,25 @@ operations:
   getFileTarget:               {webui: adapters}
   updateFileTarget:            {webui: adapters}
   deleteFileTarget:            {webui: adapters}
+
+  # scheduled credential rotation (#148). The machine-access Rotations tab is
+  # the status surface. Its list shows each rotation's id, state, halt reason,
+  # restore hold, key names (the key ids on hover), provider (kind, origin and
+  # id), schedule, next run, credential expiry, last run, the runs that still owe
+  # a drop, authority principal, creator, generation and created/updated times.
+  # The environment is the selector above the list, so the list read is the whole
+  # of showRotation. The runs read is the run timeline. The same tab takes the six
+  # acts (#1440): create, resume, run-now and release-hold behind the publish
+  # ceremony over the environment and both keys, pause and delete without one.
+  listRotations:               {webui: machine-access}
+  createRotation:              {webui: machine-access}
+  showRotation:                {webui: machine-access, via: [listRotations]}
+  deleteRotation:              {webui: machine-access}
+  pauseRotation:               {webui: machine-access}
+  resumeRotation:              {webui: machine-access}
+  releaseRotationHold:         {webui: machine-access}
+  runRotationNow:              {webui: machine-access}
+  listRotationRuns:            {webui: machine-access}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}

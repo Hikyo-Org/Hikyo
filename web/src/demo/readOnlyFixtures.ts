@@ -70,7 +70,7 @@ export function createReadOnlyFixtures(role: DemoRole, sessionTime: string) {
     };
     responses.set(`${root}/approval-requests`, { items: [approvalRequest] });
     responses.set(`${root}/access-requests`, { offer: { policy_id: accessPolicy.id, policy_version: 1, capabilities: accessPolicy.capabilities, max_duration_seconds: 1800, min_approvals: 1, enabled: true, caller_may_bypass: false }, items: [accessRequest] });
-    for (const resource of ['leases', 'ssh-cas', 'ssh-profiles', 'ssh-certificates']) responses.set(`${root}/${resource}`, { items: [] });
+    for (const resource of ['leases', 'ssh-cas', 'ssh-profiles', 'ssh-certificates', 'rotations']) responses.set(`${root}/${resource}`, { items: [] });
     responses.set(`${root}/certificates`, { certificates: [] });
     responses.set(`${root}/delivery-targets`, { principals: [], targets: [] });
   });

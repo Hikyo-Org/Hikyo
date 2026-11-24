@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -90,7 +91,7 @@ func TestTopologyWireContainsOnlyProjectMetadata(t *testing.T) {
 	}
 	want := map[string]any{"type": "environments.changed", "project_id": "prj_real"}
 	if got := wireAdvisory(ev); !reflect.DeepEqual(got, want) {
-		encoded, _ := json.Marshal(got)
+		encoded, _ := json.Marshal(got, jsonwire.Stable)
 		t.Fatalf("topology disclosed extra metadata: %s", encoded)
 	}
 	if acceptsAdvisoryTopology(nil) {

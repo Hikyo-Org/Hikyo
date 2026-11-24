@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { offerContinueInBrowser } from '../app/shell.ts';
 import {
   openPrepared,
   prepareWorkspace,
@@ -60,6 +61,16 @@ export function workspaceHandoffAction(
       return { label: 'Try again', disabled: false, onClick: onRetry };
   }
 }
+
+/** The desktop app refuses workspaces for good: the only action left is the browser, not a retry. */
+export const appModeWorkspaceReason = 'Workspaces open in your browser, not in the desktop app.';
+export const continueInBrowserAction: HandoffAction = {
+  label: 'Continue in browser',
+  disabled: false,
+  onClick: () => {
+    offerContinueInBrowser(appModeWorkspaceReason);
+  },
+};
 
 /**
  * Owns one cross-origin workspace handoff from eager preparation through the

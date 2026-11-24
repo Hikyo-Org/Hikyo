@@ -111,6 +111,17 @@ page need these changes, with no server change:
 Size: days. No behaviour change. Importing `internal/cli` pulls in most of its 88.8 MB,
 so move the login and trust code into small packages the shell can import.
 
+Result (#1215): the shell imports these, none of which depends on `internal/cli` or the
+server (`internal/boundary` `TestClientPackagesStayOffTheCLIAndServer` fails if one does):
+
+- `internal/clienterr`: the closed exit-code set, `Error`, `RateLimitedError`.
+- `internal/clientauth`: loopback PKCE login, device flow, CLI reauth handoff, over a
+  caller-supplied `Transport`. The caller stores the session.
+- `internal/clienttrust`: system CA or SPKI pin policy, `TLSConfig`, `InspectIdentity`,
+  `FirstContactPrompt`. It never prompts; the shell supplies its own confirmation.
+- The CLI token grammar (`hik_<v>_cli_...`) already lives in `internal/crypto`
+  (`ParseArtifact`), a leaf package, so it did not move.
+
 ## PR 3: the shell
 
 Size: 2 to 3 weeks. New directory `desktop/`, module
@@ -152,14 +163,25 @@ Size: days. Not yet investigated.
 
 ## PR 5: release lane
 
-Size: 1 to 2 weeks. The owner creates `Hikyo-Org/hikyo-app` and its signing identity.
+Size: 1 to 2 weeks. Amended 2026-11-20 ([ADR D13](../../adr/desktop-app.md#d13-repository-and-releases)):
+the stable release run also cuts `desktop-v<version>` in this repository, reusing the
+existing Developer ID signing and notarization identity.
 
 - `.app` nesting, entitlements and notarization, which
-  `scripts/release/sign-apple-artifacts.sh` doesn't cover.
-- Tags and releases live only in that repository. No updater and no update check.
-- `scripts/ci/check-oss-policy.sh` pins "Metadata-only ecosystem repositories are the sole
-  exception." When the second exception becomes operative, change both copies of that
-  sentence in `docs/adr/oss-mechanics.md` and the check together.
+  `scripts/release/sign-apple-artifacts.sh` doesn't cover yet.
+- A `desktop-v<version>` release holding `Hikyo-Desktop-<version>-<arch>.dmg` and its own
+  signed inventory, with `make_latest` false. Never on nightlies, never inside a `hikyo`
+  release. No updater and no update check.
+- `release.yml` stages the desktop draft; `scripts/release/ceremony.sh` and
+  `publish-stable-draft.sh` publish it only after `v<version>` is published. None for
+  release candidates.
+- Make `scripts/release/latest-stable-version.sh` and `.github/workflows/security-release.yml`
+  skip `desktop-v*` first; both misread it today.
+- Pin GoReleaser's tag (`GORELEASER_CURRENT_TAG`), since two tags share a commit.
+- A tag ruleset for `refs/tags/desktop-v*`, an inventory signed by the stable workflow's
+  keyless identity, and a documented user verification step beside Gatekeeper.
+- The oss-mechanics banner becomes operative with this PR; close #33 then. The "sole
+  exception" sentence and `scripts/ci/check-oss-policy.sh` stay unchanged.
 
 ## PR 6: public docs
 

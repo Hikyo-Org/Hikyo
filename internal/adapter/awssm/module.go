@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Module converges one target into AWS Secrets Manager. Ownership lives in the
@@ -247,7 +248,7 @@ func adoptionWitness(meta SecretMetadata) string {
 	if meta.ARN == "" {
 		return ""
 	}
-	raw, err := json.Marshal([2]string{meta.ARN, current})
+	raw, err := json.Marshal([2]string{meta.ARN, current}, jsonwire.Stable)
 	if err != nil {
 		return ""
 	}
@@ -269,7 +270,7 @@ func permitsAdoption(meta SecretMetadata, witness, targetID, token string) bool 
 	if err := json.Unmarshal([]byte(witness), &approved); err != nil || len(approved) != 2 || approved[0] != meta.ARN {
 		return false
 	}
-	canonical, err := json.Marshal(approved)
+	canonical, err := json.Marshal(approved, jsonwire.Stable)
 	if err != nil || string(canonical) != witness {
 		return false
 	}

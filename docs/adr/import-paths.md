@@ -78,7 +78,7 @@ Live-mode connectors authenticate to the foreign source with **the source's own 
 
 - **Kubernetes**: kubeconfig and its current (or `--context`-selected) context, including exec-plugin credential resolution — disclosed: an exec plugin is third-party code the connector runs.
 - **Vault/OpenBao**: the documented client conventions, pinned to include the token helper, `VAULT_TOKEN`/`~/.vault-token`, `VAULT_ADDR`, `VAULT_NAMESPACE`, and the client TLS variables — and OpenBao's `BAO_*` equivalents, with the `BAO_*` form taking precedence when both are set, matching OpenBao's own client. The connector states which resolution it performed.
-- **SOPS**: the ambient decryption keyring (age, GPG, KMS credentials) exactly as `sops -d` resolves it — disclosed: KMS/Transit-encrypted files contact the key service (§ *Architecture*).
+- **SOPS**: the ambient decryption keyring (age, GPG, KMS credentials) exactly as `sops -d` resolves it, disclosed: KMS/Transit-encrypted files contact the key service (§ *Architecture*). A Vault Transit key is contacted only at the operator's `VAULT_ADDR` (or not at all when it is unset), never at the address the file names, unless the operator sets `SOPS_HC_VAULT_ALLOWLIST` themselves. Vault redirects are not followed in either case, since the client would carry the token to the redirect target.
 - **Infisical** (when live mode ships, § *v1 scope*): the environment-variable token their tooling documents.
 
 Rules bounding this:

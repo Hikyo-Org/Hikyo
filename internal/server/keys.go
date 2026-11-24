@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -275,8 +275,10 @@ func domainRule(r apigen.KeyRule) (schema.Rule, error) {
 	if r.Schemes != nil {
 		out.Schemes = *r.Schemes
 	}
-	if r.JsonSchema != nil {
-		out.JSONSchema = json.RawMessage(*r.JsonSchema)
+	// An empty schema string is absent, as it was under encoding/json (v1);
+	// an empty non-nil raw value does not marshal.
+	if r.JsonSchema != nil && *r.JsonSchema != "" {
+		out.JSONSchema = jsontext.Value(*r.JsonSchema)
 	}
 	return out, nil
 }

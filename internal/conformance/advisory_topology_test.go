@@ -2,7 +2,7 @@ package conformance
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"sync/atomic"
 	"testing"

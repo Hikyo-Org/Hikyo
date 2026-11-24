@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -218,7 +219,7 @@ func (s *Auth) ApproveCLILogin(ctx context.Context, actor Actor, reference strin
 			}
 			return CLIReauthApproval{}, err
 		}
-		snapshot, err := json.Marshal(cliLoginSnapshot{Assurance: Assurance{Method: caller.Assurance.Method, Factors: caller.Assurance.Factors, AuthenticatedAt: caller.Assurance.AuthenticatedAt, CeremonyID: caller.Assurance.CeremonyID}, ProviderID: caller.ProviderID, OAuth2ProviderID: caller.OAuth2ProviderID, SAMLProviderID: caller.SAMLProviderID})
+		snapshot, err := json.Marshal(cliLoginSnapshot{Assurance: Assurance{Method: caller.Assurance.Method, Factors: caller.Assurance.Factors, AuthenticatedAt: caller.Assurance.AuthenticatedAt, CeremonyID: caller.Assurance.CeremonyID}, ProviderID: caller.ProviderID, OAuth2ProviderID: caller.OAuth2ProviderID, SAMLProviderID: caller.SAMLProviderID}, jsonwire.Stable)
 		if err != nil {
 			return CLIReauthApproval{}, err
 		}

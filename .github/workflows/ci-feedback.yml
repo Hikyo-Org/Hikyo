@@ -4,8 +4,13 @@
 name: ci-feedback
 
 on:
+  # No edited: GitHub files ci-dev-required in the head's oldest Actions suite,
+  # which can be this workflow's, and a newer run of it on the same head hides
+  # the record. ci-feedback-retarget calls this workflow for a base retarget, so
+  # the expressions below still see that edited event.
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
+  workflow_call:
 
 permissions:
   contents: read

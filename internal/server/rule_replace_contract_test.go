@@ -2,7 +2,7 @@ package server_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -27,12 +27,12 @@ func (s capturingRuleReplacement) Replace(_ context.Context, _ service.Actor, sp
 func TestRuleReplacementAcceptsOneSidedBatches(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		body   json.RawMessage
+		body   jsontext.Value
 		revoke int
 		create int
 	}{
-		{"removal", json.RawMessage(fmt.Sprintf(`{"principal":%q,"revoke":[%q]}`, testPrincipalID, testRuleID)), 1, 0},
-		{"creation", json.RawMessage(fmt.Sprintf(`{"principal":%q,"create":[{"principal":%q,"capability":"read","where":{"projects":[%q],"environments":{"mode":"all","items":[]},"keys":{"mode":"all","items":[]}}}]}`, testPrincipalID, testPrincipalID, testProjectID)), 0, 1},
+		{"removal", jsontext.Value(fmt.Sprintf(`{"principal":%q,"revoke":[%q]}`, testPrincipalID, testRuleID)), 1, 0},
+		{"creation", jsontext.Value(fmt.Sprintf(`{"principal":%q,"create":[{"principal":%q,"capability":"read","where":{"projects":[%q],"environments":{"mode":"all","items":[]},"keys":{"mode":"all","items":[]}}}]}`, testPrincipalID, testPrincipalID, testProjectID)), 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var spec service.ReplaceRulesSpec

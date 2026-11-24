@@ -4,7 +4,8 @@ package oauth2rp
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -79,7 +80,7 @@ func (p *Provider) Exchange(ctx context.Context, clientID, secret, redirectURI, 
 // User is a profile identity. No login, node_id or two_factor_authentication field participates.
 type User struct {
 	Subject string
-	Claims  map[string]json.RawMessage
+	Claims  map[string]jsontext.Value
 }
 
 func (p *Provider) get(ctx context.Context, token, path string, out any) error {
@@ -106,7 +107,7 @@ func (p *Provider) get(ctx context.Context, token, path string, out any) error {
 }
 
 func (p *Provider) User(ctx context.Context, token string) (User, error) {
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	if err := p.get(ctx, token, "/user", &raw); err != nil {
 		return User{}, err
 	}
@@ -114,7 +115,7 @@ func (p *Provider) User(ctx context.Context, token string) (User, error) {
 	if json.Unmarshal(raw["id"], &id) != nil || id <= 0 {
 		return User{}, ErrUserInfo
 	}
-	return User{Subject: strconv.FormatInt(id, 10), Claims: map[string]json.RawMessage{"name": raw["name"]}}, nil
+	return User{Subject: strconv.FormatInt(id, 10), Claims: map[string]jsontext.Value{"name": raw["name"]}}, nil
 }
 
 // VerifiedEmail is called only on the admitted unknown sign-up branch.

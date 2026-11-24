@@ -109,6 +109,50 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 	}
 }
 
+// AuthorizeFirst authorizes the first of ops, in order, that the caller holds and
+// returns that proof with the operation that passed. A caller that must pick,
+// before it knows what to ask for, between operations it may hold (a rotation
+// verb is looked up under the verb itself or under inspect) decides from exactly
+// the evaluation Authorize makes, member rules included, so the two cannot
+// disagree.
+//
+// A refusal of one op is not recorded, but the refusal of the whole call is:
+// when every op refuses, one denial is recorded under ops[0], the operation the
+// caller was really asked to do, and its error is returned. Only an authorization
+// refusal moves on to the next op; a fault is returned as it is. Keeping the
+// unrecorded probe private to this method is what stops a caller from refusing
+// quietly.
+func (a *TxAuthorizer) AuthorizeFirst(ctx context.Context, caller Identity, scope domain.Scope, ops ...Operation) (Proof, Operation, error) {
+	if len(ops) == 0 {
+		return nil, "", errors.New("authz: AuthorizeFirst needs an operation")
+	}
+	for _, op := range ops {
+		proof, err := a.authorizeUnrecorded(ctx, caller, op, scope)
+		if err == nil {
+			return proof, op, nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) && !errors.Is(err, domain.ErrUnauthorized) {
+			return nil, "", err
+		}
+	}
+	_, err := a.Authorize(ctx, caller, ops[0], scope)
+	if err == nil {
+		err = domain.ErrNotFound
+	}
+	return nil, "", err
+}
+
+// authorizeUnrecorded is Authorize with a refusal's denial dropped from the audit
+// capture: the same evaluation, proof and error.
+func (a *TxAuthorizer) authorizeUnrecorded(ctx context.Context, caller Identity, op Operation, scope domain.Scope) (Proof, error) {
+	denials, captureErr := len(a.denials), a.captureErr
+	proof, err := a.Authorize(ctx, caller, op, scope)
+	if err != nil {
+		a.denials, a.captureErr = a.denials[:denials], captureErr
+	}
+	return proof, err
+}
+
 // AuthorizeDEKRotation authorizes the instance-level rotation capability and,
 // for a project DEK, also proves that the addressed project currently exists.
 // Project key creation happens outside the transaction, so this check must run
@@ -624,7 +668,7 @@ func (a *TxAuthorizer) CallerHolds(ctx context.Context, caller Identity,
 	if caller.Principal == "" {
 		return false, errors.New("authz: empty principal")
 	}
-	_, chain, holds, err := a.principalFormulaEvaluation(ctx, caller.Principal, op, scope)
+	_, chain, holds, err := a.principalFormulaEvaluation(ctx, caller.Principal, op, scope, nil)
 	if err != nil {
 		return false, err
 	}
@@ -692,15 +736,22 @@ func (a *TxAuthorizer) principalInstanceHolds(ctx context.Context, principal dom
 // authority on a standing delegation. It deliberately does not synthesize a
 // caller identity or apply session policy: the principal is not the caller,
 // and the delegation's own fetch path records the decision and its outcome.
+//
+// A non-nil key is resolved from the database in this transaction on every call,
+// whatever answers the formula: a key that does not exist is "does not hold" even
+// for a principal whose environment-wide grants would cover it. It also lets the
+// recorded principal's key-narrowed member access rules take part, exactly as
+// AuthorizeKey does for a caller.
+// The CALLER stays the actor of any denial, and AuthorityID names the principal.
 func (a *TxAuthorizer) RecordedPrincipalHolds(ctx context.Context, caller Identity,
-	principal domain.PrincipalID, op Operation, scope domain.Scope) (bool, error) {
+	principal domain.PrincipalID, op Operation, scope domain.Scope, key *KeyTarget) (bool, error) {
 	if caller.Principal == "" {
 		return false, errors.New("authz: empty caller principal")
 	}
 	if principal == "" {
 		return false, errors.New("authz: empty recorded authority principal")
 	}
-	spec, chain, holds, err := a.principalFormulaEvaluation(ctx, principal, op, scope)
+	spec, chain, holds, err := a.principalFormulaEvaluation(ctx, principal, op, scope, key)
 	if err != nil {
 		return false, err
 	}
@@ -721,7 +772,7 @@ func (a *TxAuthorizer) RecordedPrincipalHolds(ctx context.Context, caller Identi
 }
 
 func (a *TxAuthorizer) principalFormulaEvaluation(ctx context.Context, principal domain.PrincipalID,
-	op Operation, scope domain.Scope) (authorizationSpec, domain.Scope, bool, error) {
+	op Operation, scope domain.Scope, key *KeyTarget) (authorizationSpec, domain.Scope, bool, error) {
 	spec, ok := registry.authorizationSpec(op)
 	if !ok {
 		return authorizationSpec{}, domain.Scope{}, false, fmt.Errorf("authz: operation %q is not in the operation registry", op)
@@ -744,5 +795,28 @@ func (a *TxAuthorizer) principalFormulaEvaluation(ctx context.Context, principal
 	if err != nil {
 		return authorizationSpec{}, domain.Scope{}, false, err
 	}
-	return spec, chain, permitted && evaluate(spec.formula, chain, grants), nil
+	// A key target is resolved on EVERY call, before any grant can answer: a key
+	// that no longer exists (deleted, or gone from the project) is "does not hold"
+	// even for a principal whose environment-wide grants would otherwise cover it,
+	// so a standing delegation never survives the key it was recorded for.
+	var resolved domain.RuleKey
+	if key != nil {
+		var err error
+		resolved, err = a.resolveKeyTarget(ctx, chain, *key, principal)
+		if errors.Is(err, domain.ErrNotFound) {
+			return spec, chain, false, nil
+		}
+		if err != nil {
+			return authorizationSpec{}, domain.Scope{}, false, err
+		}
+	}
+	holds := permitted && evaluate(spec.formula, chain, grants)
+	if holds || !permitted || key == nil || !ruleSatisfiable(spec.formula) {
+		return spec, chain, holds, nil
+	}
+	rules, err := a.r.Rules(ctx, principal)
+	if err != nil {
+		return authorizationSpec{}, domain.Scope{}, false, err
+	}
+	return spec, chain, evaluateWithRules(spec.formula, chain, grants, rules, &resolved), nil
 }

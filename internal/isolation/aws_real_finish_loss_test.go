@@ -3,7 +3,7 @@ package isolation
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -39,12 +40,13 @@ func TestAWSRealFinishLossDrain(t *testing.T) {
 		defer remote.Close()
 		roots := x509.NewCertPool()
 		roots.AddCert(remote.Certificate())
-		raw, _ := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-finish-loss"})
+		raw, _ := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: m.Region, AccessKeyID: "AKIAHIKYOTEST0000001", SecretKey: "synthetic-finish-loss"}, jsonwire.Stable)
 		s := &realAWSSandbox{manifest: m, owned: map[string]string{}}
 		h := newRealAWSDurableFixture(t, db, s, "static", string(raw))
 		h.origin = remote.URL
 		h.build = func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
-			client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, Deadline: time.Second, RootCAs: roots, AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
+			// Hang guard, not under test: matches the package's 5s; owner-authorised exception (#1436).
+			client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, Deadline: 5 * time.Second, RootCAs: roots, AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
 			if err != nil {
 				return nil, err
 			}

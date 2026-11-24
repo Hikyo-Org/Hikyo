@@ -3,13 +3,13 @@ package service
 import (
 	"errors"
 	"math"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestAccessCapabilitiesWithin(t *testing.T) {
@@ -197,7 +197,7 @@ func TestAccessBypassReauthIntent(t *testing.T) {
 		t.Fatalf("cross-environment binding: %v", err)
 	}
 	fromOperation, err := newReauthIntentForOperation(authz.OpAccessBypass, "env_prod", nil)
-	if err != nil || !reflect.DeepEqual(intent, fromOperation) {
+	if err != nil || !reflectx.Equal(intent, fromOperation) {
 		t.Fatalf("operation constructor differs: %+v, %v", fromOperation, err)
 	}
 	if _, err := NewAccessBypassReauthIntent(""); !errors.Is(err, domain.ErrInvalid) {

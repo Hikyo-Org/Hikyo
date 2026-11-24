@@ -2,7 +2,8 @@ package awssm
 
 import (
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -27,8 +28,8 @@ func TestWriteRequestTokensOmitEmptyAndRetainStableToken(t *testing.T) {
 				}
 				defer client.Forget()
 				client.http.Transport = safeErrorTransport(func(req *http.Request) (*http.Response, error) {
-					var request map[string]json.RawMessage
-					if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
+					var request map[string]jsontext.Value
+					if err := json.UnmarshalRead(req.Body, &request); err != nil {
 						t.Fatal(err)
 					}
 					raw, exists := request["ClientRequestToken"]
@@ -62,8 +63,8 @@ func TestCreateSecretIdentityPreservesLegacyContract(t *testing.T) {
 		if r.Header.Get("X-Amz-Target") != "secretsmanager.CreateSecret" {
 			t.Error("unexpected operation")
 		}
-		var request map[string]json.RawMessage
-		if json.NewDecoder(r.Body).Decode(&request) != nil {
+		var request map[string]jsontext.Value
+		if json.UnmarshalRead(r.Body, &request) != nil {
 			t.Error("invalid request")
 		}
 		if _, exists := request["SecretString"]; exists {

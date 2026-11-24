@@ -1,13 +1,14 @@
 package cli_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func exportHandler(t *testing.T) http.Handler {
@@ -19,7 +20,7 @@ func exportHandler(t *testing.T) http.Handler {
 			return
 		}
 		var req apigen.ExportValuesRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.UnmarshalRead(r.Body, &req); err != nil {
 			t.Errorf("decode export body: %v", err)
 		}
 		reveal := req.Reveal != nil && *req.Reveal
@@ -35,7 +36,7 @@ func exportHandler(t *testing.T) http.Handler {
 		} else {
 			items = append(items, apigen.ExportedValue{Name: "API_KEY", Classification: "secret"})
 		}
-		_ = json.NewEncoder(w).Encode(apigen.ExportedValues{Items: items})
+		_ = jsonwire.Encode(w, apigen.ExportedValues{Items: items})
 	})
 }
 

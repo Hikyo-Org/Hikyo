@@ -2,30 +2,64 @@ package authn
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
 
+// RefusalDeadlineError reports a server-side lock/statement timeout (55P03,
+// 57014) as a deadline error that still wraps the PgError. The server bound is
+// the remaining time rounded down to whole milliseconds (up to ~1 ms short) and
+// the Go context timer can fire late on a loaded runner, so the server may
+// report first; callers classify both the same way. An administrator's
+// pg_cancel_backend also yields 57014 and is labelled a deadline too; harmless,
+// because the production caller discards the error. Only statements inside
+// UpdateRequestRefusals are mapped: service may not import this package, and a
+// server timeout during COMMIT is left as the raw PgError.
+func RefusalDeadlineError(err error) error {
+	var pgErr *pgconn.PgError
+	if err == nil || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pgErr) || (pgErr.Code != "55P03" && pgErr.Code != "57014") {
+		return err
+	}
+	return fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+}
+
 // UpdateRequestRefusals is the #1034-only enumerated writer. A nil sample is
 // the system sealer. The caller owns a write transaction and commits every
 // event, staging reset and increment together, or none of them.
-func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.RefusalSample) (int64, error) {
+func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.RefusalSample) (n int64, err error) {
+	defer func() { err = RefusalDeadlineError(err) }()
 	var start, now int64
 	var encoded string
 	if r.sq != nil {
+		// sqlite needs no server-side bound: BEGIN IMMEDIATE holds the single writer
+		// and no separate server outlives the in-process call.
 		row, err := r.sq.ReadAuthRefusalWindow(ctx)
 		if err != nil {
 			return 0, err
 		}
 		start, now, encoded = row.WindowStart, row.NowSeconds, row.State
 	} else {
+		// Cancelling the client does not stop a lock wait or statement the server already
+		// has, so the remaining deadline also bounds each wait/statement server-side
+		// (per statement, not per transaction; 0 would disable the timeout).
+		if dl, ok := ctx.Deadline(); ok {
+			if err := r.pg.BoundAuthRefusalTransaction(ctx, strconv.FormatInt(max(1, time.Until(dl).Milliseconds()), 10)); err != nil {
+				return 0, err
+			}
+		}
 		row, err := r.pg.ReadAuthRefusalWindow(ctx)
 		if err != nil {
 			return 0, err
@@ -36,13 +70,11 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 		return 0, fmt.Errorf("authn: invalid refusal staging state")
 	}
 	var window audit.RefusalWindow
-	d := json.NewDecoder(strings.NewReader(encoded))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&window); err != nil {
+	d := jsontext.NewDecoder(strings.NewReader(encoded))
+	if err := json.UnmarshalDecode(d, &window, json.RejectUnknownMembers(true)); err != nil {
 		return 0, fmt.Errorf("authn: invalid refusal staging encoding")
 	}
-	var extra json.RawMessage
-	if err := d.Decode(&extra); err != io.EOF {
+	if _, err := d.ReadToken(); !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("authn: trailing refusal staging data")
 	}
 	if err := window.Validate(); err != nil {
@@ -81,7 +113,7 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 		changed = true
 	}
 	if changed {
-		state, err := json.Marshal(window)
+		state, err := json.Marshal(window, jsonwire.Stable)
 		if err != nil {
 			return 0, err
 		}

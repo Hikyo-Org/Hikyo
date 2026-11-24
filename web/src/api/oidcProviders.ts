@@ -58,8 +58,14 @@ export type OidcProviderInput = {
   readonly clientSecret: string;
   readonly scopes: string;
   readonly assurancePolicy: string | null;
+  /** null = the provider takes no directory lifecycle events (clears the stored secret). */
+  readonly lifecycleProfile: LifecycleProfile | null;
+  /** Write-only; blank keeps the stored secret, and is sent only when non-empty. */
+  readonly lifecycleSecret: string;
   readonly enabled: boolean;
 };
+
+export type LifecycleProfile = 'clerk';
 
 /**
  * putOidcProvider is a ONE-SHOT request, deliberately NOT a cached React Query
@@ -83,6 +89,8 @@ export async function putOidcProvider(
       client_secret: input.clientSecret,
       scopes: input.scopes,
       assurance_policy: input.assurancePolicy,
+      lifecycle_profile: input.lifecycleProfile,
+      lifecycle_secret: input.lifecycleSecret === '' ? undefined : input.lifecycleSecret,
       enabled: input.enabled,
       row_version: rowVersion === undefined ? undefined : Number(rowVersion),
     },
@@ -116,7 +124,8 @@ export type OidcProviderField =
   | 'client_id'
   | 'client_secret'
   | 'scopes'
-  | 'assurance_policy';
+  | 'assurance_policy'
+  | 'lifecycle_secret';
 
 /** The contract's own slug pattern (ProviderSlugPath), enforced before submit. */
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -177,6 +186,9 @@ export type OidcProviderDraft = {
   readonly clientSecret: string;
   readonly scopes: string;
   readonly assurancePolicy: string;
+  /** '' = none. */
+  readonly lifecycleProfile: '' | LifecycleProfile;
+  readonly lifecycleSecret: string;
   readonly enabled: boolean;
 };
 
@@ -249,6 +261,17 @@ export function validateProviderDraft(
   if (!assurance.ok) {
     return { ok: false, field: 'assurance_policy', message: assurance.message };
   }
+  const lifecycleProfile = draft.lifecycleProfile === '' ? null : draft.lifecycleProfile;
+  // A secret is already stored only when the profile is unchanged from a configured one.
+  const keepsStoredSecret =
+    original !== null && original.lifecycle_secret_set && original.lifecycle_profile === lifecycleProfile;
+  if (lifecycleProfile !== null && draft.lifecycleSecret === '' && !keepsStoredSecret) {
+    return {
+      ok: false,
+      field: 'lifecycle_secret',
+      message: 'A lifecycle signing secret is required when a directory profile is selected.',
+    };
+  }
   return {
     ok: true,
     slug: original === null ? draft.slug : original.slug,
@@ -259,6 +282,8 @@ export function validateProviderDraft(
       clientSecret: draft.clientSecret,
       scopes: draft.scopes,
       assurancePolicy: assurance.value,
+      lifecycleProfile,
+      lifecycleSecret: lifecycleProfile === null ? '' : draft.lifecycleSecret,
       enabled: draft.enabled,
     },
   };

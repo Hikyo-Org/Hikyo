@@ -1,7 +1,7 @@
 package importer
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )

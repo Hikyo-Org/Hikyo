@@ -1,5 +1,7 @@
 # Hikyo personal values: one shared environment, one value per developer (ADR, accepted 2026-11-06)
 
+> **Declared amendment (2026-11-12, [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039), owner-accepted in the [incident-containment ADR](./incident-containment.md) (O8), operative when its implementation pull request merges; cross-provider review did not run and is not CLEAN):** A contained owner still holds the personal-value retention predicate. The 14-day deletion clock is paused while the owner is contained: it is cleared, not started, no personal value is deleted, and a release restarts the clock fresh instead of expiring values retroactively. Privacy restriction keeps its own behavior. Historical text below is preserved.
+
 > **Status: accepted and operative.** The owner took decisions O1 to O4 below on 2026-11-03 and O5 to O8 on 2026-11-06,
 > and accepted the remaining details with the implementation in the same PR (#1167, issue #1235). The
 > [implementation handoff](../handoff/1235-personal-values-implementation.md) maps every

@@ -1,12 +1,14 @@
 package schema
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The wall-clock budget's mechanism, tested where it is deterministic.
@@ -181,11 +183,11 @@ func TestSubschemaBoundIsDerivedFromTheWorkBudget(t *testing.T) {
 // so a verdict sized exactly to the cap would ship over it.
 func TestEncodedSizeMeasuresTheWholeVerdict(t *testing.T) {
 	failures := []Failure{{Alternative: -1, Keyword: "pattern", Message: "no"}}
-	list, err := json.Marshal(failures)
+	list, err := json.Marshal(failures, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	whole, err := json.Marshal(Verdict{Errors: failures})
+	whole, err := json.Marshal(Verdict{Errors: failures}, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

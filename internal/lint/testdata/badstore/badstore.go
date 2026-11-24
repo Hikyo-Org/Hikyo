@@ -16,11 +16,11 @@ type Filter struct {
 
 type WidgetRepo interface {
 	// Missing proof parameter entirely.
-	Get(ctx context.Context, id string) (string, error)
+	Get(ctx context.Context, id string) (string, error) // want "store\\.WidgetRepo\\.Get: second parameter must be authz\\.Proof"
 	// Proof present but a tenant-typed parameter beside it.
-	List(ctx context.Context, p authz.Proof, org domain.OrgID) ([]string, error)
+	List(ctx context.Context, p authz.Proof, org domain.OrgID) ([]string, error) // want "store\\.WidgetRepo\\.List: tenant-identifier-typed parameter \\(.*internal/domain\\.OrgID\\)"
 	// Tenant type hidden in a struct field.
-	Search(ctx context.Context, p authz.Proof, f Filter) ([]string, error)
+	Search(ctx context.Context, p authz.Proof, f Filter) ([]string, error) // want "store\\.WidgetRepo\\.Search: tenant-identifier-typed parameter \\(.*internal/domain\\.OrgID\\)"
 }
 
 type Repos interface {

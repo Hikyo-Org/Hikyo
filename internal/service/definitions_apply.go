@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"regexp"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -291,15 +292,15 @@ func (s *Definitions) persistPlan(ctx context.Context, r store.Repos, az *authz.
 	}
 	protectedSet := protectedPins(protection, envNameByID)
 
-	envRevsJSON, err := json.Marshal(envRevs)
+	envRevsJSON, err := json.Marshal(envRevs, jsonwire.Stable)
 	if err != nil {
 		return PlanView{}, err
 	}
-	protectedJSON, err := json.Marshal(protectedSet)
+	protectedJSON, err := json.Marshal(protectedSet, jsonwire.Stable)
 	if err != nil {
 		return PlanView{}, err
 	}
-	diffJSON, err := json.Marshal(planDiff)
+	diffJSON, err := json.Marshal(planDiff, jsonwire.Stable)
 	if err != nil {
 		return PlanView{}, err
 	}

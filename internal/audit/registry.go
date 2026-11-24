@@ -134,6 +134,13 @@ const (
 	// bound to or removed from an account - account-security mutations both.
 	EventIdentityLinked   EventType = "auth.identity_linked"
 	EventIdentityUnlinked EventType = "auth.identity_unlinked"
+	// auth.identity_unlinked_by_directory, auth.sessions_swept_by_directory and
+	// auth.account_no_login_credential record the directory lifecycle events of
+	// an OIDC provider (human-auth ADR, 2026-11-17 amendment). They carry a
+	// system actor: the directory, not a Hikyo principal, caused them.
+	EventIdentityUnlinkedByDirectory EventType = "auth.identity_unlinked_by_directory"
+	EventSessionsSweptByDirectory    EventType = "auth.sessions_swept_by_directory"
+	EventAccountNoLoginCredential    EventType = "auth.account_no_login_credential"
 	// auth.provider_changed records a provider configuration change and the
 	// count of federated sessions it swept (A3/A4). auth.provider_read records
 	// the instance-scoped provider reads (audit-model default-deny refuses
@@ -886,6 +893,19 @@ const (
 	EventDynamicLeaseTransitionOutcome    EventType = "dynamic.lease_transition_outcome"
 	EventDynamicLeaseDisclosed            EventType = "dynamic.lease_disclosed"
 	EventDynamicLeaseSettleRequested      EventType = "dynamic.lease_settle_requested"
+	// Scheduled credential rotation configuration (#148, S1). One event covers
+	// create, pause, resume and delete; action says which. Run events arrive
+	// with the run state machine (S2).
+	EventRotationConfigured EventType = "rotation.configured"
+	// A manual run requested (#148, S2b-1): run_id is the run the executor will
+	// start, skip_overlap whether it revokes right after the publish.
+	EventRotationRunNow EventType = "rotation.run_now"
+	// Rotation run transitions (#148, S2): an INTENT before each provider
+	// side effect, an OUTCOME after, and a quarantine when a candidate or
+	// superseded role may be live and unconfirmed.
+	EventRotationRunIntent   EventType = "rotation.run_intent"
+	EventRotationRunOutcome  EventType = "rotation.run_outcome"
+	EventRotationQuarantined EventType = "rotation.quarantined"
 	// SSH user certificates (#155).
 	EventSSHCAConfigured       EventType = "ssh.ca_configured"
 	EventSSHCARotated          EventType = "ssh.ca_rotated"
@@ -1077,6 +1097,11 @@ var registry = map[EventType]TypeSpec{
 	EventPrivacySubjectExported:   privacySubjectSpec,
 	EventPrivacySubjectRestricted: privacySubjectSpec,
 	EventPrivacySubjectErased:     privacySubjectSpec,
+
+	EventIncidentOpened:      incidentSpecs[EventIncidentOpened],
+	EventIncidentItemIntent:  incidentSpecs[EventIncidentItemIntent],
+	EventIncidentItemOutcome: incidentSpecs[EventIncidentItemOutcome],
+	EventIncidentClosed:      incidentSpecs[EventIncidentClosed],
 
 	EventGrantDenied: {
 		SchemaVersion: 1,
@@ -1443,6 +1468,43 @@ var registry = map[EventType]TypeSpec{
 			"account_id":             {Kind: KindString, Required: true},
 			"identity_id":            {Kind: KindString, Required: true},
 			"authorizing_credential": {Kind: KindString, Required: true},
+		},
+	},
+	EventIdentityUnlinkedByDirectory: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"kind":            {Kind: KindString, Required: true},
+			"account_id":      {Kind: KindString, Required: true},
+			"identity_id":     {Kind: KindString, Required: true},
+			"provider_id":     {Kind: KindString, Required: true},
+			"lifecycle_event": {Kind: KindString, Required: true, Enum: []string{"user.deleted"}},
+			"sessions_swept":  {Kind: KindInt, Required: true},
+		},
+	},
+	EventSessionsSweptByDirectory: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"account_id":      {Kind: KindString, Required: true},
+			"identity_id":     {Kind: KindString, Required: true},
+			"provider_id":     {Kind: KindString, Required: true},
+			"lifecycle_event": {Kind: KindString, Required: true, Enum: []string{"user.updated.banned"}},
+			"sessions_swept":  {Kind: KindInt, Required: true},
+		},
+	},
+	EventAccountNoLoginCredential: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"account_id": {Kind: KindString, Required: true},
+			"cause":      {Kind: KindString, Required: true, Enum: []string{"directory-user-deleted"}},
 		},
 	},
 
@@ -3740,6 +3802,82 @@ var registry = map[EventType]TypeSpec{
 	EventDynamicProviderDeleted: adapterLifecycleEvent(Schema{
 		"revoked_lease_count": {Kind: KindInt, Required: true},
 	}),
+	// A rotation's configuration lifecycle. The payload names the rotation, its
+	// key ids and bounds and the recorded authority principal; no credential,
+	// candidate handle or password is ever in it (none exists in S1). A pause the
+	// system causes rather than a person (provider delete or credential revoke,
+	// environment protected, approval policy enabled) records each rotation it
+	// pauses with reason set (#148).
+	EventRotationConfigured: adapterLifecycleEvent(Schema{
+		"action":                   {Kind: KindString, Required: true, Enum: []string{"created", "paused", "resumed", "deleted", "halted", "hold_released"}},
+		"rotation_id":              {Kind: KindString, Required: true},
+		"provider_id":              {Kind: KindString, Required: true},
+		"key_id":                   {Kind: KindString, Required: true},
+		"username_key_id":          {Kind: KindString, Required: true},
+		"interval_seconds":         {Kind: KindInt, Required: true},
+		"revocation_delay_seconds": {Kind: KindInt, Required: true},
+		"authority_principal_id":   {Kind: KindString, Required: true},
+		"generation":               {Kind: KindInt, Required: true},
+		// environment_id names the rotation's environment and is set on every
+		// action; reason is set only on a cascade pause.
+		"environment_id": {Kind: KindString},
+		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked", "environment_protected", "approval_policy_enabled", "retries_exhausted", "authority_lost", "gate_failed"}},
+		// credential_expires_at is the delivered role's VALID UNTIL when one is
+		// known, so a pause or delete says when the live credential lapses.
+		"credential_expires_at": {Kind: KindString},
+	}),
+	EventRotationRunNow: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id":       {Kind: KindString, Required: true},
+			"skip_overlap": {Kind: KindBool, Required: true},
+		},
+	},
+	// A run's INTENT is written before the provider side effect (or the
+	// publish) and its OUTCOME after. handle is the candidate's role name, public
+	// metadata, never the password. phase is the transition: mint, publish,
+	// drop_candidate, revoke, extend.
+	EventRotationRunIntent: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id": {Kind: KindString, Required: true},
+			"phase":  {Kind: KindString, Required: true, Enum: rotationRunPhases},
+			"handle": {Kind: KindString, Required: true},
+		},
+	},
+	EventRotationRunOutcome: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true, OutcomeUnknown: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id":     {Kind: KindString, Required: true},
+			"phase":      {Kind: KindString, Required: true, Enum: rotationRunPhases},
+			"handle":     {Kind: KindString, Required: true},
+			"error_code": {Kind: KindString},
+			// revision is the catalogue revision a publish outcome produced.
+			"revision": {Kind: KindInt},
+			// not_converged_adapter_targets is the revoke outcome's count of adapter
+			// targets still on the superseded revision (#148, S2b-1).
+			"not_converged_adapter_targets": {Kind: KindInt},
+		},
+	},
+	EventRotationQuarantined: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"run_id":            {Kind: KindString, Required: true},
+			"candidate_handle":  {Kind: KindString, Required: true},
+			"superseded_handle": {Kind: KindString},
+		},
+	},
 	EventDynamicProviderInspected: {
 		SchemaVersion: 1, Retention: RetentionAccess,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
@@ -4380,3 +4518,8 @@ var (
 	// verification is NOT a refusal (verify answers valid=false).
 	TransitRefusalCauses = []string{"state", "version", "compromised", "caller", "operation", "custody-unavailable", "invalid-input"}
 )
+
+// rotationRunPhases are the transitions a rotation run records: the provider
+// side effects and the publish, and abandon, the operator closing a run that
+// owes nothing (an outcome row only; no provider call is bracketed by it).
+var rotationRunPhases = []string{"mint", "publish", "drop_candidate", "revoke", "extend", "abandon"}

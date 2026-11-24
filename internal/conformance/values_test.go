@@ -349,6 +349,19 @@ func scenarioValueDeclare(t *testing.T, db *store.DB) {
 			t.Fatalf("a refused declare left a value behind in %s", env.Env)
 		}
 	}
+
+	// A protected destination refuses a machine caller, which has no field to
+	// confirm it, and the refusal is all-or-nothing like any other.
+	seed(t, db, []string{fmt.Sprintf("UPDATE environments SET protected = TRUE WHERE id = '%s'", prod.Env)})
+	if _, _, err := values.Declare(t.Context(), actor, scope,
+		[]string{string(dev.Env), string(prod.Env)}, "LOG_LEVEL", "forced"); !errors.Is(err, service.ErrProtectedDestination) {
+		t.Fatalf("declare into a protected destination = %v, want protected refusal", err)
+	}
+	for env, want := range map[domain.Scope]string{dev: "debug", prod: "info"} {
+		if cell, err := values.Get(t.Context(), actor, env, "LOG_LEVEL", false); err != nil || cell.Value != want {
+			t.Fatalf("refused protected declare changed %s: %+v, %v", env.Env, cell, err)
+		}
+	}
 }
 
 // scenarioValueCopyFormula is C2's copy clause: copy/bulk-apply run the LOCKED

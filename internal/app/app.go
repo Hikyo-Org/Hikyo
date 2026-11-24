@@ -22,6 +22,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
+	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -381,7 +382,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	cfg = effective
 	// After adoption the managed value decides. A differing bootstrap value is
 	// ignored, so say so without echoing it (it may be invalid).
-	if env := bootstrap.ManagedInputs[config.TLSProfileKey]; env != "" && env != effective.TLSProfile {
+	if env := schema.Normalize(bootstrap.ManagedInputs[config.TLSProfileKey]); env != "" && env != effective.TLSProfile {
 		log.Warn("HIKYO_TLS_PROFILE in the environment is ignored; the adopted managed value decides", "adopted_profile", effective.TLSProfile)
 	}
 	diagnostics.Printf(ctx, 2, "Validating HTTP API contract")

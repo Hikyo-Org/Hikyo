@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/filesync"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
@@ -171,7 +172,7 @@ func (s *fileSyncSession) configDigest() string {
 		Files       []filesync.File
 		Policy      filesync.Policy
 	}{s.cfg.Target, s.cfg.Environment, s.cfg.Destination, s.cfg.Files, s.policy}
-	raw, _ := json.Marshal(input)
+	raw, _ := json.Marshal(input, jsonwire.Stable)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -197,7 +198,7 @@ func (s *fileSyncSession) loadCursor() *fileSyncCursor {
 }
 
 func (s *fileSyncSession) saveCursor(c fileSyncCursor) error {
-	raw, err := json.Marshal(c)
+	raw, err := json.Marshal(c, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

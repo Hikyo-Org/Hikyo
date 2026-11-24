@@ -2,7 +2,7 @@ package ci_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestMainValidationWorkflowPolicySecurityReleaseUsesEphemeralToolchains(t *testing.T) {
@@ -56,7 +58,7 @@ func TestMainValidationWorkflowPolicySecurityReleaseAuthenticatesImmutableCommit
 	const nightly = "v1.2.3-nightly.20261014.42.gaaaaaaaa"
 	api := func(endpoint string, body any) releaseResolverAPICall {
 		t.Helper()
-		raw, err := json.Marshal(body)
+		raw, err := json.Marshal(body, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

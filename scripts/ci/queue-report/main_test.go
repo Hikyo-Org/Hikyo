@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/russross/blackfriday/v2"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type fixture struct {
@@ -44,6 +46,9 @@ type fixture struct {
 	// recent makes a listing by commit show this head's records from every app,
 	// as for a record newer than the suite scan.
 	recent bool
+	// grown, when set, becomes the suite total once a listing by commit is read,
+	// as if suites were added during that read.
+	grown int
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -82,7 +87,7 @@ func newFixture(t *testing.T) *fixture {
 		}
 		if req.Method != http.MethodGet {
 			var body map[string]any
-			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(req.Body, &body); err != nil {
 				t.Error(err)
 			}
 			f.writes = append(f.writes, body)
@@ -104,7 +109,7 @@ func newFixture(t *testing.T) *fixture {
 						current = f.writeMutate(current)
 					}
 					f.checks[i] = current
-					if err := json.NewEncoder(w).Encode(current); err != nil {
+					if err := jsonwire.Encode(w, current); err != nil {
 						t.Error(err)
 					}
 					return
@@ -129,6 +134,9 @@ func newFixture(t *testing.T) *fixture {
 		case path == "git/commits/"+f.r.HeadSHA:
 			result = map[string]any{"sha": f.r.HeadSHA, "parents": f.parents}
 		case strings.HasPrefix(path, "commits/"), strings.HasPrefix(path, "check-suites/"):
+			if f.grown > 0 && strings.HasPrefix(path, "commits/") {
+				f.suites = f.grown
+			}
 			checks := []check{}
 			for _, c := range f.checks {
 				if c.Name == req.URL.Query().Get("check_name") && f.listed(path, c) {
@@ -148,7 +156,7 @@ func newFixture(t *testing.T) *fixture {
 		if f.mutate != nil {
 			result = f.mutate(path, result)
 		}
-		if err := json.NewEncoder(w).Encode(result); err != nil {
+		if err := jsonwire.Encode(w, result); err != nil {
 			t.Error(err)
 		}
 	}))
@@ -180,7 +188,7 @@ func (f *fixture) serveGraphQL(t *testing.T, w http.ResponseWriter, req *http.Re
 	var body struct {
 		Query string `json:"query"`
 	}
-	if req.Method != http.MethodPost || json.NewDecoder(req.Body).Decode(&body) != nil {
+	if req.Method != http.MethodPost || json.UnmarshalRead(req.Body, &body) != nil {
 		t.Error("GraphQL must be a POST with a query")
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -211,7 +219,7 @@ func (f *fixture) serveGraphQL(t *testing.T, w http.ResponseWriter, req *http.Re
 	if f.graphqlFault != "" {
 		response["errors"] = []map[string]string{{"message": f.graphqlFault}}
 	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := jsonwire.Encode(w, response); err != nil {
 		t.Error(err)
 	}
 }
@@ -592,7 +600,7 @@ func (transport *rejectNetworkTransport) RoundTrip(*http.Request) (*http.Respons
 
 func TestExecuteRejectsInvalidRepositoryBeforeAnyHTTPRequest(t *testing.T) {
 	f := newFixture(t)
-	data, err := json.Marshal(f.e)
+	data, err := json.Marshal(f.e, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

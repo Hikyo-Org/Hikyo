@@ -367,6 +367,20 @@ const (
 	OpCredentialReset         Operation = "credential-reset.org"
 	OpCredentialResetInstance Operation = "credential-reset.instance"
 
+	// The incident ledger (#1039, O5): opening, reading and working an incident
+	// needs the credential-reset capability at the incident's scope, with no new
+	// capability atom. An account, project or adapter incident resolves to its
+	// org and uses the org operation; the instance operation covers a target
+	// that spans orgs. The two lease listings are the enumeration's bounded
+	// reads of non-terminal dynamic leases and run under the same formula.
+	OpIncidentOrg            Operation = "incident.org"
+	OpIncidentInstance       Operation = "incident.instance"
+	OpIncidentLeasesProject  Operation = "incident.leases-project"
+	OpIncidentLeasesInstance Operation = "incident.leases-instance"
+	// OpIncidentAdapterWork is the enumeration's bounded read of one project's
+	// non-terminal route moves and pending scrub jobs.
+	OpIncidentAdapterWork Operation = "incident.adapter-work"
+
 	// Audit trail reads (#45, audit-model ADR). One operation per addressed
 	// depth — the registry pins one depth per tenant operation, so the three
 	// depths are three rows sharing one service implementation; the formula
@@ -701,6 +715,31 @@ const (
 	OpLeaseRevoke                     Operation = "lease.revoke"
 	OpLeaseSettle                     Operation = "lease.settle"
 
+	// Scheduled credential rotation (#148, S1: configuration only). Create
+	// records the creating human as the rotation's authority principal, so it
+	// needs the full chain the S2 run will later re-check: edit and publish to
+	// stage and publish the new value, reveal to read the key. Pause, resume
+	// and delete change the schedule of an existing rotation and need
+	// publish@env; inspect (list and show) is a bare read.
+	OpRotationCreate  Operation = "rotation.create"
+	OpRotationInspect Operation = "rotation.inspect"
+	OpRotationPause   Operation = "rotation.pause"
+	OpRotationResume  Operation = "rotation.resume"
+	OpRotationDelete  Operation = "rotation.delete"
+	// OpRotationRunNow asks for a run now (#148, S2b-1): it requests the run, the
+	// executor drives it through the same Gate and authority as a scheduled one.
+	// edit, publish and reveal at env (resume's formula) plus a publish ceremony.
+	OpRotationRunNow Operation = "rotation.run_now"
+	// OpRotationReleaseHold clears the restore hold a restore put on a rotation
+	// (#148, S2b-2): resume's formula plus a publish ceremony, human only.
+	OpRotationReleaseHold Operation = "rotation.release_hold"
+	// OpRotationRuns lists a rotation's runs (read@env, a bare read).
+	OpRotationRuns Operation = "rotation.runs"
+	// OpRotationRun is the executor's own publish transaction (#148, S2): not a
+	// wire operation. It binds the run row write to the recorded authority's
+	// publish@env proof, beside the staged values and the revision.
+	OpRotationRun Operation = "rotation.run"
+
 	// SSH user certificates (#155). Everything is environment-scoped. CA and
 	// profile management is manage-identities@project; reads of public trust
 	// material and metadata are read@environment (machine-holdable, so a host
@@ -910,6 +949,9 @@ const (
 	StoreAdaptersMoveTarget             StoreOp = "adapters.MoveTarget"
 	StoreAdaptersMoveOrigin             StoreOp = "adapters.MoveOrigin"
 	StoreAdaptersMove                   StoreOp = "adapters.Move"
+	StoreAdaptersListOpenMoves          StoreOp = "adapters.ListOpenMoves"
+	StoreAdaptersListScrubs             StoreOp = "adapters.ListScrubs"
+	StoreAdaptersListOrphanedMoves      StoreOp = "adapters.ListOrphanedMoves"
 	// Reencrypt walk over the two adapter credential columns.
 	StoreAdaptersListForReencrypt      StoreOp = "adapters.ListAdaptersForReencrypt"
 	StoreAdaptersReencrypt             StoreOp = "adapters.ReencryptAdapter"
@@ -950,11 +992,50 @@ const (
 	StoreDynamicProvidersListForReencrypt     StoreOp = "dynamic.ListProvidersForReencrypt"
 	StoreDynamicProvidersReencrypt            StoreOp = "dynamic.ReencryptProvider"
 	StoreDynamicLeasesActiveIDsForProvider    StoreOp = "dynamic.ActiveLeaseIDsForProvider"
+	// The incident enumeration's two bounded lease listings: one project, and
+	// every org (instance-scoped proof only).
+	StoreDynamicLeasesListNonTerminalProject  StoreOp = "dynamic.ListNonTerminalLeasesInProject"
+	StoreDynamicLeasesListNonTerminalInstance StoreOp = "dynamic.ListNonTerminalLeasesInInstance"
 	StoreDynamicLeasesCreate                  StoreOp = "dynamic.CreateLease"
 	StoreDynamicLeasesGet                     StoreOp = "dynamic.GetLease"
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
 	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
 	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+
+	// Scheduled credential rotation configuration (#148, S1). Proof-carrying,
+	// environment-bound; the run state machine (S2) adds its own ops.
+	StoreRotationsCreate StoreOp = "rotations.Create"
+	StoreRotationsGet    StoreOp = "rotations.Get"
+	StoreRotationsList   StoreOp = "rotations.List"
+	// StoreRotationsSummarize reads the run summary (last run, owed-drop counts) of
+	// the rotations a response returns (#148 S4). Only the operations whose response
+	// carries a rotation hold it; the executor and the gates never do.
+	StoreRotationsSummarize     StoreOp = "rotations.Summarize"
+	StoreRotationsSetState      StoreOp = "rotations.SetState"
+	StoreRotationsCountOpenRuns StoreOp = "rotations.CountOpenRuns"
+	// StoreRotationsPurgeEnvironment removes a deleted environment's rotation
+	// rows; StoreRotationsPauseForProvider pauses a project's active rotations
+	// that mint from a provider being deleted or losing its credential.
+	StoreRotationsPurgeEnvironment StoreOp = "rotations.PurgeEnvironment"
+	StoreRotationsPauseForProvider StoreOp = "rotations.PauseForProvider"
+	// StoreRotationsPauseForEnvironment pauses the active rotations of an
+	// environment, or of the whole project, that became protected or gained an
+	// approval policy.
+	StoreRotationsPauseForEnvironment StoreOp = "rotations.PauseForEnvironment"
+	// StoreRotationsBeginRunPublish and StoreRotationsRecordRunPublish are the run
+	// row's fenced writes inside the executor's publish transaction;
+	// StoreRotationsAbandonOpenRuns is the delete --abandon quarantine;
+	// StoreRotationsProviderLiveRuns is the provider delete guard (#148, S2).
+	StoreRotationsBeginRunPublish  StoreOp = "rotations.BeginRunPublish"
+	StoreRotationsRecordRunPublish StoreOp = "rotations.RecordRunPublish"
+	StoreRotationsAbandonOpenRuns  StoreOp = "rotations.AbandonOpenRuns"
+	StoreRotationsProviderLiveRuns StoreOp = "rotations.ProviderLiveRuns"
+	// StoreRotationsRequestRun records a run-now request; StoreRotationsListRuns
+	// is the runs inspection read (#148, S2b-1).
+	StoreRotationsRequestRun StoreOp = "rotations.RequestRun"
+	StoreRotationsListRuns   StoreOp = "rotations.ListRuns"
+	// StoreRotationsReleaseHold clears a rotation's restore hold (#148, S2b-2).
+	StoreRotationsReleaseHold StoreOp = "rotations.ReleaseHold"
 
 	// SSH user certificates (#155). Proof-carrying, environment-bound; the
 	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
@@ -1228,6 +1309,8 @@ const (
 	StoreReencryptPairingInvites           StoreOp = "reencrypt.ReencryptPairingInvites"
 	StoreReencryptListPairingExchanges     StoreOp = "reencrypt.ListPairingExchangesForReencrypt"
 	StoreReencryptPairingExchanges         StoreOp = "reencrypt.ReencryptPairingExchanges"
+	StoreReencryptListOidcLifecycleSecrets StoreOp = "reencrypt.ListOidcLifecycleSecretsForReencrypt"
+	StoreReencryptOidcLifecycleSecret      StoreOp = "reencrypt.ReencryptOidcLifecycleSecret"
 	StoreReencryptListRemotes              StoreOp = "reencrypt.ListRemotesForReencrypt"
 	StoreReencryptRemote                   StoreOp = "reencrypt.ReencryptRemote"
 	StoreReencryptListPkiIssuers           StoreOp = "reencrypt.ListPkiIssuersForReencrypt"
@@ -1471,6 +1554,12 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// read-only for the auditedNone check (#147).
 	StoreDynamicLeasesGet:  true,
 	StoreDynamicLeasesList: true,
+	// Rotation inspect is a bare-read (`read@env`) (#148).
+	StoreRotationsGet:           true,
+	StoreRotationsList:          true,
+	StoreRotationsSummarize:     true,
+	StoreRotationsCountOpenRuns: true,
+	StoreRotationsListRuns:      true,
 	// SSH reads of public trust material and certificate metadata (#155).
 	StoreSSHGetCA:            true,
 	StoreSSHListCAs:          true,
@@ -1540,6 +1629,9 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreAdaptersEnvironments:                 true,
 	StoreAdaptersConflicts:                    true,
 	StoreAdaptersMove:                         true,
+	StoreAdaptersListOpenMoves:                true,
+	StoreAdaptersListScrubs:                   true,
+	StoreAdaptersListOrphanedMoves:            true,
 	StoreCatalogueGroupGet:                    true,
 	StoreCatalogueGroupList:                   true,
 	StoreCatalogueGroupCount:                  true,
@@ -2305,6 +2397,54 @@ var operationTable = map[Operation]opSpec{
 		events:  []audit.EventType{audit.EventAuthCredentialResetIssued},
 	},
 
+	// The incident ledger (#1039). The formula is the credential-reset formula
+	// itself, so whoever may reset a credential at a scope may open and work an
+	// incident there and nobody else. The ledger rides the resolution surface
+	// and the events ride the instance trail, so there is no store op for it.
+	OpIncidentOrg: {
+		class:   ClassTenant,
+		level:   domain.LevelOrg,
+		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		events: []audit.EventType{
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+		},
+	},
+	OpIncidentInstance: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
+		events: []audit.EventType{
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+		},
+	},
+	// The project listing addresses the project and takes the org-level
+	// credential-reset atom, the way project lifecycle takes manage-projects at
+	// the org. The lease read is the enumeration of an incident the operation
+	// above opened, so it declares that incident's opening event.
+	OpIncidentLeasesProject: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesListNonTerminalProject: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+	OpIncidentLeasesInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesListNonTerminalInstance: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+
+	// The adapter work read runs under the adapter inspect formula: the
+	// enumeration reaches it only for a caller who may inspect adapters, so the
+	// moves and scrubs are read under the same authority as the adapter list.
+	OpIncidentAdapterWork: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAdaptersListOpenMoves: true, StoreAdaptersListScrubs: true, StoreAdaptersListOrphanedMoves: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+
 	// The Project aggregate (#48). `manage-projects` is the permission-model ADR's
 	// own wording for project lifecycle ("create and delete projects"), and a
 	// rename is lifecycle too — identity is the immutable id, so a rename
@@ -2491,7 +2631,10 @@ var operationTable = map[Operation]opSpec{
 			// SSH rows (#155) go with the environment, but only once no live
 			// CA remains: the purge refuses otherwise.
 			StoreSSHPurgeEnvironment: true,
-			StoreEnvironmentsDelete:  true, StoreAuditTenantInsert: true,
+			// Rotation rows (#148) go with it too, but only once no rotation
+			// is live and no run is in flight: the purge refuses otherwise.
+			StoreRotationsPurgeEnvironment: true,
+			StoreEnvironmentsDelete:        true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
@@ -2843,7 +2986,8 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
+			StoreRotationsPurgeEnvironment: true,
+			StoreDefinitionsPlanGet:        true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
@@ -3354,7 +3498,10 @@ var operationTable = map[Operation]opSpec{
 			StoreApprovalApproverClear:  true,
 			StoreApprovalBypasserInsert: true, StoreApprovalBypasserList: true,
 			StoreApprovalBypasserClear: true,
-			StoreAuditTenantInsert:     true,
+			// An enabled policy pauses the covered environments' active rotations
+			// (#148): an unattended publish would become an approval request.
+			StoreRotationsPauseForEnvironment: true,
+			StoreAuditTenantInsert:            true,
 		},
 		// A policy change bumps its version; every active request pinned to the
 		// old version fails closed and is invalidated the next time it is voted
@@ -3362,7 +3509,7 @@ var operationTable = map[Operation]opSpec{
 		// env-scoped proof those paths carry). The project-scoped policy proof
 		// deliberately does not reach into env-scoped request rows.
 		events: []audit.EventType{
-			audit.EventApprovalPolicyChanged,
+			audit.EventApprovalPolicyChanged, audit.EventRotationConfigured,
 		},
 	},
 	OpApprovalPolicyRead: {
@@ -3532,7 +3679,7 @@ var operationTable = map[Operation]opSpec{
 			StoreAccessRequestGet: true, StoreAccessRequestGrant: true,
 			StoreAccessRequestResolve: true, StoreAccessVoteGet: true,
 			StoreAccessVoteInsert: true, StoreAccessVoteList: true,
-			StoreAccessPolicyGet: true, StoreAccessApproverList: true,
+			StoreAccessPolicyGet: true, StoreAccessPolicyCovering: true, StoreAccessApproverList: true,
 			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
 			StoreAuditTenantInsert: true,
 		},
@@ -3714,6 +3861,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListTotpCreds: true, StoreReencryptTotpCred: true,
 			StoreReencryptListRecoveryCodes: true, StoreReencryptRecoveryCodes: true,
 			StoreReencryptListOidcProviders: true, StoreReencryptOidcProvider: true,
+			StoreReencryptListOidcLifecycleSecrets: true, StoreReencryptOidcLifecycleSecret: true,
 			StoreReencryptListOauth2Providers: true, StoreReencryptOauth2Provider: true,
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
 			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,
@@ -4408,14 +4556,17 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapProjectSettings, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreEnvironmentsGetSettings: true, StoreEnvironmentsSetSettings: true,
-			StoreAuditTenantInsert: true,
+			StoreRotationsPauseForEnvironment: true,
+			StoreAuditTenantInsert:            true,
 		},
 		// auth.effective_window_lowered is emitted by the LowerEffectiveWindow
 		// library this knob calls (#54 B6) — declared here because #55 is the
 		// caller the completeness invariant was waiting for.
+		// Protecting an environment pauses its active rotations (#148): their
+		// publishes would need a per-publish ceremony an unattended run cannot give.
 		events: []audit.EventType{
 			audit.EventReauthWindowChanged, audit.EventProtectedFlagChange,
-			audit.EventAuthEffectiveWindowLowered,
+			audit.EventAuthEffectiveWindowLowered, audit.EventRotationConfigured,
 		},
 	},
 	OpOrgRetentionRead: {
@@ -5312,14 +5463,16 @@ var operationTable = map[Operation]opSpec{
 	OpDynamicProviderCredentialRevoke: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventDynamicProviderCredentialRevoke},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreRotationsPauseForProvider: true, StoreAuditTenantInsert: true},
+		// A rotation minting from the provider is paused with it (#148).
+		events: []audit.EventType{audit.EventDynamicProviderCredentialRevoke, audit.EventRotationConfigured},
 	},
 	OpDynamicProviderDelete: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreRotationsPauseForProvider: true, StoreRotationsProviderLiveRuns: true, StoreAuditTenantInsert: true},
+		// A rotation minting from the provider is paused with it (#148).
+		events: []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent, audit.EventRotationConfigured},
 	},
 	OpLeaseMint: {
 		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
@@ -5352,6 +5505,99 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventDynamicLeaseSettleRequested},
+	},
+
+	// --- Scheduled credential rotation (#148, S1) -----------------------------
+	OpRotationCreate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{StoreRotationsCreate: true, StoreRotationsGet: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsList: true, StoreRotationsSummarize: true},
+		auditedNone: true,
+	},
+	OpRotationPause: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationResume: {
+		class: ClassTenant, level: domain.LevelEnv,
+		// Resume is the human act that re-arms a standing delegation, so it needs
+		// the full formula (edit, publish and reveal): the per-key checks (the caller's, and the recorded
+		// authority's) run under this operation, so a denial is recorded as a
+		// rotation.resume denial.
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		// Resume consumes the publish reauthentication window over the keys after
+		// the grant passes; its refusal is a reachable 403.
+		postGrantForbidden: true,
+		// Resume re-checks the provider can mint and both keys still exist and are
+		// secret-classified before the per-key authority checks.
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationDelete: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined, audit.EventRotationRunOutcome},
+	},
+	OpRotationRunNow: {
+		class: ClassTenant, level: domain.LevelEnv,
+		// Run-now is resume's equivalent, so it needs resume's formula (edit,
+		// publish and reveal), authorized on both stored keys as keys: a denial is
+		// recorded as a rotation.run_now denial.
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		// Run-now consumes the publish reauthentication window over the rotation's
+		// keys after the grant passes; its refusal is a reachable 403.
+		postGrantForbidden: true,
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsCountOpenRuns: true, StoreRotationsRequestRun: true, StoreAuditTenantInsert: true},
+		events:             []audit.EventType{audit.EventRotationRunNow},
+	},
+	OpRotationReleaseHold: {
+		class: ClassTenant, level: domain.LevelEnv,
+		// Releasing the hold lets a restored rotation mint again, so it needs
+		// resume's formula, authorized on both stored keys, and consumes the
+		// publish reauthentication window over them. For an active rotation it first
+		// runs the Gate's own checks (unattended environment, provider, keys, the
+		// recorded authority, no authority draft), hence those store reads.
+		formula: Formula{
+			{Cap: domain.CapEdit, At: domain.LevelEnv},
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+			{Cap: domain.CapReveal, At: domain.LevelEnv},
+		},
+		postGrantForbidden: true,
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		events:             []audit.EventType{audit.EventRotationConfigured},
+	},
+	OpRotationRuns: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsListRuns: true},
+		auditedNone: true,
+	},
+	OpRotationRun: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsBeginRunPublish: true, StoreRotationsRecordRunPublish: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationRunIntent, audit.EventRotationRunOutcome, audit.EventRotationQuarantined},
 	},
 
 	// --- SSH user certificates (#155) -----------------------------------------
@@ -5923,7 +6169,7 @@ type FormulaPin struct {
 	Class              string   `json:"class"`
 	Level              string   `json:"level"`
 	Formula            []string `json:"formula"`
-	PostGrantForbidden bool     `json:"post_grant_forbidden,omitempty"`
+	PostGrantForbidden bool     `json:"post_grant_forbidden,omitzero"`
 }
 
 var classNames = map[Class]string{

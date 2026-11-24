@@ -50,6 +50,7 @@ import {
   type WorkspaceBearer,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
+import { instanceOrigin, isAppMode } from '../app/shell.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { useNavigationGuard } from '../app/useNavigationGuard.ts';
 import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
@@ -67,7 +68,12 @@ import { SidePanel } from '../ui/SidePanel.tsx';
 import { PanelForm } from './Sections.tsx';
 import { RemotePairing } from './RemotePairing.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
-import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
+import {
+  appModeWorkspaceReason,
+  continueInBrowserAction,
+  useWorkspaceHandoff,
+  workspaceHandoffAction,
+} from './useWorkspaceHandoff.ts';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 
 /**
@@ -213,6 +219,8 @@ export function RemoteCard({
         ? { kind: 'refused', message: 'Remote connections are read-only in this demo.' }
         : duplicateIdentity
         ? { kind: 'refused', message: remoteRecoveryText(remote, 'duplicate-identity') ?? '' }
+        : isAppMode()
+          ? { kind: 'refused', message: appModeWorkspaceReason }
         : live === undefined
           ? { kind: 'establishment' }
           : { kind: 'refused', message: 'This workspace is already open in another tab.' },
@@ -231,17 +239,20 @@ export function RemoteCard({
     updateJob.data === undefined ? undefined : updateJobOutcome(updateJob.data);
   const staleness = stalenessText(remote);
   useWorkspaceLiveness(live, () => setEnded(true));
-  const handoffAction = workspaceHandoffAction(
-    handoff,
-    {
-      ready: `Continue to ${origin} to sign in`,
-      authorising: 'Waiting for sign-in…',
-    },
-    () => {
-      setEnded(false);
-      handoff.retry();
-    },
-  );
+  // The desktop app cannot run the popup handoff; its only way forward is the browser.
+  const handoffAction = isAppMode()
+    ? continueInBrowserAction
+    : workspaceHandoffAction(
+        handoff,
+        {
+          ready: `Continue to ${origin} to sign in`,
+          authorising: 'Waiting for sign-in…',
+        },
+        () => {
+          setEnded(false);
+          handoff.retry();
+        },
+      );
 
   const applyUpdate = async () => {
     if (update?.latest_version === undefined) {
@@ -561,7 +572,7 @@ export function AddRemote({ onAdded }: { onAdded?: () => void } = {}) {
       );
       return;
     }
-    if (submittedOrigin === globalThis.location.origin) {
+    if (submittedOrigin === instanceOrigin()) {
       setValidationFailure('That is this instance. A remote must be another instance.');
       return;
     }

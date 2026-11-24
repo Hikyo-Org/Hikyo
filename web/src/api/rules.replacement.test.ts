@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { ALL, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError } from './client.ts';
-import { removeRule, RuleSaveFailure, ruleFailureText, saveRule, wideningEnvironment } from './rules.ts';
+import { removeRule, RuleSaveFailure, ruleFailureText, rulesListingText, saveRule, wideningEnvironment } from './rules.ts';
 
 const writes = vi.hoisted(() => ({ parsed: vi.fn(), ok: vi.fn(), ceremony: vi.fn() }));
 vi.mock('./client.ts', async (original) => ({
@@ -99,4 +99,11 @@ it('does not reauthenticate twice over the same environment', async () => {
 it('reads no environment from any other refusal', () => {
   expect(wideningEnvironment(new ApiError(409, 'request failed with 409', 'conflict', undefined, [], undefined, replaceRulesOp))).toBeUndefined();
   expect(wideningEnvironment(new ApiError(409, 'request failed with 409', widening('env_a').detail, undefined, [], undefined, whoamiOp))).toBeUndefined();
+});
+
+it('does not blame manage-members for a rule 404 in the system organisation', () => {
+  const missing = new ApiError(404, 'not found');
+  expect(rulesListingText(missing)).toBe('You hold no manage-members here, so access rules are not shown.');
+  expect(rulesListingText(missing, true)).toMatch(/^Access rules do not apply to the Hikyo system configuration organisation/);
+  expect(rulesListingText(new ApiError(403, 'step up'), true)).toMatch(/second factor/);
 });

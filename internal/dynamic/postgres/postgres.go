@@ -78,6 +78,9 @@ func newWithDialer(cfg Config, resolver netpolicy.Resolver, dialer netpolicy.Dia
 	if err != nil {
 		return nil, fmt.Errorf("postgres: parse origin: %w", err)
 	}
+	if len(connConfig.Fallbacks) != 0 {
+		return nil, errors.New("postgres: origin must name exactly one host")
+	}
 	publicDialer, err := netpolicy.NewPublicDialer(cfg.AllowedCIDRs, resolver, dialer)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: egress policy: %w", err)
@@ -129,6 +132,12 @@ func canonicalDSN(origin, password string) (string, string, error) {
 	if host == "" {
 		return "", "", fmt.Errorf("postgres: origin %q must carry a host", origin)
 	}
+	// url.Parse accepts "h1:5432,h2:5432"; pgx would turn it into a primary plus
+	// fallbacks that this provider's TLS pinning does not cover. It also accepts
+	// "h1:5432:5433", whose Hostname "h1:5432" pgx then refuses as a bad port.
+	if strings.Contains(u.Host, ",") || (strings.Contains(u.Hostname(), ":") && !strings.HasPrefix(u.Host, "[")) {
+		return "", "", fmt.Errorf("postgres: origin %q must name exactly one host", origin)
+	}
 	if strings.Trim(u.Path, "/") == "" {
 		return "", "", fmt.Errorf("postgres: origin %q must name a database", origin)
 	}
@@ -175,8 +184,32 @@ func (p *Provider) CreateRole(ctx context.Context, req dynamic.CreateRoleRequest
 		return err
 	}
 	defer conn.Close(context.Background())
-	_, err = conn.Exec(ctx, createRoleSQL(req))
+	_, err = conn.Exec(ctx, boundedStatement(ctx, createRoleSQL(req)))
 	return classifyExec(err)
+}
+
+// boundedStatement prefixes a statement with a server-side statement_timeout
+// shorter than the time the client has left. Without it the client abandoning the
+// call at its deadline does not stop the server: a CREATE ROLE already received can
+// still commit afterwards (a lock wait that outlasts the cancel, a dropped
+// connection), leaving a role nobody tracks. With it the server aborts the
+// statement first, which answers with an error (SQLSTATE 57014), so the mint is a
+// definite refusal instead of an ambiguous timeout. The timeout is three quarters of
+// the remaining time so the abort and its answer land before the client gives up.
+// It is a bound, not a guarantee: servers before PostgreSQL 13 start the timer once
+// per message rather than per statement, and a partition during COMMIT is still
+// ambiguous. Both leave a role that cannot be used: VALID UNTIL expires it, and its
+// password is published only after a successful mint.
+func boundedStatement(ctx context.Context, sql string) string {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return sql
+	}
+	ms := time.Until(deadline).Milliseconds() * 3 / 4
+	if ms < 1 {
+		ms = 1
+	}
+	return fmt.Sprintf("SET statement_timeout = %d; %s", ms, sql)
 }
 
 // ExtendRole moves VALID UNTIL forward (or back). An absent role is a definite
@@ -273,7 +306,12 @@ func classifyExec(err error) error {
 	var pg *pgconn.PgError
 	if errors.As(err, &pg) {
 		// The server answered: the statement ran and errored, so the role state
-		// is known. A definite refusal, never ambiguous.
+		// is known. A definite refusal, never ambiguous. SQLSTATE 2BP01
+		// (dependent objects) is the named case of a drop of a role that owns
+		// objects, so a rotation can hold that run visibly instead of guessing.
+		if pg.Code == "2BP01" {
+			return fmt.Errorf("%w: %w: %w", dynamic.ErrRoleOwnsObjects, dynamic.ErrRefused, err)
+		}
 		return fmt.Errorf("%w: %v", dynamic.ErrRefused, err)
 	}
 	if errors.Is(err, dynamic.ErrUnreachable) {

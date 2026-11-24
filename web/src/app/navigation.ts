@@ -420,7 +420,7 @@ export const SURFACES = defineSurfaceRegistry([
   {
     id: 'cli-login',
     path: '/login/cli',
-    label: 'Authorize CLI sign-in',
+    label: 'Authorize sign-in',
     section: null,
     mode: 'ceremony',
     chrome: 'none',
@@ -432,7 +432,7 @@ export const SURFACES = defineSurfaceRegistry([
   {
     id: 'cli-reauth',
     path: '/reauth/cli',
-    label: 'Authorize CLI',
+    label: 'Authorize this request',
     section: null,
     mode: 'ceremony',
     chrome: 'none',

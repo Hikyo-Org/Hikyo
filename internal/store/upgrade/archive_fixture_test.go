@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -62,34 +61,6 @@ func both(t *testing.T, fn func(*testing.T, upgrade.Config)) {
 
 func schemaConfig(cfg upgrade.Config) store.Config {
 	return store.Config{Engine: store.Engine(cfg.Engine), Path: cfg.Path, DSN: cfg.DSN}
-}
-
-// Archive acceptance is an external integration harness: authority comes from
-// actual source inspection, while production F5 must additionally verify the
-// signed release/backup evidence represented by these structurally valid claims.
-func legacyOperation(t *testing.T, cfg upgrade.Config, manifest releaseidentity.MigrationManifest) upgrade.Operation {
-	t.Helper()
-	source, err := upgrade.InspectInstalled(t.Context(), cfg, manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var incarnation, nonce upgrade.Incarnation
-	incarnation[0] = 1
-	nonce[0] = 17
-	now := time.Now().UTC().Add(-time.Second)
-	route := releaseidentity.Hash([]byte("route"))
-	floor := releaseidentity.SnapshotFloor{MetadataSequence: 1, MetadataSHA256: releaseidentity.Hash([]byte("metadata")), HighestReleaseSequence: 100, CatalogSequence: 1, CatalogSHA256: releaseidentity.Hash([]byte("catalog"))}
-	return upgrade.Operation{
-		SourceSchemaDigest: source.SchemaDigest, TargetSchemaDigest: releaseidentity.Hash([]byte("target schema")),
-		RouteSource: source.Source, Source: source.Source,
-		Target:                releaseidentity.Identity{Profile: releaseidentity.StableV1, Version: "1.0.1", Sequence: 1, Commit: strings.Repeat("a", 40), CompatibilitySHA256: releaseidentity.Hash([]byte("compatibility")), ManifestSHA256: releaseidentity.Hash([]byte("1"))},
-		SourceMigrationDigest: source.MigrationDigest, TargetMigrationDigest: releaseidentity.Hash([]byte("target migrations")),
-		RouteDigest: route, Generation: 1, RouteLength: 1, Phase: upgrade.Prepared, BackupID: "backup_fixture", RecoveryIncarnation: incarnation,
-		Acceptance: upgrade.Acceptance{Floor: floor, ReleaseRootDigest: releaseidentity.Hash([]byte("pinned root")), Attestation: &upgrade.AttestationUse{
-			Authority: "legacy-proposal/v1", Nonce: nonce, EvidenceDigest: releaseidentity.Hash([]byte("verified evidence fixture")), OperatorKeyID: releaseidentity.Hash([]byte("operator public key")),
-			InstanceID: source.InstanceID, RestoreEpoch: source.RestoreEpoch, RecoveryIncarnation: incarnation, RouteGeneration: 1, RouteDigest: route, IssuedAt: now, ExpiresAt: now.Add(time.Hour),
-		}},
-	}
 }
 
 // The current root restore API checks table inventory before invoking its

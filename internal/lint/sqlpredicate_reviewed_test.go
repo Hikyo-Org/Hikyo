@@ -1,11 +1,14 @@
 package lint
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestScopedQueryReviewInventoryRejectsAmbiguousJSON(t *testing.T) {
@@ -25,7 +28,7 @@ func TestScopedQueryReviewInventoryRejectsAmbiguousJSON(t *testing.T) {
 }
 
 func TestScopedQueryReviewInventoryRequiresBothEngineContracts(t *testing.T) {
-	var definitions map[string]map[string]json.RawMessage
+	var definitions map[string]map[string]jsontext.Value
 	if err := json.Unmarshal(scopedReviewJSON(t), &definitions); err != nil {
 		t.Fatal(err)
 	}
@@ -43,12 +46,12 @@ func TestScopedQueryReviewInventoryRequiresBothEngineContracts(t *testing.T) {
 			t.Run(kind+"/"+caseName, func(t *testing.T) {
 				original := definitions[name][kind]
 				defer func() { definitions[name][kind] = original }()
-				modified, err := json.Marshal(hashes)
+				modified, err := json.Marshal(hashes, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
 				definitions[name][kind] = modified
-				source, err := json.Marshal(definitions)
+				source, err := json.Marshal(definitions, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -82,7 +85,7 @@ func TestReviewedScopedQueryRequiresExactSQLAPIAndEvidence(t *testing.T) {
 	api := generatedContract{BindSitesKnown: true}
 	review := scopedQueryReview{SQLHash: q.Hash(), APIHash: api.hash(), Authority: "Exact proof-derived owning org, project and retained snapshot membership.", Tests: []string{"boundary_test.go:TestBoundary"}}
 	review.FlowTests = []string{"boundary_test.go:TestUnrelated"}
-	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) != 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, review, root); len(got) != 0 {
 		t.Fatal(got)
 	}
 	for name, modify := range map[string]func(*scopedQueryReview){
@@ -102,28 +105,28 @@ func TestReviewedScopedQueryRequiresExactSQLAPIAndEvidence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := review
 			modify(&bad)
-			if got := checkScopedQueryReview("sqlite", q, api, true, bad, root); len(got) == 0 {
+			if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, bad, root); len(got) == 0 {
 				t.Fatal("incomplete review accepted")
 			}
 		})
 	}
-	if got := checkScopedQueryReview("sqlite", q, api, false, review, root); len(got) == 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, false, review, root); len(got) == 0 {
 		t.Fatal("missing generated API accepted")
 	}
 	api.BindSitesKnown = false
-	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) == 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, review, root); len(got) == 0 {
 		t.Fatal("unknown bindings accepted")
 	}
 	api.BindSitesKnown = true
 	q.Annotation = "instance-scoped"
-	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) == 0 {
+	if got := checkScopedQueryReview(osSource{}, "sqlite", q, api, true, review, root); len(got) == 0 {
 		t.Fatal("tenant query relabeled instance-scoped")
 	}
 }
 
 func scopedReviewJSON(t *testing.T) []byte {
 	t.Helper()
-	source, err := json.Marshal(reviewedPins.ScopedQueries)
+	source, err := json.Marshal(reviewedPins.ScopedQueries, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

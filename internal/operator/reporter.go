@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"sync"
@@ -18,6 +18,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -294,7 +295,7 @@ func (r *HikyoSecretReconciler) reportStatus(ctx context.Context, cr *hikyov1.Hi
 	}
 	conditions := reportConditions(cr)
 	body := rep.buildReport(cr, in.inst, vocabulary, conditions, r.reportInterval(cr))
-	content, err := json.Marshal(body)
+	content, err := json.Marshal(body, jsonwire.Stable)
 	if err != nil {
 		r.reportEvent(cr, &st, now, ReasonStatusReportFailed, "status report: encode: %v", err)
 		return res

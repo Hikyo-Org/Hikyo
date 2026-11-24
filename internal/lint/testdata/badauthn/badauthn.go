@@ -17,7 +17,7 @@ func WriteDenial(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertIn
 // SecondWriter is the violation: a mutating generated query reached from the
 // resolution surface outside the denial writer.
 func SecondWriter(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertTenantAuditEventParams) error {
-	return q.InsertTenantAuditEvent(ctx, p)
+	return q.InsertTenantAuditEvent(ctx, p) // want "SecondWriter names the mutating query InsertTenantAuditEvent, and SecondWriter is not in the pinned enumerated write list"
 }
 
 // ReadsAreFine proves the analyzer does not flag reads.
@@ -30,6 +30,13 @@ func ReadsAreFine(ctx context.Context, q *sqlitegen.Queries, id string) (string,
 // and invoked through the variable. Naming the method at all must be caught,
 // or the guard is one indirection away from useless.
 func MethodValueWriter(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertTenantAuditEventParams) error {
-	write := q.InsertTenantAuditEvent
+	write := q.InsertTenantAuditEvent // want "MethodValueWriter names the mutating query InsertTenantAuditEvent, and MethodValueWriter is not in the pinned enumerated write list"
 	return write(ctx, p)
+}
+
+// A package-level initializer is never an approved writer.
+var packageLevelWriter = (*sqlitegen.Queries).InsertTenantAuditEvent // want "a package-level declaration names the mutating query InsertTenantAuditEvent"
+
+var writeHook = func(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertTenantAuditEventParams) error {
+	return q.InsertTenantAuditEvent(ctx, p) // want "a package-level declaration names the mutating query InsertTenantAuditEvent"
 }

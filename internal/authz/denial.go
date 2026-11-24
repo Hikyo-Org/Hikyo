@@ -1,6 +1,7 @@
 package authz
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"strings"
@@ -132,14 +133,15 @@ func (a *TxAuthorizer) captureDenial(ctx context.Context, principal domain.Princ
 			OccurredAt:    time.Now().UTC(),
 			// Actor class is resolved at flush (principals.kind), inside the
 			// flush transaction.
-			Actor:       a.deniedActor(principal),
-			AuthorityID: a.deniedAuthority(principal),
-			Object:      a.object,
-			Outcome:     audit.OutcomeDenied,
-			SourceIP:    wire.SourceIP,
-			UserAgent:   wire.UserAgent,
-			Origin:      wire.Origin,
-			Payload:     payload,
+			Actor:         a.deniedActor(principal),
+			AuthorityID:   cmp.Or(a.deniedAuthority(principal), wire.AuthorityID),
+			Object:        a.object,
+			Outcome:       audit.OutcomeDenied,
+			CorrelationID: wire.CorrelationID,
+			SourceIP:      wire.SourceIP,
+			UserAgent:     wire.UserAgent,
+			Origin:        wire.Origin,
+			Payload:       payload,
 		},
 	})
 }

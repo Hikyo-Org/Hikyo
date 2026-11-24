@@ -18,6 +18,9 @@ const provider: OidcProvider = {
   scopes: 'openid',
   redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/acme/callback',
   assurance_policy: null,
+  lifecycle_profile: null,
+  lifecycle_secret_set: false,
+  lifecycle_uri: 'https://hikyo.example/api/v1/auth/oidc/acme/lifecycle',
   enabled: true,
   row_version: 1n,
 };
@@ -30,6 +33,8 @@ const goodDraft: OidcProviderDraft = {
   clientSecret: 'shhh',
   scopes: 'openid',
   assurancePolicy: '',
+  lifecycleProfile: '',
+  lifecycleSecret: '',
   enabled: true,
 };
 
@@ -165,5 +170,38 @@ describe('oidcProviderRefusalText', () => {
     expect(oidcProviderRefusalText(new Error('boom'), 'save-oidc-provider')).toMatch(
       /whether the change applied is unknown/,
     );
+  });
+});
+
+describe('lifecycle profile validation', () => {
+  it('requires a signing secret when a profile is chosen on create', () => {
+    const result = validateProviderDraft({ ...goodDraft, lifecycleProfile: 'clerk' }, null, []);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.field).toBe('lifecycle_secret');
+  });
+
+  it('lets a blank secret keep the stored one only while the profile is unchanged', () => {
+    const configured: OidcProvider = {
+      ...provider,
+      lifecycle_profile: 'clerk',
+      lifecycle_secret_set: true,
+    };
+    const draft = { ...goodDraft, lifecycleProfile: 'clerk' as const };
+    const kept = validateProviderDraft(draft, configured, [configured]);
+    expect(kept.ok).toBe(true);
+    // Switching to no profile clears it and sends no secret.
+    const cleared = validateProviderDraft({ ...goodDraft, lifecycleSecret: 'ignored' }, configured, [configured]);
+    expect(cleared.ok && cleared.input.lifecycleProfile).toBeNull();
+    expect(cleared.ok && cleared.input.lifecycleSecret).toBe('');
+  });
+
+  it('carries the profile and secret into the wire input', () => {
+    const result = validateProviderDraft(
+      { ...goodDraft, lifecycleProfile: 'clerk', lifecycleSecret: 'whsec_x' },
+      null,
+      [],
+    );
+    expect(result.ok && result.input.lifecycleProfile).toBe('clerk');
+    expect(result.ok && result.input.lifecycleSecret).toBe('whsec_x');
   });
 });

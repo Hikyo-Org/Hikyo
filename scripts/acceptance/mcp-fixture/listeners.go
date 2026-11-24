@@ -5,13 +5,15 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type operationalTargets struct {
@@ -55,12 +57,12 @@ func listeners(ctx context.Context, dir string) error {
 			return err
 		}
 	}
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return jsonwire.Encode(os.Stdout, out)
 }
 
 func (c publicControl) stageOperationalTargets(ctx context.Context, pods []observedPod) error {
 	value := operationalTargets{Addresses: []string{net.JoinHostPort(pods[0].Status.IP, "8081"), net.JoinHostPort(pods[1].Status.IP, "8081")}}
-	b, err := json.Marshal(value)
+	b, err := json.Marshal(value, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

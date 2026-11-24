@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +21,17 @@ func (w syncApplyObserver) Write(p []byte) (int, error) { return w.write(p) }
 
 func syncSecurityFixture(t *testing.T) (IO, string, string) {
 	t.Helper()
+	server := deliveryServer(t, deliveryResp([]apigen.DeliveredKey{{
+		KeyId: "key_1", Name: "DATABASE_URL", Classification: apigen.KeyClassificationConfig,
+		Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("postgres://current"),
+	}}))
+	return syncSecurityFixtureServer(t, server, nil)
+}
+
+// syncSecurityFixtureServer seeds a render against server; editConfig, when
+// set, rewrites hikyo-compose.yaml before the seed render.
+func syncSecurityFixtureServer(t *testing.T, server *httptest.Server, editConfig func(path string)) (IO, string, string) {
+	t.Helper()
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	if runtime.GOOS == "linux" {
 		// Sync's doctor requires plaintext generations to live on tmpfs.
@@ -35,13 +47,12 @@ func syncSecurityFixture(t *testing.T) (IO, string, string) {
 		})
 		runtimeDir = filepath.Join(dir, "runtime")
 	}
-	server := deliveryServer(t, deliveryResp([]apigen.DeliveredKey{{
-		KeyId: "key_1", Name: "DATABASE_URL", Classification: apigen.KeyClassificationConfig,
-		Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("postgres://current"),
-	}}))
 	t.Cleanup(server.Close)
 	projectDir := t.TempDir()
 	writeComposeConfig(t, projectDir, server.URL, "org_1", "prj_1", "env_1", runtimeDir, "acme")
+	if editConfig != nil {
+		editConfig(filepath.Join(projectDir, composeConfigName))
+	}
 	raw := "services:\n  api:\n    env_file:\n      - path: " + runtimeDir + "/${HIKYO_GEN_API:?render}/api.env\n        format: raw\n    labels:\n      hikyo.stamp: \"${HIKYO_GEN_API:?render}\"\n"
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte(raw), 0o600); err != nil {
 		t.Fatal(err)

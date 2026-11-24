@@ -674,6 +674,62 @@ func (q *Queries) ListServiceAccounts(ctx context.Context, arg ListServiceAccoun
 	return items, nil
 }
 
+const listServiceAccountsCreatedBy = `-- name: ListServiceAccountsCreatedBy :many
+SELECT id, principal_id, org_id, project_id, name, kind, created_at, created_by
+FROM service_accounts
+WHERE created_by = ?1 AND (CAST(?2 AS TEXT) = '' OR org_id = ?2) AND id > ?3
+ORDER BY id LIMIT ?4
+`
+
+type ListServiceAccountsCreatedByParams struct {
+	CreatedBy string
+	OrgID     string
+	AfterID   string
+	RowLimit  int64
+}
+
+// Incident enumeration of the created-by relation: the service accounts one
+// principal created, in id order and bounded by the limit, narrowed to one org
+// when the incident is org-bounded.
+// hikyo:reason Incident enumeration reads the service accounts one principal created after the operation authorized credential-reset at the incident scope; it returns metadata only, no credential, and the page is bounded.
+// hikyo:authn-resolution
+func (q *Queries) ListServiceAccountsCreatedBy(ctx context.Context, arg ListServiceAccountsCreatedByParams) ([]ServiceAccount, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceAccountsCreatedBy,
+		arg.CreatedBy,
+		arg.OrgID,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServiceAccount
+	for rows.Next() {
+		var i ServiceAccount
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Kind,
+			&i.CreatedAt,
+			&i.CreatedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCredentialPolicy = `-- name: LockCredentialPolicy :one
 SELECT id FROM credential_policy WHERE id = 1
 `
