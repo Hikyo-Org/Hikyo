@@ -236,6 +236,17 @@ func TestAdoptedProfileOutranksAndWarnsAboutADifferingBootstrapValue(t *testing.
 			t.Fatalf("the invalid bootstrap value was echoed")
 		}
 	}
+	// A padded spelling of the adopted profile is the same value once trimmed.
+	before := len(f.logs.String())
+	srv, err := f.boot(t, "", true, map[string]string{"HIKYO_TLS_PROFILE": " strict \n"})
+	if err != nil {
+		t.Fatalf("padded bootstrap: %v", err)
+	}
+	stop := serveUntilStopped(t, srv)
+	stop()
+	if after := f.logs.String()[before:]; strings.Contains(after, "HIKYO_TLS_PROFILE in the environment is ignored") {
+		t.Fatalf("a padded bootstrap value equal to the adopted profile warned:\n%s", after)
+	}
 }
 
 // The configured-evidence record belongs to the generation that became active.

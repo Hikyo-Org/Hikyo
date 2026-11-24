@@ -86,7 +86,7 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 			value = strings.TrimSpace(value)
 		}
 		if value == "" {
-			return nil, fmt.Errorf("%s must be absent or nonempty", key)
+			return nil, fmt.Errorf("%s must not be empty or whitespace-only", key)
 		}
 		values[key] = value
 	}

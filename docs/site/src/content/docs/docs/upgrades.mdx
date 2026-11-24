@@ -21,7 +21,7 @@ you do not want to start, then resume them deliberately. See
 Every bootstrap value and imported file, including the SMTP password
 (`HIKYO_MAIL_PASSWORD`, `HIKYO_MAIL_PASSWORD_FILE`), now has its leading and
 trailing whitespace trimmed, as does every later write. Stored values are not
-rewritten.
+rewritten. A bootstrap value or imported file that is only whitespace is empty after trimming, so adoption refuses it; remove the variable or file, or give it a real value, and restart.
 
 During a mixed-version rollout, managed-configuration adoption fails closed with
 a seed disagreement whenever any bootstrap value or imported file carries
