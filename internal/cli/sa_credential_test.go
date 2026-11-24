@@ -121,6 +121,23 @@ func TestServiceAccountMintIgnoresCanRevealForTheCeremony(t *testing.T) {
 	}
 }
 
+// A live sliding window bound to another operation (a workspace step-up or a
+// CLI handoff for a reveal) does not satisfy the mint, so the server's refusal,
+// not the window's liveness, decides that the ceremony runs.
+func TestServiceAccountMintReauthenticatesOverALiveWindowBoundElsewhere(t *testing.T) {
+	window := liveTOTPWindow
+	window.Live = true
+	handler, mints, reauths := mintCeremonyServer(t, []string{"env_a"}, "", window)
+	ios, _, stderr := definitionsTestIO(t, handler)
+	ios.ReadPassword = func(string) (string, error) { return "123456", nil }
+	if code := cli.Run(t.Context(), ios, mintArgs()); code != cli.ExitOK {
+		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
+	}
+	if *mints != 2 || *reauths != 1 {
+		t.Fatalf("mints=%d reauths=%d, want 2 and 1", *mints, *reauths)
+	}
+}
+
 // A window that does not satisfy the mint must not loop: the second refusal
 // over the same environment is returned as the server's answer.
 func TestServiceAccountMintStopsWhenAWindowDoesNotSatisfyTheMint(t *testing.T) {

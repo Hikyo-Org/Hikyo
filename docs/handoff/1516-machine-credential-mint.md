@@ -38,6 +38,13 @@ Status: **pull request open against `dev`, not merged.** Closes
   returned unchanged instead of advice about a window. Where a code can be
   typed, the grant keeps its inline TOTP ceremony; like the mint, it needs
   `read` over the environment for the window read.
+- **Live windows bound elsewhere.** Every `authorized` ceremony (mint, grant,
+  machine rule change) follows the server's widening refusal over the
+  environment, so a live sliding window there does not satisfy it, typically
+  because it is bound to another operation (a workspace step-up or a CLI
+  handoff). The ceremony
+  runs anyway and the new window replaces the bound one; before, the CLI
+  retried once on the old window and returned the same refusal.
 - **Server.** `internal/service/cli_reauth.go` admits purpose `mint`, which is not
   key-bound (its unit is the environment). Starting it needs `read` over the
   environment, as reveal does; the mint itself re-checks disclosure

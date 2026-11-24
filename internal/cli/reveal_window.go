@@ -75,7 +75,9 @@ type disclosure struct {
 	// authorized means the server already checked the caller's own disclosure
 	// authority and asked only for the window (a machine widening names
 	// reveal or reveal-history by what it reaches), so can_reveal, which is
-	// the current-plaintext question only, must not veto the ceremony.
+	// the current-plaintext question only, must not veto the ceremony. That
+	// refusal also proves a live window there does not satisfy the operation,
+	// so the window's liveness does not skip the ceremony either.
 	authorized bool
 }
 
@@ -142,7 +144,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	}
 	// A successful disclosure spends a single-decision window, so one still live
 	// here is stale and possibly bound to other keys. A new ceremony replaces it.
-	if window.Live && !window.SingleDecision {
+	// An authorized caller arrives with the server's widening refusal over env, so
+	// a live window there does not satisfy it (typically one bound elsewhere).
+	if window.Live && !window.SingleDecision && !d.authorized {
 		return nil
 	}
 	// Approval votes and bypasses require publish authority, not reveal. Their
