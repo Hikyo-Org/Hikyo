@@ -78,6 +78,10 @@ type rerunAfterResetFixture struct {
 	pageSize int            // runs per listing page; 0 means one page
 	spend    int            // core requests the stub takes off the window per accepted rerun
 	failures map[string]int // job id -> rerun requests GitHub refuses before accepting one
+	listFail map[int]int    // run id -> jobs listings that answer 502 before one succeeds
+	limit    int            // the window's size; 0 means 5000
+	after    int            // requests left once the reset has passed; 0 means 4000
+	preReset int            // requests left before the reset; 0 means 40
 }
 
 const waitHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -96,9 +100,22 @@ func (f *rerunAfterResetFixture) run() (string, string, error) {
 			f.t.Fatal(err)
 		}
 	}
-	// No real sleeps and a pinned clock: sleep records its argument and marks the reset reached.
-	write("sleep", "#!/usr/bin/env bash\nprintf 'sleep %s\\n' \"$*\" >> '"+calls+"'\n: > '"+state+"'\n")
-	write("date", "#!/usr/bin/env bash\n[ \"$*\" = +%s ] || exec /bin/date \"$@\"\necho "+strconv.FormatInt(f.now, 10)+"\n")
+	// No real sleeps and a virtual clock: sleep records its argument, advances the clock by it
+	// and marks the reset reached; date +%s reads that clock.
+	clock := filepath.Join(f.dir, "clock")
+	write("clock", "0")
+	write("sleep", "#!/usr/bin/env bash\nprintf 'sleep %s\\n' \"$*\" >> '"+calls+"'\n: > '"+state+"'\necho $(($(cat '"+clock+"') + $1)) > '"+clock+"'\n")
+	write("date", "#!/usr/bin/env bash\n[ \"$*\" = +%s ] || exec /bin/date \"$@\"\necho $(("+strconv.FormatInt(f.now, 10)+" + $(cat '"+clock+"')))\n")
+	limit, after, pre := f.limit, f.after, f.preReset
+	if pre == 0 {
+		pre = 40
+	}
+	if limit == 0 {
+		limit = 5000
+	}
+	if after == 0 {
+		after = 4000
+	}
 	write("accepted", "")
 	var cases strings.Builder
 	for _, wf := range []string{"ci-queue-gate.yml", "ci-queue-worker.yml", "ci-dev-gate.yml"} {
@@ -123,22 +140,28 @@ func (f *rerunAfterResetFixture) run() (string, string, error) {
 				pages++
 			}
 			// gh api --paginate applies --jq to every page; without --paginate only the first page is seen.
-			fmt.Fprintf(&cases, "  *workflows/%s/runs*status=%s*) pages=%d; paginate=0; case \"$*\" in *--paginate*) paginate=1 ;; esac\n    for ((i = 0; i < pages; i++)); do cat '%s/page-%s-%s-'$i | jq -r \"$filter\"; [ $paginate = 1 ] || break; done ;;\n", wf, status, pages, f.dir, wf, status)
+			fmt.Fprintf(&cases, "  *workflows/%s/runs*status=%s*) pages=%d; paginate=0; case \"$*\" in *--paginate*) paginate=1 ;; esac\n    for ((i = 0; i < pages; i++)); do jq --arg since \"$since\" '.workflow_runs |= map(select(.created_at >= $since))' '%s/page-%s-%s-'$i | jq -r \"$filter\"; [ $paginate = 1 ] || break; done ;;\n", wf, status, pages, f.dir, wf, status)
 		}
 	}
 	for _, r := range f.runs {
-		fmt.Fprintf(&cases, "  *runs/%d/attempts/%d/jobs*) printf '%%s' '{\"jobs\":[%s]}' | jq -r \"$filter\" ;;\n", r.id, r.attempt, strings.Join(r.jobs, ","))
+		lf := fmt.Sprintf("%s/listfail-%d", f.dir, r.id)
+		fmt.Fprintf(&cases, "  *runs/%d/attempts/%d/jobs*) if [ -s '%s' ] && [ \"$(cat '%s')\" -gt 0 ]; then echo $(($(cat '%s') - 1)) > '%s'; echo 'secret response text' >&2; exit 1; fi\n    printf '%%s' '{\"jobs\":[%s]}' | jq -r \"$filter\" ;;\n", r.id, r.attempt, lf, lf, lf, lf, strings.Join(r.jobs, ","))
 	}
 	for id, n := range f.failures {
 		if err := os.WriteFile(filepath.Join(f.dir, "refuse-"+id), []byte(strconv.Itoa(n)), 0o644); err != nil {
 			f.t.Fatal(err)
 		}
 	}
+	for id, n := range f.listFail {
+		if err := os.WriteFile(filepath.Join(f.dir, "listfail-"+strconv.Itoa(id)), []byte(strconv.Itoa(n)), 0o644); err != nil {
+			f.t.Fatal(err)
+		}
+	}
 	stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
-		"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; if [ \"$prev\" = -f ]; then case \"$a\" in status=*) status=${a#status=} ;; esac; fi; prev=$a; done\n" +
-		"if [ -e '" + state + "' ] && " + strconv.FormatBool(f.recovers) + "; then n=$(wc -l < '" + accepted + "' 2>/dev/null || echo 0); r=$((4000 - " + strconv.Itoa(f.spend) + " * n)); else r=40; fi\n" +
+		"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; if [ \"$prev\" = -f ]; then case \"$a\" in status=*) status=${a#status=} ;; esac; fi; case \"$a\" in created=\\>=*) since=${a#created=>=} ;; esac; prev=$a; done\n" +
+		"if [ -e '" + state + "' ] && " + strconv.FormatBool(f.recovers) + "; then n=$(wc -l < '" + accepted + "' 2>/dev/null || echo 0); r=$((" + strconv.Itoa(after) + " - " + strconv.Itoa(f.spend) + " * n)); else r=" + strconv.Itoa(pre) + "; fi\n" +
 		"case \"$*\" in\n" +
-		"  'api rate_limit '*) printf '%s' \"{\\\"resources\\\":{\\\"core\\\":{\\\"remaining\\\":$r,\\\"limit\\\":5000,\\\"reset\\\":" + strconv.FormatInt(f.reset, 10) + "}}}\" | jq -r \"$filter\" ;;\n" +
+		"  'api rate_limit '*) printf '%s' \"{\\\"resources\\\":{\\\"core\\\":{\\\"remaining\\\":$r,\\\"limit\\\":" + strconv.Itoa(limit) + ",\\\"reset\\\":" + strconv.FormatInt(f.reset, 10) + "}}}\" | jq -r \"$filter\" ;;\n" +
 		"  *--method\\ POST*) last=${@: -1}; id=${last##*jobs/}; id=${id%%/*}\n" +
 		"    if [ -e '" + f.dir + "/refuse-'$id ] && [ \"$(cat '" + f.dir + "/refuse-'$id)\" -gt 0 ]; then echo $(($(cat '" + f.dir + "/refuse-'$id) - 1)) > '" + f.dir + "/refuse-'$id; echo 'secret response text' >&2; exit 1; fi\n" +
 		"    echo \"$id\" >> '" + accepted + "' ;;\n" +
@@ -401,4 +424,99 @@ func TestQueueRetryWaitFailsVisiblyWhenItCannotHelp(t *testing.T) {
 			t.Fatalf("a still-spent window must fail instead of rerunning into it: %v\n%s\n%s", err, recorded, out)
 		}
 	})
+}
+
+// The reserve is for merge-group jobs: below it, only group jobs are rerun; at it, every job is.
+func TestQueueRetryWaitKeepsTheReserveForGroupJobs(t *testing.T) {
+	now := int64(1795475603)
+	runs := []waitRun{
+		trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, "Reconcile one authenticated head")),
+		trustedRun("ci-dev-gate.yml", 2, failedGroupJob(21, "dev-publish-"+waitHead, "Reconcile exact-head dev admission")),
+		trustedRun("ci-queue-worker.yml", 3, failedGroupJob(31, "group-"+waitHead, "Reconcile complete group proof under its head lease")),
+	}
+	t.Run("one below the reserve", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 249, runs: runs}
+		_, out, err := f.run()
+		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"31"}) || !strings.Contains(out, "Held to protect the window: 11 21") {
+			t.Fatalf("below the reserve only the group job may spend: %v %v\n%s", err, f.accepted(), out)
+		}
+	})
+	t.Run("at the reserve", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 250, runs: runs}
+		_, out, err := f.run()
+		if err != nil || !reflect.DeepEqual(f.accepted(), []string{"31", "11", "21"}) {
+			t.Fatalf("at the reserve every job is rerun, group jobs first: %v %v\n%s", err, f.accepted(), out)
+		}
+	})
+}
+
+// With a healthy share but less than the reserve left, the wait is still needed for non-group jobs.
+func TestQueueRetryWaitStillWaitsWhenOnlyTheReserveIsGone(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, "Reconcile one authenticated head"))
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 249, runs: []waitRun{run}}
+	// 240 of 1000 is 24 percent, above the tenth the old rule kept, but below the 250 reserve.
+	f.preReset = 240
+	recorded, _, _ := f.run()
+	if !strings.Contains(recorded, "sleep 605") {
+		t.Fatalf("below the reserve the wait must sleep to the reset:\n%s", recorded)
+	}
+}
+
+// A jobs listing that answers 502 is retried with the rerun backoff; one that never
+// recovers is named and skipped, so every other run's job is still rerun.
+func TestQueueRetrySurvivesAFailedJobsListing(t *testing.T) {
+	now := int64(1795475603)
+	bad := trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, "Reconcile one authenticated head"))
+	good := trustedRun("ci-dev-gate.yml", 2, failedGroupJob(21, "dev-publish-"+waitHead, "Reconcile exact-head dev admission"))
+	t.Run("recovers on a retry", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{bad, good}, listFail: map[int]int{1: 2}}
+		recorded, out, err := f.run()
+		got := f.accepted()
+		slicesSort(got)
+		if err != nil || !reflect.DeepEqual(got, []string{"11", "21"}) || !strings.Contains(recorded, "sleep 5\n") || !strings.Contains(recorded, "sleep 15\n") {
+			t.Fatalf("a twice-failed listing must be retried with backoff and then used: %v %v\n%s\n%s", err, got, recorded, out)
+		}
+	})
+	t.Run("never recovers", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{bad, good}, listFail: map[int]int{1: 99}}
+		_, out, err := f.run()
+		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"21"}) {
+			t.Fatalf("one unreadable run must not cost the other run's rerun, and the job must fail visibly: %v %v\n%s", err, f.accepted(), out)
+		}
+		if !strings.Contains(out, "Could not list the jobs of run 1") || !strings.Contains(out, "Not read: run:1") || strings.Contains(out, "secret response text") {
+			t.Fatalf("the unread run must be named without GitHub's text:\n%s", out)
+		}
+	})
+}
+
+// The job stops starting reruns 66 minutes in; the stub clock advances with every sleep,
+// so a long wait leaves room for only the reruns that fit, and the rest are held by name.
+func TestQueueRetryWaitStopsStartingRerunsAfterSixtySixMinutes(t *testing.T) {
+	now := int64(1795475603)
+	var jobs []string
+	for i := 0; i < 30; i++ {
+		jobs = append(jobs, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile complete group proof under its head lease"))
+	}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 3600, recovers: true, runs: []waitRun{trustedRun("ci-queue-worker.yml", 1, jobs...)}}
+	recorded, out, err := f.run()
+	// The wait is 3605 s; each rerun adds a 15 s spacing; reruns start while at most 3960 s have passed: 24 fit.
+	if err == nil || len(f.accepted()) != 24 || !strings.Contains(out, "Held to protect the window:") {
+		t.Fatalf("exactly the reruns that fit before the 66-minute stop may start, the rest held: %v accepted=%d\n%s\n%s", err, len(f.accepted()), recorded, out)
+	}
+}
+
+// The listing asks for the last three hours, and GitHub honours it: an older run is not rerun.
+func TestQueueRetryWaitIgnoresRunsOlderThanThreeHours(t *testing.T) {
+	now := int64(1795475603)
+	step := "Reconcile one authenticated head"
+	recent := trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, step))
+	recent.age = 2*time.Hour + 40*time.Minute
+	old := trustedRun("ci-queue-gate.yml", 2, failedGroupJob(21, "publish-"+strings.Repeat("b", 40), step))
+	old.age = 4 * time.Hour
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{recent, old}}
+	recorded, out, err := f.run()
+	if err != nil || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
+		t.Fatalf("only the run inside the three-hour window may be rerun: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
 }

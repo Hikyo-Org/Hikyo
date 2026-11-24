@@ -1267,6 +1267,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "dev admission requires one PR and exact held head and cannot mix producer roles")
 			os.Exit(1)
 		}
+		if err := deferForGroupReserve(context.Background(), ghAPI{}); err != nil {
+			fmt.Fprintln(os.Stderr, "trusted dev gate:", err)
+			os.Exit(1)
+		}
 		if err := runDevCommand(*devPR, *expectedHead, *dryRun); err != nil {
 			if onlyStaleHeadWork(err) {
 				fmt.Fprintln(os.Stdout, err)
@@ -1309,6 +1313,13 @@ func main() {
 	if boundedAdmission && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		fmt.Fprintln(os.Stderr, "targeted publisher requires supported Unix process-group cancellation")
 		os.Exit(1)
+	}
+	// Only a group job (plain --queue, --head-worker group, repair, dispatch) may spend the reserve.
+	if heldBackByReserve(false, *discoverRetirement, *retire, *targeted, *headWorker) {
+		if err := deferForGroupReserve(context.Background(), ghAPI{}); err != nil {
+			fmt.Fprintln(os.Stderr, "trusted PR gate:", err)
+			os.Exit(1)
+		}
 	}
 	checkName := os.Getenv("PR_GATE_CHECK_NAME")
 	if checkName == "" {

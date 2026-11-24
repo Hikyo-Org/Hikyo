@@ -13,6 +13,16 @@ if [ "$1" = api ] && [ "${2#repos/owner/repo/compare/}" != "$2" ]; then
   cat "$DEV_DISCOVERY_FIXTURE/compare.json"
   exit 0
 fi
+if [ "$1" = api ] && [ "$2" = rate_limit ]; then
+  [ -e "$DEV_DISCOVERY_FIXTURE/rate.json" ] || exit 1
+  jq -r "$4" "$DEV_DISCOVERY_FIXTURE/rate.json"
+  exit 0
+fi
+if [ "$1" = api ] && [ "${2#repos/owner/repo/actions/workflows/ci-dev-gate.yml/runs?event=schedule}" != "$2" ]; then
+  [ -e "$DEV_DISCOVERY_FIXTURE/schedule.count" ] || exit 1
+  cat "$DEV_DISCOVERY_FIXTURE/schedule.count"
+  exit 0
+fi
 if [ "$1" = api ] && [ "$2" = graphql ]; then
   printf 'graphql\n' >>"$DEV_DISCOVERY_FIXTURE/graphql.calls"
   [ ! -e "$DEV_DISCOVERY_FIXTURE/graphql.fail" ] || exit 1
@@ -175,41 +185,64 @@ for mutation in "${bad_stacks[@]}"; do
     run | jq -e "sort_by(.pr) == $want" >/dev/null || { printf 'dev discovery mishandled malformed stack %s on PR index %s\n' "$mutation" "$index" >&2; exit 1; }
   done
 done
-# The hourly sweep re-proves at most DEV_SWEEP_CAP (5) PRs per run, on a cursor from the
-# hour alone. It must not read any check record: records are rewritten by every event
-# and by sweep re-proofs that change nothing, and a record-ordered sweep can be starved
-# by them. The stub fails any GraphQL call, so a read of records cannot hide.
+# The scheduled sweep re-proves at most DEV_SWEEP_CAP (5) PRs per run, on a cursor that
+# advances once per executed gate-dev schedule run (the run list's total_count). The real
+# schedule runs 6 to 12 hours apart, so a clock cursor repeats windows; this replays
+# irregular gaps. The sweep must not read any check record (records are rewritten by every
+# event and by sweep re-proofs that change nothing): the stub fails any GraphQL call.
 GITHUB_EVENT_NAME=schedule
 cap=5
-phead() { printf '%040x' "$1"; }
 pulls_of() { # $1 open count, $2 first number
   jq -n --argjson n "$1" --argjson first "$2" '[[range($first; $first + $n) | {number:., state:"open", base:{ref:"dev",repo:{full_name:"owner/repo"}}, head:{sha:((tostring) as $s | ([range(40 - ($s | length)) | "0"] | join("")) + $s)}}]]' >"$work/pulls.json"
 }
 : >"$work/graphql.fail"
 rm -f "$work/graphql.calls"
+gaps=(6 12 7 12 6 9 12 6 8 12 10 6 11 7 12) # hours between runs, from the measured 6 to 12
 for open in 1 4 5 6 21 22 40; do
   for first in 1 700; do # numbers need not be dense or small
     pulls_of "$open" "$first"
     sweeps=$(((open + cap - 1) / cap))
-    for start_hour in 0 123457; do
+    for base in 0 123457; do # run counts the history may start from
       covered=''
+      hour_covered=''
+      hour=0
       for ((sweep = 0; sweep < sweeps; sweep++)); do
-        out=$(DEV_DISCOVERY_NOW=$(((start_hour + sweep) * 3600 + 19)) run 2>/dev/null)
+        printf '%s\n' "$((base + sweep + 1))" >"$work/schedule.count"
+        out=$(run 2>/dev/null)
         [ "$(jq -r length <<<"$out")" -le "$cap" ] || { printf 'sweep selected more than %s PRs\n' "$cap" >&2; exit 1; }
-        # Whatever the records say (rewritten, refreshed, absent) the same hour selects the same PRs.
-        [ "$out" = "$(DEV_DISCOVERY_NOW=$(((start_hour + sweep) * 3600 + 3500)) run 2>/dev/null)" ] || { printf 'a sweep must be deterministic within an hour\n' >&2; exit 1; }
         covered="$covered $(jq -r '.[].pr' <<<"$out" | tr '\n' ' ')"
+        # What a clock cursor would have selected at the same irregular times (documents why it is not used).
+        start=$(((hour * cap) % open))
+        for ((k = 0; k < cap && k < open; k++)); do hour_covered="$hour_covered $((first + (start + k) % open))"; done
+        hour=$((hour + gaps[sweep % ${#gaps[@]}]))
       done
-      [ "$(tr ' ' '\n' <<<"$covered" | grep . | sort -un | wc -l | tr -d ' ')" = "$open" ] || { printf '%s open PRs from #%s were not all covered in %s sweeps starting at hour %s\n' "$open" "$first" "$sweeps" "$start_hour" >&2; exit 1; }
+      [ "$(tr ' ' '\n' <<<"$covered" | grep . | sort -un | wc -l | tr -d ' ')" = "$open" ] || { printf '%s open PRs from #%s were not all covered in %s runs from count %s\n' "$open" "$first" "$sweeps" "$base" >&2; exit 1; }
+      if [ "$open" = 21 ] && [ "$base" = 0 ] && [ "$first" = 1 ]; then
+        [ "$(tr ' ' '\n' <<<"$hour_covered" | grep . | sort -un | wc -l | tr -d ' ')" -lt "$open" ] || { printf 'the irregular-gap scenario no longer separates the clock cursor from the run count\n' >&2; exit 1; }
+      fi
     done
   done
 done
 [ ! -e "$work/graphql.calls" ] || { printf 'the sweep must not read check records\n' >&2; exit 1; }
-# Events, dispatch and main/dev pushes still reach every PR; only the schedule is capped.
+# Same count, same window: the cursor is not the clock, and a re-run of the same run sweeps the same PRs.
 pulls_of 21 1
+printf '7\n' >"$work/schedule.count"
+[ "$(run 2>/dev/null)" = "$(run 2>/dev/null)" ] || { printf 'a sweep must be deterministic for one run count\n' >&2; exit 1; }
+# An unreadable count falls back to the clock hour and still sweeps at most the cap.
+rm -f "$work/schedule.count"
+[ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'an unreadable run count must still sweep the cap\n' >&2; exit 1; }
+# Below the reserve (250 requests, in either bucket) the sweep selects nothing and a PR event is unaffected.
+printf '7\n' >"$work/schedule.count"
+for bucket in core graphql; do
+  jq -n --arg b "$bucket" '{resources:{core:{remaining:900},graphql:{remaining:900}}} | .resources[$b].remaining = 249' >"$work/rate.json"
+  [ "$(run 2>/dev/null)" = '[]' ] || { printf 'the sweep must defer with %s one below the reserve\n' "$bucket" >&2; exit 1; }
+  jq '.resources[$b].remaining = 250' --arg b "$bucket" "$work/rate.json" >"$work/rate.next"
+  mv "$work/rate.next" "$work/rate.json"
+  [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'the sweep must run with %s at the reserve\n' "$bucket" >&2; exit 1; }
+done
+jq -n '{resources:{core:{remaining:0},graphql:{remaining:900}}}' >"$work/rate.json"
 GITHUB_EVENT_NAME=workflow_dispatch
 jq -n '{repository:{full_name:"owner/repo"},inputs:{}}' >"$work/event.json"
-[ "$(run | jq length)" = "21" ] || { printf 'a manual dispatch must still reach every PR\n' >&2; exit 1; }
-rm -f "$work/graphql.fail"
-rm -f "$work/graphql.fail"
-printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, malformed stacks skipped without stalling, and malformed pagination refusals, and the capped hour-cursor sweep passed\n'
+[ "$(run | jq length)" = "21" ] || { printf 'a manual dispatch must still reach every PR, whatever the window\n' >&2; exit 1; }
+rm -f "$work/rate.json" "$work/graphql.fail"
+printf 'dev discovery fixtures: exact current heads, superseded-head cleanup, dev-push scoping with every fail-open case, stacked-on-dev admission, malformed stacks skipped without stalling, malformed pagination refusals, and the run-count cursor sweep with its reserve passed\n'

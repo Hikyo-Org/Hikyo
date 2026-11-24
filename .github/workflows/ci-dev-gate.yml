@@ -36,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      # actions: read only for the sweep's cursor, the schedule-run count of this workflow.
+      actions: read
       contents: read
       pull-requests: read
     outputs:

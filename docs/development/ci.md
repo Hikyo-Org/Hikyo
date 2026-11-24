@@ -257,7 +257,7 @@ installs packages, accesses the network or changes system settings.
 
 The canonical [main policy](../../release/repository/main-ci-gate.json) requires
 `ci-queue-required`, mandatory `ALLGREEN` queue, build concurrency one, merge
-limits one, zero minimum wait, `MERGE`, and a 60-minute check-response timeout.
+limits one, zero minimum wait, `MERGE`, and a 120-minute check-response timeout (raised from 60 by #1371).
 Strict branch-up-to-date checking is false only alongside mandatory queue and
 that distinct context. This delegates current-base integration to the queue;
 it does not waive signatures, DCO, stale-review dismissal or resolved threads.
@@ -387,17 +387,25 @@ that a newer one replaced ends cancelled without running a step and is not
 rerun. Worker group jobs share the publisher's name and get the same reruns, so
 do the queue gate's own `group-<sha>` jobs, and so does a failed setup, because
 reconcile always runs. Before any rerun it reads `rate_limit` (which is not
-counted) and, while less than a tenth of the core budget is left, reruns nothing and
-hands the run to the `rerun-after-reset` job. That job is a designed wait: it sleeps
+counted; the core and graphql buckets are separate, and the one with the lower
+remaining share decides) and, while less than a tenth of the budget is left, reruns
+nothing and hands the run to the `rerun-after-reset` job. Group jobs are rerun first,
+and any other job is rerun only while at least the reserve (see "API reserve for
+merge-queue groups" below) is left; the others are held and handed to the wait. That job is a designed wait: it sleeps
 until the window's reset plus 5 seconds (refusing a reset more than 61 minutes away),
 re-reads `rate_limit`, then reruns by job id, group jobs first, every qualifying failed
 job of the last three hours from the three publisher workflows, under the same trust
 rule and attempt bound. It pages through every failed and cancelled run of that period
 (status and `created` filters, `--paginate`), with no fixed run count. The reruns are
 spaced 15 seconds apart and each is preceded by a fresh `rate_limit` read: the job stops
-starting reruns while less than a fifth of the window is left, or 66 minutes in, and
-names what it held, so a burst cannot re-exhaust the window it waited for. A held job
-keeps its pending check; the next wait sweeps it. A refused rerun request is an
+starting reruns while less than a fifth of the window is left (a non-group job also
+leaves the reserve), or 66 minutes in, and names what it held, so a burst cannot
+re-exhaust the window it waited for. A held job keeps its pending check. Nothing
+completes it automatically unless another failed gate run starts a new wait, so the
+operator command `gh workflow run ci-queue-gate.yml -f pr_number=<n>` is the completer
+for a merge-group head. A jobs or runs listing that fails is retried with the same
+backoff; one that still fails is named and skipped, and the job fails visibly at the
+end instead of abandoning every other rerun. A refused rerun request is an
 idempotent re-request, not a gate write, so it is retried with backoff (the `rerun` job
 twice more within its two minutes, the wait job three more times, 65 seconds at most)
 before the job is reported not rerun. Its 70-minute `timeout-minutes` is one primary window plus the sweep and is the
@@ -420,6 +428,31 @@ not the cron, settles it. The record stays pending (blocking) until the next eve
 or discovery run if the retry workflow is disabled, if a runner is lost so reconcile
 never fails, if the PR, its base, the rules or the feedback attempt moves during
 attempt 3, or if setup fails on attempt 3, which publishes nothing.
+
+#### API reserve for merge-queue groups
+
+Merge CI takes 36 to 73 minutes (measured) and the `group-<sha>` job starts only after
+it, so a merge-queue head cannot afford to lose the shared window to everything else:
+a wait of up to 60 minutes plus the rerun would exceed the 120-minute queue timeout.
+Within option A (the repository's `GITHUB_TOKEN`, no App token) the root fix is a
+reserve of 250 requests of the 1,000 per hour. Every job that does not gate a
+merge-queue head (dev publishers, queue PR-admission publishers and head workers, the
+retirement jobs, the retry reruns of such jobs, and the scheduled dev sweep) first
+reads `rate_limit`, which costs nothing, and defers while either the core or the
+graphql bucket has fewer than 250 left: it spends and writes nothing, its Reconcile
+step fails, and the retry and wait workflows rerun it after the reset. A group job
+(plain `--queue`, `--head-worker group`, the group repair and the worker dispatch) may
+spend into the reserve and is rerun first. The number is the measured group cost (about 41
+calls) times two overlapping merge groups (`max_entries_to_build` is 1, and merge CI of
+36 to 73 minutes lets at most two finish in one window) times three attempts: 246,
+rounded to 250. It lives in `groupReserve` (`scripts/ci/pr-gate/reserve.go`),
+`reserve=250` in `ci-queue-retry.yml` and `scripts/ci/discover-dev-prs.sh`. A deferred
+job writes nothing, so a record already on the head stays as it is until the rerun; a
+feedback rerun's pending barrier can therefore be delayed by up to one window. A group
+job can now be rate-limited only if group demand alone exceeds the reserve within an hour
+(more than about six group passes); that residual is completed by
+`gh workflow run ci-queue-gate.yml -f pr_number=<n>`, which also completes a group
+job that reached attempt 3 rate-limited (nothing reruns it automatically).
 
 The pending and refusal records say only that the publisher did not finish (it
 failed or ran out of its budget) and that merging stays blocked. They name no
@@ -523,13 +556,18 @@ refused earlier. The push's `before` and `after` are compared through the compar
 API. A zero or missing `before`, a force push, an invalid SHA, a failed compare, a
 range that is neither ahead nor identical, an ahead range with no listed files or a
 file list at GitHub's 300-file limit all reassess every PR. A push to `main`, feedback callbacks, manual
-dispatch and PR events are unchanged. The hourly schedule re-proves at most five
-open dev PRs per run (`DEV_SWEEP_CAP`). The window rotates on a cursor from the clock
-alone: PRs sorted by number, start = hour x 5 mod open. It reads no check record and
-keeps no state, because records are rewritten by events and by re-proofs that change
-nothing, and an order based on them can starve a PR. Every open PR is re-proved within
-ceil(open/5) consecutive hourly runs; a PR opened or closed in between shifts the
-windows by at most one cycle. The cap delays drift detection and recovery of a
+dispatch and PR events are unchanged. The schedule re-proves at most five
+open dev PRs per run (`DEV_SWEEP_CAP`). The window rotates on a cursor that advances
+once per executed run: the number of `gate-dev` schedule runs (one REST read of the
+workflow's run list, `event=schedule`, `total_count`), because the real schedule runs
+6 to 12 hours apart and a clock cursor repeats windows. PRs are sorted by number and
+the start is count x 5 mod open. It reads no check record and writes no state, because
+records are rewritten by events and by re-proofs that change nothing, and an order
+based on them can starve a PR. Every open PR is re-proved within ceil(open/5)
+consecutive runs; a PR opened or closed in between shifts the windows by at most one
+cycle, and expired run history lowers the count without stopping the rotation. If the
+count cannot be read the clock hour stands in. Below the reserve the sweep selects
+nothing. The cap delays drift detection and recovery of a
 missed event by up to that many hours; it removes neither, and no correctness depends
 on it, because events and the retry path settle checks first. An empty selection leaves the run green and
 skips the publisher job.
@@ -597,10 +635,13 @@ wait.
   whose gh stderr names it.
 - A pass that ends on a rate limit never publishes a terminal refusal, even on the
   last run attempt: it leaves the check blocking and pending for a later window.
+  Nothing reruns attempt 3 automatically, so a merge-group head in that state is
+  completed by the operator command `gh workflow run ci-queue-gate.yml -f pr_number=<n>`;
+  the reserve is what makes a group job reaching it rare.
 
 If GitHub stays incomplete or unreadable for 6 minutes, the publisher writes
 the distinct terminal refusal "Merge group proof metadata unavailable", so the
-PR can be re-queued instead of waiting for the queue's 60-minute timeout. The
+PR can be re-queued instead of waiting for the queue's 120-minute timeout. The
 exception is when no pass ever proved the merge group's identity: then the
 record stays pending, as before. See the
 [transient read handoff](../handoff/queue-proof-transient-reads.md).

@@ -170,16 +170,29 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"replaced pending reconcile is not rerun", []string{replaced(1, "publish-"+head), job(2, "publish-"+head, "failure", reconcile), replaced(3, "group-"+head)}, "1", healthy, []int{2}, false, ""},
 		{"only replaced pending reconciles", []string{replaced(1, "publish-"+head), replaced(2, "dev-publish-"+head)}, "1", healthy, nil, false, ""},
 		{"nothing is rerun while the budget is spent", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", spent, nil, false, "40 of 5000"},
+		// The reserve (250) is for merge-group jobs: a job that gates no merge-queue head needs it left over.
+		{"a non-group job one below the reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "249 1000 1795475603", nil, false, "Held for the group reserve (249 of 1000"},
+		{"a non-group job at the reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "250 1000 1795475603", []int{1}, false, ""},
+		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "249 1000 1795475603", nil, false, "Held for the group reserve"},
+		{"a group job below the reserve is rerun while the publisher waits", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
+		{"group jobs are rerun before the others", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile), job(3, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2, 1, 3}, false, ""},
+		// The core and graphql buckets are separate: the one with the lower remaining share decides.
+		{"a spent graphql bucket declines the rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 20 1000 1795475603", nil, false, "20 of 1000"},
+		{"a healthy graphql bucket changes nothing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 900 1000 1795475603", []int{1}, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
 			rl := strings.Fields(tc.rateLimit)
+			graphql := ""
+			if len(rl) == 6 {
+				graphql = ",\"graphql\":{\"remaining\":" + rl[3] + ",\"limit\":" + rl[4] + ",\"reset\":" + rl[5] + "}"
+			}
 			// The stub answers rate_limit and the jobs listing by applying the script's own --jq filter, and records reruns.
 			stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
 				"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
 				"case \"$*\" in\n" +
-				"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}}}' | jq -r \"$filter\" ;;\n" +
+				"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}" + graphql + "}}' | jq -r \"$filter\" ;;\n" +
 				"  *--method\\ POST*) ;;\n" +
 				"  api*) printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
 				"esac\n"

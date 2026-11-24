@@ -6,6 +6,19 @@ set -euo pipefail
 [[ "$GH_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dev-discovery.XXXXXX")
 trap 'rm -rf "$work"' EXIT
+# The reserve (250 requests, see docs/development/ci.md and groupReserve in
+# scripts/ci/pr-gate/reserve.go) belongs to merge-queue group jobs. The sweep spends
+# nothing it could do without, so below the reserve it selects no PR; events, dispatch
+# and pushes still reach the publishers, which defer on their own. The read is free, and
+# a failed one does not stop the sweep.
+reserve=250
+if [[ $GITHUB_EVENT_NAME == schedule ]] &&
+  low=$(gh api rate_limit --jq ".resources | [.core, .graphql] | map(select(. != null and .remaining < $reserve)) | length" 2>/dev/null) &&
+  [[ $low =~ ^[0-9]+$ && $low != 0 ]]; then
+  printf 'sweep deferred: the rate limit is below the %s requests kept for merge-group jobs\n' "$reserve" >&2
+  printf '[]\n'
+  exit 0
+fi
 gh api --paginate --slurp "repos/$GH_REPO/pulls?state=open&per_page=100" >"$work/pulls.json"
 # A dev push reassesses nothing unless it changed the dev publisher, because the
 # publisher contract compares the base's copy against main's and a backmerge that
@@ -29,16 +42,26 @@ if [[ $GITHUB_EVENT_NAME == push ]] && jq -e '.ref == "refs/heads/dev"' "$GITHUB
     printf 'dev push: reassessing every open PR (publisher changed or range undeterminable)\n' >&2
   fi
 fi
-# The hourly sweep re-proves only DEV_SWEEP_CAP open PRs per run. The window rotates on
-# a cursor derived from the clock alone: PRs sorted by number, window start = hour x cap
-# mod open. It reads no check record and keeps no state, so nothing a run writes (or
-# refreshes without changing state) can move it, and every open PR is reached within
-# ceil(open/cap) consecutive hourly runs. A PR opened or closed in between shifts the
-# windows by at most one cycle; events and the retry path settle checks regardless.
+# The scheduled sweep re-proves only DEV_SWEEP_CAP open PRs per run. The window rotates
+# on a cursor that advances once per executed schedule run: the number of gate-dev
+# schedule runs (one REST read of the run list's total_count), so real gaps of 6 to 12
+# hours between runs cannot repeat a window the way a clock cursor does. PRs are sorted
+# by number and the window starts at count x cap mod open. It reads no check record and
+# writes no state, so nothing a run writes (or refreshes without changing state) can move
+# it, and every open PR is reached within ceil(open/cap) consecutive runs. A PR opened or
+# closed in between shifts the windows by at most one cycle, and expired run history
+# lowers the count without stopping the rotation; events and the retry path settle checks
+# regardless. If the count cannot be read, the hour of the clock stands in for it.
 cap=${DEV_SWEEP_CAP:-5}
-now=${DEV_DISCOVERY_NOW:-$(date +%s)}
+cursor=$(($(date +%s) / 3600))
+if [[ $GITHUB_EVENT_NAME == schedule ]]; then
+  # One idempotent REST read; a failure falls back to the clock hour, and no response is printed.
+  if count=$(gh api "repos/$GH_REPO/actions/workflows/ci-dev-gate.yml/runs?event=schedule&per_page=1" --jq .total_count 2>/dev/null) && [[ $count =~ ^[0-9]+$ ]]; then
+    cursor=$count
+  fi
+fi
 jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scope" \
-  --argjson cap "$cap" --argjson hour "$((now / 3600))" \
+  --argjson cap "$cap" --argjson cursor "$cursor" \
   --slurpfile event "$GITHUB_EVENT_PATH" '
   def sha: type == "string" and test("^[0-9a-f]{40}$");
   def number: type == "number" and . > 0 and floor == .;
@@ -87,7 +110,7 @@ jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scop
   group_by(.head) | map(min_by(.pr)) |
   if $name != "schedule" then .
   else
-    sort_by(.pr) | length as $n | (if $n == 0 then 0 else ($hour * $cap) % $n end) as $s | (.[$s:] + .[:$s]) | .[0:$cap]
+    sort_by(.pr) | length as $n | (if $n == 0 then 0 else ($cursor * $cap) % $n end) as $s | (.[$s:] + .[:$s]) | .[0:$cap]
   end |
   if length > 256 then error("dev discovery exceeds matrix capacity") else . end
 ' "$work/pulls.json"

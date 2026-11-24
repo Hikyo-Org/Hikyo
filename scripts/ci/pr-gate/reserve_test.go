@@ -1,0 +1,92 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+func reserveWindow(t *testing.T, core, graphql int) {
+	t.Helper()
+	fakeGH(t, fmt.Sprintf(`echo '{"resources":{"core":{"remaining":%d,"limit":1000,"reset":1},"graphql":{"remaining":%d,"limit":1000,"reset":1}}}'`, core, graphql))
+}
+
+// A job that does not gate a merge-queue head defers below the reserve and runs at it;
+// either bucket can hold it back, and what it prints names no response text.
+func TestNonGroupJobDefersBelowTheReserveAndRunsAtIt(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		core, graphql int
+		deferred      bool
+	}{
+		{"core one below", groupReserve - 1, 900, true},
+		{"core at the reserve", groupReserve, 900, false},
+		{"graphql one below", 900, groupReserve - 1, true},
+		{"graphql at the reserve", 900, groupReserve, false},
+		{"both healthy", 900, 900, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reserveWindow(t, tc.core, tc.graphql)
+			err := deferForGroupReserve(context.Background(), ghAPI{})
+			if (err != nil) != tc.deferred {
+				t.Fatalf("core=%d graphql=%d: err=%v, want deferred=%t", tc.core, tc.graphql, err, tc.deferred)
+			}
+			if err != nil && !strings.Contains(err.Error(), "spent nothing") {
+				t.Fatalf("the deferral must say it spent nothing: %v", err)
+			}
+		})
+	}
+}
+
+// The free rate_limit read failing says nothing about the window: the job still runs.
+func TestReserveCheckDoesNotBlockOnAFailedRateLimitRead(t *testing.T) {
+	fakeGH(t, `echo 'gh: HTTP 502' >&2; exit 1`)
+	if err := deferForGroupReserve(context.Background(), ghAPI{}); err != nil {
+		t.Fatalf("an unreadable rate_limit must not stop a job: %v", err)
+	}
+}
+
+// main must apply the check: dev admission directly, every other held-back role through
+// heldBackByReserve, both before any work starts.
+func TestMainAppliesTheReserveCheck(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(src)
+	for _, want := range []string{"heldBackByReserve(false, *discoverRetirement, *retire, *targeted, *headWorker)", "deferForGroupReserve(context.Background(), ghAPI{})"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("main.go lost %q", want)
+		}
+	}
+	if strings.Index(text, "deferForGroupReserve") > strings.Index(text, "err := runDevCommand(") {
+		t.Fatal("dev admission must check the reserve before it runs")
+	}
+}
+
+// Group jobs gate a merge-queue head and spend into the reserve; every other role defers.
+func TestOnlyGroupRolesMaySpendTheReserve(t *testing.T) {
+	for _, tc := range []struct {
+		name                                  string
+		dev, discoverRetirement, retire, targ bool
+		headWorker                            string
+		held                                  bool
+	}{
+		{"dev admission", true, false, false, false, "", true},
+		{"retirement discovery", false, true, false, false, "", true},
+		{"retirement", false, false, true, false, "", true},
+		{"targeted queue admission", false, false, false, true, "", true},
+		{"admission head worker", false, false, false, false, "admission", true},
+		{"ambiguous head worker", false, false, false, false, "ambiguous", true},
+		{"group job (plain --queue)", false, false, false, false, "", false},
+		{"group head worker", false, false, false, false, "group", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := heldBackByReserve(tc.dev, tc.discoverRetirement, tc.retire, tc.targ, tc.headWorker); got != tc.held {
+				t.Fatalf("heldBackByReserve = %t, want %t", got, tc.held)
+			}
+		})
+	}
+}
