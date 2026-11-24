@@ -28,6 +28,8 @@ func mintHandoffServer(t *testing.T, window apigen.RevealWindow, startBody *map[
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			_ = jsonwire.Encode(w, window)
+		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
 			_ = json.UnmarshalRead(r.Body, startBody)
 			*callbackURI, _ = (*startBody)["redirect_uri"].(string)
@@ -110,20 +112,75 @@ func TestServiceAccountMintHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 	}
 }
 
-// With no way to open a browser the dead end stays, and names the way out.
+// With no way to open a browser the dead end stays, and names the way out:
+// the browser page, plus the one remedy that can open a window here.
 func TestServiceAccountMintWithoutABrowserNamesTheMachineAccessPage(t *testing.T) {
-	var startBody map[string]any
-	var callbackURI string
-	handler := mintHandoffServer(t, apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0}, &startBody, &callbackURI)
+	for _, tc := range []struct {
+		name   string
+		window apigen.RevealWindow
+		want   []string
+		lacks  []string
+	}{
+		{"protected", apigen.RevealWindow{CanReveal: true, Protected: true},
+			[]string{"it is a protected environment"}, []string{"reauth-window-seconds", "enrol"}},
+		{"zero_window", apigen.RevealWindow{CanReveal: true},
+			[]string{"its reveal window is 0", "--reauth-window-seconds 300"}, []string{"enrol"}},
+		{"no_authenticator", apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true},
+			[]string{"no authenticator is enrolled", "hikyo account factor enrol-totp"}, []string{"reauth-window-seconds"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var startBody map[string]any
+			var callbackURI string
+			handler := mintHandoffServer(t, tc.window, &startBody, &callbackURI)
+			ios, _, stderr := definitionsTestIO(t, handler)
+			ios.OpenURL = nil
+			ios.ReadPassword = func(string) (string, error) {
+				t.Fatal("a mint with no usable window must not prompt for a code")
+				return "", nil
+			}
+			if code := cli.Run(t.Context(), ios, mintHandoffArgs()); code != cli.ExitAuth {
+				t.Fatalf("exit %d, want auth; stderr=%s", code, stderr.String())
+			}
+			if startBody != nil {
+				t.Fatalf("a handoff started with no browser to open: %v", startBody)
+			}
+			for _, want := range append([]string{"Machine access page"}, tc.want...) {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("refusal lacks %q: %s", want, stderr.String())
+				}
+			}
+			for _, lack := range tc.lacks {
+				if strings.Contains(stderr.String(), lack) {
+					t.Errorf("refusal offers %q, which cannot help here: %s", lack, stderr.String())
+				}
+			}
+		})
+	}
+}
+
+// `access grant add --capability reveal` has no CLI handoff, so where no code
+// can be typed the refusal names the Machine access page, not a reveal.
+func TestAccessGrantRevealWithoutAWindowNamesTheMachineAccessPage(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, Protected: true})
+		case r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":"conflict","message":"the current state of this resource refuses the request",` +
+				`"detail":"reauthenticate over the environments this operation makes reachable, then retry (env_70)"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
 	ios, _, stderr := definitionsTestIO(t, handler)
-	ios.OpenURL = nil
-	if code := cli.Run(t.Context(), ios, mintHandoffArgs()); code != cli.ExitAuth {
+	args := []string{"access", "grant", "add", "--principal", "mch_1", "--capability", "reveal",
+		"--instance", "local", "--org", "org_70", "--project", "prj_70", "--env", "env_70"}
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitAuth {
 		t.Fatalf("exit %d, want auth; stderr=%s", code, stderr.String())
 	}
-	if startBody != nil {
-		t.Fatalf("a handoff started with no browser to open: %v", startBody)
-	}
-	if !strings.Contains(stderr.String(), "Machine access page") {
-		t.Errorf("the browser path was not named: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "machine reveal grant over env_70") || !strings.Contains(stderr.String(), "Machine access page") {
+		t.Errorf("the refusal does not name the grant's browser path: %s", stderr.String())
 	}
 }

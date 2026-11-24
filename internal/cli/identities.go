@@ -289,7 +289,7 @@ func withMintCeremony(ctx context.Context, client *Client, st *State, ios IO, ar
 			}
 			session = &s
 		}
-		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{purpose: "mint"}, err); cerr != nil {
+		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{purpose: "mint", authorized: true}, err); cerr != nil {
 			return cerr
 		}
 	}

@@ -16,7 +16,7 @@ import (
 // per refusal, until the session holds a window over every environment in
 // `reach`; each inline TOTP reauthentication opens one window and rotates the
 // bearer. `stuck` names an environment whose window never satisfies the mint.
-func mintCeremonyServer(t *testing.T, reach []string, stuck string) (http.Handler, *int, *int) {
+func mintCeremonyServer(t *testing.T, reach []string, stuck string, window apigen.RevealWindow) (http.Handler, *int, *int) {
 	t.Helper()
 	open := map[string]bool{}
 	bearer := "test-token"
@@ -30,7 +30,7 @@ func mintCeremonyServer(t *testing.T, reach []string, stuck string) (http.Handle
 		}
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true})
+			_ = jsonwire.Encode(w, window)
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
 			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
 		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
@@ -74,6 +74,8 @@ func mintCeremonyServer(t *testing.T, reach []string, stuck string) (http.Handle
 	}), &mints, &reauths
 }
 
+var liveTOTPWindow = apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true}
+
 func mintArgs() []string {
 	return []string{"sa", "credential", "mint", "--sa", "sa_1", "--lifetime", "720h", "--dangerously-print",
 		"--instance", "local", "--org", "org_70", "--project", "prj_70"}
@@ -82,7 +84,7 @@ func mintArgs() []string {
 // Issue #1516: the server names one missing environment per refusal, so an
 // account reaching two environments takes two inline ceremonies and one mint.
 func TestServiceAccountMintReauthenticatesOverEveryNamedEnvironment(t *testing.T) {
-	handler, mints, reauths := mintCeremonyServer(t, []string{"env_a", "env_b"}, "")
+	handler, mints, reauths := mintCeremonyServer(t, []string{"env_a", "env_b"}, "", liveTOTPWindow)
 	ios, stdout, stderr := definitionsTestIO(t, handler)
 	var prompted []string
 	ios.ReadPassword = func(prompt string) (string, error) {
@@ -103,10 +105,26 @@ func TestServiceAccountMintReauthenticatesOverEveryNamedEnvironment(t *testing.T
 	}
 }
 
+// The server's mint check accepts reveal-history for history-only reach, so
+// can_reveal (read and current reveal) must not veto the mint's ceremony.
+func TestServiceAccountMintIgnoresCanRevealForTheCeremony(t *testing.T) {
+	window := liveTOTPWindow
+	window.CanReveal = false
+	handler, mints, reauths := mintCeremonyServer(t, []string{"env_a"}, "", window)
+	ios, _, stderr := definitionsTestIO(t, handler)
+	ios.ReadPassword = func(string) (string, error) { return "123456", nil }
+	if code := cli.Run(t.Context(), ios, mintArgs()); code != cli.ExitOK {
+		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
+	}
+	if *mints != 2 || *reauths != 1 {
+		t.Fatalf("mints=%d reauths=%d, want 2 and 1", *mints, *reauths)
+	}
+}
+
 // A window that does not satisfy the mint must not loop: the second refusal
 // over the same environment is returned as the server's answer.
 func TestServiceAccountMintStopsWhenAWindowDoesNotSatisfyTheMint(t *testing.T) {
-	handler, mints, reauths := mintCeremonyServer(t, []string{"env_a"}, "env_a")
+	handler, mints, reauths := mintCeremonyServer(t, []string{"env_a"}, "env_a", liveTOTPWindow)
 	ios, _, stderr := definitionsTestIO(t, handler)
 	ios.ReadPassword = func(string) (string, error) { return "123456", nil }
 	if code := cli.Run(t.Context(), ios, mintArgs()); code != cli.ExitRefused {

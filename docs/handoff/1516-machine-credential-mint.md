@@ -19,7 +19,7 @@ Status: **pull request open against `dev`, not merged.** Closes
 
 - **Web.** The mint and rotate dialog offers Instance default (30 days), 30 days,
   90 days, 180 days and 1 year; indefinite is shown disabled. It shows the
-  requested expiry before confirm, and after minting it says so when the ceiling
+  estimated expiry before confirm, and after minting it says so when the ceiling
   shortened the credential. The federation binding dialog shares the same preset
   list.
 - **CLI.** `withMintCeremony` (`internal/cli/identities.go`) retries the mint after
@@ -27,6 +27,9 @@ Status: **pull request open against `dev`, not merged.** Closes
   per round. A refused mint commits nothing, so earlier windows survive. An
   environment named twice returns the server's refusal. TOTP prompts and
   no-browser refusals are purpose-aware.
+  The mint's ceremony is `authorized`: the server's mint check accepts
+  `reveal-history` for history-only reach, so the CLI's `can_reveal` (read and
+  current reveal) does not veto it.
 - **Server.** `internal/service/cli_reauth.go` admits purpose `mint`, which is not
   key-bound (its unit is the environment). Starting it needs `read` over the
   environment, as reveal does; the mint itself re-checks reveal and

@@ -204,7 +204,13 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 			}
 			return failf(ExitAuth, "a rule change that widens a machine in %s needs a reauthentication window and %s; %s, then retry", env, why, remedy)
 		}
-		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
+		if d.purpose == "" {
+			// A machine reveal grant (`access grant`) has no CLI handoff: its
+			// ceremony runs on the browser's Machine access page.
+			return failf(ExitAuth, "a machine reveal grant over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
+				"which this invocation cannot open; make the grant in the browser's Machine access page%s", env, why, orRemedy(remedy))
+		}
+		if d.keys == nil || ios.OpenURL == nil {
 			if d.purpose == "publish" {
 				return failf(ExitAuth, "a publish in %s needs a reauthentication ceremony and %s: the ceremony is the browser's, "+
 					"which this invocation cannot open; complete the publish in the browser", env, why)
