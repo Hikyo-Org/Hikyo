@@ -25,7 +25,11 @@ managed-configuration adoption can fail closed with a seed disagreement until
 every node runs the new version, so finish the rollout first. Restoring an
 older revision re-publishes its password trimmed. If your relay password
 intentionally begins or ends with whitespace, change it to one without before
-upgrading. See [Mail](/docs/signup-mail/).
+upgrading. On an upgraded installation the configuration page may still
+describe the password as preserved byte-for-byte; that description is stale,
+and the trim applies
+([#1562](https://github.com/Hikyo-Org/Hikyo/issues/1562)). See
+[Mail](/docs/signup-mail/).
 
 ## Dynamic provider and SSH CA upgrade notes
 
