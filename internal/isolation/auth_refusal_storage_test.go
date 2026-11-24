@@ -515,8 +515,8 @@ func (serverOnlyDeadline) Err() error                    { return nil }
 
 // A client that gives up cannot be what frees the refusal row: the server must
 // abort the lock wait itself, leave no waiter behind, and not block later
-// refusals. lock_timeout and statement_timeout share the bound, so either may
-// fire. SQLite has no server to outlive the client, so only postgres runs.
+// refusals. lock_timeout, statement_timeout and transaction_timeout share the bound,
+// so any may fire. SQLite has no server to outlive the client, so only postgres runs.
 func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	db := seededDB(t, openPostgres)
 	release := holdRefusalWriter(t, db)
@@ -551,7 +551,7 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 		t.Fatal("server never aborted the lock-blocked attempt: no server-side bound")
 	}
 	var timedOut *pgconn.PgError
-	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") || !errors.Is(err, context.DeadlineExceeded) {
+	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014" && timedOut.Code != "25P04") || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("server did not abort the lock wait as a deadline error: %v after %s", err, time.Since(start))
 	}
 	if waiting := queryInt(t, db, blocked); waiting != 0 {
