@@ -29,14 +29,11 @@ func (s *Recovery) Reconcile(ctx context.Context, principal domain.PrincipalID) 
 	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.RecoveryReconcile(ctx, s.DB, fn) }, principal, with)
 }
 
-// containmentMigration is the migration that adds principals.containment_state.
-const containmentMigration = 89
-
 // hasContainment reports whether the verified source schema can be asked who is
 // contained: a source older than the containment migration has no such column.
 func (s *Recovery) hasContainment() (bool, error) {
 	version, err := s.DB.SourceMigrationVersion()
-	return version >= containmentMigration, err
+	return version >= tx.ContainmentMigration, err
 }
 func (s *Recovery) ProveValuesReadable(ctx context.Context, kr *crypto.Keyring) (bool, error) {
 	return proveValuesReadable(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) }, kr)

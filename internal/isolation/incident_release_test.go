@@ -348,9 +348,17 @@ func TestIncidentReleaseDoesNotNameAnUnreadableOtherIncident(t *testing.T) {
 		}
 		execRaw(t, db, `INSERT INTO incidents (id, scope_kind, scope_id, org_id, status, opened_by, opened_at) VALUES ('inc_foreign_holder', 'org', 'org_b', 'org_b', 'open', 'usr_irspb', `+ts+`)`)
 		execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at) VALUES ('itm_foreign_hold', 'inc_foreign_holder', 'account.contain', 'account', 'usr_itarget', 'org/org_b', 'done', '', 1, `+ts+`, `+ts+`)`)
+		denied := func() int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'grant.denied'`)
+		}
+		before := denied()
 		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget)
 		if !errors.Is(err, service.ErrReleaseNotReady) || strings.Contains(err.Error(), "inc_foreign_holder") {
 			t.Fatalf("release with an unreadable other holder = %v, want ErrReleaseNotReady without its id", err)
+		}
+		// The probe is not an authorization, so it writes no denial into the other org's audit.
+		if after := denied(); after != before {
+			t.Fatalf("grant.denied rows %d -> %d, want unchanged", before, after)
 		}
 	})
 }

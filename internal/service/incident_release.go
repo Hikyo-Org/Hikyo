@@ -139,10 +139,19 @@ func authorizeReleaseTarget(ctx context.Context, az *authz.TxAuthorizer, caller 
 // it, so the refusal is no existence oracle for an incident outside their scope.
 func otherHolderRefusal(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, other string) error {
 	if o, err := az.IncidentByID(ctx, other); err == nil {
-		if _, err := authorizeIncidentOp(ctx, az, caller, o.OrgID); err == nil {
-			return fmt.Errorf("%w: incident %s also recorded this principal contained and is still open", ErrReleaseNotReady, other)
-		} else if !errors.Is(err, domain.ErrUnauthorized) && !errors.Is(err, domain.ErrNotFound) {
+		// A probe that records nothing: authorizing would write a false denial into the
+		// other org's tenant audit.
+		var holds bool
+		if o.OrgID == "" {
+			holds, err = az.HoldsInstanceCapability(ctx, caller, authz.OpIncidentInstance)
+		} else {
+			holds, err = az.CallerHolds(ctx, caller, authz.OpIncidentOrg, domain.Scope{Org: o.OrgID})
+		}
+		if err != nil {
 			return err
+		}
+		if holds {
+			return fmt.Errorf("%w: incident %s also recorded this principal contained and is still open", ErrReleaseNotReady, other)
 		}
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return err
