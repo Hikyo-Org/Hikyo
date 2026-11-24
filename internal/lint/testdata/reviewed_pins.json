@@ -193,7 +193,7 @@
       }
     },
     "BoundAuthRefusalTransaction": {
-      "authority": "refusal accounting bounds each lock wait and statement server-side so an abandoned attempt cannot keep waiting on or holding the singleton row past the caller's deadline",
+      "authority": "refusal accounting bounds each lock wait, each statement and the whole transaction server-side so an abandoned or idle attempt cannot keep waiting on or holding the singleton row past the caller's deadline",
       "sql_hash": {
         "postgres": "599198454e0e834f65ba079795d0fde7f79be7b492f1ac38dfe41430d5f469fd"
       },
@@ -2125,7 +2125,7 @@
     },
     "internal/store/upgrade/lock.go:SetPostgresSessionTimeouts": {
       "hash": "d67068d61635247564bd36fd2a8116bc1ad47288cf278e29874129e8ab37afce",
-      "reason": "Session keepalive protocol sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads and writes no data.",
+      "reason": "Session setup protocol first reads server_version_num and refuses a server below PostgreSQL 18, then sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads no Hikyo data and writes none.",
       "dependencies": [
         "internal/store/upgrade/lock.go:CheckPostgresVersion"
       ]
@@ -3146,7 +3146,7 @@
     "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
     "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
     "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
-    "internal/store/upgrade/lock.go:CheckPostgresVersion": "6476012f8e0112c8448b7ef01ea3e1b3f5363f08a8fd4197639f1df8a0785caa",
+    "internal/store/upgrade/lock.go:CheckPostgresVersion": "8319a12cf7776a6fa7ca3d0ad2a13d8eb8e1c836efe96040e7f633e131cc6c30",
     "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
     "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
     "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",

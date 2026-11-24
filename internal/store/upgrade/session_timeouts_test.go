@@ -26,6 +26,9 @@ func TestCheckPostgresVersion(t *testing.T) {
 			t.Errorf("%q: refusal does not name the requirement: %v", bad, err)
 		}
 	}
+	if err := CheckPostgresVersion("90600"); err == nil || !strings.Contains(err.Error(), "server version 9.6.0 (") {
+		t.Errorf("pre-10 version formatted wrongly: %v", err)
+	}
 	err := CheckPostgresVersion("170009")
 	if want := "unsupported PostgreSQL server version 17.9 (server_version_num 170009); Hikyo requires PostgreSQL 18 or later (server_version_num 180000)"; !strings.Contains(err.Error(), want) {
 		t.Errorf("message = %v, want it to contain %q", err, want)
@@ -33,13 +36,21 @@ func TestCheckPostgresVersion(t *testing.T) {
 }
 
 // HIKYO_TEST_POSTGRES_OLD_DSN points at a PostgreSQL older than 18 (a disposable
-// postgres:17-alpine); CI runs only 18, so the test skips there.
-func TestSessionRefusesOldPostgres(t *testing.T) {
+// postgres:17-alpine). CI starts one; elsewhere the tests skip.
+func oldPostgresDSN(t *testing.T) string {
+	t.Helper()
 	dsn := os.Getenv("HIKYO_TEST_POSTGRES_OLD_DSN")
 	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("CI requires the PostgreSQL 17 refusal fixture")
+		}
 		t.Skip("HIKYO_TEST_POSTGRES_OLD_DSN not set")
 	}
-	conn, err := pgx.Connect(t.Context(), dsn)
+	return dsn
+}
+
+func TestSessionRefusesOldPostgres(t *testing.T) {
+	conn, err := pgx.Connect(t.Context(), oldPostgresDSN(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +58,18 @@ func TestSessionRefusesOldPostgres(t *testing.T) {
 	err = SetPostgresSessionTimeouts(t.Context(), conn)
 	if err == nil || !strings.Contains(err.Error(), "requires PostgreSQL 18 or later") {
 		t.Fatalf("old server not refused with the version message: %v", err)
+	}
+}
+
+// upgrade.open serves every operator session, restore included.
+func TestLockRefusesOldPostgres(t *testing.T) {
+	ran := false
+	err := WithLock(t.Context(), Config{Engine: releaseidentity.Postgres, DSN: oldPostgresDSN(t)}, func(*Session) error {
+		ran = true
+		return nil
+	})
+	if ran || err == nil || !strings.Contains(err.Error(), "requires PostgreSQL 18 or later") {
+		t.Fatalf("operator session not refused (ran=%v): %v", ran, err)
 	}
 }
 

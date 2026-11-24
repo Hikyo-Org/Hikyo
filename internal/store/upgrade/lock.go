@@ -245,8 +245,13 @@ func CheckPostgresVersion(versionNum string) error {
 		return fmt.Errorf("upgrade: postgres server_version_num %q is not a number; PostgreSQL 18 or later is required", versionNum)
 	}
 	if n < MinPostgresVersionNum {
-		return fmt.Errorf("upgrade: unsupported PostgreSQL server version %d.%d (server_version_num %d); Hikyo requires PostgreSQL 18 or later (server_version_num %d)",
-			n/10000, n%10000, n, MinPostgresVersionNum)
+		// Before PostgreSQL 10 the number is MMmmpp (90600 is 9.6.0); from 10 on it is MMpppp.
+		found := fmt.Sprintf("%d.%d", n/10000, n%10000)
+		if n < 100000 {
+			found = fmt.Sprintf("%d.%d.%d", n/10000, n/100%100, n%100)
+		}
+		return fmt.Errorf("upgrade: unsupported PostgreSQL server version %s (server_version_num %d); Hikyo requires PostgreSQL 18 or later (server_version_num %d)",
+			found, n, MinPostgresVersionNum)
 	}
 	return nil
 }

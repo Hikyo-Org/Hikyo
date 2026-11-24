@@ -53,8 +53,8 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 		start, now, encoded = row.WindowStart, row.NowSeconds, row.State
 	} else {
 		// Cancelling the client does not stop a lock wait or statement the server already
-		// has, so the remaining deadline also bounds each wait/statement server-side
-		// (per statement, not per transaction; 0 would disable the timeout).
+		// has, so the remaining deadline also bounds each lock wait, each statement and the whole
+		// transaction server-side (0 would disable the timeout).
 		if dl, ok := ctx.Deadline(); ok {
 			if err := r.pg.BoundAuthRefusalTransaction(ctx, strconv.FormatInt(max(1, time.Until(dl).Milliseconds()), 10)); err != nil {
 				return 0, err

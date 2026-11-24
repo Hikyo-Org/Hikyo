@@ -568,6 +568,34 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	}
 }
 
+// A client that takes the refusal row and then goes idle inside its transaction runs
+// no statement and waits on no lock, so only transaction_timeout can free the row.
+func TestRequestRefusalPostgresAbortsIdleTransactionServerSide(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	sample := refusalStorageSample(t)
+	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(time.Second)}
+	err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		if _, err := az.UpdateRequestRefusals(ctx, &sample); err != nil {
+			return err
+		}
+		time.Sleep(1500 * time.Millisecond) // idle past the deadline, holding the row lock
+		_, err := az.UpdateRequestRefusals(ctx, &sample)
+		return err
+	})
+	var timedOut *pgconn.PgError
+	if !errors.As(err, &timedOut) || timedOut.Code != "25P04" || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("idle transaction was not ended by transaction_timeout: %v", err)
+	}
+	if held := queryInt(t, db, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state LIKE 'idle in transaction%'"); held != 0 {
+		t.Fatalf("aborted transaction left %d idle-in-transaction backends", held)
+	}
+	signals := service.NewRefusalSignals(db)
+	signals.Deadline = 5 * time.Second
+	if err := signals.Record(t.Context(), sample); err != nil {
+		t.Fatalf("row lock was not released: %v", err)
+	}
+}
+
 func sealedRefusalCount(t *testing.T, db *store.DB) int64 {
 	t.Helper()
 	if db.Engine() == store.EnginePostgres {
