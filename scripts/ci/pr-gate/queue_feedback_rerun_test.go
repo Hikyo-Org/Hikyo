@@ -2,11 +2,13 @@ package main
 
 import "testing"
 
-// The gates run on the `requested` and `completed` callbacks of a feedback run,
-// not on `in_progress` (#1553). `requested` is what keeps a rerun of an exact-head
-// feedback run from leaving the earlier attempt's success admitting a merge:
-// the reconcile it starts reads the live run, which is now unfinished, and
-// publishes a pending record. This pins that guarantee for every unfinished state.
+// The gates reconcile at the start of every feedback attempt. GitHub sends requested,
+// in_progress and completed for a first attempt, but a rerun sends no requested, so a
+// rerun's only start callback is in_progress (the workflow jobs take in_progress only
+// for run_attempt > 1; scripts/ci/feedback_event_sequence_test.go pins that sequence).
+// The reconcile that callback starts reads the live run, which is now an unfinished
+// attempt 2, and publishes a pending record over attempt 1's success. This pins that
+// guarantee for every unfinished state the live run can show.
 func TestFeedbackRerunNeverLeavesAStaleSuccess(t *testing.T) {
 	for _, status := range []string{"requested", "queued", "waiting", "pending", "in_progress"} {
 		for _, name := range []string{"queue", "dev"} {

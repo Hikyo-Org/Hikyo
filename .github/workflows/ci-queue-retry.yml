@@ -82,12 +82,22 @@ jobs:
           # GitHub may refuse a later per-job rerun once the first one has restarted the run
           # (unverified). A refusal must not hide the jobs after it: try every id, name each
           # one that was not rerun, and fail the step so the result stays truthful. Only the
-          # id is printed, never GitHub's response text.
+          # id is printed, never GitHub's response text. A rerun request is an idempotent
+          # re-request, not a gate write, so a refusal is retried twice with backoff (8 seconds
+          # in all, well inside this job's two minutes) before the job is reported not rerun.
+          rerun_job() {
+            local delay
+            for delay in 0 2 6; do
+              if [ "$delay" != 0 ]; then sleep "$delay"; fi
+              if gh api --method POST "repos/$GH_REPO/actions/jobs/$1/rerun" >/dev/null 2>&1; then return 0; fi
+            done
+            return 1
+          }
           refused=""
           for id in $ids; do
             [[ "$id" =~ ^[1-9][0-9]*$ ]]
             echo "Rerunning job $id of run $RUN_ID (attempt $RUN_ATTEMPT)."
-            if ! gh api --method POST "repos/$GH_REPO/actions/jobs/$id/rerun" >/dev/null 2>&1; then
+            if ! rerun_job "$id"; then
               echo "Job $id was not rerun: GitHub refused the rerun request."
               refused="$refused $id"
             fi
@@ -97,17 +107,23 @@ jobs:
             exit 1
           fi
 
+
   rerun-after-reset:
     # A designed wait, not a timeout bump. The shared token's core limit is one fixed
     # window of at most 60 minutes, and a merge-group head gets no later event, so a
     # rate-limited group or publish job that nobody retries leaves ci-queue-required
     # queued until the 120-minute queue timeout. This job sleeps until the window resets
-    # (at most 61 minutes, refusing a reset beyond that), then reruns every trusted
-    # failed publisher or group job of the last three hours by id. 70 minutes is the
-    # longest wait plus the sweep; the queue timeout stays untouched. The concurrency
-    # group lets one sleeper run and one wait behind it: a pending sleeper replaced by a
-    # newer one loses nothing, because the survivor sweeps every recent failed run.
-    # The attempt bound still applies, so a run is rerun at most twice in total.
+    # (at most 61 minutes, refusing a reset beyond that), then reruns, group jobs first,
+    # every trusted failed publisher or group job of the last three hours by id. It
+    # pages through every failed and cancelled run of that period for each workflow.
+    # Reruns are spaced and each one first checks the fresh window, stopping while a fifth
+    # of it is left, so the burst cannot re-exhaust the window it waited for; jobs it
+    # stops before stay failed with their check pending, and the next wait sweeps them.
+    # 70 minutes is the longest wait plus the sweep; the job stops starting reruns after 66
+    # minutes, and the queue timeout stays untouched. The concurrency group lets one
+    # sleeper run and one wait behind it: a pending sleeper replaced by a newer one loses
+    # nothing, because the survivor sweeps every recent failed run. The attempt bound still
+    # applies, so a run is rerun at most twice in total.
     needs: rerun
     if: ${{ always() && (needs.rerun.outputs.exhausted == 'true' || needs.rerun.result == 'failure') }}
     runs-on: ubuntu-latest
@@ -124,9 +140,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          started=$(date +%s)
           budget() { # sets remaining, limit and reset (epoch seconds) from the free rate_limit read
             read -r remaining limit reset < <(gh api rate_limit --jq '.resources.core | "\(.remaining) \(.limit) \(.reset)"')
             [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ && "$reset" =~ ^[1-9][0-9]*$ ]]
+          }
+          # A rerun request is an idempotent re-request, not a gate write: a refusal is retried
+          # with backoff (65 seconds at most) before the job is reported not rerun.
+          rerun_job() {
+            local delay
+            for delay in 0 5 15 45; do
+              if [ "$delay" != 0 ]; then sleep "$delay"; fi
+              if gh api --method POST "repos/$GH_REPO/actions/jobs/$1/rerun" >/dev/null 2>&1; then return 0; fi
+            done
+            return 1
           }
           budget
           if [ $((remaining * 10)) -ge "$limit" ]; then
@@ -147,29 +174,55 @@ jobs:
           fi
           # Same trust rule as the rerun job's `if`, applied to listed runs: a branch can
           # edit these workflows, so only their real triggers on protected branches count.
-          now=$(date +%s)
+          since=$(jq -nr --argjson at "$(($(date +%s) - 10800))" '$at | todate')
           runs=""
           for workflow in ci-queue-gate.yml ci-queue-worker.yml ci-dev-gate.yml; do
-            listed=$(gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?per_page=30" |
-              jq -r --arg now "$now" --arg repo "$GH_REPO" '.workflow_runs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and .run_attempt < 3 and ((.created_at | fromdateiso8601) > (($now | tonumber) - 10800)) and (.event == "pull_request_target" or ((.event == "push" or .event == "workflow_run" or .event == "workflow_dispatch" or .event == "schedule") and .head_repository.full_name == $repo and (.head_branch == "main" or .head_branch == "dev")))) | "\(.id) \(.run_attempt)"')
-            runs="$runs$listed"$'\n'
+            for status in failure cancelled; do
+              listed=$(gh api --paginate --method GET "repos/$GH_REPO/actions/workflows/$workflow/runs" \
+                -f status="$status" -f created=">=$since" -F per_page=100 --jq '.workflow_runs[]' |
+                jq -r --arg repo "$GH_REPO" 'select(.run_attempt < 3 and (.event == "pull_request_target" or ((.event == "push" or .event == "workflow_run" or .event == "workflow_dispatch" or .event == "schedule") and .head_repository.full_name == $repo and (.head_branch == "main" or .head_branch == "dev")))) | "\(.id) \(.run_attempt)"')
+              runs="$runs$listed"$'\n'
+            done
           done
-          refused=""
+          groups=""
+          others=""
           while read -r run_id attempt; do
             [ -n "$run_id" ] || continue
             [[ "$run_id" =~ ^[1-9][0-9]*$ && "$attempt" =~ ^[1-9][0-9]*$ ]]
-            ids=$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" \
-              --jq '.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) | .id')
-            for id in $ids; do
+            found=$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" \
+              --jq '.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) | "\(.id) \(.name | split("-")[0])"')
+            while read -r id kind; do
+              [ -n "$id" ] || continue
               [[ "$id" =~ ^[1-9][0-9]*$ ]]
-              echo "Rerunning job $id of run $run_id (attempt $attempt)."
-              if ! gh api --method POST "repos/$GH_REPO/actions/jobs/$id/rerun" >/dev/null 2>&1; then
-                echo "Job $id was not rerun: GitHub refused the rerun request."
-                refused="$refused $id"
-              fi
-            done
+              if [ "$kind" = group ]; then groups="$groups $id"; else others="$others $id"; fi
+            done <<<"$found"
           done <<<"$runs"
-          if [ -n "$refused" ]; then
-            echo "Not rerun:$refused. Reconcile them with: gh workflow run ci-queue-gate.yml -f pr_number=<n>"
+          # Space the reruns and check the fresh window before each: a reconcile spends about
+          # 40 reads, and the ones already released have not spent theirs yet.
+          refused=""
+          held=""
+          for id in $groups $others; do
+            if [ $(($(date +%s) - started)) -gt 3960 ]; then
+              held="$held $id"
+              continue
+            fi
+            budget
+            if [ $((remaining * 5)) -lt "$limit" ]; then
+              echo "Core rate limit has $remaining of $limit requests left; not rerunning job $id yet."
+              held="$held $id"
+              continue
+            fi
+            echo "Rerunning job $id (core limit has $remaining of $limit requests left)."
+            if ! rerun_job "$id"; then
+              echo "Job $id was not rerun: GitHub refused the rerun request."
+              refused="$refused $id"
+            fi
+            sleep 15
+          done
+          if [ -n "$held" ]; then
+            echo "Held to protect the window:$held. Their checks stay pending; the next wait sweeps them, or run: gh workflow run ci-queue-gate.yml -f pr_number=<n>"
+          fi
+          if [ -n "$refused$held" ]; then
+            echo "Not rerun:$refused$held."
             exit 1
           fi

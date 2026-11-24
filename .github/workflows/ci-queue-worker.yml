@@ -26,7 +26,7 @@ jobs:
       contents: read
       pull-requests: read
     concurrency:
-      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing when one open PR has this head, and duplicates stop spending the shared token budget (#1553). A replaced pull_request_target reassesses only its own PR: another open PR on the same head waits for a later callback or worker, which can be replaced too (accepted residual).
       group: queue-check-${{ github.repository_id }}-${{ matrix.work.head }}
       cancel-in-progress: false
     steps:

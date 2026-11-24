@@ -106,7 +106,7 @@ func queuePublisherContract(raw []byte) error {
 	if err := node.Decode(&callback); err != nil {
 		return err
 	}
-	if !slices.Equal(callback.Types, []string{"requested", "completed"}) || !slices.Equal(callback.Workflows, []string{"ci-feedback", "trusted-merge-ci"}) {
+	if !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) || !slices.Equal(callback.Workflows, []string{"ci-feedback", "trusted-merge-ci"}) {
 		return fmt.Errorf("queue publisher must receive feedback and group start, rerun and completion callbacks")
 	}
 	var dispatch struct {
@@ -141,8 +141,8 @@ func queuePublisherContract(raw []byte) error {
 	head := "${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}"
 	groupHead := "${{ github.event.workflow_run.head_sha }}"
 	wantIf := map[string]string{
-		"publish":  "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))",
-		"group":    "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'",
+		"publish":  "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))",
+		"group":    "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'",
 		"dispatch": "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
 	}
 	for _, id := range []string{"publish", "group", "dispatch"} {
@@ -460,7 +460,7 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 		// (runs 43724319276, 43715591698) failed the Go path check, and a looser
 		// publisher guard would send every title or body edit to it again.
 		"foreign ci-feedback workflow path": func(w map[string]any) {
-			queuePublisherJob(w)["if"] = "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))"
+			queuePublisherJob(w)["if"] = "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))"
 		},
 		"skip controller":           func(w map[string]any) { queuePublisherStep(w, 2)["if"] = "false" },
 		"masked controller failure": func(w map[string]any) { queuePublisherStep(w, 2)["continue-on-error"] = true },

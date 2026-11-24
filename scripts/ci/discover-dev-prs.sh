@@ -29,37 +29,17 @@ if [[ $GITHUB_EVENT_NAME == push ]] && jq -e '.ref == "refs/heads/dev"' "$GITHUB
     printf 'dev push: reassessing every open PR (publisher changed or range undeterminable)\n' >&2
   fi
 fi
-# The hourly sweep re-proves only the DEV_SWEEP_CAP PRs whose latest ci-dev-required
-# record is oldest, read from GitHub in a bulk query (about 30 GraphQL points per 25 PRs: the bound is nodes, so the page is small) (no state store of ours). An
-# event re-proof writes a newer record, so that PR moves to the back by itself. When
-# the read fails, the sweep rotates deterministically by hour over PRs sorted by
-# number, so every open PR is still reached within ceil(open/cap) sweeps.
+# The hourly sweep re-proves only DEV_SWEEP_CAP open PRs per run. The window rotates on
+# a cursor derived from the clock alone: PRs sorted by number, window start = hour x cap
+# mod open. It reads no check record and keeps no state, so nothing a run writes (or
+# refreshes without changing state) can move it, and every open PR is reached within
+# ceil(open/cap) consecutive hourly runs. A PR opened or closed in between shifts the
+# windows by at most one cycle; events and the retry path settle checks regardless.
 cap=${DEV_SWEEP_CAP:-5}
-printf '{}' >"$work/proof.json"
-proofread=false
-if [[ $GITHUB_EVENT_NAME == schedule ]]; then
-  # shellcheck disable=SC2016
-  if gh api graphql --paginate --slurp -F owner="${GH_REPO%/*}" -F name="${GH_REPO#*/}" -f query='
-      query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){
-        pullRequests(states:OPEN,first:25,after:$endCursor){pageInfo{hasNextPage endCursor}
-          nodes{number commits(last:1){nodes{commit{oid checkSuites(last:30,filterBy:{appId:15368}){nodes{
-            checkRuns(last:3,filterBy:{checkName:"ci-dev-required"}){nodes{startedAt completedAt}}}}}}}}}}}}' \
-      >"$work/graphql.json" 2>/dev/null &&
-    jq -e '
-      [.[].data.repository.pullRequests.nodes[] | .commits.nodes[0].commit as $c |
-        {key:(.number|tostring), value:{oid:$c.oid,
-          at:([$c.checkSuites.nodes[].checkRuns.nodes[] | (.completedAt // .startedAt // empty)] | max // "")}}
-      ] | from_entries' "$work/graphql.json" >"$work/proof.new" 2>/dev/null; then
-    mv "$work/proof.new" "$work/proof.json"
-    proofread=true
-  else
-    printf 'dev sweep: proof times unreadable, rotating by hour\n' >&2
-  fi
-fi
 now=${DEV_DISCOVERY_NOW:-$(date +%s)}
 jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scope" \
-  --argjson cap "$cap" --argjson proofread "$proofread" --argjson hour "$((now / 3600))" \
-  --slurpfile proof "$work/proof.json" --slurpfile event "$GITHUB_EVENT_PATH" '
+  --argjson cap "$cap" --argjson hour "$((now / 3600))" \
+  --slurpfile event "$GITHUB_EVENT_PATH" '
   def sha: type == "string" and test("^[0-9a-f]{40}$");
   def number: type == "number" and . > 0 and floor == .;
   # GitHub judges every PR of a stack by the stack base, so a layer of a stack
@@ -106,9 +86,6 @@ jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scop
    else error("unsupported dev discovery event") end) |
   group_by(.head) | map(min_by(.pr)) |
   if $name != "schedule" then .
-  elif $proofread then
-    # oldest proof first; a head with no record for its current commit sorts first
-    sort_by([(. as $w | ($proof[0][($w.pr | tostring)] // {}) | if .oid == $w.head then .at else "" end), .pr]) | .[0:$cap]
   else
     sort_by(.pr) | length as $n | (if $n == 0 then 0 else ($hour * $cap) % $n end) as $s | (.[$s:] + .[:$s]) | .[0:$cap]
   end |

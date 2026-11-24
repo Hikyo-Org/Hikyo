@@ -320,13 +320,28 @@ discovery dispatches complete validated head batches and has no check-write
 permission. Workers have no workflow-dispatch permission.
 
 The gate workflows follow the `ci-feedback` (and, for the queue, `trusted-merge-ci`)
-callbacks on `requested` and `completed`, not `in_progress`. `requested` is what stops
-a rerun of an exact-head feedback run from leaving the earlier attempt's success
-admitting a merge: the reconcile it starts reads the live, unfinished run and publishes
-pending (`TestFeedbackRerunNeverLeavesAStaleSuccess`). A new head's first feedback run
-is already covered by the pull request event, and `completed` settles the verdict.
-`in_progress` repeated the `requested` reconcile in full (about 40 reads) and
-guarded nothing the other two do not.
+callbacks on `requested`, `in_progress` and `completed`. GitHub documents that the
+`requested` activity type does not occur when a workflow is re-run
+([events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows),
+`workflow_run`), so a rerun of an exact-head feedback run sends no callback at its
+start, and attempt 1's success would keep admitting a merge until the rerun completes.
+Each attempt is therefore reconciled once at its start: a first attempt on
+`requested`, a rerun on `in_progress`. Every gate job that takes these callbacks has
+`github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1`,
+so a first attempt's `in_progress` is skipped, which costs no API calls. The
+reconcile reads the live, unfinished run and publishes pending
+(`TestFeedbackRerunNeverLeavesAStaleSuccess`); `completed` settles the verdict. The
+event sequence per attempt is pinned by `TestGateCallbacksFollowTheRealEventSequencePerAttempt`.
+
+The per-head publisher groups (`queue-check-...`, `dev-check-...`) keep one running and
+the newest pending reconcile (no `queue: max`), because every reconcile rereads live
+state. That is lossless only while one open PR has the head: a replaced
+`pull_request_target` publish reassesses only its own PR, so another open PR on the same
+head waits for a later feedback callback or worker, which can be replaced too. That is
+an accepted residual. `ci-check-retirement.yml` shares the head lease and keeps
+`queue: max`, which does not protect it: GitHub does not document mixed settings in one
+group, and a publisher in default mode may replace a pending retirement job. The
+publishers reassess the head live and retire stale records themselves.
 
 Targeted publisher execution is limited to one minute from the authenticated
 current job start, including checkout, setup and compilation. Controller work
@@ -375,9 +390,17 @@ reconcile always runs. Before any rerun it reads `rate_limit` (which is not
 counted) and, while less than a tenth of the core budget is left, reruns nothing and
 hands the run to the `rerun-after-reset` job. That job is a designed wait: it sleeps
 until the window's reset plus 5 seconds (refusing a reset more than 61 minutes away),
-re-reads `rate_limit`, then reruns by job id every qualifying failed job of the last
-three hours from the three publisher workflows, under the same trust rule and attempt
-bound. Its 70-minute `timeout-minutes` is one primary window plus the sweep and is the
+re-reads `rate_limit`, then reruns by job id, group jobs first, every qualifying failed
+job of the last three hours from the three publisher workflows, under the same trust
+rule and attempt bound. It pages through every failed and cancelled run of that period
+(status and `created` filters, `--paginate`), with no fixed run count. The reruns are
+spaced 15 seconds apart and each is preceded by a fresh `rate_limit` read: the job stops
+starting reruns while less than a fifth of the window is left, or 66 minutes in, and
+names what it held, so a burst cannot re-exhaust the window it waited for. A held job
+keeps its pending check; the next wait sweeps it. A refused rerun request is an
+idempotent re-request, not a gate write, so it is retried with backoff (the `rerun` job
+twice more within its two minutes, the wait job three more times, 65 seconds at most)
+before the job is reported not rerun. Its 70-minute `timeout-minutes` is one primary window plus the sweep and is the
 only deliberately long timeout in these workflows; the merge-queue timeout is
 unchanged. One repo-wide concurrency group (`queue-retry-after-reset`, no cancel) lets
 one sleeper run with one behind it, so a burst of failures costs at most one waiting
@@ -501,12 +524,12 @@ API. A zero or missing `before`, a force push, an invalid SHA, a failed compare,
 range that is neither ahead nor identical, an ahead range with no listed files or a
 file list at GitHub's 300-file limit all reassess every PR. A push to `main`, feedback callbacks, manual
 dispatch and PR events are unchanged. The hourly schedule re-proves at most five
-open dev PRs per run (`DEV_SWEEP_CAP`), the ones whose newest `ci-dev-required`
-record on their current head is oldest (a head with none first, ties by PR number),
-read from GitHub in one GraphQL query so no state of ours is kept. An event
-re-proof writes a newer record and so moves that PR to the back. If the query fails,
-the sweep rotates by hour over PRs sorted by number, so either way every open PR is
-re-proved within ceil(open/5) sweeps. The cap delays drift detection and recovery of a
+open dev PRs per run (`DEV_SWEEP_CAP`). The window rotates on a cursor from the clock
+alone: PRs sorted by number, start = hour x 5 mod open. It reads no check record and
+keeps no state, because records are rewritten by events and by re-proofs that change
+nothing, and an order based on them can starve a PR. Every open PR is re-proved within
+ceil(open/5) consecutive hourly runs; a PR opened or closed in between shifts the
+windows by at most one cycle. The cap delays drift detection and recovery of a
 missed event by up to that many hours; it removes neither, and no correctness depends
 on it, because events and the retry path settle checks first. An empty selection leaves the run green and
 skips the publisher job.
@@ -566,6 +589,14 @@ wait.
   budget spent) is waited out once when its reset plus 5 seconds fits the job's
   budget (`PR_GATE_DEADLINE`, five minutes from the group step's start); otherwise
   the read fails naming the reset time. A secondary limit ends waiting at once.
+  GitHub's GraphQL docs say a primary limit answers HTTP 200 and a secondary one
+  200 or 403
+  ([GraphQL rate limits](https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api));
+  both shapes are handled: an `errors` entry of type `RATE_LIMITED` (the docs name no
+  type; GitHub sends this one) or whose message names the rate limit, and a 403 or 429
+  whose gh stderr names it.
+- A pass that ends on a rate limit never publishes a terminal refusal, even on the
+  last run attempt: it leaves the check blocking and pending for a later window.
 
 If GitHub stays incomplete or unreadable for 6 minutes, the publisher writes
 the distinct terminal refusal "Merge group proof metadata unavailable", so the

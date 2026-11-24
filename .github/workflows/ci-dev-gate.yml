@@ -13,9 +13,9 @@ on:
     branches: [main, dev]
   workflow_run:
     workflows: [ci-feedback]
-    # requested flips a stale success to pending when a feedback run is rerun; completed settles it.
-    # in_progress adds nothing: the reconcile rereads the live run, and it cost a full re-proof (#1553).
-    types: [requested, completed]
+    # GitHub does not send requested when a workflow is re-run, so a first attempt is covered by requested
+    # and a rerun by in_progress (attempt > 1, enforced by each job's if); completed settles both.
+    types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,13 +32,12 @@ jobs:
   discover:
     # GitHub still starts pull_request_target runs for stacked PRs whose base is
     # another branch. They have no dev admission to publish, so skip them.
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev'
+    if: (github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev') && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
-      checks: read
     outputs:
       work: ${{ steps.targets.outputs.work }}
     steps:
@@ -73,7 +72,7 @@ jobs:
       matrix:
         work: ${{ fromJSON(needs.discover.outputs.work) }}
     concurrency:
-      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing when one open PR has this head, and duplicates stop spending the shared token budget (#1553). A replaced pull_request_target reassesses only its own PR: another open PR on the same head waits for a later callback or worker, which can be replaced too (accepted residual).
       group: dev-check-${{ github.repository_id }}-${{ matrix.work.head }}
       cancel-in-progress: false
     steps:

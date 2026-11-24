@@ -52,13 +52,13 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 		t.Fatal("dev target publisher must listen only to dev PRs")
 	}
 	discover, publish := workflow.Jobs["discover"], workflow.Jobs["publish"]
-	if discover.If != "github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev'" {
+	if discover.If != "(github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev') && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1)" {
 		t.Fatal("a stacked PR event must skip dev discovery instead of failing it, and every other event must still reach it")
 	}
 	if publish.If != "needs.discover.outputs.work != '[]'" {
 		t.Fatal("dev workers must stay skipped when discovery is skipped or fails")
 	}
-	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read", "checks": "read"}) {
+	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) {
 		t.Fatal("routing discovery must not write checks")
 	}
 	if !reflect.DeepEqual(publish.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read", "checks": "write"}) || publish.Timeout != 1 {
@@ -119,7 +119,7 @@ func TestDevGateDoesNotRerunOnPullRequestEdits(t *testing.T) {
 		Types     []string `yaml:"types"`
 	}
 	callback := workflow.On["workflow_run"]
-	if err := callback.Decode(&feedback); err != nil || !reflect.DeepEqual(feedback.Workflows, []string{"ci-feedback"}) || !reflect.DeepEqual(feedback.Types, []string{"requested", "completed"}) {
+	if err := callback.Decode(&feedback); err != nil || !reflect.DeepEqual(feedback.Workflows, []string{"ci-feedback"}) || !reflect.DeepEqual(feedback.Types, []string{"requested", "in_progress", "completed"}) {
 		t.Fatal("a base retarget reaches dev admission only through ci-feedback's callback")
 	}
 	raw, err = os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback.yml"))

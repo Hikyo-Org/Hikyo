@@ -654,7 +654,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				Errors []json.RawMessage `json:"errors"`
 			}
 			if decode(data, &response) == nil && len(response.Errors) > 0 {
-				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true})
+				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true, rateLimited: graphQLRateLimited(response.Errors)})
 			}
 		}
 		var failure struct {
@@ -680,6 +680,24 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 	}
 	return decode(data, result)
 }
+
+// graphQLRateLimited reports an error payload that GitHub sends for an exhausted
+// GraphQL limit. A primary limit answers HTTP 200 with an errors entry (the docs say
+// 200 but name no type; GitHub sends type RATE_LIMITED), and a secondary limit is
+// 200 or 403 with a message naming the rate limit. Only the flag is kept.
+func graphQLRateLimited(raw []json.RawMessage) bool {
+	for _, entry := range raw {
+		var e struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		}
+		if decode(entry, &e) == nil && (e.Type == "RATE_LIMITED" || strings.Contains(strings.ToLower(e.Message), "rate limit")) {
+			return true
+		}
+	}
+	return false
+}
+
 func (ghAPI) write(ctx context.Context, method, path string, payload, result any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {

@@ -240,6 +240,9 @@ func TestQueueRetryKeepsGoingWhenARerunIsRefused(t *testing.T) {
 		"  *--method\\ POST*) ;;\n" +
 		"  api*) printf '%s' '{\"jobs\":[" + jobs + "]}' | jq -r \"$filter\" ;;\n" +
 		"esac\n"
+	if err := os.WriteFile(filepath.Join(dir, "sleep"), []byte("#!/usr/bin/env bash\nprintf 'sleep %s\\n' \"$*\" >> '"+calls+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -250,6 +253,9 @@ func TestQueueRetryKeepsGoingWhenARerunIsRefused(t *testing.T) {
 		t.Fatalf("a refused rerun must fail the step, not report success:\n%s", out)
 	}
 	recorded, _ := os.ReadFile(calls)
+	if n := strings.Count(string(recorded), "jobs/2/rerun"); n != 3 {
+		t.Fatalf("a refused rerun request is retried twice with backoff before it is reported: %d requests\n%s", n, recorded)
+	}
 	for _, id := range []string{"1", "3"} {
 		if !strings.Contains(string(recorded), "api --method POST repos/Hikyo-Org/Hikyo/actions/jobs/"+id+"/rerun") {
 			t.Fatalf("job %s was not rerun around the refusal:\n%s", id, recorded)

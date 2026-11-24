@@ -62,10 +62,12 @@ func (q *queueController) contents(ctx context.Context, path, revision string) (
 
 type queueController struct {
 	*controller
-	dco        queueDCOVerifier
-	targeted   bool
-	repairOnly bool
-	admissions map[int]*admissionTrace
+	dco      queueDCOVerifier
+	targeted bool
+	// The failed pass ended on the GitHub rate limit, so no attempt count may turn it into a terminal refusal.
+	rateLimited bool
+	repairOnly  bool
+	admissions  map[int]*admissionTrace
 }
 type rule struct {
 	Type       string          `json:"type"`

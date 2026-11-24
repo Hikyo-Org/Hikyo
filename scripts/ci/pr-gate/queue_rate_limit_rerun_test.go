@@ -39,6 +39,37 @@ func TestRateLimitedGroupJobCompletesItsCheckWhenRerunAfterTheReset(t *testing.T
 	f.assertNewest(t, "success", "Merge group validated", "")
 }
 
+// The #1514 path: a merge-group callback (workflow_run of trusted-merge-ci) whose group
+// job is rate-limited in initRepository, the very first read. Nothing is written
+// (the repository id is unknown, so no check can be owned), no later event exists, and
+// the rerun of that same job after the reset must complete the check.
+func TestGroupJobRateLimitedInInitRepositoryCompletesOnRerun(t *testing.T) {
+	f := newQueueFixture(t)
+	f.pendingGroup(t)
+	limited := true
+	writes := len(f.api.writes)
+	f.probe().fault = func(_ context.Context, path string, _ int) error {
+		if limited && path == "repos/"+f.c.repoName {
+			return &githubReadError{path: path, status: 403, rateLimited: true, cause: errors.New("rate limit exhausted beyond this job's remaining budget")}
+		}
+		return nil
+	}
+	if err := f.group(); err == nil {
+		t.Fatal("a group job that cannot read the repository must fail so the retry can find it")
+	}
+	if len(f.api.writes) != writes {
+		t.Fatalf("a job limited in initRepository must write nothing: %+v", f.api.writes[writes:])
+	}
+	if latest := newestQueueCheck(f.api.checks); latest == nil || latest.Status == "completed" {
+		t.Fatalf("the check must stay pending for the rerun: %+v", latest)
+	}
+	limited = false
+	if err := f.group(); err != nil {
+		t.Fatalf("the rerun after the reset failed: %v", err)
+	}
+	f.assertNewest(t, "success", "Merge group validated", "")
+}
+
 func TestRateLimitedPublishJobCompletesItsCheckWhenRerunAfterTheReset(t *testing.T) {
 	f := newQueueFixture(t)
 	lift := f.limitedReads()

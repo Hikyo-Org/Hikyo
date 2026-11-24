@@ -8,9 +8,9 @@ on:
     branches: [main]
   workflow_run:
     workflows: [ci-feedback, trusted-merge-ci]
-    # requested flips a stale success to pending when a feedback run is rerun; completed settles it.
-    # in_progress adds nothing: the reconcile rereads the live run, and it cost a full re-proof (#1553).
-    types: [requested, completed]
+    # GitHub does not send requested when a workflow is re-run, so a first attempt is covered by requested
+    # and a rerun by in_progress (attempt > 1, enforced by each job's if); completed settles both.
+    types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -33,7 +33,7 @@ jobs:
     # check rejects any other path as a foreign callback, and that rejection was
     # a red run on the default branch's tip for every title or body edit of a PR.
     # queue_callback_filter_test.go keeps this list equal to what the Go check accepts.
-    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))
+    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
@@ -42,7 +42,7 @@ jobs:
       contents: read
       pull-requests: read
     concurrency:
-      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing when one open PR has this head, and duplicates stop spending the shared token budget (#1553). A replaced pull_request_target reassesses only its own PR: another open PR on the same head waits for a later callback or worker, which can be replaced too (accepted residual).
       group: queue-check-${{ github.repository_id }}-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
       cancel-in-progress: false
     steps:
@@ -103,7 +103,7 @@ jobs:
 
   group:
     name: group-${{ github.event.workflow_run.head_sha }}
-    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'
+    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -112,7 +112,7 @@ jobs:
       contents: read
       pull-requests: read
     concurrency:
-      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing and duplicates stop spending the shared token budget (#1553).
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing when one open PR has this head, and duplicates stop spending the shared token budget (#1553). A replaced pull_request_target reassesses only its own PR: another open PR on the same head waits for a later callback or worker, which can be replaced too (accepted residual).
       group: queue-check-${{ github.repository_id }}-${{ github.event.workflow_run.head_sha }}
       cancel-in-progress: false
     steps:
