@@ -119,7 +119,7 @@ func TestDevGateDoesNotRerunOnPullRequestEdits(t *testing.T) {
 		Types     []string `yaml:"types"`
 	}
 	callback := workflow.On["workflow_run"]
-	if err := callback.Decode(&feedback); err != nil || !reflect.DeepEqual(feedback.Workflows, []string{"ci-feedback"}) || !reflect.DeepEqual(feedback.Types, []string{"requested", "in_progress", "completed"}) {
+	if err := callback.Decode(&feedback); err != nil || !reflect.DeepEqual(feedback.Workflows, []string{"ci-feedback"}) || !reflect.DeepEqual(feedback.Types, []string{"requested", "completed"}) {
 		t.Fatal("a base retarget reaches dev admission only through ci-feedback's callback")
 	}
 	raw, err = os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback.yml"))

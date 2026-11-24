@@ -319,6 +319,15 @@ remain required before every owned check write. Read-only main/schedule/manual
 discovery dispatches complete validated head batches and has no check-write
 permission. Workers have no workflow-dispatch permission.
 
+The gate workflows follow the `ci-feedback` (and, for the queue, `trusted-merge-ci`)
+callbacks on `requested` and `completed`, not `in_progress`. `requested` is what stops
+a rerun of an exact-head feedback run from leaving the earlier attempt's success
+admitting a merge: the reconcile it starts reads the live, unfinished run and publishes
+pending (`TestFeedbackRerunNeverLeavesAStaleSuccess`). A new head's first feedback run
+is already covered by the pull request event, and `completed` settles the verdict.
+`in_progress` repeated the `requested` reconcile in full (about 40 reads) and
+guarded nothing the other two do not.
+
 Targeted publisher execution is limited to one minute from the authenticated
 current job start, including checkout, setup and compilation. Controller work
 uses 45 seconds and reserves the remaining absolute budget for a fresh blocking

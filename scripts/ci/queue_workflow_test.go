@@ -106,7 +106,7 @@ func queuePublisherContract(raw []byte) error {
 	if err := node.Decode(&callback); err != nil {
 		return err
 	}
-	if !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) || !slices.Equal(callback.Workflows, []string{"ci-feedback", "trusted-merge-ci"}) {
+	if !slices.Equal(callback.Types, []string{"requested", "completed"}) || !slices.Equal(callback.Workflows, []string{"ci-feedback", "trusted-merge-ci"}) {
 		return fmt.Errorf("queue publisher must receive feedback and group start, rerun and completion callbacks")
 	}
 	var dispatch struct {

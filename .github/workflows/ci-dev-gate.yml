@@ -13,7 +13,9 @@ on:
     branches: [main, dev]
   workflow_run:
     workflows: [ci-feedback]
-    types: [requested, in_progress, completed]
+    # requested flips a stale success to pending when a feedback run is rerun; completed settles it.
+    # in_progress adds nothing: the reconcile rereads the live run, and it cost a full re-proof (#1553).
+    types: [requested, completed]
   workflow_dispatch:
     inputs:
       pr_number:
