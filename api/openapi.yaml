@@ -2905,12 +2905,17 @@ paths:
       tags: [access]
       summary: Create one member access rule.
       description: |
-        One capability for one person, with a `where` of projects,
+        One capability for one principal, with a `where` of projects,
         environments and keys. The caller needs `manage-members` covering the
         complete selector on every project and may delegate only capabilities
         held there, unless org or instance authority permits unheld grants.
-        Rules are for people: a machine principal is refused. Use replaceRules
-        to edit a grouped rule card atomically.
+        A workload or automation principal may hold a rule under its class's
+        allowlist and depth, in its owning project only, and never narrowed by
+        keys. A machine rule that makes plaintext newly reachable also needs
+        `manage-identities` on the project, the matching disclosure capability
+        and a live reauthentication window over each newly reachable
+        environment; a 409 names the environment to reauthenticate over. Use
+        replaceRules to edit a grouped rule card atomically.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -2960,6 +2965,8 @@ paths:
         top-level principal. At least one revoke or create item is required.
         A missing removal refuses the whole batch.
         Sessions are invalidated only after all authorization checks succeed.
+        For a machine principal the machine widening gate judges the complete
+        change, as on createRule.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]

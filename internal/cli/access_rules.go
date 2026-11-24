@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
 	"net/url"
@@ -13,8 +14,9 @@ import (
 )
 
 // `hikyo access rule list|add|remove` (member-access-rules ADR). A rule is one
-// capability for one person with a where of projects, environments and keys;
-// an edit is `remove` plus `add`.
+// capability for one principal with a where of projects, environments and
+// keys; an edit is `remove` plus `add`. A machine principal's rule names its
+// owning project only and no keys or folders.
 //
 // Spelling: --org/--project/--env are the scope flags every verb shares, so
 // the rule's own axes take distinct names. --in-project (repeatable) names
@@ -46,7 +48,7 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 	st, flags, err := parseCommon("access rule "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "add" {
-			fs.StringVar(&principal, "principal", "", "the person receiving the rule")
+			fs.StringVar(&principal, "principal", "", "the person or machine principal receiving the rule")
 			fs.StringVar(&capability, "capability", "", "the capability the rule carries")
 			fs.Var(&projects, "in-project", "repeatable: a project the rule covers (default: the resolved project)")
 			fs.Var(&envs.only, "only-env", "repeatable: cover only this environment ([PROJECT:]ENV)")
@@ -130,13 +132,63 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 			}
 		}
 		var rule apigen.Rule
-		if err := client.Do(ctx, http.MethodPost, base+"/rules", body, &rule); err != nil {
+		attempt := func() error { return client.Do(ctx, http.MethodPost, base+"/rules", body, &rule) }
+		projectBase := base + "/projects/" + url.PathEscape(body.Where.Projects[0])
+		if err := withWideningCeremony(ctx, client, st, ios, artifact, projectBase, attempt); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, ruleTable(apigen.RuleList{Items: []apigen.Rule{rule}, Count: 1}))
 	default: // remove
 		return client.Do(ctx, http.MethodDelete, base+"/rules/"+url.PathEscape(flags.positional()), nil, nil)
 	}
+}
+
+// withWideningCeremony runs a write that may widen a machine principal's
+// reach. The server refuses such a widening once per environment without a
+// live reauthentication window, naming it; the ceremony opens the window
+// there and the write runs again. Every other outcome returns as it is.
+func withWideningCeremony(ctx context.Context, client *Client, st *State, ios IO, artifact AuthArtifact,
+	projectBase string, attempt func() error) error {
+	err := attempt()
+	var session *SessionArtifact
+	tried := map[string]bool{}
+	for {
+		env := wideningEnv(err)
+		if env == "" || tried[env] {
+			return err
+		}
+		tried[env] = true
+		if session == nil {
+			s, serr := requireHumanSession("CLI reauthentication", artifact)
+			if serr != nil {
+				return serr
+			}
+			session = &s
+		}
+		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{authorized: true}, err); cerr != nil {
+			return cerr
+		}
+		err = attempt()
+	}
+}
+
+// wideningEnv returns the environment a machine widening refusal asks the
+// caller to reauthenticate over, or "" for any other outcome.
+func wideningEnv(err error) string {
+	var e *Error
+	if !errors.As(err, &e) || e.Code != ExitRefused {
+		return ""
+	}
+	const prefix = "reauthenticate over the environments this operation makes reachable, then retry ("
+	rest, ok := strings.CutPrefix(e.Detail, prefix)
+	if !ok {
+		return ""
+	}
+	env, ok := strings.CutSuffix(rest, ")")
+	if !ok {
+		return ""
+	}
+	return env
 }
 
 // ruleRequest builds the create body from the flags, binding every item to

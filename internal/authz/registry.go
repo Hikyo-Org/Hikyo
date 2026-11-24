@@ -4309,7 +4309,9 @@ var operationTable = map[Operation]opSpec{
 		level:    domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRuleCreated},
+		// A machine rule that makes plaintext newly reachable is a second
+		// fact, as on the grant routes.
+		events: []audit.EventType{audit.EventRuleCreated, audit.EventMachineGrantWidened},
 	},
 	OpRuleRevoke: {
 		class:    ClassTenant,
