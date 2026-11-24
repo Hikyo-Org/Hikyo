@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-func TestManagedSeedImportsPasswordFileWithoutTrimming(t *testing.T) {
+// schema-model.md trims every write path, including the bootstrap seed (#1492).
+func TestManagedSeedTrimsThePassword(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "password")
 	if err := os.WriteFile(path, []byte("  password\r\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -17,11 +18,19 @@ func TestManagedSeedImportsPasswordFileWithoutTrimming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if values["HIKYO_MAIL_PASSWORD"] != "  password\r\n" {
-		t.Fatal("password bytes changed")
+	if values["HIKYO_MAIL_PASSWORD"] != "password" {
+		t.Fatal("file password was not trimmed")
 	}
 	if _, exists := values["HIKYO_MAIL_PASSWORD_FILE"]; exists {
 		t.Fatal("file reference became managed configuration")
+	}
+	inline := &Config{ManagedInputs: map[string]string{"HIKYO_MAIL_PASSWORD": "\tinline secret \n"}}
+	values, err = inline.ManagedSeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["HIKYO_MAIL_PASSWORD"] != "inline secret" {
+		t.Fatal("inline password was not trimmed, or lost its interior space")
 	}
 }
 

@@ -22,8 +22,8 @@ variable cannot override the applied managed snapshot.
 | `HIKYO_MAIL_TLS` | Required: `implicit` or `starttls`. Cleartext delivery and STARTTLS downgrade are refused. |
 | `HIKYO_MAIL_FROM` | Required: one RFC 5322 sender mailbox. |
 | `HIKYO_MAIL_USER` | Optional authentication username. Requires a password; a password without a username is refused. |
-| `HIKYO_MAIL_PASSWORD_FILE` | Bootstrap secret-file input; import its contents once during managed adoption. |
-| `HIKYO_MAIL_PASSWORD` | Alternative bootstrap password, or the managed secret value. Configure exactly one bootstrap password source when authentication is enabled. Environment plaintext is the weakest bootstrap tier. |
+| `HIKYO_MAIL_PASSWORD_FILE` | Bootstrap secret-file input; import its contents once during managed adoption. Leading and trailing whitespace, including a trailing newline, is trimmed. |
+| `HIKYO_MAIL_PASSWORD` | Alternative bootstrap password, or the managed secret value. Configure exactly one bootstrap password source when authentication is enabled. Environment plaintext is the weakest bootstrap tier. Leading and trailing whitespace is trimmed. |
 | `HIKYO_MAIL_CA_FILE` | Optional bootstrap PEM trust file, imported once during adoption. |
 | `HIKYO_MAIL_CA_PEM` | Managed-only custom CA certificate contents, replacing the imported trust file. Private keys are refused. |
 | `HIKYO_MAIL_EHLO` | Optional greeting hostname. |
