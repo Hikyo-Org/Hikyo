@@ -209,7 +209,20 @@ func TestPublishTrimsAPaddedPendingMailPassword(t *testing.T) {
 	if _, err := revisions.PublishPlanned(t.Context(), local, scope, PublishRequest{VersionIDs: []string{versionID}}); err != nil {
 		t.Fatal(err)
 	}
-	var live, snapshot string
+	live, snapshot := liveAndSnapshot(t, s, local, scope, name)
+	if live != "padded secret" || snapshot != "padded secret" {
+		t.Fatalf("live %q and snapshot %q must both be trimmed", live, snapshot)
+	}
+}
+
+// liveAndSnapshot opens a key's live cell and its value in the latest snapshot.
+func liveAndSnapshot(t *testing.T, s *SelfConfig, local Actor, scope domain.Scope, name string) (live, snapshot string) {
+	t.Helper()
+	keyTarget := authz.KeyByName(name)
+	sealer, err := sealerForKey(t.Context(), s.DB, s.Keyring, local, authz.OpValueStage, scope, &keyTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Read(t.Context(), s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		caller, err := local.resolve(ctx, az, time.Now().UTC())
 		if err != nil {
@@ -256,7 +269,81 @@ func TestPublishTrimsAPaddedPendingMailPassword(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if live != "padded secret" || snapshot != "padded secret" {
-		t.Fatalf("live %q and snapshot %q must both be trimmed", live, snapshot)
+	return live, snapshot
+}
+
+// An older revision written before the trim was uniform can hold a padded value.
+// Restore stages it verbatim; the impact preview and publish must both show and
+// store the trimmed value.
+func TestRestoreOfAPaddedRevisionIsTrimmed(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, rotated string
+		secret        bool
+	}{
+		{"HIKYO_MAIL_PASSWORD", "rotated secret", true},
+		{"HIKYO_MAIL_USER", "other-operator", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sink := mailtest.New(t, "implicit")
+			s, local := selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "restore-padded.db")}, mailTestSeed(sink))
+			if err := s.LoadRuntime(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			actor, _ := selfConfigSession(t, s, local)
+			status, err := s.Status(t.Context(), actor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
+			values := &Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
+			revisions := &Revisions{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
+			staged, err := values.Set(t.Context(), local, scope, tc.name, tc.rotated, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := revisions.PublishPlanned(t.Context(), local, scope, PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
+				t.Fatal(err)
+			}
+			// Rewrite revision 1's entry as an older, padded write would have left it.
+			keyTarget := authz.KeyByName(tc.name)
+			sealer, err := sealerForKey(t.Context(), s.DB, s.Keyring, local, authz.OpValueStage, scope, &keyTarget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var org, project, env, keyID, snapshotID, entryID string
+			if err := s.DB.SQLiteWrite().QueryRowContext(t.Context(), `SELECT e.org_id, e.project_id, e.environment_id, e.key_id, e.snapshot_id, e.id
+				FROM snapshot_entries e JOIN snapshots s ON s.id = e.snapshot_id WHERE s.revision = 1 AND e.key_name = ?`, tc.name).
+				Scan(&org, &project, &env, &keyID, &snapshotID, &entryID); err != nil {
+				t.Fatal(err)
+			}
+			padded, err := sealer.SealField(snapshotAAD(org, project, env, keyID, snapshotID, entryID), []byte(" \t padded \r\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.DB.SQLiteWrite().ExecContext(t.Context(), `UPDATE snapshot_entries SET ciphertext = ? WHERE id = ?`, padded, entryID); err != nil {
+				t.Fatal(err)
+			}
+			restored, err := revisions.Restore(t.Context(), local, scope, 1, tc.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(restored.Changes) != 1 {
+				t.Fatalf("restore staged %d changes, want 1", len(restored.Changes))
+			}
+			if !tc.secret {
+				after := restored.Preview.Environments[0].Changes[0].After
+				if after == nil || *after != "padded" {
+					t.Fatalf("impact preview After = %v, want the trimmed value", after)
+				}
+			}
+			if _, err := revisions.PublishPlanned(t.Context(), local, scope, PublishRequest{VersionIDs: []string{restored.Changes[0].VersionID}, PreviewToken: restored.Preview.Token}); err != nil {
+				t.Fatal(err)
+			}
+			if live, snapshot := liveAndSnapshot(t, s, local, scope, tc.name); live != "padded" || snapshot != "padded" {
+				t.Fatalf("live %q and snapshot %q must both be trimmed", live, snapshot)
+			}
+		})
 	}
 }
