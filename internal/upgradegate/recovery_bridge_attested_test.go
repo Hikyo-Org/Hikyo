@@ -116,7 +116,7 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer pinned.Close()
+			defer func() { _ = pinned.Close() }()
 			drill, err := app.DrillUpgrade(t.Context(), app.UpgradeDrillRequest{Scratch: processStoreConfig(upgradegate.GateStoreForProcessTest(t, engine)), Ciphertext: pinned, Receipt: receipt, Plan: plan, Operator: operator, Unlock: backup.Unlock{Identity: identity}, RootKey: bytes.Clone(root), Principal: domain.PrincipalID("usr_process"), Scope: domain.Scope{Org: "org_process", Project: "prj_process"}, Now: time.Now().UTC(), Lifetime: time.Hour})
 			if err != nil {
 				t.Fatal(err)
