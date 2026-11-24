@@ -246,7 +246,9 @@ Known limit: the dev gate lets dev's `.github/workflows/ci-dev-gate.yml` differ 
 main's only when the PR head is main's exact SHA (`devPublisherContract`). A hotfix that
 changes `ci-dev-gate.yml` therefore cannot flow through the automatic back-merge: the
 gate refuses it and, after six hours, the run reports it stuck. That case needs a manual
-back-merge, which the gate admits only from main's exact head.
+back-merge whose head is main's exact SHA: push `backmerge/main-into-dev-<yyyymmdd>` at
+main's tip, with no merge commit of its own, and open its PR into `dev`. The automatic
+back-merge treats it as manual and stands aside.
 
 A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
 written, because nightlies reuse proof instead of running the full graph. It

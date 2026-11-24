@@ -83,6 +83,7 @@ expect_fail 'a missing conclusion' "$(runs "$(rec 3 108 null schedule)")" "ended
 GH_FAIL=1
 export GH_FAIL
 expect_fail 'a gh error' "$(runs '')" 'cannot be read'
+grep -F 'HTTP 502' "$work/err" >/dev/null || fail 'the gh error reason is hidden'
 unset GH_FAIL
 status=0
 PROMOTION_HEALTH_NOW=abc GH_BIN=$work/gh READS=$work/reads RUNS='{}' GH_REPO=o/r GH_TOKEN=read-token "$script" >"$work/out" 2>&1 || status=$?

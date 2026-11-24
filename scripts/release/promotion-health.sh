@@ -30,7 +30,11 @@ since_iso=$(jq -nr "$since | todate")
 # landing trigger is the only other event, and its runs are not promotions.
 "$GH_BIN" api --paginate "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since_iso&per_page=100" --jq \
 	".workflow_runs[] | select(.event != \"pull_request_target\" and ((.created_at | fromdateiso8601?) // 0) >= $since) | [.created_at, .id, (.conclusion // \"-\")] | @tsv" \
-	>"$work/runs" 2>"$work/err" || fail 'nightly-promote.yml runs cannot be read, so promotion health is unknown'
+	>"$work/runs" 2>"$work/err" || {
+	# gh's reason, kept from being read as a workflow command.
+	head -n 5 "$work/err" | tr -cd '[:print:]\n' | sed 's/::/: :/g' >&2
+	fail 'nightly-promote.yml runs cannot be read, so promotion health is unknown'
+}
 latest=$(sort "$work/runs" | tail -n 1)
 [ -n "$latest" ] || fail 'nightly-promote.yml has no completed scheduled or manual run on main in 36 hours, so promotion has stopped running.'
 tab=$(printf '\t')

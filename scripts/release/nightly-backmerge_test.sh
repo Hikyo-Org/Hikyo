@@ -213,6 +213,14 @@ for s in identical behind; do
 	expect_calls "$s" ''
 done
 
+# Dev took main another way: an open automatic back-merge is closed, not left behind.
+reset
+COMPARE='{"status":"identical","total_commits":0,"commits":[]}'
+PULLS=$(pulls 70 "$old")
+expect_ok 'a redundant back-merge'
+expect_calls 'a redundant back-merge' "app-token|POST repos/o/r/issues/70/comments body=...
+app-token|PATCH repos/o/r/pulls/70 state=closed"
+
 reset
 COMPARE="{\"status\":\"ahead\",\"total_commits\":2,\"commits\":[$merge,$merge]}"
 expect_ok 'merges only'
@@ -227,14 +235,14 @@ expect_calls 'truncated merges' "$fresh"
 upd="app-token|POST repos/o/r/merges base=$old head=$main commit_message=Merge main fffffff into dev"
 reset
 PULLS=$(pulls 70 "$old")
-printf \'%s\' "$merged" >"$work/branch"
+printf '%s' "$merged" >"$work/branch"
 PULL=$(detail true clean '{"x":1}')
 expect_ok 'updated back-merge'
 expect_calls 'updated back-merge' "$upd"
 
 reset
 PULLS=$(pulls 70 "$old")
-printf \'%s\' "$merged" >"$work/branch"
+printf '%s' "$merged" >"$work/branch"
 PULL=$(detail true blocked null)
 expect_ok 'disarmed back-merge'
 expect_calls 'disarmed back-merge' "$upd
@@ -247,7 +255,7 @@ expect_calls 'unknown mergeability' "$upd"
 
 reset
 PULLS=$(pulls 70 "$old")
-printf \'%s\' "$merged" >"$work/branch"
+printf '%s' "$merged" >"$work/branch"
 MERGE=409
 expect_stuck 'a conflict on an open back-merge' "$upd" 'https://github.com/o/r/pull/70'
 PULL=$(detail false dirty '{"x":1}')
@@ -259,7 +267,7 @@ expect_stuck 'a dirty state' "$upd" 'conflicts with dev'
 # The re-arm comes before the age check.
 reset
 PULLS=$(pulls 70 "$old")
-printf \'%s\' "$merged" >"$work/branch"
+printf '%s' "$merged" >"$work/branch"
 PULL=$(detail true blocked null 21601)
 expect_stuck 'an old disarmed back-merge' "$upd
 app-token|pr merge 70 --repo o/r --auto --merge --match-head-commit $merged" 'more than 6 hours'
@@ -333,7 +341,7 @@ PULLS='[{"number":"x","user":{"id":320493937},"head":{"ref":"backmerge/auto-2026
 expect_refused 'an invalid number' 'invalid pull request number'
 reset
 PULLS=$(pulls 70 "$old")
-printf \'%s\' "$merged" >"$work/branch"
+printf '%s' "$merged" >"$work/branch"
 PULL=$(detail true '##[error]x' null)
 expect_stuck 'an invalid merge state' "$upd" 'invalid merge state'
 PULL='{"mergeable":true,"mergeable_state":"clean","auto_merge":null,"created_at":"yesterday","head":{"sha":"'$merged'"}}'

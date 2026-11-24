@@ -127,10 +127,22 @@ while IFS= read -r ref; do
 	printf '%s\n' "$branch" | grep -Eq "$branch_re" || continue
 	grep -Fxq -- "$branch" "$work/heads" && continue
 	if ! write api -X DELETE "repos/$GH_REPO/git/refs/heads/$branch" >/dev/null 2>"$work/err"; then
-		grep -E 'Reference does not exist|\(HTTP (404|422)\)' "$work/err" >/dev/null || { cat "$work/err" >&2; exit 1; }
+		# A ruleset refusal is also a 422, so only a missing ref counts as gone.
+		grep -E 'Reference does not exist|\(HTTP 404\)' "$work/err" >/dev/null || { cat "$work/err" >&2; exit 1; }
+		continue
 	fi
 	note "nightly-backmerge: deleted orphaned back-merge branch $branch."
 done <"$work/refs"
+
+# An automatic back-merge left open after dev took main another way (by hand, say)
+# has nothing left to do. The next run deletes its branch.
+retire_auto() {
+	[ -n "$auto" ] || return 0
+	write api -X POST "repos/$GH_REPO/issues/$auto/comments" \
+		-f "body=Dev already contains main, so nightly-backmerge closes this back-merge." >/dev/null
+	write api -X PATCH "repos/$GH_REPO/pulls/$auto" -f state=closed >/dev/null
+	note "nightly-backmerge: closed back-merge #$auto, because dev already contains main."
+}
 
 # Commits main has that dev lacks.
 compare=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...$GITHUB_SHA")
@@ -138,6 +150,7 @@ status=$(printf '%s' "$compare" | jq -er '.status')
 case "$status" in
 behind | identical)
 	note 'nightly-backmerge: dev already contains main.'
+	retire_auto
 	exit 0
 	;;
 ahead | diverged) ;;
@@ -148,6 +161,7 @@ esac
 # content.
 if printf '%s' "$compare" | jq -e '(.commits | length) as $listed | .total_commits == $listed and all(.commits[]; (.parents | length) > 1)' >/dev/null; then
 	note 'nightly-backmerge: main leads dev by merge commits only, so there is nothing to back-merge.'
+	retire_auto
 	exit 0
 fi
 if [ -n "$human" ]; then
