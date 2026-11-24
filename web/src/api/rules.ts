@@ -73,6 +73,20 @@ export class RuleSaveFailure extends Error {
   }
 }
 
+/** A machine rule change was refused until the caller reauthenticates, and the passkey ceremony over `environment` did not complete. Nothing was written. */
+export class RuleReauthFailure extends Error {
+  override readonly cause: unknown;
+
+  constructor(
+    readonly environment: string,
+    cause: unknown,
+  ) {
+    super(`reauthentication over ${environment} did not complete`, { cause });
+    this.name = 'RuleReauthFailure';
+    this.cause = cause;
+  }
+}
+
 const WIDENING = /reauthenticate over the environments this operation makes reachable, then retry \(([^)\s]+)\)/;
 
 /**
@@ -90,7 +104,9 @@ export function wideningEnvironment(error: unknown): string | undefined {
  * makes plaintext newly reachable is refused once per such environment until
  * the caller reauthenticates over it; each named environment takes one
  * passkey reauthentication and the same change is sent again. A ceremony that
- * does not complete returns the refusal, which proves nothing was written.
+ * does not complete throws RuleReauthFailure with the ceremony error as its
+ * cause, which proves nothing was written; a second refusal over the same
+ * environment is thrown as the server's own 409.
  */
 export async function saveRule(org: string, before: Rule | null, draft: Rule): Promise<void> {
   const plan = savePlan(before, draft);
@@ -111,8 +127,8 @@ export async function saveRule(org: string, before: Rule | null, draft: Rule): P
         reauthenticated.add(environment);
         try {
           await runPasskeyCeremony({ operation: 'mint', environmentId: environment, keyIds: [] });
-        } catch {
-          throw error;
+        } catch (ceremonyError) {
+          throw new RuleReauthFailure(environment, ceremonyError);
         }
         continue;
       }

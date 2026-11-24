@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { zRuleCapability } from '@hikyo/zod';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { grantRows, IDS, makeWorld, PAYMENTS_KEYS } from './fixture.ts';
 import {
@@ -317,9 +318,9 @@ describe('where labels', () => {
 describe('machine rules (D11)', () => {
   const where = { projects: [PAY], envs: { mode: 'only' as const, items: [{ project: PAY, environment: STAGING }] }, keys: ALL };
   it('pins what each class may hold to internal/domain CheckMachineRule', () => {
-    const fixture = JSON.parse(readFileSync(new URL('../../../../internal/domain/testdata/capabilities.json', import.meta.url), 'utf8')) as {
-      machine_rule_capabilities: Record<string, string[]>;
-    };
+    const fixture = z
+      .object({ machine_rule_capabilities: z.record(z.string(), z.array(z.string())) })
+      .parse(JSON.parse(readFileSync(new URL('../../../../internal/domain/testdata/capabilities.json', import.meta.url), 'utf8')));
     expect(Object.keys(fixture.machine_rule_capabilities).sort()).toEqual(['automation', 'workload']);
     for (const machine of ['workload', 'automation'] as const) {
       const held = PERMS.map((p) => p.id).filter((id) => allowed(id, where, machine));

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
 import type { ServiceAccount } from '../../api/identities.ts';
-import { ruleFailureText, RuleSaveFailure, useRuleMutations, wideningEnvironment } from '../../api/rules.ts';
+import { ceremonyRefusalText } from '../../api/values.ts';
+import { RuleReauthFailure, ruleFailureText, RuleSaveFailure, useRuleMutations, wideningEnvironment } from '../../api/rules.ts';
 import { Alert } from '../../ui/Alert.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
@@ -49,10 +50,13 @@ export function MachineRules({
     setEditing({ before, draft });
   };
   const failureText = (error: unknown) => {
+    if (error instanceof RuleReauthFailure) {
+      return `This rule newly reaches plaintext in ${envName(world, error.environment)}, which needs a passkey reauthentication over it. ${ceremonyRefusalText(error.cause)} Nothing was saved.`;
+    }
     const environment = wideningEnvironment(error);
     return environment === undefined
       ? ruleFailureText(error)
-      : `This rule newly reaches plaintext in ${envName(world, environment)}, which needs a passkey reauthentication over it. The reauthentication did not complete, and nothing was saved.`;
+      : `The passkey reauthentication over ${envName(world, environment)} completed, but the server still refused this rule. Nothing was saved. Reload and try again.`;
   };
   // An atomic change can commit before its response is lost: never retry the
   // old IDs or draft, close the editor over the refreshed listing.

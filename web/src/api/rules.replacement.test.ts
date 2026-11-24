@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { ALL, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError } from './client.ts';
-import { removeRule, RuleSaveFailure, ruleFailureText, rulesListingText, saveRule, wideningEnvironment } from './rules.ts';
+import { removeRule, RuleReauthFailure, RuleSaveFailure, ruleFailureText, rulesListingText, saveRule, wideningEnvironment } from './rules.ts';
 
 const writes = vi.hoisted(() => ({ parsed: vi.fn(), ok: vi.fn(), ceremony: vi.fn() }));
 vi.mock('./client.ts', async (original) => ({
@@ -79,11 +79,14 @@ it('reauthenticates over each environment a machine widening names, then sends t
   expect(new Set(writes.parsed.mock.calls.map((call) => JSON.stringify(call[1])))).toHaveProperty('size', 1);
 });
 
-it('returns the widening refusal when the reauthentication does not complete', async () => {
+it('keeps the ceremony error when the reauthentication does not complete', async () => {
   const refusal = widening('env_a');
+  const cancelled = new DOMException('cancelled', 'NotAllowedError');
   writes.parsed.mockRejectedValue(refusal);
-  writes.ceremony.mockRejectedValue(new DOMException('cancelled', 'NotAllowedError'));
-  await expect(saveRule('org_a', null, before)).rejects.toBe(refusal);
+  writes.ceremony.mockRejectedValue(cancelled);
+  const error = await saveRule('org_a', null, before).catch((cause: unknown) => cause);
+  expect(error).toBeInstanceOf(RuleReauthFailure);
+  expect(error).toMatchObject({ environment: 'env_a', cause: cancelled });
   expect(wideningEnvironment(refusal)).toBe('env_a');
   expect(writes.parsed).toHaveBeenCalledOnce();
 });
