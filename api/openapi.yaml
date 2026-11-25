@@ -6534,14 +6534,28 @@ paths:
     post:
       operationId: resumeIncident
       tags: [incidents]
-      summary: Run the open items again and report what the pass did.
+      summary: Run the open items and report what the pass did.
       description: |
-        Re-reads each open item and runs its owner function once. Only an owner's
-        confirmation writes `done`; anything else leaves the item open. The counts
-        describe this pass only.
+        Opening an incident only enumerates what the scope leaves behind; this route
+        does the work. It re-reads each open item and runs its owner function once.
+        Only an owner's confirmation writes `done`; anything else leaves the item
+        open. The counts describe this pass only.
+
+        Resume performs the containment, so it needs a fresh account-security
+        proof (your TOTP code, or your password if you have no factor) of its own,
+        spent by this one call. A caller who cannot see the incident gets the same
+        `404` as for a missing one, before any proof is asked for. The surface
+        confirms the list of open items with the operator before it sends the call.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 21
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentResumeRequest"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -6551,6 +6565,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IncidentResumeResult"
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
@@ -18854,10 +18869,14 @@ components:
     IncidentOutcomeCounts:
       type: object
       additionalProperties: false
-      required: [pending, done, unknown, attested, blocked, out_of_scope]
+      required: [pending, refused, done, unknown, attested, blocked, out_of_scope]
       description: How many items sit in each ledger outcome.
       properties:
         pending: {type: integer, format: int32}
+        refused:
+          type: integer
+          format: int32
+          description: Of the open items, how many an owner refused (the pending items that carry the `owner_failed` reason). They are counted in `pending` too, which also holds the items that have not run yet.
         done: {type: integer, format: int32}
         unknown: {type: integer, format: int32}
         attested: {type: integer, format: int32}
@@ -18938,6 +18957,16 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/IncidentItem"}}
         next_after: {type: string, maxLength: 128, description: "Pass as `after` to read the next page. Present after a full page, and that next page may be empty."}
+
+    IncidentResumeRequest:
+      type: object
+      additionalProperties: false
+      required: [proof]
+      properties:
+        proof:
+          type: string
+          maxLength: 65536
+          description: Your TOTP code, or your password if you have no confirmed factor. Spent by this call only.
 
     IncidentResumeResult:
       type: object

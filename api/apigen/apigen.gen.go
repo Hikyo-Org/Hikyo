@@ -8612,7 +8612,16 @@ type IncidentOutcomeCounts struct {
 	Done       int32 `json:"done"`
 	OutOfScope int32 `json:"out_of_scope"`
 	Pending    int32 `json:"pending"`
-	Unknown    int32 `json:"unknown"`
+
+	// Refused Of the open items, how many an owner refused (the pending items that carry the `owner_failed` reason). They are counted in `pending` too, which also holds the items that have not run yet.
+	Refused int32 `json:"refused"`
+	Unknown int32 `json:"unknown"`
+}
+
+// IncidentResumeRequest defines model for IncidentResumeRequest.
+type IncidentResumeRequest struct {
+	// Proof Your TOTP code, or your password if you have no confirmed factor. Spent by this call only.
+	Proof string `json:"proof"`
 }
 
 // IncidentResumeResult What one resume pass did, in items.
@@ -14551,6 +14560,9 @@ type OpenIncidentJSONRequestBody = IncidentOpenRequest
 // CloseIncidentJSONRequestBody defines body for CloseIncident for application/json ContentType.
 type CloseIncidentJSONRequestBody = IncidentCloseRequest
 
+// ResumeIncidentJSONRequestBody defines body for ResumeIncident for application/json ContentType.
+type ResumeIncidentJSONRequestBody = IncidentResumeRequest
+
 // AdoptInstanceConfigJSONRequestBody defines body for AdoptInstanceConfig for application/json ContentType.
 type AdoptInstanceConfigJSONRequestBody = InstanceConfigAdoptRequest
 
@@ -16216,7 +16228,7 @@ type ServerInterface interface {
 	// AttestIncidentItem State that an open item was resolved outside this system.
 	// (POST /api/v1/incidents/{incident}/items/{item}/attest)
 	AttestIncidentItem(w http.ResponseWriter, r *http.Request, incident IncidentID, item IncidentItemID)
-	// ResumeIncident Run the open items again and report what the pass did.
+	// ResumeIncident Run the open items and report what the pass did.
 	// (POST /api/v1/incidents/{incident}/resume)
 	ResumeIncident(w http.ResponseWriter, r *http.Request, incident IncidentID)
 	// QueryInstanceAudit One bounded page of the instance audit trail.
@@ -17749,7 +17761,7 @@ func (_ Unimplemented) AttestIncidentItem(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ResumeIncident Run the open items again and report what the pass did.
+// ResumeIncident Run the open items and report what the pass did.
 // (POST /api/v1/incidents/{incident}/resume)
 func (_ Unimplemented) ResumeIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -45453,6 +45465,7 @@ func (response AttestIncidentItem503JSONResponse) VisitAttestIncidentItemRespons
 
 type ResumeIncidentRequestObject struct {
 	Incident IncidentID `json:"incident"`
+	Body     *ResumeIncidentJSONRequestBody
 }
 
 type ResumeIncidentResponseObject interface {
@@ -45469,6 +45482,20 @@ func (response ResumeIncident200JSONResponse) VisitResumeIncidentResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResumeIncident400JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -88790,7 +88817,7 @@ type StrictServerInterface interface {
 	// AttestIncidentItem State that an open item was resolved outside this system.
 	// (POST /api/v1/incidents/{incident}/items/{item}/attest)
 	AttestIncidentItem(ctx context.Context, request AttestIncidentItemRequestObject) (AttestIncidentItemResponseObject, error)
-	// ResumeIncident Run the open items again and report what the pass did.
+	// ResumeIncident Run the open items and report what the pass did.
 	// (POST /api/v1/incidents/{incident}/resume)
 	ResumeIncident(ctx context.Context, request ResumeIncidentRequestObject) (ResumeIncidentResponseObject, error)
 	// QueryInstanceAudit One bounded page of the instance audit trail.
@@ -91895,6 +91922,13 @@ func (sh *strictHandler) ResumeIncident(w http.ResponseWriter, r *http.Request, 
 	var request ResumeIncidentRequestObject
 
 	request.Incident = incident
+
+	var body ResumeIncidentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ResumeIncident(ctx, request.(ResumeIncidentRequestObject))

@@ -359,22 +359,29 @@ compromise using independent evidence, because restore does not establish that f
 ## The incident ledger commands
 
 `hikyo incident` and the `/api/v1/incidents` routes record an incident and work its
-items through the owner functions. They need a human session with `credential-reset`
-at the incident's organisation, or at the instance for an incident that spans
-organisations.
+items through the owner functions. They need a human session that passed
+multi-factor sign-in, with `credential-reset` at the incident's organisation, or at
+the instance for an incident that spans several organisations or none (an account
+whose grants reach more than one organisation, or none, is such an incident). A
+session that did not pass multi-factor sign-in reads every incident as one that does
+not exist: run `hikyo account factor step-up` and retry.
 
-- `hikyo incident open --scope account|org|project|adapter ...` lists what the scope
-  leaves behind and works it through the owner functions. Opening a scope that
+- `hikyo incident open --scope account|org|project|adapter ...` only enumerates what
+  the scope leaves behind, as items, and performs nothing. Opening a scope that
   already has an open incident adds only the missing objects.
 - `hikyo incident show <incident>` and `hikyo incident items <incident>` read the
   ledger. An item its owner refused reads apart from one that has not yet run, and a
   rotation shows its own state as the server read it just now.
-- `hikyo incident resume <incident>` retries the items that are still open.
+- `hikyo incident resume <incident> --yes` does the work. It lists the open items and
+  stops unless you pass `--yes`, then asks for your authenticator code (or your
+  password if you have no authenticator) and runs each open item through its owner
+  function once. It cannot be undone, and the proof covers that one call.
 - `hikyo incident attest <incident> <item>` records your statement that an open item
   was dealt with outside this system. It is a statement, not a confirmation.
 - `hikyo incident close <incident>` needs `--with-residuals` while items are open.
 
-An unknown incident and one outside your authority answer the same way.
+An unknown incident and one outside your authority answer the same way. A machine
+credential or a developer credential is refused on every one of these routes.
 
 ## What the ADR would change
 

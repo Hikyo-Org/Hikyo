@@ -592,7 +592,7 @@ func (s *configurationAdapterStore) ClaimDue(ctx context.Context, worker string,
 // newIncidents builds the incident ledger service with its owner map installed,
 // so a production Resume finds the owner of every item it enumerates.
 func newIncidents(db *store.DB, log *slog.Logger, auth *service.Auth, adapters *service.Adapters, dynamic *service.Dynamic, scim *service.SCIM, invites *service.EmailInvitations) *service.Incidents {
-	svc := &service.Incidents{DB: db, Adapters: adapters, Dynamic: dynamic, SCIM: scim, Log: log}
+	svc := &service.Incidents{DB: db, Auth: auth, Adapters: adapters, Dynamic: dynamic, SCIM: scim, Log: log}
 	svc.Owners = service.NewIncidentOwners(svc, service.IncidentOwnerServices{
 		Identities: &service.Identities{DB: db, Auth: auth}, Invites: invites, SCIM: scim,
 		Dynamic: dynamic, Adapters: adapters,

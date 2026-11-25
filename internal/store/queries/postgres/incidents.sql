@@ -66,6 +66,11 @@ LIMIT sqlc.arg(row_limit);
 -- name: CountIncidentItemsByOutcome :many
 SELECT outcome, COUNT(*) AS item_count FROM incident_items WHERE incident_id = sqlc.arg(incident_id) GROUP BY outcome ORDER BY outcome;
 
+-- hikyo:reason The opened, read and closed views count the open items an owner refused (pending with the owner_failed reason) after the operation authorized credential-reset at the incident scope.
+-- hikyo:authn-resolution
+-- name: CountRefusedIncidentItems :one
+SELECT COUNT(*) AS refused_count FROM incident_items WHERE incident_id = sqlc.arg(incident_id) AND outcome = 'pending' AND reason = 'owner_failed';
+
 -- Compare-and-set on the row version, and only while the incident is open and
 -- the item is not yet terminal: a stale writer, a closed incident and a repeated
 -- result each change no row.

@@ -99,6 +99,18 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 	actor := service.Bearer(token)
 	reg := newRegistration(t, service.RegistrationConfig{DB: db, Auth: auth, PublicOriginExplicit: true})
 	scim := &service.SCIM{DB: db, Auth: auth}
+	// Resume needs an incident the caller holds, so the proof check is the first
+	// thing that can refuse it: the administrator holds credential-reset at the
+	// instance, which covers an org incident on org A.
+	if queryInt(t, db, `SELECT COUNT(*) FROM orgs WHERE id='org_a'`) == 0 {
+		execRaw(t, db, `INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ('org_a', 'org-a', TRUE, '{}', `+ts+`)`)
+	}
+	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_gate_inc', '`+string(principal)+`', 'credential-reset', 'org_a', `+ts+`)`)
+	incidents := &service.Incidents{DB: db, Auth: auth, Adapters: &service.Adapters{DB: db}, Dynamic: &service.Dynamic{DB: db}, SCIM: scim}
+	openedIncident, err := incidents.Open(ctx, actor, service.IncidentTarget{Kind: domain.IncidentScopeOrg, Scope: domain.Scope{Org: orgA}})
+	if err != nil {
+		t.Fatalf("open the incident the resume probe needs: %v", err)
+	}
 	instanceMail := &service.InstanceMail{DB: db, Auth: auth, Capture: func(context.Context) (*runtimeconfig.Bundle, error) {
 		t.Fatal("proof-less operator mail reached runtime mail configuration")
 		return nil, nil
@@ -108,6 +120,10 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 	passwordVersion := queryInt(t, db, "SELECT row_version FROM password_credentials WHERE account_id = '"+accountID+"'")
 
 	probes := map[string]func() error{
+		"resumeIncident": func() error {
+			_, err := incidents.Resume(ctx, actor, openedIncident.Incident.ID, "")
+			return err
+		},
 		"testInstanceMail": func() error {
 			return instanceMail.Test(ctx, actor, "recipient@example.com", "")
 		},

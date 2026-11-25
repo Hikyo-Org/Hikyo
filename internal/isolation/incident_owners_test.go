@@ -48,7 +48,7 @@ func (w *incidentWorld) rotationView(t *testing.T, actor domain.PrincipalID, inc
 
 func (w *incidentWorld) resume(t *testing.T, actor domain.PrincipalID, id string) service.ResumeResult {
 	t.Helper()
-	res, err := w.svc.Resume(t.Context(), w.as(actor), id)
+	res, err := w.svc.Resume(t.Context(), w.as(actor), id, "")
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}

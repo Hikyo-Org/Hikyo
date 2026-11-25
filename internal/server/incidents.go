@@ -36,7 +36,7 @@ func wireIncident(v service.IncidentView) apigen.Incident {
 		Id: inc.ID, ScopeKind: string(inc.ScopeKind), ScopeId: inc.ScopeID, Status: string(inc.Status),
 		OpenedBy: string(inc.OpenedBy), OpenedAt: inc.OpenedAt,
 		Counts: apigen.IncidentOutcomeCounts{
-			Pending: count(v, domain.ItemPending), Done: count(v, domain.ItemDone), Unknown: count(v, domain.ItemUnknown),
+			Pending: count(v, domain.ItemPending), Refused: clamp32(v.Refused), Done: count(v, domain.ItemDone), Unknown: count(v, domain.ItemUnknown),
 			Attested: count(v, domain.ItemAttested), Blocked: count(v, domain.ItemBlocked), OutOfScope: count(v, domain.ItemOutOfScope),
 		},
 		Org: optStr(string(inc.OrgID)),
@@ -139,7 +139,10 @@ func (a *API) ListIncidentItems(ctx context.Context, req apigen.ListIncidentItem
 }
 
 func (a *API) ResumeIncident(ctx context.Context, req apigen.ResumeIncidentRequestObject) (apigen.ResumeIncidentResponseObject, error) {
-	r, err := a.Incidents.Resume(ctx, service.Bearer(bearer(ctx)), string(req.Incident))
+	if req.Body == nil {
+		return nil, domain.ErrInvalid
+	}
+	r, err := a.Incidents.Resume(ctx, service.Bearer(bearer(ctx)), string(req.Incident), req.Body.Proof)
 	if err != nil {
 		return nil, err
 	}

@@ -883,6 +883,7 @@ export const zIncidentCloseRequest = z.object({
  */
 export const zIncidentOutcomeCounts = z.object({
     pending: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    refused: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     done: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     unknown: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     attested: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -930,6 +931,10 @@ export const zIncidentItem = z.object({
 export const zIncidentItemList = z.object({
     items: z.array(zIncidentItem),
     next_after: z.string().max(128).optional()
+});
+
+export const zIncidentResumeRequest = z.object({
+    proof: z.string().max(65536)
 });
 
 /**
@@ -7580,6 +7585,8 @@ export const zListIncidentItemsQuery = z.object({
  * Item page.
  */
 export const zListIncidentItemsResponse = zIncidentItemList;
+
+export const zResumeIncidentBody = zIncidentResumeRequest;
 
 export const zResumeIncidentPath = z.object({
     incident: zId

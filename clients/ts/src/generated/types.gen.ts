@@ -1091,6 +1091,10 @@ export type IncidentCloseRequest = {
  */
 export type IncidentOutcomeCounts = {
     pending: number;
+    /**
+     * Of the open items, how many an owner refused (the pending items that carry the `owner_failed` reason). They are counted in `pending` too, which also holds the items that have not run yet.
+     */
+    refused: number;
     done: number;
     unknown: number;
     attested: number;
@@ -1166,6 +1170,13 @@ export type IncidentItemList = {
      * Pass as `after` to read the next page. Present after a full page, and that next page may be empty.
      */
     next_after?: string;
+};
+
+export type IncidentResumeRequest = {
+    /**
+     * Your TOTP code, or your password if you have no confirmed factor. Spent by this call only.
+     */
+    proof: string;
 };
 
 /**
@@ -19020,7 +19031,7 @@ export type ListIncidentItemsResponses = {
 export type ListIncidentItemsResponse = ListIncidentItemsResponses[keyof ListIncidentItemsResponses];
 
 export type ResumeIncidentData = {
-    body?: never;
+    body: IncidentResumeRequest;
     path: {
         /**
          * The incident id.
@@ -19032,6 +19043,13 @@ export type ResumeIncidentData = {
 };
 
 export type ResumeIncidentErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts

@@ -18,7 +18,7 @@ const incident = {
   status: 'open',
   opened_by: 'usr_00000000-0000-0000-0000-00000000000a',
   opened_at: '2026-11-23T09:00:00Z',
-  counts: { pending: 3, done: 2, unknown: 1, attested: 0, blocked: 0, out_of_scope: 0 },
+  counts: { pending: 3, refused: 1, done: 2, unknown: 1, attested: 0, blocked: 0, out_of_scope: 0 },
 } satisfies z.input<typeof zIncident>;
 
 // One item per state the page must tell apart: a refused containment (pending
@@ -120,6 +120,17 @@ export const AttestDialog: Story = {
     await canvas.findByRole('table');
     await userEvent.click(canvas.getAllByRole('button', { name: /^Attest/ })[0] ?? canvas.getByRole('table'));
     await waitFor(() => expect(canvas.getByText(/An attestation is your statement/)).toBeVisible());
+  },
+};
+
+// Resume lists the open items and asks for the proof before anything runs.
+export const ResumeDialog: Story = {
+  parameters: Ledger.parameters,
+  play: async ({ canvas }) => {
+    await canvas.findByRole('table');
+    await userEvent.click(canvas.getByRole('button', { name: 'Resume open items' }));
+    await waitFor(() => expect(canvas.getByText(/Resume runs each open item below/)).toBeVisible());
+    await expect(canvas.getByLabelText('Code or password')).toBeVisible();
   },
 };
 

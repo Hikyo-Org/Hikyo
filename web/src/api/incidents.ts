@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import type { z } from 'zod';
 
 import { ok, parsed } from './client.ts';
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { commonRefusalText, statusText } from './statusText.ts';
 
 /**
@@ -40,6 +41,15 @@ export type IncidentOpenDraft = {
 const incidentKey = (id: string) => ['incident', id] as const;
 const itemsKey = (id: string) => ['incident-items', id] as const;
 const ITEM_PAGE = 500;
+/** A ledger past this many pages is not listed in full here; the CLI pages it without a cap per screen. */
+const ITEM_PAGE_CAP = 40;
+
+/** Thrown when the item listing would need more than the page cap: a half list is never shown as the whole. */
+export class IncidentListTooLong extends Error {
+  constructor() {
+    super(`The incident has more than ${ITEM_PAGE_CAP * ITEM_PAGE} items.`);
+  }
+}
 
 /** The incident with its outcome counts; a disabled query stays idle until an id is named. */
 export function useIncident(id: string): UseQueryResult<Incident> {
@@ -57,7 +67,7 @@ export function useIncidentItems(id: string): UseQueryResult<readonly IncidentIt
     queryFn: async () => {
       const all: IncidentItem[] = [];
       let after: string | undefined;
-      for (;;) {
+      for (let n = 0; n < ITEM_PAGE_CAP; n++) {
         const page = await parsed(listIncidentItemsOp, {
           path: { incident: id },
           query: after === undefined ? { limit: ITEM_PAGE } : { limit: ITEM_PAGE, after },
@@ -66,6 +76,7 @@ export function useIncidentItems(id: string): UseQueryResult<readonly IncidentIt
         if (page.next_after === undefined || page.items.length === 0) return all;
         after = page.next_after;
       }
+      throw new IncidentListTooLong();
     },
     enabled: id !== '',
   });
@@ -99,9 +110,11 @@ export function useIncidentActions(id: string) {
       queries.invalidateQueries({ queryKey: itemsKey(id) }),
     ]);
   return {
-    resume: useMutation({
-      mutationFn: () => parsed(resumeIncidentOp, { path: { incident: id } }),
-      onSettled: refresh,
+    // The proof is the operator's TOTP code or password: it is held as sensitive
+    // state, sent once, and never kept as mutation data.
+    resume: useSensitiveMutation({
+      mutationFn: (proof: string) => parsed(resumeIncidentOp, { path: { incident: id }, body: { proof } }),
+      onSettled: async () => { await refresh(); },
     }),
     attest: useMutation({
       mutationFn: (item: string) => ok(attestIncidentItemOp, { path: { incident: id, item } }),
@@ -117,10 +130,13 @@ export function useIncidentActions(id: string) {
 
 /** The refusal wording; a 404 is deliberately the same for an unknown and a forbidden incident. */
 export function incidentFailureText(error: unknown): string {
+  if (error instanceof IncidentListTooLong) {
+    return `${error.message} List them with the hikyo CLI: hikyo incident items --open.`;
+  }
   return statusText(
     error,
     {
-      400: 'The incident scope is not valid.',
+      400: 'The incident scope or the proof is not valid. Enter your authenticator code, or your password if you have no authenticator.',
       401: commonRefusalText.sessionEnded,
       404: 'No such incident, or you may not work it.',
       409: (e) => e.detail ?? 'The incident changed or is closed. Reload and try again.',

@@ -68,6 +68,9 @@ type IncidentTarget struct {
 type IncidentView struct {
 	Incident authz.Incident
 	Counts   map[domain.ItemOutcome]int64
+	// Refused counts the open items an owner refused. The outcome counts include
+	// them under pending, which also holds the items that have not run yet.
+	Refused int64
 	// Reopened is true when the scope already had an open incident, so the
 	// enumeration ran again and added only the objects the ledger lacked.
 	Reopened bool
@@ -102,6 +105,8 @@ type Incidents struct {
 	Adapters *Adapters
 	Dynamic  *Dynamic
 	SCIM     *SCIM
+	// Auth verifies and spends the fresh account-security proof Resume requires.
+	Auth *Auth
 	// Owners maps an owner function to the code that performs and confirms it.
 	// S2 registers none: the revocations arrive with the slices that own them.
 	Owners map[string]IncidentOwner
@@ -397,7 +402,11 @@ func (s *Incidents) Open(ctx context.Context, actor Actor, target IncidentTarget
 		if err := az.RecordAuthEvent(ctx, e); err != nil {
 			return err
 		}
-		out = IncidentView{Incident: inc, Counts: counts, Reopened: !created, Added: added, Census: found.census}
+		refused, err := az.IncidentRefusedCount(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		out = IncidentView{Incident: inc, Counts: counts, Refused: refused, Reopened: !created, Added: added, Census: found.census}
 		return nil
 	})
 	return out, err
@@ -434,7 +443,11 @@ func (s *Incidents) Get(ctx context.Context, actor Actor, id string) (IncidentVi
 		if err != nil {
 			return err
 		}
-		out = IncidentView{Incident: inc, Counts: counts}
+		refused, err := az.IncidentRefusedCount(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		out = IncidentView{Incident: inc, Counts: counts, Refused: refused}
 		return nil
 	})
 	return out, err
@@ -489,6 +502,7 @@ func (s *Incidents) ItemViews(ctx context.Context, actor Actor, id, afterID stri
 			return err
 		}
 		out = make([]IncidentItemView, 0, len(items))
+		reads := map[string]rotationRead{}
 		for _, it := range items {
 			// owner_failed pairs only with a pending outcome (ValidItemState).
 			v := IncidentItemView{
@@ -496,7 +510,7 @@ func (s *Incidents) ItemViews(ctx context.Context, actor Actor, id, afterID stri
 				Attestable: attestable(it) && it.Outcome.Open() && inc.Status == domain.IncidentOpen && !ownIncident(caller, inc),
 			}
 			if it.ObjectKind == domain.ObjectKindRotation {
-				v.ObjectState = rotationLiveState(ctx, r, az, caller, it)
+				v.ObjectState = rotationLiveState(ctx, r, az, caller, it, reads)
 			}
 			out = append(out, v)
 		}
@@ -505,23 +519,28 @@ func (s *Incidents) ItemViews(ctx context.Context, actor Actor, id, afterID stri
 	return out, err
 }
 
+// rotationRead is the authority to read rotations in one scope, decided once per
+// scope for a page: a page of rotation items shares few scopes, and authorizing
+// each item separately repeats the same checks inside the one transaction.
+type rotationRead struct {
+	proof authz.Proof
+	ok    bool
+}
+
 // rotationLiveState reads a rotation item's current state under the incident's own
 // authority. A rotation the caller cannot read, or whose scope does not parse, has
 // no state to show. The capability is probed first so a presentation read never
 // records a denial.
-func rotationLiveState(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, it authz.IncidentItem) string {
-	scope, err := parseIncidentScope(it.Scope)
-	if err != nil || scope.Env == "" {
+func rotationLiveState(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, it authz.IncidentItem, reads map[string]rotationRead) string {
+	access, seen := reads[it.Scope]
+	if !seen {
+		access = rotationReadAccess(ctx, az, caller, it.Scope)
+		reads[it.Scope] = access
+	}
+	if !access.ok {
 		return ""
 	}
-	if holds, err := az.CallerHolds(ctx, caller, authz.OpIncidentRotationHalt, scope); err != nil || !holds {
-		return ""
-	}
-	proof, err := az.Authorize(ctx, caller, authz.OpIncidentRotationHalt, scope)
-	if err != nil {
-		return ""
-	}
-	cur, err := r.Rotations().Get(ctx, proof, it.ObjectID)
+	cur, err := r.Rotations().Get(ctx, access.proof, it.ObjectID)
 	if errors.Is(err, domain.ErrNotFound) {
 		return "gone"
 	}
@@ -531,6 +550,21 @@ func rotationLiveState(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 	return cur.State
 }
 
+func rotationReadAccess(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, itemScope string) rotationRead {
+	scope, err := parseIncidentScope(itemScope)
+	if err != nil || scope.Env == "" {
+		return rotationRead{}
+	}
+	if holds, err := az.CallerHolds(ctx, caller, authz.OpIncidentRotationHalt, scope); err != nil || !holds {
+		return rotationRead{}
+	}
+	proof, err := az.Authorize(ctx, caller, authz.OpIncidentRotationHalt, scope)
+	if err != nil {
+		return rotationRead{}
+	}
+	return rotationRead{proof: proof, ok: true}
+}
+
 const resumePage = 100
 
 // Resume re-reads the ledger and re-runs only the open items through their
@@ -538,18 +572,45 @@ const resumePage = 100
 // outcome after, in separate transactions, so a crash between the owner's own
 // commit and the ledger update leaves the item open: the next resume asks the
 // owner again, and the owner's own confirmation is what writes done.
-func (s *Incidents) Resume(ctx context.Context, actor Actor, id string) (ResumeResult, error) {
+func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string) (ResumeResult, error) {
 	var res ResumeResult
+	// Resume performs the containment the ledger enumerated, so it needs a fresh
+	// account-security proof of its own (ADR O2), checked after the caller is
+	// known to hold the incident: a caller who cannot see it gets the uniform
+	// answer, never a request for a proof. The proof is spent in the first write
+	// below, so one proof covers one resume call and no other operation.
+	evidence := ReauthEvidence{kind: reauthEvidenceExempt}
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, _, err := s.incidentByID(ctx, az, actor, id, s.now())
+		return err
+	}); err != nil {
+		return res, err
+	}
+	if actor.bearer != "" {
+		if s.Auth == nil {
+			return res, ErrReauthProofRequired
+		}
+		var err error
+		if evidence, err = s.Auth.VerifyReauthProof(ctx, actor.bearer, proof); err != nil {
+			return res, err
+		}
+	}
 	after := ""
+	first := true
 	for {
 		var page []authz.IncidentItem
 		err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-			_, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
+			caller, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
 			if err != nil {
 				return err
 			}
 			if inc.Status != domain.IncidentOpen {
 				return fmt.Errorf("%w: incident is closed", domain.ErrConflict)
+			}
+			if first && evidence.kind != reauthEvidenceExempt {
+				if err := s.Auth.ConsumeReauthEvidence(ctx, az, evidence, caller.Principal); err != nil {
+					return err
+				}
 			}
 			page, err = az.IncidentItems(ctx, inc.ID, after, resumePage, true)
 			return err
@@ -557,6 +618,7 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id string) (ResumeR
 		if err != nil {
 			return res, err
 		}
+		first = false
 		for _, it := range page {
 			if err := s.runItem(ctx, actor, id, it.ID, &res); err != nil {
 				return res, err
@@ -867,7 +929,11 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			return err
 		}
 		inc.Status, inc.ClosedBy, inc.ClosedAt = status, caller.Principal, now
-		out = IncidentView{Incident: inc, Counts: counts}
+		refused, err := az.IncidentRefusedCount(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		out = IncidentView{Incident: inc, Counts: counts, Refused: refused}
 		return nil
 	})
 	if err != nil {

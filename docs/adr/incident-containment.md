@@ -444,17 +444,30 @@ principal is contained, so a contained account would still have a scheduler acti
   Each dispatches between the org and instance incident operations inside the service, like
   credential reset, so the routes are human-session only and carry no single contract operation.
   The CLI verb is `hikyo incident` and the web surface is Incidents at `/orgs/:org/incidents`.
-- Probe class: the routes carry `x-hikyo-class: unauthenticated`, the credential-reset precedent,
-  and no org or instance class fits. An account target needs credential-reset at its single org
-  or at the instance, which only the service can resolve from the target, and an instance
-  incident has no org at all, so no path or body field names the tenant the probe harness would
-  need. The class is therefore a declaration that authority is dynamic, not that the routes are
-  open: every route needs a human session, and each service call authorizes inside its own
-  transaction. Because the harness does not reach them, `TestIncidentWireRefusalsAreUniformAcrossTenants`
+- Probe class: the routes carry `x-hikyo-class: unauthenticated` with
+  `x-hikyo-artifacts: [human-session]`, the credential-reset precedent. Only part of the surface is
+  dynamic. Opening an org, project or adapter incident names its `org` in the body, and every
+  `{incident}` route authorizes on the organisation stored on the incident, so those paths could
+  be classed like any tenant route. What no path or body field names is the authority for an
+  account incident (credential-reset at the account's single org, or at the instance when its
+  footprint spans several orgs or none) and for an instance incident, which has no org at all;
+  only the service can resolve those from the target. One class per route cannot differ by
+  request, so all six routes carry the dynamic class. It is a declaration that authority is
+  dynamic, not that the routes are open: every route needs a human session that passed
+  multi-factor sign-in, and each service call authorizes inside its own transaction. Because the harness does not reach them, `TestIncidentWireRefusalsAreUniformAcrossTenants`
   is their probe: an operator of another org and a caller with no capability get a byte-identical
   `404` for a foreign incident and a nonexistent one on get, items, resume, attest, close and open,
   and the ledger does not move. `TestIncidentAuthorizationRefusals` covers the same at the service,
   including the item views.
+- Resume is the one operation here that acts on the incident's objects, so it needs a fresh
+  account-security proof of its own, bound to that call and spent in its first write
+  transaction: the operator's TOTP code, or the password for an account with no confirmed factor
+  (the account-security reauth `proof` field, declared as `x-hikyo-reauth` on the operation). The
+  CLI lists the open items and stops unless `--yes` confirms them; the web asks the same in a
+  dialog that lists them. Open only enumerates and performs nothing. A caller who cannot see the
+  incident gets the uniform not-found before any proof is asked for.
+- The incident and item views carry `refused`, the count (and per-item flag) of pending items
+  whose owner refused, apart from pending items that have not run.
 - `attestable` on an item is the server's own verdict (open item, open incident, a kind Hikyo
   cannot observe, not the caller's own containment), so a surface offers Attest only where the
   server would accept it.
@@ -539,7 +552,10 @@ addressed in the text. Independent Standards review is recorded on the pull requ
 Cross-provider review did not run and is not CLEAN. Maintainer security review and the
 human merge gate remain required.
 
-Pending, maintainer security review (slice 4, #1549): the human security review must
-explicitly cover the `unauthenticated`-class exception for the six incident routes (the
-credential-reset precedent, recorded under the tenant-isolation ADR's dynamic-authority
-exception). Not done; the exception is not accepted until that review records it.
+Accepted owner decision (slice 4, #1549): keep the six `/api/v1/incidents` routes on
+`x-hikyo-class: unauthenticated` with `x-hikyo-artifacts: [human-session]`, the credential-reset
+precedent recorded under the tenant-isolation ADR's dynamic-authority exception. The follow-up to
+class the routes that name an org (org, project and adapter opens and every `{incident}` route)
+with the tenant probe harness, leaving the dynamic class to account and instance incidents, is
+[#1569](https://github.com/Hikyo-Org/Hikyo/issues/1569). The maintainer security review and the
+human merge gate remain required.

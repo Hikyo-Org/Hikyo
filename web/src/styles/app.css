@@ -7171,17 +7171,9 @@ label.chk:has(input:disabled) {
   font-weight: 600;
 }
 
-.incident__items {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.incident__items th,
-.incident__items td {
-  text-align: left;
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--panel-line);
-  vertical-align: top;
+.incident__resume-items {
+  margin: 0;
+  padding-left: var(--space-4);
 }
 
 /* Temporary access (#152). Same layout vocabulary as change approvals; the

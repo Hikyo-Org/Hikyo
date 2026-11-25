@@ -2837,17 +2837,28 @@ export const listIncidentItems = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
- * Run the open items again and report what the pass did.
+ * Run the open items and report what the pass did.
  *
- * Re-reads each open item and runs its owner function once. Only an owner's
- * confirmation writes `done`; anything else leaves the item open. The counts
- * describe this pass only.
+ * Opening an incident only enumerates what the scope leaves behind; this route
+ * does the work. It re-reads each open item and runs its owner function once.
+ * Only an owner's confirmation writes `done`; anything else leaves the item
+ * open. The counts describe this pass only.
+ *
+ * Resume performs the containment, so it needs a fresh account-security
+ * proof (your TOTP code, or your password if you have no factor) of its own,
+ * spent by this one call. A caller who cannot see the incident gets the same
+ * `404` as for a missing one, before any proof is asked for. The surface
+ * confirms the list of open items with the operator before it sends the call.
  *
  */
 export const resumeIncident = <ThrowOnError extends boolean = false>(options: Options<ResumeIncidentData, ThrowOnError>): RequestResult<ResumeIncidentResponses, ResumeIncidentErrors, ThrowOnError> => (options.client ?? client).post<ResumeIncidentResponses, ResumeIncidentErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/incidents/{incident}/resume',
-    ...options
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

@@ -12,11 +12,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
-// Incident containment (#1039). `incident open` lists what a scope leaves
-// behind; `items` shows each one with its outcome, the owner's refusal apart
-// from work not yet run, and a rotation's live state; `resume` runs the open
-// items again; `attest` records a statement the owner did not confirm; `close`
-// ends the ledger. Every verb is human-session only.
+// Incident containment (#1039). `incident open` only enumerates what a scope
+// leaves behind, as items; `items` shows each one with its outcome, the owner's
+// refusal apart from work not yet run, and a rotation's live state; `resume`
+// does the work, running the open items, after you confirm the listed items with
+// --yes and prove your account again; `attest` records a statement the owner did
+// not confirm; `close` ends the ledger. Every verb is human-session only.
 
 const incidentBase = api.PathPrefix + "/incidents"
 
@@ -28,7 +29,7 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	var format, scope, account, adapter, after string
-	var openOnly, withResiduals bool
+	var openOnly, withResiduals, yes bool
 	var limit int
 	st, flags, err := parseCommon("incident "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
@@ -41,6 +42,8 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&openOnly, "open", false, "only items that still need work")
 			fs.IntVar(&limit, "limit", 0, "items per page, 1 to 500 (0 = the server default of 100)")
 			fs.StringVar(&after, "after", "", "continue after this item id, as a previous page printed it")
+		case "resume":
+			fs.BoolVar(&yes, "yes", false, "confirm the listed open items and run them (it grants no authority and is no proof)")
 		case "close":
 			fs.BoolVar(&withResiduals, "with-residuals", false, "close although items are open, recording them as residuals")
 		}
@@ -116,8 +119,29 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 		}
 		return nil
 	case "resume":
+		// The operator sees exactly which items resume will run before anything runs:
+		// the open items are listed, and without --yes that listing is all that
+		// happens. The call that does the work is never sent unconfirmed.
+		open, err := incidentOpenItems(ctx, client, id)
+		if err != nil {
+			return err
+		}
+		if err := Render(ios.Stderr, FormatTable, incidentItemTable(apigen.IncidentItemList{Items: open})); err != nil {
+			return err
+		}
+		if len(open) == 0 {
+			_, err := fmt.Fprintln(ios.Stderr, "no open items: there is nothing to resume")
+			return err
+		}
+		if !yes {
+			return failf(ExitRefused, "resume runs the %d open item(s) listed above and cannot be undone; run it again with --yes to confirm", len(open))
+		}
+		proof, err := ios.readPassword("Account-security proof (your TOTP code, or password if no factor): ")
+		if err != nil {
+			return err
+		}
 		var out apigen.IncidentResumeResult
-		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/resume", nil, &out); err != nil {
+		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/resume", apigen.IncidentResumeRequest{Proof: proof}, &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, Table{
@@ -183,6 +207,32 @@ func incidentOpenBody(scope, account, adapter string, flags commonFlags) (apigen
 	return body, nil
 }
 
+// incidentOpenItemPages bounds how many pages the resume confirmation reads, so a
+// ledger the surface cannot list in full is refused rather than half confirmed.
+const incidentOpenItemPages = 40
+
+// incidentOpenItems lists every open item of one incident, page by page.
+func incidentOpenItems(ctx context.Context, client *Client, id string) ([]apigen.IncidentItem, error) {
+	var all []apigen.IncidentItem
+	after := ""
+	for page := 0; page < incidentOpenItemPages; page++ {
+		query := url.Values{"open_only": {"true"}, "limit": {"500"}}
+		if after != "" {
+			query.Set("after", after)
+		}
+		var out apigen.IncidentItemList
+		if err := client.Do(ctx, http.MethodGet, incidentBase+"/"+id+"/items?"+query.Encode(), nil, &out); err != nil {
+			return nil, err
+		}
+		all = append(all, out.Items...)
+		if out.NextAfter == nil {
+			return all, nil
+		}
+		after = *out.NextAfter
+	}
+	return nil, failf(ExitRefused, "more than %d open items: list them with `incident items --open`, attest or resolve some, then resume", len(all))
+}
+
 func incidentTable(i apigen.Incident) Table {
 	c := i.Counts
 	closed := "-"
@@ -190,8 +240,8 @@ func incidentTable(i apigen.Incident) Table {
 		closed = i.ClosedAt.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	return Table{
-		Columns: []string{"ID", "SCOPE", "STATUS", "NOT YET RUN", "UNCONFIRMED", "BLOCKED", "DONE", "ATTESTED", "OUT OF SCOPE", "CLOSED"},
-		Rows: [][]string{{i.Id, i.ScopeKind + ":" + i.ScopeId, i.Status, strconv.Itoa(int(c.Pending)), strconv.Itoa(int(c.Unknown)),
+		Columns: []string{"ID", "SCOPE", "STATUS", "NOT YET RUN", "REFUSED", "UNCONFIRMED", "BLOCKED", "DONE", "ATTESTED", "OUT OF SCOPE", "CLOSED"},
+		Rows: [][]string{{i.Id, i.ScopeKind + ":" + i.ScopeId, i.Status, strconv.Itoa(int(max(c.Pending-c.Refused, 0))), strconv.Itoa(int(c.Refused)), strconv.Itoa(int(c.Unknown)),
 			strconv.Itoa(int(c.Blocked)), strconv.Itoa(int(c.Done)), strconv.Itoa(int(c.Attested)), strconv.Itoa(int(c.OutOfScope)), closed}},
 		JSON: i,
 	}

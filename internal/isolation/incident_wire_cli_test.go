@@ -71,9 +71,23 @@ func TestIncidentCLIExercise(t *testing.T) {
 		if out := run("incident", "attest", inc.Id, attestID); !strings.Contains(out, "attested "+attestID) {
 			t.Fatalf("attest output %q", out)
 		}
-		if out := run("incident", "resume", inc.Id); !strings.Contains(out, "EXAMINED") {
-			t.Fatalf("resume output %q", out)
+		// Resume lists the open items and stops without --yes: nothing runs.
+		var refusedOut, refusedErr bytes.Buffer
+		refusedCode := cli.Run(t.Context(), cli.IO{Stdin: strings.NewReader(""), Stdout: &refusedOut, Stderr: &refusedErr, Env: env, Workdir: workdir}, []string{"incident", "resume", inc.Id, "--instance", "clean"})
+		if refusedCode != cli.ExitRefused || !strings.Contains(refusedErr.String(), "--yes") || refusedOut.Len() != 0 {
+			t.Fatalf("resume without --yes: exit %d stdout %q stderr %q", refusedCode, refusedOut.String(), refusedErr.String())
 		}
+		// With --yes the CLI asks for the proof and sends it; this session's account
+		// has no password, so the server refuses the proof and nothing runs. The
+		// accepted-proof pass is TestIncidentResumeNeedsAFreshProof.
+		var prompts int
+		var yesOut, yesErr bytes.Buffer
+		yesCode := cli.Run(t.Context(), cli.IO{Stdin: strings.NewReader(""), Stdout: &yesOut, Stderr: &yesErr, Env: env, Workdir: workdir,
+			ReadPassword: func(string) (string, error) { prompts++; return "000000", nil }}, []string{"incident", "resume", inc.Id, "--yes", "--instance", "clean"})
+		if prompts != 1 || yesCode == cli.ExitOK {
+			t.Fatalf("resume --yes: %d proof prompts, exit %d, stdout %q stderr %q", prompts, yesCode, yesOut.String(), yesErr.String())
+		}
+		iw.w.resume(t, wireResponder, inc.Id) // the proof-bearing pass, through the service
 		if out := run("incident", "close", inc.Id); !strings.Contains(out, "closed") {
 			t.Fatalf("close output %q", out)
 		}

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
 import {
@@ -14,12 +14,14 @@ import {
   type IncidentItem,
   type IncidentScope,
 } from '../api/incidents.ts';
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { formatWhen } from '../lib/formatWhen.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge, type BadgeTone } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Select } from '../ui/Select.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { ConsequencesDialog, Panel } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 
@@ -46,6 +48,13 @@ function narrowScope(value: string): IncidentScope {
 export function scopeLabel(value: string): string {
   const known = INCIDENT_SCOPES.find((scope) => scope === value);
   return known === undefined ? value : SCOPE_LABEL[known];
+}
+
+/** A ledger closed with residuals still has unresolved items: it is not the green of a clean close. */
+function statusTone(status: string): BadgeTone {
+  if (status === 'closed') return 'ok';
+  if (status === 'closed_with_residuals') return 'danger';
+  return 'changed';
 }
 
 function itemTone(item: IncidentItem): BadgeTone {
@@ -102,7 +111,8 @@ function OpenForm({ org, onOpened }: { org: string; onOpened: (id: string) => vo
 function Counts({ incident }: { incident: Incident }) {
   const counts = incident.counts;
   const entries: readonly (readonly [string, number])[] = [
-    ['Not yet run', counts.pending],
+    ['Not yet run', Math.max(counts.pending - counts.refused, 0)],
+    ['Refused', counts.refused],
     ['Unconfirmed', counts.unknown],
     ['Blocked', counts.blocked],
     ['Done', counts.done],
@@ -125,6 +135,9 @@ function Ledger({ id }: { id: string }) {
   const feedback = useFeedback(incidentFailureText);
   const [attesting, setAttesting] = useState<IncidentItem | null>(null);
   const [closing, setClosing] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [proof, setProof] = useSensitiveState('');
+  const proofId = useId();
 
   if (incident.isPending || items.isPending) return <p role="status">Loading the incident…</p>;
   if (incident.isError) return <Alert>{incidentFailureText(incident.error)}</Alert>;
@@ -135,7 +148,7 @@ function Ledger({ id }: { id: string }) {
   return (
     <Panel id="incident-ledger" title="Incident ledger">
       <p>
-        <Badge tone={live ? 'changed' : 'ok'}>{incident.data.status.replaceAll('_', ' ')}</Badge>{' '}
+        <Badge tone={statusTone(incident.data.status)}>{incident.data.status.replaceAll('_', ' ')}</Badge>{' '}
         {scopeLabel(incident.data.scope_kind)} <span className="mono">{incident.data.scope_id}</span>
         {' '}opened <time dateTime={incident.data.opened_at}>{formatWhen(incident.data.opened_at)}</time>
       </p>
@@ -147,14 +160,8 @@ function Ledger({ id }: { id: string }) {
           <Button
             type="button"
             variant="primary"
-            disabled={actions.resume.isPending}
-            onClick={() => {
-              feedback.clear();
-              actions.resume.mutate(undefined, {
-                onSuccess: (r) => feedback.ok(`Resume ran ${r.examined} items: ${r.confirmed} confirmed, ${r.failed} refused, ${r.blocked} blocked, ${r.unconfirmed} unconfirmed.`),
-                onError: feedback.report,
-              });
-            }}
+            disabled={actions.resume.isPending || open.length === 0}
+            onClick={() => { feedback.clear(); setProof(''); setResuming(true); }}
           >
             {actions.resume.isPending ? 'Resuming…' : 'Resume open items'}
           </Button>
@@ -164,8 +171,8 @@ function Ledger({ id }: { id: string }) {
         </div>
       ) : null}
       {items.data.length === 0 ? <p role="status">This incident has no items.</p> : (
-        <div className="table-scroll" role="region" aria-label="Incident items" tabIndex={0}>
-          <table className="incident__items">
+        <TableScroll aria-label="Incident items">
+          <table className="values__table incident__items">
             <caption className="visually-hidden">Ledger items of the incident</caption>
             <thead><tr>
               <th scope="col">Object</th><th scope="col">State</th><th scope="col">Rotation</th><th scope="col">Detail</th><th scope="col"><span className="visually-hidden">Actions</span></th>
@@ -188,7 +195,42 @@ function Ledger({ id }: { id: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
+      )}
+      {!resuming ? null : (
+        <ConsequencesDialog
+          title="Resume these items?"
+          confirmLabel="Run open items"
+          busyLabel="Resuming…"
+          busy={actions.resume.isPending}
+          failure={feedback.failure}
+          onCancel={() => { setResuming(false); setProof(''); feedback.clear(); }}
+          onConfirm={() => {
+            if (proof === '') return;
+            const sent = proof;
+            setProof('');
+            actions.resume.mutate(sent, {
+              onSuccess: (r) => {
+                setResuming(false);
+                feedback.ok(`Resume ran ${r.examined} items: ${r.confirmed} confirmed, ${r.failed} refused, ${r.blocked} blocked, ${r.unconfirmed} unconfirmed.`);
+              },
+              onError: feedback.report,
+            });
+          }}
+        >
+          <p>Resume runs each open item below through its owner function once. It contains the affected scope and cannot be undone.</p>
+          <ul className="incident__resume-items">
+            {open.map((item) => (
+              <li key={item.id}>{item.object_kind} <span className="mono">{item.object_id}</span>: {itemStateLabel(item)}</li>
+            ))}
+          </ul>
+          <div className="field">
+            <label htmlFor={`${proofId}-proof`}>Code or password</label>
+            <input id={`${proofId}-proof`} name="proof" type="password" autoComplete="one-time-code" required
+              value={proof} onChange={(event) => setProof(event.target.value)} />
+            <p className="settings-note">Confirm with your authenticator code if you have one, otherwise your password. The proof is used once, for this resume only.</p>
+          </div>
+        </ConsequencesDialog>
       )}
       {attesting === null ? null : (
         <ConsequencesDialog
@@ -237,9 +279,12 @@ export function Incidents() {
     <div className="page page--chrome incident">
       <h1>Incident containment</h1>
       <p className="page__lede">
-        Contain an affected scope and follow what remains. Requires credential-reset at the incident&apos;s organisation.
-        Session reset and local secret removal are not full containment: unresolved items stay listed until an owner confirms
-        them or you attest them.
+        Contain an affected scope and follow what remains. Opening only lists what the scope leaves behind; resuming does the
+        work, after you confirm the listed items and prove your account again. Requires credential-reset at the incident&apos;s
+        organisation, or at the instance for an incident that spans several organisations or none, and a session that passed
+        multi-factor sign-in: a weaker session sees the same answer as for an incident that does not exist. Session reset and
+        local secret removal are not full containment: unresolved items stay listed until an owner confirms them or you
+        attest them.
       </p>
       <OpenForm org={org} onOpened={(opened) => setParams({ incident: opened })} />
       {id === '' ? null : <Ledger key={id} id={id} />}

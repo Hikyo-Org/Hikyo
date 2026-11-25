@@ -75,6 +75,12 @@ func newIncidentWire(t *testing.T, db *store.DB) incidentWire {
 // session mints a CLI session for a seeded principal.
 func (iw incidentWire) session(t *testing.T, p domain.PrincipalID) string {
 	t.Helper()
+	return iw.sessionWithFactors(t, p, `["password","totp"]`, "ses_wire_"+string(p))
+}
+
+// sessionWithFactors mints a session whose sign-in recorded exactly these factors.
+func (iw incidentWire) sessionWithFactors(t *testing.T, p domain.PrincipalID, factors, id string) string {
+	t.Helper()
 	artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
 	if err != nil {
 		t.Fatal(err)
@@ -90,8 +96,8 @@ func (iw incidentWire) session(t *testing.T, p domain.PrincipalID) string {
 			return err
 		}
 		return az.MintSession(ctx, authz.NewSession{
-			ID: "ses_wire_" + string(p), PrincipalID: p, Verifier: verifier, Artifact: "cli",
-			SessionGeneration: generation, CredentialEpoch: epoch, AuthMethod: "local", Factors: `["password","totp"]`,
+			ID: id, PrincipalID: p, Verifier: verifier, Artifact: "cli",
+			SessionGeneration: generation, CredentialEpoch: epoch, AuthMethod: "local", Factors: factors,
 			AuthenticatedAt: now, CreatedAt: now, IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(2 * time.Hour),
 			SourceIP: "127.0.0.1", UserAgent: "incident-wire",
 		})
@@ -208,10 +214,14 @@ func TestIncidentWireLifecycle(t *testing.T) {
 		if code, body = iw.call(t, tok, http.MethodPost, path+"/close", map[string]bool{"with_residuals": false}); code != http.StatusConflict {
 			t.Fatalf("clean close with open items = %d %s, want 409", code, body)
 		}
-		if code, body = iw.call(t, tok, http.MethodPost, path+"/resume", nil); code != http.StatusOK {
-			t.Fatalf("resume = %d %s", code, body)
+		// Resume needs an operation-bound proof (ADR O2): over the wire without one it is
+		// refused with 400 and runs nothing. The proof path itself, with a real account
+		// and factor, is TestIncidentResumeNeedsAFreshProof; this world has no password,
+		// so the pass runs through the service as the local operator.
+		if code, body = iw.call(t, tok, http.MethodPost, path+"/resume", nil); code != http.StatusBadRequest {
+			t.Fatalf("resume without a proof = %d %s, want 400", code, body)
 		}
-		if res := decodeWire[apigen.IncidentResumeResult](t, body); res.Examined == 0 {
+		if res := iw.w.resume(t, wireResponder, inc.Id); res.Examined == 0 {
 			t.Fatalf("resume examined nothing: %+v", res)
 		}
 		// Everything observable is now confirmed or attested, so the clean close holds.
@@ -266,7 +276,7 @@ func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 			return []probe{
 				{"get", http.MethodGet, id, nil},
 				{"items", http.MethodGet, id + "/items?limit=5", nil},
-				{"resume", http.MethodPost, id + "/resume", nil},
+				{"resume", http.MethodPost, id + "/resume", map[string]string{"proof": "000000"}},
 				{"attest", http.MethodPost, id + "/items/" + itemID + "/attest", nil},
 				{"close", http.MethodPost, id + "/close", map[string]bool{"with_residuals": true}},
 			}

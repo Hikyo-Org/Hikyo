@@ -591,18 +591,24 @@ incident containment:
   hikyo incident open --scope adapter --org O --project P --adapter A [-o table|json]
   hikyo incident show <incident> [-o table|json]
   hikyo incident items <incident> [--open] [--limit N] [--after ITEM] [-o table|json]
-  hikyo incident resume <incident> [-o table|json]
+  hikyo incident resume <incident> [--yes] [-o table|json]
   hikyo incident attest <incident> <item>
   hikyo incident close <incident> [--with-residuals] [-o table|json]
 
-  open lists what the scope leaves behind and works it through the owner
-  functions; opening a scope that already has an open incident adds only the
-  missing objects. items shows a refused item (its owner said no) apart from one
-  that is not yet run, and a rotation's own state as the server read it just
-  now. attest records your statement that an open item was dealt with outside
-  this system; it is not a confirmation. close needs --with-residuals while
-  items are open. Requires credential-reset at the incident's organisation, or
-  at the instance for one that spans organisations. Human session only.
+  open only enumerates what the scope leaves behind, as items, and performs
+  nothing; opening a scope that already has an open incident adds only the
+  missing objects. resume does the work: it lists the open items and stops
+  unless you confirm them with --yes, then asks for your TOTP code (or password
+  if you have no factor), runs each item through its owner function once and
+  cannot be undone. items shows a refused item (its owner said no) apart from
+  one that is not yet run, and a rotation's own state as the server read it
+  just now. attest records your statement that an open item was dealt with
+  outside this system; it is not a confirmation. close needs --with-residuals
+  while items are open. Requires credential-reset at the incident's
+  organisation, or at the instance for one that spans several organisations or
+  none, and a session that passed multi-factor sign-in: a weaker session sees
+  the same answer as for an incident that does not exist, so step up
+  first (account factor step-up) and retry. Human session only.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]

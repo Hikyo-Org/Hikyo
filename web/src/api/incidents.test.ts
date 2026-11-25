@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isOpenItem, itemStateLabel, type IncidentItem } from './incidents.ts';
+import { IncidentListTooLong, incidentFailureText, isOpenItem, itemStateLabel, type IncidentItem } from './incidents.ts';
 
 function item(over: Partial<IncidentItem>): IncidentItem {
   return {
@@ -27,5 +27,11 @@ describe('incident item state', () => {
     const settled: IncidentItem['outcome'][] = ['done', 'attested', 'out_of_scope'];
     expect(open.every((outcome) => isOpenItem(item({ outcome })))).toBe(true);
     expect(settled.some((outcome) => isOpenItem(item({ outcome })))).toBe(false);
+  });
+});
+
+describe('incident failure text', () => {
+  it('names the CLI when the item list outgrows the page cap, never showing a half list', () => {
+    expect(incidentFailureText(new IncidentListTooLong())).toContain('hikyo incident items --open');
   });
 });

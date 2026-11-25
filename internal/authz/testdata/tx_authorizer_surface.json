@@ -175,6 +175,7 @@
   "IncidentByID": "func(ctx context.Context, id string) (Incident, error)",
   "IncidentItemByID": "func(ctx context.Context, incidentID, id string) (IncidentItem, error)",
   "IncidentItemCounts": "func(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error)",
+  "IncidentRefusedCount": "func(ctx context.Context, incidentID string) (int64, error)",
   "IncidentItems": "func(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error)",
   "IncompatiblePasswordKDFCount": "func(ctx context.Context, kdf KDFParams) (int64, error)",
   "IndefiniteCredentials": "func(ctx context.Context) ([]AffectedCredential, error)",
