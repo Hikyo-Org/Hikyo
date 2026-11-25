@@ -240,7 +240,10 @@ func TestStoredStateFailuresRefuse(t *testing.T) {
 	}
 	defer func() { _ = os.Chmod(readOnly, 0o700) }()
 	off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: readOnly}
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through mode 0500")
+	}
 	if _, err := off.Check(t.Context(), snapshot); err == nil {
-		t.Skip("the state directory is writable despite mode 0500 (running as root)")
+		t.Fatal("a state directory that cannot record the outcome must refuse")
 	}
 }
