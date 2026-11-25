@@ -32,7 +32,7 @@ const (
 func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	if !reflect.DeepEqual(workflow["on"], map[string]any{
 		"workflow_dispatch": nil,
-		"schedule":          []any{map[string]any{"cron": "47 */6 * * *"}},
+		"schedule":          []any{map[string]any{"cron": "47 * * * *"}},
 	}) {
 		return "", fmt.Errorf("the prune runs only on a schedule or by hand, never on a pull request or a push")
 	}
@@ -188,6 +188,19 @@ func cachePrunePages() [][]apiCacheEntry {
 		// older one is not superseded by this job's rule, whatever its age.
 		e(20, "refs/heads/feature-x", "go-mod-v2-Linux-"+h("b", 64), "2026-11-10T08:00:00Z", "2026-11-10T08:00:00Z"),
 		e(21, "refs/pull/9/merge", "go-mod-v2-Linux-"+h("b", 64), "2026-11-20T08:00:00Z", "2026-11-25T18:00:00Z"),
+		// A superseded pair on dev, kept apart from main's entries of the same key.
+		e(22, dev, "go-test-v2-Linux-X64-ubuntu26-"+h("a", 64), "2026-11-20T08:00:00Z", "2026-11-22T08:00:00Z"),
+		e(23, dev, "go-test-v2-Linux-X64-ubuntu26-"+h("b", 64), "2026-11-24T08:00:00Z", live),
+		// An overlay saved by a rerun (attempt 2) is as superseded as one saved by attempt 1.
+		e(24, main, "codeql-overlay-base-database-1-433570c23e836bda-go-2.27.6-"+h("c", 40)+"-111-2", "2026-11-25T09:00:00Z", "2026-11-25T09:30:00Z"),
+		// A runner-image bump and a CodeQL bump change the lane's discriminators, not the lane: the old
+		// image's newest entry and the old CLI's newest entry go with the rest.
+		e(25, main, "go-test-v2-Linux-X64-ubuntu24-"+h("a", 64), "2026-11-10T08:00:00Z", "2026-11-12T08:00:00Z"),
+		e(26, main, "codeql-overlay-base-database-1-0123456789abcdef-go-2.27.5-"+h("a", 40)+"-90-1", "2026-11-20T08:00:00Z", "2026-11-20T09:00:00Z"),
+		e(27, main, "go-test-v2-Linux-X64-ubuntu26-"+h("b", 64), "2026-11-22T08:00:00Z", live),
+		// The family match is anchored: a name that merely contains a listed one is not that family.
+		e(28, main, "xgo-mod-v2-Linux-"+h("a", 64), "2026-11-10T08:00:00Z", "2026-11-10T08:00:00Z"),
+		e(29, main, "xgo-mod-v2-Linux-"+h("b", 64), "2026-11-22T08:00:00Z", live),
 	}
 	return [][]apiCacheEntry{first, second}
 }
@@ -198,15 +211,16 @@ func requireCachePruneBehavior(script string) error {
 		return err
 	}
 	sort.Ints(deleted)
-	// 2 old week, 3 old go-mod, 6 old overlay, 17 old tool: superseded on main. 11: idle pull request.
-	if want := []int{2, 3, 6, 11, 17}; !reflect.DeepEqual(deleted, want) {
+	// Superseded: 2 old week, 3 old go-mod, 6 and 24 old overlays (attempts 1 and 2), 17 old tool, 25 old
+	// runner image, 26 old CodeQL CLI, 22 dev's older test entry. 11: idle pull request.
+	if want := []int{2, 3, 6, 11, 17, 22, 24, 25, 26}; !reflect.DeepEqual(deleted, want) {
 		return fmt.Errorf("deleted %v, want %v", deleted, want)
 	}
 	if len(calls) != 1+len(deleted) || !strings.Contains(calls[0], "repos/o/r/actions/caches?per_page=100") {
 		return fmt.Errorf("api calls %v: want one paged listing and one delete each", calls)
 	}
 	// An entry that is already gone is success; any other failure is not.
-	if got, _, err := runCachePrune(script, cachePrunePages(), "3", ""); err != nil || len(got) != 4 {
+	if got, _, err := runCachePrune(script, cachePrunePages(), "3", ""); err != nil || len(got) != 8 {
 		return fmt.Errorf("a 404 on delete must count as deleted and the rest still go: %v %w", got, err)
 	}
 	if _, _, err := runCachePrune(script, cachePrunePages(), "", "3"); err == nil {
@@ -288,8 +302,8 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 			return strings.Replace(s, "(.ref == \"refs/heads/main\" or .ref == \"refs/heads/dev\") and ", "", 1)
 		},
 		"every family is regenerable": func(s string) string { return strings.Replace(s, " and (.key | regenerable)", "", 1) },
-		"stems ignore the ref": func(s string) string {
-			return strings.Replace(s, "group_by([.ref, (.key | stem)])", "group_by([.key | stem])", 1)
+		"lanes ignore the ref": func(s string) string {
+			return strings.Replace(s, "group_by([.ref, (.key | lane)])", "group_by([.key | lane])", 1)
 		},
 		"stem keeps the hash": func(s string) string {
 			return strings.Replace(s, "sub(\"-[0-9a-f]{64}(-.*)?$\"; \"\") | ", "", 1)
@@ -298,6 +312,22 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 		"idle test inverted":                 func(s string) string { return strings.Replace(s, "| epoch) < ($now", "| epoch) > ($now", 1) },
 		"any ref counts as a pull request": func(s string) string {
 			return strings.Replace(s, "^refs/pull/[0-9]+/(merge|head)$", ".*", 1)
+		},
+		"lane keeps the runner image": func(s string) string {
+			return strings.Replace(s, ` | gsub("-ubuntu[0-9]+"; "")`, "", 1)
+		},
+		"lane keeps the tool version": func(s string) string {
+			return strings.Replace(s, ` | gsub("-[0-9]+(\\.[0-9]+)+"; "")`, "", 1)
+		},
+		"lane keeps the config hash": func(s string) string {
+			return strings.Replace(s, ` | gsub("-[0-9a-f]{16}(?=-)"; "")`, "", 1)
+		},
+		"attempt suffix is only the first": func(s string) string {
+			return strings.Replace(s, "(-[0-9]+-[0-9]+)?$", "(-[0-9]+-1)?$", 1)
+		},
+		"family match unanchored": func(s string) string { return strings.Replace(s, `test("^(go-mod-v2`, `test("(go-mod-v2`, 1) },
+		"dev ref dropped": func(s string) string {
+			return strings.Replace(s, ` or .ref == "refs/heads/dev"`, "", 1)
 		},
 		"only the first page": func(s string) string { return strings.Replace(s, "jq -s -r", "jq -r", 1) },
 		"no delete cap": func(s string) string {

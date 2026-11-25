@@ -2,19 +2,23 @@
 # evicts by last access once the total passes it, which would take live entries with the dead ones.
 # This scheduled job removes the dead ones first, from the trusted default branch only:
 #   superseded: of the regenerable families listed below, every entry on main or dev except the
-#               newest of its (ref, key stem). The stem is the key without its trailing hash,
-#               commit or week. The go-feedback-v2 seeds are not listed: their own prune job keeps
-#               the newest set per family and entry, and the old unfamilied ones are removed by hand.
+#               newest of its (ref, lane). The lane is the key without its trailing hash, commit,
+#               attempt or week, the runner image (ubuntu26), the tool version (2.27.6) and the
+#               config hash, so a runner-image or CodeQL bump retires the old lane's entries at
+#               once instead of leaving the newest of each for the seven-day expiry. The
+#               go-feedback-v2 seeds are not listed: their own prune job keeps the newest set per
+#               family and entry, and the old unfamilied ones are removed by hand.
 #   idle PR:    entries on pull-request refs not accessed for 24 hours. Writers are main-only, so
 #               none exist today; this is the bound if one ever does.
 # It holds actions: write and nothing else, checks nothing out and runs no repository code. Each
-# run costs one to two listing calls plus at most 100 deletes, four runs a day.
+# run costs one to two listing calls plus at most 100 deletes, 24 runs a day: at most 102 calls an
+# hour against the shared 1000, one or two in the usual hour.
 name: cache-prune
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '47 */6 * * *'
+    - cron: '47 * * * *'
 
 permissions: {}
 
@@ -41,17 +45,17 @@ jobs:
           now=$(date -u +%s)
           gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
             jq -s -r --argjson now "$now" '
-              def stem: sub("-[0-9a-f]{64}(-.*)?$"; "") | sub("-[0-9a-f]{40}(-[0-9]+-1)?$"; "");
+              def stem: sub("-[0-9a-f]{64}(-.*)?$"; "") | sub("-[0-9a-f]{40}(-[0-9]+-[0-9]+)?$"; "");
+              def lane: stem | gsub("-ubuntu[0-9]+"; "") | gsub("-[0-9]+(\\.[0-9]+)+"; "") | gsub("-[0-9a-f]{16}(?=-)"; "");
               def regenerable: test("^(go-mod-v2|go-test-v2|go-race-v2|go-lint(driver)?-v2|go-generated-v2|go-k8s-e2e-v2|go-fuzz-v2|go-feedback-v1|pinned-tool-v1|pnpm-store-v2|codeql-overlay-base-database|codeql-dependencies|codeql-trap)-");
               def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
               [.[].actions_caches[]] as $all
               | ([$all[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | regenerable))]
-                  | group_by([.ref, (.key | stem)])
+                  | group_by([.ref, (.key | lane)])
                   | map(sort_by([.created_at, .id]) | reverse | .[1:][])) as $superseded
               | [$all[] | select((.ref | test("^refs/pull/[0-9]+/(merge|head)$")) and ((.last_accessed_at | epoch) < ($now - 86400)))] as $idle
               | ($superseded + $idle)[] | [.id, .ref, .key] | @tsv' >"${RUNNER_TEMP}/victims.tsv"
           head -n 100 "${RUNNER_TEMP}/victims.tsv" | while IFS="$(printf '\t')" read -r id ref key; do
-            [ -n "$id" ] || continue
             if ! gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>"${RUNNER_TEMP}/delete.err"; then
               grep -q 'HTTP 404' "${RUNNER_TEMP}/delete.err" || { cat "${RUNNER_TEMP}/delete.err" >&2; exit 1; }
             fi
