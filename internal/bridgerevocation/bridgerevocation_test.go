@@ -151,3 +151,22 @@ func TestOperatorCanDisableTheNetworkCheckAndItIsRecorded(t *testing.T) {
 		t.Fatalf("the default is online: %v %v", mode, err)
 	}
 }
+
+// Opting out of the network check does not unlearn a revocation already stored.
+func TestOffStillAppliesAStoredRevocation(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	bridge := releaseidentity.Hash([]byte("bridge"))
+	directory := t.TempDir()
+	list, signature := signedList(t, f, 3, bridge)
+	online := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: &scripted{list: list, signature: signature}, Directory: directory, Now: func() time.Time { return testNow }}
+	if _, err := online.Check(t.Context(), snapshot); err != nil {
+		t.Fatal(err)
+	}
+	fetcher := &scripted{err: errors.New("must not be called")}
+	off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+	revoked, err := off.Revoked(t.Context(), snapshot)
+	if err != nil || fetcher.calls != 0 || !bridgerevocation.Contains(revoked, []releaseidentity.Digest{bridge}) {
+		t.Fatalf("a stored revocation must still withdraw the bridge with the check off: %v %v calls=%d", revoked, err, fetcher.calls)
+	}
+}

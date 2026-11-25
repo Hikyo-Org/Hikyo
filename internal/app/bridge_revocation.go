@@ -21,6 +21,17 @@ func guardBridges(ctx context.Context, cfg *config.Config, bundle upgradebundle.
 	return bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return lookup(ctx, snapshot) })
 }
 
+// loadGuardedBundle loads and authenticates a bundle for a command that can mint or
+// consume upgrade evidence, with the revocation guard attached. These commands
+// never call upgradebundle.Load directly (a test enforces it), so none can skip it.
+func loadGuardedBundle(ctx context.Context, cfg *config.Config, directory string, pinned releasetrust.PinnedTrust, floor releaseidentity.SnapshotFloor) (upgradebundle.Bundle, error) {
+	bundle, err := upgradebundle.Load(ctx, directory, pinned, floor)
+	if err != nil {
+		return upgradebundle.Bundle{}, err
+	}
+	return guardBridges(ctx, cfg, bundle), nil
+}
+
 // bridgeRevocation builds the gate's lazy revocation lookup from configuration.
 // A bad setting is not reported until a route actually needs a recovery bridge,
 // where it refuses that route; ordinary upgrades never reach it.

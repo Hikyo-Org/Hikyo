@@ -201,6 +201,9 @@ func TestOnlyReleaseAssetRedirectsAreFollowed(t *testing.T) {
 			t.Fatalf("%s must be followed: %v", allowed, err)
 		}
 	}
+	if err := hop("https://objects.githubusercontent.com/x", 2); err != nil {
+		t.Fatalf("exactly two redirects are followed: %v", err)
+	}
 	for _, refused := range []string{"http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x", "https://raw.githubusercontent.com/x"} {
 		if err := hop(refused, 1); !errors.Is(err, http.ErrUseLastResponse) {
 			t.Fatalf("%s must not be followed: %v", refused, err)

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -261,6 +264,11 @@ func TestSecurityRollbackRouteCheckIgnoresExpiryAndRevocation(t *testing.T) {
 			if strings.Contains(err.Error(), "journaled route differs") {
 				t.Fatalf("an expired or revoked bridge must not stop a security rollback at its route check: %v", err)
 			}
+			// The journaled route is still checked: a different one is refused.
+			journal.Route = releaseidentity.Hash([]byte("another route"))
+			if _, err = rollbackFencedSnapshot(t.Context(), &config.Config{}, run); err == nil || !strings.Contains(err.Error(), "journaled route differs") {
+				t.Fatalf("a rollback whose journaled route differs must be refused at its route check: %v", err)
+			}
 		})
 	}
 }
@@ -309,5 +317,56 @@ func TestAutomaticResumeKeepsTheJournaledRouteAfterNotAfter(t *testing.T) {
 	result, err := discoverReleaseRoute(t.Context(), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true)
 	if err != nil || result.Plan.Digest() != previous.Route {
 		t.Fatalf("an upgrade admitted before not_after must resume after it: %v", err)
+	}
+	previous.Route = releaseidentity.Hash([]byte("another route"))
+	if _, err := discoverReleaseRoute(t.Context(), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true); err == nil {
+		t.Fatalf("a resume whose recomputed route differs from the journaled one must be refused: %v", err)
+	}
+}
+
+// The guard is attached by loadGuardedBundle, and the backup commands and the
+// backup admission reach a bundle only through it.
+func TestGuardedBundleRefusesARevokedBridgeAndBackupCodeUsesNothingElse(t *testing.T) {
+	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
+	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}
+	directory, pinned, target, _, _ := bridgedBundle(t, source, time.Now().Add(24*time.Hour))
+	state := t.TempDir()
+	for _, name := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+		raw, err := os.ReadFile(filepath.Join(directory, "revocations", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(state, name), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &config.Config{}
+	cfg.Upgrade.RevocationCheck, cfg.Upgrade.StateDirectory = "off", state
+	bundle, err := loadGuardedBundle(t.Context(), cfg, directory, pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.Plan(source, target); err == nil || !strings.Contains(err.Error(), "recovery bridge revoked") {
+		t.Fatalf("a guarded bundle must refuse a revoked bridge: %v", err)
+	}
+	for _, file := range []string{"backup_admission.go", "backup_upgrade.go"} {
+		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			if call, ok := node.(*ast.CallExpr); ok {
+				if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "Load" {
+					if pkg, ok := selector.X.(*ast.Ident); ok && pkg.Name == "upgradebundle" {
+						t.Errorf("%s loads a bundle without the revocation guard; use loadGuardedBundle", file)
+					}
+				}
+			}
+			return true
+		})
 	}
 }

@@ -78,12 +78,11 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 	}
 	diagnostics.Printf(ctx, 1, "upgrade backup: verifying release bundle")
 	bundleDone := diagnostics.Time(ctx, "upgrade backup release verification")
-	bundle, err := upgradebundle.Load(ctx, *bundleDir, trust.Pinned, trust.Floor)
+	bundle, err := loadGuardedBundle(ctx, cfg, *bundleDir, trust.Pinned, trust.Floor)
 	bundleDone()
 	if err != nil {
 		return err
 	}
-	bundle = guardBridges(ctx, cfg, bundle)
 	database := storeConfig(cfg)
 	sourceConfig := upgrade.Config{Engine: releaseidentity.Engine(database.Engine), Path: database.Path, DSN: database.DSN}
 	diagnostics.Printf(ctx, 1, "upgrade backup: waiting for datastore lock")
@@ -174,11 +173,10 @@ func runUpgradeDrill(ctx context.Context, cfg *config.Config, args []string, out
 		return errors.New("upgrade-drill requires bundle, archive, receipt, separate custody files, signer, output and exactly one empty scratch target")
 	}
 	diagnostics.Printf(ctx, 1, "upgrade drill: verifying release bundle and receipt")
-	bundle, err := upgradebundle.Load(ctx, *bundleDir, trust.Pinned, trust.Floor)
+	bundle, err := loadGuardedBundle(ctx, cfg, *bundleDir, trust.Pinned, trust.Floor)
 	if err != nil {
 		return err
 	}
-	bundle = guardBridges(ctx, cfg, bundle)
 	rawReceipt, err := readUpgradePublicFile(*receiptFile, backupreceipt.MaxArtifactBytes)
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package upgradegate_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -32,7 +33,7 @@ type bridgedFixture struct {
 	cfg            upgrade.Config
 	request        upgradegate.Request
 	f              *trustfixture.Fixture
-	b              trustfixture.SignedRelease
+	a, b           trustfixture.SignedRelease
 	raw            []byte
 	receipt        []byte
 	drill          app.UpgradeDrillResult
@@ -149,7 +150,7 @@ func newBridgedFixture(t *testing.T, engine releaseidentity.Engine, notAfter tim
 
 	request.Target, request.Operator, request.Ciphertext = b.Identity, operator, pinned
 	request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) { return nil, nil }
-	return bridgedFixture{cfg: cfg, request: request, f: f, b: b, raw: raw, receipt: receipt, drill: drill, ciphertextPath: exported.Path, before: before, operator: operator, pinned: pinned, manifest: manifest, schema: schema}
+	return bridgedFixture{cfg: cfg, request: request, f: f, a: a, b: b, raw: raw, receipt: receipt, drill: drill, ciphertextPath: exported.Path, before: before, operator: operator, pinned: pinned, manifest: manifest, schema: schema}
 }
 
 // TestRecoveryBridgeNeedsAttestationAndThenSucceeds is the positive control for
@@ -240,6 +241,25 @@ func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.
 				t.Fatalf("an expired bridge must not admit a new upgrade: %v", err)
 			}
 
+			// A resume whose recomputed route differs from the journaled one (here the
+			// bridge was replaced by a re-signed statement) is a conflict, never a run.
+			var statement releasetrust.BridgeStatement
+			if err := json.Unmarshal(x.raw, &statement); err != nil {
+				t.Fatal(err)
+			}
+			statement.NotAfter = time.Now().Add(240 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
+			replacement := trustfixture.JSON(t, statement)
+			x.f.Catalog.Bridges = []releaseidentity.Digest{releaseidentity.Hash(replacement)}
+			x.f.Catalog.Sequence++
+			replaced := request
+			replaced.BundleDirectory = upgradegate.WriteBridgeBundleForTest(t, x.f, []trustfixture.SignedRelease{x.a, x.b}, []releasetrust.BridgeMaterial{{Statement: replacement, Signature: trustfixture.Sign(t, x.f.RecoverySigner, replacement)}})
+			if _, err := upgradegate.RunSignedGateProcessFixture(t, replaced, x.b.Material.Compatibility); !errors.Is(err, upgrade.ErrConflict) {
+				t.Fatalf("a resume over a different route must conflict: %v", err)
+			}
+			if after, err := upgrade.InspectControl(t.Context(), x.cfg); err != nil || !after.Equal(inFlight) {
+				t.Fatalf("the refused resume changed the installation: %v", err)
+			}
+
 			// A revocation published since refuses the forward resume and writes nothing.
 			revoked := request
 			revoked.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
@@ -269,6 +289,36 @@ func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.
 			result, err := upgradegate.RunSignedGateProcessFixture(t, request, x.b.Material.Compatibility)
 			if err != nil || !result.Admission.Valid() || result.State.Maintenance || result.State.Applied.Release != x.b.Identity {
 				t.Fatalf("an upgrade admitted before not_after must finish after it: %v %+v", err, result.State.Applied)
+			}
+		})
+	}
+}
+
+// A bridge past its not_after admits nothing new: neither the gate's admission nor
+// the backup preparation that precedes it may plan through it. (Only an upgrade
+// admitted earlier resumes, see the test above.)
+func TestExpiredBridgeAdmitsNoNewUpgradeAndPreparesNoBackup(t *testing.T) {
+	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
+		t.Run(string(engine), func(t *testing.T) {
+			notAfter := time.Now().Add(20 * time.Second).UTC().Truncate(time.Second)
+			x := newBridgedFixture(t, engine, notAfter)
+			if time.Now().After(notAfter) {
+				t.Fatal("the bridge expired before the fixture was ready; the setup is too slow for this window")
+			}
+			request := x.request
+			request.Evidence = backupreceipt.EvidenceMaterial{Receipt: x.receipt, Attestation: x.drill.Attestation, Signature: trustfixture.Sign(t, x.f.PrimarySigner, x.drill.Attestation)}
+			time.Sleep(time.Until(notAfter) + time.Second)
+
+			prepare := request
+			prepare.Mode = upgradegate.PrepareBackup
+			prepare.CheckConfiguration = func(context.Context, *upgrade.CandidateConfiguration, map[string]string) error { return nil }
+			for name, r := range map[string]upgradegate.Request{"admission": request, "backup preparation": prepare} {
+				if _, err := upgradegate.RunSignedGateProcessFixture(t, r, x.b.Material.Compatibility); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
+					t.Fatalf("%s through an expired bridge must have no route: %v", name, err)
+				}
+				if after, err := upgrade.InspectControl(t.Context(), x.cfg); err != nil || !after.Equal(x.before) {
+					t.Fatalf("%s changed the installation: %v", name, err)
+				}
 			}
 		})
 	}
