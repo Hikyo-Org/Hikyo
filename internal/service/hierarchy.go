@@ -537,6 +537,9 @@ func (s *Projects) Create(ctx context.Context, actor Actor, org domain.OrgID, na
 		if err != nil {
 			return err
 		}
+		if err := refuseProjectAboveAllProjectsRules(ctx, az, caller.Principal, org); err != nil {
+			return err
+		}
 		if err := r.Projects().Create(ctx, p, proj); err != nil {
 			return err
 		}
@@ -693,9 +696,13 @@ func refuseLastProjectUnderAllProjectsRules(ctx context.Context, az *authz.TxAut
 	if len(projects) != 1 || projects[0] != scope.Project {
 		return nil
 	}
-	ids, err := az.AllProjectsRuleIDsInOrg(ctx, scope.Org)
-	if err != nil || len(ids) == 0 {
+	rules, err := az.AllProjectsRulesInOrg(ctx, scope.Org)
+	if err != nil || len(rules) == 0 {
 		return err
+	}
+	ids := make([]string, len(rules))
+	for i, r := range rules {
+		ids[i] = r.ID
 	}
 	// Post-authorization (OpProjectDelete), so the raw grant rows only choose
 	// how much the refusal says.
@@ -708,6 +715,49 @@ func refuseLastProjectUnderAllProjectsRules(ctx context.Context, az *authz.TxAut
 		detail = "the organization's last project cannot be deleted while rules over all projects exist; revoke rules " + strings.Join(ids, ", ") + " first"
 	}
 	return &detailErr{err: ErrLastProjectUnderAllProjectsRules, detail: detail}
+}
+
+// ErrProjectAboveAllProjectsRules refuses a project creation that would list
+// an all-projects rule past the v1 selector bound (#1446): the rule's folders
+// are repeated under every project.
+var ErrProjectAboveAllProjectsRules = fmt.Errorf("%w: service: another project would list a rule over all projects past its bound", domain.ErrLimitExceeded)
+
+// refuseProjectAboveAllProjectsRules runs before a project insert. It locks
+// the org's projects FOR UPDATE, as a deletion does, so it serializes with an
+// all-projects rule create (FOR SHARE) and other project writes; postgres
+// write transactions are also SERIALIZABLE, which covers the inserted row.
+// Project creations in one org therefore serialize, an accepted cost for a
+// rare administrative write.
+func refuseProjectAboveAllProjectsRules(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, org domain.OrgID) error {
+	projects, err := az.LockOrgProjectsForDelete(ctx, org)
+	if err != nil {
+		return err
+	}
+	rules, err := az.AllProjectsRulesInOrg(ctx, org)
+	if err != nil {
+		return err
+	}
+	var blocking []string
+	for _, r := range rules {
+		if domain.AllProjectsExpansion(len(projects)+1, r.Items) > domain.MaxRuleItems {
+			blocking = append(blocking, r.ID)
+		}
+	}
+	if len(blocking) == 0 {
+		return nil
+	}
+	// Post-authorization (OpProjectCreate), so the raw grant rows only choose
+	// how much the refusal says.
+	rows, err := az.GrantRowsForPrincipal(ctx, caller)
+	if err != nil {
+		return err
+	}
+	head := fmt.Sprintf("another project would list rules over all projects past the %d projects and folder items a rule carries", domain.MaxRuleItems)
+	detail := head + "; a member manager of the organization must narrow or revoke them first"
+	if holds(rows, domain.CapManageMembers, domain.Scope{Org: org}) {
+		detail = head + "; narrow or revoke rules " + strings.Join(blocking, ", ") + " first"
+	}
+	return &detailErr{err: ErrProjectAboveAllProjectsRules, detail: detail}
 }
 
 // ---------------------------------------------------------------------------

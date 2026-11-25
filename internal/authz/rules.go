@@ -229,10 +229,11 @@ func (a *TxAuthorizer) LockOrgProjectsForDelete(ctx context.Context, org domain.
 	return a.r.LockOrgProjectsForDelete(ctx, string(org))
 }
 
-// AllProjectsRuleIDsInOrg lists the org's all-projects rules; the org's last
-// project cannot be deleted while one exists.
-func (a *TxAuthorizer) AllProjectsRuleIDsInOrg(ctx context.Context, org domain.OrgID) ([]string, error) {
-	return a.r.AllProjectsRuleIDsInOrg(ctx, string(org))
+// AllProjectsRulesInOrg lists the org's all-projects rules with their stored
+// item counts; the org's last project cannot be deleted while one exists, and
+// no project may be created that lists one past the v1 bounds.
+func (a *TxAuthorizer) AllProjectsRulesInOrg(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error) {
+	return a.r.AllProjectsRulesInOrg(ctx, string(org))
 }
 
 // RuleKeyExists reports ErrNotFound unless the key id exists in the project

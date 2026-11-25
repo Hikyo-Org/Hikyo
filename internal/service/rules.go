@@ -40,6 +40,10 @@ var (
 	// ErrRuleAllProjectsStale refuses an all-projects create whose project
 	// list differs from the org's current projects (owner decision R2).
 	ErrRuleAllProjectsStale = fmt.Errorf("%w: service: a rule over all projects must list exactly the organization's current projects", domain.ErrConflict)
+	// ErrRuleAllProjectsTooLarge refuses an all-projects rule whose listing,
+	// its folders repeated under every current project, would pass the v1
+	// selector bound (#1446).
+	ErrRuleAllProjectsTooLarge = fmt.Errorf("%w: service: a rule over all projects would list more than %d projects and folder items", domain.ErrLimitExceeded, domain.MaxRuleItems)
 	// ErrRuleAllProjectsAuthority refuses an all-projects rule change by a
 	// caller whose Manage access does not cover projects created later (ADR
 	// D7): an organization-scope grant or another all-projects rule.
@@ -423,6 +427,12 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		// refusal name them.
 		if err := checkClaimedProjects(spec.ClaimedProjects, projects); err != nil {
 			return preparedRule{}, err
+		}
+		folders := len(spec.Where.Keys[domain.AnyProject])
+		if n := domain.AllProjectsExpansion(len(projects), folders); n > domain.MaxRuleItems {
+			return preparedRule{}, &detailErr{err: ErrRuleAllProjectsTooLarge, detail: fmt.Sprintf(
+				"a rule over all projects is listed with its %d folder items under each of the organization's %d projects: %d items, above the %d a rule carries",
+				folders, len(projects), n, domain.MaxRuleItems)}
 		}
 	}
 	grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)

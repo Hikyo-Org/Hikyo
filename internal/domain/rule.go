@@ -102,6 +102,21 @@ type RuleKey struct {
 // rule is refused by name rather than failing at its audit write.
 const MaxRuleItems = 500
 
+// AllProjectsExpansion is the selector size of an all-projects rule as a
+// response lists it: every one of projects, each with the rule's folder
+// items repeated under it. It stays within MaxRuleItems so the listing fits
+// the v1 bounds and remains a valid create (#1446): a rule create or a project
+// create that would pass the bound is refused, never truncated.
+func AllProjectsExpansion(projects, folders int) int {
+	return projects * (1 + folders)
+}
+
+// RuleItemCount is a rule id with the number of its stored selector items.
+type RuleItemCount struct {
+	ID    string
+	Items int
+}
+
 // RuleShape is the narrowest Where a capability may sit on (ADR D2, D5).
 type RuleShape int
 

@@ -6894,6 +6894,13 @@ type CreateRuleRequest struct {
 	// projects (otherwise 409), keeps the environment axis `all` without
 	// items, and repeats the same folder items, never single keys, under
 	// every project.
+	//
+	// The 500 bound counts the rule as it is listed: every current project
+	// plus its folder items repeated under each. A create that would list
+	// more is refused with 409 `limit_exceeded`, and so is a project creation
+	// that would list an existing rule over all projects past it; the
+	// refusal names the blocking rules to a member manager. A listing is
+	// never truncated.
 	Where RuleWhere `json:"where"`
 }
 
@@ -11235,6 +11242,13 @@ type Rule struct {
 	// projects (otherwise 409), keeps the environment axis `all` without
 	// items, and repeats the same folder items, never single keys, under
 	// every project.
+	//
+	// The 500 bound counts the rule as it is listed: every current project
+	// plus its folder items repeated under each. A create that would list
+	// more is refused with 409 `limit_exceeded`, and so is a project creation
+	// that would list an existing rule over all projects past it; the
+	// refusal names the blocking rules to a member manager. A listing is
+	// never truncated.
 	Where RuleWhere `json:"where"`
 }
 
@@ -11299,7 +11313,8 @@ type RuleList struct {
 
 // RuleProjectMode `only` reaches the listed `projects`. `all` reaches every project of
 // the organisation, including projects created later; such a rule covers
-// every environment and narrows keys by folder only.
+// every environment and narrows keys by folder only. Omitted, a rule's
+// project mode is `only`.
 type RuleProjectMode string
 
 // RuleWhere Where a rule reaches: projects, then environments, then keys. Every
@@ -11316,13 +11331,18 @@ type RuleProjectMode string
 // projects (otherwise 409), keeps the environment axis `all` without
 // items, and repeats the same folder items, never single keys, under
 // every project.
+//
+// The 500 bound counts the rule as it is listed: every current project
+// plus its folder items repeated under each. A create that would list
+// more is refused with 409 `limit_exceeded`, and so is a project creation
+// that would list an existing rule over all projects past it; the
+// refusal names the blocking rules to a member manager. A listing is
+// never truncated.
 type RuleWhere struct {
 	Environments RuleEnvironmentAxis `json:"environments"`
 	Keys         RuleKeyAxis         `json:"keys"`
 
-	// ProjectMode `only` reaches the listed `projects`. `all` reaches every project of
-	// the organisation, including projects created later; such a rule covers
-	// every environment and narrows keys by folder only.
+	// ProjectMode The project axis's mode; omitted, `only`.
 	ProjectMode *RuleProjectMode `json:"project_mode,omitzero"`
 	Projects    []ID             `json:"projects"`
 }

@@ -193,27 +193,35 @@ func (q *Queries) InsertRuleItem(ctx context.Context, arg InsertRuleItemParams) 
 	return err
 }
 
-const listAllProjectsRuleIDsInOrg = `-- name: ListAllProjectsRuleIDsInOrg :many
-SELECT id FROM rules WHERE org_id = $1 AND project_mode = 'all' ORDER BY id
+const listAllProjectsRuleItemCountsInOrg = `-- name: ListAllProjectsRuleItemCountsInOrg :many
+SELECT r.id, (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id) AS items
+FROM rules AS r WHERE r.org_id = $1 AND r.project_mode = 'all' ORDER BY r.id
 `
 
-// The all-projects rules of one org: the last-project deletion refusal names
-// them, because a v1 rule response never carries an empty project list.
-// hikyo:reason Project deletion names the org's all-projects rules only after OpProjectDelete authorized the caller in that org; ids only, scoped to the org.
+type ListAllProjectsRuleItemCountsInOrgRow struct {
+	ID    string
+	Items int64
+}
+
+// The all-projects rules of one org with their stored item counts: the
+// last-project deletion refusal names them, because a v1 rule response never
+// carries an empty project list, and a project creation that would list one
+// past the v1 bounds names them too.
+// hikyo:reason Project deletion and creation read the org's all-projects rules only after OpProjectDelete or OpProjectCreate authorized the caller in that org; ids and counts only, scoped to the org.
 // hikyo:authn-resolution
-func (q *Queries) ListAllProjectsRuleIDsInOrg(ctx context.Context, orgID string) ([]string, error) {
-	rows, err := q.db.Query(ctx, listAllProjectsRuleIDsInOrg, orgID)
+func (q *Queries) ListAllProjectsRuleItemCountsInOrg(ctx context.Context, orgID string) ([]ListAllProjectsRuleItemCountsInOrgRow, error) {
+	rows, err := q.db.Query(ctx, listAllProjectsRuleItemCountsInOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []ListAllProjectsRuleItemCountsInOrgRow
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var i ListAllProjectsRuleItemCountsInOrgRow
+		if err := rows.Scan(&i.ID, &i.Items); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -539,10 +539,23 @@ export function toggleProject(rule: Rule, project: string): Rule {
  */
 export function toggleAllProjects(rule: Rule, projects: readonly string[]): Rule {
   if (rule.projects === '*') return { ...rule, projects: [], envs: ALL, keys: ALL };
-  const folders = [...new Set(rule.keys.items.filter(isFolder).map((k) => k.folder))];
+  const folders = folderNames(rule);
   const keys = folders.length === 0 && rule.keys.mode === 'only' ? ALL : { mode: rule.keys.mode, items: everyProject(projects, folders) };
   return { ...rule, projects: '*', envs: ALL, keys };
 }
+
+/**
+ * An all-projects rule with its folder items spread over these projects. The
+ * organisation's project list can change while the editor is open, so the
+ * editor and the create body both derive the items from the current list.
+ */
+export function overProjects(rule: Rule, projects: readonly string[]): Rule {
+  if (rule.projects !== '*') return rule;
+  return { ...rule, keys: { mode: rule.keys.mode, items: everyProject(projects, folderNames(rule)) } };
+}
+
+/** The distinct folder paths of a rule's key items. */
+const folderNames = (rule: Rule): string[] => [...new Set(rule.keys.items.filter(isFolder).map((k) => k.folder))];
 
 /** These folders, each repeated under every one of these projects. */
 export const everyProject = (projects: readonly string[], folders: readonly string[]): FolderItem[] =>
@@ -594,7 +607,6 @@ export function createBody(rule: Rule, id: PermId, orgProjects: readonly string[
   if (rule.projects === '*') {
     if (orgProjects.length === 0) throw new Error("a rule over all projects lists the organisation's projects");
     if (rule.envs.items.length > 0 || rule.keys.items.some((k) => !isFolder(k))) throw new Error('a rule over all projects narrows keys by folder only');
-    const folders = [...new Set(rule.keys.items.filter(isFolder).map((k) => k.folder))];
     return {
       principal: rule.member,
       capability: id,
@@ -602,7 +614,7 @@ export function createBody(rule: Rule, id: PermId, orgProjects: readonly string[
         project_mode: 'all' as const,
         projects: [...orgProjects],
         environments: { mode: 'all' as const, items: [] },
-        keys: { mode: rule.keys.mode, items: everyProject(orgProjects, folders) },
+        keys: { mode: rule.keys.mode, items: everyProject(orgProjects, folderNames(rule)) },
       },
     };
   }

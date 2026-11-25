@@ -14,7 +14,7 @@
   "AdvanceRestoreEpoch": "func(ctx context.Context, now time.Time) error",
   "AdvanceTOTPStep": "func(ctx context.Context, id string, rowVersion, step int64) (bool, error)",
   "AdvanceWebAuthnSignCount": "func(ctx context.Context, id string, rowVersion, count int64, at time.Time) (bool, error)",
-  "AllProjectsRuleIDsInOrg": "func(ctx context.Context, org domain.OrgID) ([]string, error)",
+  "AllProjectsRulesInOrg": "func(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error)",
   "AllowWorkspaceOrigin": "func(ctx context.Context, o authn.WorkspaceOrigin) error",
   "ApproveCLILogin": "func(ctx context.Context, id, session, snapshot string, code []byte) (bool, error)",
   "ApproveCLIReauthHandoff": "func(ctx context.Context, id string, codeVerifier, windows []byte) (bool, error)",

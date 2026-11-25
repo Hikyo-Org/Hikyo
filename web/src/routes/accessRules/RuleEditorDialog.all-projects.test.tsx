@@ -52,3 +52,28 @@ it('outside the org-wide page an all-projects rule can be narrowed but not saved
   await act(async () => button(root, 'payments')?.click());
   expect(button(root, 'Save')?.disabled).toBe(false);
 });
+
+it('All projects stays unavailable while the organisation has no project', async () => {
+  const root = await editor(true, vi.fn(), newRule(IDS.chen), []);
+  expect(button(root, 'All projects')?.disabled).toBe(true);
+  expect(root.textContent).toContain('All projects needs a project first');
+  // A seeded all-projects draft cannot be saved without a project list either.
+  await unmount?.();
+  unmount = null;
+  const seeded = await editor(true, vi.fn(), { ...newRule(IDS.chen), projects: '*' }, []);
+  expect(button(seeded, 'Save')?.disabled).toBe(true);
+});
+
+it('an open all-projects draft follows a project added to the list', async () => {
+  const onSave = vi.fn();
+  const rule: Rule = { ...newRule(IDS.chen), projects: '*', keys: { mode: 'all', items: [{ project: IDS.payments, folder: 'secret' }] } };
+  const view = await renderForm(
+    <RuleEditorDialog world={makeWorld()} rule={rule} projects={[IDS.payments]} allProjects showReach={false} onSave={onSave} onCancel={vi.fn()} />,
+  );
+  unmount = view.unmount;
+  await view.rerender(<RuleEditorDialog world={makeWorld()} rule={rule} projects={PROJECTS} allProjects showReach={false} onSave={onSave} onCancel={vi.fn()} />);
+  await act(async () => button(view.container, 'Save')?.click());
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({ keys: { mode: 'all', items: [{ project: IDS.payments, folder: 'secret' }, { project: IDS.web, folder: 'secret' }] } }),
+  );
+});

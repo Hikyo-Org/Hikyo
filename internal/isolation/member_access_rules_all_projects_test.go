@@ -528,6 +528,164 @@ func TestAllProjectsRulesCreateRacesLastProjectDelete(t *testing.T) {
 	}
 }
 
+// seedBoundProjects inserts projects into org_ap until it has total, in one
+// statement: the v1 bound tests need hundreds.
+func seedBoundProjects(t *testing.T, db *store.DB, total int) {
+	t.Helper()
+	have := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE org_id = 'org_ap'")
+	var rows []string
+	for i := int(have); i < total; i++ {
+		rows = append(rows, fmt.Sprintf("('prj_bound_%04d', 'org_ap', 'bound %d', %s)", i, i, ts))
+	}
+	if len(rows) > 0 {
+		execRaw(t, db, "INSERT INTO projects (id, org_id, name, created_at) VALUES "+strings.Join(rows, ", "))
+	}
+}
+
+// An all-projects rule is listed with its folders repeated under every
+// current project, and that listing stays within the v1 selector bound
+// (domain.MaxRuleItems, projects and items together): a rule create or a
+// project create that would pass it is refused, never truncated (#1446).
+func TestAllProjectsRulesBound(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedAllProjectsFixture(t, db)
+		ctx := t.Context()
+		spec := func(folders ...string) service.RuleSpec {
+			return claimAll(t, db, service.RuleSpec{Target: apHolder, Capability: domain.CapRead, Org: orgAP, Where: allProjectsWhere(domain.AxisAll, folders...)})
+		}
+		half := domain.MaxRuleItems / 2
+		seedBoundProjects(t, db, half-1)
+
+		atBound, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), spec("secret"))
+		if err != nil {
+			t.Fatalf("all-projects rule below the bound (%d projects, 1 folder): %v", half-1, err)
+		}
+		// Exactly the bound through project creation: half the projects, each
+		// listing the one folder item.
+		f.newProject(t, "at-the-bound")
+		// Past it: two folders under every project.
+		_, err = f.rules.Create(ctx, service.LocalPrincipal(apAdmin), spec("secret", "stripe"))
+		var detail interface{ SafeDetail() string }
+		if !errors.Is(err, service.ErrRuleAllProjectsTooLarge) || !errors.Is(err, domain.ErrLimitExceeded) || !errors.As(err, &detail) {
+			t.Fatalf("all-projects rule past the bound = %v, want ErrRuleAllProjectsTooLarge with a detail", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE org_id = 'org_ap'"); n != 1 {
+			t.Fatalf("%d rules after the refused create, want 1", n)
+		}
+
+		// One more project would list the rule past the bound.
+		before := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE org_id = 'org_ap'")
+		_, err = f.projects.Create(ctx, service.LocalPrincipal(apAdmin), orgAP, "one-too-many")
+		if !errors.Is(err, service.ErrProjectAboveAllProjectsRules) || !errors.Is(err, domain.ErrLimitExceeded) || !errors.As(err, &detail) ||
+			!strings.Contains(detail.SafeDetail(), atBound.ID) {
+			t.Fatalf("project past the bound = %v, want ErrProjectAboveAllProjectsRules naming %s", err, atBound.ID)
+		}
+		// A project manager without member management learns no rule id.
+		_, err = f.projects.Create(ctx, service.LocalPrincipal(apPrjOnly), orgAP, "one-too-many")
+		if !errors.Is(err, service.ErrProjectAboveAllProjectsRules) || !errors.As(err, &detail) || strings.Contains(detail.SafeDetail(), atBound.ID) {
+			t.Fatalf("project manager's refusal = %v, want ErrProjectAboveAllProjectsRules without the rule id", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE org_id = 'org_ap'"); n != before {
+			t.Fatalf("refused project creates left %d projects, want %d", n, before)
+		}
+
+		// Positive control: without the folder the rule fits, so the project is created.
+		if err := f.rules.Revoke(ctx, service.LocalPrincipal(apAdmin), orgAP, atBound.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), spec()); err != nil {
+			t.Fatalf("folder-less all-projects rule over %d projects: %v", half, err)
+		}
+		f.newProject(t, "fits")
+
+		// A folder-less rule is bounded by the project count alone.
+		seedBoundProjects(t, db, domain.MaxRuleItems)
+		if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), spec()); err != nil {
+			t.Fatalf("folder-less all-projects rule over %d projects: %v", domain.MaxRuleItems, err)
+		}
+		if _, err := f.projects.Create(ctx, service.LocalPrincipal(apAdmin), orgAP, "past-the-bound"); !errors.Is(err, service.ErrProjectAboveAllProjectsRules) {
+			t.Fatalf("project %d under folder-less rules = %v, want ErrProjectAboveAllProjectsRules", domain.MaxRuleItems+1, err)
+		}
+	})
+}
+
+// A project create racing an all-projects rule create that reaches the bound
+// exactly: at most one commits, and no rule is left listed past the bound.
+// Postgres only; sqlite serializes write transactions.
+func TestAllProjectsRulesCreateRacesProjectCreate(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	f := seedAllProjectsFixture(t, db)
+	half := domain.MaxRuleItems / 2
+
+	// Two project creates under a rule one project short of the bound: the
+	// first reaches it exactly, the second would pass it.
+	seedBoundProjects(t, db, half-1)
+	rule, err := f.rules.Create(t.Context(), service.LocalPrincipal(apAdmin), claimAll(t, db, service.RuleSpec{Target: apHolder, Capability: domain.CapRead, Org: orgAP, Where: allProjectsWhere(domain.AxisAll, "secret")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for round := range 3 {
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		var made [2]service.Project
+		var errs [2]error
+		for i := range 2 {
+			wg.Go(func() {
+				<-start
+				made[i], errs[i] = f.projects.Create(t.Context(), service.LocalPrincipal(apAdmin), orgAP, fmt.Sprintf("pair%d-%d", round, i))
+			})
+		}
+		close(start)
+		wg.Wait()
+		won := slices.IndexFunc(errs[:], func(err error) bool { return err == nil })
+		if won < 0 || !errors.Is(errs[1-won], service.ErrProjectAboveAllProjectsRules) {
+			t.Fatalf("round %d: project creates %v, want one to reach the bound and the other refused", round, errs)
+		}
+		if err := f.projects.Delete(t.Context(), service.LocalPrincipal(apAdmin), domain.Scope{Org: orgAP, Project: domain.ProjectID(made[won].ID)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(apAdmin), orgAP, rule.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// A project create racing a rule create that reaches the bound exactly.
+	seedBoundProjects(t, db, half)
+	for round := range 3 {
+		spec := claimAll(t, db, service.RuleSpec{Target: apHolder, Capability: domain.CapRead, Org: orgAP, Where: allProjectsWhere(domain.AxisAll, "secret")})
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		var created service.RuleView
+		var project service.Project
+		var ruleErr, projectErr error
+		wg.Go(func() {
+			<-start
+			created, ruleErr = f.rules.Create(t.Context(), service.LocalPrincipal(apAdmin), spec)
+		})
+		wg.Go(func() {
+			<-start
+			project, projectErr = f.projects.Create(t.Context(), service.LocalPrincipal(apAdmin), orgAP, fmt.Sprintf("race%d", round))
+		})
+		close(start)
+		wg.Wait()
+		if ruleErr == nil && projectErr == nil {
+			t.Fatalf("round %d: both the rule and the project committed, listing the rule past the bound", round)
+		}
+		// The loser is refused by name: a rule create that lost lists a stale
+		// project set, a project create that lost would pass the bound.
+		if !errors.Is(ruleErr, service.ErrRuleAllProjectsStale) && !errors.Is(projectErr, service.ErrProjectAboveAllProjectsRules) {
+			t.Fatalf("round %d: rule %v and project %v, want one to commit and the other refused by name", round, ruleErr, projectErr)
+		}
+		if ruleErr == nil {
+			if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(apAdmin), orgAP, created.ID); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := f.projects.Delete(t.Context(), service.LocalPrincipal(apAdmin), domain.Scope{Org: orgAP, Project: domain.ProjectID(project.ID)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // The wire (owner decision R2): a create with project_mode all lists the org's
 // current projects with its folder items repeated under each; a stale list is
 // a 409 naming the difference; a rule reads back expanded the same way, and

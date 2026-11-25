@@ -350,13 +350,23 @@ func (r *Resolver) LockOrgProjectsForDelete(ctx context.Context, org string) ([]
 	return out, nil
 }
 
-// AllProjectsRuleIDsInOrg lists the org's all-projects rules: an org's last
-// project cannot be deleted while one exists.
-func (r *Resolver) AllProjectsRuleIDsInOrg(ctx context.Context, org string) ([]string, error) {
+// AllProjectsRulesInOrg lists the org's all-projects rules with their stored
+// item counts: an org's last project cannot be deleted while one exists, and
+// a project cannot be created that would list one past the v1 bounds.
+func (r *Resolver) AllProjectsRulesInOrg(ctx context.Context, org string) ([]domain.RuleItemCount, error) {
+	var out []domain.RuleItemCount
 	if r.sq != nil {
-		return r.sq.ListAllProjectsRuleIDsInOrg(ctx, org)
+		rows, err := r.sq.ListAllProjectsRuleItemCountsInOrg(ctx, org)
+		for _, row := range rows {
+			out = append(out, domain.RuleItemCount{ID: row.ID, Items: int(row.Items)})
+		}
+		return out, err
 	}
-	return r.pg.ListAllProjectsRuleIDsInOrg(ctx, org)
+	rows, err := r.pg.ListAllProjectsRuleItemCountsInOrg(ctx, org)
+	for _, row := range rows {
+		out = append(out, domain.RuleItemCount{ID: row.ID, Items: int(row.Items)})
+	}
+	return out, err
 }
 
 func (r *Resolver) RuleIDsForOrg(ctx context.Context, org string) ([]string, error) {

@@ -1304,7 +1304,10 @@ paths:
         Not idempotent: each call creates a distinct project. The name must be
         unused among the organisation's live projects; a collision is a
         `conflict`, decided after authorization so it discloses nothing a
-        caller could not already read.
+        caller could not already read. A project that would list one of the
+        organisation's rules over all projects past the 500-item bound of a
+        rule's `where` is refused with `limit_exceeded`, naming the rules to a
+        member manager.
       x-hikyo-class: tenant
       x-hikyo-operation: project.create
       x-hikyo-formula: [manage-projects@org]
@@ -23590,8 +23593,10 @@ components:
       description: |
         `only` reaches the listed `projects`. `all` reaches every project of
         the organisation, including projects created later; such a rule covers
-        every environment and narrows keys by folder only.
+        every environment and narrows keys by folder only. Omitted, a rule's
+        project mode is `only`.
       enum: [all, only]
+      default: only
 
     RuleWhere:
       type: object
@@ -23612,9 +23617,17 @@ components:
         projects (otherwise 409), keeps the environment axis `all` without
         items, and repeats the same folder items, never single keys, under
         every project.
+
+        The 500 bound counts the rule as it is listed: every current project
+        plus its folder items repeated under each. A create that would list
+        more is refused with 409 `limit_exceeded`, and so is a project creation
+        that would list an existing rule over all projects past it; the
+        refusal names the blocking rules to a member manager. A listing is
+        never truncated.
       properties:
         project_mode:
           $ref: "#/components/schemas/RuleProjectMode"
+          description: The project axis's mode; omitted, `only`.
         projects:
           type: array
           minItems: 1

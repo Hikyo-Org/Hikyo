@@ -279,6 +279,15 @@ request merges.
   there is refused with a conflict naming the blocking rule ids, so they can be revoked first.
   Project deletion is the only path that removes a project; an organization is deleted only once
   empty. The deletion locks the organization's projects so concurrent deletions cannot both pass.
+- **Listing bound (owner principle extended, 2026-11-25).** The zero-projects principle, refusing
+  the change that would make a v1 response invalid, also covers the frozen 500 bound of a rule's
+  `where` (`domain.MaxRuleItems`, projects, environments and keys together). An all-projects rule is
+  listed as the organization's current projects plus its folder items repeated under each, so its
+  listing counts projects × (1 + folders). A create that would list more than 500 is refused with
+  `limit_exceeded`; so is a project creation that would list any existing all-projects rule past
+  500, naming the blocking rule ids to a member manager. The project creation takes the same
+  project-row lock as a deletion, within the same serializable transaction, so it cannot race a rule
+  create. A listing is never truncated and never leaves a rule out.
 - **Authority (D7).** Creating or revoking an all-projects rule needs Manage access over the
   complete selector in every current project and over projects created later. Only an
   organization- or instance-scope grant, or another all-projects rule, covers a future project, so a

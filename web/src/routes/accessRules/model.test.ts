@@ -15,6 +15,7 @@ import {
   machineRefusal,
   machineWhereRefusal,
   newRule,
+  overProjects,
   perm,
   PERMS,
   PRESETS,
@@ -443,4 +444,16 @@ describe('machine rules (D11)', () => {
     expect(machineWhereRefusal({ ...where, keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }] } }, 'automation')).toContain('every key');
     expect(machineWhereRefusal({ ...where, projects: [PAY, IDS.web] }, undefined)).toBeUndefined();
   });
+});
+
+it('re-derives an all-projects rule over the current project list (#1446)', () => {
+  const rule = { ...newRule(IDS.chen), projects: '*' as const, keys: { mode: 'all' as const, items: [{ project: IDS.payments, folder: 'db' }] } };
+  expect(overProjects(rule, [IDS.payments, IDS.web]).keys.items).toEqual([
+    { project: IDS.payments, folder: 'db' },
+    { project: IDS.web, folder: 'db' },
+  ]);
+  const named = { ...newRule(IDS.chen), projects: [IDS.payments] };
+  expect(overProjects(named, [IDS.payments, IDS.web])).toBe(named);
+  // The create body uses the list as it is at save time, not the draft's copy.
+  expect(createBody(rule, 'edit', [IDS.payments, IDS.web]).where.keys.items).toHaveLength(2);
 });

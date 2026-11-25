@@ -26,6 +26,7 @@ import {
   tapped,
   toggleItems,
   toggleAllProjects,
+  overProjects,
   toggleProject,
   everyProject,
   type Axis,
@@ -84,7 +85,9 @@ export function RuleEditorDialog({
   onRemove?: (rule: Rule) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(rule);
+  const [seed, setDraft] = useState(rule);
+  // An all-projects draft follows the current project list (see overProjects).
+  const draft = overProjects(seed, projects);
   const all = draft.projects === '*';
   const chosen = all ? projects : draft.projects;
   const eff = effective(draft, machine);
@@ -94,7 +97,9 @@ export function RuleEditorDialog({
   // An all-projects rule is sent with the organisation's project list, which
   // only the org-wide page has: elsewhere it can be narrowed, not saved as is.
   const allElsewhere = all && !allProjects;
-  const valid = eff.length > 0 && where && whereRefusal === undefined && !allElsewhere;
+  // With no project there is no list to send: the server refuses such a rule.
+  const noProject = allProjects && projects.length === 0;
+  const valid = eff.length > 0 && where && whereRefusal === undefined && !allElsewhere && !(all && projects.length === 0);
   const dropped = draft.perms.filter((id) => machineRefusal(id, machine) === undefined && !availability(id, draft).ok);
   const editing = rule.source.kind === 'rule';
   const unreadable = chosen.filter((p) => projectById(world, p)?.keys === null);
@@ -138,6 +143,8 @@ export function RuleEditorDialog({
           hint={
             allElsewhere
               ? "This rule covers all projects. Change it on the organisation's Members page, or tap projects to name them instead."
+              : noProject && machine === undefined
+                ? 'All projects needs a project first: create one, then come back.'
               : allProjects && machine === undefined
                 ? 'Tap one or more projects, or All projects to include projects created later.'
                 : 'Tap one or more projects. A rule names its projects: access to all projects stays an organisation grant.'
@@ -145,7 +152,7 @@ export function RuleEditorDialog({
         >
           <div className="access-picks">
             {allProjects && machine === undefined ? (
-              <ToggleChip pressed={all} onClick={() => setDraft(toggleAllProjects(draft, projects))}>
+              <ToggleChip pressed={all} disabled={noProject && !all} onClick={() => setDraft(toggleAllProjects(draft, projects))}>
                 All projects
               </ToggleChip>
             ) : null}
