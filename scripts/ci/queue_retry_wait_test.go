@@ -676,7 +676,9 @@ func TestQueueRetryWaitReleasesTheNewestRunPerHeadFirst(t *testing.T) {
 
 // The second wait is counted from the job's start: it never sleeps past the 66 minutes after
 // which no rerun starts, and names the jobs it held instead of being killed mid-sleep.
-func TestQueueRetryWaitDoesNotSleepPastItsOwnDeadline(t *testing.T) {
+// deadlineWaitRun builds a wait that reaches its second wait after about 5 minutes of refused
+// reruns and failed listings, with the reset resetIn seconds after the start.
+func deadlineWaitRun(t *testing.T, resetIn int64) (string, string, error) {
 	now := int64(1795475603)
 	step := "Reconcile one authenticated head without borrowing another lease"
 	var runs []waitRun
@@ -694,11 +696,15 @@ func TestQueueRetryWaitDoesNotSleepPastItsOwnDeadline(t *testing.T) {
 		failing = append(failing, trustedRun("ci-dev-gate.yml", 30+i, failedGroupJob(300+i, "dev-publish-"+fmt.Sprintf("%040x", 50+i), "Reconcile exact-head dev admission")))
 		listFail[30+i] = 99
 	}
-	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 3980, recovers: true, limit: 1000, after: 300, runs: append(runs, failing...), failures: failures, listFail: listFail}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + resetIn, recovers: true, limit: 1000, after: 300, runs: append(runs, failing...), failures: failures, listFail: listFail}
 	if err := os.WriteFile(filepath.Join(f.dir, "slept"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	recorded, out, err := f.run()
+	return f.run()
+}
+
+func TestQueueRetryWaitDoesNotSleepPastItsOwnDeadline(t *testing.T) {
+	recorded, out, err := deadlineWaitRun(t, 3980)
 	longSleep := false
 	for _, line := range strings.Split(recorded, "\n") {
 		if strings.HasPrefix(line, "sleep ") && len(line) > len("sleep ")+3 {
@@ -707,6 +713,15 @@ func TestQueueRetryWaitDoesNotSleepPastItsOwnDeadline(t *testing.T) {
 	}
 	if err == nil || longSleep || !strings.Contains(out, "this job can still wait") || !strings.Contains(out, "Held to protect the window:") {
 		t.Fatalf("a wait past the job's own 66 minutes is refused and the held jobs are named: %v\n%s\n%s", err, recorded, out)
+	}
+}
+
+// The wait may not end inside the last 65 seconds before the 66-minute stop: the budget read
+// that follows can back off for that long and would leave every job held.
+func TestQueueRetryWaitLeavesRoomForTheBudgetReadAfterItsSleep(t *testing.T) {
+	recorded, out, err := deadlineWaitRun(t, 3900)
+	if err == nil || !strings.Contains(out, "this job can still wait") {
+		t.Fatalf("a wait ending in the last 65 seconds is refused: %v\n%s\n%s", err, recorded, out)
 	}
 }
 

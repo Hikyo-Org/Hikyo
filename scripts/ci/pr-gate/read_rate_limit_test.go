@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -48,7 +47,7 @@ func TestGitHubReadWaitsForRateLimitResetWhenItFitsTheBudget(t *testing.T) {
 	var result struct {
 		OK bool `json:"ok"`
 	}
-	if err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result); err != nil || !result.OK {
+	if err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result); err != nil || !result.OK {
 		t.Fatalf("read did not recover after the reset: %v %+v", err, result)
 	}
 	if want := 120*time.Second + rateLimitSkew; len(*waits) != 1 || (*waits)[0] != want || attempts() != 3 {
@@ -59,7 +58,7 @@ func TestGitHubReadWaitsForRateLimitResetWhenItFitsTheBudget(t *testing.T) {
 func TestGitHubReadFailsVisiblyWhenRateLimitResetExceedsTheBudget(t *testing.T) {
 	attempts, waits, now := rateLimitFixture(t, rateLimitCase{resetIn: 20 * time.Minute, budget: 2 * time.Minute, failures: 5})
 	var result map[string]any
-	err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result)
+	err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result)
 	reset := now.Add(20 * time.Minute).UTC().Format(time.RFC3339)
 	var failure *githubReadError
 	if err == nil || !strings.Contains(err.Error(), "rate limit exhausted until "+reset) || !errors.As(err, &failure) || failure.status != 403 {
@@ -76,7 +75,7 @@ func TestGitHubReadFailsVisiblyWhenRateLimitResetExceedsTheBudget(t *testing.T) 
 func TestGitHubReadDoesNotWaitWithoutAKnownBudget(t *testing.T) {
 	_, waits, _ := rateLimitFixture(t, rateLimitCase{resetIn: time.Second, failures: 5, budgetEnvDisabled: true})
 	var result map[string]any
-	if err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result); err == nil || !strings.Contains(err.Error(), "rate limit exhausted until") || len(*waits) != 0 {
+	if err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result); err == nil || !strings.Contains(err.Error(), "rate limit exhausted until") || len(*waits) != 0 {
 		t.Fatalf("an unbounded job must not sleep on a reset: err=%v waits=%v", err, *waits)
 	}
 }
@@ -85,7 +84,7 @@ func TestGitHubReadDoesNotWaitOnASecondaryLimit(t *testing.T) {
 	// The core budget has requests left, so a reset wait would not help.
 	attempts, waits, _ := rateLimitFixture(t, rateLimitCase{core: 4000, graphql: 4000, resetIn: time.Minute, budget: time.Hour, failures: 5})
 	var result map[string]any
-	err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result)
+	err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result)
 	if err == nil || strings.Contains(err.Error(), "exhausted") || len(*waits) != 0 || attempts() != 2 {
 		t.Fatalf("a 403 with core budget left must stay terminal: err=%v waits=%v attempts=%d", err, *waits, attempts())
 	}
@@ -95,7 +94,7 @@ func TestGitHubReadWaitsForTheResetOnlyOnce(t *testing.T) {
 	// Still limited after the wait: report it instead of sleeping again.
 	attempts, waits, _ := rateLimitFixture(t, rateLimitCase{resetIn: 30 * time.Second, budget: 10 * time.Minute, failures: 5})
 	var result map[string]any
-	if err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result); err == nil || len(*waits) != 1 || attempts() != 3 {
+	if err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result); err == nil || len(*waits) != 1 || attempts() != 3 {
 		t.Fatalf("err=%v waits=%v attempts=%d, want one wait then a reported failure", err, *waits, attempts())
 	}
 }
@@ -104,7 +103,7 @@ func TestGitHubGraphQLReadChecksTheGraphQLBucket(t *testing.T) {
 	// Core is spent but GraphQL is not: waiting for the core reset would not help a GraphQL read.
 	attempts, waits, _ := rateLimitFixture(t, rateLimitCase{core: 0, graphql: 4000, resetIn: time.Minute, budget: time.Hour, failures: 5})
 	var result map[string]any
-	if err := retryingGH.read(context.Background(), "graphql:query{repository{name}}", &result); err == nil || len(*waits) != 0 || attempts() != 2 {
+	if err := retryingGH.read(t.Context(), "graphql:query{repository{name}}", &result); err == nil || len(*waits) != 0 || attempts() != 2 {
 		t.Fatalf("err=%v waits=%v attempts=%d, want no wait on a spent core bucket", err, *waits, attempts())
 	}
 }
@@ -113,7 +112,7 @@ func TestGitHubReadRefusesAnAbsurdReset(t *testing.T) {
 	_, waits, now := rateLimitFixture(t, rateLimitCase{budget: time.Hour, failures: 5, resetOverride: 1<<62 - 1})
 	_ = now
 	var result map[string]any
-	if err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result); err == nil || len(*waits) != 0 {
+	if err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result); err == nil || len(*waits) != 0 {
 		t.Fatalf("an out-of-range reset must not become a wait: err=%v waits=%v", err, *waits)
 	}
 }

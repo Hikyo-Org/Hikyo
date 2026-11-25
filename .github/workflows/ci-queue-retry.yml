@@ -229,8 +229,8 @@ jobs:
           wait_for_reset() {
             local wait cap
             wait=$((reset + 5 - $(date +%s)))
-            # One window at most, and never past the 66 minutes after which no rerun starts.
-            cap=$((started + 3960 - $(date +%s)))
+            # One window at most, and never so late that the budget read that follows (65 seconds of backoff at most) ends past the 66 minutes after which no rerun starts.
+            cap=$((started + 3960 - 65 - $(date +%s)))
             if [ "$cap" -gt 3660 ]; then cap=3660; fi
             if [ "$wait" -gt "$cap" ]; then
               echo "The rate limit resets in $wait seconds, beyond the $cap this job can still wait; not waiting."

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -31,7 +30,7 @@ func TestNonGroupJobDefersBelowTheReserveAndRunsAtIt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reserveWindow(t, tc.core, tc.graphql)
-			err := deferForGroupReserve(context.Background(), ghAPI{})
+			err := deferForGroupReserve(t.Context(), ghAPI{})
 			if (err != nil) != tc.deferred {
 				t.Fatalf("core=%d graphql=%d: err=%v, want deferred=%t", tc.core, tc.graphql, err, tc.deferred)
 			}
@@ -45,7 +44,7 @@ func TestNonGroupJobDefersBelowTheReserveAndRunsAtIt(t *testing.T) {
 // The free rate_limit read failing says nothing about the window: the job still runs.
 func TestReserveCheckDoesNotBlockOnAFailedRateLimitRead(t *testing.T) {
 	fakeGH(t, `echo 'gh: HTTP 502' >&2; exit 1`)
-	if err := deferForGroupReserve(context.Background(), ghAPI{}); err != nil {
+	if err := deferForGroupReserve(t.Context(), ghAPI{}); err != nil {
 		t.Fatalf("an unreadable rate_limit must not stop a job: %v", err)
 	}
 }
@@ -99,7 +98,7 @@ func TestTheLastAttemptSpendsInsteadOfDeferring(t *testing.T) {
 	reserveWindow(t, 10, 900)
 	for attempt, deferred := range map[string]bool{"1": true, "2": true, "3": false} {
 		t.Setenv("GITHUB_RUN_ATTEMPT", attempt)
-		if err := deferForGroupReserve(context.Background(), ghAPI{}); (err != nil) != deferred {
+		if err := deferForGroupReserve(t.Context(), ghAPI{}); (err != nil) != deferred {
 			t.Fatalf("attempt %s: err=%v, want deferred=%t", attempt, err, deferred)
 		}
 	}

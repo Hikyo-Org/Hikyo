@@ -1402,7 +1402,7 @@ func TestGroupRereadStillWaitsWhenRunlessRecordIsNotTheExpiryRefusal(t *testing.
 func TestGroupRereadCapsCountFromProcessStart(t *testing.T) {
 	newGroupClock(t)
 	processStart = time.Now().Add(-3 * time.Minute)
-	g := newGroupRereads(context.Background())
+	g := newGroupRereads(t.Context())
 	if want := processStart.Add(groupRereadFence); !g.fence.Equal(want) {
 		t.Fatalf("fence %s is not process start + %s", g.fence, groupRereadFence)
 	}

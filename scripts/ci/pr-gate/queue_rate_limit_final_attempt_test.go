@@ -21,7 +21,7 @@ func TestRateLimitedFinalAttemptStaysPendingNotTerminal(t *testing.T) {
 				return policyDecision{}, fmt.Errorf("verify: %w", &githubReadError{path: "repos", status: 403, rateLimited: true, cause: errors.New("rate limit exhausted beyond this job's remaining budget")})
 			}
 			b := admissionBudget{Started: time.Now(), Deadline: time.Now().Add(admissionReserve + 2*time.Second)}
-			if err := f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b); err == nil {
+			if err := f.q.executeTargeted(t.Context(), "pull_request_target", targetedFixtureEvent(f), b); err == nil {
 				t.Fatal("a rate-limited run must still fail visibly")
 			}
 			f.assertNoSuccess(t)

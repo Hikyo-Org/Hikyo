@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -28,7 +27,7 @@ func TestGitHubGraphQLRateLimitShapesWaitForTheGraphQLReset(t *testing.T) {
 if [ "$n" -le 1 ]; then %s; fi
 echo '{"data":{"ok":true}}'`, now.Unix()+60, now.Unix()+120, failure))
 			var result map[string]any
-			if err := retryingGH.read(context.Background(), "graphql:query{repository{name}}", &result); err != nil {
+			if err := retryingGH.read(t.Context(), "graphql:query{repository{name}}", &result); err != nil {
 				t.Fatalf("graphql read did not recover after the reset: %v", err)
 			}
 			if want := 120*time.Second + rateLimitSkew; len(*waits) != 1 || (*waits)[0] != want || attempts() != 3 {
@@ -43,7 +42,7 @@ func TestGitHubGraphQLOtherErrorsDoNotWait(t *testing.T) {
 	waits := recordReadWaits(t)
 	attempts := fakeGH(t, `echo '{"data":null,"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a Repository"}]}'; exit 1`)
 	var result map[string]any
-	if err := retryingGH.read(context.Background(), "graphql:query{repository{name}}", &result); err == nil || len(*waits) != 0 || attempts() != 1 {
+	if err := retryingGH.read(t.Context(), "graphql:query{repository{name}}", &result); err == nil || len(*waits) != 0 || attempts() != 1 {
 		t.Fatalf("err=%v waits=%v attempts=%d", err, *waits, attempts())
 	}
 }

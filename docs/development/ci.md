@@ -410,7 +410,7 @@ rerun per run as above. A window that has already recovered when the job starts 
 passed in between, or the sleeper queued behind another) skips only the sleep; the sweep
 still runs. If a non-group job then does not fit above the reserve (remaining between 250
 and 291, say), the job waits for the reset once and releases the held set once; a hold
-that only group jobs suffer also waits for the reset once and releases the held group jobs, newest run per job name first (job names carry the kind and head, `group-<head>` for a group worker job and `publish-<head>` otherwise, so a group job is classified as a group job). The wait never sleeps past 66 minutes from its start (the second sleep is capped at the time left) and names the held jobs when the reset is later. The reruns are spaced 15 seconds apart. A released rerun spends only after
+that only group jobs suffer also waits for the reset once and releases the held group jobs, newest run per job name first (job names carry the kind and head, `group-<head>` for a group worker job and `publish-<head>` otherwise, so a group job is classified as a group job). The wait never sleeps past 66 minutes from its start (the second sleep is capped at the time left minus the 65 seconds the budget read after it can back off) and names the held jobs when the reset is later. The reruns are spaced 15 seconds apart. A released rerun spends only after
 it starts, so the live `rate_limit` does not show it yet: each is counted at its expected
 cost (41 reads for a group job, 42 otherwise) against the lower of the live remaining and
 the budget when releasing began, and the job stops starting reruns when that projection
@@ -484,7 +484,7 @@ about 36 more for two groups), the worker dispatch (a group job, which never def
 the other workflows (under about 100 an hour, which do not check the reserve) and
 concurrent non-group jobs that all pass the check together and then spend 42 each. Group
 demand alone can exceed 250 within an hour, and so can the overshoot of those others.
-`R` was not enlarged for them (that would shift every threshold); the residual is
+The ungated spend (event discovery 102, retry listings about 30, other workflows about 100: 232) plus one group pass exceeds the reserve by 23, so the throttled incident hour is bounded at 1,149 requests (876 gated, pinned by `TestIncidentHourSpendIsPinned`), about 15% over, and a group pass can be rate-limited. `R` was not enlarged for them (that would shift every threshold); the residual is
 completed by
 `gh workflow run ci-queue-gate.yml -f pr_number=<n>`, which also completes a group
 job that reached attempt 3 rate-limited (nothing reruns it automatically). The dispatch
