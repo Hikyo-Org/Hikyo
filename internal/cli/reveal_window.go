@@ -148,7 +148,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	// here is stale and possibly bound to other keys. A new ceremony replaces it.
 	// An authorized caller arrives with the server's widening refusal over env, so
 	// a live window there does not satisfy it (typically one bound elsewhere).
-	if window.Live && !window.SingleDecision && !d.authorized {
+	// An unbound window satisfies emergency access too, so its refusal under a
+	// live one means that window is bound elsewhere; break-glass must not stall.
+	if window.Live && !window.SingleDecision && !d.authorized && d.purpose != "access" {
 		return nil
 	}
 	// Approval votes and bypasses require publish authority, not reveal. Their

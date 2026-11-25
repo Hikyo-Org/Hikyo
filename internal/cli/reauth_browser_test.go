@@ -230,6 +230,21 @@ func TestApproveInBrowserRefusesAPurposeWithoutAHandoff(t *testing.T) {
 	}
 }
 
+// A machine rule change has no CLI handoff either, so a chosen browser refuses
+// it with the way back to a code prompt, never a window remedy.
+func TestApproveInBrowserRefusesAMachineRuleChange(t *testing.T) {
+	ios, _, stderr := definitionsTestIO(t, noTOTPLookup(t, ceremonyHandlerForGrant(t)))
+	ios.ReadPassword = func(string) (string, error) { t.Fatal("prompted for a code"); return "", nil }
+	ios.OpenURL = func(string) error { t.Error("opened a browser for a purpose with no handoff"); return nil }
+	code := cli.Run(t.Context(), ios, []string{"access", "rule", "add", "--principal", "mch_1", "--capability", "read", "--only-env", "env_70",
+		"--approve-in-browser", "--instance", "local", "--org", "org_70", "--project", "prj_70"})
+	out := stderr.String()
+	if code != cli.ExitAuth || !strings.Contains(out, "a rule change that widens a machine in env_70 has no CLI browser handoff") ||
+		!strings.Contains(out, "drop --approve-in-browser to enter an authenticator code here") || strings.Contains(out, "--reauth-window-seconds") {
+		t.Fatalf("exit %d; stderr=%s", code, out)
+	}
+}
+
 func ceremonyHandlerForGrant(t *testing.T) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -359,19 +374,21 @@ func TestUnchosenBrowserThatCannotOpenDoesNotBlameTheSetting(t *testing.T) {
 	}
 }
 
-// A live window needs no ceremony, so a chosen browser starts no handoff.
-func TestChosenBrowserWithALiveWindowStartsNoHandoff(t *testing.T) {
+// The attempt comes first, so a window that satisfies emergency access costs no
+// ceremony. A refusal under a live window means that window is bound to another
+// operation (a reveal's handoff, say), so the chosen browser still hands off.
+func TestEmergencyAccessHandsOffOverALiveWindowBoundElsewhere(t *testing.T) {
 	var startBody map[string]any
 	var callbackURI string
 	handler := accessHandoffServer(t, apigen.RevealWindow{Live: true, EffectiveWindowSeconds: 300, TotpOffered: true}, true, &startBody, &callbackURI)
 	handler = noTOTPLookup(t, handler)
-	ios, _, _ := definitionsTestIO(t, handler)
+	ios, _, stderr := definitionsTestIO(t, handler)
 	ios.ReadPassword = func(string) (string, error) { t.Fatal("prompted"); return "", nil }
-	ios.OpenURL = func(string) error { t.Error("opened a browser with a live window"); return nil }
-	cli.Run(t.Context(), ios, emergencyArgs("--approve-in-browser"))
-	if startBody != nil {
-		t.Fatalf("a handoff started under a live window: %v", startBody)
+	ios.OpenURL = openAndApprove(t, &callbackURI)
+	if code := cli.Run(t.Context(), ios, emergencyArgs("--approve-in-browser")); code != cli.ExitOK {
+		t.Fatalf("exit %d, want ok; stderr=%s", code, stderr.String())
 	}
+	assertAccessHandoff(t, startBody)
 }
 
 // `values get --reveal` takes the disclosure handoff under reauth.method browser.

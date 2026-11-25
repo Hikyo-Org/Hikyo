@@ -1,7 +1,7 @@
 # #1531: CLI reauthentication browser approval, handoff
 
-Status: **pull request open, stacked on the #1516 pull request (#1529), not
-merged.** Closes [#1531](https://github.com/Hikyo-Org/Hikyo/issues/1531). Part A
+Status: **pull request open against `dev`, not merged.** It followed the #1516
+pull request (#1529), which has merged, and is rebased onto it. Closes [#1531](https://github.com/Hikyo-Org/Hikyo/issues/1531). Part A
 of the CLI approval follow-up; part C is epic
 [#1532](https://github.com/Hikyo-Org/Hikyo/issues/1532).
 
@@ -40,6 +40,11 @@ of the CLI approval follow-up; part C is epic
   - Account-security proofs and factor prompts print that the flag does not
     apply to them (`State.readProof`).
   - `context delete --instance` forgets the instance's settings first.
+  - A chosen browser refuses the purposes without a CLI handoff, `access grant`
+    and machine rule changes, with the way back to a code prompt.
+  - Emergency access, like the widening ceremonies #1529 added, does not stop at
+    a live window: an unbound window satisfies it, so its refusal under a live
+    one means that window is bound to another operation.
 - **Web.** `CLIReauth.tsx` explains the access approval and hides the key list.
 
 ## Out of scope
