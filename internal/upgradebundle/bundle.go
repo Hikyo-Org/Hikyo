@@ -51,6 +51,7 @@ type Bundle struct {
 	bridges        []releasetrust.VerifiedBridge
 	releases       map[releaseidentity.Identity]releasetrust.VerifiedRelease
 	revocations    *revocationLookup
+	clock          func() time.Time // nil is the real clock; tests move it
 }
 
 // MaterialDigest binds every loaded public document, including index and
@@ -62,26 +63,26 @@ func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
 
 // Plan is the route for a new admission: expired and revoked bridges are not used.
 func (b Bundle) Plan(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
-	return b.plan(source, target, time.Now())
+	now := time.Now
+	if b.clock != nil {
+		now = b.clock
+	}
+	return b.PlanAt(source, target, now())
 }
 
-// PlanAdmitted is the route for an upgrade whose route digest an admission already
-// journaled. A bridge's not_after limits new admissions, so expiry is not
-// consulted; a revoked bridge still refuses it. Callers compare the digest with the
-// journaled one, which pins the exact route that was admitted.
-func (b Bundle) PlanAdmitted(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
-	return b.plan(source, target, time.Time{})
-}
-
-// PlanRollback is the route a security rollback re-derives. Neither expiry nor
-// revocation blocks it: returning to the journaled source is never refused.
-func (b Bundle) PlanRollback(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
-	return upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, time.Time{}, nil)
-}
-
-// plan treats a zero now as "ignore expiry".
-func (b Bundle) plan(source upgradecompat.InstalledSource, target releaseidentity.Identity, now time.Time) (upgradecompat.Plan, error) {
+// PlanAt is Plan as of the instant now: the route an admission at that instant
+// would have journaled.
+func (b Bundle) PlanAt(source upgradecompat.InstalledSource, target releaseidentity.Identity, now time.Time) (upgradecompat.Plan, error) {
 	plan, err := upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, now, nil)
+	if errors.Is(err, upgradecompat.ErrDuplicateBridgePair) && b.revocations != nil {
+		// A revoked statement and its re-signed replacement share a pair; the list
+		// decides which one is live.
+		revoked, lookupErr := b.revocations.lookup()
+		if lookupErr != nil {
+			return upgradecompat.Plan{}, fmt.Errorf("recovery bridge revocation check: %w", lookupErr)
+		}
+		plan, err = upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, now, revoked)
+	}
 	if err != nil || b.revocations == nil || len(plan.BridgeDigests()) == 0 {
 		return plan, err
 	}
@@ -100,6 +101,32 @@ func (b Bundle) plan(source upgradecompat.InstalledSource, target releaseidentit
 		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge revoked: %w", err)
 	}
 	return plan, nil
+}
+
+// PlanAdmitted validates the route an earlier admission journaled by digest, for
+// resuming that upgrade. A bridge's not_after limits new admissions, so expiry is
+// not consulted; a revoked bridge on the route still refuses it. The route need
+// not be the one a fresh search would pick today: it must be a valid path in the
+// authenticated graph with exactly the journaled digest.
+func (b Bundle) PlanAdmitted(source upgradecompat.InstalledSource, target releaseidentity.Identity, journaled releaseidentity.Digest) (upgradecompat.Plan, error) {
+	plan, err := upgradecompat.PlanRouteMatching(b.snapshot, source, target, b.nodes, b.bridges, nil, journaled)
+	if err != nil || b.revocations == nil || len(plan.BridgeDigests()) == 0 {
+		return plan, err
+	}
+	revoked, err := b.revocations.lookup()
+	if err != nil {
+		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge revocation check: %w", err)
+	}
+	if slices.ContainsFunc(plan.BridgeDigests(), func(d releaseidentity.Digest) bool { return slices.Contains(revoked, d) }) {
+		return upgradecompat.Plan{}, errors.New("recovery bridge revoked: the journaled route uses a withdrawn bridge")
+	}
+	return plan, nil
+}
+
+// PlanRollback validates the journaled route for a security rollback. Neither
+// expiry nor revocation blocks it: returning to the journaled source is never refused.
+func (b Bundle) PlanRollback(source upgradecompat.InstalledSource, target releaseidentity.Identity, journaled releaseidentity.Digest) (upgradecompat.Plan, error) {
+	return upgradecompat.PlanRouteMatching(b.snapshot, source, target, b.nodes, b.bridges, nil, journaled)
 }
 
 // revocationLookup runs the lookup once and reuses its outcome.
@@ -122,6 +149,14 @@ func (b Bundle) WithBridgeRevocations(fetch func() ([]releaseidentity.Digest, er
 	b.revocations = &revocationLookup{fetch: fetch}
 	return b
 }
+
+// WithClock returns a copy whose new admissions are judged at the given clock
+// instead of the wall clock, so a bridge's not_after can be crossed without waiting.
+func (b Bundle) WithClock(now func() time.Time) Bundle {
+	b.clock = now
+	return b
+}
+
 func (b Bundle) Release(identity releaseidentity.Identity) (releasetrust.VerifiedRelease, error) {
 	release, ok := b.releases[identity]
 	if !ok {

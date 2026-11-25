@@ -208,20 +208,17 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 }
 
 // An upgrade admitted before the bridge's not_after finishes after it; a bridge
-// revoked in the meantime refuses the forward resume. The bridge expires about
-// twenty seconds after the statement is signed, so the test waits it out.
+// revoked in the meantime refuses the forward resume. The test crosses not_after
+// with an injected clock (Request.Clock), not a real-time wait.
 func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.T) {
 	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
 		t.Run(string(engine), func(t *testing.T) {
-			notAfter := time.Now().Add(20 * time.Second).UTC().Truncate(time.Second)
+			notAfter := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 			x := newBridgedFixture(t, engine, notAfter)
 			request := x.request
 			request.Target, request.Evidence = x.b.Identity, backupreceipt.EvidenceMaterial{Receipt: x.receipt, Attestation: x.drill.Attestation, Signature: trustfixture.Sign(t, x.f.PrimarySigner, x.drill.Attestation)}
 			request.Operator, request.Ciphertext = x.operator, x.pinned
 			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) { return nil, nil }
-			if time.Now().After(notAfter) {
-				t.Fatal("the bridge expired before the upgrade was admitted; the fixture setup is too slow for this window")
-			}
 			if err := upgradegate.InterruptSignedGateFixtureAfterPrepare(t, request, x.b.Material.Compatibility); !errors.Is(err, upgradegate.ErrFixtureInterrupted) {
 				t.Fatalf("the upgrade must be admitted and then interrupted: %v", err)
 			}
@@ -229,13 +226,15 @@ func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.
 			if err != nil || inFlight.Pending == nil || inFlight.Pending.Phase != upgrade.Prepared || inFlight.Applied.Release == x.b.Identity {
 				t.Fatalf("the interrupted upgrade must be prepared and unfinished: %+v %v", inFlight.Pending, err)
 			}
-			time.Sleep(time.Until(notAfter) + time.Second)
+			// Cross not_after with an injected clock, not a real-time sleep.
+			request.Clock = func() time.Time { return notAfter.Add(time.Second) }
 
 			// The bridge is now expired: a new admission through it has no route.
 			bundle, err := upgradebundle.Load(t.Context(), request.BundleDirectory, x.f.Pinned, releaseidentity.SnapshotFloor{})
 			if err != nil {
 				t.Fatal(err)
 			}
+			bundle = bundle.WithClock(request.Clock)
 			source := upgradecompat.InstalledSource{Identity: inFlight.Applied, Migrations: x.manifest, SchemaSHA256: x.schema}
 			if _, err := bundle.Plan(source, x.b.Identity); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
 				t.Fatalf("an expired bridge must not admit a new upgrade: %v", err)
@@ -300,14 +299,12 @@ func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.
 func TestExpiredBridgeAdmitsNoNewUpgradeAndPreparesNoBackup(t *testing.T) {
 	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
 		t.Run(string(engine), func(t *testing.T) {
-			notAfter := time.Now().Add(20 * time.Second).UTC().Truncate(time.Second)
+			notAfter := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 			x := newBridgedFixture(t, engine, notAfter)
-			if time.Now().After(notAfter) {
-				t.Fatal("the bridge expired before the fixture was ready; the setup is too slow for this window")
-			}
 			request := x.request
 			request.Evidence = backupreceipt.EvidenceMaterial{Receipt: x.receipt, Attestation: x.drill.Attestation, Signature: trustfixture.Sign(t, x.f.PrimarySigner, x.drill.Attestation)}
-			time.Sleep(time.Until(notAfter) + time.Second)
+			// Cross not_after with an injected clock, not a real-time sleep.
+			request.Clock = func() time.Time { return notAfter.Add(time.Second) }
 
 			prepare := request
 			prepare.Mode = upgradegate.PrepareBackup

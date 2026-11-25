@@ -154,7 +154,7 @@ func TestAutomaticDiscoveryNoopDoesNotFetchHistoricalPredecessors(t *testing.T) 
 	for _, identity := range f.identities[:2] {
 		f.forbidden[identity] = true
 	}
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(2), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(2), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 0 || len(f.fetched) != 0 || f.assembled != 0 {
 		t.Fatalf("same-release restart fetched historical artifacts: %v fetched=%v assemblies=%d", err, f.fetched, f.assembled)
 	}
@@ -163,7 +163,7 @@ func TestAutomaticDiscoveryNoopDoesNotFetchHistoricalPredecessors(t *testing.T) 
 func TestAutomaticDiscoveryRecentUpgradeDoesNotFetchAncientHistory(t *testing.T) {
 	f := newAutomaticDiscoveryFixture(t)
 	f.forbidden[f.identities[0]] = true
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(1), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(1), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 1 || !slices.Equal(f.fetched, []releaseidentity.Identity{f.identities[1]}) || f.assembled != 1 {
 		t.Fatalf("direct upgrade fetched unrelated predecessor: %v fetched=%v assemblies=%d", err, f.fetched, f.assembled)
 	}
@@ -196,7 +196,7 @@ func TestAutomaticDiscoveryLegacyAndInterruptedRouteKeepExactBridge(t *testing.T
 				inspection.installed.InstanceID = "must-not-inspect-new-source"
 				f.assembled = 0
 			}
-			result, err := discoverAutomaticRoute(t.Context(), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
+			result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
 			if err != nil || len(result.Plan.Steps()) != 2 || len(result.Plan.BridgeDigests()) != 1 || !slices.Equal(f.fetched, []releaseidentity.Identity{f.identities[0]}) {
 				t.Fatalf("legacy bridge route unavailable: %v fetched=%v", err, f.fetched)
 			}
@@ -211,7 +211,7 @@ func TestAutomaticDiscoveryRejectsSnapshotBelowInstalledFloorBeforeFetching(t *t
 	f := newAutomaticDiscoveryFixture(t)
 	inspection := f.inspection(1)
 	inspection.state.Floor.CatalogSequence++
-	if _, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[2]], f.trust.Pinned, inspection, releaseidentity.SQLite, nil); err == nil || len(f.fetched) != 0 {
+	if _, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[2]], f.trust.Pinned, inspection, releaseidentity.SQLite, nil); err == nil || len(f.fetched) != 0 {
 		t.Fatal("stale trust evidence caused historical downloads")
 	}
 }
@@ -222,7 +222,7 @@ func TestAutomaticDiscoveryResolvesShallowAlternativesBeforeLongerHistory(t *tes
 	// the unnecessary interior node of the longer branch.
 	f := newAutomaticDiscoveryGraph(t, [][]int{{}, {0}, {0}, {2}, {3, 1}})
 	f.forbidden[f.identities[2]] = true
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 2 || result.Plan.Steps()[0].Target != f.identities[1] {
 		t.Fatalf("shortest authenticated branch was not selected: %v fetched=%v", err, f.fetched)
 	}
@@ -234,7 +234,7 @@ func TestAutomaticDiscoveryResolvesShallowAlternativesBeforeLongerHistory(t *tes
 func TestAutomaticDiscoveryPreservesDeterministicRouteTieBreak(t *testing.T) {
 	f := newAutomaticDiscoveryGraph(t, [][]int{{}, {}, {0}, {0}, {3, 2}})
 	f.forbidden[f.identities[1]] = true
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 2 || result.Plan.Steps()[0].Target != f.identities[2] {
 		t.Fatalf("partial graph changed deterministic tie break: %v fetched=%v", err, f.fetched)
 	}
@@ -264,7 +264,7 @@ func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(
 			previous := &automaticJournal{Phase: "schema-applied", Target: target.Identity, Source: f.source, Instance: "actual-installation", Route: plan.Digest(), Hop: 1}
 			f.forbidden[f.identities[1]] = unavailable
 			inspection := f.inspection(0)
-			result, err := discoverAutomaticRoute(t.Context(), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
+			result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
 			if unavailable {
 				if err == nil {
 					t.Fatal("resume accepted missing intermediate executable")

@@ -73,6 +73,9 @@ type Request struct {
 	// bridge. A nil hook refuses bridge routes; callers with nothing to check
 	// pass an explicit no-op.
 	BridgeRevocation func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error)
+	// Clock, when set, is the time new admissions are judged at (a bridge's
+	// not_after). It exists so tests cross the expiry without sleeping; nil is the wall clock.
+	Clock func() time.Time
 }
 
 // bridgeRevocations is the lookup Bundle.Plan runs for routes that use a
@@ -154,6 +157,9 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 		return Result{}, err
 	}
 	bundle = bundle.WithBridgeRevocations(request.bridgeRevocations(ctx, bundle.Snapshot()))
+	if request.Clock != nil {
+		bundle = bundle.WithClock(request.Clock)
+	}
 	node, err := bundle.MatchBuild(build)
 	if err != nil {
 		return Result{}, err
@@ -326,11 +332,14 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 			if err != nil {
 				return err
 			}
-			plan, err := bundle.PlanAdmitted(source, desiredTarget(request, node))
+			plan, err := bundle.PlanAdmitted(source, desiredTarget(request, node), current.Pending.RouteDigest)
+			if errors.Is(err, upgradecompat.ErrJournaledRoute) {
+				return fmt.Errorf("%w: %w", upgrade.ErrConflict, err)
+			}
 			if err != nil {
 				return err
 			}
-			if len(plan.Steps()) != 0 || plan.Digest() != current.Pending.RouteDigest {
+			if len(plan.Steps()) != 0 {
 				return upgrade.ErrConflict
 			}
 			return executeRecovery(ctx, session, request, node, current, root, &result)
@@ -383,11 +392,14 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 		if err != nil {
 			return err
 		}
-		plan, err := bundle.PlanAdmitted(source, desiredTarget(request, node))
+		plan, err := bundle.PlanAdmitted(source, desiredTarget(request, node), current.Pending.RouteDigest)
+		if errors.Is(err, upgradecompat.ErrJournaledRoute) {
+			return fmt.Errorf("%w: %w", upgrade.ErrConflict, err)
+		}
 		if err != nil {
 			return err
 		}
-		if plan.Digest() != current.Pending.RouteDigest || int64(len(plan.Steps())) != current.Pending.RouteLength {
+		if int64(len(plan.Steps())) != current.Pending.RouteLength {
 			return upgrade.ErrConflict
 		}
 		if current.Pending.Phase == upgrade.Healthy {

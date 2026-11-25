@@ -72,6 +72,9 @@ func preflightConfiguration(ctx context.Context, input ConfigurationPreflight, b
 		return refusal(err)
 	}
 	bundle = bundle.WithBridgeRevocations(request.bridgeRevocations(ctx, bundle.Snapshot()))
+	if request.Clock != nil {
+		bundle = bundle.WithClock(request.Clock)
+	}
 	node, err := bundle.MatchBuild(build)
 	if err != nil {
 		return refusal(err)

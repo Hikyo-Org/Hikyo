@@ -2,6 +2,7 @@ package upgradebundle
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -134,6 +135,21 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			plan, err := bundle.Plan(source, node.Identity())
 			if err != nil || !plan.Valid() || !plan.RequiresOperatorAttestation() {
 				t.Fatal("recovery-authorized nightly route refused or lost operator proof", err)
+			}
+			// The legacy nightly bridge never expires, so the revocation list is the only
+			// way to withdraw it: its route consults the list like any recovery bridge.
+			for name, c := range map[string]struct {
+				fetch func() ([]releaseidentity.Digest, error)
+				want  string
+			}{
+				"endpoint answers 404 before the first list": {func() ([]releaseidentity.Digest, error) { return nil, errors.New("status 404") }, "recovery bridge revocation check"},
+				"bridge revoked":                  {func() ([]releaseidentity.Digest, error) { return []releaseidentity.Digest{bridgeDigest}, nil }, "recovery bridge revoked"},
+				"list published, nothing revoked": {func() ([]releaseidentity.Digest, error) { return nil, nil }, ""},
+			} {
+				_, err := bundle.WithBridgeRevocations(c.fetch).Plan(source, node.Identity())
+				if (c.want == "") != (err == nil) || (c.want != "" && !strings.Contains(err.Error(), c.want)) {
+					t.Fatalf("legacy nightly route, %s: want %q, got %v", name, c.want, err)
+				}
 			}
 			if _, err := bundle.MatchBuild(append(append([]byte{}, compatibility...), '\n')); err == nil {
 				t.Fatal("different embedded declaration bytes accepted")

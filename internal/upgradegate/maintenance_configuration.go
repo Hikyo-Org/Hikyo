@@ -26,8 +26,7 @@ func inspectMaintenanceConfiguration(ctx context.Context, session *upgrade.Sessi
 	if err != nil {
 		return Result{}, err
 	}
-	plan, err := bundle.PlanAdmitted(source, node.Identity())
-	if err != nil || plan.Digest() != routeDigest {
+	if _, err := bundle.PlanAdmitted(source, node.Identity(), routeDigest); err != nil {
 		return Result{}, upgrade.ErrConflict
 	}
 	keys, err := session.MaintenanceConfigurationKeys(ctx, current)

@@ -185,6 +185,12 @@ func TestRouteDerivationsForAdmissionResumeAndRollback(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The route an admission one hour before not_after journaled.
+			journaledPlan, err := bundle.PlanAt(source, target, c.notAfter.Add(-time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			journaled := journaledPlan.Digest()
 			bundle = bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) {
 				if c.revoked {
 					return []releaseidentity.Digest{bridge}, nil
@@ -206,9 +212,9 @@ func TestRouteDerivationsForAdmissionResumeAndRollback(t *testing.T) {
 			}
 			plan, err := bundle.Plan(source, target)
 			admission := check("admission", plan, err, c.admission)
-			plan, err = bundle.PlanAdmitted(source, target)
+			plan, err = bundle.PlanAdmitted(source, target, journaled)
 			resume := check("resume", plan, err, c.resume)
-			plan, err = bundle.PlanRollback(source, target)
+			plan, err = bundle.PlanRollback(source, target, journaled)
 			back := check("rollback", plan, err, c.back)
 			if back == "" || (admission != "" && admission != back) || (resume != "" && resume != back) {
 				t.Fatalf("every accepted derivation must name the same route: %s %s %s", admission, resume, back)
@@ -247,7 +253,7 @@ func TestSecurityRollbackRouteCheckIgnoresExpiryAndRevocation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			plan, err := bundle.PlanRollback(source, target)
+			plan, err := bundle.PlanAt(source, target, notAfter.Add(-time.Hour))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -288,6 +294,46 @@ func (noReleases) AssembleNightlyRoute(context.Context, selfupdate.PreparedNight
 	return "", errors.New("unexpected")
 }
 
+func offConfig(state string) *config.Config {
+	cfg := &config.Config{}
+	cfg.Upgrade.RevocationCheck, cfg.Upgrade.StateDirectory = "off", state
+	return cfg
+}
+
+// New-admission discovery journals its route, so it plans over a guarded bundle: a
+// bridge the stored list revokes is not a route.
+func TestNewAdmissionDiscoveryRefusesARevokedBridge(t *testing.T) {
+	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
+	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}
+	directory, pinned, target, _, from := bridgedBundle(t, legacy, time.Now().Add(24*time.Hour))
+	installed := installedFrom(from, legacy)
+	digest, _ := installed.Migrations.Digest()
+	inspection := &automaticTestInspection{state: upgrade.State{Applied: installed.Identity}, installed: upgrade.InstalledSource{Source: installed.Identity, MigrationDigest: digest, SchemaDigest: installed.SchemaSHA256, InstanceID: "actual-installation"}}
+	prepared := selfupdate.PreparedNightly{Identity: target, BundleDirectory: directory}
+	state := t.TempDir()
+	if result, err := discoverReleaseRoute(t.Context(), offConfig(state), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, nil, true); err != nil || len(result.Plan.BridgeDigests()) != 1 {
+		t.Fatalf("with nothing revoked the bridge route is admitted: %v", err)
+	}
+	for _, name := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+		raw, err := os.ReadFile(filepath.Join(directory, "revocations", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(state, name), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// With the bridge revoked there is no route; discovery then looks for older
+	// releases, which this fixture does not have.
+	if result, err := discoverReleaseRoute(t.Context(), offConfig(state), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, nil, true); err == nil || result.Plan.Valid() {
+		t.Fatalf("a revoked bridge must not be admitted by discovery: %v", err)
+	}
+}
+
 // An automatic upgrade interrupted before the bridge's not_after resumes its
 // journaled route after it; the journaled digest pins that route.
 func TestAutomaticResumeKeepsTheJournaledRouteAfterNotAfter(t *testing.T) {
@@ -306,7 +352,7 @@ func TestAutomaticResumeKeepsTheJournaledRouteAfterNotAfter(t *testing.T) {
 	if _, err := bundle.Plan(installed, target); err == nil {
 		t.Fatal("the bridge is expired, so a new admission must have no route")
 	}
-	plan, err := bundle.PlanRollback(installed, target)
+	plan, err := bundle.PlanAt(installed, target, time.Now().Add(-48*time.Hour))
 	if err != nil || len(plan.BridgeDigests()) != 1 {
 		t.Fatalf("the journaled route goes through the bridge: %v", err)
 	}
@@ -314,12 +360,12 @@ func TestAutomaticResumeKeepsTheJournaledRouteAfterNotAfter(t *testing.T) {
 	digest, _ := installed.Migrations.Digest()
 	inspection := &automaticTestInspection{state: upgrade.State{Applied: installed.Identity}, installed: upgrade.InstalledSource{Source: installed.Identity, MigrationDigest: digest, SchemaDigest: installed.SchemaSHA256, InstanceID: "actual-installation"}}
 	prepared := selfupdate.PreparedNightly{Identity: target, BundleDirectory: directory}
-	result, err := discoverReleaseRoute(t.Context(), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true)
+	result, err := discoverReleaseRoute(t.Context(), offConfig(t.TempDir()), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true)
 	if err != nil || result.Plan.Digest() != previous.Route {
 		t.Fatalf("an upgrade admitted before not_after must resume after it: %v", err)
 	}
 	previous.Route = releaseidentity.Hash([]byte("another route"))
-	if _, err := discoverReleaseRoute(t.Context(), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true); err == nil {
+	if _, err := discoverReleaseRoute(t.Context(), offConfig(t.TempDir()), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true); err == nil {
 		t.Fatalf("a resume whose recomputed route differs from the journaled one must be refused: %v", err)
 	}
 }

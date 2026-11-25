@@ -479,7 +479,9 @@ func stageNativeSecurityRoute(ctx context.Context, prepared preparedSecurityRele
 	if prepared.Installer == nil || prepared.Source == nil {
 		return automaticRoute{}, errors.New("native security route requires independent release preparation")
 	}
-	route, err := discoverReleaseRoute(ctx, unattendedRouteInstaller{prepared.Installer}, prepared.Source, prepared.Target, prepared.Pinned,
+	// The host has no config.Config; the revocation policy is the operator's environment.
+	guard := &config.Config{Upgrade: config.UpgradeConfiguration{StateDirectory: installation.Host.Config().StateDirectory, RevocationCheck: os.Getenv("HIKYO_UPGRADE_REVOCATION_CHECK"), RevocationURL: os.Getenv("HIKYO_UPGRADE_REVOCATION_URL")}}
+	route, err := discoverReleaseRoute(ctx, guard, unattendedRouteInstaller{prepared.Installer}, prepared.Source, prepared.Target, prepared.Pinned,
 		installation.Inspection, installation.Database.Engine, nil, true)
 	if err != nil {
 		return route, err

@@ -122,6 +122,40 @@ func PlanRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 // toward the complete-inventory check but is never used as an edge, so the route
 // falls back to the ordinary graph or is refused as unauthenticated.
 func PlanRouteAt(snapshot releasetrust.Snapshot, source InstalledSource, target releaseidentity.Identity, nodes []VerifiedNode, bridges []releasetrust.VerifiedBridge, now time.Time, revoked []releaseidentity.Digest) (Plan, error) {
+	return planRoute(snapshot, source, target, nodes, bridges, routeOptions{now: now, revoked: revoked})
+}
+
+// ErrDuplicateBridgePair is returned when two live bridges name one pair.
+var ErrDuplicateBridgePair = errors.New("duplicate recovery bridge pair")
+
+// ErrJournaledRoute is returned when no authenticated path has the journaled digest.
+var ErrJournaledRoute = errors.New("journaled route is not a valid route in the authenticated graph")
+
+// maxJournaledPaths bounds the paths PlanRouteMatching examines.
+const maxJournaledPaths = 20000
+
+// PlanRouteMatching validates a route that an earlier admission journaled by its
+// digest. It does not repeat the admission's search and compare: it accepts the
+// route only if some simple path from source to target, over edges that exist in
+// the authenticated graph (ordinary edges and every verified bridge, a bridge not
+// shadowing the ordinary edge on its pair), has that digest. Expiry is never
+// consulted: not_after limits new admissions. Bridges in revoked are not edges.
+func PlanRouteMatching(snapshot releasetrust.Snapshot, source InstalledSource, target releaseidentity.Identity, nodes []VerifiedNode, bridges []releasetrust.VerifiedBridge, revoked []releaseidentity.Digest, want releaseidentity.Digest) (Plan, error) {
+	if want.Validate() != nil {
+		return Plan{}, ErrJournaledRoute
+	}
+	return planRoute(snapshot, source, target, nodes, bridges, routeOptions{revoked: revoked, parallel: true, want: want})
+}
+
+type routeOptions struct {
+	now      time.Time
+	revoked  []releaseidentity.Digest
+	parallel bool // keep every edge, even two on one pair; used only to match a journaled digest
+	want     releaseidentity.Digest
+}
+
+func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target releaseidentity.Identity, nodes []VerifiedNode, bridges []releasetrust.VerifiedBridge, options routeOptions) (Plan, error) {
+	now, revoked := options.now, options.revoked
 	if !snapshot.Valid() || source.Identity.Validate() != nil || source.Migrations.Validate() != nil || target.Validate() != nil {
 		return Plan{}, errors.New("unverified snapshot or invalid source/target")
 	}
@@ -228,8 +262,8 @@ func PlanRouteAt(snapshot releasetrust.Snapshot, source InstalledSource, target 
 		}
 		statement := bridge.Statement()
 		pair := nodeKey(statement.SourceIdentity()) + ">" + nodeKey(releaseidentity.Source{Release: statement.Target}) + ":" + string(statement.SourceMigrations.Engine)
-		if seenBridgePairs[pair] {
-			return Plan{}, errors.New("duplicate recovery bridge pair")
+		if seenBridgePairs[pair] && !options.parallel {
+			return Plan{}, ErrDuplicateBridgePair
 		}
 		seenBridgePairs[pair] = true
 		if statement.SourceMigrations.Engine != engine {
@@ -279,11 +313,20 @@ func PlanRouteAt(snapshot releasetrust.Snapshot, source InstalledSource, target 
 		key := nodeKey(fromSource)
 		// An explicit root-authorized bridge controls this exact exceptional
 		// pair even if an ordinary declaration also names it.
-		adjacency[key] = slices.DeleteFunc(adjacency[key], func(existing Step) bool { return existing.Target == step.Target })
+		if !options.parallel {
+			adjacency[key] = slices.DeleteFunc(adjacency[key], func(existing Step) bool { return existing.Target == step.Target })
+		}
 		adjacency[key] = append(adjacency[key], step)
 	}
 	if source.Identity.IsRelease() && source.Identity.Release == target {
-		return makePlan(snapshot, source, target, []Step{})
+		plan, err := makePlan(snapshot, source, target, []Step{})
+		if err == nil && options.want != "" && plan.Digest() != options.want {
+			return Plan{}, ErrJournaledRoute
+		}
+		return plan, err
+	}
+	if options.want != "" {
+		return matchJournaled(snapshot, source, target, adjacency, options.want)
 	}
 	for key := range adjacency {
 		slices.SortFunc(adjacency[key], func(a, b Step) int {
@@ -338,4 +381,53 @@ func makePlan(snapshot releasetrust.Snapshot, source InstalledSource, target rel
 		return Plan{}, err
 	}
 	return Plan{state: &planState{source: source, target: target, steps: steps, digest: releaseidentity.Hash(raw), snapshot: snapshot.Digest()}}, nil
+}
+
+// matchJournaled walks every simple path (at most MaxHops long, at most
+// maxJournaledPaths examined) and returns the one whose route digest is want.
+func matchJournaled(snapshot releasetrust.Snapshot, source InstalledSource, target releaseidentity.Identity, adjacency map[string][]Step, want releaseidentity.Digest) (Plan, error) {
+	examined := 0
+	visited := map[string]bool{nodeKey(source.Identity): true}
+	var found Plan
+	var walk func(at releaseidentity.Source, steps []Step) error
+	walk = func(at releaseidentity.Source, steps []Step) error {
+		if len(steps) >= MaxHops {
+			return nil
+		}
+		for _, step := range adjacency[nodeKey(at)] {
+			next := releaseidentity.Source{Release: step.Target}
+			path := append(slices.Clone(steps), step)
+			if step.Target == target {
+				if examined++; examined > maxJournaledPaths {
+					return errors.New("journaled route search exceeds its path bound")
+				}
+				plan, err := makePlan(snapshot, source, target, path)
+				if err != nil {
+					return err
+				}
+				if plan.Digest() == want {
+					found = plan
+					return nil
+				}
+				continue
+			}
+			if visited[nodeKey(next)] {
+				continue
+			}
+			visited[nodeKey(next)] = true
+			err := walk(next, path)
+			visited[nodeKey(next)] = false
+			if err != nil || found.Valid() {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(source.Identity, []Step{}); err != nil {
+		return Plan{}, err
+	}
+	if !found.Valid() {
+		return Plan{}, ErrJournaledRoute
+	}
+	return found, nil
 }

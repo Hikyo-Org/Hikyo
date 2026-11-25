@@ -168,8 +168,8 @@ func rollbackFencedSnapshot(ctx context.Context, cfg *config.Config, run securit
 	if run.revocations != nil {
 		bundle = bundle.WithBridgeRevocations(run.revocations)
 	}
-	plan, err := bundle.PlanRollback(journal.Source, journal.Target)
-	if err != nil || plan.Digest() != journal.Route {
+	plan, err := bundle.PlanRollback(journal.Source, journal.Target, journal.Route)
+	if err != nil {
 		return report, errors.Join(err, errors.New("journaled route differs from the authenticated bundle"))
 	}
 	receipt, err := backupreceipt.ReadPublicArtifact(filepath.Join(journal.Runtime.EvidenceDirectory, "receipt.json"), backupreceipt.MaxArtifactBytes)

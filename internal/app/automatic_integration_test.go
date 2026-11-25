@@ -261,6 +261,7 @@ func automaticProcessProofWith(t *testing.T, f upgradeDrillFixture, route automa
 	publicPath := filepath.Join(work, "operator.pub")
 	automaticProcessPut(t, publicPath, operator.PrimaryPublic)
 	automaticProcessPut(t, filepath.Join(work, "root.key"), []byte(crypto.EncodeRootKey(f.root)))
+	// off: the fixture route is a legacy-nightly bridge, which consults the revocation list like any recovery bridge. No list is published for it here; the 404 refusal is pinned in TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory (upgradebundle).
 	host := &automaticProcessHost{work: work, installed: filepath.Join(work, "hikyo"), fenced: true, baseEnv: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + work, "HIKYO_DB=sqlite:" + f.cfg.Path, "HIKYO_EXTERNAL_ORIGIN=https://automatic.fixture.invalid", "HIKYO_UPDATE_CHANNEL=off", "HIKYO_UPGRADE_STATE_DIR=" + installation, "HIKYO_UPGRADE_REVOCATION_CHECK=off"}}
 	host.evidence = hostupgrade.RuntimeEvidence{BundleDirectory: route.Directory, OperatorPublicKey: publicPath, TargetManifest: string(route.Plan.Target().ManifestSHA256), LegacyWritersStopped: true}
 	identity, recipient, err := generate()
