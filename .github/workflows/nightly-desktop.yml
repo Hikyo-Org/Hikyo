@@ -20,7 +20,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Pins both heads once, so every leg and the report name the commits they tested.
+  # Pins both heads once, so every leg and the report name the commits they tested,
+  # and picks each leg's runner: macOS only where the module exists at that commit
+  # (main before promotion has none, so its boundary-only leg runs on Linux and cannot
+  # fail on macOS capacity).
   heads:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -28,6 +31,8 @@ jobs:
     outputs:
       dev: ${{ steps.resolve.outputs.dev }}
       main: ${{ steps.resolve.outputs.main }}
+      dev_runner: ${{ steps.resolve.outputs.dev_runner }}
+      main_runner: ${{ steps.resolve.outputs.main_runner }}
     steps:
       - name: Resolve the dev and main heads
         id: resolve
@@ -36,15 +41,27 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          runner_for() {
+            if gh api "repos/$GH_REPO/contents/desktop/go.mod?ref=$1" --silent 2>"$RUNNER_TEMP/module.err"; then
+              echo macos-15
+            elif grep -F 'HTTP 404' "$RUNNER_TEMP/module.err" >/dev/null; then
+              echo ubuntu-latest
+            else
+              cat "$RUNNER_TEMP/module.err" >&2
+              return 1
+            fi
+          }
           for branch in dev main; do
             sha=$(gh api "repos/$GH_REPO/git/ref/heads/$branch" --jq '.object.sha')
             [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid $branch head." >&2; exit 1; }
+            runner=$(runner_for "$sha")
             echo "$branch=$sha" >>"$GITHUB_OUTPUT"
+            echo "${branch}_runner=$runner" >>"$GITHUB_OUTPUT"
           done
 
   desktop-dev:
     needs: heads
-    runs-on: macos-15
+    runs-on: ${{ needs.heads.outputs.dev_runner }}
     timeout-minutes: 30
     env:
       HEAD_SHA: ${{ needs.heads.outputs.dev }}
@@ -87,7 +104,7 @@ jobs:
 
   desktop-main:
     needs: heads
-    runs-on: macos-15
+    runs-on: ${{ needs.heads.outputs.main_runner }}
     timeout-minutes: 30
     env:
       HEAD_SHA: ${{ needs.heads.outputs.main }}
@@ -102,7 +119,8 @@ jobs:
   # fails the run itself so the run stays red, even when a leg was cancelled.
   report:
     needs: [heads, desktop-dev, desktop-main]
-    if: always()
+    # A manual run from another ref skips the heads job and both legs; that is not a failure.
+    if: always() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -121,7 +139,9 @@ jobs:
           set -euo pipefail
           export TITLE='ci: nightly desktop validation failing'
           export MARKER='<!-- hikyo-nightly-desktop -->'
-          issue_number=$(gh issue list --state open --limit 100 \
+          label='ci-nightly-desktop'
+          # The label narrows the list on the server; the exact match below stays the check.
+          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
             --json number,title,author,body \
             --jq '.[] | select(.title == env.TITLE and (.author.login == "github-actions[bot]" or .author.login == "app/github-actions") and (.body | contains(env.MARKER))) | .number' | head -n 1)
           if [ "$DEV_RESULT" = success ] && [ "$MAIN_RESULT" = success ]; then
@@ -139,7 +159,9 @@ jobs:
           if [ -n "$issue_number" ]; then
             gh issue comment "$issue_number" --body "$detail"
           else
-            gh issue create --title "$TITLE" --body "$MARKER
+            gh label create "$label" --force --color B60205 \
+              --description 'Automation-owned nightly desktop validation failure'
+            gh issue create --title "$TITLE" --label "$label" --body "$MARKER
 
           $detail"
           fi

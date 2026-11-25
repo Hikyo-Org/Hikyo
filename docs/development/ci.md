@@ -144,8 +144,7 @@ dev red. `nightly-desktop.yml` owns it instead, daily at 03:41 UTC or by manual
 dispatch on main:
 
 1. A `heads` job pins the dev and main commits. `desktop-dev` and `desktop-main` each
-   check out one exact commit on `macos-15` (paid minutes), with no cache restored or
-   written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
+   check out one exact commit, with no cache restored or written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
 2. Each runs `scripts/ci/check-desktop-deps.sh`, which keeps Wails and its platform
    bindings out of the root `go.mod` and `go.sum` and refuses a `go.work` or a root
    requirement on `desktop/`. Where `desktop/` exists it also requires `replace
@@ -153,12 +152,15 @@ dispatch on main:
 3. Where `desktop/go.mod` exists: `go test -race ./...`, a `-tags probe` build, a
    release build, and the driven WKWebView lane, `go run ./probes/driven`, which
    opens the probe shell against a fake instance (Playwright cannot drive WKWebView).
-   Main before the shell lands runs only step 2.
+   Main before the shell lands runs only step 2, so until promotion brings the module
+   to main, the main leg covers only the boundary check.
 4. A `report` job runs with `issues: write` only, no checkout and no repository code.
    When either leg is not `success` (a runner that is never acquired is reported as
-   `cancelled`), it opens or comments on the one issue titled `ci: nightly desktop
+   `cancelled`), it looks the issue up by the `ci-nightly-desktop` label plus an exact title, marker and
+   bot-author match, then opens or comments on the one issue titled `ci: nightly desktop
    validation failing` with the run link and each branch's head SHA and result, then
-   fails, so the run stays red. A later green night closes the issue with a comment.
+   fails, so the run stays red. It runs only on main; a manual run from another ref skips
+   it. A later green night closes the issue with a comment.
    Each night costs one issue-list call, plus one write when the state changes or the
    failure repeats.
 5. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
@@ -169,7 +171,7 @@ dispatch on main:
 Nothing requires `nightly-desktop`, and `nightly-promote` and `nightly-release` read
 none of its results. A red night therefore does not stop promotion or publication; it
 only keeps the issue open. Desktop edits select no `ci.yml` job: `desktop/*` is a
-known path with an empty plan, and the root packages it imports select only their own
+known path with an empty plan, so a desktop-only PR now gets an empty plan, and the root packages it imports select only their own
 domains. A root `go.mod` or `go.sum` change, a workflow change and every unknown path
 still select the full plan. Fast feedback keeps `desktop/` out of the root compile
 (`go-compile`) and compiles it with its own `desktop-compile` check, `go -C desktop

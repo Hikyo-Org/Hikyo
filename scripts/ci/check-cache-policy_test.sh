@@ -64,16 +64,25 @@ for file in "$@"; do
 			desktop_lint=true
 			;;
 		nightly-desktop.yml)
-			# Nightly desktop validation (owner decision 2026-11-25): the two legs run on
-			# one pinned macOS runner with no cache; the head resolver and the issue
-			# reporter are the only Linux jobs. Reuse the macOS lint's runner filter.
+			# Nightly desktop validation (owner decision 2026-11-25): the head resolver
+			# picks each leg's runner, macos-15 only where desktop/go.mod exists, so the
+			# legs take it from the resolver's outputs. No cache; the resolver and the
+			# issue reporter are the only fixed Linux jobs.
 			expected_runner=macos-15
 			if grep -E 'actions/cache(@|/)|cache: true' "$file" >/dev/null; then
 				fail 'nightly desktop must not use shared caches'
 			fi
 			require_line "$file" '          cache: false'
 			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 2 ] ||
-				fail 'nightly desktop must have exactly two ubuntu-latest jobs (heads and report)'
+				fail 'nightly desktop must have exactly two fixed ubuntu-latest jobs (heads and report)'
+			for leg in dev main; do
+				require_line "$file" "    runs-on: \${{ needs.heads.outputs.${leg}_runner }}"
+			done
+			require_line "$file" 'echo macos-15'
+			require_line "$file" 'echo ubuntu-latest'
+			if grep -F 'macos-latest' "$file" >/dev/null; then
+				fail 'nightly desktop must use the pinned macos-15 runner'
+			fi
 			desktop_lint=true
 			;;
 		ops-floor.yml)
@@ -115,7 +124,7 @@ for file in "$@"; do
 	runner_source=$file
 	if [ "$desktop_lint" = true ]; then
 		runner_source=$(mktemp)
-		grep -v '^    runs-on: ubuntu-latest$' "$file" >"$runner_source"
+		grep -v -e '^    runs-on: ubuntu-latest$' -e '^    runs-on: \${{ needs.heads.outputs.[a-z]*_runner }}$' "$file" >"$runner_source"
 	fi
 	case $(basename "$file") in
 		nightly.yml | release.yml)

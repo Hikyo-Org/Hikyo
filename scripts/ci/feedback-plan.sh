@@ -40,8 +40,8 @@ feedback_plan_build() {
 		esac
 		# desktop/ is a nested module the root checks cannot load; it has its own compile
 		# check, only where the module exists. The list below names the root packages it
-		# imports; nothing checks it, so keep it in step with desktop/ by hand (the
-		# desktop job that shared it left ci.yml on 2026-11-25).
+		# imports. The nightly check-desktop-deps.sh fails when one is missing from it
+		# (it does not detect stale extras).
 		case "$path" in
 			desktop/* | api/openapi.yaml | api/*.go | internal/audit/* | internal/clientauth/* | internal/clienterr/* | internal/clienttrust/* | internal/crypto/* | internal/delivery/* | internal/domain/* | internal/filedurability/* | internal/freetext/* | internal/jsonwire/* | internal/operation/* | internal/securefile/* | internal/tlspolicy/*) if [ -f desktop/go.mod ]; then desktop=true; fi ;;
 		esac

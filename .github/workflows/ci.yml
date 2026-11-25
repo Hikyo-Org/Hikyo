@@ -2274,7 +2274,8 @@ jobs:
           # shape: give the checker a copy of the base registry without desktop and
           # the plan without its key. A candidate that still has the job is judged
           # by the unmodified base policy. Delete this block and the desktop-removal
-          # test cases together once the base registry lacks desktop.
+          # test cases together once the base registry lacks desktop (#1595;
+          # TestDesktopRemovalShimIsStillNeeded fails when that happens).
           if ! jq -e 'has("desktop")' <<<"$NEEDS_JSON" >/dev/null &&
             jq -e '.version == 2 and .jobs.desktop == {required_gate: "planned", plan_jobs: ["desktop"]}' "$trusted_registry" >/dev/null; then
             jq -ce 'del(.jobs.desktop) | del(.path_classes.desktop) | .path_classes |= map_values(map(select(. != "desktop")))' \

@@ -18,7 +18,8 @@ All three decided on 2026-11-25.
    `desktop` registry domain and plan key go with it. `nightly-desktop.yml` runs the
    same steps on macOS against the dev and main heads. A failure turns that run red and
    opens or updates one tracking issue, `ci: nightly desktop validation failing`; the
-   next green night closes it.
+   next green night closes it. A desktop-only PR now gets an empty plan, and the main
+   leg covers only the boundary check until promotion brings the module to main.
    - *Why:* the `macos-15` job was never acquired in 5 of 21 `ci-dev` attempts (24%).
      GitHub cancelled each after 15 to 46 minutes. Run 45653285809 needed a third
      attempt, so dev stayed red. When a runner was acquired it started within 8

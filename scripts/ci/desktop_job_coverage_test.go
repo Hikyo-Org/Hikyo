@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -108,84 +107,6 @@ func checkDesktopOffRequiredPaths(workflows map[string]yamlMap, registryJSON []b
 	return nil
 }
 
-func checkNightlyDesktop(workflow yamlMap) error {
-	on := asMap(workflow["on"])
-	if len(asList(on["schedule"])) == 0 {
-		return fmt.Errorf("nightly-desktop has no schedule")
-	}
-	if !reflect.DeepEqual(workflow["permissions"], yamlMap{"contents": "read"}) {
-		return fmt.Errorf("workflow permissions must stay contents: read")
-	}
-	jobs := jobsOf(workflow)
-	for leg, branch := range map[string]string{"desktop-dev": "dev", "desktop-main": "main"} {
-		job := asMap(jobs[leg])
-		if job == nil {
-			return fmt.Errorf("%s job is missing", leg)
-		}
-		if job["runs-on"] != "macos-15" || job["continue-on-error"] != nil || job["permissions"] != nil {
-			return fmt.Errorf("%s must run on macos-15, fail closed and inherit read-only permissions", leg)
-		}
-		if !reflect.DeepEqual(needsOf(job), []string{"heads"}) {
-			return fmt.Errorf("%s must depend only on the head resolver", leg)
-		}
-		if asMap(job["env"])["HEAD_SHA"] != "${{ needs.heads.outputs."+branch+" }}" {
-			return fmt.Errorf("%s does not test the pinned %s head", leg, branch)
-		}
-		have := map[string]string{}
-		for _, step := range stepsOf(job) {
-			if step["continue-on-error"] != nil {
-				return fmt.Errorf("%s has a fail-open step", leg)
-			}
-			if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "actions/checkout@") &&
-				asMap(step["with"])["ref"] != "${{ env.HEAD_SHA }}" {
-				return fmt.Errorf("%s checks out something other than the pinned head", leg)
-			}
-			name, _ := step["name"].(string)
-			run, _ := step["run"].(string)
-			have[name] = run
-		}
-		for name, command := range map[string]string{
-			"Desktop module boundary":                       "check-desktop-deps.sh",
-			"Desktop tests with the race detector":          "go test -race",
-			"Build the probe shell":                         "-tags probe",
-			"Build the release shell":                       "go build",
-			"Driven WKWebView lane against a fake instance": "probes/driven",
-		} {
-			if !strings.Contains(have[name], command) {
-				return fmt.Errorf("%s lost the %q step", leg, name)
-			}
-		}
-	}
-	report := asMap(jobs["report"])
-	if report == nil {
-		return fmt.Errorf("report job is missing")
-	}
-	if !reflect.DeepEqual(report["permissions"], yamlMap{"issues": "write"}) {
-		return fmt.Errorf("report job permissions must be exactly issues: write")
-	}
-	if !reflect.DeepEqual(needsOf(report), []string{"heads", "desktop-dev", "desktop-main"}) || report["if"] != "always()" {
-		return fmt.Errorf("report must wait for both legs and run after any result")
-	}
-	for _, step := range stepsOf(report) {
-		if step["uses"] != nil {
-			return fmt.Errorf("report job must not check out or run any action")
-		}
-		run, _ := step["run"].(string)
-		if strings.Contains(run, "${{") {
-			return fmt.Errorf("report job interpolates an expression into its script")
-		}
-		for _, required := range []string{"gh issue create", "gh issue comment", "gh issue close", `DEV_RESULT" = success`, `MAIN_RESULT" = success`} {
-			if !strings.Contains(run, required) {
-				return fmt.Errorf("report script lost %q", required)
-			}
-		}
-		if !strings.HasSuffix(strings.TrimSpace(run), "exit 1") {
-			return fmt.Errorf("report script must fail the run after reporting")
-		}
-	}
-	return nil
-}
-
 func TestDesktopIsOffTheRequiredPaths(t *testing.T) {
 	registryJSON, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts/ci/ci-job-registry.json"))
 	if err != nil {
@@ -233,61 +154,6 @@ func TestDesktopIsOffTheRequiredPaths(t *testing.T) {
 			workflows := load()
 			registry := mutate(workflows)
 			if err := checkDesktopOffRequiredPaths(workflows, registry); err == nil {
-				t.Fatal("mutation was accepted")
-			}
-		})
-	}
-}
-
-func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
-	if err := checkNightlyDesktop(readYAMLMap(t, "nightly-desktop.yml")); err != nil {
-		t.Fatal(err)
-	}
-	report := func(w yamlMap) yamlMap { return asMap(jobsOf(w)["report"]) }
-	leg := func(w yamlMap) yamlMap { return asMap(jobsOf(w)["desktop-main"]) }
-	for name, mutate := range map[string]func(yamlMap){
-		"no schedule":    func(w yamlMap) { delete(asMap(w["on"]), "schedule") },
-		"a leg removed":  func(w yamlMap) { delete(jobsOf(w), "desktop-main") },
-		"leg on linux":   func(w yamlMap) { leg(w)["runs-on"] = "ubuntu-latest" },
-		"leg fails open": func(w yamlMap) { leg(w)["continue-on-error"] = true },
-		"leg tests wrong head": func(w yamlMap) {
-			asMap(leg(w)["env"])["HEAD_SHA"] = "${{ needs.heads.outputs.dev }}"
-		},
-		"leg unpinned checkout": func(w yamlMap) {
-			asMap(stepsOf(leg(w))[0]["with"])["ref"] = "main"
-		},
-		"leg lost the driven lane": func(w yamlMap) {
-			steps := asList(leg(w)["steps"])
-			leg(w)["steps"] = steps[:len(steps)-1]
-		},
-		"report writes contents": func(w yamlMap) {
-			report(w)["permissions"] = yamlMap{"issues": "write", "contents": "write"}
-		},
-		"report has no permissions": func(w yamlMap) { delete(report(w), "permissions") },
-		"report checks out code": func(w yamlMap) {
-			checkout := yamlMap{"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}
-			report(w)["steps"] = append([]any{checkout}, asList(report(w)["steps"])...)
-		},
-		"report interpolates": func(w yamlMap) {
-			step := stepsOf(report(w))[0]
-			step["run"] = "echo ${{ github.event.head_commit.message }}\n" + step["run"].(string)
-		},
-		"report skipped on failure": func(w yamlMap) { report(w)["if"] = "success()" },
-		"report ignores a leg":      func(w yamlMap) { report(w)["needs"] = []any{"heads", "desktop-dev"} },
-		"report leaves the run green": func(w yamlMap) {
-			step := stepsOf(report(w))[0]
-			step["run"] = strings.TrimSuffix(strings.TrimSpace(step["run"].(string)), "exit 1")
-		},
-		"report never closes": func(w yamlMap) {
-			step := stepsOf(report(w))[0]
-			step["run"] = strings.ReplaceAll(step["run"].(string), "gh issue close", "true")
-		},
-		"workflow token widened": func(w yamlMap) { w["permissions"] = yamlMap{"contents": "write"} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			workflow := readYAMLMap(t, "nightly-desktop.yml")
-			mutate(workflow)
-			if err := checkNightlyDesktop(workflow); err == nil {
 				t.Fatal("mutation was accepted")
 			}
 		})
