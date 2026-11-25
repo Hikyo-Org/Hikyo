@@ -195,6 +195,9 @@ export function Members({ scope }: { scope: MembersScope }) {
     : projectId === ''
       ? memberProjects.map((p) => p.id)
       : memberProjects.filter((p) => p.id === projectId).map((p) => p.id);
+  // Org-wide, askable is the organisation's project list as shown: the editor
+  // offers "All projects" and a save sends that list (#1446).
+  const orgWide = !instance && projectId === '' && !selectorTopologyOnly;
   const catalogues = useKeyCatalogues(org, askable);
   const [find, setFind] = useState('');
   // The two reference tools open in the side panel from the row above the
@@ -721,6 +724,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           rule={editing.draft}
           showReach={!selectorTopologyOnly}
           projects={askable}
+          allProjects={orgWide}
           busy={ruleMutations.save.isPending || ruleMutations.remove.isPending}
           failure={editorFailure}
           onCancel={() => setEditing(null)}
@@ -742,7 +746,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             const before = editing.before;
             const revokes = savePlan(before, draft).revoke.length > 0;
             ruleMutations.save.mutate(
-              { before, draft },
+              { before, draft, orgProjects: orgWide ? askable : [] },
               {
                 onSuccess: () => {
                   setEditing(null);

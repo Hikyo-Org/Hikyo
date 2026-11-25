@@ -23585,6 +23585,14 @@ components:
       description: "`all` reads the axis's items as exceptions, `only` as the complete list."
       enum: [all, only]
 
+    RuleProjectMode:
+      type: string
+      description: |
+        `only` reaches the listed `projects`. `all` reaches every project of
+        the organisation, including projects created later; such a rule covers
+        every environment and narrows keys by folder only.
+      enum: [all, only]
+
     RuleWhere:
       type: object
       additionalProperties: false
@@ -23594,7 +23602,19 @@ components:
         environment and key item names the project it belongs to, which must be
         one of `projects`. A rule names at most 500 projects, environments and
         keys together.
+
+        With `project_mode` `all` the rule reaches every project of the
+        organisation, including projects created later. A response lists the
+        organisation's current projects (a project listing: only that
+        project), with the rule's folder items repeated under each, so
+        `projects` is never empty; an organisation listing's or a create's
+        `where` is a valid create request. A create lists exactly the organisation's current
+        projects (otherwise 409), keeps the environment axis `all` without
+        items, and repeats the same folder items, never single keys, under
+        every project.
       properties:
+        project_mode:
+          $ref: "#/components/schemas/RuleProjectMode"
         projects:
           type: array
           minItems: 1

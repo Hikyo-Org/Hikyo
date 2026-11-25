@@ -26,6 +26,12 @@ import (
 // never both. An environment or key id belongs to one project: qualify it as
 // PROJECT:ID when the rule names several. A folder applies to every project
 // of the rule unless qualified the same way.
+//
+// --all-projects makes the rule cover every project of the org, including
+// projects created later (#1446). The CLI first lists the org's projects and
+// sends them with project_mode all; the server refuses the rule if that list
+// is stale. Such a rule covers every environment and narrows keys by
+// unqualified folders only.
 
 // ruleAxisFlags collects one axis's only- and except-items.
 type ruleAxisFlags struct{ only, except stringList }
@@ -43,6 +49,7 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	var format, principal, capability string
+	var allProjects bool
 	var projects stringList
 	var envs, folders, keys ruleAxisFlags
 	st, flags, err := parseCommon("access rule "+sub, ios, rest, func(fs *flag.FlagSet) {
@@ -51,6 +58,7 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&principal, "principal", "", "the person or machine principal receiving the rule")
 			fs.StringVar(&capability, "capability", "", "the capability the rule carries")
 			fs.Var(&projects, "in-project", "repeatable: a project the rule covers (default: the resolved project)")
+			fs.BoolVar(&allProjects, "all-projects", false, "cover every project of the org, including projects created later")
 			fs.Var(&envs.only, "only-env", "repeatable: cover only this environment ([PROJECT:]ENV)")
 			fs.Var(&envs.except, "except-env", "repeatable: cover every environment except this one ([PROJECT:]ENV)")
 			fs.Var(&folders.only, "only-folder", "repeatable: cover only keys in this folder ([PROJECT:]PATH)")
@@ -77,11 +85,19 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 	if sub == "add" {
 		switch {
 		case principal == "" || capability == "":
-			return failf(ExitUsage, "usage: hikyo access rule add --principal <id> --capability <atom> [--in-project P]... [--only-env|--except-env E]... [--only-folder|--except-folder F]... [--only-key|--except-key K]...")
+			return failf(ExitUsage, "usage: hikyo access rule add --principal <id> --capability <atom> [--in-project P... | --all-projects] [--only-env|--except-env E]... [--only-folder|--except-folder F]... [--only-key|--except-key K]...")
 		case len(envs.only) > 0 && len(envs.except) > 0:
 			return failf(ExitUsage, "hikyo access rule add: --only-env and --except-env are two readings of one axis; choose one")
 		case (len(folders.only) > 0 || len(keys.only) > 0) && (len(folders.except) > 0 || len(keys.except) > 0):
 			return failf(ExitUsage, "hikyo access rule add: --only-folder/--only-key and --except-folder/--except-key are two readings of one axis; choose one")
+		case allProjects && len(projects) > 0:
+			return failf(ExitUsage, "hikyo access rule add: --all-projects and --in-project are two readings of the project axis; choose one")
+		case allProjects && len(envs.only)+len(envs.except) > 0:
+			return failf(ExitUsage, "hikyo access rule add: a rule over all projects covers every environment; drop --only-env/--except-env")
+		case allProjects && len(keys.only)+len(keys.except) > 0:
+			return failf(ExitUsage, "hikyo access rule add: a rule over all projects narrows keys by folder only; a key belongs to one project")
+		case allProjects && slices.ContainsFunc(append(slices.Clone(folders.only), folders.except...), func(v string) bool { return strings.HasPrefix(v, "prj_") && strings.Contains(v, ":") }):
+			return failf(ExitUsage, "hikyo access rule add: a rule over all projects applies its folders in every project; drop the PROJECT: qualifier")
 		}
 	}
 
@@ -96,7 +112,7 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 	base := api.PathPrefix + "/orgs/" + url.PathEscape(org)
 
 	var body apigen.CreateRuleRequest
-	if sub == "add" {
+	if sub == "add" && !allProjects {
 		if len(projects) == 0 {
 			project, err := resolved.Require(DimProject)
 			if err != nil {
@@ -112,6 +128,11 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 	client, artifact, _, err := authenticatedResolvedTarget(st, ios, flags, resolved)
 	if err != nil {
 		return err
+	}
+	if sub == "add" && allProjects {
+		if body, err = allProjectsRuleRequest(ctx, client, base, principal, capability, folders); err != nil {
+			return err
+		}
 	}
 
 	switch sub {
@@ -245,6 +266,30 @@ func ruleRequest(principal, capability string, projects []string, envs, folders,
 	return apigen.CreateRuleRequest{Principal: principal, Capability: apigen.RuleCapability(capability), Where: where}, nil
 }
 
+// allProjectsRuleRequest lists the org's current projects and builds an
+// all-projects create over exactly them, the folders repeated under each
+// (owner decision R2): the server refuses it if the list is stale by then.
+func allProjectsRuleRequest(ctx context.Context, client *Client, base, principal, capability string, folders ruleAxisFlags) (apigen.CreateRuleRequest, error) {
+	var list apigen.ProjectList
+	if err := client.Do(ctx, http.MethodGet, base+"/projects", nil, &list); err != nil {
+		return apigen.CreateRuleRequest{}, err
+	}
+	if len(list.Items) == 0 {
+		return apigen.CreateRuleRequest{}, failf(ExitUsage, "hikyo access rule add: the organization has no project; create one before a rule over all projects")
+	}
+	projects := make([]string, 0, len(list.Items))
+	for _, p := range list.Items {
+		projects = append(projects, p.Id)
+	}
+	body, err := ruleRequest(principal, capability, projects, ruleAxisFlags{}, folders, ruleAxisFlags{})
+	if err != nil {
+		return apigen.CreateRuleRequest{}, err
+	}
+	mode := apigen.RuleProjectModeAll
+	body.Where.ProjectMode = &mode
+	return body, nil
+}
+
 // ruleItemProject resolves an environment or key item to its project: a
 // PROJECT:ID qualifier, or the rule's only project.
 func ruleItemProject(v string, projects []string, flagName string) (string, string, error) {
@@ -266,7 +311,10 @@ func ruleTable(list apigen.RuleList) Table {
 	rows := make([][]string, 0, len(list.Items))
 	for _, r := range list.Items {
 		w := r.Where
-		multi := len(w.Projects) > 1
+		// An all-projects rule reads back expanded over the org's current
+		// projects with its folders repeated under each; it shows once.
+		all := w.ProjectMode != nil && *w.ProjectMode == apigen.RuleProjectModeAll
+		multi := len(w.Projects) > 1 && !all
 		qualify := func(project, v string) string {
 			if multi {
 				return project + ":" + v
@@ -274,7 +322,10 @@ func ruleTable(list apigen.RuleList) Table {
 			return v
 		}
 		projects := strings.Join(w.Projects, ", ")
-		if r.OtherProjects {
+		if all {
+			projects = "all projects (now " + projects + ")"
+		}
+		if r.OtherProjects && !all {
 			projects += " (and other projects)"
 		}
 		envItems := make([]string, 0, len(w.Environments.Items))
@@ -283,6 +334,9 @@ func ruleTable(list apigen.RuleList) Table {
 		}
 		keyItems := make([]string, 0, len(w.Keys.Items))
 		for _, it := range w.Keys.Items {
+			if all && len(w.Projects) > 0 && it.Project != w.Projects[0] {
+				continue
+			}
 			switch {
 			case it.Folder != nil && *it.Folder == "":
 				keyItems = append(keyItems, qualify(it.Project, "folder:(root)"))

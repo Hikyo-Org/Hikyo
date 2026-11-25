@@ -33,6 +33,17 @@ var (
 	// ErrNoSuchRule is a revoke of a rule that does not exist (or that the
 	// caller may not reach, indistinguishably).
 	ErrNoSuchRule = fmt.Errorf("%w: service: no such rule", domain.ErrNotFound)
+	// ErrRuleAllProjectsNoProject refuses an all-projects rule in an org with
+	// no project: a v1 rule response lists the projects a rule covers and is
+	// never empty (owner decision 2026-11-25, #1446).
+	ErrRuleAllProjectsNoProject = fmt.Errorf("%w: service: an organization with no project cannot hold a rule over all projects; create a project first", domain.ErrConflict)
+	// ErrRuleAllProjectsStale refuses an all-projects create whose project
+	// list differs from the org's current projects (owner decision R2).
+	ErrRuleAllProjectsStale = fmt.Errorf("%w: service: a rule over all projects must list exactly the organization's current projects", domain.ErrConflict)
+	// ErrRuleAllProjectsAuthority refuses an all-projects rule change by a
+	// caller whose Manage access does not cover projects created later (ADR
+	// D7): an organization-scope grant or another all-projects rule.
+	ErrRuleAllProjectsAuthority = fmt.Errorf("%w: service: a rule over all projects needs Manage access over every project, including projects created later", domain.ErrConflict)
 )
 
 // MoveWideningError refuses a key folder move that gives people access
@@ -176,6 +187,11 @@ type RuleSpec struct {
 	Capability domain.Capability
 	Org        domain.OrgID
 	Where      domain.Where
+	// ClaimedProjects is, for an all-projects rule, the project list the
+	// client read and showed: it must equal the org's current projects,
+	// compared under the create transaction's project lock (owner decision
+	// R2, #1446). It is not stored.
+	ClaimedProjects []domain.ProjectID
 }
 
 // Create writes one rule. Manage access must cover its complete selector,
@@ -220,7 +236,7 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleVie
 			return err
 		}
 		out = RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: spec.Capability,
-			Org: spec.Org, Where: rule.Where, CreatedBy: caller.Principal, CreatedAt: now}
+			Org: spec.Org, Where: rule.Where, Covers: add.covers, CreatedBy: caller.Principal, CreatedAt: now}
 		return nil
 	})
 	return out, err
@@ -339,6 +355,9 @@ type preparedRule struct {
 	proof  authz.Proof
 	unheld bool
 	class  domain.PrincipalClass
+	// covers is, for an all-projects rule, the org's projects it was proved
+	// in (locked); a response lists them (#1446).
+	covers []domain.ProjectID
 }
 
 // prepareRuleCreate validates authority before any rule or session mutation.
@@ -356,13 +375,53 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 			}
 		}
 	}
-	first := domain.Scope{Org: spec.Org, Project: spec.Where.Projects[0]}
+	projects := spec.Where.Projects
+	if spec.Where.AllProjects {
+		// An all-projects rule is proved in every current project and in a
+		// future-project witness (ADR D7). The unlocked ids only choose the
+		// scopes to authorize; the lock is taken once the caller is proved.
+		var err error
+		if projects, err = az.RuleOrgProjects(ctx, spec.Org, false); err != nil {
+			return preparedRule{}, err
+		}
+		if len(projects) == 0 {
+			return preparedRule{}, refuseAllProjectsWithoutProject(ctx, az, actor, spec.Org, now)
+		}
+	}
+	first := domain.Scope{Org: spec.Org, Project: projects[0]}
 	caller, proof, err := authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, rule, now)
 	if err != nil {
 		return preparedRule{}, err
 	}
-	for _, project := range spec.Where.Projects[1:] {
+	for _, project := range projects[1:] {
 		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, rule); err != nil {
+			return preparedRule{}, err
+		}
+	}
+	if spec.Where.AllProjects {
+		// Lock the org's projects so its last one cannot be deleted under the
+		// new rule, and prove the caller in any project that appeared since.
+		locked, err := az.RuleOrgProjects(ctx, spec.Org, true)
+		if err != nil {
+			return preparedRule{}, err
+		}
+		if len(locked) == 0 {
+			return preparedRule{}, refuseAllProjectsWithoutProject(ctx, az, actor, spec.Org, now)
+		}
+		for _, project := range locked {
+			if slices.Contains(projects, project) {
+				continue
+			}
+			if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, rule); err != nil {
+				return preparedRule{}, err
+			}
+		}
+		projects = locked
+	}
+	if spec.Where.AllProjects {
+		// Only after Manage access is proved in every current project may the
+		// refusal name them.
+		if err := checkClaimedProjects(spec.ClaimedProjects, projects); err != nil {
 			return preparedRule{}, err
 		}
 	}
@@ -397,7 +456,7 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 	// Management and capability reach are independent. Only existing org-
 	// and instance-scope managers retain the grant-unheld exception.
 	unheld := false
-	for _, project := range spec.Where.Projects {
+	for _, project := range projects {
 		scope := domain.Scope{Org: spec.Org, Project: project}
 		held, err := az.RuleCapabilityHeld(ctx, caller, rule, project)
 		if err != nil {
@@ -411,7 +470,72 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		}
 		unheld = true
 	}
-	return preparedRule{rule: rule, caller: caller, proof: proof, unheld: unheld, class: class}, nil
+	if spec.Where.AllProjects {
+		manage, held, err := az.RuleFutureProjectsHeld(ctx, caller, rule)
+		if err != nil {
+			return preparedRule{}, err
+		}
+		if !manage {
+			return preparedRule{}, ErrRuleAllProjectsAuthority
+		}
+		if !held {
+			if !mayGrantUnheld(grantorGrants, domain.Scope{Org: spec.Org}) {
+				return preparedRule{}, ErrGrantorLacksCapability
+			}
+			unheld = true
+		}
+	}
+	var covers []domain.ProjectID
+	if spec.Where.AllProjects {
+		covers = projects
+	}
+	return preparedRule{rule: rule, caller: caller, proof: proof, unheld: unheld, class: class, covers: covers}, nil
+}
+
+// checkClaimedProjects refuses an all-projects create whose project list is
+// not exactly the org's current projects: a stale list (a project created or
+// deleted since the client read it) or a duplicate fails closed, naming the
+// difference.
+func checkClaimedProjects(claimed, current []domain.ProjectID) error {
+	var missing, extra, dup []string
+	for i, p := range claimed {
+		switch {
+		case slices.Contains(claimed[:i], p):
+			dup = append(dup, string(p))
+		case !slices.Contains(current, p):
+			extra = append(extra, string(p))
+		}
+	}
+	for _, p := range current {
+		if !slices.Contains(claimed, p) {
+			missing = append(missing, string(p))
+		}
+	}
+	if len(missing)+len(extra)+len(dup) == 0 {
+		return nil
+	}
+	var parts []string
+	if len(missing) > 0 {
+		parts = append(parts, "missing "+strings.Join(missing, ", "))
+	}
+	if len(extra) > 0 {
+		parts = append(parts, "not in the organization "+strings.Join(extra, ", "))
+	}
+	if len(dup) > 0 {
+		parts = append(parts, "listed twice "+strings.Join(dup, ", "))
+	}
+	return &detailErr{err: ErrRuleAllProjectsStale, detail: "a rule over all projects must list exactly the organization's current projects: " + strings.Join(parts, "; ")}
+}
+
+// refuseAllProjectsWithoutProject answers an all-projects rule in an org with
+// no project. Only a caller the chokepoint proves a member manager of the org
+// (in an org without projects nothing narrower exists) learns why; anyone else
+// gets the chokepoint's own refusal, as for a missing rule.
+func refuseAllProjectsWithoutProject(ctx context.Context, az *authz.TxAuthorizer, actor Actor, org domain.OrgID, now time.Time) error {
+	if _, _, err := authorize(ctx, az, actor, authz.OpRuleListOrg, domain.Scope{Org: org}, now); err != nil {
+		return err
+	}
+	return &detailErr{err: ErrRuleAllProjectsNoProject, detail: "an organization with no project cannot hold a rule over all projects; create a project first"}
 }
 
 // checkMachineRule holds a machine rule to the class's allowlist, to every
@@ -457,6 +581,10 @@ type RuleView struct {
 	Capability    domain.Capability
 	Org           domain.OrgID
 	Where         domain.Where
+	// Covers lists, for an all-projects rule, the projects it reaches at read
+	// time: the org's current projects, or only the addressed one on a
+	// project listing. A v1 response renders them as `projects`.
+	Covers        []domain.ProjectID
 	OtherProjects bool
 	CreatedBy     domain.PrincipalID
 	CreatedAt     time.Time
@@ -507,6 +635,19 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		if err != nil {
 			return err
 		}
+		// An all-projects rule spans more than the listed project as soon as
+		// the org has another one; it never names a project in its items.
+		var orgProjects []domain.ProjectID
+		if slices.ContainsFunc(lines, func(l authz.RuleLine) bool { return l.AllProjects }) {
+			if orgProjects, err = az.RuleOrgProjects(ctx, scope.Org, false); err != nil {
+				return err
+			}
+		}
+		othersInOrg := len(orgProjects) > 1
+		covers := orgProjects
+		if level == domain.LevelProject {
+			covers = []domain.ProjectID{scope.Project}
+		}
 		var manageable []bool
 		if level == domain.LevelProject {
 			manageable, err = ruleLinesManageable(ctx, az, caller, scope, lines)
@@ -517,8 +658,12 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		names := newPrincipalNames()
 		out = make([]RuleView, 0, len(lines))
 		for i, line := range lines {
-			where := whereFromItems(line.Items)
-			where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
+			where := lineWhere(line)
+			other := line.OtherProjects || level == domain.LevelProject && line.AllProjects && othersInOrg
+			var lineCovers []domain.ProjectID
+			if line.AllProjects {
+				lineCovers = covers
+			}
 			if level == domain.LevelProject && !manageable[i] {
 				continue
 			}
@@ -529,7 +674,7 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 			}
 			out = append(out, RuleView{
 				ID: line.ID, Principal: line.Principal, PrincipalName: name, Capability: line.Capability,
-				Org: scope.Org, Where: where, OtherProjects: line.OtherProjects,
+				Org: scope.Org, Where: where, Covers: lineCovers, OtherProjects: other,
 				CreatedBy: line.CreatedBy, CreatedAt: line.CreatedAt,
 			})
 		}
@@ -542,14 +687,21 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 	return out, err
 }
 
+// lineWhere rebuilds a listed rule's selector for rendering and the manage
+// filter; an all-projects rule keeps its folders under domain.AnyProject.
+func lineWhere(line authz.RuleLine) domain.Where {
+	where := whereFromItems(line.Items)
+	where.AllProjects = line.AllProjects
+	where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
+	return where
+}
+
 // ruleLinesManageable reports, per project rule line, whether the caller may
 // manage it: the filter Rules.List and Rules.Resolve share.
 func ruleLinesManageable(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, lines []authz.RuleLine) ([]bool, error) {
 	targets := make([]domain.Rule, len(lines))
 	for i, line := range lines {
-		where := whereFromItems(line.Items)
-		where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
-		targets[i] = domain.Rule{Org: scope.Org, Capability: line.Capability, Where: where}
+		targets[i] = domain.Rule{Org: scope.Org, Capability: line.Capability, Where: lineWhere(line)}
 	}
 	return az.RulesManageable(ctx, caller, targets, scope.Project)
 }
@@ -619,6 +771,14 @@ func prepareRuleRevoke(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		return stored, caller, proof, err
 	}
 	projects := storedProjects(stored)
+	all := err == nil && stored.Rule.Org == org && stored.Rule.Where.AllProjects
+	if all {
+		// The org's projects stand for the rule's; there is always one, as
+		// the org's last project cannot be deleted under an all-projects rule.
+		if projects, err = az.RuleOrgProjects(ctx, org, false); err != nil {
+			return stored, caller, proof, err
+		}
+	}
 	if err != nil || stored.Rule.Org != org || len(projects) == 0 {
 		return stored, caller, proof, refuseMissingRule(ctx, az, actor, org, id, now)
 	}
@@ -634,6 +794,16 @@ func prepareRuleRevoke(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 				return
 			}
 		}
+		if all {
+			// Corrupt all-projects rows: only an org-scope manager cleans up.
+			var rows []authz.GrantRow
+			if rows, err = az.GrantRowsForPrincipal(ctx, caller.Principal); err != nil {
+				return
+			}
+			if !holds(rows, domain.CapManageMembers, domain.Scope{Org: org}) {
+				err = ErrRuleAllProjectsAuthority
+			}
+		}
 		return
 	}
 	caller, proof, err = authorizeRule(ctx, az, actor, authz.OpRuleRevoke, domain.Scope{Org: org, Project: projects[0]}, stored.Rule, now)
@@ -643,6 +813,15 @@ func prepareRuleRevoke(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 	for _, project := range projects[1:] {
 		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleRevoke, domain.Scope{Org: org, Project: project}, stored.Rule); err != nil {
 			return stored, caller, proof, err
+		}
+	}
+	if all {
+		manage, _, err := az.RuleFutureProjectsHeld(ctx, caller, stored.Rule)
+		if err != nil {
+			return stored, caller, proof, err
+		}
+		if !manage {
+			return stored, caller, proof, ErrRuleAllProjectsAuthority
 		}
 	}
 	return
@@ -674,7 +853,7 @@ func refuseMissingRule(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 func storedProjects(s authz.StoredRule) []domain.ProjectID {
 	var out []domain.ProjectID
 	for _, it := range s.Items {
-		if !slices.Contains(out, it.Project) {
+		if it.Project != "" && !slices.Contains(out, it.Project) {
 			out = append(out, it.Project)
 		}
 	}
@@ -696,8 +875,15 @@ func revokeRule(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p au
 	}
 	// A rule that no longer validates carries no Where; render what it
 	// covered from its stored items so the trail still says it.
+	// An all-projects rule is always rendered from its items: a valid one
+	// renders the same, a corrupt one keeps whatever its rows still name.
 	shown := stored.Rule
-	if len(shown.Where.Projects) == 0 {
+	switch {
+	case shown.Where.AllProjects:
+		w := whereFromItems(stored.Items)
+		w.AllProjects, w.EnvMode, w.KeyMode = true, shown.Where.EnvMode, shown.Where.KeyMode
+		shown.Where = w
+	case len(shown.Where.Projects) == 0:
 		shown.Where = whereFromItems(stored.Items)
 	}
 	payload := rulePayload(shown)
@@ -714,7 +900,8 @@ func revokeRule(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p au
 func whereFromItems(items []authz.StoredRuleItem) domain.Where {
 	w := domain.Where{Envs: map[domain.ProjectID][]domain.EnvID{}, Keys: map[domain.ProjectID][]domain.RuleKeyItem{}}
 	for _, it := range items {
-		if !slices.Contains(w.Projects, it.Project) {
+		// A project-less item is an all-projects rule's folder (AnyProject).
+		if it.Project != "" && !slices.Contains(w.Projects, it.Project) {
 			w.Projects = append(w.Projects, it.Project)
 		}
 		switch {
@@ -747,6 +934,13 @@ func rulePayload(rule domain.Rule) audit.Payload {
 			}
 		}
 	}
+	projectMode := "only"
+	if rule.Where.AllProjects {
+		projectMode = "all"
+		for _, k := range rule.Where.Keys[domain.AnyProject] {
+			keys = append(keys, "folder:*/"+audit.SanitizeFreeText(k.Folder))
+		}
+	}
 	envMode, keyMode := string(rule.Where.EnvMode), string(rule.Where.KeyMode)
 	if envMode == "" {
 		envMode = string(domain.AxisAll)
@@ -757,6 +951,7 @@ func rulePayload(rule domain.Rule) audit.Payload {
 	return audit.Payload{
 		"target_principal": string(rule.Principal),
 		"capability":       string(rule.Capability),
+		"project_mode":     projectMode,
 		"projects":         projects,
 		"env_mode":         envMode,
 		"envs":             envs,

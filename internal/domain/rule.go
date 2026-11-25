@@ -36,13 +36,49 @@ type RuleKeyItem struct {
 // Where is a rule's reach. Items are bound per project: an environment or key
 // item belongs to exactly one of the rule's projects, and a project with no
 // items on an `all` axis is unnarrowed on it.
+//
+// AllProjects is the all-projects project axis (#1446): every project of the
+// rule's org, including projects created later. Projects is then empty, the
+// environment axis is `all` with no items (owner decision 2026-11-25: until
+// #1447 binds environments by name, an id-bound except would not follow later
+// projects), and key items are folders only, held under AnyProject because a
+// folder path means the same in every project.
 type Where struct {
-	Projects []ProjectID
-	EnvMode  AxisMode
-	Envs     map[ProjectID][]EnvID
-	KeyMode  AxisMode
-	Keys     map[ProjectID][]RuleKeyItem
+	AllProjects bool
+	Projects    []ProjectID
+	EnvMode     AxisMode
+	Envs        map[ProjectID][]EnvID
+	KeyMode     AxisMode
+	Keys        map[ProjectID][]RuleKeyItem
 }
+
+// AnyProject keys the folder items of an all-projects Where.
+const AnyProject ProjectID = ""
+
+// Names reports whether the Where's project axis covers project p.
+func (w Where) Names(p ProjectID) bool {
+	if w.AllProjects {
+		return p != ""
+	}
+	return slices.Contains(w.Projects, p)
+}
+
+// KeysIn is the key-axis items that apply in project p.
+func (w Where) KeysIn(p ProjectID) []RuleKeyItem {
+	if w.AllProjects {
+		return w.Keys[AnyProject]
+	}
+	return w.Keys[p]
+}
+
+var (
+	// ErrRuleAllProjectsEnvironments refuses environment items on an
+	// all-projects rule until environments bind by name (#1447).
+	ErrRuleAllProjectsEnvironments = fmt.Errorf("%w: a rule over all projects covers every environment; naming environments needs environment-name binding (#1447)", ErrInvalid)
+	// ErrRuleAllProjectsKeys refuses single-key items on an all-projects rule:
+	// a key id belongs to one project (owner decision 2026-11-20).
+	ErrRuleAllProjectsKeys = fmt.Errorf("%w: a rule over all projects narrows keys by folder only; a single key belongs to one project", ErrInvalid)
+)
 
 // Rule is one stored rule row with its selector.
 type Rule struct {
@@ -133,7 +169,7 @@ func (w Where) KeyNarrowed() bool {
 
 // KeyNarrowedIn reports whether the Where narrows keys in one project.
 func (w Where) KeyNarrowedIn(p ProjectID) bool {
-	return w.KeyMode != AxisAll || len(w.Keys[p]) > 0
+	return w.KeyMode != AxisAll || len(w.KeysIn(p)) > 0
 }
 
 // Validate is the shape authority for a rule, applied on every write AND on
@@ -147,6 +183,9 @@ func (r Rule) Validate() error {
 		return fmt.Errorf("%w: capability %q cannot be held on a rule", ErrInvalid, r.Capability)
 	}
 	w := r.Where
+	if w.AllProjects {
+		return r.validateAllProjects(shape)
+	}
 	if len(w.Projects) == 0 {
 		return fmt.Errorf("%w: a rule names at least one project", ErrInvalid)
 	}
@@ -162,6 +201,9 @@ func (r Rule) Validate() error {
 	}
 	if w.KeyMode != AxisAll && w.KeyMode != AxisOnly {
 		return fmt.Errorf("%w: key mode %q", ErrInvalid, w.KeyMode)
+	}
+	if _, ok := w.Keys[AnyProject]; ok {
+		return fmt.Errorf("%w: key items name no project", ErrInvalid)
 	}
 	envTotal := 0
 	for p, items := range w.Envs {
@@ -196,6 +238,11 @@ func (r Rule) Validate() error {
 	if len(w.Projects)+envTotal+keyTotal > MaxRuleItems {
 		return fmt.Errorf("%w: a rule names at most %d projects, environments and keys", ErrLimitExceeded, MaxRuleItems)
 	}
+	return r.validateShape(shape)
+}
+
+func (r Rule) validateShape(shape RuleShape) error {
+	w := r.Where
 	switch shape {
 	case ShapeEnv:
 		if w.KeyNarrowed() && r.Capability != CapRead {
@@ -207,6 +254,46 @@ func (r Rule) Validate() error {
 		}
 	}
 	return nil
+}
+
+// validateAllProjects is Validate for the all-projects project axis: no
+// project list, every environment, and folder items only, all held under
+// AnyProject.
+func (r Rule) validateAllProjects(shape RuleShape) error {
+	w := r.Where
+	if len(w.Projects) > 0 {
+		return fmt.Errorf("%w: a rule over all projects names no project", ErrInvalid)
+	}
+	if w.EnvMode != AxisAll || w.EnvNarrowed() {
+		return ErrRuleAllProjectsEnvironments
+	}
+	if w.KeyMode != AxisAll && w.KeyMode != AxisOnly {
+		return fmt.Errorf("%w: key mode %q", ErrInvalid, w.KeyMode)
+	}
+	keyTotal := 0
+	for p, items := range w.Keys {
+		for _, k := range items {
+			if !k.IsFolder {
+				return ErrRuleAllProjectsKeys
+			}
+		}
+		if p != AnyProject {
+			return fmt.Errorf("%w: a rule over all projects names folders in every project, not in one", ErrInvalid)
+		}
+		for i, k := range items {
+			if k.KeyID != "" || slices.Contains(items[:i], k) {
+				return fmt.Errorf("%w: a key item is malformed or named twice", ErrInvalid)
+			}
+		}
+		keyTotal += len(items)
+	}
+	if w.KeyMode == AxisOnly && keyTotal == 0 {
+		return fmt.Errorf("%w: an only-keys rule names at least one folder or key", ErrInvalid)
+	}
+	if keyTotal > MaxRuleItems {
+		return fmt.Errorf("%w: a rule names at most %d projects, environments and keys", ErrLimitExceeded, MaxRuleItems)
+	}
+	return r.validateShape(shape)
 }
 
 // Reaches reports whether the rule satisfies one formula atom (capability c
@@ -230,7 +317,7 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 		return false
 	}
 	w := r.Where
-	if !slices.Contains(w.Projects, s.Project) {
+	if !w.Names(s.Project) {
 		return false
 	}
 	envs := w.Envs[s.Project]
@@ -263,7 +350,7 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 	if c == CapRead {
 		return true
 	}
-	items := w.Keys[s.Project]
+	items := w.KeysIn(s.Project)
 	if w.KeyMode == AxisAll && len(items) == 0 {
 		return true
 	}
@@ -322,7 +409,7 @@ func CheckMachineRule(c PrincipalClass, r Rule) MachineRuleFault {
 		return MachineRuleKeys
 	}
 	depth, ok := MachineScopeDepth(c)
-	if !ok || len(w.Projects) != 1 {
+	if !ok || w.AllProjects || len(w.Projects) != 1 {
 		return MachineRuleDepth
 	}
 	switch depth {

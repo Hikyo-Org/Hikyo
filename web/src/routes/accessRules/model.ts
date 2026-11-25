@@ -59,10 +59,10 @@ export const PERM_GROUPS: readonly PermGroup[] = ['Values', 'Secrets', 'Administ
 
 /**
  * What the vocabulary has but a rule can never carry, named on one line where
- * the permissions are chosen (DESIGN.md review rule 11). Manage projects needs
- * all projects, and a rule names its projects in this slice.
+ * the permissions are chosen (DESIGN.md review rule 11). Manage projects is an
+ * organisation permission, outside the rule vocabulary even over all projects.
  */
-export const NOT_ON_RULES = 'Manage projects needs all projects, which a rule cannot name yet: it stays an organisation grant.';
+export const NOT_ON_RULES = 'Manage projects is an organisation permission: it stays an organisation grant.';
 
 /** Where a machine's rule is changed, said wherever Members shows one (D11). */
 export const MACHINE_RULE_HINT = "A machine's rules are edited on Machine access, under its class's limits.";
@@ -144,7 +144,7 @@ export type Rule = {
   readonly id: string;
   readonly member: string;
   readonly perms: readonly PermId[];
-  /** `'*'` only for an organisation grant: a rule names its projects. */
+  /** `'*'` is all projects, including later ones: an organisation grant, or a rule with `project_mode: all` (#1446). */
   readonly projects: '*' | readonly string[];
   readonly envs: Axis<EnvItem>;
   readonly keys: Axis<KeyItem>;
@@ -408,6 +408,9 @@ type ServerRule = {
   readonly capability: PermId;
   readonly other_projects: boolean;
   readonly where: {
+    /** Absent from servers before API revision 21, which means `only`. */
+    readonly project_mode?: 'all' | 'only';
+    /** For `all`, the org's projects at read time, folder items repeated under each. */
     readonly projects: readonly string[];
     readonly environments: Axis<EnvItem>;
     readonly keys: { readonly mode: 'all' | 'only'; readonly items: readonly { readonly project: string; readonly folder?: string; readonly key?: string }[] };
@@ -442,8 +445,9 @@ function whereKey(rule: Pick<Rule, 'projects' | 'envs' | 'keys'>): string {
 export function rulesFromServer(items: readonly ServerRule[]): Rule[] {
   const groups = new Map<string, { rule: Rule; parts: { perm: PermId; id: string }[]; other: boolean }>();
   for (const item of items) {
+    const projects: Rule['projects'] = item.where.project_mode === 'all' ? '*' : item.where.projects;
     const base = {
-      projects: item.where.projects,
+      projects,
       envs: item.where.environments,
       keys: { mode: item.where.keys.mode, items: item.where.keys.items.map(keyItemOf) },
     };
@@ -517,7 +521,8 @@ export function toggleItems<T extends EnvItem | KeyItem>(axis: Axis<T>, items: r
 
 /** Toggle a project; its environment and key items leave with it (the server refuses items outside the projects). */
 export function toggleProject(rule: Rule, project: string): Rule {
-  const list = rule.projects === '*' ? [] : rule.projects;
+  if (rule.projects === '*') return { ...rule, projects: [project], envs: ALL, keys: ALL };
+  const list = rule.projects;
   if (!list.includes(project)) return { ...rule, projects: [...list, project] };
   return {
     ...rule,
@@ -526,6 +531,22 @@ export function toggleProject(rule: Rule, project: string): Rule {
     keys: { mode: rule.keys.mode, items: rule.keys.items.filter((k) => k.project !== project) },
   };
 }
+
+/**
+ * Toggle "All projects" (#1446): a rule over every project of the
+ * organisation, including later ones. It covers every environment and keeps
+ * only folder items, the same folders in every project.
+ */
+export function toggleAllProjects(rule: Rule, projects: readonly string[]): Rule {
+  if (rule.projects === '*') return { ...rule, projects: [], envs: ALL, keys: ALL };
+  const folders = [...new Set(rule.keys.items.filter(isFolder).map((k) => k.folder))];
+  const keys = folders.length === 0 && rule.keys.mode === 'only' ? ALL : { mode: rule.keys.mode, items: everyProject(projects, folders) };
+  return { ...rule, projects: '*', envs: ALL, keys };
+}
+
+/** These folders, each repeated under every one of these projects. */
+export const everyProject = (projects: readonly string[], folders: readonly string[]): FolderItem[] =>
+  projects.flatMap((project) => folders.map((folder) => ({ project, folder })));
 
 /** Environments of these projects by name: same-named environments are picked together (D3), stored by id. */
 export function envChoices(world: World, projects: readonly string[]): { name: string; items: EnvItem[]; protected: boolean }[] {
@@ -563,9 +584,28 @@ export function keyChoices(world: World, projects: readonly string[], rule: Pick
   return [...fromCatalogue, ...fromRule.filter((i) => !fromCatalogue.some((c) => itemKey(c) === itemKey(i)))];
 }
 
-/** The create body for one permission of a rule. */
-export function createBody(rule: Rule, id: PermId) {
-  if (rule.projects === '*') throw new Error('a rule names its projects');
+/**
+ * The create body for one permission of a rule. A rule over all projects
+ * lists `orgProjects`, the organisation's projects as the page listed them,
+ * with its folders repeated under each: the server refuses a stale list
+ * (owner decision R2, #1446).
+ */
+export function createBody(rule: Rule, id: PermId, orgProjects: readonly string[] = []) {
+  if (rule.projects === '*') {
+    if (orgProjects.length === 0) throw new Error("a rule over all projects lists the organisation's projects");
+    if (rule.envs.items.length > 0 || rule.keys.items.some((k) => !isFolder(k))) throw new Error('a rule over all projects narrows keys by folder only');
+    const folders = [...new Set(rule.keys.items.filter(isFolder).map((k) => k.folder))];
+    return {
+      principal: rule.member,
+      capability: id,
+      where: {
+        project_mode: 'all' as const,
+        projects: [...orgProjects],
+        environments: { mode: 'all' as const, items: [] },
+        keys: { mode: rule.keys.mode, items: everyProject(orgProjects, folders) },
+      },
+    };
+  }
   return {
     principal: rule.member,
     capability: id,

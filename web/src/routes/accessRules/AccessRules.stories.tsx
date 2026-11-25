@@ -196,6 +196,21 @@ export const EditorNewRule: Story = {
   },
 };
 
+// Org-wide, the editor offers All projects (#1446): the rule covers every
+// environment, including later projects', and narrows keys by folder only.
+const saveAllProjects = fn<(rule: Rule) => void>();
+export const EditorAllProjects: Story = {
+  render: () => <RuleEditorDialog world={makeWorld()} rule={newRule(IDS.chen)} projects={PROJECTS} allProjects onSave={saveAllProjects} onCancel={fn()} />,
+  play: async ({ canvas }) => {
+    const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Chen Li' }));
+    await userEvent.click(dialog.getByRole('button', { name: /^All projects/ }));
+    await expect(dialog.getByText(/All projects covers every environment/)).toBeVisible();
+    await expect(dialog.queryByText(/Pick single keys/)).toBeNull();
+    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    await expect(saveAllProjects).toHaveBeenCalledWith(expect.objectContaining({ projects: '*' }));
+  },
+};
+
 const saveSingleKey = fn<(rule: Rule) => void>();
 
 // A Publisher on one key keeps See environment-wide and leaves Pin out.

@@ -83,6 +83,10 @@ func TestAccessRuleVerbs(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = jsonwire.Encode(w, apigen.Rule{Id: "rul_1", PrincipalId: posted.Principal, Capability: posted.Capability, Where: posted.Where})
 		case http.MethodGet:
+			if r.URL.Path == api.PathPrefix+"/orgs/org_one/projects" {
+				_ = jsonwire.Encode(w, apigen.ProjectList{Items: []apigen.Project{{Id: "prj_one"}, {Id: "prj_two"}}, Count: 2})
+				return
+			}
 			_ = jsonwire.Encode(w, apigen.RuleList{Items: []apigen.Rule{}})
 		default:
 			w.WriteHeader(http.StatusNoContent)
@@ -121,6 +125,24 @@ func TestAccessRuleVerbs(t *testing.T) {
 		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(requests, "\n"), strings.Join(want, "\n"))
 	}
 
+	// --all-projects lists the org's projects first and sends exactly them
+	// with project_mode all, each folder repeated under every project (R2).
+	requests = nil
+	if code, out := run("access", "rule", "add", "--principal", "usr_carol", "--capability", "edit",
+		"--all-projects", "--except-folder", "secret"); code != ExitOK {
+		t.Fatalf("add --all-projects = %d %s", code, out)
+	}
+	pw := posted.Where
+	if pw.ProjectMode == nil || *pw.ProjectMode != apigen.RuleProjectModeAll || strings.Join(pw.Projects, ",") != "prj_one,prj_two" ||
+		pw.Environments.Mode != apigen.RuleAxisModeAll || len(pw.Environments.Items) != 0 || pw.Keys.Mode != apigen.RuleAxisModeAll ||
+		len(pw.Keys.Items) != 2 || pw.Keys.Items[0].Project != "prj_one" || pw.Keys.Items[1].Project != "prj_two" || *pw.Keys.Items[1].Folder != "secret" {
+		t.Fatalf("posted %+v", pw)
+	}
+	want = []string{"GET " + api.PathPrefix + "/orgs/org_one/projects", "POST " + api.PathPrefix + "/orgs/org_one/rules"}
+	if strings.Join(requests, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("all-projects requests %v, want %v", requests, want)
+	}
+
 	// Syntax is refused before any request.
 	requests = nil
 	for _, args := range [][]string{
@@ -128,6 +150,10 @@ func TestAccessRuleVerbs(t *testing.T) {
 		{"access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit", "--only-env", "a", "--except-env", "b"},
 		{"access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit", "--only-folder", "a", "--except-key", "b"},
 		{"access", "rule", "remove"},
+		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--in-project", "prj_one"},
+		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--except-env", "env_prod"},
+		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--only-key", "key_1"},
+		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--except-folder", "prj_one:db"},
 	} {
 		if code, out := run(args...); code != ExitUsage {
 			t.Errorf("%v = %d %s, want usage", args, code, out)
@@ -289,5 +315,22 @@ func TestWideningEnvReadsOnlyTheWideningRefusal(t *testing.T) {
 		if got := wideningEnv(err); got != "" {
 			t.Errorf("wideningEnv(%v) = %q, want empty", err, got)
 		}
+	}
+}
+
+// An all-projects rule reads back expanded over the org's current projects
+// (#1446); the table shows it once, as all projects, with unqualified folders.
+func TestRuleTableShowsAllProjectsOnce(t *testing.T) {
+	all := apigen.RuleProjectModeAll
+	secret := "secret"
+	got := ruleTable(apigen.RuleList{Count: 1, Items: []apigen.Rule{{Id: "rul_1", PrincipalId: "usr_1", Capability: apigen.RuleCapabilityEdit,
+		Where: apigen.RuleWhere{ProjectMode: &all, Projects: []apigen.ID{"prj_a", "prj_b"},
+			Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleEnvironmentItem{}},
+			Keys: apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleKeyItem{
+				{Project: "prj_a", Folder: &secret}, {Project: "prj_b", Folder: &secret},
+			}}}}}})
+	row := got.Rows[0]
+	if row[3] != "all projects (now prj_a, prj_b)" || strings.Count(row[5], "folder:secret") != 1 || strings.Contains(row[5], "prj_") {
+		t.Fatalf("row %q, want all projects once with one unqualified folder", row)
 	}
 }

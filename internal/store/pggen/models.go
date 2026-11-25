@@ -1481,6 +1481,7 @@ type Rule struct {
 	KeyMode     string
 	CreatedBy   string
 	CreatedAt   pgtype.Timestamptz
+	ProjectMode string
 }
 
 type RuleItem struct {
@@ -1488,7 +1489,7 @@ type RuleItem struct {
 	RuleID     string
 	OrgID      string
 	Axis       string
-	ProjectID  string
+	ProjectID  pgtype.Text
 	EnvID      pgtype.Text
 	KeyID      pgtype.Text
 	FolderPath pgtype.Text

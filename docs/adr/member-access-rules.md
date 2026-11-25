@@ -25,6 +25,10 @@
 > recorded on that pull request).** The owner settled four open points; see
 > [Owner decisions, 2026-11-20](#owner-decisions-2026-11-20). They decide what this ADR left open
 > or to an implementing ticket and change no D1 to D11 clause.
+>
+> **Owner decision record (2026-11-25, [#1446](https://github.com/Hikyo-Org/Hikyo/issues/1446);
+> operative when the implementing pull request merges).** The owner chose how all-projects rules
+> ship (options A, S1 and R2); see [Owner decisions, 2026-11-25](#owner-decisions-2026-11-25).
 
 ## Context
 
@@ -238,6 +242,51 @@ on these points describe, continues.
   instance operators. Showing organisation-level holders to a project manager is decided in #1481 and
   confirmed by the owner 2026-11-23; see the api-cli-surface amendment.
 
+## Owner decisions, 2026-11-25
+
+The owner chose options A, S1 and R2 for all-projects rules
+([#1446](https://github.com/Hikyo-Org/Hikyo/issues/1446)). Each applies when the implementing pull
+request merges.
+
+- **Environment axis, option A.** A rule over all projects covers every environment. Environment
+  items (*only* or *except*) are refused on such a rule until environment selectors bind by name
+  ([#1447](https://github.com/Hikyo-Org/Hikyo/issues/1447)); #1447 lifts this restriction. Folder
+  *only* and *except* items stay allowed, and single-key items stay refused (2026-11-20 above).
+  Machine principals never hold an all-projects rule: a machine rule names its owning project.
+- **API spelling, option S1, additive only.** A rule's `where` gains an optional
+  `project_mode: all|only`, default `only`. Storage keeps only the mode and never expands it into a
+  project list. A response for an all-projects rule lists the organization's current projects in
+  `projects` at read time, with its folder items repeated under each; an older client that saves
+  that list back gets a narrower rule, which fails closed. The API revision is 21.
+- **Create spelling, option R2.** `POST /orgs/{org}/rules` (and the creates of a rule replacement)
+  keeps the single `where` shape; `where.project_mode: all` is its only addition, and no schema
+  reference changes, so the frozen v1 document stays valid. The client sends `project_mode: all`
+  with the organization's current projects in `projects`, environment axis `all` without items,
+  and the same folder items repeated under every listed project. The server compares the list with
+  the organization's project set inside the create transaction, and refuses anything but the exact
+  set (a missing, extra, deleted or duplicated project) with a conflict whose detail names the
+  difference. The set is read again under a project-row lock once Manage access is proved in every
+  current project, so the detail discloses nothing new; write transactions are serializable on
+  PostgreSQL and serialized on SQLite, so the comparison cannot race a project deletion. Storage
+  keeps only the mode. The `where` of an organization listing or of a create response is therefore
+  itself a valid create request; a project listing shows only its own project, so its `where` fails
+  closed as a stale list. A project created concurrently is covered as any later project is, under
+  the future-project authority below. The CLI's `access rule add --all-projects` and the
+  Members editor's "All projects" choice list the projects first.
+- **Zero projects.** No v1 response may carry an empty `projects`, so the frozen `minItems: 1`
+  stays true for older clients. Creating an all-projects rule in an organization with no project is
+  refused with a conflict. Deleting an organization's last project while an all-projects rule exists
+  there is refused with a conflict naming the blocking rule ids, so they can be revoked first.
+  Project deletion is the only path that removes a project; an organization is deleted only once
+  empty. The deletion locks the organization's projects so concurrent deletions cannot both pass.
+- **Authority (D7).** Creating or revoking an all-projects rule needs Manage access over the
+  complete selector in every current project and over projects created later. Only an
+  organization- or instance-scope grant, or another all-projects rule, covers a future project, so a
+  manager holding `manage-members` in each current project only is refused. The conferred capability
+  follows the same bound, with the unheld-capability allowance of organization authority.
+- **Key moves and pruning.** The D9 move-widening census includes all-projects rules. Deleting a
+  project, environment or key never revokes an all-projects rule, which names none of them.
+
 ## First implementation slice (2026-09-29, historical)
 
 This section records the original delivery floor, not current feature status.
@@ -272,7 +321,8 @@ this slice is narrower than D1 to D11:
 - **Publishing stays environment-wide:** a rule carrying Publish cannot be narrowed by keys (refused on write), and a folder-scoped
   Define keys rule cannot yet create or delete keys in a project that has environments unless publish is
   held environment-wide.
-- **No "all projects" on rules** in this slice; a rule names its projects.
+- **No "all projects" on rules** in this slice; a rule names its projects. *Superseded by the
+  [owner decisions of 2026-11-25](#owner-decisions-2026-11-25).*
 - **The move-widening confirmation (D9)** counts gains through rules only (legacy grants are
   folder-blind), so it may name someone who already had access through a grant, never fewer people.
   Only a holder of legacy `manage-members` on the project is told who gains and may confirm; anyone

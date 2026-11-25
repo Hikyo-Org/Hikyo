@@ -3079,6 +3079,14 @@ export const zRuleCapability = z.enum([
  */
 export const zRuleAxisMode = z.enum(['all', 'only']);
 
+/**
+ * `only` reaches the listed `projects`. `all` reaches every project of
+ * the organisation, including projects created later; such a rule covers
+ * every environment and narrows keys by folder only.
+ *
+ */
+export const zRuleProjectMode = z.enum(['all', 'only']);
+
 export const zRuleEnvironmentItem = z.object({
     project: zId,
     environment: zId
@@ -3749,8 +3757,19 @@ export const zRuleKeyAxis = z.object({
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * With `project_mode` `all` the rule reaches every project of the
+ * organisation, including projects created later. A response lists the
+ * organisation's current projects (a project listing: only that
+ * project), with the rule's folder items repeated under each, so
+ * `projects` is never empty; an organisation listing's or a create's
+ * `where` is a valid create request. A create lists exactly the organisation's current
+ * projects (otherwise 409), keeps the environment axis `all` without
+ * items, and repeats the same folder items, never single keys, under
+ * every project.
+ *
  */
 export const zRuleWhere = z.object({
+    project_mode: zRuleProjectMode.optional(),
     projects: z.array(zId).min(1).max(500),
     environments: zRuleEnvironmentAxis,
     keys: zRuleKeyAxis

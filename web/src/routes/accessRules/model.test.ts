@@ -22,7 +22,10 @@ import {
   reachOf,
   resolve,
   rulesFromGrants,
+  rulesFromServer,
   savePlan,
+  toggleAllProjects,
+  toggleProject,
   type Key,
   type PermId,
   type Rule,
@@ -124,6 +127,101 @@ describe('from the listings', () => {
     expect(state(world, IDS.ci, 'publish', STAGING, DB_PASSWORD)).toBe('yes');
     expect(state(world, IDS.ci, 'publish', PROD, DB_PASSWORD)).toBe('no');
     expect(state(world, 'prn_x', 'edit', DEV, LOG_LEVEL)).toBe('yes');
+  });
+});
+
+describe('all-projects rules from the listings (#1446)', () => {
+  it('reads project_mode all as all projects, with the expanded folder items evaluated per project', () => {
+    const where = (project: string) => ({ project, folder: 'db' });
+    const [rule] = rulesFromServer([
+      {
+        id: 'rul_all',
+        principal_id: IDS.chen,
+        capability: 'edit',
+        other_projects: false,
+        where: {
+          project_mode: 'all',
+          projects: [PAY, IDS.web],
+          environments: { mode: 'all', items: [] },
+          keys: { mode: 'all', items: [where(PAY), where(IDS.web)] },
+        },
+      },
+    ]);
+    expect(rule?.projects).toBe('*');
+    const world = { ...makeWorld(), rules: rule === undefined ? [] : [rule] };
+    expect(state(world, IDS.chen, 'edit', PROD, STRIPE_SECRET)).toBe('yes');
+    expect(state(world, IDS.chen, 'edit', PROD, DB_PASSWORD)).toBe('excepted');
+    expect(resolve(world, IDS.chen, 'edit', IDS.web, IDS.webProd, undefined).state).not.toBe('no');
+  });
+
+  it('keeps a rule without project_mode, from a server before revision 21, on its listed projects', () => {
+    const [rule] = rulesFromServer([
+      {
+        id: 'rul_old',
+        principal_id: IDS.chen,
+        capability: 'read',
+        other_projects: false,
+        where: { projects: [PAY], environments: { mode: 'all', items: [] }, keys: { mode: 'all', items: [] } },
+      },
+    ]);
+    expect(rule?.projects).toEqual([PAY]);
+  });
+
+  it('creates over the listed projects with project_mode all, the folders repeated under each (R2)', () => {
+    const picked = toggleAllProjects(
+      {
+        ...newRule(IDS.chen),
+        perms: ['edit'],
+        projects: [PAY],
+        envs: { mode: 'only', items: [{ project: PAY, environment: STAGING }] },
+        keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: PAY, key: IDS.stripeSecret }] },
+      },
+      [PAY, IDS.web],
+    );
+    expect(picked.projects).toBe('*');
+    expect(picked.envs).toEqual(ALL);
+    expect(createBody(picked, 'edit', [PAY, IDS.web])).toEqual({
+      principal: IDS.chen,
+      capability: 'edit',
+      where: {
+        project_mode: 'all',
+        projects: [PAY, IDS.web],
+        environments: { mode: 'all', items: [] },
+        keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
+      },
+    });
+    // Without the listed projects there is nothing to send.
+    expect(() => createBody(picked, 'edit')).toThrow();
+  });
+
+  it('round-trips: a listed all-projects rule saves back as the same create', () => {
+    const [rule] = rulesFromServer([
+      {
+        id: 'rul_all',
+        principal_id: IDS.chen,
+        capability: 'edit',
+        other_projects: false,
+        where: {
+          project_mode: 'all',
+          projects: [PAY, IDS.web],
+          environments: { mode: 'all', items: [] },
+          keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
+        },
+      },
+    ]);
+    if (rule === undefined) throw new Error('no rule');
+    expect(createBody(rule, 'edit', [PAY, IDS.web]).where).toEqual({
+      project_mode: 'all',
+      projects: [PAY, IDS.web],
+      environments: { mode: 'all', items: [] },
+      keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
+    });
+  });
+
+  it('leaving all projects starts the Where afresh', () => {
+    const all = toggleAllProjects({ ...newRule(IDS.chen), keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } }, [PAY, IDS.web]);
+    expect(toggleAllProjects(all, [PAY, IDS.web])).toMatchObject({ projects: [], envs: ALL, keys: ALL });
+    expect(toggleProject(all, IDS.web)).toMatchObject({ projects: [IDS.web], envs: ALL, keys: ALL });
   });
 });
 

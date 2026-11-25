@@ -653,6 +653,9 @@ func (s *Projects) Delete(ctx context.Context, actor Actor, scope domain.Scope) 
 		if err != nil {
 			return err
 		}
+		if err := refuseLastProjectUnderAllProjectsRules(ctx, az, caller.Principal, scope); err != nil {
+			return err
+		}
 		if err := releaseProjectRules(ctx, r, az, p, caller.Principal, scope); err != nil {
 			return err
 		}
@@ -670,6 +673,41 @@ func (s *Projects) Delete(ctx context.Context, actor Actor, scope domain.Scope) 
 		}
 		return r.Audit().InsertTenant(ctx, p, ev)
 	})
+}
+
+// ErrLastProjectUnderAllProjectsRules refuses deleting an org's last project
+// while a rule over all projects exists: a v1 rule response would otherwise
+// list no project (owner decision 2026-11-25, #1446).
+var ErrLastProjectUnderAllProjectsRules = fmt.Errorf("%w: service: the organization's last project cannot be deleted while rules over all projects exist", domain.ErrConflict)
+
+// refuseLastProjectUnderAllProjectsRules locks the org's projects FOR UPDATE,
+// so a concurrent rule create (FOR SHARE) or a second delete cannot slip past
+// the count. Rule ids are membership information (rule.list-org), so only a
+// caller who also manages the org's members, and can revoke them, is told
+// which rules block the deletion.
+func refuseLastProjectUnderAllProjectsRules(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, scope domain.Scope) error {
+	projects, err := az.LockOrgProjectsForDelete(ctx, scope.Org)
+	if err != nil {
+		return err
+	}
+	if len(projects) != 1 || projects[0] != scope.Project {
+		return nil
+	}
+	ids, err := az.AllProjectsRuleIDsInOrg(ctx, scope.Org)
+	if err != nil || len(ids) == 0 {
+		return err
+	}
+	// Post-authorization (OpProjectDelete), so the raw grant rows only choose
+	// how much the refusal says.
+	rows, err := az.GrantRowsForPrincipal(ctx, caller)
+	if err != nil {
+		return err
+	}
+	detail := "the organization's last project cannot be deleted while rules over all projects exist; a member manager of the organization must revoke them first"
+	if holds(rows, domain.CapManageMembers, domain.Scope{Org: scope.Org}) {
+		detail = "the organization's last project cannot be deleted while rules over all projects exist; revoke rules " + strings.Join(ids, ", ") + " first"
+	}
+	return &detailErr{err: ErrLastProjectUnderAllProjectsRules, detail: detail}
 }
 
 // ---------------------------------------------------------------------------
