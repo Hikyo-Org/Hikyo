@@ -190,7 +190,7 @@ func TestOnlyReleaseAssetRedirectsAreFollowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	hop := func(target string, via int) error {
-		request, err := http.NewRequest(http.MethodGet, target, nil)
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

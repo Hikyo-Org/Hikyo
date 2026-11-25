@@ -283,7 +283,7 @@ func InterruptSignedGateFixtureAfterPrepare(t *testing.T, request Request, claim
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if recovered != ErrFixtureInterrupted {
+			if recoveredError, ok := recovered.(error); !ok || !errors.Is(recoveredError, ErrFixtureInterrupted) {
 				panic(recovered)
 			}
 			err = ErrFixtureInterrupted
