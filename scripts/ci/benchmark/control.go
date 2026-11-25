@@ -130,7 +130,7 @@ func writeAPI(method, path, body string) error {
 	command.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	if _, err := command.Output(); err != nil {
 		if strings.Contains(stderr.String(), "(HTTP 404)") {
-			err = errors.Join(err, errNotFound)
+			err = fmt.Errorf("%w: %w", errNotFound, err)
 		}
 		return fmt.Errorf("GitHub write %s: %w", path, err)
 	}
