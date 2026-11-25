@@ -1572,11 +1572,15 @@ export const listProjectRules = <ThrowOnError extends boolean = false>(options: 
  * Answer who can use one permission in an environment.
  *
  * "Who can...?" (member-access-rules ADR D10), evaluated by the
- * authorization chokepoint for every principal holding a grant or a
- * rule in the org, people and machines alike. It answers who can, who
- * an except of a rule leaves out (naming the rule and the excepts), who
- * has Reveal without See, and whom no grant or rule reaches. An
- * instance-scope grant holder is listed only when it reaches. Without
+ * authorization chokepoint for the principals with a grant in the
+ * project, an organisation-wide grant of the asked permission, or a
+ * project rule the caller may manage, people and machines alike.
+ * Instance operators are not listed, and grants above organisation
+ * scope are not shown. It answers
+ * who can, who an except of a rule leaves out (naming the rule and the
+ * excepts), who has Reveal without See, and whom no grant or rule of
+ * theirs reaches. Rules the caller cannot manage are never named, and
+ * nothing from a sibling project appears. Without
  * `key` the question is about the whole environment, so a rule limited
  * to some keys does not reach and is listed as `key_limited`. A machine
  * whose project has machine reveal turned off holds no Reveal. The
