@@ -216,7 +216,7 @@ cp -R "$scratch/new" "$scratch/t"
 edit_t catalog.json --arg d "$legacy_first" '.bridges -= [$d]'
 rm -rf "$scratch/t/bridges/$legacy_first"
 resign_t "$recovery_key"
-proposal_fails 'no base trust file was removed' 'a legacy bridge dropped from the catalog with its files removed'
+proposal_fails 'no replaced bridge is listed by the stable policy' 'a policy-listed legacy bridge dropped from the catalog with its files removed'
 cp -R "$scratch/new" "$scratch/t"
 rm "$scratch/t/stable-trusted-root.json"
 proposal_fails 'no base trust file was removed' 'a base trust file deleted from the tree'
@@ -297,7 +297,8 @@ chmod 644 "$scratch/t/noexec"
 proposal_fails 'is readable' 'a mode-644 directory that BSD find would not descend into'
 cp -R "$scratch/new" "$scratch/t"
 cp "$scratch/new/metadata.json" "$scratch/t/caf$(printf '\303\251')"
-proposal_fails 'plain name' 'a non-ASCII file name that a UTF-8 locale would accept'
+case $(uname) in Darwin) utf8=en_US.UTF-8 ;; *) utf8=C.UTF-8 ;; esac
+LC_ALL=$utf8 proposal_fails 'plain name' 'a non-ASCII file name under a UTF-8 locale (the verifier must pin LC_ALL=C)'
 rm -f "$scratch/dup-statement.json"
 
 step '6c. expiry: a signed, catalogued statement with a bad not_after is refused by the not_after check'
@@ -326,6 +327,11 @@ forge_statement '.not_after = "tomorrow"' 'not_after is canonical UTC, in the fu
 forge_statement '.not_after = "2099-02-30T00:00:00Z"' 'not_after is canonical UTC, in the future' 'a not_after that is not a real date'
 forge_statement '.not_after = "2099-01-01T00:00:00Z"' 'not_after is canonical UTC, in the future' 'a not_after more than 30 days out (an unbounded bridge)'
 forge_statement '.not_after = "2099-01-01T01:00:00+01:00"' 'not_after is canonical UTC, in the future' 'a not_after with an offset'
+# A leap second is not canonical: jq normalizes it, so only the round trip catches it.
+VERIFY_NOW=$(jq -n '"2099-12-31T23:00:00Z" | fromdateiso8601')
+export VERIFY_NOW
+forge_statement '.not_after = "2099-12-31T23:59:60Z"' 'not_after is canonical UTC, in the future' 'a leap-second not_after inside the window'
+unset VERIFY_NOW
 forge_statement '.schema = "hikyo.dev/recovery-bridge/v1" | del(.not_after)' 'every field but not_after equals' 'a downgrade to the v1 statement without expiry'
 
 step '6d. revocation list: recovery-signed, root-bound, monotonic; the apply-time checker obeys it'
@@ -341,12 +347,14 @@ check_refused() { # WANT DESCRIPTION COMMAND...: the command fails and its error
 	if out=$("$@" 2>&1); then printf 'NOT REFUSED: %s\n' "$description"; exit 1; fi
 	case $out in *"$want"*) printf 'refused: %s\n' "$description" ;; *) printf 'refused, but not as expected (%s): %s\n' "$want" "$out"; exit 1 ;; esac
 }
+pin_root=$(sha256_of "$scratch/base/root.json")
+pin_key=$(sha256_of "$scratch/base/recovery-rehearsal.pub")
 "$ceremony" revocation-list "$recovery_key" "$scratch/new" 1 "$scratch/list1" "$first" >/dev/null
 "$ceremony" revocation-list "$recovery_key" "$scratch/new" 2 "$scratch/list2" >/dev/null
-"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/list1" 0 >/dev/null
+"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/list1" 0 "$pin_root" "$pin_key" >/dev/null
 printf 'ok: the verifier accepts the first list\n'
 list_fails() { # PATTERN DESCRIPTION: the list in scratch/t must be refused by the targeted check
-	expect_fail "$1" "$2" "$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/t" "${3:-0}"
+	expect_fail "$1" "$2" "$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/t" "${3:-0}" "$pin_root" "$pin_key"
 	rm -rf "$scratch/t"
 }
 mkdir "$scratch/t"
@@ -371,6 +379,47 @@ jq '.revoked |= reverse' "$scratch/list-unsorted/recovery-revocations.json" >"$s
 	--key "$recovery_key" --bundle "$scratch/t/recovery-revocations.sigstore.json" "$scratch/t/recovery-revocations.json" >/dev/null 2>&1 </dev/null
 list_fails 'sorted, unique' 'a validly signed list that is not sorted' 2
 rm -rf "$scratch/list-unsorted"
+# sign_list DIR: re-sign the list in DIR with the recovery key (a signed edit).
+sign_list() {
+	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false --use-signing-config=false \
+		--key "$recovery_key" --bundle "$1/recovery-revocations.sigstore.json" "$1/recovery-revocations.json" >/dev/null 2>&1 </dev/null
+}
+# edit_list JQ...: a validly signed edit of list1 in scratch/t, so only the list checks can refuse it.
+edit_list() {
+	mkdir "$scratch/t"
+	jq "$@" "$scratch/list1/recovery-revocations.json" >"$scratch/t/recovery-revocations.json"
+	sign_list "$scratch/t"
+}
+edit_list '.extra = 1'
+list_fails 'exactly the schema' 'a validly signed list with an extra field'
+edit_list 'del(.issued_at)'
+list_fails 'exactly the schema' 'a validly signed list without issued_at'
+edit_list '.schema = "hikyo.dev/recovery-revocations/v2"'
+list_fails 'exactly the schema' 'a validly signed list with another schema'
+edit_list '.issued_at = "2020-01-01T00:00:00Z"'
+list_fails 'issued_at is canonical UTC' 'a validly signed list issued long ago (stale to clients)'
+edit_list '.issued_at = "2099-01-01T00:00:00Z"'
+list_fails 'issued_at is canonical UTC' 'a validly signed list issued in the future'
+edit_list '.issued_at = "2026-01-01T01:00:00+01:00"'
+list_fails 'issued_at is canonical UTC' 'a validly signed list whose issued_at has an offset'
+mkdir "$scratch/t"
+cp "$scratch/list1/recovery-revocations.json" "$scratch/t/"
+dupkey "$scratch/t/recovery-revocations.json" '"revoked":[]'
+sign_list "$scratch/t"
+list_fails 'the list has no duplicate keys' 'a validly signed list that repeats a key'
+# The verifier takes its key and root from the committed pins, not from the tree it is handed.
+cp -R "$scratch/new" "$scratch/rerooted"
+cp "$scratch/key/other/cosign.pub" "$scratch/rerooted/$(jq -r '.recovery.public_key' "$scratch/rerooted/root.json")"
+jq --arg sha "$(sha256_of "$scratch/key/other/cosign.pub")" '.recovery.sha256 = $sha' "$scratch/new/root.json" >"$scratch/rerooted/root.json"
+ISSUED_AT=$(date +%s) COSIGN_PASSWORD='' "$ceremony" revocation-list "$scratch/key/other/cosign.key" "$scratch/rerooted" 1 "$scratch/list-rerooted" "$first" >/dev/null
+expect_fail 'trust root is the committed one' 'a list checked against a tree whose root and recovery key were swapped' \
+	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/rerooted" "$scratch/list-rerooted" 0 "$pin_root" "$pin_key"
+rm -rf "$scratch/rerooted" "$scratch/list-rerooted"
+# The verifier also refuses a list the clients would call stale.
+ISSUED_AT=$(($(date +%s) - 8 * 86400)) "$ceremony" revocation-list "$recovery_key" "$scratch/new" 1 "$scratch/list-old" "$first" >/dev/null
+mkdir "$scratch/t"
+cp "$scratch/list-old/recovery-revocations.json" "$scratch/list-old/recovery-revocations.sigstore.json" "$scratch/t/"
+list_fails 'issued_at is canonical UTC' 'a list issued eight days ago'
 # The real apply-time checker, run on the ceremony's own lists. With no network the
 # fallback is the bridge's signed expiry; a reachable list revokes; replays are refused.
 mkdir "$scratch/state"
@@ -393,6 +442,35 @@ check_refused 'recovery-bridge:' 'a list with a bad signature (the endpoint answ
 rm -rf "$scratch/t"
 check_out 'outcome=checked sequence=2 revoked=[]' 'the refusals left the remembered floor unchanged' \
 	"$ceremony" check-revocations "$scratch/new" "$scratch/state" "$scratch/list2" "$first"
+
+# A replayed old list: authentic, but its age exceeds the window, so it never counts as
+# checked. The checker falls back to the bridge's own not_after (entries still apply).
+mkdir "$scratch/state-stale"
+check_out "outcome=stale-fell-back-to-expiry sequence=1 revoked=[$first]" 'an old, validly signed list is stale, never checked' \
+	"$ceremony" check-revocations "$scratch/new" "$scratch/state-stale" "$scratch/list-old" "$first" "$second"
+rm -rf "$scratch/state-stale" "$scratch/list-old"
+
+step '6e. re-sign: a lapsed bridge is replaced in the catalog, never kept beside its replacement'
+resigned_not_after=$(jq -nr '(now | floor) + 1728000 | todate')
+"$ceremony" author "$scratch/new" "$proofs/rel100" "$proofs/rel110" "$scratch/statements2" "$resigned_not_after"
+"$script_dir/verify-recovery-bridge.sh" unsigned "$scratch/new" "$scratch/statements2" "$proofs/rel100" "$proofs/rel110" >/dev/null
+"$ceremony" sign "$scratch/key/cosign.key" "$scratch/statements2" >/dev/null
+# Keeping the old digests beside the new ones puts two bridges on one pair: one lapsed
+# bridge would then break every plan from the bundle, so the verifier refuses the tree.
+"$ceremony" reauthorize "$scratch/key/cosign.key" "$scratch/new" "$scratch/statements2" "$scratch/resign-keep" >/dev/null
+expect_fail 'no new bridge repeats the pair of a bridge that stays catalogued' 're-signing without replacing the old digests' \
+	"$script_dir/verify-recovery-bridge.sh" proposal "$scratch/new" "$scratch/resign-keep" "$proofs/rel100" "$proofs/rel110"
+"$ceremony" reauthorize "$scratch/key/cosign.key" "$scratch/new" "$scratch/statements2" "$scratch/resign" "$first" "$second" >/dev/null
+"$script_dir/verify-recovery-bridge.sh" proposal "$scratch/new" "$scratch/resign" "$proofs/rel100" "$proofs/rel110" >/dev/null
+printf 'ok: a re-sign that replaces the old digests is accepted\n'
+jq -e --arg a "$first" --arg b "$second" '(.bridges | index($a) | not) and (.bridges | index($b) | not)' "$scratch/resign/catalog.json" >/dev/null
+test ! -e "$scratch/resign/bridges/$first"
+"$ceremony" assemble "$scratch/resign" "$scratch/resign-bundle" "$proofs/rel100" "$proofs/rel110" >/dev/null
+# Dropping a bridge with no replacement is a revocation, not a re-sign.
+"$ceremony" revoke "$scratch/key/cosign.key" "$scratch/new" "$scratch/dropped" "$first" >/dev/null
+expect_fail 'replaced by a new bridge for the same engine, source and target' 'a proposal that drops a bridge without replacing it' \
+	"$script_dir/verify-recovery-bridge.sh" proposal "$scratch/new" "$scratch/dropped" "$proofs/rel100" "$proofs/rel110"
+rm -rf "$scratch/resign-keep" "$scratch/resign" "$scratch/resign-bundle" "$scratch/dropped" "$scratch/statements2"
 
 step '7. revocation: a new recovery-signed snapshot drops the new bridges, keeps the legacy ones'
 # A bridge the stable policy lists needs a policy rotation, so revoke refuses it.

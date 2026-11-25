@@ -40,7 +40,7 @@ route a stranded release. None is automatic, and each needs an owner decision:
 - **Nothing.** The installation stays on its release. Restoring its backup into
   a newer release does not work either: v1.1.0 refuses a v1.0.0 archive
   (`archive source has no authenticated embedded schema route`).
-- **A recovery-signed bridge** (`hikyo.dev/recovery-bridge/v1`) per engine from
+- **A recovery-signed bridge** (`hikyo.dev/recovery-bridge/v2`, with a signed `not_after` of at most 30 days) per engine from
   the stranded release to its successor, authorized by a new offline-signed
   catalog and passed to `assemble-upgrade --bridge`. It needs the recovery-key
   ceremony and operator attestation at upgrade time. See

@@ -3,10 +3,10 @@
 #
 #   recovery-bridge.sh author      TRUST SOURCE_PROOFS TARGET_PROOFS STATEMENTS [NOT_AFTER]
 #   recovery-bridge.sh sign        KEY STATEMENTS
-#   recovery-bridge.sh reauthorize KEY TRUST STATEMENTS OUT
+#   recovery-bridge.sh reauthorize KEY TRUST STATEMENTS OUT [REPLACED_DIGEST...]
 #   recovery-bridge.sh assemble    TRUST OUT RELEASE_PROOFS...
 #   recovery-bridge.sh revoke      KEY TRUST OUT DIGEST...
-#   recovery-bridge.sh revocation-list KEY TRUST SEQUENCE OUT DIGEST...
+#   recovery-bridge.sh revocation-list KEY TRUST SEQUENCE OUT DIGEST...   (ISSUED_AT=epoch overrides now, for rehearsals)
 #   recovery-bridge.sh check-revocations TRUST STATE LIST_DIR|- [DIGEST...]
 #
 # author derives the unsigned v2 statements from authenticated public release
@@ -86,8 +86,15 @@ sign() {
 }
 
 reauthorize() {
-	[ "$#" -eq 4 ] || fail 'usage: reauthorize KEY TRUST STATEMENTS OUT'
+	[ "$#" -ge 4 ] || fail 'usage: reauthorize KEY TRUST STATEMENTS OUT [REPLACED_DIGEST...]'
 	key=$1 trust=$2 statements=$3 out=$4
+	shift 4
+	# REPLACED_DIGEST... are the lapsed bridges the new statements supersede: they leave the
+	# catalog and the tree, so a lapsed bridge never shares a pair with its replacement.
+	replaced=$(for digest in "$@"; do printf '%s\n' "$digest"; done | jq -R . | jq -s .)
+	jq -e --argjson replaced "$replaced" '($replaced - .bridges) | length == 0' "$trust/catalog.json" >/dev/null || fail 'a replaced digest is not in the catalog'
+	jq -e --argjson replaced "$replaced" '(.bridges // []) as $listed | ($replaced - ($replaced - $listed)) | length == 0' "$trust/stable-policy.json" >/dev/null ||
+		fail 'a replaced digest is listed by the stable policy; that needs a policy rotation'
 	[ ! -e "$out" ] || fail "$out already exists"
 	# Build beside the target and rename, so a failed signing leaves no partial tree.
 	final=$out out=$out.partial
@@ -101,6 +108,7 @@ reauthorize() {
 		esac
 	done
 	mkdir -p "$out/bridges"
+	for digest in "$@"; do rm -rf "${out:?}/bridges/$digest"; done
 	recovery_id=$(jq -r '.recovery.id' "$trust/root.json")
 	digests=
 	for directory in "$statements"/*/; do
@@ -117,8 +125,8 @@ reauthorize() {
 	cosign_sign "$key" "$out/metadata.json" "$out/metadata.sigstore.json"
 	# The catalog lists the bridges; stable-policy.json (and its digest) stay as they were.
 	added=$(for digest in $digests; do printf '%s\n' "$digest"; done | jq -R . | jq -s .)
-	jq --arg metadata "$(sha256_of "$out/metadata.json")" --arg policy "$(sha256_of "$out/stable-policy.json")" --argjson added "$added" \
-		'.sequence += 1 | .stable_metadata_sha256 = $metadata | .stable_policy_sha256 = $policy | .bridges = ((.bridges + $added) | unique)' \
+	jq --arg metadata "$(sha256_of "$out/metadata.json")" --arg policy "$(sha256_of "$out/stable-policy.json")" --argjson added "$added" --argjson replaced "$replaced" \
+		'.sequence += 1 | .stable_metadata_sha256 = $metadata | .stable_policy_sha256 = $policy | .bridges = (((.bridges - $replaced) + $added) | unique)' \
 		"$trust/catalog.json" >"$out/catalog.json"
 	cosign_sign "$key" "$out/catalog.json" "$out/catalog.sigstore.json"
 	mv "$out" "$final"
@@ -157,7 +165,10 @@ revoke() {
 # and its signature: the list the bridge guard fetches. It is bound to the pinned
 # trust root and signed by the recovery key. SEQUENCE must be the published
 # list's sequence plus one (1 for the first list); a client refuses anything
-# lower. Publish both files at the pinned endpoint.
+# lower. The list carries a signed issued_at: a client treats a list older than
+# 7 days as stale (it falls back to not_after, like an unreachable endpoint), so
+# re-issue the list, with the next sequence, at least weekly.
+# Publish both files at the pinned endpoint.
 revocation_list() {
 	[ "$#" -ge 4 ] || fail 'usage: revocation-list KEY TRUST SEQUENCE OUT DIGEST...'
 	key=$1 trust=$2 sequence=$3 out=$4
@@ -166,8 +177,8 @@ revocation_list() {
 	[ ! -e "$out" ] || fail "$out already exists"
 	revoked=$(for digest in "$@"; do printf '%s\n' "$digest"; done | sort -u | jq -R . | jq -s .)
 	mkdir -p "$out"
-	jq -n --argjson sequence "$sequence" --arg root "$(sha256_of "$trust/root.json")" --argjson revoked "$revoked" \
-		'{schema: "hikyo.dev/recovery-revocations/v1", sequence: $sequence, trust_root_sha256: $root, revoked: ($revoked | map(select(. != "")))}' \
+	jq -n --argjson sequence "$sequence" --arg issued "$(jq -nr --argjson at "${ISSUED_AT:-$(date +%s)}" '$at | todate')" --arg root "$(sha256_of "$trust/root.json")" --argjson revoked "$revoked" \
+		'{schema: "hikyo.dev/recovery-revocations/v1", sequence: $sequence, issued_at: $issued, trust_root_sha256: $root, revoked: ($revoked | map(select(. != "")))}' \
 		>"$out/recovery-revocations.json"
 	cosign_sign "$key" "$out/recovery-revocations.json" "$out/recovery-revocations.sigstore.json"
 	printf 'revocation list: %s\n' "$out"

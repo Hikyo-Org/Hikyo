@@ -89,3 +89,77 @@ func TestDeriveRefusesAnUnboundedOrPastExpiry(t *testing.T) {
 		t.Fatalf("exactly thirty days is allowed: %v", err)
 	}
 }
+
+// A lapsed bridge and its re-signed replacement share a source and target pair.
+// The lapsed one must leave the route graph before the duplicate-pair check, or one
+// expired bridge in the bundle breaks every plan, including unrelated ones.
+func TestLapsedBridgeDoesNotBreakItsResignedReplacementOrUnrelatedPlans(t *testing.T) {
+	f := testfixture.New(t)
+	a, da := release(t, f, 1, 2, "x", nil)
+	b, db := release(t, f, 2, 4, "x", nil)
+	snapshot := f.Snapshot(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	lapsed, err := recoverybridge.Derive(evidence(t, snapshot, a, da), evidence(t, snapshot, b, db), now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := recoverybridge.Derive(evidence(t, snapshot, a, da), evidence(t, snapshot, b, db), now, now.Add(20*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := append(append([]recoverybridge.Statement{}, lapsed...), fresh...)
+	f.Catalog.Bridges = nil
+	for _, s := range all {
+		f.Catalog.Bridges = append(f.Catalog.Bridges, s.Digest)
+	}
+	f.Catalog.Sequence++
+	snapshot = f.Snapshot(t)
+	var bridges []releasetrust.VerifiedBridge
+	for _, s := range all {
+		verified, err := releasetrust.VerifyBridge(snapshot, releasetrust.BridgeMaterial{Statement: s.Bytes, Signature: testfixture.Sign(t, f.RecoverySigner, s.Bytes)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bridges = append(bridges, verified)
+	}
+	var nodes []upgradecompat.VerifiedNode
+	for _, signed := range []testfixture.SignedRelease{a, b} {
+		verified, err := releasetrust.VerifyStable(snapshot, signed.Material)
+		if err != nil {
+			t.Fatal(err)
+		}
+		node, err := upgradecompat.Bind(verified, signed.Material.Compatibility)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nodes = append(nodes, node)
+	}
+	sourceOf := func(signed testfixture.SignedRelease, declaration upgradecompat.Declaration) upgradecompat.InstalledSource {
+		for _, e := range declaration.Engines {
+			if e.Migrations.Engine == releaseidentity.SQLite {
+				return upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: signed.Identity}, Migrations: e.Migrations, SchemaSHA256: e.SchemaSHA256}
+			}
+		}
+		t.Fatal("no sqlite declaration")
+		return upgradecompat.InstalledSource{}
+	}
+	later := now.Add(2 * time.Hour)
+	plan, err := upgradecompat.PlanRouteAt(snapshot, sourceOf(a, da), b.Identity, nodes, bridges, later, nil)
+	if err != nil || len(plan.BridgeDigests()) != 1 {
+		t.Fatalf("the re-signed bridge plans after the old one lapsed: %v %v", plan.BridgeDigests(), err)
+	}
+	if _, err := upgradecompat.PlanRouteAt(snapshot, sourceOf(b, db), b.Identity, nodes, bridges, later, nil); err != nil {
+		t.Fatalf("an unrelated plan survives a lapsed bridge in the bundle: %v", err)
+	}
+	// Revoking every bridge leaves no bridged route, but not a broken bundle.
+	revoked := []releaseidentity.Digest{}
+	for _, s := range all {
+		revoked = append(revoked, s.Digest)
+	}
+	if _, err := upgradecompat.PlanRouteAt(snapshot, sourceOf(b, db), b.Identity, nodes, bridges, later, revoked); err != nil {
+		t.Fatalf("an unrelated plan survives revoked bridges: %v", err)
+	}
+	if _, err := upgradecompat.PlanRouteAt(snapshot, sourceOf(a, da), b.Identity, nodes, bridges, later, revoked); err == nil {
+		t.Fatal("with every bridge revoked the bridged route is gone")
+	}
+}

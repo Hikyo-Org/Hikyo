@@ -28,7 +28,7 @@ func TestSignedBridgeCannotReturnNightlyToItsStableBase(t *testing.T) {
 			target.Profile, target.Version, target.Sequence = releaseidentity.StableV1, tc.version, 11
 			migrations := releaseidentity.MigrationManifest{Engine: releaseidentity.SQLite, Entries: []releaseidentity.Migration{}}
 			material := f.AddBridge(t, releasetrust.BridgeStatement{
-				Schema: "hikyo.dev/recovery-bridge/v1", Source: source, Target: target,
+				Schema: releasetrust.BridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", Source: source, Target: target,
 				SourcePolicySHA256: digest, TargetPolicySHA256: digest,
 				SourceMigrations: migrations, TargetMigrations: migrations,
 				SourceSchemaSHA256: digest, TargetSchemaSHA256: digest, Mode: "maintenance",

@@ -22,7 +22,7 @@ type BridgeStatement struct {
 	TargetSchemaSHA256 releaseidentity.Digest            `json:"target_schema_sha256"`
 	Mode               string                            `json:"mode"`
 	// NotAfter is the canonical UTC instant (RFC 3339, "Z") after which a v2
-	// bridge is no longer usable. v1 statements carry none and never expire.
+	// bridge is no longer usable. Only the legacy nightly bridges carry none and never expire.
 	NotAfter string `json:"not_after,omitempty"`
 }
 
@@ -39,8 +39,8 @@ func notAfter(value string) (time.Time, error) {
 	return at, nil
 }
 
-// Expired reports whether the bridge may no longer be used at now. A v1
-// statement has no expiry. The host clock is the only clock consulted.
+// Expired reports whether the bridge may no longer be used at now. A
+// legacy nightly statement has no expiry. The host clock is the only clock consulted.
 func (b VerifiedBridge) Expired(now time.Time) bool {
 	if b.state == nil {
 		return true
@@ -111,14 +111,10 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 		return VerifiedBridge{}, errors.New("invalid recovery bridge identity or mode")
 	}
 	switch statement.Schema {
-	case "hikyo.dev/recovery-bridge/v1", BridgeSchemaV2:
-		if (statement.Schema == BridgeSchemaV2) == (statement.NotAfter == "") {
-			return VerifiedBridge{}, errors.New("recovery bridge v2 requires not_after and v1 forbids it")
-		}
-		if statement.NotAfter != "" {
-			if _, err := notAfter(statement.NotAfter); err != nil {
-				return VerifiedBridge{}, err
-			}
+	case BridgeSchemaV2:
+		// The unbounded v1 recovery statement is refused: every recovery bridge expires.
+		if _, err := notAfter(statement.NotAfter); err != nil {
+			return VerifiedBridge{}, err
 		}
 		if statement.SourceGenesis != "" || statement.Source.Validate() != nil || statement.Target.Sequence <= statement.Source.Sequence || statement.SourcePolicySHA256.Validate() != nil {
 			return VerifiedBridge{}, errors.New("invalid recovery bridge source")

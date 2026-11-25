@@ -65,7 +65,7 @@ entirely and is not a fallback.
 - **A. Nothing.** v1.0.0 installs stay on v1.0.0. Restore into a newer release
   is refused (see above). Rejected.
 - **B. Recovery-signed bridge v1.0.0 → v1.1.0**, one statement per engine, in a
-  new offline-signed catalog (`hikyo.dev/recovery-bridge/v1`). It reaches
+  new offline-signed catalog (`hikyo.dev/recovery-bridge/v2`, with a signed `not_after`). It reaches
   exactly the missing hop, changes no release check, and needs the recovery-key
   ceremony plus operator attestation at upgrade time. A v1.0.0 install then
   takes two hops (to v1.1.0, then to the next release).

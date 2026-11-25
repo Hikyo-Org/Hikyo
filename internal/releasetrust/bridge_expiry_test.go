@@ -28,12 +28,12 @@ func TestBridgeNotAfterIsRequiredCanonicalAndEnforced(t *testing.T) {
 		name, schema, notAfter, refusal string
 	}{
 		{"v2 canonical", releasetrust.BridgeSchemaV2, "2026-12-24T00:00:00Z", ""},
-		{"v2 without not_after", releasetrust.BridgeSchemaV2, "", "requires not_after"},
-		{"v1 carrying not_after", "hikyo.dev/recovery-bridge/v1", "2026-12-24T00:00:00Z", "requires not_after"},
+		{"v2 without not_after", releasetrust.BridgeSchemaV2, "", "canonical UTC"},
+		{"v1 carrying not_after", "hikyo.dev/recovery-bridge/v1", "2026-12-24T00:00:00Z", "unknown recovery bridge schema"},
 		{"v2 with an offset", releasetrust.BridgeSchemaV2, "2026-12-24T01:00:00+01:00", "canonical UTC"},
 		{"v2 with fractional seconds", releasetrust.BridgeSchemaV2, "2026-12-24T00:00:00.5Z", "canonical UTC"},
 		{"v2 malformed", releasetrust.BridgeSchemaV2, "tomorrow", "canonical UTC"},
-		{"v1 without not_after", "hikyo.dev/recovery-bridge/v1", "", ""},
+		{"v1 without not_after (unbounded, refused at runtime)", "hikyo.dev/recovery-bridge/v1", "", "unknown recovery bridge schema"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := testfixture.New(t)
@@ -67,9 +67,30 @@ func TestBridgeNotAfterIsRequiredCanonicalAndEnforced(t *testing.T) {
 	}
 }
 
+func TestLegacyNightlyBridgeForbidsNotAfterAndNeverExpires(t *testing.T) {
+	legacy := func(notAfter string) releasetrust.BridgeStatement {
+		digest := releaseidentity.Hash([]byte("fixture"))
+		target := releaseidentity.Identity{Profile: releaseidentity.NightlyV1, Version: "1.1.0-nightly.20260101.1.gabcdef12", Sequence: 2, Commit: strings.Repeat("c", 40), CompatibilitySHA256: digest, ManifestSHA256: digest}
+		migrations := releaseidentity.MigrationManifest{Engine: "sqlite", Entries: []releaseidentity.Migration{{Version: 1, SHA256: digest}}}
+		return releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Mode: "maintenance", Target: target, TargetPolicySHA256: digest,
+			SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: digest, TargetSchemaSHA256: digest, NotAfter: notAfter}
+	}
+	f := testfixture.New(t)
+	withExpiry := f.AddBridge(t, legacy("2026-12-24T00:00:00Z"))
+	if _, err := releasetrust.VerifyBridge(f.Snapshot(t), withExpiry); err == nil || !strings.Contains(err.Error(), "invalid legacy nightly bridge") {
+		t.Fatalf("a legacy nightly bridge must not carry not_after: %v", err)
+	}
+	g := testfixture.New(t)
+	plain := g.AddBridge(t, legacy(""))
+	bridge, err := releasetrust.VerifyBridge(g.Snapshot(t), plain)
+	if err != nil || bridge.Expired(time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("a legacy nightly bridge verifies and never expires: %v", err)
+	}
+}
+
 func revocationDocument(f *testfixture.Fixture, t *testing.T, mutate func(*releasetrust.RevocationList)) ([]byte, []byte) {
 	t.Helper()
-	list := releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 3, TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: []releaseidentity.Digest{releaseidentity.Hash([]byte("a")), releaseidentity.Hash([]byte("b"))}}
+	list := releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 3, IssuedAt: "2026-12-01T00:00:00Z", TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: []releaseidentity.Digest{releaseidentity.Hash([]byte("a")), releaseidentity.Hash([]byte("b"))}}
 	if list.Revoked[0] > list.Revoked[1] {
 		list.Revoked[0], list.Revoked[1] = list.Revoked[1], list.Revoked[0]
 	}
@@ -85,7 +106,7 @@ func TestRevocationListIsAuthenticatedAndBoundToTheRoot(t *testing.T) {
 	snapshot := f.Snapshot(t)
 	raw, signature := revocationDocument(f, t, nil)
 	verified, err := snapshot.VerifyRevocations(raw, signature)
-	if err != nil || verified.Sequence() != 3 || len(verified.Revoked()) != 2 || verified.Digest() != releaseidentity.Hash(raw) {
+	if err != nil || !verified.IssuedAt().Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) || verified.Sequence() != 3 || len(verified.Revoked()) != 2 || verified.Digest() != releaseidentity.Hash(raw) {
 		t.Fatalf("a signed, root-bound list verifies: %+v %v", verified, err)
 	}
 	other := testfixture.New(t)
@@ -103,6 +124,8 @@ func TestRevocationListIsAuthenticatedAndBoundToTheRoot(t *testing.T) {
 		"duplicate":              {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked[1] = l.Revoked[0] }), nil, "sorted"},
 		"invalid digest":         {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked = []releaseidentity.Digest{"zz"} }), nil, "sorted"},
 		"too many":               {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked = manyDigests(releasetrust.MaxRevocations + 1) }), nil, "too long"},
+		"missing issued_at":      {revoke(f, t, func(l *releasetrust.RevocationList) { l.IssuedAt = "" }), nil, "issued_at"},
+		"issued_at with offset":  {revoke(f, t, func(l *releasetrust.RevocationList) { l.IssuedAt = "2026-12-01T01:00:00+01:00" }), nil, "issued_at"},
 		"not json":               {[]byte("{"), nil, ""},
 		"unknown field":          {[]byte(`{"schema":"` + releasetrust.RevocationSchema + `","sequence":1,"extra":1}`), nil, ""},
 		"tampered after signing": {append([]byte(" "), raw...), signature, ""},

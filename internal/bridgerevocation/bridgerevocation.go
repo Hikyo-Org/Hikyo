@@ -8,6 +8,7 @@ package bridgerevocation
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -30,6 +31,14 @@ import (
 // DefaultURL is the pinned list location. The signed content, not the location,
 // carries the authority. The owner confirms the production host at the ceremony.
 const DefaultURL = "https://hikyo.dev/trust/recovery-revocations"
+
+// MaxListAge is how old a list's signed issued_at may be and still count as a
+// current answer. A replayed older list cannot be told apart from the current
+// one by sequence on an installation that has stored nothing; its age can.
+const MaxListAge = 7 * 24 * time.Hour
+
+// maxFutureSkew bounds how far ahead of the host clock issued_at may be.
+const maxFutureSkew = 24 * time.Hour
 
 const (
 	maxBody        = 64 << 10
@@ -63,6 +72,10 @@ const (
 	Checked     Outcome = "checked"
 	Unreachable Outcome = "unreachable-fell-back-to-expiry"
 	Disabled    Outcome = "disabled-by-operator"
+	// Stale is an authentic list issued longer ago than MaxListAge. Its entries
+	// still apply, but it proves nothing about newer revocations, so the route
+	// is bounded by the bridge's expiry exactly as when unreachable.
+	Stale Outcome = "stale-fell-back-to-expiry"
 )
 
 // ErrUnreachable marks a transport failure: there was no authoritative answer.
@@ -114,7 +127,7 @@ func (f HTTPFetcher) get(ctx context.Context, target string) ([]byte, error) {
 	response, err := f.Client.Do(request)
 	if err != nil {
 		if transportFailure(err) {
-			return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
+			return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 		}
 		return nil, fmt.Errorf("revocation endpoint answered unusably: %w", err)
 	}
@@ -128,7 +141,13 @@ func (f HTTPFetcher) get(ctx context.Context, target string) ([]byte, error) {
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxBody+1))
 	if err != nil {
-		return nil, fmt.Errorf("%w: reading body: %v", ErrUnreachable, err)
+		// A response began and then broke: a timeout is no answer, anything else
+		// (a truncated body) is an answer that cannot be trusted.
+		var network net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &network) && network.Timeout()) {
+			return nil, fmt.Errorf("%w: reading body: %w", ErrUnreachable, err)
+		}
+		return nil, fmt.Errorf("revocation response body unusable: %w", err)
 	}
 	if len(body) > maxBody {
 		return nil, errors.New("revocation response exceeds its byte bound")
@@ -136,20 +155,21 @@ func (f HTTPFetcher) get(ctx context.Context, target string) ([]byte, error) {
 	return body, nil
 }
 
-// transportFailure is true for errors that mean "no authoritative answer":
-// name resolution, dialing, timeouts. A certificate or protocol error means a
-// server did answer, wrongly, and is not a fallback case.
+// transportFailure is true for errors before any HTTP response: name
+// resolution, dialing, resets, EOF and timeouts. They mean "no authoritative
+// answer". A certificate or TLS protocol failure means a server did answer,
+// wrongly, and is not a fallback case.
 func transportFailure(err error) bool {
 	var unknownAuthority x509.UnknownAuthorityError
 	var invalidCertificate x509.CertificateInvalidError
 	var hostname x509.HostnameError
-	if errors.As(err, &unknownAuthority) || errors.As(err, &invalidCertificate) || errors.As(err, &hostname) {
+	var verification *tls.CertificateVerificationError
+	var record tls.RecordHeaderError
+	var alert tls.AlertError
+	if errors.As(err, &unknownAuthority) || errors.As(err, &invalidCertificate) || errors.As(err, &hostname) || errors.As(err, &verification) || errors.As(err, &record) || errors.As(err, &alert) {
 		return false
 	}
-	var dns *net.DNSError
-	var op *net.OpError
-	var network net.Error
-	return errors.As(err, &dns) || (errors.As(err, &op) && op.Op == "dial") || errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &network) && network.Timeout())
+	return true
 }
 
 // Result is what a check learned. Revoked is the verified list's contents from
@@ -208,6 +228,11 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	if err != nil {
 		return Result{}, err
 	}
+	now := c.clock()
+	age := now.Sub(fresh.IssuedAt())
+	if age < -maxFutureSkew {
+		return Result{}, errors.New("revocation list is issued in the future")
+	}
 	if haveKnown {
 		if fresh.Sequence() < known.Sequence() {
 			return Result{}, errors.New("revocation list rollback refused")
@@ -221,7 +246,11 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 			return Result{}, err
 		}
 	}
-	return Result{Outcome: Checked, Sequence: fresh.Sequence(), Revoked: fresh.Revoked()}, c.record(Result{Outcome: Checked, Sequence: fresh.Sequence()})
+	outcome := Checked
+	if age > MaxListAge {
+		outcome = Stale
+	}
+	return Result{Outcome: outcome, Sequence: fresh.Sequence(), Revoked: fresh.Revoked()}, c.record(Result{Outcome: outcome, Sequence: fresh.Sequence()})
 }
 
 // Revoked adapts Check to the gate's hook: the revoked digests, or the error
@@ -259,12 +288,15 @@ func (c Checker) persist(list, signature []byte) error {
 	return writeAtomic(filepath.Join(c.Directory, listFile), list)
 }
 
-func (c Checker) record(result Result) error {
-	now := time.Now
+func (c Checker) clock() time.Time {
 	if c.Now != nil {
-		now = c.Now
+		return c.Now()
 	}
-	raw, err := json.Marshal(checkRecord{Outcome: result.Outcome, Sequence: result.Sequence, At: now().UTC().Format(time.RFC3339)}, jsonwire.Stable)
+	return time.Now()
+}
+
+func (c Checker) record(result Result) error {
+	raw, err := json.Marshal(checkRecord{Outcome: result.Outcome, Sequence: result.Sequence, At: c.clock().UTC().Format(time.RFC3339)}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

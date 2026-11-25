@@ -3,6 +3,7 @@ package releasetrust
 import (
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
@@ -19,12 +20,14 @@ const MaxRevocations = 256
 type RevocationList struct {
 	Schema          string                   `json:"schema"`
 	Sequence        int64                    `json:"sequence"`
+	IssuedAt        string                   `json:"issued_at"`
 	TrustRootSHA256 releaseidentity.Digest   `json:"trust_root_sha256"`
 	Revoked         []releaseidentity.Digest `json:"revoked"`
 }
 
 type revocationState struct {
 	sequence int64
+	issuedAt time.Time
 	digest   releaseidentity.Digest
 	revoked  []releaseidentity.Digest
 }
@@ -40,6 +43,14 @@ func (v VerifiedRevocations) Sequence() int64 {
 		return 0
 	}
 	return v.state.sequence
+}
+
+// IssuedAt is the signed instant the recovery key issued this list.
+func (v VerifiedRevocations) IssuedAt() time.Time {
+	if v.state == nil {
+		return time.Time{}
+	}
+	return v.state.issuedAt
 }
 
 // Digest is the hash of the exact signed bytes, to detect equivocation.
@@ -74,6 +85,10 @@ func (s Snapshot) VerifyRevocations(raw, signature []byte) (VerifiedRevocations,
 	if list.Schema != RevocationSchema || list.Sequence < 1 {
 		return VerifiedRevocations{}, errors.New("invalid revocation list schema or sequence")
 	}
+	issued, err := time.Parse(time.RFC3339, list.IssuedAt)
+	if err != nil || issued.UTC().Format(time.RFC3339) != list.IssuedAt {
+		return VerifiedRevocations{}, errors.New("revocation list issued_at must be canonical UTC RFC 3339")
+	}
 	if list.TrustRootSHA256 != s.state.legacyStablePolicy {
 		return VerifiedRevocations{}, errors.New("revocation list is bound to a different trust root")
 	}
@@ -85,5 +100,5 @@ func (s Snapshot) VerifyRevocations(raw, signature []byte) (VerifiedRevocations,
 			return VerifiedRevocations{}, errors.New("revocation list must hold sorted, unique, valid digests")
 		}
 	}
-	return VerifiedRevocations{state: &revocationState{sequence: list.Sequence, digest: releaseidentity.Hash(raw), revoked: slices.Clone(list.Revoked)}}, nil
+	return VerifiedRevocations{state: &revocationState{sequence: list.Sequence, issuedAt: issued, digest: releaseidentity.Hash(raw), revoked: slices.Clone(list.Revoked)}}, nil
 }

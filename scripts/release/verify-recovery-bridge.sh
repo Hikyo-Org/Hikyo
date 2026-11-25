@@ -4,7 +4,7 @@
 #   verify-recovery-bridge.sh unsigned   BASE_TRUST STATEMENTS SOURCE_PROOFS TARGET_PROOFS
 #   verify-recovery-bridge.sh proposal   BASE_TRUST NEW_TRUST  SOURCE_PROOFS TARGET_PROOFS
 #   verify-recovery-bridge.sh revocation PRIOR_TRUST NEW_TRUST DIGEST...
-#   verify-recovery-bridge.sh revocation-list TRUST LIST_DIR PRIOR_SEQUENCE
+#   verify-recovery-bridge.sh revocation-list TRUST LIST_DIR PRIOR_SEQUENCE ROOT_SHA256 RECOVERY_KEY_SHA256
 #
 # BASE_TRUST is the committed trust tree before the ceremony, NEW_TRUST the
 # proposal. SOURCE_PROOFS and TARGET_PROOFS hold the published
@@ -29,8 +29,16 @@
 # epoch seconds, defaults to the current time), and compares everything else to the
 # derivation. `revocation-list` checks a signed revocation list (LIST_DIR holds
 # recovery-revocations.json and recovery-revocations.sigstore.json): the recovery
-# signature, the binding to the root.json of TRUST, the schema, sorted unique digests
-# and a sequence of PRIOR_SEQUENCE plus one (0 when none was published).
+# signature, the binding to the root, the schema, a canonical issued_at that is not in
+# the future and at most 7 days old, sorted unique digests and a sequence of
+# PRIOR_SEQUENCE plus one (0 when none was published). ROOT_SHA256 and
+# RECOVERY_KEY_SHA256 pin the committed root.json and recovery public key (take them from
+# the base checkout, never from the proposal): TRUST must match both, so a list cannot
+# be checked against a key or root the proposal itself supplies. `proposal` also lets a
+# lapsed bridge be replaced: a base bridge missing from the proposal must be replaced by
+# a new bridge for the same engine, source and target, and no new bridge may repeat the
+# pair of a bridge that stays catalogued (one expired statement would otherwise break the
+# route planner for the whole bundle).
 # shellcheck disable=SC2016,SC2086
 set -eu
 
@@ -97,6 +105,14 @@ check_statement() {
 
 engines_of() { # FILE...
 	for file in "$@"; do jq -r '.source_migrations.engine' "$file"; done | sort | tr '\n' ,
+}
+
+# pairs DIR DIGEST... prints the [engine, source manifest, target manifest] of each statement.
+pairs() {
+	dir=$1
+	shift
+	for digest in "$@"; do set -- "$@" "$dir/bridges/$digest/statement.json"; shift; done
+	jq -n -c '[inputs | [.source_migrations.engine, .source.manifest_sha256, .target.manifest_sha256]]' /dev/null "$@"
 }
 
 json_list() { for item in "$@"; do printf '%s\n' "$item"; done | jq -R . | jq -s -c .; }
@@ -214,7 +230,13 @@ proposal)
 	[ "$#" -eq 4 ] || usage
 	base=$1 new=$2
 	new_bridges=$(jq -r --slurpfile base "$base/catalog.json" '.bridges - $base[0].bridges | .[]' "$new/catalog.json")
-	check_chain "$base" "$new" "$new_bridges" ''
+	replaced=$(jq -r --slurpfile new "$new/catalog.json" '.bridges - $new[0].bridges | .[]' "$base/catalog.json")
+	check_chain "$base" "$new" "$new_bridges" "$replaced"
+	check 'no replaced bridge is listed by the stable policy' jq -e --argjson r "$(json_list $replaced)" '(.bridges // []) as $b | ($r - ($r - $b)) | length == 0' "$new/stable-policy.json"
+	retained=$(jq -r --slurpfile new "$new/catalog.json" '.bridges - (.bridges - $new[0].bridges) | .[]' "$base/catalog.json")
+	new_pairs=$(pairs "$new" $new_bridges)
+	check 'every replaced bridge is replaced by a new bridge for the same engine, source and target' jq -n -e --argjson n "$new_pairs" --argjson r "$(pairs "$base" $replaced)" '($r - $n) | length == 0'
+	check 'no new bridge repeats the pair of a bridge that stays catalogued' jq -n -e --argjson n "$new_pairs" --argjson k "$(pairs "$base" $retained)" '($n - ($n - $k)) | length == 0'
 	load_releases "$3" "$4"
 	check_authorized "$new/metadata.json"
 	policy_digest=$(sha256_of "$new/stable-policy.json")
@@ -245,13 +267,16 @@ revocation)
 	finish
 	;;
 revocation-list)
-	[ "$#" -eq 3 ] || usage
-	trust=$1 list=$2/recovery-revocations.json prior=$3
+	[ "$#" -eq 5 ] || usage
+	trust=$1 list=$2/recovery-revocations.json prior=$3 pinned_root=$4 pinned_key=$5
 	recovery_pub="$trust/$(jq -r '.recovery.public_key' "$trust/root.json")"
+	check 'the trust root is the committed one (ROOT_SHA256)' equal "$(sha256_of "$trust/root.json")" "$pinned_root"
+	check 'the recovery public key is the committed one (RECOVERY_KEY_SHA256)' equal "$(sha256_of "$recovery_pub")" "$pinned_key"
 	check 'the list has no duplicate keys' no_duplicate_keys "$list"
 	check 'the list signature verifies with the pinned recovery key' verify_blob "$list" "$2/recovery-revocations.sigstore.json"
-	check 'the list has exactly the schema, sequence, trust_root_sha256 and revoked fields' jq -e '(keys == ["revoked", "schema", "sequence", "trust_root_sha256"]) and .schema == "hikyo.dev/recovery-revocations/v1"' "$list"
-	check 'the list is bound to the pinned trust root' equal "$(jq -r '.trust_root_sha256' "$list")" "$(sha256_of "$trust/root.json")"
+	check 'the list has exactly the schema, sequence, issued_at, trust_root_sha256 and revoked fields' jq -e '(keys == ["issued_at", "revoked", "schema", "sequence", "trust_root_sha256"]) and .schema == "hikyo.dev/recovery-revocations/v1"' "$list"
+	check 'issued_at is canonical UTC, not in the future and at most 7 days old (older lists are stale to clients)' jq -e --argjson now "$now" '.issued_at | (type == "string") and ((fromdateiso8601 | todate) == .) and (fromdateiso8601 <= $now) and (fromdateiso8601 >= $now - 604800)' "$list"
+	check 'the list is bound to the pinned trust root' equal "$(jq -r '.trust_root_sha256' "$list")" "$pinned_root"
 	check 'the list sequence is the prior sequence plus one' equal "$(jq '.sequence' "$list")" "$((prior + 1))"
 	check 'revoked digests are sorted, unique, 64 hex characters and at most 256' jq -e '(.revoked | length <= 256) and (.revoked == (.revoked | unique)) and all(.revoked[]; test("^[0-9a-f]{64}$"))' "$list"
 	finish

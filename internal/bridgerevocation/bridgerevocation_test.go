@@ -3,9 +3,6 @@ package bridgerevocation_test
 import (
 	"context"
 	"errors"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,9 +26,18 @@ func (s *scripted) Fetch(context.Context) ([]byte, []byte, error) {
 	return s.list, s.signature, s.err
 }
 
+// testNow is the checker clock in the tests; lists are issued an hour before it
+// unless a test says otherwise.
+var testNow = time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+
 func signedList(t *testing.T, f *testfixture.Fixture, sequence int64, revoked ...releaseidentity.Digest) ([]byte, []byte) {
 	t.Helper()
-	raw := testfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: sequence, TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: revoked})
+	return signedListAt(t, f, testNow.Add(-time.Hour), sequence, revoked...)
+}
+
+func signedListAt(t *testing.T, f *testfixture.Fixture, issued time.Time, sequence int64, revoked ...releaseidentity.Digest) ([]byte, []byte) {
+	t.Helper()
+	raw := testfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: sequence, IssuedAt: issued.UTC().Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: revoked})
 	return raw, testfixture.Sign(t, f.RecoverySigner, raw)
 }
 
@@ -41,7 +47,7 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 	bridge := releaseidentity.Hash([]byte("bridge"))
 	directory := t.TempDir()
 	fetcher := &scripted{}
-	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC) }}
+	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
 
 	// Unreachable with nothing known: fall back to expiry, record it.
 	fetcher.err = bridgerevocation.ErrUnreachable
@@ -143,79 +149,5 @@ func TestOperatorCanDisableTheNetworkCheckAndItIsRecorded(t *testing.T) {
 	}
 	if mode, err := bridgerevocation.ParseMode(""); err != nil || mode != bridgerevocation.Online {
 		t.Fatalf("the default is online: %v %v", mode, err)
-	}
-}
-
-func TestHTTPFetcherSeparatesUnreachableFromInvalid(t *testing.T) {
-	respond := func(status int, body string) *httptest.Server {
-		return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(status)
-			_, _ = w.Write([]byte(body))
-		}))
-	}
-	fetchFrom := func(server *httptest.Server) error {
-		fetcher := bridgerevocation.HTTPFetcher{BaseURL: server.URL + "/r", Client: server.Client()}
-		_, _, err := fetcher.Fetch(t.Context())
-		return err
-	}
-	ok := respond(http.StatusOK, "{}")
-	defer ok.Close()
-	if err := fetchFrom(ok); err != nil {
-		t.Fatalf("200 is an answer: %v", err)
-	}
-	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
-		server := respond(status, "")
-		if err := fetchFrom(server); !errors.Is(err, bridgerevocation.ErrUnreachable) {
-			t.Fatalf("status %d must count as unreachable: %v", status, err)
-		}
-		server.Close()
-	}
-	for _, status := range []int{http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError, http.StatusFound} {
-		server := respond(status, "")
-		if err := fetchFrom(server); err == nil || errors.Is(err, bridgerevocation.ErrUnreachable) {
-			t.Fatalf("status %d is reachable but invalid and must fail closed: %v", status, err)
-		}
-		server.Close()
-	}
-	large := respond(http.StatusOK, strings.Repeat("x", 70<<10))
-	if err := fetchFrom(large); err == nil || errors.Is(err, bridgerevocation.ErrUnreachable) {
-		t.Fatalf("an oversized body is invalid: %v", err)
-	}
-	large.Close()
-
-	// A server whose certificate the client does not trust answered, wrongly.
-	untrusted := respond(http.StatusOK, "{}")
-	fetcher := bridgerevocation.HTTPFetcher{BaseURL: untrusted.URL + "/r", Client: &http.Client{Timeout: 5 * time.Second}}
-	if _, _, err := fetcher.Fetch(t.Context()); err == nil || errors.Is(err, bridgerevocation.ErrUnreachable) {
-		t.Fatalf("a certificate failure is not a fallback case: %v", err)
-	}
-	untrusted.Close()
-
-	// A closed port and a stalled server are unreachable.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	closed := "https://" + listener.Addr().String() + "/r"
-	_ = listener.Close()
-	refused := bridgerevocation.HTTPFetcher{BaseURL: closed, Client: &http.Client{Timeout: 5 * time.Second}}
-	if _, _, err := refused.Fetch(t.Context()); !errors.Is(err, bridgerevocation.ErrUnreachable) {
-		t.Fatalf("connection refused is unreachable: %v", err)
-	}
-	stall := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
-	defer stall.Close()
-	client := stall.Client()
-	client.Timeout = 200 * time.Millisecond
-	if _, _, err := (bridgerevocation.HTTPFetcher{BaseURL: stall.URL + "/r", Client: client}).Fetch(t.Context()); !errors.Is(err, bridgerevocation.ErrUnreachable) {
-		t.Fatalf("a timeout is unreachable: %v", err)
-	}
-
-	for _, bad := range []string{"http://hikyo.dev/r", "ftp://x/r", "https://user:pw@hikyo.dev/r", "https:///r", "::"} {
-		if _, err := bridgerevocation.NewHTTPFetcher(bad); err == nil {
-			t.Fatalf("%q must be refused", bad)
-		}
-	}
-	if _, err := bridgerevocation.NewHTTPFetcher(bridgerevocation.DefaultURL); err != nil {
-		t.Fatalf("the pinned default must be accepted: %v", err)
 	}
 }

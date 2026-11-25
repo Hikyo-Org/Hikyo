@@ -9,8 +9,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"slices"
-	"sync"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
@@ -71,30 +69,21 @@ type Request struct {
 	InitialOperatorPublicKey []byte
 	// BridgeRevocation returns the recovery bridge statements a verified
 	// revocation list withdrew, or an error that refuses every bridge route.
-	// It is called at most once per run, and only for a route that uses a bridge.
+	// It is called at most once per run, and only for a route that uses a
+	// bridge. A nil hook refuses bridge routes; callers with nothing to check
+	// pass an explicit no-op.
 	BridgeRevocation func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error)
 }
 
-// bridgeGuard builds the lazy check Bundle.Plan runs for routes that use a
-// recovery bridge. The revocation lookup runs once and its outcome is reused.
-func (r Request) bridgeGuard(ctx context.Context, snapshot releasetrust.Snapshot) func([]releaseidentity.Digest) error {
-	if r.BridgeRevocation == nil {
-		return nil
-	}
-	var once sync.Once
-	var revoked []releaseidentity.Digest
-	var lookupErr error
-	return func(used []releaseidentity.Digest) error {
-		once.Do(func() { revoked, lookupErr = r.BridgeRevocation(ctx, snapshot) })
-		if lookupErr != nil {
-			return fmt.Errorf("recovery bridge revocation check: %w", lookupErr)
+// bridgeRevocations is the lookup Bundle.Plan runs for routes that use a
+// recovery bridge. Without a configured lookup a bridge route is refused: a
+// missing check is never a silent skip.
+func (r Request) bridgeRevocations(ctx context.Context, snapshot releasetrust.Snapshot) func() ([]releaseidentity.Digest, error) {
+	return func() ([]releaseidentity.Digest, error) {
+		if r.BridgeRevocation == nil {
+			return nil, errors.New("no revocation check is configured")
 		}
-		for _, digest := range used {
-			if slices.Contains(revoked, digest) {
-				return errors.New("recovery bridge revoked")
-			}
-		}
-		return nil
+		return r.BridgeRevocation(ctx, snapshot)
 	}
 }
 
@@ -164,7 +153,7 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 	if err != nil {
 		return Result{}, err
 	}
-	bundle = bundle.WithBridgeGuard(request.bridgeGuard(ctx, bundle.Snapshot()))
+	bundle = bundle.WithBridgeRevocations(request.bridgeRevocations(ctx, bundle.Snapshot()))
 	node, err := bundle.MatchBuild(build)
 	if err != nil {
 		return Result{}, err

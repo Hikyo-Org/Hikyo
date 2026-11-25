@@ -54,7 +54,11 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 			a := f.AddStable(t, "1.0.1", 1, strings.Repeat("a", 40), declare("1.0.1", 1, strings.Repeat("a", 40), []upgradecompat.SourceEdge{{Source: genesis, Migrations: empty.Clone(), SchemaSHA256: inspected.CatalogDigest, Mode: upgradecompat.Maintenance}}))
 			b := f.AddStable(t, "1.1.0", 2, strings.Repeat("b", 40), declare("1.1.0", 2, strings.Repeat("b", 40), []upgradecompat.SourceEdge{}))
 			root := bytes.Repeat([]byte{37}, crypto.KeySize)
-			request := upgradegate.Request{Store: cfg, BundleDirectory: upgradegate.WriteBridgeBundleForTest(t, f, []trustfixture.SignedRelease{a}, nil), Pinned: f.Pinned, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(engine), Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root, Target: a.Identity, InitialOperatorPublicKey: f.PrimaryPublic}
+			stateDirectory := t.TempDir()
+			if err := os.Chmod(stateDirectory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			request := upgradegate.Request{StateDirectory: stateDirectory, Store: cfg, BundleDirectory: upgradegate.WriteBridgeBundleForTest(t, f, []trustfixture.SignedRelease{a}, nil), Pinned: f.Pinned, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(engine), Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root, Target: a.Identity, InitialOperatorPublicKey: f.PrimaryPublic}
 			booted, err := upgradegate.RunSignedGateProcessFixture(t, request, a.Material.Compatibility)
 			if err != nil {
 				t.Fatal(err)
@@ -132,6 +136,7 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 			}
 
 			request.Target, request.Operator, request.Ciphertext = b.Identity, operator, pinned
+			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) { return nil, nil }
 			// Control: identical request, no operator evidence.
 			if _, err := upgradegate.RunSignedGateProcessFixture(t, request, b.Material.Compatibility); err == nil {
 				t.Fatal("the bridge route ran without the operator's receipt and attestation")
@@ -153,6 +158,16 @@ func TestRecoveryBridgeNeedsAttestationAndThenSucceeds(t *testing.T) {
 			}
 			if after, err := upgrade.InspectControl(t.Context(), cfg); err != nil || !after.Equal(before) {
 				t.Fatalf("the revoked refusal changed the installation: %v", err)
+			}
+			// The serving process's startup preflight honours the same revocation;
+			// with nothing revoked it gets past the route planning.
+			if err := upgradegate.PreflightSignedGateProcessFixture(t, request, b.Material.Compatibility, exported.Path); err == nil || !strings.Contains(err.Error(), "recovery bridge revoked") {
+				t.Fatalf("preflight must refuse a revoked bridge: %v", err)
+			}
+			unrevoked := request
+			unrevoked.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) { return nil, nil }
+			if err := upgradegate.PreflightSignedGateProcessFixture(t, unrevoked, b.Material.Compatibility, exported.Path); err != nil && strings.Contains(err.Error(), "recovery bridge") {
+				t.Fatalf("preflight control must plan the bridge route: %v", err)
 			}
 			// Endpoint unreachable and nothing revoked (the expiry fallback): the
 			// live bridge route runs to the target.

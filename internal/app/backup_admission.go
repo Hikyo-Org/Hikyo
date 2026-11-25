@@ -50,6 +50,7 @@ func backupPublicBundle(ctx context.Context, cfg *config.Config) (upgradebundle.
 	if err != nil {
 		return upgradebundle.Bundle{}, upgradecompat.VerifiedNode{}, err
 	}
+	bundle = guardBridges(ctx, cfg, bundle)
 	raw, _, err := buildcompat.Current()
 	if cfg.Dev {
 		raw, _, err = buildcompat.Development()

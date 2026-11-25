@@ -220,15 +220,18 @@ func PlanRouteAt(snapshot releasetrust.Snapshot, source InstalledSource, target 
 			return Plan{}, errors.New("missing, stale or duplicate bridge proof")
 		}
 		seenBridges[bridge.Digest()] = true
+		// A lapsed or revoked bridge is out of the route graph before the pair check, so
+		// its re-signed replacement (same pair, new digest) and every other plan survive.
+		// It still counted toward the complete inventory above.
+		if bridge.Expired(now) || slices.Contains(revoked, bridge.Digest()) {
+			continue
+		}
 		statement := bridge.Statement()
 		pair := nodeKey(statement.SourceIdentity()) + ">" + nodeKey(releaseidentity.Source{Release: statement.Target}) + ":" + string(statement.SourceMigrations.Engine)
 		if seenBridgePairs[pair] {
 			return Plan{}, errors.New("duplicate recovery bridge pair")
 		}
 		seenBridgePairs[pair] = true
-		if bridge.Expired(now) || slices.Contains(revoked, bridge.Digest()) {
-			continue
-		}
 		if statement.SourceMigrations.Engine != engine {
 			continue
 		}

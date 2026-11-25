@@ -111,18 +111,29 @@ apply-time revocation list (options (a) and (c) on
   30 days after signing. The gate compares it with the host clock at plan time,
   offline and without a grace period. An expired bridge drops out of route
   planning, not out of snapshot loading, so ordinary routes and the complete
-  bridge inventory check are unaffected. The v1 statement (no expiry) is kept
-  only for the legacy nightly bridges. A lapsed bridge is replaced by authoring
-  and signing a new statement with `recovery-2` (the re-sign path in the runbook).
+  bridge inventory check are unaffected. The runtime refuses the
+  recovery v1 statement (no expiry); only the separate legacy nightly bridge
+  schema stays expiry-free. A lapsed bridge is replaced by authoring
+  and signing a new statement with `recovery-2` and removing the old digest from
+  the catalog in the same step (the re-sign path in the runbook; the verifier
+  refuses a new bridge whose engine, source and target pair is still catalogued).
 - **Revocation list (c).** Before a plan that uses a bridge is applied, the gate
   fetches `hikyo.dev/recovery-revocations/v1`: a sequenced list of revoked
   statement digests, signed by the pinned recovery key and bound to the pinned
-  root, so the endpoint is only a transport. A persisted floor refuses rollback
-  and equivocation. If the endpoint is unreachable (DNS, dial or timeout, HTTP
+  root, so the endpoint is only a transport. Once an installation has stored a list, its persisted
+  sequence floor refuses a lower sequence and a different list at the same
+  sequence. On an installation that has stored nothing (every v1.0.0 install
+  at its first bridge apply) the floor cannot tell a replay, so each list also
+  carries a signed `issued_at`: a list older than 7 days is `stale`, never
+  `checked`, and falls back to the signed expiry like an unreachable endpoint
+  (its entries still apply). The residual is an endpoint that replays a list at
+  most 7 days old to such an installation; the recovery key must re-issue the
+  list weekly for it to count as current. If the endpoint is unreachable (DNS, dial or timeout, HTTP
   502, 503 or 504), the check falls back to the signed expiry and the last
   verified list, and records that locally. A reachable but invalid answer (other
-  status, oversized body, bad signature, wrong root, older sequence, certificate
-  error) fails closed. `HIKYO_UPGRADE_REVOCATION_CHECK=off` is the explicit
+  status, a body cut short, oversized body, bad signature, wrong root, older
+  sequence, a redirect, certificate error) fails closed. A reset or EOF before any response is no
+  answer (unreachable) unless it is a TLS or certificate failure. `HIKYO_UPGRADE_REVOCATION_CHECK=off` is the explicit
   operator opt-out, and `HIKYO_UPGRADE_REVOCATION_URL` points at a mirror.
   Ordinary upgrades never contact the endpoint. The snapshot revocation
   (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never

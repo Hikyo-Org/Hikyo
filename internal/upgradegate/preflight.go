@@ -71,7 +71,7 @@ func preflightConfiguration(ctx context.Context, input ConfigurationPreflight, b
 	if err != nil {
 		return refusal(err)
 	}
-	bundle = bundle.WithBridgeGuard(request.bridgeGuard(ctx, bundle.Snapshot()))
+	bundle = bundle.WithBridgeRevocations(request.bridgeRevocations(ctx, bundle.Snapshot()))
 	node, err := bundle.MatchBuild(build)
 	if err != nil {
 		return refusal(err)

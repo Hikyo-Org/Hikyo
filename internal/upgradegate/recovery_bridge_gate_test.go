@@ -107,6 +107,13 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 				t.Fatalf("source release must be installed and healthy: %+v %v", wantControl, err)
 			}
 
+			// An explicit no-op: the check is configured and nothing is revoked.
+			lookups := 0
+			request.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+				lookups++
+				return nil, nil
+			}
+
 			// The statement is the exact source and target the gate would route between.
 			snap := f.Snapshot(t)
 			verifiedA, err := releasetrust.VerifyStable(snap, a.Material)
@@ -117,7 +124,7 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			statement := releasetrust.BridgeStatement{Schema: "hikyo.dev/recovery-bridge/v1", Source: a.Identity, Target: b.Identity,
+			statement := releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", Source: a.Identity, Target: b.Identity,
 				SourcePolicySHA256: verifiedA.PolicyDigest(), TargetPolicySHA256: verifiedB.PolicyDigest(),
 				SourceMigrations: manifest.Clone(), TargetMigrations: manifest.Clone(), SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"}
 
@@ -149,6 +156,9 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 
 			// No bridge: the planner never invents a route.
 			attempt("no bridge", bundleWith(), "no authenticated upgrade route")
+			if lookups != 0 {
+				t.Fatalf("a route without a bridge must not consult the revocation list (%d lookups)", lookups)
+			}
 
 			// A statement the catalog does not list is refused at the offline index.
 			attempt("bridge not in the catalog", bundleWith(signed(raw)), "omits or substitutes")
@@ -194,6 +204,9 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 			rawLive := bridge(live)
 			catalogue(rawLive)
 			attempt("live v2 bridge without operator evidence", bundleWith(signed(rawLive)), "invalid closed upgrade artifact")
+			if lookups == 0 {
+				t.Fatal("a route through a bridge must consult the revocation list")
+			}
 
 			expired := live
 			expired.NotAfter = "2020-01-01T00:00:00Z"
@@ -212,7 +225,9 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 				return nil, errors.New("revocation list rollback refused")
 			}
 			attempt("revocation endpoint answered invalidly", bundleWith(signed(rawLive)), "recovery bridge revocation check")
+			// No hook configured: a bridge route is refused, not waved through.
 			request.BridgeRevocation = nil
+			attempt("no revocation check configured", bundleWith(signed(rawLive)), "no revocation check is configured")
 		})
 	}
 }
@@ -221,4 +236,19 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 // throwaway-signed bridge bundles.
 func WriteBridgeBundleForTest(t *testing.T, f *trustfixture.Fixture, releases []trustfixture.SignedRelease, bridges []releasetrust.BridgeMaterial) string {
 	return writeBridgeBundle(t, f, releases, bridges)
+}
+
+// TestInFlightBridgedUpgradeResumesAfterNotAfter pins the behaviour the owner has
+// not yet decided (#1422 F3). Today every re-plan, including the gate's resume
+// and security-rollback paths (gate.go resume, security_rollback.go,
+// automatic_release.go, maintenance_configuration.go), drops an expired bridge,
+// so an upgrade that began before not_after cannot resume after it.
+//
+// Scenario when un-skipped: install A, run the bridge route with the operator
+// evidence up to the prepared boundary, let not_after pass (a statement whose
+// not_after is a few seconds out), then run the gate again with the same
+// evidence. Wanted, pending the decision: the in-flight operation resumes to B.
+// Actual today: the re-plan refuses with "no authenticated upgrade route".
+func TestInFlightBridgedUpgradeResumesAfterNotAfter(t *testing.T) {
+	t.Skip("blocked on the owner decision for #1422 F3: whether an expired or revoked bridge may finish an upgrade already in flight")
 }

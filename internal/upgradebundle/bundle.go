@@ -12,6 +12,8 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
@@ -48,7 +50,7 @@ type Bundle struct {
 	nodes          []upgradecompat.VerifiedNode
 	bridges        []releasetrust.VerifiedBridge
 	releases       map[releaseidentity.Identity]releasetrust.VerifiedRelease
-	bridgeGuard    func([]releaseidentity.Digest) error
+	revocations    *revocationLookup
 }
 
 // MaterialDigest binds every loaded public document, including index and
@@ -59,21 +61,44 @@ func (b Bundle) Valid() bool                     { return b.snapshot.Valid() }
 func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
 func (b Bundle) Plan(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
 	plan, err := upgradecompat.PlanRoute(b.snapshot, source, target, b.nodes, b.bridges)
-	if err != nil || b.bridgeGuard == nil || len(plan.BridgeDigests()) == 0 {
+	if err != nil || b.revocations == nil || len(plan.BridgeDigests()) == 0 {
 		return plan, err
 	}
-	// Only a route that actually uses a recovery bridge consults the guard, so
-	// ordinary upgrades never touch the revocation endpoint.
-	if err := b.bridgeGuard(plan.BridgeDigests()); err != nil {
-		return upgradecompat.Plan{}, err
+	// Only a route that actually uses a recovery bridge consults the revocation
+	// list, so ordinary upgrades never touch the endpoint.
+	revoked, err := b.revocations.lookup()
+	if err != nil {
+		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge revocation check: %w", err)
+	}
+	if !slices.ContainsFunc(plan.BridgeDigests(), func(d releaseidentity.Digest) bool { return slices.Contains(revoked, d) }) {
+		return plan, nil
+	}
+	// Route around the revoked bridges; with no other route the plan is refused.
+	plan, err = upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, time.Now(), revoked)
+	if err != nil {
+		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge revoked: %w", err)
 	}
 	return plan, nil
 }
 
-// WithBridgeGuard returns a copy whose plans are refused when the guard
-// rejects the recovery bridges the route uses (for example a revoked one).
-func (b Bundle) WithBridgeGuard(guard func([]releaseidentity.Digest) error) Bundle {
-	b.bridgeGuard = guard
+// revocationLookup runs the lookup once and reuses its outcome.
+type revocationLookup struct {
+	once    sync.Once
+	fetch   func() ([]releaseidentity.Digest, error)
+	revoked []releaseidentity.Digest
+	err     error
+}
+
+func (l *revocationLookup) lookup() ([]releaseidentity.Digest, error) {
+	l.once.Do(func() { l.revoked, l.err = l.fetch() })
+	return l.revoked, l.err
+}
+
+// WithBridgeRevocations returns a copy whose plans consult the verified
+// revocation list (fetched at most once) when the route uses a recovery bridge:
+// a lookup error refuses the plan and a revoked bridge is routed around.
+func (b Bundle) WithBridgeRevocations(fetch func() ([]releaseidentity.Digest, error)) Bundle {
+	b.revocations = &revocationLookup{fetch: fetch}
 	return b
 }
 func (b Bundle) Release(identity releaseidentity.Identity) (releasetrust.VerifiedRelease, error) {

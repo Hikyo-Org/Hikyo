@@ -128,6 +128,8 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
 
    ```sh
    scripts/release/recovery-bridge.sh reauthorize "$RECOVERY_KEY" release/trust "$WORK/statements" "$WORK/new-trust"
+   # A re-sign appends the lapsed digests, so they leave the catalog with the new statements:
+   # reauthorize ... "$WORK/new-trust" <lapsed-digest>...
    ```
 
 6. (Online) Run the full independent verifier on the signed proposal. Besides the
@@ -159,7 +161,9 @@ cosign version | grep GitVersion              # record it; the pinned CI tool is
    git worktree add "$WORK/base" "$base"
    git diff --quiet "$base" origin/dev -- release/trust   # nonzero: dev changed the trust tree, rebase the proposal and stop
    git checkout --detach origin/<proposal-branch>
-   scripts/release/verify-recovery-bridge.sh proposal "$WORK/base/release/trust" release/trust "$WORK/rel-1.0.0" "$WORK/rel-1.1.0"
+   # Only release/trust may change; the verifier is the base's own, never the proposal's.
+   test -z "$(git diff --name-only "$base" HEAD | grep -v '^release/trust/')" || { echo 'proposal touches files outside release/trust'; false; }
+   "$WORK/base/scripts/release/verify-recovery-bridge.sh" proposal "$WORK/base/release/trust" release/trust "$WORK/rel-1.0.0" "$WORK/rel-1.1.0"
    ```
 
    The base is the proposal's merge base with `dev`, not the moving tip of `dev`,
@@ -215,22 +219,33 @@ placeholder until the owner names the host; operators may mirror it with
 
 ```sh
 scripts/release/recovery-bridge.sh revocation-list "$RECOVERY_KEY" "$WORK/new-trust" <SEQUENCE> "$WORK/list" <digest>...
-scripts/release/verify-recovery-bridge.sh revocation-list "$WORK/new-trust" "$WORK/list" <PRIOR>
+scripts/release/verify-recovery-bridge.sh revocation-list "$WORK/new-trust" "$WORK/list" <PRIOR> "$(shasum -a 256 release/trust/root.json | cut -d' ' -f1)" "$(shasum -a 256 release/trust/$(jq -r .recovery.public_key release/trust/root.json) | cut -d' ' -f1)"
 scripts/release/recovery-bridge.sh check-revocations "$WORK/new-trust" "$WORK/state" "$WORK/list" <digest>...
 ```
 
 The list is signed by the pinned recovery key and bound to the root, so a host
-compromise can withhold it but not forge, roll back or redirect it. A list with a
-lower sequence is refused by every instance that saw a higher one. `check-revocations`
+compromise can withhold it but not forge or redirect it. The last two verifier
+arguments pin the committed root and recovery key (take them from the committed
+tree, not from a proposal). An instance that has stored a list refuses a lower
+sequence and a different list at the same sequence. An instance that has stored
+nothing (a v1.0.0 install applying the bridge) cannot tell a replay by sequence,
+so the list carries a signed `issued_at`: anything older than 7 days is stale and
+behaves like an unreachable endpoint (the bridge's own `not_after` decides; the
+list's entries still apply). Re-issue the list with the next sequence at least
+weekly while any bridge is live; the verifier refuses a list that is older than
+7 days or dated in the future. Residual: a host can replay a list up to 7 days old
+to such an instance, delaying a newer revocation by at most that long. `check-revocations`
 runs the real checker against a local list directory (`-` for the unreachable case).
 
 ## Re-signing an expired bridge
 
 When `not_after` is near or has passed, repeat steps 1 to 6 against the same
 published proofs with a fresh window (`author ... [NOT_AFTER]`), signed with
-`recovery-2`. The new statement has a new digest, so it is a new catalog entry;
-revoke the lapsed digest (snapshot revocation or the list) if it is still
-catalogued.
+`recovery-2`, and pass the lapsed digests to step 5 so `reauthorize` removes
+them from the catalog and the tree. The new statement has a new digest, so it is
+a new catalog entry; leaving the old one beside it puts two bridges on one pair
+and the verifier refuses that tree. A bundle that already holds the lapsed bridge
+keeps planning other routes: an expired or revoked bridge is skipped, not fatal.
 
 ## Using the bridge (operators)
 

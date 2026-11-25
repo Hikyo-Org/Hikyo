@@ -9,7 +9,16 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 )
+
+// guardBridges makes a bundle's plans consult the revocation list when the route
+// uses a recovery bridge, so an export or drill cannot mint evidence for a
+// revoked bridge.
+func guardBridges(ctx context.Context, cfg *config.Config, bundle upgradebundle.Bundle) upgradebundle.Bundle {
+	lookup, snapshot := bridgeRevocation(cfg), bundle.Snapshot()
+	return bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return lookup(ctx, snapshot) })
+}
 
 // bridgeRevocation builds the gate's lazy revocation lookup from configuration.
 // A bad setting is not reported until a route actually needs a recovery bridge,

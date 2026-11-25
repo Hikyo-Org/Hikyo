@@ -46,7 +46,7 @@ func RunUpgradeBackup(ctx context.Context, cfg *config.Config, args []string, ou
 	case "upgrade-export":
 		return runUpgradeExport(ctx, cfg, args[1:], out, trust)
 	case "upgrade-drill":
-		return runUpgradeDrill(ctx, args[1:], out, trust)
+		return runUpgradeDrill(ctx, cfg, args[1:], out, trust)
 	default:
 		return errors.New("usage: hikyo backup upgrade-export | upgrade-drill")
 	}
@@ -83,6 +83,7 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 	if err != nil {
 		return err
 	}
+	bundle = guardBridges(ctx, cfg, bundle)
 	database := storeConfig(cfg)
 	sourceConfig := upgrade.Config{Engine: releaseidentity.Engine(database.Engine), Path: database.Path, DSN: database.DSN}
 	diagnostics.Printf(ctx, 1, "upgrade backup: waiting for datastore lock")
@@ -147,7 +148,7 @@ func inspectBackupPlan(ctx context.Context, cfg upgrade.Config, bundle upgradebu
 	return upgradecompat.Plan{}, errors.New("actual source is absent from authenticated migration and schema candidates")
 }
 
-func runUpgradeDrill(ctx context.Context, args []string, out io.Writer, trust TrustContext) error {
+func runUpgradeDrill(ctx context.Context, cfg *config.Config, args []string, out io.Writer, trust TrustContext) error {
 	fs := flag.NewFlagSet("backup upgrade-drill", flag.ContinueOnError)
 	fs.SetOutput(out)
 	bundleDir := fs.String("bundle", trust.BundleDirectory, "verified offline release artifact directory")
@@ -177,6 +178,7 @@ func runUpgradeDrill(ctx context.Context, args []string, out io.Writer, trust Tr
 	if err != nil {
 		return err
 	}
+	bundle = guardBridges(ctx, cfg, bundle)
 	rawReceipt, err := readUpgradePublicFile(*receiptFile, backupreceipt.MaxArtifactBytes)
 	if err != nil {
 		return err

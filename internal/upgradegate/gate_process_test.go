@@ -260,6 +260,32 @@ func RunSignedGateProcessFixture(t *testing.T, request Request, claim []byte) (R
 		return nil
 	})
 }
+
+// PreflightSignedGateProcessFixture runs the startup configuration preflight (the
+// path the serving process takes) for the build the claim names.
+func PreflightSignedGateProcessFixture(t *testing.T, request Request, claim []byte, ciphertext string) error {
+	t.Helper()
+	bundle, err := upgradebundle.Load(t.Context(), request.BundleDirectory, request.Pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		return err
+	}
+	node, err := bundle.MatchBuild(claim)
+	if err != nil {
+		return err
+	}
+	custody, err := InspectCustodyDirectory(request.StateDirectory)
+	if err != nil {
+		return err
+	}
+	_, err = preflightConfiguration(t.Context(), ConfigurationPreflight{Request: request, InstalledCustody: custody, CiphertextPath: ciphertext}, claim, func(actual upgradecompat.VerifiedNode) error {
+		if !actual.Valid() || actual.Identity() != node.Identity() {
+			return errors.New("fixture executable differs from signed release")
+		}
+		return nil
+	}, false)
+	return err
+}
+
 func KillSignedGateProcessFixture(t *testing.T, request Request, claim []byte, point string) {
 	t.Helper()
 	boundaries := map[string]durableBoundary{"prepared": boundaryPrepared, "write-started": boundaryWriteStarted, "sql-complete": boundarySQLComplete, "schema-applied": boundarySchemaApplied, "healthy": boundaryHealthy}
