@@ -74,25 +74,26 @@ func (w *incidentWorld) containmentState(t *testing.T, p domain.PrincipalID) str
 }
 
 // The delegation revoke confirms by one scoped lookup, so it holds in an org with
-// more live delegations of the authority than a paged scan could read (20 pages
-// of 500). The fillers sort before the target delegation.
+// more live delegations than a paged scan could read (20 pages of 500). An org
+// incident has no single authority, so the fillers (another member's, sorting
+// before the target) all sat in the old scan's way.
 func TestIncidentOwnersRevokeConfirmsAmongManyLiveDelegations(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		w.realOwners()
-		v := w.openAccount(t, incResponder)
+		inc := w.openOrg(t, incResponder)
 		const rows = 10001
-		cols := `authority_principal_id, org_id, project_id, env_id, prefix_hint, parent_session_id, provider_id, oauth2_provider_id, saml_provider_id, auth_method, authority_generation, credential_epoch, created_at, expires_at`
+		cols := `org_id, project_id, env_id, prefix_hint, parent_session_id, provider_id, oauth2_provider_id, saml_provider_id, auth_method, authority_generation, credential_epoch, created_at, expires_at`
 		if db.Engine() == store.EnginePostgres {
 			execRaw(t, db, `INSERT INTO principals (id, kind, class, created_at) SELECT 'devp_fill_' || i, 'machine', 'developer', `+ts+` FROM generate_series(1, `+fmt.Sprint(rows)+`) AS i`)
-			execRaw(t, db, `INSERT INTO developer_credentials (id, principal_id, verifier, `+cols+`) SELECT 'a_fill_' || i, 'devp_fill_' || i, convert_to('v' || i, 'UTF8'), `+cols+` FROM developer_credentials, generate_series(1, `+fmt.Sprint(rows)+`) AS i WHERE id = 'devc_it'`)
+			execRaw(t, db, `INSERT INTO developer_credentials (id, principal_id, authority_principal_id, verifier, `+cols+`) SELECT 'a_fill_' || i, 'devp_fill_' || i, '`+string(incLimited)+`', convert_to('v' || i, 'UTF8'), `+cols+` FROM developer_credentials, generate_series(1, `+fmt.Sprint(rows)+`) AS i WHERE id = 'devc_it'`)
 		} else {
 			series := `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ` + fmt.Sprint(rows) + `) `
 			execRaw(t, db, series+`INSERT INTO principals (id, kind, class, created_at) SELECT 'devp_fill_' || i, 'machine', 'developer', `+ts+` FROM n`)
-			execRaw(t, db, series+`INSERT INTO developer_credentials (id, principal_id, verifier, `+cols+`) SELECT 'a_fill_' || i, 'devp_fill_' || i, CAST('v' || i AS BLOB), `+cols+` FROM developer_credentials, n WHERE id = 'devc_it'`)
+			execRaw(t, db, series+`INSERT INTO developer_credentials (id, principal_id, authority_principal_id, verifier, `+cols+`) SELECT 'a_fill_' || i, 'devp_fill_' || i, '`+string(incLimited)+`', CAST('v' || i AS BLOB), `+cols+` FROM developer_credentials, n WHERE id = 'devc_it'`)
 		}
-		w.resume(t, incResponder, v.Incident.ID)
-		if got := w.itemMap(t, incResponder, v.Incident.ID)[keyDevCred]; got != "done/" {
+		w.resume(t, incResponder, inc)
+		if got := w.itemMap(t, incResponder, inc)[keyDevCred]; got != "done/" {
 			t.Fatalf("delegation item = %q, want done", got)
 		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id = 'devc_it' AND revoked_at IS NULL`); n != 0 {
