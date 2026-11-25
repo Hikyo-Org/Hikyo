@@ -31,7 +31,7 @@ func (q *Queries) BindSessionToOAuth2Provider(ctx context.Context, arg BindSessi
 }
 
 const claimFederatedAuthority = `-- name: ClaimFederatedAuthority :execrows
-UPDATE credential_authorities SET consumed_at = $1, established_at = $1, established_credential_kind = $2
+UPDATE credential_authorities SET consumed_at = $1, established_credential_kind = $2
 WHERE id = $3 AND consumed_at IS NULL AND issued_by <> 'recovery'
 `
 

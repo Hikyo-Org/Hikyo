@@ -34,7 +34,7 @@ var RecoveryLookupRules = []RecoveryRule{
 		Module + "/internal/authz":   {"TxAuthorizer.RecoveryAccountByID"},
 	}},
 	{Name: "RecoveryAccountByPrincipal", Allowed: map[string][]string{
-		Module + "/internal/service": {"Auth.ResetCredential", "Auth.BreakGlassResetCredential", "identitiesNotAttested"},
+		Module + "/internal/service": {"Auth.ResetCredential", "Auth.BreakGlassResetCredential"},
 		Module + "/internal/authz":   {"TxAuthorizer.RecoveryAccountByPrincipal"},
 	}},
 	{Name: "GetAccountForRecovery", Allowed: map[string][]string{
@@ -49,8 +49,8 @@ var RecoveryLookupRules = []RecoveryRule{
 
 // ContainmentSetterRules confines the two setters of the containment state.
 // Only the authz forwarders, the store resolver that implements them and the
-// incident service's single contain core may call ContainPrincipal; release
-// the release act has its own single caller.
+// incident service's single contain core may call ContainPrincipal; the
+// release act has its own single caller.
 var ContainmentSetterRules = []RecoveryRule{
 	{Name: "ContainPrincipal", Allowed: map[string][]string{
 		Module + "/internal/authz":       {"TxAuthorizer.ContainPrincipal"},

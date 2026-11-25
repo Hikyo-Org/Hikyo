@@ -203,7 +203,7 @@
     "engine": "postgres",
     "name": "ClaimFederatedAuthority",
     "annotation": "authn-resolution",
-    "hash": "2064b452137547f751bc28a8d91a2e1f324069d30d44c53d962a1a65e6d911ad",
+    "hash": "27888e0f76bd438bb0a98a174216800197c368b79d8a18bd05dd9607fb391996",
     "reason": "A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation."
   },
   {
@@ -294,7 +294,7 @@
     "engine": "postgres",
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
-    "hash": "b330ed55a007f19c32911b43853007489c586625c0a27daf9c38d6ad63e48b80"
+    "hash": "3d4145eb876dc167ff944e83c2e7acb9dad60cf79815157ff12e358cb88daa02"
   },
   {
     "engine": "postgres",
@@ -596,6 +596,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CountAuthorityEstablishmentsSince",
+    "annotation": "authn-resolution",
+    "hash": "61d15c8873ad7d7a568118d2ef980d30c3732bfcadd834bc6cd77978b1360286",
+    "reason": "Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret."
+  },
+  {
+    "engine": "postgres",
     "name": "CountBindingsForIssuer",
     "annotation": "authn-resolution",
     "hash": "35cb2098f9fd4c86d88b0e7bc238d1d1ed5e3ec8d6b7bd2886a0580f16523986"
@@ -682,6 +689,13 @@
     "name": "CountOrgs",
     "annotation": "instance-scoped",
     "hash": "7fc2dd344d79809f21d800fcfa4013d63d6148d627181e60196fd20508becac1"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountPasswordCredentialsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "a2bd7d5bb33242e64f1c51776a8b0ac1f3339fc23f8acd9889ce5ae9aa1564dc",
+    "reason": "Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else."
   },
   {
     "engine": "postgres",
@@ -1476,6 +1490,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GetOtherOpenIncidentHoldingPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ce74165022e64fb213657254953dc67ed0cec85ba81ce0b47b09dc86b84c2530",
+    "reason": "Release names another open incident whose ledger recorded the principal's containment as done, because that incident's operator also holds a claim on the contained state; it returns one incident id and nothing else."
+  },
+  {
+    "engine": "postgres",
     "name": "GetPasswordCredential",
     "annotation": "authn-resolution",
     "hash": "b9305f60d3277b60befea01d7a8cf3271d3cd152ebead1a361e85c2e2017208a"
@@ -1497,6 +1518,13 @@
     "name": "GetPrincipalClass",
     "annotation": "authn-resolution",
     "hash": "1d764102ff96096306e322195be1cddb81143f7a5db40f3a9ec21059df0216c2"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetPrincipalContainedIncident",
+    "annotation": "authn-resolution",
+    "hash": "c3b1489fa8757131b7142df900379bd2a0aab31489f878b55ffe07d9e8931443",
+    "reason": "Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else."
   },
   {
     "engine": "postgres",
@@ -3278,7 +3306,7 @@
     "engine": "postgres",
     "name": "ReleasePrincipalContainment",
     "annotation": "authn-resolution",
-    "hash": "f4035fd87a6396926323d2a328187292a5a2fcabf2c69bd3d8551b7984057f6c",
+    "hash": "32f12c354a12ae180e879c55fefea769837781c736ff0bc2992d83cb23615161",
     "reason": "Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority."
   },
   {
@@ -4114,7 +4142,7 @@
     "engine": "sqlite",
     "name": "ClaimFederatedAuthority",
     "annotation": "authn-resolution",
-    "hash": "8eb2802827f73e43ed000666ddf0039b7ea9ffe01e9618832eb7e7919c80b338",
+    "hash": "27888e0f76bd438bb0a98a174216800197c368b79d8a18bd05dd9607fb391996",
     "reason": "A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation."
   },
   {
@@ -4205,7 +4233,7 @@
     "engine": "sqlite",
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
-    "hash": "b55a467fd6ffe3d3f4bdce5f99f1536bcdd0213151e4f170fab088a938a11ec8"
+    "hash": "3d4145eb876dc167ff944e83c2e7acb9dad60cf79815157ff12e358cb88daa02"
   },
   {
     "engine": "sqlite",
@@ -4479,6 +4507,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountAuthorityEstablishmentsSince",
+    "annotation": "authn-resolution",
+    "hash": "84df2d45a1467c8b8b7e9a3bd8099d5303faaa3596cfc2aa156fb53015f9d546",
+    "reason": "Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret."
+  },
+  {
+    "engine": "sqlite",
     "name": "CountBindingsForIssuer",
     "annotation": "authn-resolution",
     "hash": "b98c0f276802ff367b62169e60805c269e29d5f6a279fb238fbb435aefc5a494"
@@ -4565,6 +4600,13 @@
     "name": "CountOrgs",
     "annotation": "instance-scoped",
     "hash": "7fc2dd344d79809f21d800fcfa4013d63d6148d627181e60196fd20508becac1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountPasswordCredentialsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "a2bd7d5bb33242e64f1c51776a8b0ac1f3339fc23f8acd9889ce5ae9aa1564dc",
+    "reason": "Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else."
   },
   {
     "engine": "sqlite",
@@ -5359,6 +5401,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetOtherOpenIncidentHoldingPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ce74165022e64fb213657254953dc67ed0cec85ba81ce0b47b09dc86b84c2530",
+    "reason": "Release names another open incident whose ledger recorded the principal's containment as done, because that incident's operator also holds a claim on the contained state; it returns one incident id and nothing else."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetPasswordCredential",
     "annotation": "authn-resolution",
     "hash": "3b455d6e936523c6ebba942c06edda526495318ccec557a35aacac23f87dce33"
@@ -5380,6 +5429,13 @@
     "name": "GetPrincipalClass",
     "annotation": "authn-resolution",
     "hash": "eb78f70a3bd2f70c8a0c98fd40224b7c1971c734a0d991c4a7d572ada1a5ed5c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetPrincipalContainedIncident",
+    "annotation": "authn-resolution",
+    "hash": "c3b1489fa8757131b7142df900379bd2a0aab31489f878b55ffe07d9e8931443",
+    "reason": "Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else."
   },
   {
     "engine": "sqlite",
@@ -7161,7 +7217,7 @@
     "engine": "sqlite",
     "name": "ReleasePrincipalContainment",
     "annotation": "authn-resolution",
-    "hash": "f4035fd87a6396926323d2a328187292a5a2fcabf2c69bd3d8551b7984057f6c",
+    "hash": "32f12c354a12ae180e879c55fefea769837781c736ff0bc2992d83cb23615161",
     "reason": "Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority."
   },
   {

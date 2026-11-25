@@ -28,7 +28,8 @@ SET containment_state = 'none',
     session_generation = session_generation + 1,
     contained_at = NULL,
     contained_incident_id = NULL
-WHERE id = sqlc.arg(principal_id) AND kind = 'human' AND containment_state = 'contained';
+WHERE id = sqlc.arg(principal_id) AND kind = 'human' AND containment_state = 'contained'
+  AND contained_incident_id = sqlc.arg(contained_incident_id);
 
 -- Release starts a fresh retention window (incident-containment ADR, O8): a
 -- suspension recorded before containment must not survive a contain and release

@@ -70,7 +70,7 @@ type txForwarded interface {
 	// authorities, so nothing minted before containment survives it. They revoke
 	// no session row and remove no grant.
 	ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error
-	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error
+	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID, incidentID string) error
 
 	// The incident ledger (O5): mutable state apart from the append-only trail.
 	// OpenIncident is idempotent per scope; AddIncidentItem never overwrites a
@@ -102,6 +102,11 @@ type txForwarded interface {
 	// PrincipalPausedByContainment reports a principal held out of authority by
 	// containment alone, for the personal-value retention clock.
 	PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error)
+
+	// ContainedAccountID is the account id of a principal that containment may
+	// have hidden from the ordinary lookups: the narrow read the release
+	// preconditions use, so they need no recovery lookup of their own.
+	ContainedAccountID(ctx context.Context, p domain.PrincipalID) (string, error)
 
 	// PrincipalContainedAt answers when the principal was contained, false when
 	// it is not. Establishment refuses an authority minted before that moment.

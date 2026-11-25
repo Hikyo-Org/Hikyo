@@ -107,7 +107,13 @@ func TestIncidentReleaseNeedsEstablishmentForAPasswordAccount(t *testing.T) {
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with an unconsumed authority = %v, want ErrReleaseNotReady", err)
 		}
-		execRaw(t, db, `UPDATE credential_authorities SET consumed_at = `+farFuture+`, established_at = `+farFuture+` WHERE id = 'ca_rel_1'`)
+		reset, err := authService(t, db).ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
+		if err != nil {
+			t.Fatalf("reset of the contained account: %v", err)
+		}
+		if err := authService(t, db).EstablishCredential(ctx, reset.Authority, "a password established after containment"); err != nil {
+			t.Fatalf("establishing the reset authority: %v", err)
+		}
 		if err := release(); err != nil {
 			t.Fatalf("release after establishment: %v", err)
 		}
@@ -416,6 +422,26 @@ func TestIncidentReleaseCutDoesNotStandInForAListedIdentity(t *testing.T) {
 		}
 		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); err != nil {
 			t.Fatalf("release with the listed identity and the cut attested: %v", err)
+		}
+	})
+}
+
+// An attested cut vouches only for identities that existed when the enumeration
+// was cut; one linked afterwards is not covered.
+func TestIncidentReleaseCutDoesNotCoverAnIdentityLinkedAfterIt(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		id := w.openOrg(t, incResponder)
+		w.resume(t, incResponder, id)
+		execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at) VALUES ('itm_cut_late', '`+id+`', 'external_identity.remove', 'enumeration', '`+string(incTarget)+`', 'org/org_a', 'unknown', 'enumeration_truncated', 1, `+ts+`, `+ts+`)`)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_late"); err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_late','acc_itarget','oidc','https://idp.example.test','subject-late','',`+acctEpoch(t, db)+`,`+farFuture+`)`)
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with an identity linked after the cut = %v, want ErrReleaseNotReady", err)
 		}
 	})
 }

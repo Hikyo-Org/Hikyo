@@ -53,6 +53,12 @@ func (r *Resolver) ContainPrincipal(ctx context.Context, p domain.PrincipalID, a
 	return r.ConsumeOutstandingAuthorities(ctx, accountID, at)
 }
 
+// ContainedAccountID reads only the account id, ignoring containment and privacy
+// state like the containment sweep, for the release preconditions.
+func (r *Resolver) ContainedAccountID(ctx context.Context, p domain.PrincipalID) (string, error) {
+	return r.containmentSweepAccount(ctx, p)
+}
+
 func (r *Resolver) containmentSweepAccount(ctx context.Context, p domain.PrincipalID) (string, error) {
 	var (
 		id  string
@@ -72,16 +78,17 @@ func (r *Resolver) containmentSweepAccount(ctx context.Context, p domain.Princip
 // revives (O4). It also clears the owner's personal-value retention
 // suspensions, so release starts a fresh window even when no sweep ran between
 // containment and release (O8); a privacy-restricted owner's clock keeps running.
-func (r *Resolver) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
+// Only the incident that recorded the containment can release it.
+func (r *Resolver) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID, incidentID string) error {
 	if err := r.LockPrincipalRow(ctx, p); err != nil {
 		return err
 	}
 	var n int64
 	var err error
 	if r.sq != nil {
-		n, err = r.sq.ReleasePrincipalContainment(ctx, string(p))
+		n, err = r.sq.ReleasePrincipalContainment(ctx, sqlitegen.ReleasePrincipalContainmentParams{PrincipalID: string(p), ContainedIncidentID: nullString(incidentID)})
 	} else {
-		n, err = r.pg.ReleasePrincipalContainment(ctx, string(p))
+		n, err = r.pg.ReleasePrincipalContainment(ctx, pggen.ReleasePrincipalContainmentParams{PrincipalID: string(p), ContainedIncidentID: pgText(incidentID)})
 	}
 	if err := containmentWritten(n, err); err != nil {
 		return err

@@ -389,14 +389,20 @@ SET containment_state = 'none',
     contained_at = NULL,
     contained_incident_id = NULL
 WHERE id = $1 AND kind = 'human' AND containment_state = 'contained'
+  AND contained_incident_id = $2
 `
+
+type ReleasePrincipalContainmentParams struct {
+	PrincipalID         string
+	ContainedIncidentID pgtype.Text
+}
 
 // The generation advances again on release, so no session or delegation that predates
 // containment ever becomes valid again: release restores access through a fresh sign-in.
 // hikyo:reason Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority.
 // hikyo:authn-resolution
-func (q *Queries) ReleasePrincipalContainment(ctx context.Context, principalID string) (int64, error) {
-	result, err := q.db.Exec(ctx, releasePrincipalContainment, principalID)
+func (q *Queries) ReleasePrincipalContainment(ctx context.Context, arg ReleasePrincipalContainmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releasePrincipalContainment, arg.PrincipalID, arg.ContainedIncidentID)
 	if err != nil {
 		return 0, err
 	}

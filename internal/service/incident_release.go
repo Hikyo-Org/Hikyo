@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -93,7 +94,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 			// way to sign in was replaced, so release is refused.
 			return fmt.Errorf("%w: the account has no password and no attested linked identity", ErrReleaseNotReady)
 		}
-		if err := az.ReleasePrincipalContainment(ctx, target); err != nil {
+		if err := az.ReleasePrincipalContainment(ctx, target, inc.ID); err != nil {
 			return err
 		}
 		e, err := incidentEvent(ctx, audit.EventIncidentPrincipalReleased, caller.Principal, inc.ID, audit.OutcomeSuccess,
@@ -165,15 +166,16 @@ func otherHolderRefusal(ctx context.Context, az *authz.TxAuthorizer, caller auth
 // keyed to the target counts too (the cut means identities went unlisted), and
 // an attested one covers them. total is how many identities the account holds.
 func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, err error) {
-	account, err := az.RecoveryAccountByPrincipal(ctx, target)
+	accountID, err := az.ContainedAccountID(ctx, target)
 	if err != nil {
 		return 0, 0, err
 	}
-	identities, err := az.ExternalIdentitiesForAccount(ctx, account.ID)
+	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
 	if err != nil {
 		return 0, 0, err
 	}
 	attested, listed, cutPending, cutAttested := map[string]bool{}, map[string]bool{}, false, false
+	var cutAt time.Time
 	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, releasePageSize, false)
@@ -192,6 +194,9 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 				}
 				if it.Outcome == domain.ItemAttested {
 					cutAttested = true
+					if it.CreatedAt.After(cutAt) {
+						cutAt = it.CreatedAt
+					}
 				} else {
 					cutPending = true
 				}
@@ -206,9 +211,10 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 		after = page[len(page)-1].ID
 	}
 	// An identity with a ledger item needs that item attested; an attested cut row
-	// for this target vouches only for the identities it left unlisted.
+	// for this target vouches only for the identities it left unlisted, so one linked
+	// after the enumeration is never covered.
 	for _, x := range identities {
-		if listed[x.ID] && !attested[x.ID] || !listed[x.ID] && !cutAttested {
+		if listed[x.ID] && !attested[x.ID] || !listed[x.ID] && (!cutAttested || x.CreatedAt.After(cutAt)) {
 			pending++
 		}
 	}

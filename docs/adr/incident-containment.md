@@ -496,8 +496,8 @@ principal is contained, so a contained account would still have a scheduler acti
 - It needs the O4 A evidence: for an account with a local password, a credential
   establishment since containment (an establishment stamps the authority it consumes; a
   sweep, whether containment's or a newer reset's, consumes without stamping, so it never
-  counts); and every linked identity of the target attested in the containing incident. An account with neither a password nor a linked identity is refused,
-  because nothing then records a replaced way to sign in. An unmet condition is a conflict
+  counts); and every linked identity of the target attested in the containing incident.
+  An account with neither a password nor a linked identity is refused, because nothing then records a replaced way to sign in. An unmet condition is a conflict
   (`ErrReleaseNotReady`) and the principal stays contained.
 - The ways back for a contained account are the operator reset (refused for a linked
   account, so a linked one needs the host-local reset) and the break-glass reset. Each mints an
@@ -507,9 +507,15 @@ principal is contained, so a contained account would still have a scheduler acti
   `TestIncidentContainedAccountRefusesFederatedClaim`). Containment retires outstanding
   authorities and establishment refuses one minted before it, and password and factor writes of a
   signed-in session need a session a contained account cannot hold. An establishment stamps
-  `credential_authorities.established_at` on the authority it consumes (migration 00097); a
+  `credential_authorities.established_at` on the authority it consumes (migration 00100); a
   sweep consumes without stamping, so neither containment's sweep nor a newer reset's ever
-  reads as an establishment, whatever clock minted the authority.
+  reads as an establishment, whatever clock minted the authority. Only a credential
+  authority's consumption by a password establishment stamps it; a federated claim does not.
+  The migration backfills nothing: an authority consumed before migration 00100 has no stamp, so
+  release fails closed for a password account contained across the upgrade until it establishes
+  a credential again (owner decision, #1039).
+  Release also binds the containing incident in the same UPDATE that clears the state, and an
+  attested enumeration cut vouches only for identities linked before that enumeration.
 - Release is authorized as containment was: the same target classification applies, so a
   target in several orgs needs instance scope and an instance-capability target is refused. The
   linked-identity condition reads the target's own identities and needs an attested item for each

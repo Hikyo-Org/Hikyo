@@ -284,6 +284,13 @@ func (a *TxAuthorizer) ContainPrincipal(ctx context.Context, p domain.PrincipalI
 	return a.r.ContainPrincipal(ctx, p, at, incidentID)
 }
 
+// ContainedAccountID is the account id of a principal that containment may
+// have hidden from the ordinary lookups: the narrow read the release
+// preconditions use, so they need no recovery lookup of their own.
+func (a *TxAuthorizer) ContainedAccountID(ctx context.Context, p domain.PrincipalID) (string, error) {
+	return a.r.ContainedAccountID(ctx, p)
+}
+
 func (a *TxAuthorizer) CorrectPrivacyAccount(ctx context.Context, account, username, displayName string) error {
 	return a.r.CorrectPrivacyAccount(ctx, account, username, displayName)
 }
@@ -1142,8 +1149,8 @@ func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
 }
 
-func (a *TxAuthorizer) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
-	return a.r.ReleasePrincipalContainment(ctx, p)
+func (a *TxAuthorizer) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID, incidentID string) error {
+	return a.r.ReleasePrincipalContainment(ctx, p, incidentID)
 }
 
 func (a *TxAuthorizer) RemotePairedConnectionByID(ctx context.Context, id string) (RemotePairedConnection, error) {

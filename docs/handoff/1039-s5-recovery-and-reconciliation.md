@@ -10,7 +10,10 @@ Local only until slice 4 merges.
   credential establishment since containment for a password account and every linked-identity
   item attested, refuses an account with neither, revives and regrants nothing.
 - Store evidence: `CredentialEstablishedSince`, `PrincipalHasPassword`,
-  `PrincipalContainedIncident` (three authn-resolution queries, both engines).
+  `PrincipalContainedIncident`, `OtherOpenIncidentHolding` (four authn-resolution queries, both
+  engines), and `ContainedAccountID` for the linked-identity read. Migration 00100 adds
+  `credential_authorities.established_at` with no backfill: release fails closed for a password
+  account contained before the upgrade until it establishes a credential again.
 - `Restore.Status` lists the contained pending principals and `hikyo restore status` marks
   them; reconcile does not lift containment.
 - ADR section "Slice 5: release and restore (O4 A)".
@@ -22,7 +25,10 @@ Local only until slice 4 merges.
   `TestIncidentReleaseRefusesAnAccountWithNothingToReplace`,
   `TestIncidentReleaseAcceptsARealResetEstablishment` (real reset, establish, release),
   `TestIncidentReleaseOrgIncidentWaitsForIdentityAttestation`, `TestIncidentReleaseKeepsContainmentsOrgBound`,
-  `TestIncidentReleaseIgnoresAuthoritiesThatPredateOrWereSweptByContainment`, and the negative
+  `TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment`,
+  `TestIncidentReleaseTruncationIsKeyedPerMember`,
+  `TestIncidentReleaseWaitsForAnotherOpenIncidentHoldingThePrincipal`,
+  `TestIncidentReleaseCutDoesNotStandInForAListedIdentity`, and the negative
   `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment` and `...RefusesFederatedClaim`,
   `TestRestoreReconcileDoesNotLiftContainment` (real archive restore and reopen).
 
