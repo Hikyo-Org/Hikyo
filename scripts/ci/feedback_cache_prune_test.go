@@ -2,11 +2,13 @@ package ci_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -66,21 +68,39 @@ func requirePruneJob(workflow map[string]any) (string, error) {
 	return run, nil
 }
 
-type fakeCache struct{ id, key, created string }
+type fakeCache struct{ id, key, created, ref string }
 
-// runPrune executes the script with a fake gh. The fake returns every cache regardless of the
-// requested key and ref, as a hostile or lagging server could, and records the calls.
+// runPrune executes the script with a fake gh. The fake serves the API's JSON page (actions_caches
+// with id, key, ref and created_at) for every cache regardless of the requested key and ref, as a
+// hostile or lagging server could, and applies the script's real --jq expression with jq.
 func runPrune(script string, env map[string]string, caches []fakeCache, missing, broken string) (deleted []string, listed string, err error) {
 	dir, err := os.MkdirTemp("", "prune-test")
 	if err != nil {
 		return nil, "", err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-	var rows strings.Builder
-	for _, c := range caches {
-		fmt.Fprintf(&rows, "%s\t%s\t%s\n", c.id, c.key, c.created)
+	type apiCache struct {
+		ID      int    `json:"id"`
+		Ref     string `json:"ref"`
+		Key     string `json:"key"`
+		Created string `json:"created_at"`
 	}
-	if err := os.WriteFile(filepath.Join(dir, "rows"), []byte(rows.String()), 0o600); err != nil {
+	page := struct {
+		Total  int        `json:"total_count"`
+		Caches []apiCache `json:"actions_caches"`
+	}{Total: len(caches)}
+	for _, c := range caches {
+		id, err := strconv.Atoi(c.id)
+		if err != nil {
+			return nil, "", err
+		}
+		page.Caches = append(page.Caches, apiCache{ID: id, Ref: c.ref, Key: c.key, Created: c.created})
+	}
+	raw, err := json.Marshal(page)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "page.json"), raw, 0o600); err != nil {
 		return nil, "", err
 	}
 	gh := `#!/bin/sh
@@ -88,8 +108,8 @@ func runPrune(script string, env map[string]string, caches []fakeCache, missing,
 shift
 if [ "$1" = --paginate ]; then
 	printf '%s\n' "$2" >"$FAKE_DIR/listed"
-	cat "$FAKE_DIR/rows"
-	exit 0
+	[ "$3" = --jq ] || exit 66
+	exec jq -r "$4" "$FAKE_DIR/page.json"
 fi
 [ "$1" = -X ] && [ "$2" = DELETE ] || exit 65
 id=${3##*/}
@@ -122,21 +142,35 @@ printf '%s\n' "$id" >>"$FAKE_DIR/deleted"
 
 func pruneCaches() []fakeCache {
 	const base = "go-feedback-v2-Linux-X64-ubuntu24-"
-	return []fakeCache{
-		{"1", base + "main-application-h1-w1-shaNEW", "2026-11-25T03:40:00Z"},
-		{"2", base + "main-application-h1-w1-shaOLD", "2026-11-24T03:40:00Z"},
-		{"3", base + "main-application-h0-w0-shaOLDER", "2026-11-20T03:40:00Z"},
-		{"4", base + "dev-application-h1-w1-2026-11-24", "2026-11-24T12:00:00Z"},
-		{"5", base + "main-cli-h1-w1-shaOLD", "2026-11-24T03:40:00Z"},
-		{"6", base + "main-tooling-h1-w1-shaOLD", "2026-11-24T03:40:00Z"},
-		{"7", "go-feedback-v2-Linux-X64-ubuntu22-main-application-h1-w1-shaOLD", "2026-11-01T03:40:00Z"},
-		{"8", "go-test-v2-Linux-X64-ubuntu24-hash", "2026-11-24T03:40:00Z"},
-		{"9", base + "main-applicationX-h1-w1-shaOLD", "2026-11-24T03:40:00Z"},
-		{"10", base + "main-application-h1-w1-shaOTHER-NEWER", "2026-11-25T05:00:00Z"},
-		{"11", base + "dev-application-h1-w1-2026-11-25", "2026-11-25T08:00:00Z"},
-		{"12", base + "dev-application-h1-w1-2026-11-23", "2026-11-23T08:00:00Z"},
-		{"13", base + "dev-tooling-h1-w1-2026-11-23", "2026-11-23T08:00:00Z"},
+	caches := []fakeCache{
+		{"1", base + "main-application-h1-w1-shaNEW", "2026-11-25T03:40:00Z", ""},
+		{"2", base + "main-application-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
+		{"3", base + "main-application-h0-w0-shaOLDER", "2026-11-20T03:40:00Z", ""},
+		{"4", base + "dev-application-h1-w1-2026-11-24", "2026-11-24T12:00:00Z", ""},
+		{"5", base + "main-cli-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
+		{"6", base + "main-tooling-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
+		{"7", "go-feedback-v2-Linux-X64-ubuntu22-main-application-h1-w1-shaOLD", "2026-11-01T03:40:00Z", ""},
+		{"8", "go-test-v2-Linux-X64-ubuntu24-hash", "2026-11-24T03:40:00Z", ""},
+		{"9", base + "main-applicationX-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
+		{"10", base + "main-application-h1-w1-shaOTHER-NEWER", "2026-11-25T05:00:00Z", ""},
+		{"11", base + "dev-application-h1-w1-2026-11-25", "2026-11-25T08:00:00Z", ""},
+		{"12", base + "dev-application-h1-w1-2026-11-23", "2026-11-23T08:00:00Z", ""},
+		{"13", base + "dev-tooling-h1-w1-2026-11-23", "2026-11-23T08:00:00Z", ""},
+		// The same prefix on a pull request's merge ref: not this run's ref, so never deleted, whatever
+		// the server returns.
+		{"14", base + "main-application-h1-w1-shaPR", "2026-11-23T03:40:00Z", "refs/pull/9/merge"},
+		{"15", base + "dev-application-h1-w1-2026-11-22", "2026-11-22T08:00:00Z", "refs/pull/9/merge"},
 	}
+	for i := range caches {
+		if caches[i].ref != "" {
+			continue
+		}
+		caches[i].ref = "refs/heads/main"
+		if strings.Contains(caches[i].key, "-dev-") {
+			caches[i].ref = "refs/heads/dev"
+		}
+	}
+	return caches
 }
 
 func pruneEnv(ref, entry string) map[string]string {
@@ -257,7 +291,12 @@ func TestSeedPrunesSupersededEntriesOnly(t *testing.T) {
 		"loose prefix match": func(s string) string {
 			return strings.Replace(s, "index($2, p) == 1", "index($2, \"-\" ENVIRON[\"ENTRY\"] \"-\") > 0", 1)
 		},
-		"newest not kept": func(s string) string { return strings.Replace(s, "[ \"$id\" != \"$newest\" ] || continue", "true", 1) },
+		"ref not checked": func(s string) string { return strings.Replace(s, "select(.ref == env.GITHUB_REF) | ", "", 1) },
+		"jq field renamed": func(s string) string {
+			return strings.Replace(s, "[.id, .key, .created_at]", "[.id, .name, .created_at]", 1)
+		},
+		"jq output not tsv": func(s string) string { return strings.Replace(s, "| @tsv'", "| @csv'", 1) },
+		"newest not kept":   func(s string) string { return strings.Replace(s, "[ \"$id\" != \"$newest\" ] || continue", "true", 1) },
 		"just saved not kept": func(s string) string {
 			return strings.Replace(s, "case \"$key\" in *\"-${suffix}\") continue ;; esac", "true", 1)
 		},

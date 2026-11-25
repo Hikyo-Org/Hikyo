@@ -101,8 +101,9 @@ jobs:
 
   # Superseded seeds of the same ref, family and entry. A separate job so the one that compiles
   # keeps a read-only token: this one holds only actions: write, checks nothing out and runs no
-  # repository code. It deletes by exact key prefix (re-checked here, not left to the server's
-  # filter) and by cache id, never the newest entry of the prefix and never the one this run named, and treats an already-deleted entry as done.
+  # repository code. It deletes by exact key prefix and by this run's ref (both re-checked here,
+  # not left to the server's filter) and by cache id, never the newest entry of the prefix and
+  # never the one this run named, and treats an already-deleted entry as done.
   prune:
     needs: seed
     if: >-
@@ -133,11 +134,13 @@ jobs:
           if [ "$GITHUB_REF" = refs/heads/dev ]; then family=dev; suffix=$SEED_DAY; fi
           prefix="go-feedback-v2-${RUNNER_OS}-${RUNNER_ARCH}-${ABI}-${family}-${ENTRY}-"
           rows=$(gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100&ref=${GITHUB_REF}&key=${prefix}" \
-            --jq '.actions_caches[] | [.id, .key, .created_at] | @tsv' |
+            --jq '.actions_caches[] | select(.ref == env.GITHUB_REF) | [.id, .key, .created_at] | @tsv' |
             awk -F'\t' -v p="$prefix" 'index($2, p) == 1' | sort -t"$(printf '\t')" -k3,3r)
           newest=$(printf '%s\n' "$rows" | head -n 1 | cut -f1)
           printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r id key _; do
             [ -n "$id" ] || continue
+            # Load-bearing: abi and day come from whichever matrix leg finished last, so across UTC
+            # midnight SEED_DAY can differ from this run's key; the entry just saved is then the newest.
             [ "$id" != "$newest" ] || continue
             case "$key" in *"-${suffix}") continue ;; esac
             if ! gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>"${RUNNER_TEMP}/delete.err"; then
