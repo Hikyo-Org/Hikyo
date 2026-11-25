@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -197,7 +198,7 @@ func runServiceAccountCredential(ctx context.Context, ios IO, args []string) (re
 		defer sink.AbortOnReturn(&returnErr)
 	}
 
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
@@ -213,13 +214,18 @@ func runServiceAccountCredential(ctx context.Context, ios IO, args []string) (re
 		if err := client.Do(ctx, http.MethodGet, credentials, nil, &out); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, credentialTable(out))
+		return Render(ios.Stdout, f, credentialTable(out, ios.now()))
 	case "revoke":
 		return client.Do(ctx, http.MethodDelete, credentials+"/"+url.PathEscape(credID), nil, nil)
 	}
 
 	var out apigen.MintCredentialResult
-	if err := client.Do(ctx, http.MethodPost, credentials, want, &out); err != nil {
+	attempt := func() error { return client.Do(ctx, http.MethodPost, credentials, want, &out) }
+	project, err := projectBase(resolved)
+	if err != nil {
+		return err
+	}
+	if err := withMintCeremony(ctx, client, st, ios, artifact, project, attempt); err != nil {
 		return err
 	}
 	if _, err := sink.WriteOnce("hikyo machine credential (shown once)", out.Value); err != nil {
@@ -244,7 +250,49 @@ func runServiceAccountCredential(ctx context.Context, ios IO, args []string) (re
 	}
 	return Render(ios.Stdout, f, credentialTable(apigen.MachineCredentialList{
 		Items: []apigen.MachineCredential{out.Credential}, Count: 1,
-	}))
+	}, ios.now()))
+}
+
+// mintReauthDetail prefixes the server's refusal of a mint whose post-state
+// reaches an environment without a live reauthentication window; the
+// environment id follows in parentheses (service.RequireDisclosureAuthority).
+const mintReauthDetail = "reauthenticate over the environments this operation makes reachable, then retry ("
+
+// withMintCeremony runs a service-account credential mint and, each time the
+// server names an environment of the account's post-state reach that still
+// needs a reauthentication window, opens that window and retries: inline TOTP
+// where the environment allows it, otherwise a refusal naming the browser. The
+// server names only the first such environment, and a refused mint commits
+// nothing, so an account reaching several environments takes one round per
+// environment. An environment named twice means the opened window did not
+// satisfy the mint, so that refusal is returned rather than looping.
+func withMintCeremony(ctx context.Context, client *Client, st *State, ios IO, artifact AuthArtifact,
+	projectBase string, attempt func() error) error {
+	var session *SessionArtifact
+	opened := map[string]bool{}
+	for {
+		err := attempt()
+		var refusal *Error
+		if !errors.As(err, &refusal) {
+			return err
+		}
+		env, named := strings.CutPrefix(refusal.Detail, mintReauthDetail)
+		env, closed := strings.CutSuffix(env, ")")
+		if !named || !closed || env == "" || opened[env] {
+			return err
+		}
+		opened[env] = true
+		if session == nil {
+			s, serr := requireHumanSession("CLI reauthentication", artifact)
+			if serr != nil {
+				return serr
+			}
+			session = &s
+		}
+		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{purpose: "mint", authorized: true}, err); cerr != nil {
+			return cerr
+		}
+	}
 }
 
 func runCredentialPolicy(ctx context.Context, ios IO, args []string) error {
@@ -377,11 +425,11 @@ func serviceAccountTable(list apigen.ServiceAccountList) Table {
 	}
 }
 
-func credentialTable(list apigen.MachineCredentialList) Table {
+func credentialTable(list apigen.MachineCredentialList, now time.Time) Table {
 	rows := make([][]string, 0, len(list.Items))
 	for _, c := range list.Items {
 		rows = append(rows, []string{
-			c.Id, credentialIdentity(c), string(c.Kind), renderExpiry(c), credentialStatus(c),
+			c.Id, credentialIdentity(c), string(c.Kind), renderExpiry(c), credentialStatus(c, now),
 		})
 	}
 	return Table{
@@ -425,10 +473,15 @@ func credentialIdentity(c apigen.MachineCredential) string {
 	return "-"
 }
 
-func credentialStatus(c apigen.MachineCredential) string {
+// credentialStatus reads expiry against the local clock: the server's
+// `expiring_soon` turns false once the expiry has passed, so without this an
+// expired credential would fall through to `live`.
+func credentialStatus(c apigen.MachineCredential, now time.Time) string {
 	switch {
 	case c.RevokedAt != nil:
 		return "revoked"
+	case c.ExpiresAt != nil && !now.Before(*c.ExpiresAt):
+		return "expired"
 	case c.ExpiringSoon:
 		return "expiring-soon"
 	default:

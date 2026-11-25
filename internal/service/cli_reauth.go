@@ -95,14 +95,17 @@ func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation)
 		return operation == authz.OpApprovalVote
 	case PurposeBypass:
 		return operation == authz.OpApprovalBypass
+	case PurposeMint:
+		return operation == authz.OpCredentialMint
 	}
 	return false
 }
 
 // cliReauthKeyBound reports whether the browser handoff carries an exact
-// environment and key set. Adapter handoffs bind an environment set instead.
+// environment and key set. Adapter handoffs bind an environment set instead;
+// a mint handoff's unit is the environment alone (#1516), so it carries no keys.
 func cliReauthKeyBound(purpose string) bool {
-	return purpose != string(PurposeAdapter)
+	return purpose != string(PurposeAdapter) && purpose != string(PurposeMint)
 }
 
 type CLIReauthRedeemed struct {
@@ -284,11 +287,12 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 // disclosure handoff authorizes `read` over the environment it will disclose
 // in: a principal who cannot read the environment is not offered a ceremony,
 // while the MFA-mandatory `reveal` conjunct is judged by the disclosure itself
-// once the session carries the factor the ceremony adds. Approval handoffs
+// once the session carries the factor the ceremony adds. A mint handoff also
+// authorizes `read`: its unit is the environment and it carries no keys. Approval handoffs
 // authorize their own publish-based operation because they disclose no value.
 func cliReauthAuthorizeStart(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, purpose, operation string, chain authz.EnvironmentChain, environmentID string) error {
 	env := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project), Env: domain.EnvID(environmentID)}
-	if purpose == string(PurposeDeveloperCredential) || purpose == string(PurposeReveal) || purpose == string(PurposeCopy) || purpose == string(PurposePublish) {
+	if purpose == string(PurposeDeveloperCredential) || purpose == string(PurposeReveal) || purpose == string(PurposeCopy) || purpose == string(PurposePublish) || purpose == string(PurposeMint) {
 		if _, err := az.Authorize(ctx, caller, authz.OpValueList, env); err != nil {
 			return fmt.Errorf("authorize read for %s: %w", environmentID, err)
 		}

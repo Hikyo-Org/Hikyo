@@ -36,6 +36,7 @@ client.setConfig({ baseUrl: fixture.origin, throwOnError: true });
 const meta = z.zMeta.parse((await call('getMeta')).data);
 assert.equal(meta.server_version, 'current-server-skew-fixture');
 assert.ok(meta.api_revision >= 1);
+let mintChecked = false;
 async function enrolledLogin() {
   client.setConfig({ headers: { Authorization: null } });
   const refused = await call('localLogin', {
@@ -79,6 +80,19 @@ async function enrolledLogin() {
     const result = z.zLoginResult.parse((await call('redeemCliLogin', {
       body: { code: approved.code, pkce_verifier: verifier, redirect_uri: redirect },
     })).data);
+    // The v1.0.0 Zod transaction schema cannot name the `mint` purpose (#1516) and
+    // the operation that goes with it. This is the narrow skew of the 2026-11-23
+    // api-cli-surface amendment: only those two enum members fail, and the v1.0.0
+    // SDK, which has no response validator, still reads the same transaction.
+    if (!mintChecked) {
+      mintChecked = true;
+      const mint = await call('showCliReauthTransaction', { headers: browserHeaders, path: { state: fixture.mint_state } });
+      assert.equal(mint.data.purpose, 'mint');
+      const refusedMint = z.zCliReauthTransaction.safeParse(mint.data);
+      assert.equal(refusedMint.success, false, 'the v1.0.0 Zod transaction schema must reject a mint transaction');
+      assert.deepEqual(refusedMint.error.issues.map(issue => issue.path.join('.')).sort(), ['operation', 'purpose'],
+        'only the mint purpose and its operation are the failure, not any other field');
+    }
     assert.equal(result.session.artifact, 'cli');
     assert.equal(result.principal.id, browser.principal.id);
     assert.ok(result.session_token);
@@ -181,4 +195,4 @@ const allOrgs = await call('listOrgs', { throwOnError: false });
 assert.equal(allOrgs.response.status, 403, 'instance-wide listing requires MFA');
 assert.equal(z.zError.parse(allOrgs.error).error.code, 'forbidden');
 await call('logout');
-console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit mldsa65 list rejected by the v1.0.0 Zod schemas while the SDK signs and verifies, pki profile and issuer lists passed');
+console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit mldsa65 list rejected by the v1.0.0 Zod schemas while the SDK signs and verifies, CLI reauth mint transaction rejected by the v1.0.0 Zod schema, pki profile and issuer lists passed');

@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -487,6 +488,24 @@ func TestMLDSA65EnumLocations(t *testing.T) {
 	t.Cleanup(func() { api.MLDSA65EnumLocations = all })
 	for i, want := range all {
 		api.MLDSA65EnumLocations = slices.Delete(slices.Clone(all), i, i+1)
+		got := contractViolations(t, base, revised)
+		if len(got) != 1 || got[0].ID != "hikyo-contract-added" || !strings.Contains(got[0].Text, want) {
+			t.Errorf("without %s the guard reported:\n%s", want, render(got))
+		}
+	}
+}
+
+// Failures of the mint reauth amendment (#1516) in document coordinates.
+func TestMintReauthEnumLocations(t *testing.T) {
+	if n := len(api.MintReauthEnumLocations); n != 4 {
+		t.Fatalf("the amendment lists %d document locations, want 4", n)
+	}
+	base, revised := mintReauthPair(t)
+	all := api.MintReauthEnumLocations
+	t.Cleanup(func() { api.MintReauthEnumLocations = all })
+	for want := range all {
+		api.MintReauthEnumLocations = maps.Clone(all)
+		delete(api.MintReauthEnumLocations, want)
 		got := contractViolations(t, base, revised)
 		if len(got) != 1 || got[0].ID != "hikyo-contract-added" || !strings.Contains(got[0].Text, want) {
 			t.Errorf("without %s the guard reported:\n%s", want, render(got))
