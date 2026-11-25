@@ -23,28 +23,31 @@ printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || fail 
 now=${PROMOTION_HEALTH_NOW:-$(date +%s)}
 printf '%s\n' "$now" | grep -Eq '^[0-9]{1,12}$' || fail 'invalid clock'
 since=$((now - window))
-# The window counts from completion, but the API filters by creation: list runs
-# created up to six hours earlier, longer than one can queue and run.
-# jq formats the timestamp, since GNU and BSD date disagree on how.
-listed_iso=$(jq -nr "$((since - 21600)) | todate")
 
-# The window bounds the listing, which every merge to main also adds runs to. The
-# landing trigger is the only other event, and its runs are not promotions.
-"$GH_BIN" api --paginate "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$listed_iso&per_page=100" --jq \
-	".workflow_runs[] | select(.event != \"pull_request_target\" and ((.updated_at | fromdateiso8601?) // 0) >= $since) | [.created_at, .id, (.conclusion // \"-\")] | @tsv" \
-	>"$work/runs" 2>"$work/err" || {
-	# gh's reason, kept from being read as a workflow command.
-	head -n 5 "$work/err" | tr -cd '[:print:]\n' | sed 's/::/: :/g' >&2
-	fail 'nightly-promote.yml runs cannot be read, so promotion health is unknown'
-}
+# The newest completed run per promoting event, straight from the API: no listing
+# window can drop a run that queued for long, and the landing trigger's runs
+# (pull_request_target) are not promotions.
+: >"$work/runs"
+for event in schedule workflow_dispatch; do
+	"$GH_BIN" api "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&event=$event&status=completed&per_page=1" --jq \
+		'.workflow_runs[] | [.created_at, .id, (.conclusion // "-"), ((.updated_at | fromdateiso8601?) // "-")] | @tsv' \
+		>>"$work/runs" 2>"$work/err" || {
+		# gh's reason, kept from being read as a workflow command.
+		head -n 5 "$work/err" | tr -cd '[:print:]\n' | sed 's/::/: :/g' >&2
+		fail 'nightly-promote.yml runs cannot be read, so promotion health is unknown'
+	}
+done
+# The latest promotion is the newest by creation, whatever its outcome.
 latest=$(sort "$work/runs" | tail -n 1)
-[ -n "$latest" ] || fail 'nightly-promote.yml has no completed scheduled or manual run on main in 36 hours, so promotion has stopped running.'
+[ -n "$latest" ] || fail 'nightly-promote.yml has no completed scheduled or manual run on main, so promotion is not running.'
 tab=$(printf '\t')
-IFS=$tab read -r _ run_id conclusion <<EOF
+IFS=$tab read -r _ run_id conclusion completed <<EOF
 $latest
 EOF
 printf '%s\n' "$run_id" | grep -Eq '^[1-9][0-9]*$' || fail 'nightly-promote.yml returned an unexpected run record.'
 printf '%s\n' "$conclusion" | grep -Eq '^[a-z_-]+$' || fail 'nightly-promote.yml returned an unexpected run record.'
 url="$server/$GH_REPO/actions/runs/$run_id"
+printf '%s\n' "$completed" | grep -Eq '^[0-9]{1,12}$' || fail 'nightly-promote.yml returned an unexpected run record.'
+[ "$completed" -ge "$since" ] || fail "The latest nightly-promote.yml run finished more than 36 hours ago, so promotion has stopped running: $url"
 [ "$conclusion" = success ] || fail "The latest nightly-promote.yml run ended '$conclusion', so main has stopped taking dev: $url"
 printf 'Promotion is healthy: %s\n' "$url"

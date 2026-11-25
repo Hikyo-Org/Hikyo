@@ -26,7 +26,10 @@ if [ "${GH_FAIL:-}" = 1 ]; then
 	printf 'gh: Bad Gateway (HTTP 502)\n' >&2
 	exit 1
 fi
-printf '%s' "$RUNS" | jq -r "$filter"
+# Like the API: only the URL's event, newest first, one run per page.
+event=${url#*event=}
+event=${event%%&*}
+printf '%s' "$RUNS" | jq --arg event "$event" '.workflow_runs |= (map(select(.event == $event)) | sort_by(.created_at) | reverse | .[:1])' | jq -r "$filter"
 STUB
 chmod +x "$work/gh"
 
@@ -60,13 +63,14 @@ expect_fail() {
 
 expect_pass 'a successful latest run' "$(runs "$(rec 3 101 '"success"' schedule)")"
 grep -F 'https://example.test/o/r/actions/runs/101' "$work/out" >/dev/null || fail 'the healthy run is not named'
-grep -F 'created=%3E%3D' "$work/reads" >/dev/null || fail 'the window is not requested'
+grep -F 'event=schedule&status=completed&per_page=1' "$work/reads" >/dev/null || fail 'scheduled runs are not read'
+grep -F 'event=workflow_dispatch&status=completed&per_page=1' "$work/reads" >/dev/null || fail 'manual runs are not read'
 
 expect_fail 'a failed latest run' "$(runs "$(rec 3 102 '"failure"' schedule)")" 'https://example.test/o/r/actions/runs/102'
 expect_fail 'a cancelled latest run' "$(runs "$(rec 3 103 '"cancelled"' workflow_dispatch)")" "ended 'cancelled'"
-expect_fail 'no runs' "$(runs '')" 'has stopped running'
-expect_fail 'only landing runs' "$(runs "$(rec 2 104 '"success"' pull_request_target)")" 'has stopped running'
-# The API filters the window; the script checks it too.
+expect_fail 'no runs' "$(runs '')" 'is not running'
+expect_fail 'only landing runs' "$(runs "$(rec 2 104 '"success"' pull_request_target)")" 'is not running'
+# The latest run must have finished within 36 hours.
 expect_fail 'a run older than the window' "$(runs "$(rec 37 105 '"success"' schedule)")" 'has stopped running'
 expect_pass 'a run inside the window' "$(runs "$(rec 35 106 '"success"' schedule)")"
 # The window counts from completion: started before it, finished inside it.
@@ -77,6 +81,13 @@ mixed="$(rec 30 110 '"failure"' schedule),$(rec 6 111 '"success"' schedule),$(re
 expect_pass 'the newest run is a success' "$(runs "$mixed")"
 mixed="$(rec 6 120 '"failure"' schedule),$(rec 30 121 '"success"' schedule),$(rec 1 122 '"success"' pull_request_target)"
 expect_fail 'the newest run is a failure' "$(runs "$mixed")" 'runs/120'
+# The newest promotion counts across events: a manual failure after a scheduled success.
+mixed="$(rec 10 130 '"success"' schedule),$(rec 2 131 '"failure"' workflow_dispatch)"
+expect_fail 'a newer manual failure' "$(runs "$mixed")" 'runs/131'
+mixed="$(rec 10 132 '"failure"' workflow_dispatch),$(rec 2 133 '"success"' schedule)"
+expect_pass 'a newer scheduled success' "$(runs "$mixed")"
+# A run that queued for long still counts by its completion.
+expect_pass 'a run that queued for long' "$(runs "$(rec 48 134 '"success"' schedule 20)")"
 
 expect_fail 'an invalid id' "$(runs "$(rec 3 0 '"success"' schedule)")" 'unexpected run record'
 expect_fail 'an invalid conclusion' "$(runs "$(rec 3 107 '"##[error]x"' schedule)")" 'unexpected run record'
