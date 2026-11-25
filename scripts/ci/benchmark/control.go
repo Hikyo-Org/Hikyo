@@ -239,7 +239,8 @@ func prepare(repository string, e controlEvent) error {
 	body := commentBody(pr, request{head: pr.Head.SHA}, "_Not run for this head._")
 	// reconcile keeps a comment already for the live head (and any admitted
 	// request on it) and resets one left on an older head.
-	reconcile := func(c comment) error {
+	var reconcile func(c comment, retry bool) error
+	reconcile = func(c comment, retry bool) error {
 		if r, err := parseRequest(c.Body); err == nil && r.head == pr.Head.SHA {
 			return nil
 		}
@@ -248,15 +249,24 @@ func prepare(repository string, e controlEvent) error {
 		if latest, err := currentPull(repository, pr.Number); err != nil || latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
 			return err
 		}
-		// A 404 means a lagging cleaner's duplicate was already deleted by
-		// another cleaner; the surviving comment is reconciled by its writer.
-		if err := updateComment(repository, c, body); !errors.Is(err, errNotFound) {
+		err := updateComment(repository, c, body)
+		if !errors.Is(err, errNotFound) {
 			return err
 		}
-		return nil
+		// A 404 means another cleaner deleted this duplicate. Reconcile the
+		// new survivor once.
+		// shortcut: one retry; a second deletion is left to the next writer.
+		if !retry {
+			return nil
+		}
+		next, _, err := botComments(repository, pr.Number)
+		if err != nil || next.ID == 0 || next.ID == c.ID {
+			return err
+		}
+		return reconcile(next, false)
 	}
 	if c.ID != 0 {
-		return reconcile(c)
+		return reconcile(c, true)
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body); err != nil {
 		return err
@@ -273,7 +283,7 @@ func prepare(repository string, e controlEvent) error {
 	if c.ID == 0 {
 		return nil // Listing lag; the next writer reconciles.
 	}
-	return reconcile(c)
+	return reconcile(c, true)
 }
 
 func authorizedRequest(repository string, e controlEvent) (pull, comment, bool, error) {
@@ -569,9 +579,11 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 		// owns the comment then. A failed read still releases, since a stranded
 		// claim blocks automatic retry for the head.
 		latest, lerr := currentPull(repository, pr.Number)
-		if lerr == nil && (latest.State != "open" || latest.Head.SHA != pr.Head.SHA) {
+		if lerr == nil && latest.Head.SHA != pr.Head.SHA {
 			return err
 		}
+		// A PR closed at the same head is released too: a stranded claim would
+		// block automatic retry if it is reopened.
 		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
 		return errors.Join(err, lerr, updateComment(repository, c, release))
 	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {
@@ -585,8 +597,15 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
 		return errors.Join(lerr, updateComment(repository, c, release))
 	}
-	if latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
-		return prepare(repository, controlEvent{Number: pr.Number}) // Reconcile the comment to the live head.
+	if latest.Head.SHA != pr.Head.SHA {
+		if err := prepare(repository, controlEvent{Number: pr.Number}); err != nil { // Reconcile the comment to the live head.
+			return fmt.Errorf("reset benchmark comment after the PR moved off %s: %w", pr.Head.SHA[:12], err)
+		}
+		return nil
+	}
+	if latest.State != "open" {
+		// Closed at the same head: release so a reopen can be benchmarked.
+		return updateComment(repository, c, commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed."))
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/actions/runs/%d/rerun", repository, run.ID), ""); err != nil {
 		return decline(err)

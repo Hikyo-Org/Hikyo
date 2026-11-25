@@ -321,22 +321,49 @@ func TestPrepareToleratesADuplicateDeletedBeforeALaterOne(t *testing.T) {
 	}
 }
 
-func TestPrepareToleratesAResetOfAnAlreadyDeletedSurvivor(t *testing.T) {
-	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
-	log := sequenceGH(t, live, []string{encode(t, [][]comment{{botCopy(t, 20, old)}})}, "none")
+// failPatch makes the fake gh answer PATCH of comment id with message.
+func failPatch(t *testing.T, log string, id int, message string) {
+	t.Helper()
 	gh := filepath.Join(filepath.Dir(log), "gh")
 	script, err := os.ReadFile(gh)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fail := "case \"$*\" in\n*\"--method PATCH\"*comments/20*) echo 'gh: Not Found (HTTP 404)' >&2; exit 1;;\n"
+	fail := fmt.Sprintf("case \"$*\" in\n*\"--method PATCH\"*comments/%d\\ *) echo 'gh: %s' >&2; exit 1;;\n", id, message)
 	if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "case \"$*\" in\n", fail, 1)), 0700); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestPrepareToleratesAResetOfAnAlreadyDeletedSurvivor(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{encode(t, [][]comment{{botCopy(t, 20, old)}})}, "none")
+	failPatch(t, log, 20, "Not Found (HTTP 404)")
 	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
 		t.Fatalf("a 404 resetting a comment another cleaner deleted must succeed: %v", err)
 	}
 	if patchLine(recorded(t, log), 20) == "" {
 		t.Fatal("expected a reset attempt")
+	}
+}
+
+func TestPrepareReconcilesTheNewSurvivorAfterA404Reset(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{encode(t, [][]comment{{botCopy(t, 20, old)}}), encode(t, [][]comment{{botCopy(t, 21, old)}})}, "none")
+	failPatch(t, log, 20, "Not Found (HTTP 404)")
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(patchLine(recorded(t, log), 21), "head="+live) {
+		t.Fatalf("the new survivor must be reset to the live head:\n%s", recorded(t, log))
+	}
+}
+
+func TestPrepareReportsAFailedResetPatch(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{encode(t, [][]comment{{botCopy(t, 20, old)}})}, "none")
+	failPatch(t, log, 20, "Server Error (HTTP 502)")
+	if err := prepare("o/r", controlEvent{Number: 7}); err == nil || errors.Is(err, errNotFound) {
+		t.Fatalf("a 502 on the reset PATCH must fail prepare, got %v", err)
 	}
 }
