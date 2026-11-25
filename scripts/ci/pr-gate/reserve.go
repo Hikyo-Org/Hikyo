@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 )
 
 // groupReserve is the share of the shared token's hourly API window kept for the
@@ -28,6 +30,12 @@ func heldBackByReserve(dev, discoverRetirement, retire, targeted bool, headWorke
 // after the reset, group jobs first. A rate_limit read that fails does not block the
 // job: the read is free and a broken one says nothing about the window.
 func deferForGroupReserve(ctx context.Context, a api) error {
+	// The retry workflow reruns nothing after the last attempt, so a deferral there would
+	// leave the check with no completer. The last attempt spends instead; if the window is
+	// truly spent it ends as the rate-limited final attempt, which stays pending.
+	if attempt, err := strconv.Atoi(os.Getenv("GITHUB_RUN_ATTEMPT")); err == nil && attempt >= admissionMaxAttempts {
+		return nil
+	}
 	var limits struct {
 		Resources map[string]struct {
 			Remaining *int `json:"remaining"`

@@ -90,3 +90,15 @@ func TestOnlyGroupRolesMaySpendTheReserve(t *testing.T) {
 		})
 	}
 }
+
+// A deferral costs a run attempt, and nothing reruns after the last one, so the last
+// attempt spends instead of deferring.
+func TestTheLastAttemptSpendsInsteadOfDeferring(t *testing.T) {
+	reserveWindow(t, 10, 900)
+	for attempt, deferred := range map[string]bool{"1": true, "2": true, "3": false} {
+		t.Setenv("GITHUB_RUN_ATTEMPT", attempt)
+		if err := deferForGroupReserve(context.Background(), ghAPI{}); (err != nil) != deferred {
+			t.Fatalf("attempt %s: err=%v, want deferred=%t", attempt, err, deferred)
+		}
+	}
+}

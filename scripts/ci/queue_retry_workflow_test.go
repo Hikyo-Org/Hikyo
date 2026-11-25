@@ -142,6 +142,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"cancelled","steps":[]}`
 	}
 	head := strings.Repeat("a", 40)
+	const runLevel = 0 // the run-level endpoint rather than a job id
 	const healthy, spent = "4000 5000 1795475603", "40 5000 1795475603"
 	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
 	for _, tc := range []struct {
@@ -170,12 +171,20 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"replaced pending reconcile is not rerun", []string{replaced(1, "publish-"+head), job(2, "publish-"+head, "failure", reconcile), replaced(3, "group-"+head)}, "1", healthy, []int{2}, false, ""},
 		{"only replaced pending reconciles", []string{replaced(1, "publish-"+head), replaced(2, "dev-publish-"+head)}, "1", healthy, nil, false, ""},
 		{"nothing is rerun while the budget is spent", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", spent, nil, false, "40 of 5000"},
-		// The reserve (250) is for merge-group jobs: a job that gates no merge-queue head needs it left over.
-		{"a non-group job one below the reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "249 1000 1795475603", nil, false, "Held for the group reserve (249 of 1000"},
-		{"a non-group job at the reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "250 1000 1795475603", []int{1}, false, ""},
-		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "249 1000 1795475603", nil, false, "Held for the group reserve"},
+		// The reserve (250) is for merge-group jobs: another job is rerun only while its expected
+		// cost (42 reads) still leaves the reserve, the same rule the job itself defers on.
+		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "291 1000 1795475603", nil, false, "Held for the group reserve (291 of 1000"},
+		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "292 1000 1795475603", []int{1}, false, ""},
+		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
+		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "291 1000 1795475603", nil, false, "Held for the group reserve"},
 		{"a group job below the reserve is rerun while the publisher waits", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
-		{"group jobs are rerun before the others", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile), job(3, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2, 1, 3}, false, ""},
+		{"a group job at fifteen percent is rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "150 1000 1795475603", []int{1}, false, ""},
+		// GitHub refuses a rerun of another job while the run is active again: one rerun per run.
+		{"a mixed failed set reruns only the group job", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile), job(3, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2}, false, ""},
+		{"several failed publishers of one kind use the run-level rerun", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},
+		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
 		// The core and graphql buckets are separate: the one with the lower remaining share decides.
 		{"a spent graphql bucket declines the rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 20 1000 1795475603", nil, false, "20 of 1000"},
 		{"a healthy graphql bucket changes nothing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 900 1000 1795475603", []int{1}, false, ""},
@@ -217,7 +226,11 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 			}
 			var want []string
 			for _, id := range tc.rerun {
-				want = append(want, "api --method POST repos/Hikyo-Org/Hikyo/actions/jobs/"+strconv.Itoa(id)+"/rerun")
+				if id == runLevel {
+					want = append(want, "api --method POST repos/Hikyo-Org/Hikyo/actions/runs/41595466545/rerun-failed-jobs")
+				} else {
+					want = append(want, "api --method POST repos/Hikyo-Org/Hikyo/actions/jobs/"+strconv.Itoa(id)+"/rerun")
+				}
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("reruns %v want %v\ncalls:\n%s\noutput:\n%s", got, want, recorded, out)
@@ -234,47 +247,65 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 	}
 }
 
-// GitHub may refuse a later per-job rerun after the first restarts the run. The
-// refusal must not drop the remaining heads or hide itself.
-func TestQueueRetryKeepsGoingWhenARerunIsRefused(t *testing.T) {
+// GitHub refuses a rerun of another job while the run is active again (403, "the workflow
+// run containing this job is already running"). At most one rerun is requested per run, so
+// that refusal never arises and a second failed job is not reported as lost; a rerun that
+// is refused anyway is retried, named without GitHub's text, and fails the step.
+func TestQueueRetryRequestsOneRerunPerRun(t *testing.T) {
 	script := readQueueRetryWorkflow(t).Jobs["rerun"].Steps[0].Run
 	head := strings.Repeat("a", 40)
-	failedJob := func(id int, name string) string {
-		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"failure","steps":[{"name":"Reconcile one authenticated head","conclusion":"failure"}]}`
+	failedJob := func(id int, name, step string) string {
+		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"failure","steps":[{"name":"` + step + `","conclusion":"failure"}]}`
 	}
-	jobs := strings.Join([]string{failedJob(1, "publish-"+head), failedJob(2, "publish-"+strings.Repeat("b", 40)), failedJob(3, "group-"+strings.Repeat("c", 40))}, ",")
-	dir := t.TempDir()
-	calls := filepath.Join(dir, "calls")
-	stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
-		"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
-		"case \"$*\" in\n" +
-		"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":4000,\"limit\":5000,\"reset\":1795475603}}}' | jq -r \"$filter\" ;;\n" +
-		"  *jobs/2/rerun*) echo 'secret response text' >&2; exit 1 ;;\n" +
-		"  *--method\\ POST*) ;;\n" +
-		"  api*) printf '%s' '{\"jobs\":[" + jobs + "]}' | jq -r \"$filter\" ;;\n" +
-		"esac\n"
-	if err := os.WriteFile(filepath.Join(dir, "sleep"), []byte("#!/usr/bin/env bash\nprintf 'sleep %s\\n' \"$*\" >> '"+calls+"'\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.CommandContext(t.Context(), "bash", "-c", script)
-	cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT=1")
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("a refused rerun must fail the step, not report success:\n%s", out)
-	}
-	recorded, _ := os.ReadFile(calls)
-	if n := strings.Count(string(recorded), "jobs/2/rerun"); n != 3 {
-		t.Fatalf("a refused rerun request is retried twice with backoff before it is reported: %d requests\n%s", n, recorded)
-	}
-	for _, id := range []string{"1", "3"} {
-		if !strings.Contains(string(recorded), "api --method POST repos/Hikyo-Org/Hikyo/actions/jobs/"+id+"/rerun") {
-			t.Fatalf("job %s was not rerun around the refusal:\n%s", id, recorded)
+	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
+	run := func(t *testing.T, jobs, refuse string) (string, string, error) {
+		dir := t.TempDir()
+		calls := filepath.Join(dir, "calls")
+		// Once any rerun is accepted the run is active again: every later POST is refused as GitHub does.
+		stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
+			"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
+			"case \"$*\" in\n" +
+			"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":4000,\"limit\":5000,\"reset\":1795475603}}}' | jq -r \"$filter\" ;;\n" +
+			"  *--method\\ POST*) if [ -e '" + dir + "/active' ] || [ -n '" + refuse + "' ] && case \"$*\" in *'" + refuse + "'*) true ;; *) false ;; esac; then echo 'secret response text' >&2; exit 1; fi; : > '" + dir + "/active' ;;\n" +
+			"  api*) printf '%s' '{\"jobs\":[" + jobs + "]}' | jq -r \"$filter\" ;;\n" +
+			"esac\n"
+		if err := os.WriteFile(filepath.Join(dir, "sleep"), []byte("#!/usr/bin/env bash\nprintf 'sleep %s\\n' \"$*\" >> '"+calls+"'\n"), 0o755); err != nil {
+			t.Fatal(err)
 		}
+		if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.CommandContext(t.Context(), "bash", "-c", script)
+		cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT=1")
+		out, err := cmd.CombinedOutput()
+		recorded, _ := os.ReadFile(calls)
+		return string(recorded), string(out), err
 	}
-	if !strings.Contains(string(out), "Job 2 was not rerun") || strings.Contains(string(out), "secret response text") {
-		t.Fatalf("the refused job must be named without GitHub's text:\n%s", out)
-	}
+	t.Run("mixed kinds in one run", func(t *testing.T) {
+		recorded, out, err := run(t, strings.Join([]string{failedJob(1, "publish-"+head, reconcile), failedJob(2, "group-"+head, groupReconcile), failedJob(3, "dev-publish-"+head, "Reconcile exact-head dev admission")}, ","), "")
+		if err != nil || strings.Count(recorded, "--method POST") != 1 || !strings.Contains(recorded, "jobs/2/rerun") {
+			t.Fatalf("one rerun of the group job; the second POST would be refused and must never be sent: %v\n%s\n%s", err, recorded, out)
+		}
+		if strings.Contains(out, "was refused") || !strings.Contains(out, "left for that rerun's own completion") {
+			t.Fatalf("the other failed jobs are left for the rerun's completion, not reported lost:\n%s", out)
+		}
+	})
+	t.Run("a uniform failed set goes through the run-level endpoint", func(t *testing.T) {
+		recorded, out, err := run(t, strings.Join([]string{failedJob(1, "publish-"+head, reconcile), failedJob(2, "publish-"+strings.Repeat("b", 40), reconcile)}, ","), "")
+		if err != nil || strings.Count(recorded, "--method POST") != 1 || !strings.Contains(recorded, "runs/41595466545/rerun-failed-jobs") {
+			t.Fatalf("one run-level rerun covers both failed jobs: %v\n%s\n%s", err, recorded, out)
+		}
+	})
+	t.Run("a refused rerun is retried, named, and fails the step", func(t *testing.T) {
+		recorded, out, err := run(t, failedJob(2, "publish-"+head, reconcile), "jobs/2/rerun")
+		if err == nil {
+			t.Fatalf("a refused rerun must fail the step, not report success:\n%s", out)
+		}
+		if n := strings.Count(recorded, "jobs/2/rerun"); n != 3 {
+			t.Fatalf("a refused rerun request is retried twice with backoff before it is reported: %d requests\n%s", n, recorded)
+		}
+		if !strings.Contains(out, "The rerun of job 2 was refused") || strings.Contains(out, "secret response text") {
+			t.Fatalf("the refused job must be named without GitHub's text:\n%s", out)
+		}
+	})
 }

@@ -162,7 +162,7 @@ func (f *rerunAfterResetFixture) run() (string, string, error) {
 		"if [ -e '" + state + "' ] && " + strconv.FormatBool(f.recovers) + "; then n=$(wc -l < '" + accepted + "' 2>/dev/null || echo 0); r=$((" + strconv.Itoa(after) + " - " + strconv.Itoa(f.spend) + " * n)); else r=" + strconv.Itoa(pre) + "; fi\n" +
 		"case \"$*\" in\n" +
 		"  'api rate_limit '*) printf '%s' \"{\\\"resources\\\":{\\\"core\\\":{\\\"remaining\\\":$r,\\\"limit\\\":" + strconv.Itoa(limit) + ",\\\"reset\\\":" + strconv.FormatInt(f.reset, 10) + "}}}\" | jq -r \"$filter\" ;;\n" +
-		"  *--method\\ POST*) last=${@: -1}; id=${last##*jobs/}; id=${id%%/*}\n" +
+		"  *--method\\ POST*) last=${@: -1}; case \"$last\" in */rerun-failed-jobs) id=${last%/rerun-failed-jobs}; id=run:${id##*runs/} ;; *) id=${last##*jobs/}; id=${id%%/*} ;; esac\n" +
 		"    if [ -e '" + f.dir + "/refuse-'$id ] && [ \"$(cat '" + f.dir + "/refuse-'$id)\" -gt 0 ]; then echo $(($(cat '" + f.dir + "/refuse-'$id) - 1)) > '" + f.dir + "/refuse-'$id; echo 'secret response text' >&2; exit 1; fi\n" +
 		"    echo \"$id\" >> '" + accepted + "' ;;\n" +
 		cases.String() + "esac\n"
@@ -349,8 +349,10 @@ func TestQueueRetryWaitThrottlesTheBurstAfterTheReset(t *testing.T) {
 	now := int64(1795475603)
 	step := "Reconcile one authenticated head"
 	runs := []waitRun{
-		trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, step), failedGroupJob(12, "publish-"+strings.Repeat("b", 40), step)),
-		trustedRun("ci-dev-gate.yml", 2, failedGroupJob(21, "dev-publish-"+waitHead, "Reconcile exact-head dev admission"), failedGroupJob(22, "dev-publish-"+strings.Repeat("c", 40), "Reconcile exact-head dev admission")),
+		trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, step)),
+		trustedRun("ci-queue-gate.yml", 4, failedGroupJob(12, "publish-"+strings.Repeat("b", 40), step)),
+		trustedRun("ci-dev-gate.yml", 2, failedGroupJob(21, "dev-publish-"+waitHead, "Reconcile exact-head dev admission")),
+		trustedRun("ci-dev-gate.yml", 5, failedGroupJob(22, "dev-publish-"+strings.Repeat("c", 40), "Reconcile exact-head dev admission")),
 		trustedRun("ci-queue-worker.yml", 3, failedGroupJob(31, "group-"+waitHead, "Reconcile complete group proof under its head lease")),
 	}
 	// 4000 left after the reset, 1200 spent per accepted rerun, stop below a fifth (1000) of 5000.
@@ -391,7 +393,7 @@ func TestQueueRetryWaitRetriesARefusedRerunWithBackoff(t *testing.T) {
 		if err == nil || f.posts(recorded) != 4+1 || !reflect.DeepEqual(f.accepted(), []string{"61"}) {
 			t.Fatalf("a refusal is retried a bounded number of times, named, and does not hide the next job: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
 		}
-		if !strings.Contains(out, "Job 51 was not rerun") || strings.Contains(out, "secret response text") {
+		if !strings.Contains(out, "The rerun of job 51 was refused") || strings.Contains(out, "secret response text") {
 			t.Fatalf("the refused job must be named without GitHub's text:\n%s", out)
 		}
 	})
@@ -401,13 +403,15 @@ func TestQueueRetryWaitFailsVisiblyWhenItCannotHelp(t *testing.T) {
 	now := int64(1795475603)
 	run := trustedRun("ci-queue-gate.yml", 5, failedGroupJob(51, "publish-"+waitHead, "Reconcile one authenticated head"), failedGroupJob(52, "publish-"+strings.Repeat("b", 40), "Reconcile one authenticated head"))
 	t.Run("budget is healthy", func(t *testing.T) {
+		// Recovered already: the sleep is skipped, the sweep is not. Both failed jobs of the run
+		// are the run's whole failed set, so one run-level rerun covers them.
 		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{run}}
 		if err := os.WriteFile(filepath.Join(f.dir, "slept"), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		recorded, out, err := f.run()
-		if err != nil || strings.Contains(recorded, "sleep ") || len(f.accepted()) != 0 {
-			t.Fatalf("a healthy budget needs no wait and no rerun: %v\n%s\n%s", err, recorded, out)
+		if err != nil || strings.Contains(out, "waiting") || !strings.Contains(out, "no wait needed") || !reflect.DeepEqual(f.accepted(), []string{"run:5"}) {
+			t.Fatalf("a recovered budget skips the wait but still sweeps: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
 		}
 	})
 	t.Run("reset beyond one window", func(t *testing.T) {
@@ -434,18 +438,62 @@ func TestQueueRetryWaitKeepsTheReserveForGroupJobs(t *testing.T) {
 		trustedRun("ci-dev-gate.yml", 2, failedGroupJob(21, "dev-publish-"+waitHead, "Reconcile exact-head dev admission")),
 		trustedRun("ci-queue-worker.yml", 3, failedGroupJob(31, "group-"+waitHead, "Reconcile complete group proof under its head lease")),
 	}
-	t.Run("one below the reserve", func(t *testing.T) {
-		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 249, runs: runs}
+	// Costs are counted before a rerun spends: the group job (41) may use the reserve, each
+	// other job (42) must leave 250 after it and after everything released before it.
+	t.Run("below the reserve", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 300, runs: runs}
 		_, out, err := f.run()
-		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"31"}) || !strings.Contains(out, "Held to protect the window: 11 21") {
+		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"31"}) || !strings.Contains(out, "Held to protect the window: job:11 job:21") {
 			t.Fatalf("below the reserve only the group job may spend: %v %v\n%s", err, f.accepted(), out)
 		}
 	})
-	t.Run("at the reserve", func(t *testing.T) {
-		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 250, runs: runs}
+	t.Run("one request short of every job", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 374, runs: runs}
+		_, out, err := f.run()
+		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"31", "11"}) || !strings.Contains(out, "Held to protect the window: job:21") {
+			t.Fatalf("the last job would cross the reserve: %v %v\n%s", err, f.accepted(), out)
+		}
+	})
+	t.Run("exactly enough for every job", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 375, runs: runs}
 		_, out, err := f.run()
 		if err != nil || !reflect.DeepEqual(f.accepted(), []string{"31", "11", "21"}) {
-			t.Fatalf("at the reserve every job is rerun, group jobs first: %v %v\n%s", err, f.accepted(), out)
+			t.Fatalf("every job fits, group jobs first: %v %v\n%s", err, f.accepted(), out)
+		}
+	})
+}
+
+// A released rerun spends only after it starts, so the live budget does not drop while a
+// burst is released. The projection must still stop the burst at the window's edge.
+func TestQueueRetryWaitCountsInFlightRerunsAgainstTheBudget(t *testing.T) {
+	now := int64(1795475603)
+	groupRuns := func() []waitRun {
+		var runs []waitRun
+		for i := 0; i < 5; i++ {
+			runs = append(runs, trustedRun("ci-queue-worker.yml", 10+i, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile complete group proof under its head lease")))
+		}
+		return runs
+	}
+	otherRuns := func() []waitRun {
+		var runs []waitRun
+		for i := 0; i < 5; i++ {
+			runs = append(runs, trustedRun("ci-queue-gate.yml", 10+i, failedGroupJob(100+i, "publish-"+fmt.Sprintf("%040x", i+1), "Reconcile one authenticated head")))
+		}
+		return runs
+	}
+	// The live remaining never drops (spend 0): only the projection can stop the release.
+	t.Run("other jobs", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 344, runs: otherRuns()}
+		_, out, err := f.run()
+		if err == nil || len(f.accepted()) != 2 || !strings.Contains(out, "Held to protect the window:") {
+			t.Fatalf("344 left allows two 42-request reruns above the 250 reserve, no more: %v %v\n%s", err, f.accepted(), out)
+		}
+	})
+	t.Run("group jobs", func(t *testing.T) {
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 344, runs: groupRuns()}
+		_, out, err := f.run()
+		if err == nil || len(f.accepted()) != 3 || !strings.Contains(out, "Held to protect the window:") {
+			t.Fatalf("344 left allows three 41-request group reruns above a fifth of the window, no more: %v %v\n%s", err, f.accepted(), out)
 		}
 	})
 }
@@ -460,6 +508,36 @@ func TestQueueRetryWaitStillWaitsWhenOnlyTheReserveIsGone(t *testing.T) {
 	recorded, _, _ := f.run()
 	if !strings.Contains(recorded, "sleep 605") {
 		t.Fatalf("below the reserve the wait must sleep to the reset:\n%s", recorded)
+	}
+}
+
+// A non-group failure deferred at 15 percent (below the reserve, above a tenth) is not rerun
+// into the reserve: the wait sleeps to the reset, and the job is rerun once it has passed.
+func TestQueueRetryWaitRerunsADeferredJobAfterTheReset(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-dev-gate.yml", 1, failedGroupJob(11, "dev-publish-"+waitHead, "Reconcile exact-head dev admission"))
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, preReset: 150, runs: []waitRun{run}}
+	recorded, out, err := f.run()
+	if err != nil || !strings.Contains(recorded, "sleep 605") || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
+		t.Fatalf("a deferred job waits for the reset and is then rerun: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+	if strings.Index(recorded, "sleep 605") > strings.Index(recorded, "api --method POST") {
+		t.Fatalf("nothing is rerun before the reset:\n%s", recorded)
+	}
+}
+
+// GitHub refuses a rerun of another job while the run is active again, so a run with
+// several failed jobs gets one rerun: the group job, the rest left for that rerun's completion.
+func TestQueueRetryWaitRequestsOneRerunPerRun(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-queue-gate.yml", 7,
+		failedGroupJob(11, "publish-"+waitHead, "Reconcile one authenticated head"),
+		failedGroupJob(12, "group-"+waitHead, "Reconcile complete group proof under its head lease"),
+		failedGroupJob(13, "publish-"+strings.Repeat("b", 40), "Reconcile one authenticated head"))
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{run}}
+	recorded, out, err := f.run()
+	if err != nil || !reflect.DeepEqual(f.accepted(), []string{"12"}) || f.posts(recorded) != 1 {
+		t.Fatalf("one rerun for the run, the group job: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
 	}
 }
 
@@ -494,11 +572,11 @@ func TestQueueRetrySurvivesAFailedJobsListing(t *testing.T) {
 // so a long wait leaves room for only the reruns that fit, and the rest are held by name.
 func TestQueueRetryWaitStopsStartingRerunsAfterSixtySixMinutes(t *testing.T) {
 	now := int64(1795475603)
-	var jobs []string
+	var runs []waitRun
 	for i := 0; i < 30; i++ {
-		jobs = append(jobs, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile complete group proof under its head lease"))
+		runs = append(runs, trustedRun("ci-queue-worker.yml", 1+i, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile complete group proof under its head lease")))
 	}
-	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 3600, recovers: true, runs: []waitRun{trustedRun("ci-queue-worker.yml", 1, jobs...)}}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 3600, recovers: true, runs: runs}
 	recorded, out, err := f.run()
 	// The wait is 3605 s; each rerun adds a 15 s spacing; reruns start while at most 3960 s have passed: 24 fit.
 	if err == nil || len(f.accepted()) != 24 || !strings.Contains(out, "Held to protect the window:") {
