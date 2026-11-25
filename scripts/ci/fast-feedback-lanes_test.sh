@@ -129,6 +129,13 @@ set -eu
 printf 'static-invariants\n' >>"$FIXTURE_WORK/commands"
 printf 'static-invariants\n' >>"$FIXTURE_WORK/checks"
 STUB
+# The freshness check regenerates the client with real dependencies; selection and order only here.
+cat >"$work/tools/scripts/ci/check-client-generated.sh" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+printf 'client-generated\n' >>"$FIXTURE_WORK/commands"
+printf 'client-generated\n' >>"$FIXTURE_WORK/checks"
+STUB
 chmod +x "$work/bin/"* "$work/tools/scripts/ci/run-go-tool.sh"
 export PATH="$work/bin:$PATH" FAST_FEEDBACK_TOOLS_DIR="$work/tools/scripts/ci"
 run_lane() {
@@ -149,7 +156,7 @@ FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=frontend >"$work/fr
 cat "$work/go" "$work/frontend" | sort >"$work/union"
 cmp "$work/all" "$work/union"
 diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' 'shellcheck' 'static-invariants' | sort) "$work/go"
-diff -u <(printf '%s\n' 'pnpm --dir clients/ts run typecheck' 'pnpm --dir clients/ts run test' 'pnpm --dir web run typecheck' 'pnpm --dir web run lint' 'pnpm --dir web run test' | sort) "$work/frontend"
+diff -u <(printf '%s\n' 'client-generated' 'pnpm --dir clients/ts run typecheck' 'pnpm --dir clients/ts run test' 'pnpm --dir web run typecheck' 'pnpm --dir web run lint' 'pnpm --dir web run test' | sort) "$work/frontend"
 # The hosted Go scopes partition package owners and read-only tooling. Local
 # unscoped Go feedback retains its complete single build graph.
 mkdir -p scripts/tooling

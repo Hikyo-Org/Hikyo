@@ -228,6 +228,7 @@ execute_check() {
 			run node "$docs_checker" --check --source-root "$repo_root"
 			;;
 		static-invariants) run env HIKYO_VET_PACKAGES="${feedback_go_packages[*]-}" bash "$feedback_tooling_dir/static-invariants.sh" ;;
+		client-generated) run bash "$feedback_tooling_dir/check-client-generated.sh" ;;
 		client-typecheck) run pnpm --dir clients/ts run typecheck ;;
 		client-test) run pnpm --dir clients/ts run test ;;
 		web-typecheck) run pnpm --dir web run typecheck ;;

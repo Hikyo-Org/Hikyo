@@ -39,6 +39,7 @@ commit_fixture
 mkdir -p "$work/tools/scripts/ci"
 cp "$script_dir/feedback-plan.sh" "$work/tools/scripts/ci/"
 printf '#!/usr/bin/env bash\n' >"$work/tools/scripts/ci/static-invariants.sh"
+cp "$work/tools/scripts/ci/static-invariants.sh" "$work/tools/scripts/ci/check-client-generated.sh"
 export FAST_FEEDBACK_TOOLS_DIR="$work/tools/scripts/ci"
 FIXTURE_REAL_GO=$(command -v go)
 export FIXTURE_REAL_GO FIXTURE_WORK=$work

@@ -51,6 +51,7 @@ plan() {
 		"go-format": ["go"], "go-mod-verify": ["go"], "go-compile": ["go"], "desktop-compile": ["go"],
 		"shellcheck": ["shellcheck"], "actionlint": ["go", "shellcheck"],
 		"docs": ["node"], "static-invariants": ["go"],
+		"client-generated": ["clientDependencies", "node", "pnpm", "jq"],
 		"client-typecheck": ["clientDependencies", "node", "pnpm", "jq"],
 		"client-test": ["clientDependencies", "node", "pnpm", "jq"],
 		"web-typecheck": ["clientDependencies", "webDependencies", "node", "pnpm", "jq"],
@@ -62,6 +63,8 @@ expect() { "$real_jq" -e "$1" "$work/plan" >/dev/null || { cat "$work/plan" >&2;
 plan all
 expect '([del(.lanes)[]] | all(. == false)) and all(.lanes[]; .checks == [])'
 plan all app/owner.go
+# A Go-only change cannot stale the generated client: the frontend lane stays empty.
+expect '.lanes.frontend.checks == []'
 expect '.go and (.lanes.go.checks | map(.id)) == ["go-format", "go-compile"] and (.lanes.tooling.checks | map(.id)) == ["static-invariants"] and .lanes.go.prerequisites.go'
 plan application scripts/tool/owner.go
 expect '.go == false and .lanes.go.checks == [] and (.lanes.tooling.checks | map(.id)) == ["go-format", "go-compile", "static-invariants"]'
@@ -73,6 +76,7 @@ feedback_plan_select go tooling
 [ "${#go_packages[@]}" -eq 1 ] && [ "${go_packages[0]}" = ./scripts ]
 plan tooling go.mod
 expect '.go and (.lanes.tooling.checks | map(.id)) == ["static-invariants"] and (.lanes.go.checks | map(.id)) == ["go-mod-verify"]'
+expect '.lanes.frontend.checks == []'
 plan all .github/workflows/check.yml
 expect '.workflows and (.lanes.tooling.checks | map(.id)) == ["actionlint"] and .lanes.tooling.prerequisites.go and .lanes.tooling.prerequisites.shellcheck and (.lanes.go.prerequisites.go | not)'
 plan all CONTRIBUTING.md
@@ -88,7 +92,17 @@ expect '(.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.tooling.che
 plan all api/openapi.yaml
 # desktop/ does not exist yet on this tree (main, dev before the shell lands): even
 # root packages the module imports select no desktop check.
-expect '.client and .web and (.desktop | not) and (.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.frontend.checks | map(.id)) == ["client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
+expect '.client and .web and (.desktop | not) and (.lanes.go.checks | map(.id)) == ["docs-impact"] and (.lanes.frontend.checks | map(.id)) == ["client-generated", "client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
+# The contract and the generator's own inputs select the freshness check; web-only and
+# toolchain-only changes do not.
+plan all clients/ts/openapi-ts.config.ts
+expect '(.lanes.frontend.checks | map(.id)) == ["client-generated", "client-typecheck", "client-test", "web-typecheck", "web-lint", "web-test"]'
+plan all clients/ts/scripts/generate-operations.ts
+expect '(.lanes.frontend.checks | map(.id)) | index("client-generated") == 0'
+plan all web/file.ts
+expect '(.lanes.frontend.checks | map(.id)) | index("client-generated") == null'
+plan all pnpm-lock.yaml
+expect '(.lanes.frontend.checks | map(.id)) | index("client-generated") == null'
 # From here on the nested module exists.
 mkdir -p desktop
 : >desktop/go.mod
