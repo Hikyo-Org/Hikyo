@@ -1,9 +1,11 @@
 package benchmark
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -124,9 +126,10 @@ func writeAPI(method, path, body string) error {
 		args = append(args, "--field", "body="+body)
 	}
 	command := exec.Command("gh", args...)
-	command.Stderr = os.Stderr
+	var stderr bytes.Buffer
+	command.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	if _, err := command.Output(); err != nil {
-		return fmt.Errorf("GitHub write %s: %w", path, err)
+		return fmt.Errorf("GitHub write %s: %w: %s", path, err, stderr.String())
 	}
 	return nil
 }
@@ -145,19 +148,21 @@ func currentPull(repository string, number int) (pull, error) {
 	return pr, nil
 }
 
-func botComment(repository string, number int) (comment, error) {
+// botComments is read-only: verify jobs hold only pull-requests: read. It
+// returns the lowest-id marker comment and any higher-id duplicates.
+func botComments(repository string, number int) (comment, []comment, error) {
 	var pages [][]comment
 	if err := api(fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repository, number), &pages); err != nil {
-		return comment{}, err
+		return comment{}, nil, err
 	}
 	if len(pages) == 0 {
-		return comment{}, fmt.Errorf("GitHub returned no comment-history pages")
+		return comment{}, nil, fmt.Errorf("GitHub returned no comment-history pages")
 	}
 	var found comment
 	var duplicates []comment
 	for _, page := range pages {
 		if page == nil {
-			return comment{}, fmt.Errorf("GitHub returned incomplete comment history")
+			return comment{}, nil, fmt.Errorf("GitHub returned incomplete comment history")
 		}
 		for _, c := range page {
 			if c.User.ID == botID && strings.HasPrefix(c.Body, marker) {
@@ -170,14 +175,28 @@ func botComment(repository string, number int) (comment, error) {
 			}
 		}
 	}
-	// Racing creators may each post once; every reader keeps the lowest id and
-	// deletes the rest, so the outcome is the same whichever creator runs it.
+	return found, duplicates, nil
+}
+
+func botComment(repository string, number int) (comment, error) {
+	c, _, err := botComments(repository, number)
+	return c, err
+}
+
+// dedupeBotComments is called only by writers (prepare). Racing creators may
+// each post once; all keep the lowest id and delete the rest. A 404 means
+// another cleaner already deleted it.
+func dedupeBotComments(repository string, duplicates []comment) error {
 	for _, d := range duplicates {
-		if err := writeAPI("DELETE", fmt.Sprintf("repos/%s/issues/comments/%d", repository, d.ID), ""); err != nil {
-			return comment{}, err
+		if d.ID <= 0 || d.User.ID != botID {
+			return fmt.Errorf("refusing to delete a non-bot benchmark comment")
+		}
+		err := writeAPI("DELETE", fmt.Sprintf("repos/%s/issues/comments/%d", repository, d.ID), "")
+		if err != nil && !strings.Contains(err.Error(), "HTTP 404") {
+			return err
 		}
 	}
-	return found, nil
+	return nil
 }
 
 func commentBody(pr pull, r request, status string) string {
@@ -203,8 +222,11 @@ func prepare(repository string, e controlEvent) error {
 	if pr.State != "open" {
 		return nil
 	}
-	c, err := botComment(repository, pr.Number)
+	c, duplicates, err := botComments(repository, pr.Number)
 	if err != nil {
+		return err
+	}
+	if err := dedupeBotComments(repository, duplicates); err != nil {
 		return err
 	}
 	if c.ID != 0 {
@@ -219,8 +241,11 @@ func prepare(repository string, e controlEvent) error {
 			return err
 		}
 		// Re-read to remove a duplicate from a concurrent creator.
-		_, err := botComment(repository, pr.Number)
-		return err
+		_, duplicates, err := botComments(repository, pr.Number)
+		if err != nil {
+			return err
+		}
+		return dedupeBotComments(repository, duplicates)
 	}
 	return updateComment(repository, c, body)
 }
@@ -505,8 +530,17 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	if automatic {
 		status += " Automatic admission: " + reason + "."
 	}
-	if err := updateComment(repository, c, commentBody(pr, r, status)); err != nil {
+	claim := commentBody(pr, r, status)
+	if err := updateComment(repository, c, claim); err != nil {
 		return err
+	}
+	// shortcut: GitHub has no compare-and-swap on comments, so a stale comment
+	// job PATCH can still land between this re-read and the rerun; narrow, not closed.
+	if after, err := botComment(repository, pr.Number); err != nil {
+		return err
+	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {
+		// Compare the claim identity, not bytes: GitHub may normalize whitespace.
+		return nil // A concurrent writer replaced the claim; do not spend.
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/actions/runs/%d/rerun", repository, run.ID), ""); err != nil {
 		return decline(err)

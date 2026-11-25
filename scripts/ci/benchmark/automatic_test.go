@@ -164,7 +164,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		name, file                                         string
 		draft, stale, claimed, budgetExceeded              bool
 		pendingManual, lateManual, fork, missingRepository bool
-		absentComment, staleComment                        bool
+		absentComment, staleComment, lostUpdate            bool
 		superseded                                         string
 		wantRun                                            bool
 	}{
@@ -183,6 +183,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		{name: "newer completed discovery", file: "go.mod", superseded: "completed"},
 		{name: "newer running discovery", file: "go.mod", superseded: "in_progress"},
 		{name: "automatic creates absent comment", file: "go.mod", absentComment: true, wantRun: true},
+		{name: "claim replaced by a concurrent writer does not rerun", file: "go.mod", lostUpdate: true},
 		{name: "automatic refreshes stale comment", file: "go.mod", staleComment: true, wantRun: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -261,6 +262,10 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			if test.lateManual {
 				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && grep -q 'workflows/codspeed.yml/runs' '%s'; then jq '.[0][0].body |= sub(\"- \\\\[ \\\\] Run benchmark\"; \"- [x] Run benchmark\")' \"$1\"; return; fi\n", log)
 			}
+			if test.lostUpdate {
+				// After the claim PATCH, a stale comment job restores the unclaimed body.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then cat \"$1\"; return; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			}
 			if test.absentComment {
 				bodyFile := filepath.Join(filepath.Dir(log), "latest-body")
 				transition += fmt.Sprintf(" if [ \"$method\" = POST ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments' ]; then printf '%%s' \"$body\" >'%s'; fi\n if [ \"$method\" = GET ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ]; then jq -n --rawfile body '%s' '[[{id:20,user:{id:41898282},body:$body}]]'; return; fi\n", bodyFile, bodyFile, bodyFile)
@@ -286,6 +291,9 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				if !strings.Contains(string(calls), "workloads=16") || strings.Contains(string(calls), "workflows/codspeed.yml/runs") {
 					t.Fatal("browser-only admission must bind browser scope without collecting paid-run usage")
 				}
+			}
+			if test.lostUpdate && !strings.Contains(string(calls), "--method PATCH") {
+				t.Fatal("expected the claim PATCH before the lost update")
 			}
 			if !test.wantRun && strings.Contains(string(calls), "--method POST") {
 				t.Fatal("ineligible PR must not trigger a run")

@@ -71,7 +71,7 @@ jobs:
       # Comment creation is find-or-create by marker and deletes duplicates
       # (lowest id wins), so it does not need the global walltime lease. A
       # newer head supersedes an older one.
-      group: perf-control-comment-${{ github.event.pull_request.number }}
+      group: perf-control-comment-${{ github.event.pull_request.number || github.run_id }}
       cancel-in-progress: true
     permissions:
       contents: read
