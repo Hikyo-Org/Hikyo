@@ -72,6 +72,10 @@ func TestRevokeLeaseFlow(t *testing.T) {
 	}
 }
 
+// The target owner's lost-grant branches live here, not in the isolation package:
+// a pause needs a project-level capability, and temporary grants are environment-
+// scoped, so no clock can lose the grant between the pause and the absence read
+// (the lease owner is driven that way in TestIncidentLeaseOwnerBlocksWhenTheGrantIsLostAtEachStep).
 func TestPauseTargetFlow(t *testing.T) {
 	pause := func(paused bool, err error) func() (bool, error) { return func() (bool, error) { return paused, err } }
 	absent := func(gone bool, err error) func() (bool, error) { return func() (bool, error) { return gone, err } }

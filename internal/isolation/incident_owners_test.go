@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -776,4 +777,68 @@ func hasTruncatedRow(items map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// A temporary grant is checked against each transaction's own clock, so an owner
+// can lose its authority between two of its steps with no stub: the Incidents
+// clock (real time) probes the grant before it expires, and the owner service's
+// clock reads past the expiry. Dynamic.Now and Adapters.Now are read once per
+// transaction, so a counter chooses the step at which the grant is lost.
+//
+// The target owner cannot be driven this way: pausing a target needs manage-adapters
+// at project level, and a temporary grant is always environment-scoped
+// (access_requests.project_id/environment_id and access_grants.env_id are NOT NULL),
+// so no temporary grant can satisfy it and the grant cannot expire between the
+// Incidents probe and the pause. Its lost-grant branches (a pause that answers not
+// found and an absence read that answers unauthorized, absent, or a conflict) are
+// covered by the stubbed TestPauseTargetFlow cases in the service package.
+
+// tempIncidentGrant gives the principal a capability in project prj_a1 (env is a
+// SQL literal: an environment id or NULL for the whole project) until expiry.
+func tempIncidentGrant(t *testing.T, db *store.DB, principal domain.PrincipalID, capability, env string, expiry time.Time) {
+	t.Helper()
+	stamp, exp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z"), expiry.UTC().Format("2006-01-02T15:04:05.000000Z")
+	execRaw(t, db, fmt.Sprintf(`INSERT INTO access_requests(id,org_id,project_id,environment_id,policy_id,policy_version,requester_principal_id,capabilities,duration_seconds,reason,state,created_at,review_expires_at,granted_at,expires_at) VALUES ('ar_inc_%[1]s','org_a','prj_a1','env_a1','policy_fixture',1,'%[2]s','["%[1]s"]',3600,'incident owner clock fixture','granted','%[3]s','%[4]s','%[3]s','%[4]s')`, capability, principal, stamp, exp))
+	execRaw(t, db, fmt.Sprintf(`INSERT INTO access_grants(id,principal_id,capability,org_id,project_id,env_id,request_id,created_at,expires_at) VALUES ('ag_inc_%[1]s','%[2]s','%[1]s','org_a','prj_a1',%[5]s,'ar_inc_%[1]s','%[3]s','%[4]s')`, capability, principal, stamp, exp, env))
+}
+
+// lossClock reads before the grant's expiry for its first `live` calls and after it
+// from then on.
+func lossClock(live int32, expiry time.Time) func() time.Time {
+	var calls atomic.Int32
+	before, after := expiry.Add(-30*time.Minute), expiry.Add(time.Hour)
+	return func() time.Time {
+		if calls.Add(1) <= live {
+			return before
+		}
+		return after
+	}
+}
+
+func TestIncidentLeaseOwnerBlocksWhenTheGrantIsLostAtEachStep(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		live int32
+	}{
+		{"before the first read", 0},
+		{"between the first read and the revoke", 1},
+		{"between the revoke and the confirming read", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				w := newIncidentWorld(t, db)
+				seedIncidentLeases(t, db)
+				expiry := time.Now().Add(time.Hour)
+				tempIncidentGrant(t, db, incLimited, "read", "'env_a1'", expiry)
+				w.svc.Owners = service.NewIncidentOwners(w.svc, service.IncidentOwnerServices{
+					Dynamic: &service.Dynamic{DB: db, Now: lossClock(tc.live, expiry)},
+				})
+				inc := w.openOrg(t, incLimited)
+				res := w.callOwner(t, incLimited, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_01", "org_a/prj_a1/env_a1")
+				if res != service.OwnerBlocked {
+					t.Fatalf("a grant lost %s = %v, want blocked", tc.name, res)
+				}
+			})
+		})
+	}
 }
