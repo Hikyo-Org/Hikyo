@@ -147,8 +147,9 @@ apply-time revocation list (options (a) and (c) on
   publish them. GitHub serves release assets by redirect, so the fetcher follows
   at most two redirects, each to https on `github.com`,
   `objects.githubusercontent.com` or `release-assets.githubusercontent.com`; any
-  other redirect is a reachable but invalid answer. The signature, not the host,
-  is the authority.
+  other redirect is a reachable but invalid answer, as is a 404 before the first
+  list is published, so the first list must be published with the bridge. The
+  signature, not the host, is the authority.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that
   re-derives the route of an upgrade a journal already records (the gate's

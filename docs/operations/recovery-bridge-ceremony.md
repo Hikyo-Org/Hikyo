@@ -219,7 +219,10 @@ sequence (0 if none). Publish `recovery-revocations.json` and
 plus `.json` and `.sigstore.json`; operators may mirror it with
 `HIKYO_UPGRADE_REVOCATION_URL`). Uploading or replacing those assets is the
 owner's step after signing; agents never publish them. Clients follow GitHub's
-redirect to its asset hosts only:
+redirect to its asset hosts only. Publish the first list (sequence 1) in the same
+step as the bridge: until the assets exist the endpoint answers 404, which is a
+reachable but invalid answer, so every route through a bridge is refused (fail
+closed):
 
 ```sh
 scripts/release/recovery-bridge.sh revocation-list "$RECOVERY_KEY" "$WORK/new-trust" <SEQUENCE> "$WORK/list" <digest>...
