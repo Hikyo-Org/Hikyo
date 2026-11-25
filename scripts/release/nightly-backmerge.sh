@@ -59,19 +59,28 @@ stuck() {
 # Merges main into branch $1. Returns 1 on a conflict (HTTP 409); 201 is a new
 # merge commit and 204 (no output) means the branch already contains main.
 merge_main() {
-	if write api -X POST "repos/$GH_REPO/merges" -f "base=$1" -f "head=$main_sha" \
-		-f "commit_message=Merge main $short into dev" >/dev/null 2>"$work/err"; then
-		return 0
-	elif grep -F '(HTTP 409)' "$work/err" >/dev/null; then
-		return 1
-	fi
-	cat "$work/err" >&2
-	exit 1
+	# A ref created a moment ago can still read as missing to the merges API, so
+	# that one answer is retried briefly; any other failure stops at once.
+	attempt=1
+	while ! write api -X POST "repos/$GH_REPO/merges" -f "base=$1" -f "head=$main_sha" \
+		-f "commit_message=Merge main $short into dev" >/dev/null 2>"$work/err"; do
+		if grep -F '(HTTP 409)' "$work/err" >/dev/null; then
+			return 1
+		elif [ "$attempt" -lt 5 ] && grep -F 'Base does not exist (HTTP 404)' "$work/err" >/dev/null; then
+			attempt=$((attempt + 1))
+			sleep "$retry_delay"
+			continue
+		fi
+		cat "$work/err" >&2
+		exit 1
+	done
 }
 is_sha() { printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 
 printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || die 'invalid repository'
 is_sha "$GITHUB_SHA" || die 'invalid workflow commit'
+retry_delay=${BACKMERGE_RETRY_DELAY:-3}
+printf '%s\n' "$retry_delay" | grep -Eq '^[0-9]{1,2}$' || die 'invalid retry delay'
 now=${BACKMERGE_NOW:-$(date +%s)}
 printf '%s\n' "$now" | grep -Eq '^[0-9]+$' || die 'invalid clock'
 date_utc=${BACKMERGE_DATE:-$(date -u +%Y%m%d)}
