@@ -74,9 +74,9 @@ type cliApprovedWindow struct {
 // cliReauthPurposeOperation is the closed (purpose, operation) table the
 // handoff admits. The intent constructors derive each disclosure operation;
 // the adapter purpose admits the four adapter operations. Emergency temporary
-// access (PurposeAccess, #152) is deliberately absent: its intent binds no key
-// set, cli_reauth_handoffs admits no 'access' purpose, and the CLI refuses a
-// passkey-only emergency with a pointer to the browser instead.
+// access (PurposeAccess, #152) is admitted since #1531: its intent binds the
+// environment alone, like a mint, so the CLI can hand a passkey-only emergency
+// to the browser.
 func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation) bool {
 	switch purpose {
 	case PurposeDeveloperCredential:
@@ -97,15 +97,18 @@ func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation)
 		return operation == authz.OpApprovalBypass
 	case PurposeMint:
 		return operation == authz.OpCredentialMint
+	case PurposeAccess:
+		return operation == authz.OpAccessBypass
 	}
 	return false
 }
 
 // cliReauthKeyBound reports whether the browser handoff carries an exact
 // environment and key set. Adapter handoffs bind an environment set instead;
-// a mint handoff's unit is the environment alone (#1516), so it carries no keys.
+// a mint handoff's unit is the environment alone (#1516), and so is an
+// emergency access handoff's (#1531), so neither carries keys.
 func cliReauthKeyBound(purpose string) bool {
-	return purpose != string(PurposeAdapter) && purpose != string(PurposeMint)
+	return purpose != string(PurposeAdapter) && purpose != string(PurposeMint) && purpose != string(PurposeAccess)
 }
 
 type CLIReauthRedeemed struct {
@@ -290,6 +293,13 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 // once the session carries the factor the ceremony adds. A mint handoff also
 // authorizes `read`: its unit is the environment and it carries no keys. Approval handoffs
 // authorize their own publish-based operation because they disclose no value.
+// An emergency access handoff (#1531) authorizes `access.bypass` over the
+// environment, not read or reveal: that is the operation the emergency request
+// itself authorizes first, and the ceremony it elevates discloses no value and
+// takes no key, so the browser is offered to the principals the request's own
+// operation admits. The bypasser designation is a policy-table check the
+// request makes when the access is taken, so it is not repeated here; a
+// non-bypasser who starts a handoff only earns a window the request then refuses.
 func cliReauthAuthorizeStart(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, purpose, operation string, chain authz.EnvironmentChain, environmentID string) error {
 	env := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project), Env: domain.EnvID(environmentID)}
 	if purpose == string(PurposeDeveloperCredential) || purpose == string(PurposeReveal) || purpose == string(PurposeCopy) || purpose == string(PurposePublish) || purpose == string(PurposeMint) {
@@ -298,7 +308,7 @@ func cliReauthAuthorizeStart(ctx context.Context, az *authz.TxAuthorizer, caller
 		}
 		return nil
 	}
-	if cliReauthKeyBound(purpose) {
+	if cliReauthKeyBound(purpose) || purpose == string(PurposeAccess) {
 		if _, err := az.Authorize(ctx, caller, authz.Operation(operation), env); err != nil {
 			return fmt.Errorf("authorize %s for %s: %w", operation, environmentID, err)
 		}

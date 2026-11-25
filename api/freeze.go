@@ -75,9 +75,11 @@ var PermittedChanges = map[string]bool{
 	// two apart; leaving the ids off the list is what makes the distinction
 	// hold.
 	//
-	// There are exactly two exceptions, and neither is in this map: see
-	// MLDSA65EnumGrowth, the one-time amendment of 2026-11-04, and
-	// MintReauthEnumGrowth, the one-time amendment of 2026-11-23.
+	// There are exactly three exceptions, and none is in this map: see
+	// MLDSA65EnumGrowth, the one-time amendment of 2026-11-04,
+	// MintReauthEnumGrowth, the one-time amendment of 2026-11-23, and
+	// AccessReauthEnumGrowth, the one-time amendment of the same date for
+	// emergency temporary access.
 
 	// Documentation-only movement. It changes no wire behaviour, and refusing
 	// it would make improving a description a breaking change.
@@ -163,11 +165,29 @@ var MintReauthEnumGrowth = []EnumGrowth{
 	{responseEnumAdded, "GET", cliReauthTransactionPath, "operation"},
 }
 
-// permittedEnumGrowth reports whether change is one of MLDSA65EnumGrowth or
-// MintReauthEnumGrowth. oasdiff's arguments for both change ids are
-// (value, property, ...). A mint finding must also carry the one value its
-// property may gain, so `mint` cannot ride on the operation enum or the other
-// way round.
+// AccessReauthEnumGrowth is the third, equally narrow exception, declared by
+// the api-cli-surface amendment of 2026-11-23 (issue #1531, browser approval
+// for emergency temporary access): the same four enums gain the `access`
+// purpose and its `access.bypass` operation, each by exactly that one value.
+// It sets no precedent, and AccessReauthEnumLocations refuses the same growth
+// anywhere else. Adding to it is an ADR amendment, not a code edit.
+const (
+	accessReauthPurpose   = "access"
+	accessReauthOperation = "access.bypass"
+)
+
+var AccessReauthEnumGrowth = []EnumGrowth{
+	{requestEnumAdded, "POST", cliReauthStartPath, "purpose"},
+	{requestEnumAdded, "POST", cliReauthStartPath, "operation"},
+	{responseEnumAdded, "GET", cliReauthTransactionPath, "purpose"},
+	{responseEnumAdded, "GET", cliReauthTransactionPath, "operation"},
+}
+
+// permittedEnumGrowth reports whether change is one of MLDSA65EnumGrowth,
+// MintReauthEnumGrowth or AccessReauthEnumGrowth. oasdiff's arguments for all
+// change ids are (value, property, ...). A mint or access finding must also
+// carry the one value its property may gain, so `mint` cannot ride on the
+// operation enum, nor one amendment's value on the other's list.
 func permittedEnumGrowth(change checker.Change) bool {
 	args := change.GetArgs()
 	if len(args) < 2 {
@@ -180,6 +200,8 @@ func permittedEnumGrowth(change checker.Change) bool {
 		return slices.Contains(MLDSA65EnumGrowth, got)
 	case value == mintReauthPurpose && property == "purpose", value == mintReauthOperation && property == "operation":
 		return slices.Contains(MintReauthEnumGrowth, got)
+	case value == accessReauthPurpose && property == "purpose", value == accessReauthOperation && property == "operation":
+		return slices.Contains(AccessReauthEnumGrowth, got)
 	}
 	return false
 }

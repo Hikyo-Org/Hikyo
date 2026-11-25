@@ -202,35 +202,74 @@ func TestFreezeAllowsOnlyTheMLDSA65Amendment(t *testing.T) {
 	}
 }
 
-// mintReauthPair derives the pre-amendment spec (#1516) from the current one.
+// mintReauthPair derives the spec before the mint amendment (#1516) from the
+// current one. It leaves `access` in both documents, so the pair is exactly the
+// mint additions; accessReauthPair does the same for #1531.
 func mintReauthPair(t *testing.T) (base, revised string) {
 	t.Helper()
 	revised = string(mustRead(t, "openapi.yaml"))
-	base = strings.ReplaceAll(revised, "bypass, mint, self-config", "bypass, self-config")
-	base = strings.ReplaceAll(base, "approval.bypass, identity.credential-mint, self-config", "approval.bypass, self-config")
+	base = strings.ReplaceAll(revised, "bypass, mint, access, self-config", "bypass, access, self-config")
+	base = strings.ReplaceAll(base, "approval.bypass, identity.credential-mint, access.bypass, self-config", "approval.bypass, access.bypass, self-config")
 	if base == revised || strings.Contains(base, "bypass, mint") || strings.Contains(base, "approval.bypass, identity.credential-mint") {
 		t.Fatal("could not derive the pre-amendment spec from the current one")
 	}
 	return base, revised
 }
 
-func TestFreezeAllowsOnlyTheMintReauthAmendment(t *testing.T) {
+func accessReauthPair(t *testing.T) (base, revised string) {
+	t.Helper()
+	revised = string(mustRead(t, "openapi.yaml"))
+	base = strings.ReplaceAll(revised, "bypass, mint, access, self-config", "bypass, mint, self-config")
+	base = strings.ReplaceAll(base, "identity.credential-mint, access.bypass, self-config", "identity.credential-mint, self-config")
+	if base == revised || strings.Contains(base, "mint, access") || strings.Contains(base, "access.bypass, self-config") {
+		t.Fatal("could not derive the pre-amendment spec from the current one")
+	}
+	return base, revised
+}
+
+// Both amendments together are the real v1.0.0 to current pair.
+func TestFreezeAllowsBothReauthAmendmentsTogether(t *testing.T) {
 	base, revised := mintReauthPair(t)
+	base = strings.ReplaceAll(base, "bypass, access, self-config", "bypass, self-config")
+	base = strings.ReplaceAll(base, "approval.bypass, access.bypass, self-config", "approval.bypass, self-config")
+	if strings.Contains(base, "access.bypass, self-config") || strings.Contains(base, "bypass, access") {
+		t.Fatal("could not derive the v1.0.0 enums from the current spec")
+	}
 	violations, err := api.CheckFreeze([]byte(base), []byte(revised))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(violations) > 0 {
-		t.Fatalf("the exact mint additions were refused:\n%s", render(violations))
+		t.Fatalf("mint and access together were refused:\n%s", render(violations))
 	}
-	if n := len(api.MintReauthEnumGrowth); n != 4 {
+}
+
+func TestFreezeAllowsOnlyTheMintReauthAmendment(t *testing.T) {
+	testReauthAmendment(t, mintReauthPair, &api.MintReauthEnumGrowth, "mint", "identity.credential-mint", "identity.credential-rotate")
+}
+
+func TestFreezeAllowsOnlyTheAccessReauthAmendment(t *testing.T) {
+	testReauthAmendment(t, accessReauthPair, &api.AccessReauthEnumGrowth, "access", "access.bypass", "access.revoke")
+}
+
+func testReauthAmendment(t *testing.T, pair func(*testing.T) (string, string), growth *[]api.EnumGrowth, value, operationValue, otherOperation string) {
+	t.Helper()
+	base, revised := pair(t)
+	violations, err := api.CheckFreeze([]byte(base), []byte(revised))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("the exact %s additions were refused:\n%s", value, render(violations))
+	}
+	if n := len(*growth); n != 4 {
 		t.Fatalf("the exception lists %d findings, the amendment names 4", n)
 	}
 
-	all := api.MintReauthEnumGrowth
-	t.Cleanup(func() { api.MintReauthEnumGrowth = all })
+	all := *growth
+	t.Cleanup(func() { *growth = all })
 	for i, want := range all {
-		api.MintReauthEnumGrowth = slices.Delete(slices.Clone(all), i, i+1)
+		*growth = slices.Delete(slices.Clone(all), i, i+1)
 		got, err := api.CheckFreeze([]byte(base), []byte(revised))
 		if err != nil {
 			t.Fatal(err)
@@ -239,19 +278,23 @@ func TestFreezeAllowsOnlyTheMintReauthAmendment(t *testing.T) {
 			t.Errorf("without %+v the guard reported:\n%s", want, render(got))
 		}
 	}
-	api.MintReauthEnumGrowth = all
+	*growth = all
 
 	// A near miss is the amendment plus one more value, or a value on the
 	// wrong enum, and must fail on that value.
-	purpose := "bypass, mint, self-config, developer-credential]"
-	operation := "approval.bypass, identity.credential-mint, self-config.adopt"
+	purpose := "bypass, mint, access, self-config, developer-credential]"
+	operation := "approval.bypass, identity.credential-mint, access.bypass, self-config.adopt"
+	other := map[string]string{"mint": "access", "access": "mint"}[value]
+	otherOperationValue := map[string]string{"mint": "access.bypass", "access": "identity.credential-mint"}[value]
 	for name, edit := range map[string][3]string{
-		"another purpose":                  {purpose, "bypass, mint, rotate, self-config, developer-credential]", "rotate"},
-		"another operation":                {operation, "approval.bypass, identity.credential-mint, identity.credential-rotate, self-config.adopt", "identity.credential-rotate"},
-		"the operation value on purpose":   {purpose, "bypass, mint, identity.credential-mint, self-config, developer-credential]", "identity.credential-mint"},
-		"the purpose value on operation":   {operation, "approval.bypass, identity.credential-mint, mint, self-config.adopt", "mint"},
-		"mint on another closed enum":      {"enum: [software, external]", "enum: [software, external, mint]", "mint"},
-		"mldsa65 on the mint request enum": {purpose, "bypass, mint, mldsa65, self-config, developer-credential]", "mldsa65"},
+		"another purpose":                   {purpose, "bypass, mint, access, rotate, self-config, developer-credential]", "rotate"},
+		"another operation":                 {operation, "approval.bypass, identity.credential-mint, access.bypass, " + otherOperation + ", self-config.adopt", otherOperation},
+		"the operation value on purpose":    {purpose, "bypass, mint, access, " + operationValue + ", self-config, developer-credential]", operationValue},
+		"the purpose value on operation":    {operation, "approval.bypass, identity.credential-mint, access.bypass, " + value + ", self-config.adopt", value},
+		"the value on another closed enum":  {"enum: [software, external]", "enum: [software, external, " + value + "]", value},
+		"mldsa65 on the reauth request":     {purpose, "bypass, mint, access, mldsa65, self-config, developer-credential]", "mldsa65"},
+		"the sibling value on another enum": {"enum: [software, external]", "enum: [software, external, " + other + "]", other},
+		"the sibling operation on another":  {"enum: [software, external]", "enum: [software, external, " + otherOperationValue + "]", otherOperationValue},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if strings.Count(revised, edit[0]) == 0 {
@@ -263,7 +306,7 @@ func TestFreezeAllowsOnlyTheMintReauthAmendment(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(violations) == 0 || !strings.Contains(render(violations), "`"+edit[2]+"`") {
-				t.Fatalf("a near miss of the mint amendment was not refused for %s:\n%s", edit[2], render(violations))
+				t.Fatalf("a near miss of the %s amendment was not refused for %s:\n%s", value, edit[2], render(violations))
 			}
 		})
 	}

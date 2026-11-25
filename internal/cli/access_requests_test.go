@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
-	"errors"
 	"math"
 	"reflect"
 	"slices"
@@ -147,22 +145,5 @@ func TestAccessPolicyUpdatePreservesOmittedFields(t *testing.T) {
 	explicit := mergeAccessPolicyInput(current, defaults, map[string]bool{"covers": true, "allow-self-approval": true, "disabled": true})
 	if *explicit.EnvironmentId != "" || *explicit.AllowSelfApproval || !explicit.Enabled {
 		t.Fatalf("explicit empty/false ignored: %+v", explicit)
-	}
-}
-
-func TestAccessReauthWithoutInlineTOTPReturnsAuthRefusal(t *testing.T) {
-	for _, keys := range []bool{false, true} {
-		d := disclosure{purpose: "access", window: func(context.Context, string) (apigen.RevealWindow, error) { return apigen.RevealWindow{}, nil }}
-		if keys {
-			d.keys = func(context.Context, string) ([]string, error) {
-				t.Error("access tried browser key resolution")
-				return nil, nil
-			}
-		}
-		err := ensureRevealWindow(t.Context(), nil, nil, IO{OpenURL: func(string) error { t.Error("opened unsupported access browser handoff"); return nil }}, nil, "", "env_one", d, errors.New("reauth required"))
-		var refusal *Error
-		if !errors.As(err, &refusal) || refusal.Code != ExitAuth {
-			t.Fatalf("keys=%v refusal=%v", keys, err)
-		}
 	}
 }
