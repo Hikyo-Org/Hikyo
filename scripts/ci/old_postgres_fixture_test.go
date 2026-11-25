@@ -70,11 +70,24 @@ func normalizeOldPostgresFixture(jobs map[string]map[string]any) error {
 	return nil
 }
 
+// Any assignment form to the image variable: plain, declaration builtins, +=, or ${image:=...}.
+var imageAssignment = regexp.MustCompile(`(^|[\s;&|(])image\+?=|\$\{image:?=`)
+
 // A moving tag would let a new PostgreSQL release change what CI proves. Each
 // fixture script pins one digest, in the assignment its docker commands use, for
 // the intended major version.
 func TestPostgresFixtureImagesArePinnedToDigests(t *testing.T) {
-	override := regexp.MustCompile(`^\s*(export\s+|readonly\s+|declare\s+(-\w+\s+)?|local\s+)?image=`)
+	override := imageAssignment
+	for _, line := range []string{"image=x", " image=x", "export image=x", "readonly image=x", "declare -r image=x", "typeset image=x", "local image=x", "image+=x", "a; image=x", "${image:=x}", ": ${image:=x}"} {
+		if !override.MatchString(line) {
+			t.Errorf("assignment %q is not detected", line)
+		}
+	}
+	for _, line := range []string{`docker run "$image"`, `echo "${image:-x}"`, `--image=x`} {
+		if override.MatchString(line) {
+			t.Errorf("%q is not an assignment", line)
+		}
+	}
 	for script, major := range map[string]string{"start-ci-postgres.sh": "18", "start-old-postgres.sh": "17"} {
 		raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts/ci", script))
 		if err != nil {
