@@ -61,7 +61,7 @@ var authRuleRows = []authRuleRow{
 	{Kinds: humanOrMachine | authAllowsDeveloperCredential, Operations: authOperations("run")},
 	{Kinds: authAllowsUnauthenticated, Operations: authOperations(
 		"login",
-		"context create", "context list", "context show", "context delete",
+		"context create", "context list", "context show", "context delete", "config get", "config set",
 		"account establish-credential", "account recovery begin",
 		"account passkey enrol", "account passkey list", "account passkey remove",
 		"definitions scaffold", "file-sync doctor", "scan",

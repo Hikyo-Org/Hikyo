@@ -1021,6 +1021,7 @@ func (e CLILoginTransactionTransport) Valid() bool {
 
 // Defines values for CLIReauthStartRequestOperation.
 const (
+	CLIReauthStartRequestOperationAccessBypass            CLIReauthStartRequestOperation = "access.bypass"
 	CLIReauthStartRequestOperationAdapterAdopt            CLIReauthStartRequestOperation = "adapter.adopt"
 	CLIReauthStartRequestOperationAdapterConfigure        CLIReauthStartRequestOperation = "adapter.configure"
 	CLIReauthStartRequestOperationAdapterCredentialSet    CLIReauthStartRequestOperation = "adapter.credential-set"
@@ -1028,6 +1029,7 @@ const (
 	CLIReauthStartRequestOperationApprovalBypass          CLIReauthStartRequestOperation = "approval.bypass"
 	CLIReauthStartRequestOperationApprovalVote            CLIReauthStartRequestOperation = "approval.vote"
 	CLIReauthStartRequestOperationDeveloperCredentialMint CLIReauthStartRequestOperation = "developer-credential.mint"
+	CLIReauthStartRequestOperationIdentityCredentialMint  CLIReauthStartRequestOperation = "identity.credential-mint"
 	CLIReauthStartRequestOperationSelfConfigAdopt         CLIReauthStartRequestOperation = "self-config.adopt"
 	CLIReauthStartRequestOperationSelfConfigApply         CLIReauthStartRequestOperation = "self-config.apply"
 	CLIReauthStartRequestOperationSelfConfigTest          CLIReauthStartRequestOperation = "self-config.test"
@@ -1039,6 +1041,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestOperation enum.
 func (e CLIReauthStartRequestOperation) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestOperationAccessBypass:
+		return true
 	case CLIReauthStartRequestOperationAdapterAdopt:
 		return true
 	case CLIReauthStartRequestOperationAdapterConfigure:
@@ -1052,6 +1056,8 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 	case CLIReauthStartRequestOperationApprovalVote:
 		return true
 	case CLIReauthStartRequestOperationDeveloperCredentialMint:
+		return true
+	case CLIReauthStartRequestOperationIdentityCredentialMint:
 		return true
 	case CLIReauthStartRequestOperationSelfConfigAdopt:
 		return true
@@ -1072,11 +1078,13 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
+	CLIReauthStartRequestPurposeAccess              CLIReauthStartRequestPurpose = "access"
 	CLIReauthStartRequestPurposeAdapter             CLIReauthStartRequestPurpose = "adapter"
 	CLIReauthStartRequestPurposeApprove             CLIReauthStartRequestPurpose = "approve"
 	CLIReauthStartRequestPurposeBypass              CLIReauthStartRequestPurpose = "bypass"
 	CLIReauthStartRequestPurposeCopy                CLIReauthStartRequestPurpose = "copy"
 	CLIReauthStartRequestPurposeDeveloperCredential CLIReauthStartRequestPurpose = "developer-credential"
+	CLIReauthStartRequestPurposeMint                CLIReauthStartRequestPurpose = "mint"
 	CLIReauthStartRequestPurposePublish             CLIReauthStartRequestPurpose = "publish"
 	CLIReauthStartRequestPurposeReject              CLIReauthStartRequestPurpose = "reject"
 	CLIReauthStartRequestPurposeReveal              CLIReauthStartRequestPurpose = "reveal"
@@ -1086,6 +1094,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
 func (e CLIReauthStartRequestPurpose) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestPurposeAccess:
+		return true
 	case CLIReauthStartRequestPurposeAdapter:
 		return true
 	case CLIReauthStartRequestPurposeApprove:
@@ -1095,6 +1105,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 	case CLIReauthStartRequestPurposeCopy:
 		return true
 	case CLIReauthStartRequestPurposeDeveloperCredential:
+		return true
+	case CLIReauthStartRequestPurposeMint:
 		return true
 	case CLIReauthStartRequestPurposePublish:
 		return true
@@ -1111,6 +1123,7 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 
 // Defines values for CLIReauthTransactionOperation.
 const (
+	CLIReauthTransactionOperationAccessBypass            CLIReauthTransactionOperation = "access.bypass"
 	CLIReauthTransactionOperationAdapterAdopt            CLIReauthTransactionOperation = "adapter.adopt"
 	CLIReauthTransactionOperationAdapterConfigure        CLIReauthTransactionOperation = "adapter.configure"
 	CLIReauthTransactionOperationAdapterCredentialSet    CLIReauthTransactionOperation = "adapter.credential-set"
@@ -1118,6 +1131,7 @@ const (
 	CLIReauthTransactionOperationApprovalBypass          CLIReauthTransactionOperation = "approval.bypass"
 	CLIReauthTransactionOperationApprovalVote            CLIReauthTransactionOperation = "approval.vote"
 	CLIReauthTransactionOperationDeveloperCredentialMint CLIReauthTransactionOperation = "developer-credential.mint"
+	CLIReauthTransactionOperationIdentityCredentialMint  CLIReauthTransactionOperation = "identity.credential-mint"
 	CLIReauthTransactionOperationSelfConfigAdopt         CLIReauthTransactionOperation = "self-config.adopt"
 	CLIReauthTransactionOperationSelfConfigApply         CLIReauthTransactionOperation = "self-config.apply"
 	CLIReauthTransactionOperationSelfConfigTest          CLIReauthTransactionOperation = "self-config.test"
@@ -1129,6 +1143,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionOperation enum.
 func (e CLIReauthTransactionOperation) Valid() bool {
 	switch e {
+	case CLIReauthTransactionOperationAccessBypass:
+		return true
 	case CLIReauthTransactionOperationAdapterAdopt:
 		return true
 	case CLIReauthTransactionOperationAdapterConfigure:
@@ -1142,6 +1158,8 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 	case CLIReauthTransactionOperationApprovalVote:
 		return true
 	case CLIReauthTransactionOperationDeveloperCredentialMint:
+		return true
+	case CLIReauthTransactionOperationIdentityCredentialMint:
 		return true
 	case CLIReauthTransactionOperationSelfConfigAdopt:
 		return true
@@ -1162,11 +1180,13 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
+	CLIReauthTransactionPurposeAccess              CLIReauthTransactionPurpose = "access"
 	CLIReauthTransactionPurposeAdapter             CLIReauthTransactionPurpose = "adapter"
 	CLIReauthTransactionPurposeApprove             CLIReauthTransactionPurpose = "approve"
 	CLIReauthTransactionPurposeBypass              CLIReauthTransactionPurpose = "bypass"
 	CLIReauthTransactionPurposeCopy                CLIReauthTransactionPurpose = "copy"
 	CLIReauthTransactionPurposeDeveloperCredential CLIReauthTransactionPurpose = "developer-credential"
+	CLIReauthTransactionPurposeMint                CLIReauthTransactionPurpose = "mint"
 	CLIReauthTransactionPurposePublish             CLIReauthTransactionPurpose = "publish"
 	CLIReauthTransactionPurposeReject              CLIReauthTransactionPurpose = "reject"
 	CLIReauthTransactionPurposeReveal              CLIReauthTransactionPurpose = "reveal"
@@ -1176,6 +1196,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
 func (e CLIReauthTransactionPurpose) Valid() bool {
 	switch e {
+	case CLIReauthTransactionPurposeAccess:
+		return true
 	case CLIReauthTransactionPurposeAdapter:
 		return true
 	case CLIReauthTransactionPurposeApprove:
@@ -1185,6 +1207,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeCopy:
 		return true
 	case CLIReauthTransactionPurposeDeveloperCredential:
+		return true
+	case CLIReauthTransactionPurposeMint:
 		return true
 	case CLIReauthTransactionPurposePublish:
 		return true
@@ -6109,14 +6133,15 @@ type CLIReauthStart struct {
 }
 
 // CLIReauthStartRequest `adapter` carries an adapter-routing decision over an environment set.
-// Every non-adapter purpose carries an exact environment and key set. The
-// browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-// names exactly the unit the decision covers.
+// Every other purpose carries an exact environment and key set, except
+// `mint` and `access`, whose unit is their one environment and which carry
+// no keys. The browser runs the same purpose-bound ceremony the UI runs,
+// so `key_ids` names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
 	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	EnvironmentIds      []ID                             `json:"environment_ids"`
 
-	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
 	KeyIds        *[]ID                          `json:"key_ids,omitzero"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
@@ -6153,7 +6178,7 @@ type CLIReauthTransaction struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 
-	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`.
+	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
 	KeyIds      []ID                          `json:"key_ids"`
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`

@@ -243,6 +243,32 @@ export const NothingToAuthorize: Story = {
   },
 };
 
+export const Mint: Story = {
+  beforeEach: withSearchParams({ transaction: STATE }),
+  parameters: { app: app(oidcIdentity, transaction({ body: {
+    ...base, purpose: 'mint', operation: 'identity.credential-mint',
+    environments: [locked], key_ids: [],
+  } satisfies Transaction })) },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/mint a machine credential/i)).toBeVisible();
+    await expect(canvas.getByText(/can decrypt secret values in the environment below/i)).toBeVisible();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize' })).toBeEnabled());
+  },
+};
+
+export const EmergencyAccess: Story = {
+  beforeEach: withSearchParams({ transaction: STATE }),
+  parameters: { app: app(oidcIdentity, transaction({ body: {
+    ...base, purpose: 'access', operation: 'access.bypass',
+    environments: [locked], key_ids: [],
+  } satisfies Transaction })) },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/take emergency temporary access/i)).toBeVisible();
+    await expect(canvas.getByText(/without the approval its policy normally requires/i)).toBeVisible();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Authorize' })).toBeEnabled());
+  },
+};
+
 export const DeveloperCredential: Story = {
   beforeEach: withSearchParams({ transaction: STATE }),
   parameters: { app: app(oidcIdentity, transaction({ body: {

@@ -42,6 +42,29 @@ var MLDSA65EnumLocations = []string{
 	"/components/schemas/TransitAlgorithm/enum",
 }
 
+// MintReauthEnumLocations is the same amendment as MintReauthEnumGrowth (the
+// api-cli-surface ADR banner of 2026-11-23, #1516), in document coordinates:
+// the only enums that may grow by `mint` or `identity.credential-mint`, each by
+// exactly its one value. Adding to it is an ADR amendment, not a code edit.
+var MintReauthEnumLocations = map[string]string{
+	"/components/schemas/CLIReauthStartRequest/properties/purpose/enum":   mintReauthPurpose,
+	"/components/schemas/CLIReauthStartRequest/properties/operation/enum": mintReauthOperation,
+	"/components/schemas/CLIReauthTransaction/properties/purpose/enum":    mintReauthPurpose,
+	"/components/schemas/CLIReauthTransaction/properties/operation/enum":  mintReauthOperation,
+}
+
+// AccessReauthEnumLocations is the same amendment as AccessReauthEnumGrowth
+// (the api-cli-surface ADR banner of 2026-11-23, #1531), in document
+// coordinates: the only enums that may grow by `access` or `access.bypass`,
+// each by exactly its one value. Adding to it is an ADR amendment, not a code
+// edit.
+var AccessReauthEnumLocations = map[string]string{
+	"/components/schemas/CLIReauthStartRequest/properties/purpose/enum":   accessReauthPurpose,
+	"/components/schemas/CLIReauthStartRequest/properties/operation/enum": accessReauthOperation,
+	"/components/schemas/CLIReauthTransaction/properties/purpose/enum":    accessReauthPurpose,
+	"/components/schemas/CLIReauthTransaction/properties/operation/enum":  accessReauthOperation,
+}
+
 // contractCtx records whether a schema is read by clients (response), written
 // by them (request), or both. It decides which `required` edits are additive.
 type contractCtx uint8
@@ -793,7 +816,7 @@ func (w *contractWalker) required(c contractCtx, b, r map[string]any) rule {
 	}
 }
 
-// enum has set semantics and never changes, except the mldsa65 amendment.
+// enum has set semantics and never changes, except the mldsa65, mint and access amendments.
 func (w *contractWalker) enum(l loc, b, r any, hb, hr bool) {
 	ba, ok1 := b.([]any)
 	ra, ok2 := r.([]any)
@@ -805,12 +828,26 @@ func (w *contractWalker) enum(l loc, b, r any, hb, hr bool) {
 	for _, v := range gone {
 		w.removed(l, fmt.Sprintf(" value %v", v))
 	}
-	if len(gone) == 0 && len(grown) == 1 && grown[0] == mldsa65 && slices.Contains(MLDSA65EnumLocations, l.String()) {
-		return
-	}
+	// Each amendment names one value at its own coordinates; growth by several
+	// amendments' values at once is each judged on its own, and any other value
+	// is refused. A removal anywhere refuses the whole enum.
 	for _, v := range grown {
+		if len(gone) == 0 && w.permittedEnumValue(l, v) {
+			continue
+		}
 		w.added(l, fmt.Sprintf(" value %v", v))
 	}
+}
+
+func (w *contractWalker) permittedEnumValue(l loc, v any) bool {
+	if v == mldsa65 && slices.Contains(MLDSA65EnumLocations, l.String()) {
+		return true
+	}
+	if want, ok := MintReauthEnumLocations[l.String()]; ok && v == want {
+		return true
+	}
+	want, ok := AccessReauthEnumLocations[l.String()]
+	return ok && v == want
 }
 
 // openEnum may grow: that is what declaring an enum open means.

@@ -515,8 +515,8 @@ func (serverOnlyDeadline) Err() error                    { return nil }
 
 // A client that gives up cannot be what frees the refusal row: the server must
 // abort the lock wait itself, leave no waiter behind, and not block later
-// refusals. lock_timeout and statement_timeout share the bound, so either may
-// fire. SQLite has no server to outlive the client, so only postgres runs.
+// refusals. lock_timeout, statement_timeout and transaction_timeout share the bound,
+// so any may fire. SQLite has no server to outlive the client, so only postgres runs.
 func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	db := seededDB(t, openPostgres)
 	release := holdRefusalWriter(t, db)
@@ -551,7 +551,7 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 		t.Fatal("server never aborted the lock-blocked attempt: no server-side bound")
 	}
 	var timedOut *pgconn.PgError
-	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014") || !errors.Is(err, context.DeadlineExceeded) {
+	if !errors.As(err, &timedOut) || (timedOut.Code != "55P03" && timedOut.Code != "57014" && timedOut.Code != "25P04") || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("server did not abort the lock wait as a deadline error: %v after %s", err, time.Since(start))
 	}
 	if waiting := queryInt(t, db, blocked); waiting != 0 {
@@ -565,6 +565,34 @@ func TestRequestRefusalPostgresAbortsLockedAttemptServerSide(t *testing.T) {
 	}
 	if state := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1"); strings.Count(state, sample.RequestID) != 1 {
 		t.Fatalf("expected exactly the later sample in the window: %s", state)
+	}
+}
+
+// A client that takes the refusal row and then goes idle inside its transaction runs
+// no statement and waits on no lock, so only transaction_timeout can free the row.
+func TestRequestRefusalPostgresAbortsIdleTransactionServerSide(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	sample := refusalStorageSample(t)
+	ctx := serverOnlyDeadline{Context: t.Context(), at: time.Now().Add(time.Second)}
+	err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		if _, err := az.UpdateRequestRefusals(ctx, &sample); err != nil {
+			return err
+		}
+		time.Sleep(1500 * time.Millisecond) // idle past the deadline, holding the row lock
+		_, err := az.UpdateRequestRefusals(ctx, &sample)
+		return err
+	})
+	var timedOut *pgconn.PgError
+	if !errors.As(err, &timedOut) || timedOut.Code != "25P04" || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("idle transaction was not ended by transaction_timeout: %v", err)
+	}
+	if held := queryInt(t, db, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state LIKE 'idle in transaction%'"); held != 0 {
+		t.Fatalf("aborted transaction left %d idle-in-transaction backends", held)
+	}
+	signals := service.NewRefusalSignals(db)
+	signals.Deadline = 5 * time.Second
+	if err := signals.Record(t.Context(), sample); err != nil {
+		t.Fatalf("row lock was not released: %v", err)
 	}
 }
 

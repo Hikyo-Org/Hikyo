@@ -31,9 +31,9 @@ export function AccessGlossary() {
         <Terms
           terms={[
             ['Member', 'member', 'A person or machine (service account) in this organisation.'],
-            ['Machine', 'machine', 'A service account: its credential carries the identity. Machines keep their grants and are managed on Machine access; rules are for people.'],
+            ['Machine', 'machine', 'A service account: its credential carries the identity. Machines can also be bound by rules, which are managed on Machine access. A machine rule covers every key of its environments.'],
             ['Grant', 'grant', 'One permission on a whole organisation, project or environment, every key included.'],
-            ['Rule', 'rule', 'A set of permissions for one person, and where they apply. A person can have several rules; rules and grants add up.'],
+            ['Rule', 'rule', 'A set of permissions for one person or machine, and where they apply. A member can have several rules; rules and grants add up.'],
             ['Permission', 'permission', 'One thing a member may do, like See or Reveal. Listed below. Each is ticked on its own.'],
             ['Preset', 'preset', 'A shortcut that ticks a common set of permissions: Viewer, Editor, Publisher, Admin. Only the ticked permissions are saved; the preset name is shown when a rule matches one exactly.'],
           ]}

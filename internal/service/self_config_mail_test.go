@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -308,30 +309,13 @@ func TestRestoreOfAPaddedRevisionIsTrimmed(t *testing.T) {
 			scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
 			values := &Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
 			revisions := &Revisions{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
+			// Leave revision 1's entry as an older, padded write would have.
+			rewriteSnapshotEntry(t, s, local, scope, tc.name, " \t padded \r\n")
 			staged, err := values.Set(t.Context(), local, scope, tc.name, tc.rotated, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := revisions.PublishPlanned(t.Context(), local, scope, PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
-				t.Fatal(err)
-			}
-			// Rewrite revision 1's entry as an older, padded write would have left it.
-			keyTarget := authz.KeyByName(tc.name)
-			sealer, err := sealerForKey(t.Context(), s.DB, s.Keyring, local, authz.OpValueStage, scope, &keyTarget)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var org, project, env, keyID, snapshotID, entryID string
-			if err := s.DB.SQLiteWrite().QueryRowContext(t.Context(), `SELECT e.org_id, e.project_id, e.environment_id, e.key_id, e.snapshot_id, e.id
-				FROM snapshot_entries e JOIN snapshots s ON s.id = e.snapshot_id WHERE s.revision = 1 AND e.key_name = ?`, tc.name).
-				Scan(&org, &project, &env, &keyID, &snapshotID, &entryID); err != nil {
-				t.Fatal(err)
-			}
-			padded, err := sealer.SealField(snapshotAAD(org, project, env, keyID, snapshotID, entryID), []byte(" \t padded \r\n"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := s.DB.SQLiteWrite().ExecContext(t.Context(), `UPDATE snapshot_entries SET ciphertext = ? WHERE id = ?`, padded, entryID); err != nil {
 				t.Fatal(err)
 			}
 			restored, err := revisions.Restore(t.Context(), local, scope, 1, tc.name)
@@ -357,6 +341,69 @@ func TestRestoreOfAPaddedRevisionIsTrimmed(t *testing.T) {
 				t.Fatalf("live %q and snapshot %q must both be trimmed", live, snapshot)
 			}
 		})
+	}
+}
+
+// rewriteSnapshotEntry reseals the environment's only published snapshot entry
+// for one key, as a write from before the trim was uniform would have left it.
+// It uses the reencrypt compare-and-swap under the writer fence, as rotate-dek
+// does, because published snapshots have no other rewrite path.
+func rewriteSnapshotEntry(t *testing.T, s *SelfConfig, local Actor, scope domain.Scope, name, plaintext string) {
+	t.Helper()
+	keyTarget := authz.KeyByName(name)
+	sealer, err := sealerForKey(t.Context(), s.DB, s.Keyring, local, authz.OpValueStage, scope, &keyTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := domain.Scope{Org: scope.Org, Project: scope.Project}
+	if err := tx.Write(t.Context(), s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, err := local.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		keyProof, err := az.AuthorizeKey(ctx, caller, authz.OpValueStage, scope, keyTarget)
+		if err != nil {
+			return err
+		}
+		key, err := findKey(ctx, r.Catalogue(), keyProof, name)
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpReencryptProject, project)
+		if err != nil {
+			return err
+		}
+		rows, err := r.Snapshots().ListForReencrypt(ctx, p, "", 1000)
+		if err != nil {
+			return err
+		}
+		var match []store.ReencryptFieldRow
+		for _, row := range rows {
+			if row.KeyID == key.ID && row.EnvironmentID == string(scope.Env) {
+				match = append(match, row)
+			}
+		}
+		if len(match) != 1 {
+			return fmt.Errorf("found %d snapshot entries for %s, want exactly 1", len(match), name)
+		}
+		row := match[0]
+		sealed, err := sealer.SealField(snapshotAAD(string(scope.Org), string(scope.Project), row.EnvironmentID, row.KeyID, row.SnapshotID, row.ID), []byte(plaintext))
+		if err != nil {
+			return err
+		}
+		if err := fenceProject(ctx, r, p, sealer, project); err != nil {
+			return err
+		}
+		moved, err := r.Snapshots().Reencrypt(ctx, p, row.ID, sealed, row.Ciphertext)
+		if err != nil {
+			return err
+		}
+		if !moved {
+			return fmt.Errorf("snapshot entry %s changed underneath the rewrite", row.ID)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -421,24 +468,7 @@ func TestRestoreOfAPaddedRevisionMatchingLiveStagesNothing(t *testing.T) {
 	values := &Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
 	revisions := &Revisions{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}
 	const name = "HIKYO_MAIL_USER"
-	keyTarget := authz.KeyByName(name)
-	sealer, err := sealerForKey(t.Context(), s.DB, s.Keyring, local, authz.OpValueStage, scope, &keyTarget)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var org, project, env, keyID, snapshotID, entryID string
-	if err := s.DB.SQLiteWrite().QueryRowContext(t.Context(), `SELECT e.org_id, e.project_id, e.environment_id, e.key_id, e.snapshot_id, e.id
-		FROM snapshot_entries e JOIN snapshots s ON s.id = e.snapshot_id WHERE s.revision = 1 AND e.key_name = ?`, name).
-		Scan(&org, &project, &env, &keyID, &snapshotID, &entryID); err != nil {
-		t.Fatal(err)
-	}
-	padded, err := sealer.SealField(snapshotAAD(org, project, env, keyID, snapshotID, entryID), []byte(" \t padded \r\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.DB.SQLiteWrite().ExecContext(t.Context(), `UPDATE snapshot_entries SET ciphertext = ? WHERE id = ?`, padded, entryID); err != nil {
-		t.Fatal(err)
-	}
+	rewriteSnapshotEntry(t, s, local, scope, name, " \t padded \r\n")
 	staged, err := values.Set(t.Context(), local, scope, name, "padded", nil)
 	if err != nil {
 		t.Fatal(err)
