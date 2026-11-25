@@ -214,40 +214,51 @@ func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item auth
 	if scope.Env == "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
-	state, absent, err := o.leaseState(ctx, actor, scope, item.ObjectID)
-	if err == nil && absent {
-		// A lease that no longer exists holds no role.
-		return OwnerConfirmed, nil
-	}
-	if err != nil {
+	return revokeLeaseFlow(
+		func() (string, bool, error) {
+			return o.svc.Dynamic.LeaseStateIfAuthorized(ctx, actor, scope, item.ObjectID)
+		},
+		func() error {
+			_, err := o.svc.Dynamic.RevokeLease(ctx, actor, scope, item.ObjectID)
+			return err
+		},
+	)
+}
+
+// revokeLeaseFlow drives one lease to revoked through two reads and one revoke. The
+// reads authorize first, so ErrNotFound is not what tells absence apart: absent is
+// the reads' own answer and a lost grant is ErrUnauthorized, which ends blocked at
+// every step. The revoke masks a lost grant as not found too, so its not found is
+// settled by the confirming read rather than trusted.
+func revokeLeaseFlow(read func() (state string, absent bool, err error), revoke func() error) (IncidentOwnerResult, error) {
+	fail := func(err error) (IncidentOwnerResult, error) {
 		if res, ok := ownerRefused(err); ok {
 			return res, nil
 		}
 		return OwnerUnconfirmed, err
 	}
-	if leaseTerminal(state) {
+	state, absent, err := read()
+	if err != nil {
+		return fail(err)
+	}
+	if absent || leaseTerminal(state) {
+		// A lease that no longer exists holds no role.
 		return OwnerConfirmed, nil
 	}
 	if state != "revoking" {
-		if _, err := o.svc.Dynamic.RevokeLease(ctx, actor, scope, item.ObjectID); err != nil {
-			if res, ok := ownerRefused(err); ok {
-				return res, nil
-			}
-			return OwnerUnconfirmed, err
+		if err := revoke(); err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return fail(err)
 		}
 	}
-	state, absent, err = o.leaseState(ctx, actor, scope, item.ObjectID)
-	return confirm(err == nil && (absent || leaseTerminal(state))), err
+	state, absent, err = read()
+	if err != nil {
+		return fail(err)
+	}
+	return confirm(absent || leaseTerminal(state)), nil
 }
 
 func leaseTerminal(state string) bool {
 	return state == "revoked" || state == "expired"
-}
-
-// leaseState reads the lease under the caller's authority in one transaction, so
-// absent means the lease is gone and a lost grant is an error, never an absence.
-func (o *incidentOwners) leaseState(ctx context.Context, actor Actor, scope domain.Scope, id string) (state string, absent bool, err error) {
-	return o.svc.Dynamic.LeaseStateIfAuthorized(ctx, actor, scope, id)
 }
 
 // targetPause pauses one adapter target. The pause is reversible by the target's
@@ -263,12 +274,24 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 	if scope.Project == "" || scope.Env != "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
-	t, err := o.svc.Adapters.PauseTarget(ctx, actor, scope, item.ObjectID)
+	return pauseTargetFlow(
+		func() (bool, error) {
+			t, err := o.svc.Adapters.PauseTarget(ctx, actor, scope, item.ObjectID)
+			return t.PausedAt != nil, err
+		},
+		func() (bool, error) { return o.svc.Adapters.TargetAbsentIfAuthorized(ctx, actor, scope, item.ObjectID) },
+	)
+}
+
+// pauseTargetFlow pauses a target. The pause masks a lost grant as not found, so its
+// not found is settled by a read that authorizes first: only a target that is
+// really gone is confirmed (it runs nothing), a lost grant ends blocked, and a
+// target that exists but could not be paused is a conflict, never a confirmation.
+func pauseTargetFlow(pause func() (paused bool, err error), absent func() (bool, error)) (IncidentOwnerResult, error) {
+	paused, err := pause()
 	if errors.Is(err, domain.ErrNotFound) {
-		// The pause masks a lost grant as not found too, so absence is confirmed by a
-		// read that authorizes first: a target that no longer exists runs nothing.
-		absent, err := o.svc.Adapters.TargetAbsentIfAuthorized(ctx, actor, scope, item.ObjectID)
-		if err == nil && absent {
+		gone, err := absent()
+		if err == nil && gone {
 			return OwnerConfirmed, nil
 		}
 		if err == nil {
@@ -285,5 +308,5 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 		}
 		return OwnerUnconfirmed, err
 	}
-	return confirm(t.PausedAt != nil), nil
+	return confirm(paused), nil
 }

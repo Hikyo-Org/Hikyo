@@ -716,10 +716,9 @@ func (s *Dynamic) LeaseStateIfAuthorized(ctx context.Context, actor Actor, scope
 	if scope.Project == "" || scope.Env == "" || leaseID == "" {
 		return "", false, fmt.Errorf("%w: lease show requires environment scope and lease id", domain.ErrInvalid)
 	}
-	now := s.now()
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		state, absent = "", false
-		_, proof, err := authorize(ctx, az, actor, authz.OpLeaseInspect, scope, now)
+		_, proof, err := authorize(ctx, az, actor, authz.OpLeaseInspect, scope, s.now())
 		if errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("%w: authority over the lease was lost", domain.ErrUnauthorized)
 		}

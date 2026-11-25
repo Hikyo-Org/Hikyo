@@ -607,48 +607,61 @@ func TestIncidentOwnerAdapterTargetPause(t *testing.T) {
 }
 
 // The lease and target owners treat not-found as absent, but the authorizer masks
-// a lost grant as not found too. The responder's grants are removed after the
-// owner's scope check and before its confirming read (the service clock fires
-// there, before the read's transaction): the item must not be confirmed absent.
-func TestIncidentOwnerDoesNotConfirmAbsenceWhenTheGrantIsLostBetweenScopeAndConfirm(t *testing.T) {
+// a lost grant as not found too. The two predicates they confirm absence with
+// authorize first, so absent is true only for an authorized caller and a missing
+// row; a caller without authority is ErrUnauthorized, and a store failure is its
+// own error, never absence.
+func TestIncidentAbsencePredicatesAuthorizeFirst(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
-		fired := false
-		// PauseTarget reads the clock inside its own transaction, where a write would
-		// deadlock, so the target hook fires on the clock read after it: the
-		// confirming read's, taken before that read's transaction opens.
-		var skip, reads int
-		revokeGrants := func() time.Time {
-			reads++
-			if !fired && reads > skip {
-				fired = true
-				execRaw(t, db, `UPDATE grants SET org_id='org_b' WHERE principal_id='`+string(incResponder)+`' AND org_id='org_a'`)
-			}
-			return time.Now()
+		seedIncidentLeases(t, db)
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_it','org_a','prj_a1','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_it','org_a','prj_a1','env_a1','adp_it','repository','acme','app',41,'',1,'active','converged',`+ts+`)`)
+		dyn, adp := &service.Dynamic{DB: db}, &service.Adapters{DB: db}
+		leaseScope := domain.Scope{Org: "org_a", Project: "prj_a1", Env: "env_a1"}
+		projectScope := domain.Scope{Org: "org_a", Project: "prj_a1"}
+		holder, stranger := w.as(incResponder), w.as(incOrgB)
+
+		lease := func(a service.Actor, id string) (string, bool, error) {
+			return dyn.LeaseStateIfAuthorized(t.Context(), a, leaseScope, id)
 		}
-		w.svc.Owners = service.NewIncidentOwners(w.svc, service.IncidentOwnerServices{
-			Identities: &service.Identities{DB: w.db},
-			Invites:    &service.EmailInvitations{DB: w.db},
-			SCIM:       &service.SCIM{DB: w.db},
-			Dynamic:    &service.Dynamic{DB: w.db, Now: revokeGrants},
-			Adapters:   &service.Adapters{DB: w.db, Now: revokeGrants},
-		})
-		inc := w.openOrg(t, incResponder)
-		fired = false // the hook counts only from the owner call on
-		if res := w.callOwner(t, incResponder, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_missing", "org_a/prj_a1/env_a1"); res == service.OwnerConfirmed {
-			t.Errorf("a lease whose grant was lost before the confirming read = %v, want it not confirmed as absent", res)
+		target := func(a service.Actor, id string) (bool, error) {
+			return adp.TargetAbsentIfAuthorized(t.Context(), a, projectScope, id)
 		}
-		if !fired {
-			t.Fatal("the grant was never removed: the test did not reach the confirming read")
+		if state, absent, err := lease(holder, "lse_it_01"); err != nil || absent || state != "active" {
+			t.Errorf("an existing lease = %q, absent=%v, %v; want active and present", state, absent, err)
 		}
-		// The responder's org A grants moved away, so the target case moves them back first.
-		execRaw(t, db, `UPDATE grants SET org_id='org_a' WHERE principal_id='`+string(incResponder)+`' AND org_id='org_b' AND id LIKE 'g_inc_%'`)
-		fired, reads, skip = false, 0, 1
-		if res := w.callOwner(t, incResponder, inc, domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, "tgt_missing", "org_a/prj_a1"); res == service.OwnerConfirmed {
-			t.Errorf("a target whose grant was lost before the confirming read = %v, want it not confirmed as absent", res)
+		if _, absent, err := lease(holder, "lse_it_missing"); err != nil || !absent {
+			t.Errorf("a missing lease for an authorized caller = absent=%v, %v; want absent", absent, err)
 		}
-		if !fired {
-			t.Fatal("the grant was never removed before the target's confirming read")
+		if _, absent, err := lease(stranger, "lse_it_missing"); !errors.Is(err, domain.ErrUnauthorized) || absent {
+			t.Errorf("a missing lease for a caller without authority = absent=%v, %v; want ErrUnauthorized and not absent", absent, err)
+		}
+		if _, absent, err := lease(stranger, "lse_it_01"); !errors.Is(err, domain.ErrUnauthorized) || absent {
+			t.Errorf("an existing lease for a caller without authority = absent=%v, %v; want ErrUnauthorized and not absent", absent, err)
+		}
+		if absent, err := target(holder, "tgt_it"); err != nil || absent {
+			t.Errorf("an existing target = absent=%v, %v; want present", absent, err)
+		}
+		if absent, err := target(holder, "tgt_missing"); err != nil || !absent {
+			t.Errorf("a missing target for an authorized caller = absent=%v, %v; want absent", absent, err)
+		}
+		if absent, err := target(stranger, "tgt_missing"); !errors.Is(err, domain.ErrUnauthorized) || absent {
+			t.Errorf("a missing target for a caller without authority = absent=%v, %v; want ErrUnauthorized and not absent", absent, err)
+		}
+
+		// A store failure on the read is neither absence nor a lost grant.
+		execRaw(t, db, "ALTER TABLE dynamic_leases RENAME TO dynamic_leases_broken")
+		_, absent, err := lease(holder, "lse_it_01")
+		execRaw(t, db, "ALTER TABLE dynamic_leases_broken RENAME TO dynamic_leases")
+		if err == nil || absent || errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) {
+			t.Errorf("a failing lease read = absent=%v, %v; want a store error", absent, err)
+		}
+		execRaw(t, db, "ALTER TABLE adapter_targets RENAME TO adapter_targets_broken")
+		absent, err = target(holder, "tgt_it")
+		execRaw(t, db, "ALTER TABLE adapter_targets_broken RENAME TO adapter_targets")
+		if err == nil || absent || errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) {
+			t.Errorf("a failing target read = absent=%v, %v; want a store error", absent, err)
 		}
 	})
 }
@@ -711,23 +724,34 @@ func TestIncidentRotationListingIsBoundedByTheLookupBudget(t *testing.T) {
 
 // A member the lookup budget cannot reach is not silently skipped: each human
 // member is either listed as an account item or carries an open rotation
-// truncation row, at every budget.
+// truncation row, at every budget. The one exception is a budget that runs out
+// inside the truncation path itself: its account reads are charged to the budget
+// too, so the members left are covered by a single scope-level row (never one
+// per member, which would be unbounded). The row is the right answer there: the
+// candidates left are principals the spent budget could not tell from accounts, so
+// they have no row of their own to name, and a member without a row is accepted
+// only when that scope row exists.
 func TestIncidentOrgTruncationNamesEveryUnreachedMember(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		r := newRotationIncident(t, db)
-		sawUnreached := false
+		sawUnreached, sawScopeRow := false, false
+		var members []domain.PrincipalID
+		for _, p := range strings.Fields(queryStrings(t, db, `SELECT DISTINCT a.principal_id || ' ' FROM accounts a JOIN grants g ON g.principal_id = a.principal_id WHERE g.org_id = 'org_a'`)) {
+			members = append(members, domain.PrincipalID(p))
+		}
 		for budget := 3; budget <= 30; budget++ {
 			r.w.svc.MaxLookups = budget
 			id := r.w.openOrg(t, incResponder)
 			got := r.w.itemMap(t, incResponder, id)
-			for _, p := range []domain.PrincipalID{alice, incTarget} {
+			_, scopeRow := got["rotation.halt|enumeration|"+string(orgA)]
+			sawScopeRow = sawScopeRow || scopeRow
+			for _, p := range members {
 				_, listed := got["account.contain|account|"+string(p)]
 				_, truncated := got["rotation.halt|enumeration|"+string(p)]
-				// When the lookup budget runs out inside the truncation path, one scope row
-				// covers the members left.
-				_, covered := got["rotation.halt|enumeration|"+string(orgA)]
-				if !listed && !truncated && !covered {
-					t.Errorf("budget %d: member %s neither listed nor marked truncated: %v", budget, p, got)
+				if !listed && !truncated {
+					if !scopeRow {
+						t.Errorf("budget %d: member %s neither listed nor marked truncated: %v", budget, p, got)
+					}
 				}
 				if !listed {
 					sawUnreached = true
@@ -736,6 +760,11 @@ func TestIncidentOrgTruncationNamesEveryUnreachedMember(t *testing.T) {
 		}
 		if !sawUnreached {
 			t.Fatal("no budget left a member unreached")
+		}
+		// The account reads of the truncation path are charged to the budget: at some
+		// budget it runs out there, which only the scope-level row can report.
+		if !sawScopeRow {
+			t.Fatal("no budget ran out inside the truncation path: its reads are not charged")
 		}
 	})
 }

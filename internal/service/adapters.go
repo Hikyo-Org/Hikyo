@@ -1457,10 +1457,6 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 	return result, err
 }
 
-// PauseTarget stops every push for one target (#157). It narrows what Hikyo
-// does at the destination, so it carries manage-adapters alone and no
-// reauthentication ceremony, exactly like credential revocation. The ledger
-// is untouched: resume needs no re-adoption.
 // TargetAbsentIfAuthorized reports whether a target no longer exists, in one
 // transaction that authorizes first. The authorizer masks a refusal as ErrNotFound,
 // which a read alone cannot tell from a target that is gone, so a caller whose
@@ -1469,11 +1465,10 @@ func (s *Adapters) TargetAbsentIfAuthorized(ctx context.Context, actor Actor, sc
 	if err := requireProjectScope(scope, "adapter target read requires project scope and target id", targetID); err != nil {
 		return false, err
 	}
-	now := store.CanonTime(s.now())
 	absent := false
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		absent = false
-		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
+		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, store.CanonTime(s.now()))
 		if errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("%w: authority over the target was lost", domain.ErrUnauthorized)
 		}
@@ -1490,6 +1485,10 @@ func (s *Adapters) TargetAbsentIfAuthorized(ctx context.Context, actor Actor, sc
 	return absent, err
 }
 
+// PauseTarget stops every push for one target (#157). It narrows what Hikyo
+// does at the destination, so it carries manage-adapters alone and no
+// reauthentication ceremony, exactly like credential revocation. The ledger
+// is untouched: resume needs no re-adoption.
 func (s *Adapters) PauseTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (store.AdapterTarget, error) {
 	if err := requireProjectScope(scope, "adapter target pause requires project scope and target id", targetID); err != nil {
 		return store.AdapterTarget{}, err
