@@ -259,6 +259,15 @@ func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.
 				t.Fatalf("the refused resume changed the installation: %v", err)
 			}
 
+			// The maintenance transport pins the same route: over the replaced bundle (no
+			// path has the journaled digest) it is a conflict, so its route check is not redundant.
+			replacedMaintenance := replaced
+			replacedMaintenance.Mode = upgradegate.MaintenanceConfiguration
+			replacedMaintenance.CheckConfiguration = func(context.Context, *upgrade.CandidateConfiguration, map[string]string) error { return nil }
+			if _, err := upgradegate.RunSignedGateProcessFixture(t, replacedMaintenance, x.b.Material.Compatibility); !errors.Is(err, upgrade.ErrConflict) {
+				t.Fatalf("maintenance over a different route must conflict: %v", err)
+			}
+
 			// A revocation published since refuses the forward resume and writes nothing.
 			revoked := request
 			revoked.BridgeRevocation = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {

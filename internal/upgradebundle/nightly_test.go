@@ -3,6 +3,8 @@ package upgradebundle
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
 	"io"
 	"os"
 	"path/filepath"
@@ -143,6 +145,12 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 				want  string
 			}{
 				"endpoint answers 404 before the first list": {func() ([]releaseidentity.Digest, error) { return nil, errors.New("status 404") }, "recovery bridge revocation check"},
+				// A dropped connection is no answer: the real checker reports the endpoint
+				// unreachable and the route falls back to the signed expiry (none, for this bridge).
+				"endpoint unreachable (EOF)": {func() ([]releaseidentity.Digest, error) {
+					checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: eofFetcher{}, Directory: t.TempDir()}
+					return checker.Revoked(t.Context(), bundle.Snapshot())
+				}, ""},
 				"bridge revoked":                  {func() ([]releaseidentity.Digest, error) { return []releaseidentity.Digest{bridgeDigest}, nil }, "recovery bridge revoked"},
 				"list published, nothing revoked": {func() ([]releaseidentity.Digest, error) { return nil, nil }, ""},
 			} {
@@ -156,4 +164,11 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			}
 		})
 	}
+}
+
+// eofFetcher fails as a connection dropped before any response does.
+type eofFetcher struct{}
+
+func (eofFetcher) Fetch(context.Context) ([]byte, []byte, error) {
+	return nil, nil, fmt.Errorf("%w: %w", bridgerevocation.ErrUnreachable, io.ErrUnexpectedEOF)
 }
