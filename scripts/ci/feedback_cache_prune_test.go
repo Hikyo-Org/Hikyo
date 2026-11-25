@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -74,7 +75,7 @@ func runPrune(script string, env map[string]string, caches []fakeCache, missing,
 	if err != nil {
 		return nil, "", err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	var rows strings.Builder
 	for _, c := range caches {
 		fmt.Fprintf(&rows, "%s\t%s\t%s\n", c.id, c.key, c.created)
@@ -101,7 +102,7 @@ printf '%s\n' "$id" >>"$FAKE_DIR/deleted"
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(gh), 0o700); err != nil {
 		return nil, "", err
 	}
-	cmd := exec.Command("bash", "-c", script)
+	cmd := exec.CommandContext(context.Background(), "bash", "-c", script)
 	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "FAKE_DIR="+dir, "FAKE_MISSING="+missing, "FAKE_BROKEN="+broken, "RUNNER_TEMP="+dir, "RUNNER_OS=Linux", "RUNNER_ARCH=X64")
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
@@ -114,7 +115,7 @@ printf '%s\n' "$id" >>"$FAKE_DIR/deleted"
 		listed = strings.TrimSpace(string(raw))
 	}
 	if runErr != nil {
-		return deleted, listed, fmt.Errorf("%v: %s", runErr, out)
+		return deleted, listed, fmt.Errorf("%w: %s", runErr, out)
 	}
 	return deleted, listed, nil
 }
@@ -315,7 +316,7 @@ func TestCachePolicyWriterGuardIsExact(t *testing.T) {
 	}
 	const mainGuard = "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
 	run := func() (string, error) {
-		out, err := exec.Command("sh", filepath.Join(root, "scripts/ci/check-cache-policy_test.sh")).CombinedOutput()
+		out, err := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "scripts/ci/check-cache-policy_test.sh")).CombinedOutput()
 		return string(out), err
 	}
 	if out, err := run(); err != nil {
