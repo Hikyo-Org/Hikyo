@@ -17,21 +17,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
+healthy=0
 for _ in $(seq 1 60); do
 	if docker exec "$container_id" pg_isready -h 127.0.0.1 -U hikyo -d hikyo_old >/dev/null 2>&1; then
-		ready=1
+		healthy=1
 		break
 	fi
 	sleep 1
 done
-if [ "$ready" != 1 ]; then
+if [ "$healthy" != 1 ]; then
 	docker logs "$container_id" >&2 || true
 	echo 'PostgreSQL 17 refusal fixture did not become ready' >&2
 	exit 1
 fi
-binding=$(docker port "$container_id" 5432/tcp | head -n 1)
+# Docker owns allocation. Refuse ambiguous or non-loopback output before
+# publishing a DSN to the next CI step.
+binding=$(docker port "$container_id" 5432/tcp)
 if [[ ! "$binding" =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]]; then
-	echo 'PostgreSQL 17 refusal fixture has no IPv4 loopback port binding' >&2
+	echo 'PostgreSQL 17 refusal fixture has no unique IPv4 loopback port binding' >&2
 	exit 1
 fi
-echo "HIKYO_TEST_POSTGRES_OLD_DSN=postgres://hikyo:hikyo@127.0.0.1:${BASH_REMATCH[1]}/hikyo_old?sslmode=disable" >>"$GITHUB_ENV"
+port=$((10#${BASH_REMATCH[1]}))
+if ((port < 1 || port > 65535)); then
+	echo 'PostgreSQL 17 refusal fixture has an invalid published port' >&2
+	exit 1
+fi
+echo "HIKYO_TEST_POSTGRES_OLD_DSN=postgres://hikyo:hikyo@127.0.0.1:$port/hikyo_old?sslmode=disable" >>"$GITHUB_ENV"
+ready=1

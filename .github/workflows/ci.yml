@@ -1408,6 +1408,8 @@ jobs:
         run: ./scripts/ci/start-ci-postgres.sh
       - name: Start PostgreSQL 17 to prove the PostgreSQL 18 minimum is enforced
         run: ./scripts/ci/start-old-postgres.sh
+      - name: Verify PostgreSQL 17 refusal fixture startup
+        run: ./scripts/ci/start-old-postgres_test.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
