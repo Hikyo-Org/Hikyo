@@ -54,10 +54,7 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   bind alone does not save it), the store bind removed (the store-level test fails; the service
   test alone survives it), and the registry without `incident.principal_released`
   (`TestInvariantAuditRegistryClosure` fails).
-- Full `./internal/isolation`, `./internal/store/...`, `./internal/service`, `./internal/app`,
-  `./internal/lint` (including `TestVetDriverRepo`) on both engines: agent-heavy job 7889 on
-  this code revision; its result is reported on the PR, not here. Lint is hosted CI (the local
-  golangci-lint is built with go1.26 and refuses the module's go1.27.4).
+- Full-package results (`./internal/isolation`, `./internal/store/...`, `./internal/service`, `./internal/app`, `./internal/lint` including `TestVetDriverRepo`, both engines) are not claimed here: the implementation ran only the focused tests above, and the full run is the review's. Lint is hosted CI (the local golangci-lint is built with go1.26 and refuses the module's go1.27.4).
 
 ## Not done
 
