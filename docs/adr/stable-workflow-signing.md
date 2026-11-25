@@ -114,9 +114,9 @@ apply-time revocation list (options (a) and (c) on
   30 days after signing. The gate compares it with the host clock at plan time,
   offline and without a grace period. An expired bridge drops out of route
   planning, not out of snapshot loading, so ordinary routes and the complete
-  bridge inventory check are unaffected. The runtime refuses the
-  recovery v1 statement (no expiry); only the separate legacy nightly bridge
-  schema stays expiry-free. A lapsed bridge is replaced by authoring
+  bridge inventory check are unaffected. The runtime refuses every
+  expiry-free statement: the recovery v1 form and the legacy nightly bridge v1
+  form (see the legacy nightly bridge decision below). A lapsed bridge is replaced by authoring
   and signing a new statement with `recovery-2` and removing the old digest from
   the catalog in the same step (the re-sign path in the runbook; the verifier
   refuses a new bridge whose engine, source and target pair is still catalogued).
@@ -150,9 +150,11 @@ apply-time revocation list (options (a) and (c) on
   publish them. GitHub serves release assets by redirect, so the fetcher follows
   at most two redirects, each to https on `github.com`,
   `objects.githubusercontent.com` or `release-assets.githubusercontent.com`; any
-  other redirect is a reachable but invalid answer, as is a 404 before the first
-  list is published, so the first list must be published with the bridge. The
-  signature, not the host, is the authority.
+  other redirect is a reachable but invalid answer. A 404 for the list asset
+  (nothing published yet) is no answer, like an unreachable endpoint: the route plans, a
+  warning is logged, and the signed `not_after` is the limit. A list that is
+  present without its signature, badly signed, malformed or bound to another root
+  fails closed. The signature, not the host, is the authority.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that
   holds the journaled route digest of an upgrade (the gate's in-flight and
@@ -172,13 +174,22 @@ apply-time revocation list (options (a) and (c) on
   the live one (without the list that pair is a catalog error).
   New admissions (backup preparation, bootstrap, export, drill, preflight and
   automatic route discovery) check both.
-- **Legacy nightly bridge.** The `hikyo.dev/legacy-nightly-bridge/v1` bridge is a
-  recovery-signed bridge that never expires, so the revocation list is its only
-  means of withdrawal and its routes consult the list like any other bridge. The
-  consequence is a precondition: until the first list is published, the endpoint
-  answers 404, a reachable but invalid answer, and every legacy-nightly upgrade is
-  refused (fail closed) unless the operator sets the check to `off`. Publish the
-  first list before the first legacy-nightly upgrade is expected.
+- **Legacy nightly bridge (owner decision, #1561).** The legacy nightly bridge carries
+  a signed `not_after` like every other bridge, at most 30 days after signing, so
+  expiry bounds it. Its schema is `hikyo.dev/legacy-nightly-bridge/v2`, which
+  requires a canonical UTC `not_after`; the expiry-free `.../v1` form is refused at
+  runtime. Migration path: the two `v1` statements in the committed catalog stay
+  until the owner re-signs `v2` statements offline at the ceremony and replaces
+  their digests in a new catalog; until then the runtime plans no legacy-nightly
+  route through them. The owner chooses `not_after` when signing
+  (`scripts/release/nightly legacy-bridges --not-after`); agents never sign or
+  publish one, and repository fixtures use throwaway keys only. With expiry in
+  place the revocation check treats a missing list (404) as no answer: the route
+  plans with a warning and expiry is the limit. An expired bridge is refused whatever
+  the list says, a present but invalid list refuses, and a revoked entry blocks a
+  forward resume while a security rollback is never blocked.
+  `HIKYO_UPGRADE_REVOCATION_CHECK=off` stays as the explicit operator opt-out (and
+  keeps hermetic fixtures off the network); a stored list still applies.
   Ordinary upgrades never contact the endpoint. The snapshot revocation
   (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
   re-signs the policy) remains and binds instances whose floor advanced.

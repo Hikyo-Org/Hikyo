@@ -87,7 +87,7 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 		"bad signature":              {list: listBytes(t, f, 6), signature: testfixture.Sign(t, other.RecoverySigner, listBytes(t, f, 6)), want: ""},
 		"another trust root":         {list: listBytes(t, other, 9), want: "bound to a different trust root"},
 		"malformed":                  {list: []byte("{"), want: ""},
-		"invalid answer":             {fetchErr: errors.New("revocation endpoint answered status 404"), want: "status 404"},
+		"invalid answer":             {fetchErr: errors.New("revocation endpoint answered status 403"), want: "status 403"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fetcher.list, fetcher.signature, fetcher.err = tc.list, tc.signature, tc.fetchErr

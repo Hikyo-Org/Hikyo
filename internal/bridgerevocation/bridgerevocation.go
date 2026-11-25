@@ -125,15 +125,24 @@ func NewHTTPFetcher(base string) (HTTPFetcher, error) {
 
 func (f HTTPFetcher) Fetch(ctx context.Context) ([]byte, []byte, error) {
 	list, err := f.get(ctx, f.BaseURL+".json")
+	if errors.Is(err, errNotFound) {
+		// Nothing published yet. Every bridge now carries a signed not_after, so expiry
+		// still bounds a route; this is the same fallback as an unreachable endpoint.
+		return nil, nil, fmt.Errorf("%w: the revocation list is not published: %w", ErrUnreachable, err)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
+	// A list without its signature is an answer that cannot be trusted, not an absence.
 	signature, err := f.get(ctx, f.BaseURL+".sigstore.json")
 	if err != nil {
 		return nil, nil, err
 	}
 	return list, signature, nil
 }
+
+// errNotFound is a 404 for one asset; Fetch decides what it means.
+var errNotFound = errors.New("revocation endpoint has no such asset")
 
 func (f HTTPFetcher) get(ctx context.Context, target string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
@@ -152,6 +161,8 @@ func (f HTTPFetcher) get(ctx context.Context, target string) ([]byte, error) {
 	case http.StatusOK:
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return nil, fmt.Errorf("%w: status %d", ErrUnreachable, response.StatusCode)
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("%w: status 404", errNotFound)
 	default:
 		return nil, fmt.Errorf("revocation endpoint answered status %d", response.StatusCode)
 	}

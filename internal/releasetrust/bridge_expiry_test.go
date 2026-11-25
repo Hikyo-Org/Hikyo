@@ -67,24 +67,35 @@ func TestBridgeNotAfterIsRequiredCanonicalAndEnforced(t *testing.T) {
 	}
 }
 
-func TestLegacyNightlyBridgeForbidsNotAfterAndNeverExpires(t *testing.T) {
-	legacy := func(notAfter string) releasetrust.BridgeStatement {
+// The legacy nightly bridge expires like every other bridge: v2 requires a canonical
+// not_after, and the expiry-free v1 form is refused.
+func TestLegacyNightlyBridgeRequiresASignedNotAfter(t *testing.T) {
+	legacy := func(schema, notAfter string) releasetrust.BridgeStatement {
 		digest := releaseidentity.Hash([]byte("fixture"))
 		target := releaseidentity.Identity{Profile: releaseidentity.NightlyV1, Version: "1.1.0-nightly.20260101.1.gabcdef12", Sequence: 2, Commit: strings.Repeat("c", 40), CompatibilitySHA256: digest, ManifestSHA256: digest}
 		migrations := releaseidentity.MigrationManifest{Engine: "sqlite", Entries: []releaseidentity.Migration{{Version: 1, SHA256: digest}}}
-		return releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Mode: "maintenance", Target: target, TargetPolicySHA256: digest,
+		return releasetrust.BridgeStatement{Schema: schema, SourceGenesis: releaseidentity.LegacyGenesisV1, Mode: "maintenance", Target: target, TargetPolicySHA256: digest,
 			SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: digest, TargetSchemaSHA256: digest, NotAfter: notAfter}
 	}
-	f := testfixture.New(t)
-	withExpiry := f.AddBridge(t, legacy("2026-12-24T00:00:00Z"))
-	if _, err := releasetrust.VerifyBridge(f.Snapshot(t), withExpiry); err == nil || !strings.Contains(err.Error(), "invalid legacy nightly bridge") {
-		t.Fatalf("a legacy nightly bridge must not carry not_after: %v", err)
+	verify := func(statement releasetrust.BridgeStatement) (releasetrust.VerifiedBridge, error) {
+		f := testfixture.New(t)
+		material := f.AddBridge(t, statement)
+		return releasetrust.VerifyBridge(f.Snapshot(t), material)
 	}
-	g := testfixture.New(t)
-	plain := g.AddBridge(t, legacy(""))
-	bridge, err := releasetrust.VerifyBridge(g.Snapshot(t), plain)
-	if err != nil || bridge.Expired(time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("a legacy nightly bridge verifies and never expires: %v", err)
+	edge := time.Date(2026, 12, 24, 0, 0, 0, 0, time.UTC)
+	bridge, err := verify(legacy(releasetrust.LegacyNightlyBridgeSchemaV2, edge.Format(time.RFC3339)))
+	if err != nil || bridge.Expired(edge.Add(-time.Second)) || !bridge.Expired(edge) {
+		t.Fatalf("a v2 legacy bridge verifies and expires at not_after: %v", err)
+	}
+	for name, statement := range map[string]releasetrust.BridgeStatement{
+		"v2 without not_after":        legacy(releasetrust.LegacyNightlyBridgeSchemaV2, ""),
+		"v2 with a non-canonical one": legacy(releasetrust.LegacyNightlyBridgeSchemaV2, "2026-12-24T01:00:00+01:00"),
+		"v1 without not_after":        legacy("hikyo.dev/legacy-nightly-bridge/v1", ""),
+		"v1 with not_after":           legacy("hikyo.dev/legacy-nightly-bridge/v1", edge.Format(time.RFC3339)),
+	} {
+		if _, err := verify(statement); err == nil {
+			t.Fatalf("%s must be refused", name)
+		}
 	}
 }
 

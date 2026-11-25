@@ -224,13 +224,13 @@ sequence (0 if none). Publish `recovery-revocations.json` and
 plus `.json` and `.sigstore.json`; operators may mirror it with
 `HIKYO_UPGRADE_REVOCATION_URL`). Uploading or replacing those assets is the
 owner's step after signing; agents never publish them. Clients follow GitHub's
-redirect to its asset hosts only. Publish the first list (sequence 1) in the same
-step as the bridge: until the assets exist the endpoint answers 404, which is a
-reachable but invalid answer, so every route through a bridge is refused (fail
-closed). The legacy nightly bridge never expires, so the list is its only
-withdrawal and its routes consult it too: until the first list is published every
-legacy-nightly upgrade is refused (unless the operator sets the check to `off`),
-so publish the first list before one is expected:
+redirect to its asset hosts only. Publish the first list (sequence 1) with the
+bridge so a revocation can later reach hosts that fetch it. Until the assets exist
+the endpoint answers 404, which counts as no answer (like an unreachable endpoint):
+a route through an unexpired bridge plans with a logged warning and the signed
+`not_after` is the only limit. A list that is present but invalid (bad signature,
+malformed, wrong root, signature missing) still refuses. Every bridge, the legacy
+nightly one included, carries a `not_after`:
 
 ```sh
 scripts/release/recovery-bridge.sh revocation-list "$RECOVERY_KEY" "$WORK/new-trust" <SEQUENCE> "$WORK/list" <digest>...
@@ -266,6 +266,21 @@ revoked since the admission still refuses the forward resume. A security rollbac
 checks the journaled route the same way and is never blocked by expiry or
 revocation: it returns to the journaled source whatever the bridge's state.
 Re-sign an expired bridge only for installations that have not been admitted yet.
+
+## Legacy nightly bridge
+
+The legacy nightly bridge (`hikyo.dev/legacy-nightly-bridge/v2`) expires like every
+other bridge, so a signing ceremony for it includes choosing its `not_after`: the
+owner picks a canonical UTC instant at most 30 days after signing and passes it as
+`scripts/release/nightly legacy-bridges --not-after ...`; the tool refuses a missing,
+past, non-canonical or longer-than-30-day value. The owner signs each statement
+offline with the recovery key (see [signed nightlies](./signed-nightlies.md)),
+catalogues the digests, and publishes the first revocation list with them. Agents
+never sign or publish; repository fixtures use throwaway keys. The expiry-free
+`legacy-nightly-bridge/v1` statements in the committed catalog stay refused by the
+runtime until this step replaces them. The revocation-list verifier counts these
+statements' `not_after` toward its freshness bound, but it does not re-derive them
+(the generator and the signer's review do).
 
 ## Re-signing an expired bridge
 

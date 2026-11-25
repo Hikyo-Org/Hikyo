@@ -61,7 +61,25 @@ func TestHTTPFetcherSeparatesUnreachableFromInvalid(t *testing.T) {
 		}
 		server.Close()
 	}
-	for _, status := range []int{http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError} {
+	// Nothing published yet: the list is absent, which is no answer (the signed not_after still bounds a bridge).
+	missing := respond(http.StatusNotFound, "")
+	if err := fetchFrom(missing); !errors.Is(err, bridgerevocation.ErrUnreachable) {
+		t.Fatalf("a 404 for the list must count as unreachable: %v", err)
+	}
+	missing.Close()
+	// A list that is present without its signature is not an absence.
+	unsigned := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sigstore.json") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte("{}"))
+	}))
+	if err := fetchFrom(unsigned); err == nil || errors.Is(err, bridgerevocation.ErrUnreachable) {
+		t.Fatalf("a list without its signature fails closed: %v", err)
+	}
+	unsigned.Close()
+	for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
 		server := respond(status, "")
 		if err := fetchFrom(server); err == nil || errors.Is(err, bridgerevocation.ErrUnreachable) {
 			t.Fatalf("status %d is reachable but invalid and must fail closed: %v", status, err)

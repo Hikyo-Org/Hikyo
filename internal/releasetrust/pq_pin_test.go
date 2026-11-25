@@ -322,7 +322,7 @@ func TestClassicalOnlyEvidenceCannotBypassTheRequiredSet(t *testing.T) {
 func TestPQBridgeNeedsTheFullRecoverySet(t *testing.T) {
 	build := func(t *testing.T) (*testfixture.PQFixture, releasetrust.BridgeMaterial, releasetrust.BridgeStatement) {
 		fx := testfixture.NewPQLegacy(t)
-		statement := releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Mode: "maintenance",
+		statement := releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Mode: "maintenance",
 			Target:             releaseidentity.Identity{Profile: releaseidentity.NightlyV1, Version: "1.1.0-nightly.20260101.1.gabcdef12", Sequence: 2, Commit: strings.Repeat("c", 40), CompatibilitySHA256: releaseidentity.Hash([]byte("c")), ManifestSHA256: releaseidentity.Hash([]byte("m"))},
 			TargetPolicySHA256: releaseidentity.Hash([]byte("policy")), SourceSchemaSHA256: releaseidentity.Hash([]byte("s")), TargetSchemaSHA256: releaseidentity.Hash([]byte("t"))}
 		statement.SourceMigrations = releaseidentity.MigrationManifest{Engine: "sqlite", Entries: []releaseidentity.Migration{{Version: 1, SHA256: releaseidentity.Hash([]byte("1"))}}}

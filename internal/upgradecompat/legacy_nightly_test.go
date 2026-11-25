@@ -46,7 +46,7 @@ func TestLegacyNightlyRequiresExactRecoveryBridge(t *testing.T) {
 			if _, err := upgradecompat.PlanRoute(snapshot, source, node.Identity(), []upgradecompat.VerifiedNode{node}, nil); err == nil {
 				t.Fatal("ordinary signed declaration admitted unsigned legacy database")
 			}
-			statement := releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(material.Policy), SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"}
+			statement := releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(material.Policy), SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"}
 			for _, mutation := range []string{"none", "fresh", "invented identity", "invented policy", "stable target", "changed source", "wrong target policy", "forged signature", "withdrawn"} {
 				t.Run(mutation, func(t *testing.T) {
 					changed := statement

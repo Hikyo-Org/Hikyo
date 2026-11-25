@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -106,7 +108,7 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if _, err := bundle.Plan(source, node.Identity()); err == nil {
 				t.Fatal("legacy route admitted without recovery bridge")
 			}
-			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
 			bridgeDigest := releaseidentity.Hash(bridge.Statement)
 			index.Bridges = []releaseidentity.Digest{bridgeDigest}
 			fixture.Catalog.Sequence++
@@ -138,26 +140,49 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if err != nil || !plan.Valid() || !plan.RequiresOperatorAttestation() {
 				t.Fatal("recovery-authorized nightly route refused or lost operator proof", err)
 			}
-			// The legacy nightly bridge never expires, so the revocation list is the only
-			// way to withdraw it: its route consults the list like any recovery bridge.
-			for name, c := range map[string]struct {
-				fetch func() ([]releaseidentity.Digest, error)
-				want  string
+			// The legacy nightly bridge expires at its signed not_after like every bridge. An
+			// absent list (404) or an unreachable endpoint falls back to that expiry; a present
+			// but invalid list refuses; a revocation withdraws the bridge.
+			signedList := func(revoked ...releaseidentity.Digest) ([]byte, []byte) {
+				raw := testfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Add(-time.Hour).Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(fixture.Pinned.Root), Revoked: revoked})
+				return raw, testfixture.Sign(t, fixture.RecoverySigner, raw)
+			}
+			goodList, goodSignature := signedList()
+			revokedList, revokedSignature := signedList(bridgeDigest)
+			unreachable := func(cause error) scriptedFetcher {
+				return scriptedFetcher{err: fmt.Errorf("%w: %w", bridgerevocation.ErrUnreachable, cause)}
+			}
+			cases := map[string]struct {
+				fetcher scriptedFetcher
+				want    string // empty: the route plans
 			}{
-				"endpoint answers 404 before the first list": {func() ([]releaseidentity.Digest, error) { return nil, errors.New("status 404") }, "recovery bridge revocation check"},
-				// A dropped connection is no answer: the real checker reports the endpoint
-				// unreachable and the route falls back to the signed expiry (none, for this bridge).
-				"endpoint unreachable (EOF)": {func() ([]releaseidentity.Digest, error) {
-					checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: eofFetcher{}, Directory: t.TempDir()}
+				"list absent (404)":                {unreachable(errors.New("status 404")), ""},
+				"connection dropped (EOF)":         {unreachable(io.ErrUnexpectedEOF), ""},
+				"connection reset":                 {unreachable(syscall.ECONNRESET), ""},
+				"timeout":                          {unreachable(context.DeadlineExceeded), ""},
+				"valid list, nothing revoked":      {scriptedFetcher{list: goodList, signature: goodSignature}, ""},
+				"bridge revoked":                   {scriptedFetcher{list: revokedList, signature: revokedSignature}, "recovery bridge revoked"},
+				"present but badly signed":         {scriptedFetcher{list: goodList, signature: []byte("{}")}, "recovery bridge revocation check"},
+				"present but malformed":            {scriptedFetcher{list: []byte("{"), signature: goodSignature}, "recovery bridge revocation check"},
+				"reachable, unusable answer (403)": {scriptedFetcher{err: errors.New("revocation endpoint answered status 403")}, "recovery bridge revocation check"},
+			}
+			for name, c := range cases {
+				lookup := func() ([]releaseidentity.Digest, error) {
+					checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: c.fetcher, Directory: t.TempDir()}
 					return checker.Revoked(t.Context(), bundle.Snapshot())
-				}, ""},
-				"bridge revoked":                  {func() ([]releaseidentity.Digest, error) { return []releaseidentity.Digest{bridgeDigest}, nil }, "recovery bridge revoked"},
-				"list published, nothing revoked": {func() ([]releaseidentity.Digest, error) { return nil, nil }, ""},
-			} {
-				_, err := bundle.WithBridgeRevocations(c.fetch).Plan(source, node.Identity())
+				}
+				_, err := bundle.WithBridgeRevocations(lookup).Plan(source, node.Identity())
 				if (c.want == "") != (err == nil) || (c.want != "" && !strings.Contains(err.Error(), c.want)) {
 					t.Fatalf("legacy nightly route, %s: want %q, got %v", name, c.want, err)
 				}
+			}
+			// With the list absent, expiry is the only limit: past not_after there is no route.
+			expired := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) {
+				checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: unreachable(errors.New("status 404")), Directory: t.TempDir()}
+				return checker.Revoked(t.Context(), bundle.Snapshot())
+			}).WithClock(func() time.Time { return time.Date(2099, 1, 1, 0, 0, 1, 0, time.UTC) })
+			if _, err := expired.Plan(source, node.Identity()); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
+				t.Fatalf("an expired legacy bridge must have no route even with the list absent: %v", err)
 			}
 			if _, err := bundle.MatchBuild(append(append([]byte{}, compatibility...), '\n')); err == nil {
 				t.Fatal("different embedded declaration bytes accepted")
@@ -166,9 +191,12 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 	}
 }
 
-// eofFetcher fails as a connection dropped before any response does.
-type eofFetcher struct{}
+// scriptedFetcher answers the revocation endpoint with fixed bytes or an error.
+type scriptedFetcher struct {
+	list, signature []byte
+	err             error
+}
 
-func (eofFetcher) Fetch(context.Context) ([]byte, []byte, error) {
-	return nil, nil, fmt.Errorf("%w: %w", bridgerevocation.ErrUnreachable, io.ErrUnexpectedEOF)
+func (f scriptedFetcher) Fetch(context.Context) ([]byte, []byte, error) {
+	return f.list, f.signature, f.err
 }

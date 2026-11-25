@@ -1,12 +1,17 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,6 +297,57 @@ func (noReleases) PrepareNightlySource(context.Context, updatecheck.Status, rele
 }
 func (noReleases) AssembleNightlyRoute(context.Context, selfupdate.PreparedNightly, []selfupdate.PreparedNightly) (string, error) {
 	return "", errors.New("unexpected")
+}
+
+// With the revocation list not published yet (404), the signed not_after is the only
+// limit: an unexpired bridge plans with a warning, an expired one has no route. A list
+// that is present but invalid still refuses.
+func TestAbsentRevocationListFallsBackToExpiryWithAWarning(t *testing.T) {
+	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
+	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}
+	serve := func(status int) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte("{"))
+		}))
+		t.Cleanup(server.Close)
+		previous := newRevocationFetcher
+		newRevocationFetcher = func(string) (bridgerevocation.Fetcher, error) {
+			return bridgerevocation.HTTPFetcher{BaseURL: server.URL + "/recovery-revocations", Client: server.Client()}, nil
+		}
+		t.Cleanup(func() { newRevocationFetcher = previous })
+	}
+	plan := func(notAfter time.Time) (string, error) {
+		var logs bytes.Buffer
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+		defer slog.SetDefault(previous)
+		directory, pinned, target, _, _ := bridgedBundle(t, source, notAfter)
+		cfg := &config.Config{}
+		cfg.Upgrade.StateDirectory = t.TempDir()
+		bundle, err := loadGuardedBundle(t.Context(), cfg, directory, pinned, releaseidentity.SnapshotFloor{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = bundle.Plan(source, target)
+		return logs.String(), err
+	}
+	serve(http.StatusNotFound)
+	logs, err := plan(time.Now().Add(24 * time.Hour))
+	if err != nil || !strings.Contains(logs, "revocation list was not applied") || !strings.Contains(logs, "unreachable") {
+		t.Fatalf("an unexpired bridge must plan on a 404 with a warning: %v\n%s", err, logs)
+	}
+	if _, err := plan(time.Now().Add(-24 * time.Hour)); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
+		t.Fatalf("an expired bridge must be refused on a 404: %v", err)
+	}
+	serve(http.StatusForbidden)
+	if _, err := plan(time.Now().Add(24 * time.Hour)); err == nil || !strings.Contains(err.Error(), "recovery bridge revocation check") {
+		t.Fatalf("a reachable but unusable answer must refuse: %v", err)
+	}
 }
 
 func offConfig(state string) *config.Config {

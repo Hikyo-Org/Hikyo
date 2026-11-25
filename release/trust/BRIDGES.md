@@ -1,5 +1,10 @@
 # Legacy bridges
 
+Note (#1561): the statements below are `hikyo.dev/legacy-nightly-bridge/v1`
+(no expiry). The runtime now refuses that form; the owner re-signs
+`legacy-nightly-bridge/v2` statements with a `not_after` offline and replaces
+these digests in a new catalog. Until then no legacy-nightly route plans.
+
 ## Catalog sequence 3: legacy schema into nightly 27 (2026-09-07)
 
 The GitHub release object for nightly 26 was deleted after publication, so

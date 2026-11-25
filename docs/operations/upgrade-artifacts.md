@@ -254,9 +254,11 @@ requires maintenance. The returned bridge digest and
 instance attestation, backup evidence, current operator pin and atomic one-use
 nonce consumption remain required at admission.
 
-`hikyo.dev/legacy-nightly-bridge/v1` is the explicit first-hop form for an unsigned
+`hikyo.dev/legacy-nightly-bridge/v2` is the explicit first-hop form for an unsigned
 pre-ledger installation. It names `source_genesis: "legacy/v1"`, exact source
-schema/migrations, and an independently authenticated nightly target and policy.
+schema/migrations, an independently authenticated nightly target and policy, and a
+signed canonical-UTC `not_after` (the owner's choice, at most 30 days after
+signing). The expiry-free `v1` form is refused at runtime.
 It carries no invented `source` release or `source_policy_sha256`. Only recovery
 signatures and the current catalog authorize it. An ordinary nightly legacy
 edge is an inspection candidate and cannot create an executable route. Fresh

@@ -96,6 +96,14 @@ workflow (full `check-compatibility-unchanged.sh`).
 
 ## Remaining work
 
+- Owner decision (#1561): the legacy nightly bridge now carries a signed `not_after`
+  (schema `legacy-nightly-bridge/v2`, at most 30 days; v1 is refused at runtime), and
+  a 404 for the revocation list counts as no answer (route plans with a warning, expiry
+  is the limit). The two legacy v1 statements in the committed catalog
+  (`release/trust/BRIDGES.md`) therefore plan no route until the owner re-signs v2
+  statements offline (`scripts/release/nightly legacy-bridges --not-after ...`) and
+  replaces their digests in a new catalog. Agents never sign or publish this.
+
 - Bridge for v1.0.0 (option B): tooling, independent verifier, rehearsal and
   ceremony runbook are in the bridge PR (`docs/operations/recovery-bridge-ceremony.md`).
   The ceremony itself (owner, #1560) is not done. The owner chose

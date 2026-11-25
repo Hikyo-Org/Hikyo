@@ -32,6 +32,12 @@ func loadGuardedBundle(ctx context.Context, cfg *config.Config, directory string
 	return guardBridges(ctx, cfg, bundle), nil
 }
 
+// newRevocationFetcher is the production https client; tests replace it to reach a
+// local server the production client would not trust.
+var newRevocationFetcher = func(address string) (bridgerevocation.Fetcher, error) {
+	return bridgerevocation.NewHTTPFetcher(address)
+}
+
 // bridgeRevocation builds the gate's lazy revocation lookup from configuration.
 // A bad setting is not reported until a route actually needs a recovery bridge,
 // where it refuses that route; ordinary upgrades never reach it.
@@ -50,7 +56,7 @@ func bridgeRevocation(cfg *config.Config) func(context.Context, releasetrust.Sna
 			if address == "" {
 				address = bridgerevocation.DefaultURL
 			}
-			fetcher, err := bridgerevocation.NewHTTPFetcher(address)
+			fetcher, err := newRevocationFetcher(address)
 			if err != nil {
 				return nil, err
 			}

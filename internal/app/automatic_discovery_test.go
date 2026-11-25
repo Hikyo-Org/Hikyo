@@ -98,7 +98,7 @@ func newAutomaticDiscoveryGraph(t *testing.T, predecessors [][]int) *automaticDi
 		materials = append(materials, material)
 		f.identities = append(f.identities, releaseidentity.Identity{Profile: declaration.Profile, Version: declaration.Version, Sequence: declaration.Sequence, Commit: declaration.Commit, CompatibilitySHA256: releaseidentity.Hash(claim), ManifestSHA256: releaseidentity.Hash(material.Manifest)})
 	}
-	bridge := f.trust.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: f.identities[0], TargetPolicySHA256: releaseidentity.Hash(materials[0].Policy), SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+	bridge := f.trust.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: f.identities[0], TargetPolicySHA256: releaseidentity.Hash(materials[0].Policy), SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
 	write := func(path string, raw []byte) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

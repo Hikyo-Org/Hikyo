@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
@@ -39,6 +40,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	fs.Var(&directories, "directory", "complete signed nightly download; sources accepts it repeatedly, newest predecessor first")
 	sources := fs.String("sources", "release/compatibility/sources.json", "reviewed genesis/source edges")
 	out := fs.String("out", "", "new source edges file")
+	notAfterFlag := fs.String("not-after", "", "legacy-bridges: canonical UTC RFC 3339 expiry the owner chooses for the bridge, in the future and at most 30 days out")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -66,6 +68,12 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		}
 		return jsonwire.Encode(output, release.Identity())
 	case "legacy-bridges":
+		// The expiry is the owner's decision at signing; the tool only refuses one outside the window.
+		notAfter, err := time.Parse(time.RFC3339, *notAfterFlag)
+		now := time.Now()
+		if err != nil || notAfter.UTC().Format(time.RFC3339) != *notAfterFlag || !notAfter.After(now) || notAfter.Sub(now) > 30*24*time.Hour {
+			return errors.New("legacy-bridges requires --not-after as canonical UTC RFC 3339, in the future and at most 30 days out")
+		}
 		release, err := upgradebundle.VerifyNightlyDirectory(ctx, directory, snapshot)
 		if err != nil {
 			return err
@@ -95,7 +103,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 				if err != nil {
 					return err
 				}
-				statement := releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: release.PolicyDigest(), SourceMigrations: source.Migrations, TargetMigrations: manifest, SourceSchemaSHA256: source.SchemaSHA256, TargetSchemaSHA256: schema, Mode: "maintenance"}
+				statement := releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: notAfter.Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: release.PolicyDigest(), SourceMigrations: source.Migrations, TargetMigrations: manifest, SourceSchemaSHA256: source.SchemaSHA256, TargetSchemaSHA256: schema, Mode: "maintenance"}
 				statementRaw, err := json.Marshal(statement, jsonwire.Stable, jsontext.WithIndent("  "))
 				if err != nil {
 					return err

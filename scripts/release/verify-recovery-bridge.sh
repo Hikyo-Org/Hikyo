@@ -287,7 +287,7 @@ revocation-list)
 	for digest in $(jq -r '.bridges[]' "$trust/catalog.json"); do
 		statement="$trust/bridges/$digest/statement.json"
 		check "$digest: its statement is readable" test -s "$statement"
-		not_after=$(jq -r 'select(.schema == "hikyo.dev/recovery-bridge/v2") | .not_after' "$statement" 2>/dev/null) || not_after=
+		not_after=$(jq -r 'select(.schema == "hikyo.dev/recovery-bridge/v2" or .schema == "hikyo.dev/legacy-nightly-bridge/v2") | .not_after' "$statement" 2>/dev/null) || not_after=
 		if [ -n "$not_after" ] && { [ -z "$newest" ] || [ "$(printf '%s\n%s\n' "$newest" "$not_after" | sort | tail -n 1)" = "$not_after" ]; }; then newest=$not_after; fi
 	done
 	if [ -n "$newest" ]; then
