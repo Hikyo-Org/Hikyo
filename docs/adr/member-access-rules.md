@@ -232,7 +232,11 @@ on these points describe, continues.
   ([#1474](https://github.com/Hikyo-Org/Hikyo/issues/1474)).** D10's "Who can…?" becomes an additive `/api/v1`
   operation with a CLI spelling, declared as an amendment to
   [api-cli-surface.md](./api-cli-surface.md) in its implementing pull request. Its evaluation is the
-  `authorize()` chokepoint's, so the answer cannot drift from enforcement.
+  `authorize()` chokepoint's, so the answer cannot drift from enforcement. It is gated by
+  `manage-members@project` and lists the project's grant lines, organisation-level grant lines of the asked
+  permission, and the project rules the caller may manage; never sibling projects, unmanageable rules or
+  instance operators. Showing organisation-level holders to a project manager is decided in #1481 and
+  confirmed by the owner 2026-11-23; see the api-cli-surface amendment.
 
 ## First implementation slice (2026-09-29, historical)
 
@@ -275,7 +279,8 @@ this slice is narrower than D1 to D11:
   else learns the count and cannot confirm, even with the exact set. A machine plan therefore cannot
   commit a widening move; a member manager has to.
 - **Resolver (D10)** answers in the web client over the org's grants, rules and key catalogue; a
-  server-side resolver operation is owed.
+  server-side resolver operation is owed. (2026-11-20: `rule.resolve` adds it to `/api/v1`, see the
+  api-cli-surface amendment of that date; the CLI verb follows in #1474.)
 
 ## Machine rules (2026-11-20)
 

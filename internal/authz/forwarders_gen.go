@@ -634,6 +634,11 @@ func (a *TxAuthorizer) GrantLinesAtInstance(ctx context.Context) ([]GrantLine, e
 	return a.r.GrantLinesAtInstance(ctx)
 }
 
+// GrantLinesAtOrgLevel lists one org's org-scope grant lines of one capability.
+func (a *TxAuthorizer) GrantLinesAtOrgLevel(ctx context.Context, org string, capability domain.Capability) ([]GrantLine, error) {
+	return a.r.GrantLinesAtOrgLevel(ctx, org, capability)
+}
+
 // GrantLinesInOrg lists the membership surface for one org.
 func (a *TxAuthorizer) GrantLinesInOrg(ctx context.Context, org string) ([]GrantLine, error) {
 	return a.r.GrantLinesInOrg(ctx, org)

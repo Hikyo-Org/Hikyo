@@ -4841,6 +4841,21 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 // AccessCapability The closed set of capabilities temporary access may confer.
 type AccessCapability string
 
+// AccessExcept defines model for AccessExcept.
+type AccessExcept struct {
+	// Environments The excepted environments that leave this place out.
+	Environments []ID `json:"environments"`
+
+	// KeyLimited No key was named and the rule reaches only some keys of the environment.
+	KeyLimited bool `json:"key_limited"`
+
+	// Keys The excepted folders or keys that leave the named key out.
+	Keys []RuleKeyItem `json:"keys"`
+
+	// Rule A prefixed UUIDv7, e.g. `org_0198…`.
+	Rule ID `json:"rule"`
+}
+
 // AccessOffer What may be requested in this environment. The approver roster is deliberately absent.
 type AccessOffer struct {
 	// CallerMayBypass Whether the caller is a named emergency-access principal of this policy.
@@ -4905,6 +4920,27 @@ type AccessPolicyInput struct {
 // AccessPolicyList defines model for AccessPolicyList.
 type AccessPolicyList struct {
 	Items []AccessPolicy `json:"items"`
+}
+
+// AccessPrincipal defines model for AccessPrincipal.
+type AccessPrincipal struct {
+	// Excepts On `excepted`, each rule that would reach and what of it leaves this place out.
+	Excepts []AccessExcept `json:"excepts"`
+
+	// Grants The scopes of the grants that give the permission here.
+	Grants []GrantScope `json:"grants"`
+
+	// Kind Closed set — the human/machine distinction is structural in audit attribution.
+	Kind PrincipalKind `json:"kind"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Current display name or username of the person, or the service account's name; not an identifier.
+	PrincipalName *string `json:"principal_name,omitzero"`
+
+	// Rules The ids of the rules that give the permission here.
+	Rules []ID `json:"rules"`
 }
 
 // AccessQueue defines model for AccessQueue.
@@ -4983,6 +5019,35 @@ type AccessRequestInput struct {
 
 	// Reason Why the access is needed. Recorded in the audit trail.
 	Reason string `json:"reason"`
+}
+
+// AccessResolution defines model for AccessResolution.
+type AccessResolution struct {
+	// Can Principals that hold the permission here. For `reveal` and `reveal-history` they also hold See.
+	Can []AccessPrincipal `json:"can"`
+
+	// Environment A prefixed UUIDv7, e.g. `org_0198…`.
+	Environment ID `json:"environment"`
+
+	// Excepted Principals a rule would reach, but an except of that rule leaves this place out.
+	Excepted []AccessPrincipal `json:"excepted"`
+
+	// Key A prefixed UUIDv7, e.g. `org_0198…`.
+	Key *ID `json:"key,omitzero"`
+
+	// NeedsSee Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
+	NeedsSee []AccessPrincipal `json:"needs_see"`
+
+	// None Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
+	None []AccessPrincipal `json:"none"`
+
+	// Permission The capabilities a member access rule may carry (member-access-rules
+	// ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+	// `publish` and `manage-members` accept key selectors. Member management
+	// delegates only within its selector and the caller's held capabilities.
+	// `manage-identities`, `manage-adapters` and `project-settings` need a
+	// whole project.
+	Permission RuleCapability `json:"permission"`
 }
 
 // AccessVoteRequest defines model for AccessVoteRequest.
@@ -13903,6 +13968,15 @@ type DeleteDynamicProviderParams struct {
 	RevokeAll *bool `form:"revoke_all" json:"revoke_all,omitzero"`
 }
 
+// ResolveAccessParams defines parameters for ResolveAccess.
+type ResolveAccessParams struct {
+	// Permission The permission to answer for.
+	Permission RuleCapability `form:"permission" json:"permission"`
+
+	// Key One key of the project, by id. Absent asks about every key of the environment.
+	Key *ID `form:"key" json:"key,omitzero"`
+}
+
 // QueryEnvAuditParams defines parameters for QueryEnvAudit.
 type QueryEnvAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
@@ -16542,6 +16616,9 @@ type ServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ResolveAccess Answer who can use one permission in an environment.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access)
+	ResolveAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ResolveAccessParams)
 	// ListAccessRequests The environment's temporary-access requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
 	ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -18567,6 +18644,12 @@ func (_ Unimplemented) GetEnvironment(w http.ResponseWriter, r *http.Request, or
 // RenameEnvironment Rename an environment.
 // (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 func (_ Unimplemented) RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResolveAccess Answer who can use one permission in an environment.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access)
+func (_ Unimplemented) ResolveAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ResolveAccessParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -26812,6 +26895,79 @@ func (siw *ServerInterfaceWrapper) RenameEnvironment(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameEnvironment(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveAccess operation middleware
+func (siw *ServerInterfaceWrapper) ResolveAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveAccessParams
+
+	// ------------- Required query parameter "permission" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "permission", r.URL.Query(), &params.Permission, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "permission"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "permission", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "key" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "key", r.URL.Query(), &params.Key, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "key"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveAccess(w, r, org, project, environment, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -37215,6 +37371,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.RenameEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access", wrapper.ResolveAccess)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.ListAccessRequests)
@@ -64865,6 +65024,131 @@ func (response RenameEnvironment503JSONResponse) VisitRenameEnvironmentResponse(
 	return err
 }
 
+type ResolveAccessRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Params      ResolveAccessParams
+}
+
+type ResolveAccessResponseObject interface {
+	VisitResolveAccessResponse(w http.ResponseWriter) error
+}
+
+type ResolveAccess200JSONResponse AccessResolution
+
+func (response ResolveAccess200JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResolveAccess400JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResolveAccess401JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ResolveAccess403JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResolveAccess404JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ResolveAccess429JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess500JSONResponse struct{ InternalJSONResponse }
+
+func (response ResolveAccess500JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResolveAccess503JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAccessRequestsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -88176,6 +88460,9 @@ type StrictServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(ctx context.Context, request RenameEnvironmentRequestObject) (RenameEnvironmentResponseObject, error)
+	// ResolveAccess Answer who can use one permission in an environment.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access)
+	ResolveAccess(ctx context.Context, request ResolveAccessRequestObject) (ResolveAccessResponseObject, error)
 	// ListAccessRequests The environment's temporary-access requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
 	ListAccessRequests(ctx context.Context, request ListAccessRequestsRequestObject) (ListAccessRequestsResponseObject, error)
@@ -95647,6 +95934,35 @@ func (sh *strictHandler) RenameEnvironment(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameEnvironmentResponseObject); ok {
 		if err := validResponse.VisitRenameEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveAccess operation middleware
+func (sh *strictHandler) ResolveAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ResolveAccessParams) {
+	var request ResolveAccessRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveAccess(ctx, request.(ResolveAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveAccessResponseObject); ok {
+		if err := validResponse.VisitResolveAccessResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

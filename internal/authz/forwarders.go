@@ -347,6 +347,9 @@ type txForwarded interface {
 	// GrantLinesAtInstance lists the instance-scope membership surface.
 	GrantLinesAtInstance(ctx context.Context) ([]GrantLine, error)
 
+	// GrantLinesAtOrgLevel lists one org's org-scope grant lines of one capability.
+	GrantLinesAtOrgLevel(ctx context.Context, org string, capability domain.Capability) ([]GrantLine, error)
+
 	// GrantLinesInOrg lists the membership surface for one org.
 	GrantLinesInOrg(ctx context.Context, org string) ([]GrantLine, error)
 
