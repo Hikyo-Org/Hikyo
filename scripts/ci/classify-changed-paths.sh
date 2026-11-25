@@ -113,8 +113,9 @@ else
 			select_class client
 			;;
 		# The operator (Go under test by the kind e2e) and the kind e2e test
-		# itself carry the *.go integration set PLUS the k8s_e2e job.
-		internal/operator/* | internal/isolation/k8s_*)
+		# itself carry the *.go integration set PLUS the k8s_e2e job. The rotation
+		# rollout subtest reuses the two rotation fixtures below.
+		internal/operator/* | internal/isolation/k8s_* | internal/isolation/rotation_e2e_test.go | internal/isolation/rotation_executor_e2e_test.go)
 			select_class operator
 			;;
 		# Generated CRDs feed the generated-freshness diff and chart validation,

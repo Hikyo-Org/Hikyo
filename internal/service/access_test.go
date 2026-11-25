@@ -206,7 +206,11 @@ func TestAccessBypassReauthIntent(t *testing.T) {
 	if _, err := NewDisclosureReauthIntent(PurposeAccess, []string{"env_prod", "env_dev"}, nil); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("multiple environments: %v", err)
 	}
-	if cliReauthPurposeOperation(PurposeAccess, authz.OpAccessBypass) {
-		t.Fatal("emergency access admitted to unsupported CLI handoff")
+	// The CLI handoff binds the same environment-only unit (#1531).
+	if !cliReauthPurposeOperation(PurposeAccess, authz.OpAccessBypass) || cliReauthKeyBound(string(PurposeAccess)) {
+		t.Fatal("emergency access is not admitted to the CLI handoff as an environment-only unit")
+	}
+	if cliReauthPurposeOperation(PurposeAccess, authz.OpApprovalBypass) {
+		t.Fatal("the access purpose admitted another operation")
 	}
 }

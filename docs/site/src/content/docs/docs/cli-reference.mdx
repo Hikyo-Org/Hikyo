@@ -87,11 +87,46 @@ results and errors keep their existing formats.
 | `login`, `logout`, `whoami` | Manage the local human session. |
 | `account` | Establish credentials, factors, recovery, and reset. |
 | `context` | Store named targets and trusted instance references. |
+| `config` | Read and set a per-instance CLI setting. The one key is `reauth.method`. |
 | `doctor` | Report server-authoritative provider health. |
 | `update` | Select `stable`, `nightly`, or `off`, check for a newer release, and install it after confirmation. |
 
 Passwords and authorities are read from the controlling terminal. Sessions are
 stored locally and are never printed as a login receipt.
+
+### Reauthentication method
+
+When a command needs a fresh reauthentication, the CLI asks for an authenticator
+code at the terminal first and opens the browser approval page when a passkey is
+required or no code is possible. Two controls choose the browser regardless:
+
+- `hikyo config set reauth.method browser --instance <ref>` stores the choice for
+  one instance. Its values are `auto` (the default) and `browser`; any other value
+  is refused, and so is an unknown key or a hand-edited `settings.json` that holds
+  one. `hikyo config get reauth.method` prints the current value, and `set ... auto`
+  restores the default. Instances differ in factor enrolment, so the setting is
+  never global.
+- `--approve-in-browser` applies the browser approval to one invocation of any
+  command that reauthenticates.
+
+With the browser chosen, every reauthentication window that has a browser handoff
+uses it, even where a code would have worked, and no code prompt is offered for
+it. A purpose without a handoff, such as a machine reveal grant, is refused with
+the reason. So is a chosen browser where an authenticator code would otherwise have
+been offered (the environment's window is above 0) on a host with no graphical
+session: on any platform but macOS and Windows, none of `DISPLAY`, `WAYLAND_DISPLAY` and `BROWSER`
+set (`xdg-open` and VS Code Remote honour `BROWSER`). macOS and Windows are not
+checked, because `open` over SSH still reaches the GUI session, and at a 0-window
+or protected environment the handoff is the only way and is not refused up front. The CLI does
+not fall back to a typed code for these windows. Account-security proofs, such as
+`access registration set` and `delete`, `account recovery-codes regenerate`,
+`account password` and the `scim` credential mint, are not reauthentication
+windows and still ask for a code; the CLI notes that `--approve-in-browser` does
+not apply to them. A launcher that starts but shows nothing cannot be detected, so
+the command then waits for the approval until it expires. The refusal and the
+waiting hint name the control that applied and the way back: drop
+`--approve-in-browser`, or run `hikyo config set reauth.method auto --instance <ref>`,
+to be asked for an authenticator code if one is enrolled.
 
 ## Domain resources
 

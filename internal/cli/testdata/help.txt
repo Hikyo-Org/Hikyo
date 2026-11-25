@@ -28,9 +28,18 @@ contexts:
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
+  hikyo config get <key> [--instance REF]
+  hikyo config set <key> <value> [--instance REF]
+      the one key is reauth.method: auto (default) asks for an authenticator code first and
+      opens the browser when a passkey is required or no code is possible; browser opens the
+      browser for every reauthentication window that has a browser handoff. A purpose with no
+      handoff is refused, and account-security proofs (for example access registration set|delete)
+      still ask for a code.
 
   New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
   Existing stored or provisioned trust does not require the flag.
+  Any command that reauthenticates accepts --approve-in-browser to use the browser approval for the
+  reauthentication windows of that one invocation.
 
 managed configuration:
   hikyo instance-config status [-o table|json]

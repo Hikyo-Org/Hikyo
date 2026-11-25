@@ -62,6 +62,9 @@ type IO struct {
 	// --use-human-session` requires it (api-cli-surface ADR: "stderr-is-a-TTY
 	// (an additional refusal, never the control)"). Nil means false.
 	StderrIsTerminal func() bool
+	// HostOS overrides runtime.GOOS where the host's graphical session is
+	// judged (a chosen browser approval); tests inject it. Empty means the real one.
+	HostOS string
 	// OpenURL launches a browser without printing the opaque handoff state.
 	// Nil uses the platform browser opener.
 	OpenURL func(string) error
@@ -171,6 +174,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"whoami":              runWhoami,
 	"account":             runAccount,
 	"context":             runContext,
+	"config":              runConfig,
 	"org":                 runOrg,
 	"project":             runProject,
 	"env":                 runEnv,
@@ -263,9 +267,18 @@ contexts:
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
+  hikyo config get <key> [--instance REF]
+  hikyo config set <key> <value> [--instance REF]
+      the one key is reauth.method: auto (default) asks for an authenticator code first and
+      opens the browser when a passkey is required or no code is possible; browser opens the
+      browser for every reauthentication window that has a browser handoff. A purpose with no
+      handoff is refused, and account-security proofs (for example access registration set|delete)
+      still ask for a code.
 
   New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
   Existing stored or provisioned trust does not require the flag.
+  Any command that reauthenticates accepts --approve-in-browser to use the browser approval for the
+  reauthentication windows of that one invocation.
 
 managed configuration:
   hikyo instance-config status [-o table|json]
@@ -1477,7 +1490,7 @@ func runFactorEnrolTOTP(ctx context.Context, ios IO, args []string) (returnErr e
 	if !status.HasPassword {
 		return failf(ExitRefused, "`account factor enrol-totp` requires a password proof on the terminal; use Settings > Security: %s", accountSecurityURL(client))
 	}
-	password, err := ios.readPassword("Password (to authorize enrolment): ")
+	password, err := st.readProof(ios, "Password (to authorize enrolment): ")
 	if err != nil {
 		return err
 	}
@@ -1507,7 +1520,7 @@ func runFactorConfirmTOTP(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	code, err := ios.readPassword("Enter the code from your authenticator to confirm: ")
+	code, err := st.readProof(ios, "Enter the code from your authenticator to confirm: ")
 	if err != nil {
 		return err
 	}
@@ -1537,7 +1550,7 @@ func runFactorStepUp(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	code, err := ios.readPassword("Enter the code from your authenticator: ")
+	code, err := st.readProof(ios, "Enter the code from your authenticator: ")
 	if err != nil {
 		return err
 	}
@@ -1581,7 +1594,7 @@ func runRecoveryCodes(ctx context.Context, ios IO, args []string) (returnErr err
 	if err != nil {
 		return err
 	}
-	proof, err := ios.readPassword("Account-security proof (your TOTP code, or password if no factor): ")
+	proof, err := st.readProof(ios, "Account-security proof (your TOTP code, or password if no factor): ")
 	if err != nil {
 		return err
 	}
@@ -1805,6 +1818,11 @@ func runContext(_ context.Context, ios IO, args []string) error {
 			return err
 		}
 		if *instance != "" {
+			// Settings first: a damaged settings.json then refuses before any
+			// state changes, instead of leaving the entry gone and the file stale.
+			if err := st.ForgetInstanceSettings(*instance); err != nil {
+				return err
+			}
 			return st.Trust().Delete(*instance)
 		}
 		name := first(positional)
@@ -1985,6 +2003,9 @@ type commonFlags struct {
 	operation AuthOperation
 	kinds     AuthKinds
 	Auth      string
+	// ApproveInBrowser is --approve-in-browser: every reauthentication this
+	// invocation needs is carried out in the browser (see State.forceBrowser).
+	ApproveInBrowser bool
 	// TokenFile is the machine-credential channel (#61). There is
 	// deliberately no `--token` flag beside it: a secret in argv is visible
 	// in `ps`, in /proc/<pid>/cmdline and in shell history, and the property
@@ -2055,6 +2076,7 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 	fs.StringVar(&c.Env, "env", "", "environment")
 	fs.StringVar(&c.TokenFile, "token-file", "", "read a machine credential from this file (never --token: argv is public)")
 	fs.StringVar(&c.Auth, "auth", "", "select human or machine authentication when both are available")
+	fs.BoolVar(&c.ApproveInBrowser, "approve-in-browser", false, "carry out any reauthentication in the browser instead of with an authenticator code")
 	if extra != nil {
 		extra(fs)
 	}
@@ -2072,6 +2094,7 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 	if err != nil {
 		return nil, commonFlags{}, err
 	}
+	st.forceBrowser = c.ApproveInBrowser
 	return st, c, nil
 }
 
@@ -2110,27 +2133,9 @@ func authenticatedTarget(st *State, ios IO, flags commonFlags) (*Client, AuthArt
 // the caller already resolved and validated. It lets safety-sensitive verbs
 // reject malformed scope before trust or session state can change the answer.
 func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved Resolved) (*Client, AuthArtifact, Resolved, error) {
-	instance, err := resolved.Require(DimInstance)
+	instance, err := instanceName(st, resolved)
 	if err != nil {
-		// Exactly one established instance is not an ambiguity, so falling
-		// back to it is not a silent assumption — it is the only reading. Two
-		// or more IS an ambiguity, and ambiguity is a hard error naming what
-		// was missing, never a default.
-		//
-		// The fallback is the TRUST STORE rather than the session file, so
-		// that after a logout the answer is "you are not logged in" (exit 3)
-		// rather than "no instance" (exit 2). The distinction matters to a
-		// script deciding whether to re-authenticate.
-		entries, serr := st.Trust().Load()
-		if serr != nil {
-			return nil, nil, Resolved{}, serr
-		}
-		if len(entries) != 1 {
-			return nil, nil, Resolved{}, err
-		}
-		for k := range entries {
-			instance = k
-		}
+		return nil, nil, Resolved{}, err
 	}
 	entry, err := st.Trust().Lookup(instance)
 	if err != nil {
@@ -2180,6 +2185,34 @@ func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved 
 			echo, entry.Origin, humanSession.Principal)
 	}
 	return client, human, resolved, nil
+}
+
+// instanceName is the resolved instance reference.
+func instanceName(st *State, resolved Resolved) (string, error) {
+	instance, err := resolved.Require(DimInstance)
+	if err == nil {
+		return instance, nil
+	}
+	// Exactly one established instance is not an ambiguity, so falling
+	// back to it is not a silent assumption: it is the only reading. Two
+	// or more IS an ambiguity, and ambiguity is a hard error naming what
+	// was missing, never a default.
+	//
+	// The fallback is the TRUST STORE rather than the session file, so
+	// that after a logout the answer is "you are not logged in" (exit 3)
+	// rather than "no instance" (exit 2). The distinction matters to a
+	// script deciding whether to re-authenticate.
+	entries, serr := st.Trust().Load()
+	if serr != nil {
+		return "", serr
+	}
+	if len(entries) != 1 {
+		return "", err
+	}
+	for k := range entries {
+		instance = k
+	}
+	return instance, nil
 }
 
 func (ios IO) readPassword(prompt string) (string, error) {
