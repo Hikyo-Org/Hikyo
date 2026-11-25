@@ -444,7 +444,8 @@ paused and halted rotations come back exactly as they were, **not held**, becaus
 there is nothing to hold them with; check them before you resume one. A contained
 authority principal is not a restore hold: an incident opened on the account (or on
 an org that selects it) lists its rotations and halts each one with
-`incident_contained`, active or paused, and releasing the principal does not
+`incident_contained`, active or paused (a rotation already halted keeps its own
+reason, and the incident confirms it as it is), and releasing the principal does not
 resume them. Five cases leave a rotation active, so do not read an incident as
 confirmation that every rotation of its members reached `halted`:
 
@@ -455,7 +456,8 @@ confirmation that every rotation of its members reached `halted`:
   successful resume. A halt item cannot be attested.
 - A truncated enumeration: when an org has more members than one pass can list, the
   unreached members' rotations are not halted. Hikyo records an open
-  `enumeration_truncated` row for them instead, and the rotations stay active. Opening
+  `enumeration_truncated` row for them instead (when a single source passes its item
+  cap, one row at the org covers every member after the cut), and the rotations stay active. Opening
   the incident again does not reach them (it lists with the same budget and order), and
   the row cannot be resumed or attested. Pause or delete those rotations yourself,
   then close the incident with residuals.

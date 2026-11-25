@@ -903,7 +903,7 @@ type RotationListByAuthorityInOrgRow struct {
 }
 
 // Incident enumeration (#1471): one org's live rotations whose recorded authority
-// principal is the contained account, in id order, ids and the state only.
+// principal is the contained account, in id order, ids and placement only.
 // hikyo:reason Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects.
 // hikyo:instance-scoped
 func (q *Queries) RotationListByAuthorityInOrg(ctx context.Context, arg RotationListByAuthorityInOrgParams) ([]RotationListByAuthorityInOrgRow, error) {

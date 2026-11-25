@@ -194,7 +194,7 @@ SELECT COUNT(*) FROM rotation_effects WHERE run_id=sqlc.arg(run_id) AND org_id=s
 UPDATE rotations SET restore_hold=FALSE,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND restore_hold=TRUE;
 
 -- Incident enumeration (#1471): one org's live rotations whose recorded authority
--- principal is the contained account, in id order, ids and the state only.
+-- principal is the contained account, in id order, ids and placement only.
 -- hikyo:reason Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects.
 -- hikyo:instance-scoped
 -- name: RotationListByAuthorityInOrg :many

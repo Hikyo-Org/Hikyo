@@ -268,8 +268,10 @@ func (l rotationLister) page(ctx context.Context, a incidentAccess, target domai
 		}
 		for _, x := range rows {
 			if c.rotationRows >= maxSourceItems {
-				// One scope row for the source, since the cap is the source's: the
-				// members after this one are named by truncateUnreachedRotations.
+				// One scope row for the source, since the cap is the source's: it covers
+				// this member's remaining rotations and every member after it, none of which
+				// gets a row of its own (the budget path in collectOrg names each unreached
+				// member through truncateUnreachedRotations instead).
 				c.rotationsCut = true
 				c.truncated(domain.OwnerRotationHalt, a.scopeID, l.scope)
 				return nil

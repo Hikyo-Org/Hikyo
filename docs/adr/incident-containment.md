@@ -400,7 +400,8 @@ principal is contained, so a contained account would still have a scheduler acti
   successful resume; neither can be attested.
 - Scope matrix. Account scope lists the account's rotations. Org scope inherits through the
   accounts it selects: each selected member's rotations are listed within the same lookup
-  budget, and a member the budget cannot reach is an open `enumeration_truncated` row. That row can be neither
+  budget, and a member the budget cannot reach is an open `enumeration_truncated` row (past the source's item
+  cap, one such row at the org covers every member after the cut). That row can be neither
   attested nor resumed past, and opening again lists with the same budget and order, so the
   operator pauses or deletes the unreached members' rotations through their own owners and
   closes the incident with residuals. Project
@@ -408,6 +409,8 @@ principal is contained, so a contained account would still have a scheduler acti
   of their own. An account incident bounded to one org lists that org's rotations; a rotation
   in an org the account no longer belongs to has lost its recorded authority and halts by
   effect at its next gate.
+- A rotation already halted under another reason (`authority_lost`, `retries_exhausted`) is listed
+  and confirmed as it stands; its reason and generation are not rewritten.
 - Halting uses the dedicated word `incident_contained`. The halt reason enum is open
   (`x-extensible-enum`), so the word is an additive growth that the API freeze permits.
   Reusing `authority_lost` would have made an incident halt indistinguishable from the
