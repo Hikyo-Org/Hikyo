@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -271,8 +272,8 @@ func runReport(t *testing.T, script, issues, devResult, mainResult string) (int,
 		"DEV_RESULT="+devResult, "MAIN_RESULT="+mainResult)
 	status := 0
 	if out, err := cmd.CombinedOutput(); err != nil {
-		exitErr, ok := err.(*exec.ExitError)
-		if !ok {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
 			t.Fatalf("%v: %s", err, out)
 		}
 		status = exitErr.ExitCode()
