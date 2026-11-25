@@ -3,7 +3,7 @@
   "sources": {
     "api/access.ts": "7d472e5b60d55819ff405fec2614eceaf819064cf7280865754f6beac34a7519",
     "api/account.ts": "df4102759f9997701d1d740dfd6cea0facba37cc4b0b3e30b7e4639041b71507",
-    "api/adapters.ts": "442450ea79df53a86a1b1834e65dff90b196e4c6e0d6de5be7170b189b655e27",
+    "api/adapters.ts": "ad936bec01e000c2c348f5f729cd52e3403c9a4316a20d53f7401885b1e39f21",
     "api/approvals.ts": "28db4234c0e8fe1770895c66c500c1d349b86c50bc17566bbaf6d549090777b4",
     "api/catalogue.ts": "6b073253aba6d88ebb8372e10fdd339a6a893ffab4ee3022bd1d032132dfe688",
     "api/definitions.ts": "f5fee0f5cb7f07228a9b72eccc03f4087400ed3b77843879019f78d332f7567e",
