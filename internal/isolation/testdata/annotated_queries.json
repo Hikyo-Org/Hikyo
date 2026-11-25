@@ -1391,7 +1391,8 @@
     "engine": "postgres",
     "name": "GetMachineCredentialInProject",
     "annotation": "authn-resolution",
-    "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a"
+    "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a",
+    "reason": "Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered."
   },
   {
     "engine": "postgres",
@@ -5252,7 +5253,8 @@
     "engine": "sqlite",
     "name": "GetMachineCredentialInProject",
     "annotation": "authn-resolution",
-    "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a"
+    "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a",
+    "reason": "Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered."
   },
   {
     "engine": "sqlite",

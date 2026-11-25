@@ -271,6 +271,7 @@ type GetMachineCredentialInProjectRow struct {
 
 // One credential of one project by id, so the incident path's cost does not grow
 // with the project's service accounts.
+// hikyo:reason Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered.
 // hikyo:authn-resolution
 func (q *Queries) GetMachineCredentialInProject(ctx context.Context, arg GetMachineCredentialInProjectParams) (GetMachineCredentialInProjectRow, error) {
 	row := q.db.QueryRow(ctx, getMachineCredentialInProject, arg.OrgID, arg.ProjectID, arg.ID)
