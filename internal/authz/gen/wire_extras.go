@@ -339,6 +339,9 @@ var reviewedWireExtras = wireExtras{
 		// `context` is entirely client-local: the trust store and the named
 		// contexts live on this box and reach no server.
 		"cli:context": {Class: "ClassUnauthenticated"},
+		// `config` (#1531) reads and writes the per-instance client settings file
+		// (reauth.method) on this box and reaches no server.
+		"cli:config": {Class: "ClassUnauthenticated"},
 		// `definitions` (#70) reaches only the tenant-scoped export/check/plan/apply
 		// routes; server operations own every authorization and audit decision.
 		"cli:definitions": {Class: "ClassTenant"},
