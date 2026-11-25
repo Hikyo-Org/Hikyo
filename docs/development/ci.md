@@ -143,24 +143,35 @@ merge queue. The `macos-15` job was not acquired in 5 of 21 `ci-dev` attempts an
 dev red. `nightly-desktop.yml` owns it instead, daily at 03:41 UTC or by manual
 dispatch on main:
 
-1. A `heads` job pins the dev and main commits. `desktop-dev` and `desktop-main` each
-   check out one exact commit, with no cache restored or written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
-2. Each runs `scripts/ci/check-desktop-deps.sh`, which keeps Wails and its platform
+1. A `heads` job pins the dev and main commits and picks each leg's runner: `macos-15`
+   (paid minutes) where `desktop/go.mod` exists at that commit, `ubuntu-latest` where
+   it does not (main before promotion), so a boundary-only leg cannot fail on macOS
+   capacity. `desktop-dev` and `desktop-main` each check out their exact commit, with
+   no cache restored or written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to
+   `-mmacosx-version-min=13.0`. A leg step fails when the module exists on a
+   non-macOS runner.
+2. Each runs `scripts/ci/check-desktop-deps.sh`. It keeps Wails and its platform
    bindings out of the root `go.mod` and `go.sum` and refuses a `go.work` or a root
    requirement on `desktop/`. Where `desktop/` exists it also requires `replace
-   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`.
+   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`, and its third check keeps
+   `feedback-plan.sh` honest: every root package that `desktop/` compiles must select
+   the `desktop-compile` fast-feedback check.
 3. Where `desktop/go.mod` exists: `go test -race ./...`, a `-tags probe` build, a
    release build, and the driven WKWebView lane, `go run ./probes/driven`, which
    opens the probe shell against a fake instance (Playwright cannot drive WKWebView).
-   Main before the shell lands runs only step 2, so until promotion brings the module
-   to main, the main leg covers only the boundary check.
+   Main before the shell lands runs only step 2, on Linux, so until promotion brings
+   the module to main, the main leg covers only the boundary check.
 4. A `report` job runs with `issues: write` only, no checkout and no repository code.
-   When either leg is not `success` (a runner that is never acquired is reported as
+   When either leg or the shim check is not `success` (a runner that is never acquired is reported as
    `cancelled`), it looks the issue up by the `ci-nightly-desktop` label plus an exact title, marker and
    bot-author match, then opens or comments on the one issue titled `ci: nightly desktop
    validation failing` with the run link and each branch's head SHA and result, then
    fails, so the run stays red. It runs only on main; a manual run from another ref skips
    it. A later green night closes the issue with a comment.
+   A `shim` job (no checkout, API reads only) also reports when the desktop-removal
+   shim in `ci.yml` is dead: once neither head's job registry lists `desktop`, the shim
+   and its migration tests are dead code, and the report names issue #1595, which tracks
+   their removal. The issue stays open until they are removed.
    Each night costs one issue-list call, plus one write when the state changes or the
    failure repeats.
 5. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
@@ -171,8 +182,8 @@ dispatch on main:
 Nothing requires `nightly-desktop`, and `nightly-promote` and `nightly-release` read
 none of its results. A red night therefore does not stop promotion or publication; it
 only keeps the issue open. Desktop edits select no `ci.yml` job: `desktop/*` is a
-known path with an empty plan, so a desktop-only PR now gets an empty plan, and the root packages it imports select only their own
-domains. A root `go.mod` or `go.sum` change, a workflow change and every unknown path
+known path with an empty plan, so a desktop-only PR gets an empty plan, and the
+root packages it imports select only their own domains. A root `go.mod` or `go.sum` change, a workflow change and every unknown path
 still select the full plan. Fast feedback keeps `desktop/` out of the root compile
 (`go-compile`) and compiles it with its own `desktop-compile` check, `go -C desktop
 test -c`, only where `desktop/go.mod` exists; that Ubuntu check stays on the PR

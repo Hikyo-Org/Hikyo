@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -18,13 +19,14 @@ import (
 // schedule must fire daily, and the reporter must really open, update and close.
 
 const (
-	desktopModuleGuard = "${{ hashFiles('desktop/go.mod') != '' }}"
-	reportCondition    = "always() && github.ref == 'refs/heads/main'"
+	desktopModuleGuard  = "${{ hashFiles('desktop/go.mod') != '' }}"
+	macOSGuardCondition = "${{ hashFiles('desktop/go.mod') != '' && runner.os != 'macOS' }}"
+	macOSGuardRun       = "echo \"desktop/go.mod exists at this commit but the runner is $RUNNER_OS, not macOS.\" >&2\nexit 1"
+	reportCondition     = "always() && github.ref == 'refs/heads/main'"
 )
 
 var (
-	dailyCron      = regexp.MustCompile(`^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) \* \* \*$`)
-	narrowedTestRE = regexp.MustCompile(`(^|\s)-(run|skip)([=\s]|$)`)
+	dailyCron = regexp.MustCompile(`^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) \* \* \*$`)
 )
 
 func checkNightlyDesktop(workflow yamlMap) error {
@@ -51,12 +53,14 @@ func checkNightlyDesktop(workflow yamlMap) error {
 			return fmt.Errorf("heads lost its %s output", name)
 		}
 	}
-	for _, step := range stepsOf(heads) {
-		run, _ := step["run"].(string)
-		for _, required := range []string{"for branch in dev main", "echo macos-15", "echo ubuntu-latest", "${branch}_runner"} {
-			if !strings.Contains(run, required) {
-				return fmt.Errorf("heads resolver lost %q", required)
-			}
+	shim := asMap(jobs["shim"])
+	if shim == nil || shim["if"] != "github.ref == 'refs/heads/main'" || shim["continue-on-error"] != nil || shim["permissions"] != nil ||
+		!reflect.DeepEqual(needsOf(shim), []string{"heads"}) || asMap(shim["outputs"])["state"] != "${{ steps.check.outputs.state }}" {
+		return fmt.Errorf("shim must run only on main after heads, fail closed, stay read-only and expose its state")
+	}
+	for _, step := range stepsOf(shim) {
+		if step["uses"] != nil {
+			return fmt.Errorf("shim job must not check out or run any action")
 		}
 	}
 	for leg, branch := range map[string]string{"desktop-dev": "dev", "desktop-main": "main"} {
@@ -74,11 +78,12 @@ func checkNightlyDesktop(workflow yamlMap) error {
 			return fmt.Errorf("%s does not test the pinned %s head", leg, branch)
 		}
 		want := map[string]string{
-			"Desktop module boundary":                       "check-desktop-deps.sh",
-			"Desktop tests with the race detector":          "go test -race",
-			"Build the probe shell":                         "-tags probe",
-			"Build the release shell":                       "go build",
-			"Driven WKWebView lane against a fake instance": "probes/driven",
+			"Require macOS where the shell exists":          macOSGuardRun,
+			"Desktop module boundary":                       "./scripts/ci/check-desktop-deps_test.sh\n./scripts/ci/check-desktop-deps.sh",
+			"Desktop tests with the race detector":          "go test -race -count=1 -p 2 ./...",
+			"Build the probe shell":                         `go build -p 2 -tags probe -o "$RUNNER_TEMP/hikyo-desktop-probe" .`,
+			"Build the release shell":                       `go build -p 2 -o "$RUNNER_TEMP/hikyo-desktop" .`,
+			"Driven WKWebView lane against a fake instance": `go run ./probes/driven -app "$RUNNER_TEMP/hikyo-desktop-probe" -timeout 120s`,
 		}
 		seen := map[string]bool{}
 		for _, step := range stepsOf(job) {
@@ -100,10 +105,17 @@ func checkNightlyDesktop(workflow yamlMap) error {
 			if !known {
 				return fmt.Errorf("%s has an unexpected step %q", leg, name)
 			}
-			if !strings.Contains(run, command) || narrowedTestRE.MatchString(run) {
-				return fmt.Errorf("%s step %q lost %q or narrowed its tests", leg, name, command)
+			// Exact match: a suffix such as "|| true" or a narrowed target would fail open.
+			if strings.TrimSpace(run) != command {
+				return fmt.Errorf("%s step %q must run exactly %q", leg, name, command)
 			}
 			seen[name] = true
+			if name == "Require macOS where the shell exists" {
+				if step["if"] != macOSGuardCondition || step["working-directory"] != nil {
+					return fmt.Errorf("%s macOS guard must fire when the module exists on a non-macOS runner", leg)
+				}
+				continue
+			}
 			if name == "Desktop module boundary" {
 				if step["if"] != nil || step["working-directory"] != nil {
 					return fmt.Errorf("%s boundary check must always run at the repository root", leg)
@@ -127,7 +139,7 @@ func checkNightlyDesktop(workflow yamlMap) error {
 	if !reflect.DeepEqual(report["permissions"], yamlMap{"issues": "write"}) {
 		return fmt.Errorf("report job permissions must be exactly issues: write")
 	}
-	if !reflect.DeepEqual(needsOf(report), []string{"heads", "desktop-dev", "desktop-main"}) || report["if"] != reportCondition {
+	if !reflect.DeepEqual(needsOf(report), []string{"heads", "desktop-dev", "desktop-main", "shim"}) || report["if"] != reportCondition {
 		return fmt.Errorf("report must wait for both legs, run after any result, and only on main")
 	}
 	for _, step := range stepsOf(report) {
@@ -161,6 +173,23 @@ func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
 		t.Fatalf("no step %q", name)
 		return nil
 	}
+	appendRun := func(s yamlMap, suffix string) { s["run"] = strings.TrimSpace(s["run"].(string)) + suffix }
+	replaceRun := func(s yamlMap, old, replacement string) {
+		changed := strings.Replace(s["run"].(string), old, replacement, 1)
+		if changed == s["run"].(string) {
+			t.Fatalf("no %q to mutate in %q", old, s["name"])
+		}
+		s["run"] = changed
+	}
+	removeStep := func(job yamlMap, name string) {
+		var kept []any
+		for _, s := range asList(job["steps"]) {
+			if asMap(s)["name"] != name {
+				kept = append(kept, s)
+			}
+		}
+		job["steps"] = kept
+	}
 	for name, mutate := range map[string]func(yamlMap){
 		"no schedule":                func(w yamlMap) { delete(asMap(w["on"]), "schedule") },
 		"a cron that never fires":    func(w yamlMap) { asMap(asList(asMap(w["on"])["schedule"])[0])["cron"] = "41 3 31 2 *" },
@@ -173,10 +202,22 @@ func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
 		"heads skipped":              func(w yamlMap) { heads(w)["if"] = "false" },
 		"heads off main":             func(w yamlMap) { heads(w)["if"] = "always()" },
 		"heads lost a runner output": func(w yamlMap) { delete(asMap(heads(w)["outputs"]), "main_runner") },
-		"heads resolves only main": func(w yamlMap) {
-			s := stepsOf(heads(w))[0]
-			s["run"] = strings.Replace(s["run"].(string), "for branch in dev main", "for branch in main", 1)
+		"race tests fail open":       func(w yamlMap) { appendRun(step(leg(w), "Desktop tests with the race detector"), " || true") },
+		"race tests lose ./...":      func(w yamlMap) { replaceRun(step(leg(w), "Desktop tests with the race detector"), "./...", ".") },
+		"probe build fails open":     func(w yamlMap) { appendRun(step(leg(w), "Build the probe shell"), " || true") },
+		"release build fails open":   func(w yamlMap) { appendRun(step(leg(w), "Build the release shell"), " || true") },
+		"driven lane fails open":     func(w yamlMap) { appendRun(step(leg(w), "Driven WKWebView lane against a fake instance"), " || true") },
+		"boundary is only a help": func(w yamlMap) {
+			replaceRun(step(leg(w), "Desktop module boundary"), "check-desktop-deps.sh", "check-desktop-deps.sh --help || true")
 		},
+		"macOS guard removed":       func(w yamlMap) { removeStep(leg(w), "Require macOS where the shell exists") },
+		"macOS guard never fires":   func(w yamlMap) { step(leg(w), "Require macOS where the shell exists")["if"] = "false" },
+		"macOS guard passes":        func(w yamlMap) { replaceRun(step(leg(w), "Require macOS where the shell exists"), "exit 1", "exit 0") },
+		"shim job removed":          func(w yamlMap) { delete(jobsOf(w), "shim") },
+		"shim job fails open":       func(w yamlMap) { asMap(jobsOf(w)["shim"])["continue-on-error"] = true },
+		"shim job off main":         func(w yamlMap) { asMap(jobsOf(w)["shim"])["if"] = "always()" },
+		"shim state output dropped": func(w yamlMap) { delete(asMap(asMap(jobsOf(w)["shim"])["outputs"]), "state") },
+		"report ignores the shim":   func(w yamlMap) { report(w)["needs"] = []any{"heads", "desktop-dev", "desktop-main"} },
 		"leg tests wrong head": func(w yamlMap) {
 			asMap(leg(w)["env"])["HEAD_SHA"] = "${{ needs.heads.outputs.dev }}"
 		},
@@ -245,41 +286,230 @@ func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
 	}
 }
 
+// A stub gh serves everything the workflow scripts ask of it from files in GH_DIR:
+// issues.json for `issue list --jq`, sha.<branch> for a branch head, module.<sha>
+// holding an HTTP status for desktop/go.mod, and content.<ref>.<path, / as _> for raw
+// file contents (404 when absent).
 const stubGH = `#!/bin/bash
 echo "$*" >>"$GH_LOG"
 if [ "$1 $2" = "issue list" ]; then
   while [ $# -gt 0 ]; do
-    if [ "$1" = --jq ]; then jq -r "$2" <"$GH_ISSUES"; exit 0; fi
+    if [ "$1" = --jq ]; then jq -r "$2" <"$GH_DIR/issues.json"; exit 0; fi
     shift
   done
 fi
+if [ "$1" = api ]; then
+  path=""
+  for arg in "$@"; do
+    case "$arg" in repos/*) path=$arg ;; esac
+  done
+  case "$path" in
+    */git/ref/heads/*) cat "$GH_DIR/sha.${path##*/}"; exit 0 ;;
+    */contents/desktop/go.mod\?ref=*)
+      case "$(cat "$GH_DIR/module.${path##*=}")" in
+        200) exit 0 ;;
+        404) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+        *) echo "gh: Internal Server Error (HTTP 500)" >&2; exit 1 ;;
+      esac ;;
+    */contents/*\?ref=*)
+      file=${path#*/contents/}
+      ref=${file##*ref=}
+      file=${file%%\?*}
+      if ! cat "$GH_DIR/content.$ref.${file//\//_}" 2>/dev/null; then
+        echo "gh: Not Found (HTTP 404)" >&2
+        exit 1
+      fi
+      exit 0 ;;
+  esac
+fi
 `
 
-// Run the report script against a stub gh; return its exit status and the gh calls.
-func runReport(t *testing.T, script, issues, devResult, mainResult string) (int, string) {
+type stubRun struct {
+	status int
+	log    string
+	output []string
+}
+
+// Run a workflow script against the stub gh with the given GH_DIR files and extra env.
+func runStubbed(t *testing.T, script string, files map[string]string, env ...string) stubRun {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stubGH), 0o755); err != nil {
-		t.Fatal(err)
+	write := func(name, content string, mode os.FileMode) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), mode); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "issues.json"), []byte(issues), 0o644); err != nil {
-		t.Fatal(err)
+	write("gh", stubGH, 0o755)
+	for name, content := range files {
+		write(name, content, 0o644)
 	}
 	cmd := exec.CommandContext(t.Context(), "bash", "-e", "-o", "pipefail", "-c", script)
-	cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"GH_LOG="+filepath.Join(dir, "log"), "GH_ISSUES="+filepath.Join(dir, "issues.json"),
-		"GH_TOKEN=x", "GH_REPO=o/r", "RUN_URL=https://example/run/1", "DEV_SHA=aaaa", "MAIN_SHA=bbbb",
-		"DEV_RESULT="+devResult, "MAIN_RESULT="+mainResult)
-	status := 0
+	cmd.Env = append(append(os.Environ(),
+		"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"GH_DIR="+dir, "GH_LOG="+filepath.Join(dir, "log"), "GH_TOKEN=x", "GH_REPO=o/r",
+		"RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+filepath.Join(dir, "out")), env...)
+	run := stubRun{}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
 			t.Fatalf("%v: %s", err, out)
 		}
-		status = exitErr.ExitCode()
+		run.status = exitErr.ExitCode()
 	}
 	log, _ := os.ReadFile(filepath.Join(dir, "log"))
-	return status, string(log)
+	run.log = string(log)
+	outputs, _ := os.ReadFile(filepath.Join(dir, "out"))
+	run.output = strings.Fields(string(outputs))
+	return run
+}
+
+func stepRun(t *testing.T, job string, name string) string {
+	t.Helper()
+	for _, s := range stepsOf(asMap(jobsOf(readYAMLMap(t, "nightly-desktop.yml"))[job])) {
+		if s["name"] == name {
+			run, _ := s["run"].(string)
+			return run
+		}
+	}
+	t.Fatalf("no step %q in %s", name, job)
+	return ""
+}
+
+func mutateScript(t *testing.T, script, old, replacement string) string {
+	t.Helper()
+	changed := strings.Replace(script, old, replacement, 1)
+	if changed == script {
+		t.Fatalf("script has no %q to mutate", old)
+	}
+	return changed
+}
+
+// The resolver decides each leg's runner from the HTTP answer for desktop/go.mod:
+// 200 is macOS, only a 404 is Linux, and anything else must fail the night.
+func checkResolver(t *testing.T, script string) error {
+	t.Helper()
+	dev, main := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	for _, tc := range []struct {
+		name, devSHA, devModule, mainModule string
+		fails                               bool
+		want                                []string
+	}{
+		{"both heads have the module", dev, "200", "200", false,
+			[]string{"dev=" + dev, "dev_runner=macos-15", "main=" + main, "main_runner=macos-15"}},
+		{"main has no module yet", dev, "200", "404", false,
+			[]string{"dev=" + dev, "dev_runner=macos-15", "main=" + main, "main_runner=ubuntu-latest"}},
+		{"dev has no module", dev, "404", "200", false,
+			[]string{"dev_runner=ubuntu-latest", "main_runner=macos-15"}},
+		{"the API answers 500", dev, "200", "500", true, nil},
+		{"a head is not a commit SHA", "not-a-sha", "200", "200", true, nil},
+	} {
+		run := runStubbed(t, script, map[string]string{
+			"sha.dev": tc.devSHA, "sha.main": main, "module." + dev: tc.devModule, "module." + main: tc.mainModule, "module." + tc.devSHA: tc.devModule,
+		})
+		if tc.fails {
+			if run.status == 0 {
+				return fmt.Errorf("%s: the resolver passed", tc.name)
+			}
+			continue
+		}
+		if run.status != 0 {
+			return fmt.Errorf("%s: the resolver failed", tc.name)
+		}
+		for _, want := range tc.want {
+			if !slices.Contains(run.output, want) {
+				return fmt.Errorf("%s: output %v lacks %q", tc.name, run.output, want)
+			}
+		}
+	}
+	return nil
+}
+
+func TestNightlyDesktopRunnerResolver(t *testing.T) {
+	script := stepRun(t, "heads", "Resolve the dev and main heads")
+	if err := checkResolver(t, script); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutation := range map[string][2]string{
+		"always macOS":        {"echo ubuntu-latest", "echo macos-15"},
+		"always Linux":        {"echo macos-15", "echo ubuntu-latest"},
+		"runners swapped":     {"echo macos-15", "echo QQ"},
+		"any error is Linux":  {`elif grep -F 'HTTP 404' "$RUNNER_TEMP/module.err" >/dev/null; then`, "elif true; then"},
+		"no SHA check":        {`[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid $branch head." >&2; exit 1; }`, "true"},
+		"only the main head":  {"for branch in dev main", "for branch in main"},
+		"runner not recorded": {`echo "${branch}_runner=$runner" >>"$GITHUB_OUTPUT"`, "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mutated := mutateScript(t, script, mutation[0], mutation[1])
+			if name == "runners swapped" {
+				mutated = strings.Replace(strings.Replace(mutated, "echo ubuntu-latest", "echo macos-15", 1), "echo QQ", "echo ubuntu-latest", 1)
+			}
+			if err := checkResolver(t, mutated); err == nil {
+				t.Fatal("mutation was accepted")
+			}
+		})
+	}
+}
+
+// The shim in ci.yml is dead once no long-lived branch registers desktop. The night
+// must say so, and must not guess when a file cannot be read.
+func checkShim(t *testing.T, script string) error {
+	t.Helper()
+	const withShim = "run: jq ... ci-job-registry.without-desktop.json"
+	listed, unlisted := `{"jobs":{"desktop":{}}}`, `{"jobs":{"docs":{}}}`
+	for _, tc := range []struct {
+		name, ci, mainRegistry, devRegistry, state string
+		fails                                      bool
+	}{
+		{"the shim is not on main yet", "name: ci", unlisted, unlisted, "gone", false},
+		{"main still registers desktop", withShim, listed, unlisted, "needed", false},
+		{"only dev registers desktop", withShim, unlisted, listed, "needed", false},
+		{"neither head registers desktop", withShim, unlisted, unlisted, "dead", false},
+		{"a registry cannot be read", withShim, unlisted, "", "", true},
+	} {
+		files := map[string]string{}
+		put := func(ref, path, body string) {
+			if body == "" {
+				return
+			}
+			files["content."+ref+"."+strings.ReplaceAll(path, "/", "_")] = body
+		}
+		put("mainsha", ".github/workflows/ci.yml", tc.ci)
+		put("mainsha", "scripts/ci/ci-job-registry.json", tc.mainRegistry)
+		put("devsha", "scripts/ci/ci-job-registry.json", tc.devRegistry)
+		run := runStubbed(t, script, files, "MAIN_SHA=mainsha", "DEV_SHA=devsha")
+		if tc.fails {
+			if run.status == 0 {
+				return fmt.Errorf("%s: the shim check passed", tc.name)
+			}
+			continue
+		}
+		if run.status != 0 || !slices.Contains(run.output, "state="+tc.state) {
+			return fmt.Errorf("%s: status %d, output %v, want state=%s", tc.name, run.status, run.output, tc.state)
+		}
+	}
+	return nil
+}
+
+func TestNightlyDesktopShimCheck(t *testing.T) {
+	script := stepRun(t, "shim", "Check whether the desktop-removal shim is still needed")
+	if err := checkShim(t, script); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutation := range map[string][2]string{
+		"always dead":        {"state=needed", "state=dead"},
+		"always needed":      {"state=dead", "state=needed"},
+		"ignores dev":        {` || [ "$dev_has" = true ]`, ""},
+		"ignores main":       {`[ "$main_has" = true ] || `, ""},
+		"ignores the marker": {`if grep -qF ci-job-registry.without-desktop.json <<<"$ci"; then`, "if true; then"},
+		"swallows an error":  {`dev_registry=$(fetch scripts/ci/ci-job-registry.json "$DEV_SHA")`, `dev_registry=$(fetch scripts/ci/ci-job-registry.json "$DEV_SHA" || true)`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := checkShim(t, mutateScript(t, script, mutation[0], mutation[1])); err == nil {
+				t.Fatal("mutation was accepted")
+			}
+		})
+	}
 }
 
 func TestNightlyDesktopReportLifecycle(t *testing.T) {
@@ -290,45 +520,61 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 	script, _ := steps[0]["run"].(string)
 	const title = "ci: nightly desktop validation failing"
 	const marker = "<!-- hikyo-nightly-desktop -->"
-	// A same-titled issue by someone else sorts first and must never be touched.
-	existing := `[{"number":8,"title":"` + title + `","author":{"login":"someone"},"body":"` + marker + `"},` +
-		`{"number":7,"title":"` + title + `","author":{"login":"app/github-actions"},"body":"` + marker + `\n\nold"},` +
-		`{"number":9,"title":"unrelated","author":{"login":"app/github-actions"},"body":"` + marker + `"}]`
+	issue := func(number int, issueTitle, author, body string) string {
+		return fmt.Sprintf(`{"number":%d,"title":%q,"author":{"login":%q},"body":%q}`, number, issueTitle, author, body)
+	}
+	// Everything sorts ahead of #7, the only issue the report may touch: a wrong title,
+	// a missing marker and a human author must each be rejected on their own.
+	existing := "[" + strings.Join([]string{
+		issue(5, "unrelated", "app/github-actions", marker),
+		issue(6, title, "app/github-actions", "no marker here"),
+		issue(8, title, "someone", marker),
+		issue(7, title, "app/github-actions", marker+"\n\nold"),
+	}, ",") + "]"
+	untouched := []string{"issue comment 5", "issue comment 6", "issue comment 8", "issue close 5", "issue close 6", "issue close 8"}
 	for _, tc := range []struct {
-		name       string
-		issues     string
-		dev, main  string
-		wantStatus int
-		want       []string
-		absent     []string
+		name         string
+		issues       string
+		dev, main    string
+		shim, state  string
+		wantStatus   int
+		want, absent []string
 	}{
-		{"open a new issue", "[]", "failure", "success", 1,
+		{"open a new issue", "[]", "failure", "success", "success", "needed", 1,
 			[]string{"issue list --state open --label ci-nightly-desktop", "label create ci-nightly-desktop", "issue create --title " + title + " --label ci-nightly-desktop"},
 			[]string{"issue close", "issue comment"}},
-		{"comment on the existing issue", existing, "success", "failure", 1,
-			[]string{"issue comment 7 "}, []string{"issue create", "issue close", "issue comment 8", "issue comment 9"}},
-		{"a cancelled leg counts as failing", existing, "cancelled", "success", 1,
+		{"comment on the existing issue", existing, "success", "failure", "success", "needed", 1,
+			[]string{"issue comment 7 "}, append([]string{"issue create", "issue close"}, untouched...)},
+		{"a cancelled leg counts as failing", existing, "cancelled", "success", "success", "needed", 1,
 			[]string{"issue comment 7 "}, []string{"issue close", "issue create"}},
-		{"skipped legs count as failing", existing, "skipped", "skipped", 1,
+		{"skipped legs count as failing", existing, "skipped", "skipped", "success", "needed", 1,
 			[]string{"issue comment 7 "}, []string{"issue close", "issue create"}},
-		{"close on a green night", existing, "success", "success", 0,
-			[]string{"issue close 7 "}, []string{"issue create", "issue comment", "issue close 8", "issue close 9"}},
-		{"nothing to do on a green night", "[]", "success", "success", 0,
+		{"a dead shim fails the night", existing, "success", "success", "success", "dead", 1,
+			[]string{"issue comment 7 ", "desktop-removal shim in ci.yml is dead", "#1595"}, []string{"issue close", "issue create"}},
+		{"an unreadable shim check fails the night", existing, "success", "success", "failure", "", 1,
+			[]string{"issue comment 7 ", "desktop-removal shim check: failure"}, []string{"issue close", "issue create"}},
+		{"close on a green night", existing, "success", "success", "success", "needed", 0,
+			[]string{"issue close 7 "}, append([]string{"issue create", "issue comment"}, untouched...)},
+		{"close once the shim is gone", existing, "success", "success", "success", "gone", 0,
+			[]string{"issue close 7 "}, []string{"issue create", "issue comment"}},
+		{"nothing to do on a green night", "[]", "success", "success", "success", "gone", 0,
 			[]string{"issue list"}, []string{"issue create", "issue comment", "issue close", "label create"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			status, calls := runReport(t, script, tc.issues, tc.dev, tc.main)
-			if status != tc.wantStatus {
-				t.Fatalf("exit %d, want %d; gh calls:\n%s", status, tc.wantStatus, calls)
+			run := runStubbed(t, script, map[string]string{"issues.json": tc.issues},
+				"RUN_URL=https://example/run/1", "DEV_SHA=aaaa", "MAIN_SHA=bbbb",
+				"DEV_RESULT="+tc.dev, "MAIN_RESULT="+tc.main, "SHIM_RESULT="+tc.shim, "SHIM_STATE="+tc.state)
+			if run.status != tc.wantStatus {
+				t.Fatalf("exit %d, want %d; gh calls:\n%s", run.status, tc.wantStatus, run.log)
 			}
 			for _, want := range tc.want {
-				if !strings.Contains(calls, want) {
-					t.Fatalf("missing gh call %q in:\n%s", want, calls)
+				if !strings.Contains(run.log, want) {
+					t.Fatalf("missing gh call %q in:\n%s", want, run.log)
 				}
 			}
 			for _, absent := range tc.absent {
-				if strings.Contains(calls, absent) {
-					t.Fatalf("unexpected gh call %q in:\n%s", absent, calls)
+				if strings.Contains(run.log, absent) {
+					t.Fatalf("unexpected gh call %q in:\n%s", absent, run.log)
 				}
 			}
 		})

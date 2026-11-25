@@ -59,7 +59,7 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 		}
 		return data
 	}
-	for _, baseKind := range []string{"base-has-desktop", "base-lacks-desktop"} {
+	for _, baseKind := range []string{"base-has-desktop", "base-lacks-desktop", "base-desktop-always", "base-desktop-extra-plan"} {
 		for _, scenario := range []string{"full-success", "docs-only", "test_core failed", "test_core cancelled", "test_core skipped", "test_core missing", "desktop ran and passed", "desktop ran and failed", "docs-only desktop ran"} {
 			t.Run(baseKind+"/"+scenario, func(t *testing.T) {
 				base := cloneRegistry(t, current)
@@ -84,12 +84,21 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 					}
 					results[name] = map[string]string{"result": result}
 				}
-				if baseKind == "base-has-desktop" {
-					base.Jobs["desktop"] = jobRule{RequiredGate: "planned", PlanJobs: []string{"desktop"}}
+				// Only the exact standard desktop rule is adapted. Any other shape of the
+				// rule is a policy this candidate has not been vetted against: refuse.
+				switch baseKind {
+				case "base-has-desktop", "base-desktop-extra-plan":
+					planJobs := []string{"desktop"}
+					if baseKind == "base-desktop-extra-plan" {
+						planJobs = []string{"desktop", "docs"}
+					}
+					base.Jobs["desktop"] = jobRule{RequiredGate: "planned", PlanJobs: planJobs}
 					base.PathClasses["full"] = append(base.PathClasses["full"], "desktop")
 					base.PathClasses["desktop"] = []string{"desktop"}
 					// The base planner still emits the key the candidate no longer has.
 					plan["desktop"] = !docsOnly
+				case "base-desktop-always":
+					base.Jobs["desktop"] = jobRule{RequiredGate: "always"}
 				}
 				switch scenario {
 				case "test_core failed", "test_core cancelled", "test_core skipped":
@@ -143,9 +152,14 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 					"BASE_SHA="+baseTree, "NEEDS_JSON="+string(encode(results)), "PLAN_JSON="+string(encode(plan)))
 				out, err := cmd.CombinedOutput()
 				accept := scenario == "full-success" || scenario == "docs-only"
-				if baseKind == "base-has-desktop" && scenario == "desktop ran and passed" {
+				if baseKind != "base-lacks-desktop" && scenario == "desktop ran and passed" {
 					// A candidate that still has the job is judged by the unmodified base.
 					accept = true
+				}
+				if baseKind == "base-desktop-always" || baseKind == "base-desktop-extra-plan" {
+					// The shim must not adapt these shapes: the candidate lacks a result
+					// the unmodified base requires.
+					accept = scenario == "desktop ran and passed" || scenario == "docs-only desktop ran"
 				}
 				if (err == nil) != accept {
 					t.Fatalf("accepted %v want %v: %s", err == nil, accept, out)

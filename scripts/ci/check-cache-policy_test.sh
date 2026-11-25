@@ -66,15 +66,15 @@ for file in "$@"; do
 		nightly-desktop.yml)
 			# Nightly desktop validation (owner decision 2026-11-25): the head resolver
 			# picks each leg's runner, macos-15 only where desktop/go.mod exists, so the
-			# legs take it from the resolver's outputs. No cache; the resolver and the
+			# legs take it from the resolver's outputs. No cache; the resolver, the shim check and the
 			# issue reporter are the only fixed Linux jobs.
 			expected_runner=macos-15
 			if grep -E 'actions/cache(@|/)|cache: true' "$file" >/dev/null; then
 				fail 'nightly desktop must not use shared caches'
 			fi
 			require_line "$file" '          cache: false'
-			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 2 ] ||
-				fail 'nightly desktop must have exactly two fixed ubuntu-latest jobs (heads and report)'
+			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 3 ] ||
+				fail 'nightly desktop must have exactly three fixed ubuntu-latest jobs (heads, shim and report)'
 			for leg in dev main; do
 				require_line "$file" "    runs-on: \${{ needs.heads.outputs.${leg}_runner }}"
 			done

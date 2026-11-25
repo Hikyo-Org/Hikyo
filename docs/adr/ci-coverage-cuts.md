@@ -18,16 +18,20 @@ All three decided on 2026-11-25.
    `desktop` registry domain and plan key go with it. `nightly-desktop.yml` runs the
    same steps on macOS against the dev and main heads. A failure turns that run red and
    opens or updates one tracking issue, `ci: nightly desktop validation failing`; the
-   next green night closes it. A desktop-only PR now gets an empty plan, and the main
-   leg covers only the boundary check until promotion brings the module to main.
+   next green night closes it. A desktop-only PR now gets an empty plan. Main's leg runs
+   on Linux and covers only the boundary check until promotion brings the module to
+   main. Until the main to dev backmerge lets both branches drop `desktop` from the job
+   registry, a shim in `ci-required` tolerates the missing job; removing it is tracked
+   in #1595, and the nightly reports when it is dead.
    - *Why:* the `macos-15` job was never acquired in 5 of 21 `ci-dev` attempts (24%).
      GitHub cancelled each after 15 to 46 minutes. Run 45653285809 needed a third
      attempt, so dev stayed red. When a runner was acquired it started within 8
      minutes. The merge queue's 17 `macos-latest` `scan-xplat` jobs had no failure.
    - *Coverage given up:* a desktop regression is found at the next nightly, not
      before a merge. The module boundary check (`check-desktop-deps.sh`) also moves
-     there, and its classifier-coverage step is dropped because no domain remains to
-     classify. Root changes that desktop imports no longer select any `ci.yml` job
+     there. Its classifier-coverage step no longer has a `desktop` domain to classify,
+     so it now checks that `feedback-plan.sh` selects `desktop-compile` for every root
+     package the shell compiles, and still runs nightly. Root changes that desktop imports no longer select any `ci.yml` job
      for desktop.
    - *Kept:* the `desktop-compile` fast-feedback check (Ubuntu, per PR head, only
      where `desktop/go.mod` exists) and the advisory `ci-advisory-golangci-desktop`
