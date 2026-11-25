@@ -92,6 +92,11 @@ type collector struct {
 	probed  map[string]bool
 	lookups int
 	budget  int
+	// rotationRows counts the rotation items the whole enumeration listed, across
+	// every member an org incident selects, so one source's cap holds for the
+	// source and not per member. rotationsCut records that the cap was reached.
+	rotationRows int
+	rotationsCut bool
 }
 
 func newCollector(budget int) *collector {
@@ -248,8 +253,11 @@ func newRotationLister(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 // page adds the target's rotations as ledger items, spending one lookup per page
 // read from the budget and marking the source truncated when it runs out.
 func (l rotationLister) page(ctx context.Context, a incidentAccess, target domain.PrincipalID, c *collector) error {
-	after, seen := "", 0
+	after := ""
 	for {
+		if c.rotationsCut {
+			return nil
+		}
 		if !c.spend(1) {
 			c.truncated(domain.OwnerRotationHalt, string(target), l.scope)
 			return nil
@@ -259,11 +267,14 @@ func (l rotationLister) page(ctx context.Context, a incidentAccess, target domai
 			return err
 		}
 		for _, x := range rows {
-			if seen >= maxSourceItems {
-				c.truncated(domain.OwnerRotationHalt, string(target), l.scope)
+			if c.rotationRows >= maxSourceItems {
+				// One scope row for the source, since the cap is the source's: the
+				// members after this one are named by truncateUnreachedRotations.
+				c.rotationsCut = true
+				c.truncated(domain.OwnerRotationHalt, a.scopeID, l.scope)
 				return nil
 			}
-			seen++
+			c.rotationRows++
 			c.add(domain.OwnerRotationHalt, domain.ObjectKindRotation, x.ID,
 				domain.Scope{Org: domain.OrgID(x.OrgID), Project: domain.ProjectID(x.ProjectID), Env: domain.EnvID(x.EnvironmentID)}, true)
 		}

@@ -412,7 +412,10 @@ principal is contained, so a contained account would still have a scheduler acti
   (`x-extensible-enum`), so the word is an additive growth that the API freeze permits.
   Reusing `authority_lost` would have made an incident halt indistinguishable from the
   executor's own authority check, which this ADR does not want. The halt bumps the rotation
-  generation, which fences in-flight runs.
+  generation, which stops a run that has not yet published (on PostgreSQL a halt inside the
+  publish transaction aborts that publish). A run already past its publish is not undone: an
+  in-flight revoke finishes under the executor's own fence and the credential already
+  delivered keeps its expiry.
 - The halt does not depend on the `account.contain` item. Items are independent owners that
   each read their own state (Concurrency and fencing), so the rotation halt may run before,
   after or without the containment. The owner refuses an incident that is not an account or
@@ -420,7 +423,7 @@ principal is contained, so a contained account would still have a scheduler acti
 - Release never resumes a halted rotation (O4). An operator resumes it through the
   rotation's own owner, as for any halt.
 - Authority is the account-scope containment authority: `credential-reset` at the owning
-  org, or at instance scope when the account's footprint spans several orgs.
+  org, or at instance scope when the account's footprint spans several orgs or none.
 - Audit: the halt event joins the incident through the incident id as its correlation id,
   like every other owner event.
 

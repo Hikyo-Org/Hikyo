@@ -521,7 +521,9 @@ closed (`rotation.quarantined` for a run that still owes a role, otherwise a
 `rotation.run_outcome` of phase `abandon`). The executor's run events use the
 rotation's authority and the run id as the correlation id, with origin `system`;
 the abandon events are authored by the operator who deleted the rotation, with
-the run id as the correlation id. `rotation.configured` records each create, pause, resume, hold release and delete with its
+the run id as the correlation id. An incident's halt is a `rotation.configured` event
+with `action` `halted` and reason `incident_contained`, authored by the operator who ran
+the incident and correlated by the incident id. `rotation.configured` records each create, pause, resume, hold release and delete with its
 `action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. `rotation.run_now` records each run-now request with the requested

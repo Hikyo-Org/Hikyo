@@ -371,8 +371,9 @@ func developerCredentialLive(ctx context.Context, az *authz.TxAuthorizer, org do
 // keeps its expiry. The item is confirmed only when the rotation is halted or gone;
 // a rotation a restore holds stays open. A rotation that no longer exists answers
 // confirmed (it schedules nothing), while one whose authority this incident does
-// not select answers not found: the first is a fact about the rotation, the second
-// about the incident, and neither reveals the other's existence.
+// not select answers not found. The two answers differ, and only the operator who
+// holds the incident can tell them apart: the first is a fact about the rotation,
+// the second about the incident.
 func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
 	return o.inTx(ctx, actor, item, domain.ObjectKindRotation, func(w ownerRun) (IncidentOwnerResult, error) {
 		if w.inc.ScopeKind != domain.IncidentScopeAccount && w.inc.ScopeKind != domain.IncidentScopeOrg {

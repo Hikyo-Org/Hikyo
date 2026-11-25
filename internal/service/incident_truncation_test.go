@@ -1,10 +1,13 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // Past the source cap the unreached members share one scope-level row, so the
@@ -61,5 +64,42 @@ func TestTruncateUnreachedRotationsBoundsTheRowsAtTheSourceCap(t *testing.T) {
 	}
 	if members != maxSourceItems || scopeRows != 1 {
 		t.Fatalf("rows: %d member rows and %d scope rows, want %d and 1", members, scopeRows, maxSourceItems)
+	}
+}
+
+// The rotation cap is the source's, not each member's: members that together hold
+// more than the cap list at most the cap, and the cut is one scope row.
+func TestRotationListerCapsTheWholeSourceAcrossMembers(t *testing.T) {
+	const perMember = maxSourceItems/2 + 300
+	read := func(_ context.Context, _ authz.Proof, target domain.PrincipalID, after string, limit int) ([]store.RotationAuthorityRef, error) {
+		var out []store.RotationAuthorityRef
+		for i := 0; i < perMember && len(out) < limit; i++ {
+			id := fmt.Sprintf("rot_%s_%05d", target, i)
+			if id <= after {
+				continue
+			}
+			out = append(out, store.RotationAuthorityRef{ID: id, OrgID: "org_a"})
+		}
+		return out, nil
+	}
+	l := rotationLister{read: read, scope: domain.Scope{Org: "org_a"}}
+	c := newCollector(1 << 20)
+	a := incidentAccess{scopeID: "org_a"}
+	for _, p := range []domain.PrincipalID{"usr_one", "usr_two", "usr_three"} {
+		if err := l.page(t.Context(), a, p, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var rotations, cuts int
+	for _, cand := range c.cands {
+		switch {
+		case cand.kind == domain.ObjectKindRotation:
+			rotations++
+		case cand.reason == domain.ReasonEnumerationTruncated && cand.id == "org_a":
+			cuts++
+		}
+	}
+	if rotations != maxSourceItems || cuts != 1 {
+		t.Fatalf("listed %d rotations and %d scope cuts, want %d and 1", rotations, cuts, maxSourceItems)
 	}
 }
