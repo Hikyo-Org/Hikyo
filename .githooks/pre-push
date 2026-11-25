@@ -26,6 +26,13 @@ case "${HIKYO_PREPUSH_GOLANGCI:-}" in
 		exit 1
 		;;
 esac
+case "${HIKYO_PREPUSH_GOTEST:-}" in
+	'' | skip) ;;
+	*)
+		printf 'pre-push: HIKYO_PREPUSH_GOTEST must be unset or "skip", got "%s"\n' "$HIKYO_PREPUSH_GOTEST" >&2
+		exit 1
+		;;
+esac
 # Inputs of the new-code golangci-lint ratchet besides **/*.go; the script
 # lints everything when one of these changes. ci-golangci.yml triggers on
 # exactly these plus **/*.go and itself; a Go test keeps them equal.
@@ -118,6 +125,7 @@ require_golangci() {
 		unset $(git rev-parse --local-env-vars)
 		# The Go build cache keys on source paths; -trimpath makes the fresh
 		# directory of every push hit the cache of the last one.
+		# shellcheck disable=SC2030 # each subshell sets its own
 		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
 		export GOFLAGS
 		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-golangci.XXXXXX") || exit 64
@@ -136,6 +144,44 @@ require_golangci() {
 		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
 	else
 		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
+	fi
+	return 1
+}
+
+# Run the Go tests the pushed changes can affect (scripts/ci/go-affected-test.sh)
+# for the pushed commit $1 against merge base $2, in a detached worktree at that
+# commit like require_golangci, with the commit's own script when it has one.
+# Exit 64 is the setup failing; any other non-zero code is a failing test.
+require_gotest() {
+	if git cat-file -e "$1:scripts/ci/go-affected-test.sh" 2>/dev/null; then
+		runner=scripts/ci/go-affected-test.sh
+	else
+		runner=$repo_root/scripts/ci/go-affected-test.sh
+	fi
+	status=0
+	(
+		# shellcheck disable=SC2046 # a list of variable names
+		unset $(git rev-parse --local-env-vars)
+		# -trimpath: the fresh directory of every push hits the test cache of the last.
+		# shellcheck disable=SC2030,SC2031 # each subshell sets its own
+		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
+		export GOFLAGS
+		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-gotest.XXXXXX") || exit 64
+		# shellcheck disable=SC2329 # run by the EXIT trap
+		cleanup() {
+			cd "$repo_root" || :
+			git worktree remove --force "$tmp" >/dev/null 2>&1 || { rm -rf "$tmp"; git worktree prune; }
+		}
+		trap cleanup EXIT
+		trap 'exit 130' HUP INT TERM
+		git worktree add -q --detach "$tmp" "$1" || exit 64
+		cd "$tmp" && "$runner" "$2" </dev/null
+	) || status=$?
+	[ "$status" -ne 0 ] || return 0
+	if [ "$status" -eq 64 ]; then
+		printf 'pre-push: the Go tests could not start or finish their setup (worktree or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
+	else
+		printf 'pre-push: Go tests failed; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
 	fi
 	return 1
 }
@@ -173,6 +219,16 @@ while read -r local_ref local_oid remote_ref _remote_oid; do
 			printf 'pre-push: WARNING: skipping the golangci-lint ratchet for %s; the advisory PR check still runs it\n' "$local_ref" >&2
 		else
 			require_golangci "$local_oid" "$range_base" || exit 1
+		fi
+	fi
+
+	# Any change can reach a Go test (an embedded file, go.mod); the selector
+	# decides, and prints nothing to run for a push that affects no package.
+	if [ -n "$(git diff --name-only "$merge_base" "$local_oid")" ]; then
+		if [ "${HIKYO_PREPUSH_GOTEST:-}" = skip ]; then
+			printf 'pre-push: WARNING: skipping the affected Go tests for %s; CI still runs the full suites\n' "$local_ref" >&2
+		else
+			require_gotest "$local_oid" "$merge_base" || exit 1
 		fi
 	fi
 

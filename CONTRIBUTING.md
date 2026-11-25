@@ -278,6 +278,22 @@ type errors are always reported in full. Run it by hand with
 Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
 `ci-advisory-golangci` check still runs it on the pull request.
 
+Last, the hook runs the Go tests your push can affect, and only those
+(`scripts/ci/go-affected-test.sh`, which prints and runs the selection from
+`scripts/ci/go-affected-packages.sh`; run the latter by hand with
+`scripts/ci/go-affected-packages.sh hikyo-upstream/main` in a checkout of the
+pushed commit). It selects packages with changed `.go` files, packages that embed
+a changed file (a migration `.sql` reaches `internal/store`), every package whose
+test build depends on one of those, and all packages when `go.mod` or `go.sum`
+changes. It runs them with `go test -p 2` in a temporary worktree at the pushed
+commit, `internal/app` and `internal/lint` alone afterwards, and takes unchanged
+results from the Go test cache. It prints the package count before running.
+PostgreSQL tests run only when `HIKYO_TEST_POSTGRES_DSN` is set; otherwise the
+hook says they are skipped. Tests that read repository files at runtime without
+embedding them are not detected, except for the few explicit paths listed in the
+selector; CI still runs the full suites. Set `HIKYO_PREPUSH_GOTEST=skip` to skip
+it for a WIP push.
+
 ## Continuous integration
 
 Each pushed commit receives fast `ci-feedback` using selected package checks.

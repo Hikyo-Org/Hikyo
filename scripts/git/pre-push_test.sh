@@ -54,6 +54,13 @@ if [ -f .golangci.yml ]; then cfg=.golangci.yml; echo tree >>"$logs/config.log";
 ! grep -q BADCFG "\$cfg" 2>/dev/null || { echo 'stub: bad config' >&2; exit 1; }
 [ ! -e wip.go ] || { echo 'stub: stray wip.go linted' >&2; exit 1; }
 STUB
+# The Go test runner stub records its base argument, the commit and work tree it
+# runs in, and fails with the code in gotest-fail.
+cat >scripts/ci/go-affected-test.sh <<STUB
+#!/bin/sh
+echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/gotest.log"
+[ ! -f "$logs/gotest-fail" ] || exit "\$(cat "$logs/gotest-fail")"
+STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
 echo 26.0.0 >.nvmrc
 echo one >web/a.txt
@@ -452,4 +459,32 @@ grep -F 'reported issues or could not run' "$out" >/dev/null || fail 'non-execut
 expect_count golangci "$before"
 git worktree remove --force "$root/lw"
 
-printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'
+# 19. The affected Go tests run in a worktree at the pushed commit against the
+# merge base; failure, opt-out and invalid values behave like the other two.
+git switch -q -c gt "$base"
+commit_change internal/x.go
+before=$(count gotest)
+expect_ok gt
+expect_count gotest $((before + 1))
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f1,2)" = "$base $(git rev-parse gt)" ] || fail 'go tests were not given the merge base and run at the pushed commit'
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)" != "$(pwd -P)" ] || fail 'go tests ran in the pushing checkout'
+echo 1 >"$logs/gotest-fail"
+if push gt; then fail 'a failing go test run was accepted'; fi
+grep -F 'Go tests failed' "$out" >/dev/null || fail 'go test failure message missing'
+echo 64 >"$logs/gotest-fail"
+if push gt; then fail 'a go test setup failure was accepted'; fi
+grep -F 'could not start' "$out" >/dev/null || fail 'go test setup message missing'
+before=$(count gotest)
+(HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push gt) || fail 'go test skip push was refused'
+grep -F 'skipping the affected Go tests' "$out" >/dev/null || fail 'go test skip warning missing'
+expect_count gotest "$before"
+rm "$logs/gotest-fail"
+if (HIKYO_PREPUSH_GOTEST=yes && export HIKYO_PREPUSH_GOTEST && push gt); then fail 'invalid HIKYO_PREPUSH_GOTEST accepted'; fi
+grep -F 'HIKYO_PREPUSH_GOTEST must be unset or "skip"' "$out" >/dev/null || fail 'invalid go test value message missing'
+: >"$logs/sig-fail"
+before=$(count gotest)
+if (HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push gt); then fail 'go test skip bypassed the signature check'; fi
+rm "$logs/sig-fail"
+expect_count gotest "$before"
+
+printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out; the affected Go tests run at the pushed commit and honour theirs\n'
