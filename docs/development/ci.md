@@ -671,9 +671,10 @@ take about 42 s. It then fails closed and the PR needs a new head.
 Because those reads open only `github-actions` suites, the owners also list the
 name by commit and refuse another app's same-name record there, as a listing by
 commit alone did, each by its own rule. The queue verdict refuses any other
-app's same-name record. Retirement refuses one only when its external ID carries
-the controller prefix. The reporter refuses one only when its external ID matches
-the report's. They refuse when the `github-actions` suite total changes during a
+app's same-name record. The controller and retirement refuse one only when its
+external ID carries the controller prefix or it has the `github-actions` app ID
+or slug. The reporter refuses one only when its external ID matches the
+report's. They refuse when the `github-actions` suite total changes during a
 scan, so a head still gaining suites can refuse until a later attempt. The
 controller and the queue verdict refuse a `github-actions` record the listing by
 commit shows but the suite inventory lacks, instead of treating it as absent,
