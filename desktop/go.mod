@@ -24,7 +24,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/oapi-codegen/runtime v1.9.0 // indirect
+	github.com/oapi-codegen/runtime v1.9.1 // indirect
 	github.com/oasdiff/oasdiff v1.35.0 // indirect
 	github.com/oasdiff/yaml v0.1.3 // indirect
 	github.com/oasdiff/yaml3 v0.0.16 // indirect
