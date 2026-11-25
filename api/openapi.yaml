@@ -17880,7 +17880,7 @@ components:
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
         sealed-webhook binds only to an origin an instance admin activated in
-        the server's sealed webhook registry.
+        the server's encrypted webhook registry.
       x-extensible-enum: [forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, gitlab]
 
     AdapterTargetInput:
