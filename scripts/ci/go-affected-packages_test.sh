@@ -19,6 +19,7 @@ printf 'package lint\n\nimport "testing"\n\nfunc TestL(t *testing.T) {}\n' >inte
 printf 'package badnil\n' >internal/lint/testdata/badnil/aliased.go
 printf 'module example.com/sub\n\ngo 1.21\n' >app/sub/go.mod
 printf 'package sub\n' >app/sub/s.go
+printf 'package sub\n\nimport "testing"\n\nfunc TestS(t *testing.T) {}\n' >app/sub/s_test.go
 printf 'package internal\n' >desktop/internal/i.go
 printf 'module example.com/m\n\ngo 1.21\n' >go.mod
 printf '' >go.sum
@@ -70,6 +71,7 @@ case_ 'a lint fixture selects the lint package' 'internal/lint' touch_ internal/
 case_ 'a deleted lint fixture selects the lint package' 'internal/lint' git rm -q internal/lint/testdata/badnil/aliased.go
 case_ 'a nested module inside a package selects nothing' '-' touch_ app/sub/s.go
 case_ 'a nested module subdirectory selects nothing' '-' touch_ desktop/internal/i.go
+case_ 'a nested module dissolved into the main module selects its package' 'app/sub' git rm -q app/sub/go.mod
 case_ 'a root package file selects the root package' 'root' touch_ root_test.go
 case_ 'go.mod selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' touch_ go.mod
 case_ 'go.sum selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' sh -c 'echo "example.com/x v1.0.0 h1:x" >>go.sum'

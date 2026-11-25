@@ -169,23 +169,27 @@ require_gotest() {
 	(
 		# shellcheck disable=SC2046 # a list of variable names
 		unset $(git rev-parse --local-env-vars)
+		# Before any lock is taken: dash runs no EXIT trap when a signal kills it.
+		trap 'exit 130' HUP INT TERM
 		tree=$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-gotest-tree || exit 64
-		# One run at a time owns the tree: lock=<tree>.lock, holding "pid host".
+		# One run at a time owns the tree: lock=<tree>.lock, holding "pid host", the
+		# pid of this subshell, which runs the tests ($$ would be the hook's shell).
 		lock=$tree.lock
-		me="$$ $(uname -n)" # $$ is the hook itself, which lives as long as the run
+		host=$(uname -n)
 		refuse() { # REASON
-			printf 'pre-push: %s; wait and push again, or if no push is running clear it with: rm -rf "%s" "%s.takeover"\n' "$1" "$lock" "$lock" >&2
+			printf 'pre-push: %s; wait and push again, or if no push is running clear it with: rm -rf "%s" "%s.takeover" "%s".stale.*\n' "$1" "$lock" "$lock" "$lock" >&2
 			exit 64
 		}
 		# Refuse unless the lock is stale: its owner on this host is gone, or it has
-		# had no owner file for over a minute (a live owner writes it at once).
+		# had no owner file for a minute or two (find -mmin +1 matches from 60 s on
+		# GNU, 120 s on BSD; a live owner writes it at once).
 		require_stale() {
 			owner=$(cat "$lock/owner" 2>/dev/null || :)
 			if [ -z "$owner" ]; then
 				[ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || refuse "another push is taking the Go test lock $lock"
 				return 0
 			fi
-			[ "${owner#* }" = "${me#* }" ] || refuse "a push on host ${owner#* } holds the Go test lock $lock"
+			[ "${owner#* }" = "$host" ] || refuse "a push on host ${owner#* } holds the Go test lock $lock"
 			! kill -0 "${owner%% *}" 2>/dev/null || refuse "another push (pid ${owner%% *}) is running the Go tests, holding $lock"
 		}
 		if ! mkdir "$lock" 2>/dev/null; then
@@ -205,8 +209,7 @@ require_gotest() {
 		# shellcheck disable=SC2329 # run by the EXIT trap
 		cleanup() { rm -rf "$lock"; }
 		trap cleanup EXIT
-		trap 'exit 130' HUP INT TERM
-		printf '%s\n' "$me" >"$lock/owner.new" && mv "$lock/owner.new" "$lock/owner" || exit 64
+		{ sh -c 'printf %s "$PPID"' && printf ' %s\n' "$host"; } >"$lock/owner.new" && mv "$lock/owner.new" "$lock/owner" || exit 64
 		# A dirty, half-removed or corrupted kept tree is rebuilt from scratch.
 		if [ ! -e "$tree/.git" ] || ! { git -C "$tree" checkout -q -f --detach "$1" && git -C "$tree" clean -q -f -d -x; } 2>/dev/null; then
 			rm -rf "$tree"
