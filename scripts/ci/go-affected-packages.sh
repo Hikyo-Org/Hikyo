@@ -100,10 +100,14 @@ jq -rs --arg root "$root" --argjson all "$all" \
 			or ([(.EmbedFiles // [])[], (.TestEmbedFiles // [])[], (.XTestEmbedFiles // [])[]
 				| (if $dir == "" then . else $dir + "/" + . end)] | any(. as $f | $files | index($f) != null)))
 		| .ImportPath] as $touched
-	| $units[] | select(.ImportPath | endswith(".test"))
-	| select($all or ((.ImportPath | rtrimstr(".test")) as $pkg
-		| ($touched | index($pkg)) != null
-		or (.Error != null) or ((.DepsErrors // []) | length > 0)
-		or ([(.Deps // [])[] | sub(" \\[.*$"; "")] | any(. as $d | $touched | index($d) != null))))
-	| .ImportPath | rtrimstr(".test")' <"$work/list" >"$work/out"
+	| ([$units[] | select(.ImportPath | endswith(".test"))
+		| select($all or ((.ImportPath | rtrimstr(".test")) as $pkg
+			| ($touched | index($pkg)) != null
+			or (.Error != null) or ((.DepsErrors // []) | length > 0)
+			or ([(.Deps // [])[] | sub(" \\[.*$"; "")] | any(. as $d | $touched | index($d) != null))))
+		| .ImportPath | rtrimstr(".test")]
+	# a package that fails to load may have no test binary (say its only test file
+	# has a broken build constraint); select it anyway so go test fails on it
+	+ [$pkgs[] | select((.Error != null) or ((.DepsErrors // []) | length > 0)) | .ImportPath])
+	| unique[]' <"$work/list" >"$work/out"
 sort "$work/out"

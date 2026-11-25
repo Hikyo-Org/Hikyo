@@ -80,6 +80,7 @@ case_ 'a name git must quote selects every package' 'root app internal/lint inte
 case_ 'go.mod selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' touch_ go.mod
 case_ 'go.sum selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' sh -c 'echo "example.com/x v1.0.0 h1:x" >>go.sum'
 case_ 'docs alone select nothing' '-' touch_ docs/a.md
+case_ 'a package whose only test file fails to load is still selected' 'util' sh -c 'printf "//go:build (\n\npackage util\n" >util/util_test.go'
 case_ 'the nested desktop module selects nothing' '-' touch_ desktop/d.go
 case_ 'a deleted embedded file selects the embedder' 'app store' git rm -q store/data.sql
 case_ 'a deleted package selects what still imports it' 'web' git rm -q -r gone
