@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/securitydeployment"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -120,6 +121,11 @@ type securityRollbackRun struct {
 	// beforeRelease runs, once the live database is the fenced source, just before the
 	// journal is rewritten to a state the source accepts. Native reinstalls the source here.
 	beforeRelease func(context.Context) error
+	// trust replaces the build's pinned production trust. Only tests set it.
+	trust releasetrust.PinnedTrust
+	// revocations, when set, is attached to the loaded bundle. Only tests set it, to prove the
+	// rollback route ignores revocation.
+	revocations func() ([]releaseidentity.Digest, error)
 }
 
 // namesBackup is whether the journal still points at the evidence and ciphertext a rollback restores from.
@@ -149,13 +155,18 @@ func rollbackFencedSnapshot(ctx context.Context, cfg *config.Config, run securit
 	if err != nil {
 		return report, err
 	}
-	pinned, err := buildcompat.ProductionTrust()
-	if err != nil {
-		return report, err
+	pinned := run.trust
+	if len(pinned.Root) == 0 {
+		if pinned, err = buildcompat.ProductionTrust(); err != nil {
+			return report, err
+		}
 	}
 	bundle, err := upgradebundle.Load(ctx, journal.Runtime.BundleDirectory, pinned, floor)
 	if err != nil {
 		return report, err
+	}
+	if run.revocations != nil {
+		bundle = bundle.WithBridgeRevocations(run.revocations)
 	}
 	plan, err := bundle.PlanRollback(journal.Source, journal.Target)
 	if err != nil || plan.Digest() != journal.Route {

@@ -1,6 +1,9 @@
 package app
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,18 +13,21 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	trustfixture "github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
+	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
 
 // bridgedBundle writes an offline bundle whose only route to the target is a
 // recovery bridge after one ordinary hop from the installed legacy source.
-func bridgedBundle(t *testing.T, source upgradecompat.InstalledSource, notAfter time.Time) (directory string, pinned releasetrust.PinnedTrust, target releaseidentity.Identity, bridge releaseidentity.Digest) {
+func bridgedBundle(t *testing.T, source upgradecompat.InstalledSource, notAfter time.Time) (directory string, pinned releasetrust.PinnedTrust, target releaseidentity.Identity, bridge releaseidentity.Digest, from releaseidentity.Identity) {
 	t.Helper()
 	declare := func(version string, sequence uint64, commit string, sources []upgradecompat.SourceEdge) []byte {
 		return trustfixture.JSON(t, upgradecompat.Declaration{Schema: upgradecompat.Schema, Profile: releaseidentity.StableV1, Version: version, Sequence: sequence, Commit: commit,
@@ -75,7 +81,7 @@ func bridgedBundle(t *testing.T, source upgradecompat.InstalledSource, notAfter 
 	list := trustfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: []releaseidentity.Digest{bridge}})
 	write("revocations/bridge-revocations.json", list)
 	write("revocations/bridge-revocations.sigstore.json", trustfixture.Sign(t, f.RecoverySigner, list))
-	return directory, f.Pinned, b.Identity, bridge
+	return directory, f.Pinned, b.Identity, bridge, a.Identity
 }
 
 // A revoked bridge must stop the export and the drill before anything is
@@ -87,7 +93,7 @@ func TestUpgradeExportAndDrillRefuseARevokedBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory, pinned, target, _ := bridgedBundle(t, upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}, time.Now().Add(24*time.Hour))
+	directory, pinned, target, _, _ := bridgedBundle(t, upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}, time.Now().Add(24*time.Hour))
 	_, recipient, err := backup.GenerateIdentity()
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +177,7 @@ func TestRouteDerivationsForAdmissionResumeAndRollback(t *testing.T) {
 		{"expired and revoked", time.Now().Add(-24 * time.Hour), true, "no authenticated upgrade route", "recovery bridge revoked", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			directory, pinned, target, bridge := bridgedBundle(t, source, c.notAfter)
+			directory, pinned, target, bridge, _ := bridgedBundle(t, source, c.notAfter)
 			bundle, err := upgradebundle.Load(t.Context(), directory, pinned, releaseidentity.SnapshotFloor{})
 			if err != nil {
 				t.Fatal(err)
@@ -205,5 +211,103 @@ func TestRouteDerivationsForAdmissionResumeAndRollback(t *testing.T) {
 				t.Fatalf("every accepted derivation must name the same route: %s %s %s", admission, resume, back)
 			}
 		})
+	}
+}
+
+// installedFrom is a database that already runs the bridge's source release, so
+// the route is the single bridge step.
+func installedFrom(from releaseidentity.Identity, source upgradecompat.InstalledSource) upgradecompat.InstalledSource {
+	source.Identity = releaseidentity.Source{Release: from}
+	return source
+}
+
+// The security rollback re-derives the journaled route with a throwaway trust
+// root through the run's own trust. An expired bridge must not stop it before it
+// reads its evidence. (The loaded bundle carries no revocation lookup there, so
+// revocation cannot block it either; PlanRollback guarantees that regardless.)
+func TestSecurityRollbackRouteCheckIgnoresExpiryAndRevocation(t *testing.T) {
+	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
+	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ expired, revoked bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		expired, revoked := c.expired, c.revoked
+		t.Run(fmt.Sprintf("expired=%t/revoked=%t", expired, revoked), func(t *testing.T) {
+			notAfter := time.Now().Add(24 * time.Hour)
+			if expired {
+				notAfter = time.Now().Add(-24 * time.Hour)
+			}
+			source := upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}
+			directory, pinned, target, bridge, _ := bridgedBundle(t, source, notAfter)
+			bundle, err := upgradebundle.Load(t.Context(), directory, pinned, releaseidentity.SnapshotFloor{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := bundle.PlanRollback(source, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			journal := &automaticJournal{Format: hostJournalFormat, Phase: "rolling-back", Target: target, Source: source, Route: plan.Digest(),
+				Runtime: hostupgrade.RuntimeEvidence{BundleDirectory: directory, EvidenceDirectory: t.TempDir(), CiphertextPath: filepath.Join(t.TempDir(), "absent.age")}}
+			run := securityRollbackRun{database: upgrade.Config{Engine: releaseidentity.SQLite, Path: f.cfg.Path}, scratch: t.TempDir(), journal: journal, trust: pinned}
+			if revoked {
+				run.revocations = func() ([]releaseidentity.Digest, error) { return []releaseidentity.Digest{bridge}, nil }
+			}
+			_, err = rollbackFencedSnapshot(t.Context(), &config.Config{}, run)
+			if err == nil {
+				t.Fatal("the journal names no evidence, so the rollback must stop after the route check")
+			}
+			if strings.Contains(err.Error(), "journaled route differs") {
+				t.Fatalf("an expired or revoked bridge must not stop a security rollback at its route check: %v", err)
+			}
+		})
+	}
+}
+
+type noReleases struct{}
+
+func (noReleases) Releases(context.Context) ([]updatecheck.Release, error) {
+	return nil, errors.New("unexpected")
+}
+func (noReleases) ReleaseByVersion(context.Context, string) (updatecheck.Release, error) {
+	return updatecheck.Release{}, errors.New("unexpected")
+}
+func (noReleases) PrepareNightlySource(context.Context, updatecheck.Status, releaseidentity.Identity) (selfupdate.PreparedNightly, error) {
+	return selfupdate.PreparedNightly{}, errors.New("unexpected")
+}
+func (noReleases) AssembleNightlyRoute(context.Context, selfupdate.PreparedNightly, []selfupdate.PreparedNightly) (string, error) {
+	return "", errors.New("unexpected")
+}
+
+// An automatic upgrade interrupted before the bridge's not_after resumes its
+// journaled route after it; the journaled digest pins that route.
+func TestAutomaticResumeKeepsTheJournaledRouteAfterNotAfter(t *testing.T) {
+	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
+	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}
+	directory, pinned, target, _, from := bridgedBundle(t, legacy, time.Now().Add(-24*time.Hour))
+	installed := installedFrom(from, legacy)
+	bundle, err := upgradebundle.Load(t.Context(), directory, pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.Plan(installed, target); err == nil {
+		t.Fatal("the bridge is expired, so a new admission must have no route")
+	}
+	plan, err := bundle.PlanRollback(installed, target)
+	if err != nil || len(plan.BridgeDigests()) != 1 {
+		t.Fatalf("the journaled route goes through the bridge: %v", err)
+	}
+	previous := &automaticJournal{Phase: "schema-applied", Target: target, Source: installed, Instance: "actual-installation", Route: plan.Digest()}
+	digest, _ := installed.Migrations.Digest()
+	inspection := &automaticTestInspection{state: upgrade.State{Applied: installed.Identity}, installed: upgrade.InstalledSource{Source: installed.Identity, MigrationDigest: digest, SchemaDigest: installed.SchemaSHA256, InstanceID: "actual-installation"}}
+	prepared := selfupdate.PreparedNightly{Identity: target, BundleDirectory: directory}
+	result, err := discoverReleaseRoute(t.Context(), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, previous, true)
+	if err != nil || result.Plan.Digest() != previous.Route {
+		t.Fatalf("an upgrade admitted before not_after must resume after it: %v", err)
 	}
 }

@@ -252,6 +252,19 @@ func TestInFlightBridgedUpgradeResumesAfterNotAfterButNotWhenRevoked(t *testing.
 				t.Fatalf("the refused resume changed the installation: %v", err)
 			}
 
+			// The maintenance transport re-derives the admitted route the same way: an
+			// expired bridge still reaches the configuration check, a revoked one is a conflict.
+			maintenance := request
+			maintenance.Mode = upgradegate.MaintenanceConfiguration
+			maintenance.CheckConfiguration = func(context.Context, *upgrade.CandidateConfiguration, map[string]string) error { return nil }
+			if _, err := upgradegate.RunSignedGateProcessFixture(t, maintenance, x.b.Material.Compatibility); errors.Is(err, upgrade.ErrConflict) {
+				t.Fatalf("an expired but unrevoked admitted bridge must not conflict in maintenance: %v", err)
+			}
+			maintenance.BridgeRevocation = revoked.BridgeRevocation
+			if _, err := upgradegate.RunSignedGateProcessFixture(t, maintenance, x.b.Material.Compatibility); !errors.Is(err, upgrade.ErrConflict) {
+				t.Fatalf("a revoked admitted bridge must conflict in maintenance: %v", err)
+			}
+
 			// Not revoked: the admitted upgrade finishes although not_after has passed.
 			result, err := upgradegate.RunSignedGateProcessFixture(t, request, x.b.Material.Compatibility)
 			if err != nil || !result.Admission.Valid() || result.State.Maintenance || result.State.Applied.Release != x.b.Identity {
