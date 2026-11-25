@@ -59,7 +59,9 @@ func forbidden(err error) bool {
 // disclosure names what a CLI disclosure is about to do, for the ceremony
 // that may have to precede it: the purpose and the keys per environment.
 type disclosure struct {
-	// purpose is a non-adapter service.ReauthPurpose on the wire.
+	// purpose is a non-adapter service.ReauthPurpose on the wire, or one of the
+	// CLI-only purposes "" (a machine rule change) and "grant" (a machine reveal
+	// grant), which never reach a browser handoff.
 	purpose string
 	// keys resolves the enumerated unit for one environment: the ids of the
 	// secret keys the act will open there. It is consulted only when a
@@ -73,7 +75,9 @@ type disclosure struct {
 	// authorized means the server already checked the caller's own disclosure
 	// authority and asked only for the window (a machine widening names
 	// reveal or reveal-history by what it reaches), so can_reveal, which is
-	// the current-plaintext question only, must not veto the ceremony.
+	// the current-plaintext question only, must not veto the ceremony. That
+	// refusal also proves a live window there does not satisfy the operation,
+	// so the window's liveness does not skip the ceremony either.
 	authorized bool
 }
 
@@ -101,6 +105,23 @@ func withRevealCeremony(ctx context.Context, client *Client, st *State, ios IO, 
 	return attempt()
 }
 
+// totpPromptSubject opens the TOTP prompt with what the code is for.
+func totpPromptSubject(purpose, env string) string {
+	switch purpose {
+	case "mint":
+		return fmt.Sprintf("Minting a credential over %s", env)
+	case "", "grant":
+		return fmt.Sprintf("Widening machine reveal access over %s", env)
+	case "access":
+		return fmt.Sprintf("Emergency access in %s", env)
+	case "publish":
+		return fmt.Sprintf("Publishing in %s", env)
+	case "approve", "reject", "bypass":
+		return fmt.Sprintf("An approval decision in %s", env)
+	}
+	return fmt.Sprintf("Disclosure in %s", env)
+}
+
 // ensureRevealWindow opens a live reauthentication window over env for the
 // acting session, or returns an error naming why it cannot. `refusal` is the
 // action's own error, returned unchanged when no window is live and CanReveal
@@ -123,7 +144,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	}
 	// A successful disclosure spends a single-decision window, so one still live
 	// here is stale and possibly bound to other keys. A new ceremony replaces it.
-	if window.Live && !window.SingleDecision {
+	// An authorized caller arrives with the server's widening refusal over env, so
+	// a live window there does not satisfy it (typically one bound elsewhere).
+	if window.Live && !window.SingleDecision && !d.authorized {
 		return nil
 	}
 	// Approval votes and bypasses require publish authority, not reveal. Their
@@ -170,6 +193,15 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		if d.purpose == "access" {
 			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
 		}
+		if d.purpose == "mint" {
+			// The unit of a mint is its environment, so it carries no keys (#1516).
+			if ios.OpenURL == nil {
+				return failf(ExitAuth, "a credential mint over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
+					"which this invocation cannot open; mint it in the browser's Machine access page%s", env, why, orRemedy(remedy))
+			}
+			_, _ = fmt.Fprintf(ios.Stderr, "credential mint over %s: %s, so the ceremony is the browser's. Opening it to authorize the mint...\n", env, why)
+			return runCLIReauthHandoff(ctx, client, st, *artifact, d.purpose, "identity.credential-mint", []string{env}, nil, ios.OpenURL)
+		}
 		if d.authorized && d.purpose == "" {
 			// The browser has no machine rule editor yet (issue 1541), so only a window helps.
 			if remedy == "" {
@@ -177,6 +209,12 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 					"a protected environment has no reauthentication window, and the browser cannot edit machine rules yet", env)
 			}
 			return failf(ExitAuth, "a rule change that widens a machine in %s needs a reauthentication window and %s; %s, then retry", env, why, remedy)
+		}
+		if d.purpose == "grant" {
+			// A machine reveal grant (`access grant`) has no CLI handoff: its
+			// ceremony runs on the browser's Machine access page.
+			return failf(ExitAuth, "a machine reveal grant over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
+				"and the CLI has no handoff for grants; make the grant in the browser's Machine access page%s", env, why, orRemedy(remedy))
 		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			if d.purpose == "publish" {
@@ -205,8 +243,8 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		return runCLIDisclosureReauth(ctx, client, st, *artifact, d.purpose, operation, env, keyIDs, ios.OpenURL)
 	}
 	code, err := ios.readPassword(fmt.Sprintf(
-		"Disclosure in %s needs a reauthentication window (%ds). Enter the code from your authenticator: ",
-		env, window.EffectiveWindowSeconds))
+		"%s needs a reauthentication window (%ds). Enter the code from your authenticator: ",
+		totpPromptSubject(d.purpose, env), window.EffectiveWindowSeconds))
 	if err != nil {
 		return err
 	}

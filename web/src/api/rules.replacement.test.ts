@@ -3,18 +3,20 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { ALL, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError } from './client.ts';
-import { removeRule, RuleSaveFailure, ruleFailureText, rulesListingText, saveRule } from './rules.ts';
+import { removeRule, RuleReauthFailure, RuleSaveFailure, ruleFailureText, rulesListingText, saveRule, wideningEnvironment } from './rules.ts';
 
-const writes = vi.hoisted(() => ({ parsed: vi.fn(), ok: vi.fn() }));
+const writes = vi.hoisted(() => ({ parsed: vi.fn(), ok: vi.fn(), ceremony: vi.fn() }));
 vi.mock('./client.ts', async (original) => ({
   ...(await original<typeof import('./client.ts')>()), parsed: writes.parsed, ok: writes.ok,
 }));
+vi.mock('./values.ts', () => ({ runPasskeyCeremony: writes.ceremony }));
 
 const before: Rule = { id: 'grouped-rule', member: 'usr_other', perms: ['reveal'], projects: ['prj_a'], envs: ALL, keys: ALL,
   source: { kind: 'rule', parts: [{ perm: 'reveal', id: 'rul_old' }], otherProjects: false } };
 beforeEach(() => {
   writes.parsed.mockReset().mockResolvedValue({ id: 'rul_new' });
   writes.ok.mockReset().mockResolvedValue(undefined);
+  writes.ceremony.mockReset().mockResolvedValue(undefined);
 });
 
 it('dispatches a mixed permission replacement as one atomic request', async () => {
@@ -61,6 +63,45 @@ for (const status of [400, 401, 403, 404, 409, 429]) {
 it('keeps 5xx responses uncertain even when their operation is known', async () => {
   writes.parsed.mockRejectedValue(new ApiError(503, 'request failed with 503', undefined, undefined, [], undefined, replaceRulesOp));
   await expect(saveRule('org_a', null, before)).rejects.toBeInstanceOf(RuleSaveFailure);
+});
+
+const widening = (env: string) => new ApiError(409, 'request failed with 409',
+  `reauthenticate over the environments this operation makes reachable, then retry (${env})`, undefined, [], undefined, replaceRulesOp);
+
+it('reauthenticates over each environment a machine widening names, then sends the same change again', async () => {
+  writes.parsed.mockRejectedValueOnce(widening('env_a')).mockRejectedValueOnce(widening('env_b')).mockResolvedValueOnce({});
+  await saveRule('org_a', before, { ...before, perms: ['read'] });
+  expect(writes.ceremony.mock.calls).toEqual([
+    [{ operation: 'mint', environmentId: 'env_a', keyIds: [] }],
+    [{ operation: 'mint', environmentId: 'env_b', keyIds: [] }],
+  ]);
+  expect(writes.parsed).toHaveBeenCalledTimes(3);
+  expect(new Set(writes.parsed.mock.calls.map((call) => JSON.stringify(call[1])))).toHaveProperty('size', 1);
+});
+
+it('keeps the ceremony error when the reauthentication does not complete', async () => {
+  const refusal = widening('env_a');
+  const cancelled = new DOMException('cancelled', 'NotAllowedError');
+  writes.parsed.mockRejectedValue(refusal);
+  writes.ceremony.mockRejectedValue(cancelled);
+  const error = await saveRule('org_a', null, before).catch((cause: unknown) => cause);
+  expect(error).toBeInstanceOf(RuleReauthFailure);
+  expect(error).toMatchObject({ environment: 'env_a', cause: cancelled });
+  expect(wideningEnvironment(refusal)).toBe('env_a');
+  expect(writes.parsed).toHaveBeenCalledOnce();
+});
+
+it('does not reauthenticate twice over the same environment', async () => {
+  const refusal = widening('env_a');
+  writes.parsed.mockRejectedValue(refusal);
+  await expect(saveRule('org_a', null, before)).rejects.toBe(refusal);
+  expect(writes.ceremony).toHaveBeenCalledOnce();
+  expect(writes.parsed).toHaveBeenCalledTimes(2);
+});
+
+it('reads no environment from any other refusal', () => {
+  expect(wideningEnvironment(new ApiError(409, 'request failed with 409', 'conflict', undefined, [], undefined, replaceRulesOp))).toBeUndefined();
+  expect(wideningEnvironment(new ApiError(409, 'request failed with 409', widening('env_a').detail, undefined, [], undefined, whoamiOp))).toBeUndefined();
 });
 
 it('does not blame manage-members for a rule 404 in the system organisation', () => {

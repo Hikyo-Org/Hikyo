@@ -1028,6 +1028,7 @@ const (
 	CLIReauthStartRequestOperationApprovalBypass          CLIReauthStartRequestOperation = "approval.bypass"
 	CLIReauthStartRequestOperationApprovalVote            CLIReauthStartRequestOperation = "approval.vote"
 	CLIReauthStartRequestOperationDeveloperCredentialMint CLIReauthStartRequestOperation = "developer-credential.mint"
+	CLIReauthStartRequestOperationIdentityCredentialMint  CLIReauthStartRequestOperation = "identity.credential-mint"
 	CLIReauthStartRequestOperationSelfConfigAdopt         CLIReauthStartRequestOperation = "self-config.adopt"
 	CLIReauthStartRequestOperationSelfConfigApply         CLIReauthStartRequestOperation = "self-config.apply"
 	CLIReauthStartRequestOperationSelfConfigTest          CLIReauthStartRequestOperation = "self-config.test"
@@ -1053,6 +1054,8 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 		return true
 	case CLIReauthStartRequestOperationDeveloperCredentialMint:
 		return true
+	case CLIReauthStartRequestOperationIdentityCredentialMint:
+		return true
 	case CLIReauthStartRequestOperationSelfConfigAdopt:
 		return true
 	case CLIReauthStartRequestOperationSelfConfigApply:
@@ -1077,6 +1080,7 @@ const (
 	CLIReauthStartRequestPurposeBypass              CLIReauthStartRequestPurpose = "bypass"
 	CLIReauthStartRequestPurposeCopy                CLIReauthStartRequestPurpose = "copy"
 	CLIReauthStartRequestPurposeDeveloperCredential CLIReauthStartRequestPurpose = "developer-credential"
+	CLIReauthStartRequestPurposeMint                CLIReauthStartRequestPurpose = "mint"
 	CLIReauthStartRequestPurposePublish             CLIReauthStartRequestPurpose = "publish"
 	CLIReauthStartRequestPurposeReject              CLIReauthStartRequestPurpose = "reject"
 	CLIReauthStartRequestPurposeReveal              CLIReauthStartRequestPurpose = "reveal"
@@ -1095,6 +1099,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 	case CLIReauthStartRequestPurposeCopy:
 		return true
 	case CLIReauthStartRequestPurposeDeveloperCredential:
+		return true
+	case CLIReauthStartRequestPurposeMint:
 		return true
 	case CLIReauthStartRequestPurposePublish:
 		return true
@@ -1118,6 +1124,7 @@ const (
 	CLIReauthTransactionOperationApprovalBypass          CLIReauthTransactionOperation = "approval.bypass"
 	CLIReauthTransactionOperationApprovalVote            CLIReauthTransactionOperation = "approval.vote"
 	CLIReauthTransactionOperationDeveloperCredentialMint CLIReauthTransactionOperation = "developer-credential.mint"
+	CLIReauthTransactionOperationIdentityCredentialMint  CLIReauthTransactionOperation = "identity.credential-mint"
 	CLIReauthTransactionOperationSelfConfigAdopt         CLIReauthTransactionOperation = "self-config.adopt"
 	CLIReauthTransactionOperationSelfConfigApply         CLIReauthTransactionOperation = "self-config.apply"
 	CLIReauthTransactionOperationSelfConfigTest          CLIReauthTransactionOperation = "self-config.test"
@@ -1143,6 +1150,8 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 		return true
 	case CLIReauthTransactionOperationDeveloperCredentialMint:
 		return true
+	case CLIReauthTransactionOperationIdentityCredentialMint:
+		return true
 	case CLIReauthTransactionOperationSelfConfigAdopt:
 		return true
 	case CLIReauthTransactionOperationSelfConfigApply:
@@ -1167,6 +1176,7 @@ const (
 	CLIReauthTransactionPurposeBypass              CLIReauthTransactionPurpose = "bypass"
 	CLIReauthTransactionPurposeCopy                CLIReauthTransactionPurpose = "copy"
 	CLIReauthTransactionPurposeDeveloperCredential CLIReauthTransactionPurpose = "developer-credential"
+	CLIReauthTransactionPurposeMint                CLIReauthTransactionPurpose = "mint"
 	CLIReauthTransactionPurposePublish             CLIReauthTransactionPurpose = "publish"
 	CLIReauthTransactionPurposeReject              CLIReauthTransactionPurpose = "reject"
 	CLIReauthTransactionPurposeReveal              CLIReauthTransactionPurpose = "reveal"
@@ -1185,6 +1195,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeCopy:
 		return true
 	case CLIReauthTransactionPurposeDeveloperCredential:
+		return true
+	case CLIReauthTransactionPurposeMint:
 		return true
 	case CLIReauthTransactionPurposePublish:
 		return true
@@ -6174,14 +6186,15 @@ type CLIReauthStart struct {
 }
 
 // CLIReauthStartRequest `adapter` carries an adapter-routing decision over an environment set.
-// Every non-adapter purpose carries an exact environment and key set. The
+// Every other purpose carries an exact environment and key set, except
+// `mint`, whose unit is its one environment and which carries no keys. The
 // browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
 // names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
 	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	EnvironmentIds      []ID                             `json:"environment_ids"`
 
-	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter` and `mint`.
 	KeyIds        *[]ID                          `json:"key_ids,omitzero"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
@@ -6218,7 +6231,7 @@ type CLIReauthTransaction struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 
-	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`.
+	// KeyIds The enumerated unit the ceremony binds; empty for `adapter` and `mint`.
 	KeyIds      []ID                          `json:"key_ids"`
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`

@@ -134,7 +134,7 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 		var rule apigen.Rule
 		attempt := func() error { return client.Do(ctx, http.MethodPost, base+"/rules", body, &rule) }
 		projectBase := base + "/projects/" + url.PathEscape(body.Where.Projects[0])
-		if err := withWideningCeremony(ctx, client, st, ios, artifact, projectBase, attempt); err != nil {
+		if err := withWideningCeremony(ctx, client, st, ios, artifact, projectBase, disclosure{authorized: true}, attempt); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, ruleTable(apigen.RuleList{Items: []apigen.Rule{rule}, Count: 1}))
@@ -147,8 +147,9 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 // reach. The server refuses such a widening once per environment without a
 // live reauthentication window, naming it; the ceremony opens the window
 // there and the write runs again. Every other outcome returns as it is.
+// d names the write for the ceremony's prompt and refusals.
 func withWideningCeremony(ctx context.Context, client *Client, st *State, ios IO, artifact AuthArtifact,
-	projectBase string, attempt func() error) error {
+	projectBase string, d disclosure, attempt func() error) error {
 	err := attempt()
 	var session *SessionArtifact
 	tried := map[string]bool{}
@@ -165,7 +166,7 @@ func withWideningCeremony(ctx context.Context, client *Client, st *State, ios IO
 			}
 			session = &s
 		}
-		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, disclosure{authorized: true}, err); cerr != nil {
+		if cerr := ensureRevealWindow(ctx, client, st, ios, session, projectBase, env, d, err); cerr != nil {
 			return cerr
 		}
 		err = attempt()

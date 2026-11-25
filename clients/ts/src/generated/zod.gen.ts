@@ -1492,6 +1492,7 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'approve',
         'reject',
         'bypass',
+        'mint',
         'self-config',
         'developer-credential'
     ]),
@@ -1505,6 +1506,7 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',
@@ -1554,6 +1556,7 @@ export const zCliReauthTransaction = z.object({
         'approve',
         'reject',
         'bypass',
+        'mint',
         'self-config',
         'developer-credential'
     ]),
@@ -1567,6 +1570,7 @@ export const zCliReauthTransaction = z.object({
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',

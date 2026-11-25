@@ -4,7 +4,7 @@ import { Checkbox } from '../../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../../ui/ChoiceGroup.tsx';
 import { cx } from '../../ui/cx.ts';
 import { Glyph } from '../../ui/Glyph.tsx';
-import { NOT_ON_RULES, PERM_GROUPS, PERMS, requirement, type Perm, type PermId } from './model.ts';
+import { machineRefusal, NOT_ON_RULES, PERM_GROUPS, PERMS, requirement, type MachineClass, type Perm, type PermId } from './model.ts';
 
 /**
  * The permission vocabulary as the rule editor's checklist, grouped Values /
@@ -16,16 +16,22 @@ import { NOT_ON_RULES, PERM_GROUPS, PERMS, requirement, type Perm, type PermId }
  * only turns on the cross glyph (in a reserved slot) and disables the box.
  * Changing Where therefore never changes a row's height. The live reason is
  * in the accessible description.
+ *
+ * For a machine holder (D11), a permission its class can never hold stays
+ * listed but disabled, with that reason on its condition line.
  */
 export function PermissionList({
   selected,
   onChange,
   blocked,
+  machine,
 }: {
   selected: readonly PermId[];
   onChange: (ids: PermId[]) => void;
   /** Why this permission cannot be picked with the current Where, or undefined when it can. */
   blocked: (id: PermId) => string | undefined;
+  /** The holder's class when the holder is a service account. */
+  machine?: MachineClass;
 }) {
   return (
     <div className="access-perm-list">
@@ -35,6 +41,7 @@ export function PermissionList({
             <PermRow
               key={p.id}
               perm={p}
+              refused={machineRefusal(p.id, machine)}
               note={requirement(p.id)}
               why={blocked(p.id)}
               checked={selected.includes(p.id)}
@@ -50,12 +57,15 @@ export function PermissionList({
 
 function PermRow({
   perm,
-  note,
+  refused,
+  note: condition,
   why,
   checked,
   onChange,
 }: {
   perm: Perm;
+  /** Why the holder can never carry this permission: it replaces the condition line. */
+  refused: string | undefined;
   note: string | undefined;
   why: string | undefined;
   checked: boolean;
@@ -63,6 +73,7 @@ function PermRow({
 }) {
   const descId = useId();
   const noteId = useId();
+  const note = refused ?? condition;
   const disabled = why !== undefined;
   return (
     <div className={cx('access-perm', disabled && 'access-perm--blocked')}>
@@ -78,8 +89,8 @@ function PermRow({
       </p>
       {note === undefined ? null : (
         <p id={noteId} className="access-perm__note">
-          {perm.shape === 'key' ? null : <Glyph name="cross" className="access-perm__mark" />}
-          {disabled ? <span className="visually-hidden">{why}. </span> : null}
+          {perm.shape === 'key' && refused === undefined ? null : <Glyph name="cross" className="access-perm__mark" />}
+          {disabled && refused === undefined ? <span className="visually-hidden">{why}. </span> : null}
           <span>{note}</span>
         </p>
       )}

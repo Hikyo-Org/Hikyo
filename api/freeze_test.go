@@ -201,3 +201,70 @@ func TestFreezeAllowsOnlyTheMLDSA65Amendment(t *testing.T) {
 		})
 	}
 }
+
+// mintReauthPair derives the pre-amendment spec (#1516) from the current one.
+func mintReauthPair(t *testing.T) (base, revised string) {
+	t.Helper()
+	revised = string(mustRead(t, "openapi.yaml"))
+	base = strings.ReplaceAll(revised, "bypass, mint, self-config", "bypass, self-config")
+	base = strings.ReplaceAll(base, "approval.bypass, identity.credential-mint, self-config", "approval.bypass, self-config")
+	if base == revised || strings.Contains(base, "bypass, mint") || strings.Contains(base, "approval.bypass, identity.credential-mint") {
+		t.Fatal("could not derive the pre-amendment spec from the current one")
+	}
+	return base, revised
+}
+
+func TestFreezeAllowsOnlyTheMintReauthAmendment(t *testing.T) {
+	base, revised := mintReauthPair(t)
+	violations, err := api.CheckFreeze([]byte(base), []byte(revised))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("the exact mint additions were refused:\n%s", render(violations))
+	}
+	if n := len(api.MintReauthEnumGrowth); n != 4 {
+		t.Fatalf("the exception lists %d findings, the amendment names 4", n)
+	}
+
+	all := api.MintReauthEnumGrowth
+	t.Cleanup(func() { api.MintReauthEnumGrowth = all })
+	for i, want := range all {
+		api.MintReauthEnumGrowth = slices.Delete(slices.Clone(all), i, i+1)
+		got, err := api.CheckFreeze([]byte(base), []byte(revised))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].ID != want.ID || got[0].Operation != want.Operation || got[0].Path != want.Path {
+			t.Errorf("without %+v the guard reported:\n%s", want, render(got))
+		}
+	}
+	api.MintReauthEnumGrowth = all
+
+	// A near miss is the amendment plus one more value, or a value on the
+	// wrong enum, and must fail on that value.
+	purpose := "bypass, mint, self-config, developer-credential]"
+	operation := "approval.bypass, identity.credential-mint, self-config.adopt"
+	for name, edit := range map[string][3]string{
+		"another purpose":                  {purpose, "bypass, mint, rotate, self-config, developer-credential]", "rotate"},
+		"another operation":                {operation, "approval.bypass, identity.credential-mint, identity.credential-rotate, self-config.adopt", "identity.credential-rotate"},
+		"the operation value on purpose":   {purpose, "bypass, mint, identity.credential-mint, self-config, developer-credential]", "identity.credential-mint"},
+		"the purpose value on operation":   {operation, "approval.bypass, identity.credential-mint, mint, self-config.adopt", "mint"},
+		"mint on another closed enum":      {"enum: [software, external]", "enum: [software, external, mint]", "mint"},
+		"mldsa65 on the mint request enum": {purpose, "bypass, mint, mldsa65, self-config, developer-credential]", "mldsa65"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if strings.Count(revised, edit[0]) == 0 {
+				t.Fatalf("fixture anchor %q is gone from the spec", edit[0])
+			}
+			mutated := strings.Replace(revised, edit[0], edit[1], 1)
+			violations, err := api.CheckFreeze([]byte(base), []byte(mutated))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) == 0 || !strings.Contains(render(violations), "`"+edit[2]+"`") {
+				t.Fatalf("a near miss of the mint amendment was not refused for %s:\n%s", edit[2], render(violations))
+			}
+		})
+	}
+}
