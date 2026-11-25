@@ -419,6 +419,16 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 		if floorErr != nil {
 			return fmt.Errorf("%w: the sequence floor record is unreadable: %w", ErrUnusableState, floorErr)
 		}
+		if !found {
+			// One-time migration: a host from before the floor record has only the outcome
+			// log's sequence. Unreadable, it is as unusable as the list.
+			if _, recorded, _, recordErr := LastCheck(c.Directory); recordErr == nil {
+				// No digest was recorded, so the same sequence cannot be compared.
+				floor, found = floorRecord{Sequence: recorded, Digest: fresh.Digest()}, true
+			} else if !errors.Is(recordErr, os.ErrNotExist) {
+				return fmt.Errorf("%w: the legacy check record is unreadable: %w", ErrUnusableState, recordErr)
+			}
+		}
 		if found && fresh.Sequence() < floor.Sequence {
 			return errors.New("revocation list rollback refused")
 		}

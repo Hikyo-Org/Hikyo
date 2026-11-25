@@ -275,6 +275,40 @@ func TestSequenceFloorIsAMonotonicRecordSeparateFromTheOutcomeLog(t *testing.T) 
 			t.Fatalf("the floor never drops: %s %v", floor, err)
 		}
 	})
+	t.Run("a host with only the legacy check record is seeded from it", func(t *testing.T) {
+		directory, fetcher, checker := setup(t)
+		// setup left a torn store and a check record at sequence 1; make it the legacy shape.
+		if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-check.json"), []byte(`{"outcome":"checked","sequence":5,"at":"2026-01-01T00:00:00Z"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 4)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+			t.Fatalf("a list below the legacy record's sequence is refused: %v", err)
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 5)
+		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 5 {
+			t.Fatalf("a list at the legacy sequence is accepted: %+v %v", result, err)
+		}
+		if floor, err := os.ReadFile(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil || !strings.Contains(string(floor), `"sequence":5`) {
+			t.Fatalf("the floor is written: %s %v", floor, err)
+		}
+	})
+	t.Run("an unreadable legacy check record refuses", func(t *testing.T) {
+		directory, fetcher, checker := setup(t)
+		if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-check.json"), []byte("{"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 9)
+		if _, err := checker.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) {
+			t.Fatalf("an unreadable record must refuse: %v", err)
+		}
+	})
 	t.Run("an absent floor record is a first run", func(t *testing.T) {
 		directory, fetcher, checker := setup(t)
 		if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
