@@ -281,9 +281,15 @@ revocation-list)
 	# A list is signed at publication and on revocation, never on a schedule, so there is no
 	# upper age. It cannot be older than the newest bridge it covers: that bridge is signed
 	# at most 30 days before its not_after, so an earlier issued_at predates the bridge.
-	newest=$(jq -r '.bridges[]' "$trust/catalog.json" | while read -r digest; do
-		jq -r 'select(.schema == "hikyo.dev/recovery-bridge/v2") | .not_after' "$trust/bridges/$digest/statement.json"
-	done | sort | tail -n 1)
+	# No pipeline here: POSIX sh has no pipefail, so a missing statement.json would skip
+	# the age check silently. Each catalogued bridge's statement must be readable.
+	newest=
+	for digest in $(jq -r '.bridges[]' "$trust/catalog.json"); do
+		statement="$trust/bridges/$digest/statement.json"
+		check "$digest: its statement is readable" test -s "$statement"
+		not_after=$(jq -r 'select(.schema == "hikyo.dev/recovery-bridge/v2") | .not_after' "$statement" 2>/dev/null) || not_after=
+		if [ -n "$not_after" ] && { [ -z "$newest" ] || [ "$(printf '%s\n%s\n' "$newest" "$not_after" | sort | tail -n 1)" = "$not_after" ]; }; then newest=$not_after; fi
+	done
 	if [ -n "$newest" ]; then
 		check 'issued_at is not older than the newest catalogued bridge (not_after minus 30 days)' jq -e --arg newest "$newest" '(.issued_at | fromdateiso8601) >= (($newest | fromdateiso8601) - 2592000)' "$list"
 	fi

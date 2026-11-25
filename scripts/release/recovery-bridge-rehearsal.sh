@@ -421,6 +421,17 @@ cp "$scratch/key/other/cosign.pub" "$scratch/rekeyed/$(jq -r '.recovery.public_k
 expect_fail 'recovery public key is the committed one' 'a list checked against a swapped recovery key file under the committed root' \
 	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/rekeyed" "$scratch/list1" 0 "$pin_root" "$pin_key"
 rm -rf "$scratch/rekeyed"
+# A catalogued bridge whose statement.json is missing must fail the list check rather than
+# skip the age check and still print "All checks passed" (POSIX sh has no pipefail).
+cp -R "$scratch/new" "$scratch/nostatement"
+rm "$scratch/nostatement/bridges/$first/statement.json"
+expect_fail 'its statement is readable' 'a list checked against a tree with a catalogued bridge but no statement.json' \
+	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/nostatement" "$scratch/list1" 0 "$pin_root" "$pin_key"
+rm -rf "$scratch/nostatement"
+# The ceremony tool resolves relative paths before it changes directory.
+(cd "$scratch" && "$ceremony" check-revocations new state-relative list1 "$first" >/dev/null)
+printf 'ok: the ceremony tool accepts relative paths\n'
+rm -rf "$scratch/state-relative"
 # A list is signed at publication and on revocation, never on a schedule, so the verifier
 # has no maximum age: it refuses only a list that predates the newest bridge. This one is
 # 8 days old, so it is stale to the checker below and, as the bridge was authored today,

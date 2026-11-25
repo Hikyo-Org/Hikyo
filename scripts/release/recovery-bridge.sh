@@ -25,7 +25,21 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 : "${COSIGN_BIN:=cosign}"
 fail() { printf 'recovery-bridge: %s\n' "$*" >&2; exit 1; }
-sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+# sha256_of FILE prints the digest; it never prints an empty one (a catalog or list
+# must not be signed over a missing digest), and works with shasum or sha256sum.
+sha256_of() {
+	if command -v shasum >/dev/null 2>&1; then sum=$(shasum -a 256 "$1") || fail "cannot hash $1"
+	elif command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$1") || fail "cannot hash $1"
+	else fail 'neither shasum nor sha256sum is installed'
+	fi
+	sum=${sum%% *}
+	case "$sum" in *[!0-9a-f]* | '') fail "no SHA-256 digest for $1" ;; esac
+	[ "${#sum}" -eq 64 ] || fail "no SHA-256 digest for $1"
+	printf '%s\n' "$sum"
+}
+# abs PATH resolves a possibly relative path against the current directory, which the
+# go run subshells below leave (they cd to the repository root).
+abs() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$PWD" "$1" ;; esac; }
 
 cosign_sign() { # KEY FILE BUNDLE
 	"$COSIGN_BIN" sign-blob --yes --new-bundle-format=false --tlog-upload=false \
@@ -46,7 +60,7 @@ stage_trust() {
 
 author() {
 	[ "$#" -eq 4 ] || [ "$#" -eq 5 ] || fail 'usage: author TRUST SOURCE_PROOFS TARGET_PROOFS STATEMENTS [NOT_AFTER]'
-	trust=$1 source=$2 target=$3 out=$4
+	trust=$(abs "$1") source=$(abs "$2") target=$(abs "$3") out=$(abs "$4")
 	not_after=${5:-$(jq -nr '(now | floor) + 2592000 - 3600 | todate')}
 	recovery=$(jq -r '.recovery.public_key' "$trust/root.json")
 	scratch=$(mktemp -d)
@@ -62,13 +76,13 @@ author() {
 # HIKYO_UPGRADE_BUNDLE: the given releases, the snapshot and every catalogued bridge.
 assemble() {
 	[ "$#" -ge 3 ] || fail 'usage: assemble TRUST OUT RELEASE_PROOFS...'
-	trust=$1 out=$2
+	trust=$(abs "$1") out=$(abs "$2")
 	shift 2
 	recovery=$(jq -r '.recovery.public_key' "$trust/root.json")
 	scratch=$(mktemp -d)
 	trap 'rm -rf "$scratch"' EXIT
 	stage_trust "$trust" "$scratch"
-	for proofs in "$@"; do set -- "$@" --release "$proofs"; shift; done
+	for proofs in "$@"; do set -- "$@" --release "$(abs "$proofs")"; shift; done
 	for digest in $(jq -r '.bridges[]' "$trust/catalog.json"); do set -- "$@" --bridge "$trust/bridges/$digest"; done
 	(cd "$repo_root" && go run ./scripts/release/assemble-upgrade \
 		--root "$trust/root.json" --recovery-key "$trust/$recovery" \
@@ -191,7 +205,8 @@ revocation_list() {
 # list and sequence floor, as an installation's state directory does.
 check_revocations() {
 	[ "$#" -ge 3 ] || fail 'usage: check-revocations TRUST STATE LIST_DIR|- [DIGEST...]'
-	trust=$1 state=$2 list=$3
+	trust=$(abs "$1") state=$(abs "$2") list=$3
+	[ "$list" = - ] || list=$(abs "$list")
 	shift 3
 	recovery=$(jq -r '.recovery.public_key' "$trust/root.json")
 	scratch=$(mktemp -d)
