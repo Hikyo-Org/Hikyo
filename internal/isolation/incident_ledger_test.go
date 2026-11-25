@@ -1085,7 +1085,7 @@ func runIncidentAuditLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
 	w := newIncidentWorld(t, db)
 	id := w.openAccount(t, incResponder).Incident.ID
-	w.withOwner(newFakeOwner())
+	w.realOwners()
 	if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id); err != nil {
 		t.Fatal(err)
 	}

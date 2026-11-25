@@ -67,6 +67,30 @@ func TestTruncateUnreachedRotationsBoundsTheRowsAtTheSourceCap(t *testing.T) {
 	}
 }
 
+// Each account read of the truncation path spends from the lookup budget: a long
+// unreached tail of non-accounts cannot run past it, and the members left are
+// covered by one scope row.
+func TestTruncateUnreachedRotationsChargesItsAccountReadsToTheBudget(t *testing.T) {
+	const budget = 7
+	scope := domain.Scope{Org: "org_a"}
+	var rest []domain.PrincipalID
+	for i := 0; i < 1000; i++ {
+		rest = append(rest, domain.PrincipalID(fmt.Sprintf("usr_machine_%04d", i)))
+	}
+	c := newCollector(budget)
+	reads := 0
+	isAccount := func(domain.PrincipalID) (bool, error) { reads++; return false, nil }
+	if err := c.truncateUnreachedRotations(rest, map[domain.PrincipalID]bool{}, "org_a", scope, isAccount); err != nil {
+		t.Fatal(err)
+	}
+	if reads != budget || c.lookups != budget {
+		t.Fatalf("account reads = %d, lookups charged = %d, want %d", reads, c.lookups, budget)
+	}
+	if len(c.cands) != 1 || c.cands[0].id != "org_a" || c.cands[0].reason != domain.ReasonEnumerationTruncated {
+		t.Fatalf("candidates = %+v, want one scope-level truncation row", c.cands)
+	}
+}
+
 // The rotation cap is the source's, not each member's: members that together hold
 // more than the cap list at most the cap, and the cut is one scope row.
 func TestRotationListerCapsTheWholeSourceAcrossMembers(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -357,10 +358,17 @@ func TestIncidentOwnerRefusesAnItemOutsideTheIncidentOrg(t *testing.T) {
 		r := newRotationIncident(t, db)
 		w := r.w
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_resp_b', '`+string(incResponder)+`', 'credential-reset', 'org_b', `+ts+`)`)
+		// A real org B rotation whose authority (alice) has a footprint in org A and
+		// whose scope the responder can act in: only the org binding refuses it.
+		execRaw(t, db, `INSERT INTO dynamic_providers (id,org_id,project_id,kind,origin,tls_mode,grant_role,authority_principal_id,state,created_at) VALUES ('dpr_orgb_rot','org_b','prj_b1','postgres','postgres://orgb.example/db','verify-full','reader','`+string(alice)+`','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO rotations (id, org_id, project_id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, next_run_at, generation, created_at, updated_at) VALUES ('rot_orgb','org_b','prj_b1','env_b1','dpr_orgb_rot','rk_orgb_pw','rk_orgb_user',86400,3600,'`+string(alice)+`','`+string(alice)+`','active',`+ts+`,1,`+ts+`,`+ts+`)`)
 		orgInc := w.openOrg(t, incResponder)
-		res, err := w.svc.Owners[domain.OwnerRotationHalt](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: orgInc, OwnerFunction: domain.OwnerRotationHalt, ObjectKind: domain.ObjectKindRotation, ObjectID: r.rot.ID, Scope: "org_b/prj_b1/env_b1"})
+		res, err := w.svc.Owners[domain.OwnerRotationHalt](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: orgInc, OwnerFunction: domain.OwnerRotationHalt, ObjectKind: domain.ObjectKindRotation, ObjectID: "rot_orgb", Scope: "org_b/prj_b1/env_b1"})
 		if !errors.Is(err, domain.ErrNotFound) || res == service.OwnerConfirmed {
-			t.Errorf("an item scoped to org B on an org A incident = %v, %v, want ErrNotFound", res, err)
+			t.Errorf("an org B rotation on an org A incident = %v, %v, want ErrNotFound", res, err)
+		}
+		if got := queryString(t, db, `SELECT state FROM rotations WHERE id='rot_orgb'`); got != store.RotationStateActive {
+			t.Errorf("a refused halt changed the org B rotation: %q", got)
 		}
 		if r.state(t) != store.RotationStateActive {
 			t.Errorf("a refused halt changed the rotation: %q", r.state(t))
@@ -451,6 +459,18 @@ func TestIncidentOwnerMachineCredential(t *testing.T) {
 		live := func() int64 {
 			return queryInt(t, db, `SELECT COUNT(*) FROM machine_credentials WHERE id='mcr_it' AND revoked_at IS NULL`)
 		}
+		// An absent id must find nothing, whatever else is live: a lookup that ignored the
+		// id would hand back one of these (mcr_it, the first row, is still live here) and revoke or mistake it for the item.
+		execRaw(t, db, `INSERT INTO machine_credentials (id, service_account_id, kind, verifier, prefix_hint, lifetime, credential_epoch, created_at, created_by) VALUES ('mcr_same_project', 'sa_it', 'hikyo-token', `+blobLit(db, []byte("verifier-mcr-same"))+`, 'hk', 'indefinite', (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`, 'usr_itarget')`)
+		execRaw(t, db, `INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_it_b', 'machine', 'workload', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) VALUES ('sa_it_b', 'mch_it_b', 'org_a', 'prj_a2', 'it-sa-b', 'workload', `+ts+`, 'usr_itarget')`)
+		execRaw(t, db, `INSERT INTO machine_credentials (id, service_account_id, kind, verifier, prefix_hint, lifetime, credential_epoch, created_at, created_by) VALUES ('mcr_other_project', 'sa_it_b', 'hikyo-token', `+blobLit(db, []byte("verifier-mcr-other"))+`, 'hk', 'indefinite', (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`, 'usr_itarget')`)
+		liveOthers := func() int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM machine_credentials WHERE id IN ('mcr_same_project','mcr_other_project') AND revoked_at IS NULL`)
+		}
+		if res := call(incResponder, inc, "mcr_missing"); res != service.OwnerConfirmed || liveOthers() != 2 || live() != 1 {
+			t.Errorf("already gone = %v, live others = %d, want confirmed and both untouched", res, liveOthers())
+		}
 		if res := call(incLimited, limited, "mcr_it"); res != service.OwnerBlocked || live() != 1 {
 			t.Fatalf("limited operator = %v live=%d, want blocked and untouched", res, live())
 		}
@@ -460,8 +480,10 @@ func TestIncidentOwnerMachineCredential(t *testing.T) {
 		if res := call(incResponder, inc, "mcr_it"); res != service.OwnerConfirmed {
 			t.Errorf("retry = %v, want confirmed", res)
 		}
-		if res := call(incResponder, inc, "mcr_missing"); res != service.OwnerConfirmed {
-			t.Errorf("already gone = %v, want confirmed", res)
+		// A credential of another project is not this project's: it is not found here
+		// and stays live.
+		if res := call(incResponder, inc, "mcr_other_project"); res != service.OwnerConfirmed || liveOthers() != 2 {
+			t.Errorf("a credential of another project = %v, live others = %d, want it left alone", res, liveOthers())
 		}
 	})
 }
@@ -584,6 +606,76 @@ func TestIncidentOwnerAdapterTargetPause(t *testing.T) {
 	})
 }
 
+// The lease and target owners treat not-found as absent, but the authorizer masks
+// a lost grant as not found too. The responder's grants are removed after the
+// owner's scope check and before its confirming read (the service clock fires
+// there, before the read's transaction): the item must not be confirmed absent.
+func TestIncidentOwnerDoesNotConfirmAbsenceWhenTheGrantIsLostBetweenScopeAndConfirm(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		fired := false
+		// PauseTarget reads the clock inside its own transaction, where a write would
+		// deadlock, so the target hook fires on the clock read after it: the
+		// confirming read's, taken before that read's transaction opens.
+		var skip, reads int
+		revokeGrants := func() time.Time {
+			reads++
+			if !fired && reads > skip {
+				fired = true
+				execRaw(t, db, `UPDATE grants SET org_id='org_b' WHERE principal_id='`+string(incResponder)+`' AND org_id='org_a'`)
+			}
+			return time.Now()
+		}
+		w.svc.Owners = service.NewIncidentOwners(w.svc, service.IncidentOwnerServices{
+			Identities: &service.Identities{DB: w.db},
+			Invites:    &service.EmailInvitations{DB: w.db},
+			SCIM:       &service.SCIM{DB: w.db},
+			Dynamic:    &service.Dynamic{DB: w.db, Now: revokeGrants},
+			Adapters:   &service.Adapters{DB: w.db, Now: revokeGrants},
+		})
+		inc := w.openOrg(t, incResponder)
+		fired = false // the hook counts only from the owner call on
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_missing", "org_a/prj_a1/env_a1"); res == service.OwnerConfirmed {
+			t.Errorf("a lease whose grant was lost before the confirming read = %v, want it not confirmed as absent", res)
+		}
+		if !fired {
+			t.Fatal("the grant was never removed: the test did not reach the confirming read")
+		}
+		// The responder's org A grants moved away, so the target case moves them back first.
+		execRaw(t, db, `UPDATE grants SET org_id='org_a' WHERE principal_id='`+string(incResponder)+`' AND org_id='org_b' AND id LIKE 'g_inc_%'`)
+		fired, reads, skip = false, 0, 1
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, "tgt_missing", "org_a/prj_a1"); res == service.OwnerConfirmed {
+			t.Errorf("a target whose grant was lost before the confirming read = %v, want it not confirmed as absent", res)
+		}
+		if !fired {
+			t.Fatal("the grant was never removed before the target's confirming read")
+		}
+	})
+}
+
+// A contained account's rotations are not listed as incident items (the account
+// grants reader skips a contained principal), so the safety rests on the executor:
+// a rotation whose authority is contained halts at its gate without minting.
+func TestIncidentContainedAuthorityRotationHaltsAtTheExecutorGate(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		x := newRotExec(t, db)
+		rot := x.create(rotPasswordKey, rotUsernameKey)
+		execRaw(t, db, `UPDATE principals SET containment_state='contained' WHERE id='`+string(alice)+`'`)
+		before := x.ctl.count("create:")
+		x.advance(48 * time.Hour)
+		x.drain()
+		if x.ctl.count("create:") != before {
+			t.Fatal("a rotation whose authority is contained minted a candidate")
+		}
+		if got := queryString(t, db, `SELECT state FROM rotations WHERE id='`+rot.ID+`'`); got != store.RotationStateHalted {
+			t.Fatalf("state = %s, want halted", got)
+		}
+		if n := x.halts("authority_lost"); n != 1 {
+			t.Fatalf("%d authority_lost halts, want 1", n)
+		}
+	})
+}
+
 // The rotation listing spends the lookup budget: past it a member's rotations
 // are an open enumeration_truncated row, never silently dropped (#1471, S5). The
 // budget is raised until the member is reached but its rotation page is not.
@@ -631,7 +723,10 @@ func TestIncidentOrgTruncationNamesEveryUnreachedMember(t *testing.T) {
 			for _, p := range []domain.PrincipalID{alice, incTarget} {
 				_, listed := got["account.contain|account|"+string(p)]
 				_, truncated := got["rotation.halt|enumeration|"+string(p)]
-				if !listed && !truncated {
+				// When the lookup budget runs out inside the truncation path, one scope row
+				// covers the members left.
+				_, covered := got["rotation.halt|enumeration|"+string(orgA)]
+				if !listed && !truncated && !covered {
 					t.Errorf("budget %d: member %s neither listed nor marked truncated: %v", budget, p, got)
 				}
 				if !listed {

@@ -214,8 +214,8 @@ func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item auth
 	if scope.Env == "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
-	state, err := o.leaseState(ctx, actor, scope, item.ObjectID)
-	if errors.Is(err, domain.ErrNotFound) {
+	state, absent, err := o.leaseState(ctx, actor, scope, item.ObjectID)
+	if err == nil && absent {
 		// A lease that no longer exists holds no role.
 		return OwnerConfirmed, nil
 	}
@@ -236,20 +236,18 @@ func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item auth
 			return OwnerUnconfirmed, err
 		}
 	}
-	state, err = o.leaseState(ctx, actor, scope, item.ObjectID)
-	return confirm(err == nil && leaseTerminal(state)), err
+	state, absent, err = o.leaseState(ctx, actor, scope, item.ObjectID)
+	return confirm(err == nil && (absent || leaseTerminal(state))), err
 }
 
 func leaseTerminal(state string) bool {
 	return state == "revoked" || state == "expired"
 }
 
-func (o *incidentOwners) leaseState(ctx context.Context, actor Actor, scope domain.Scope, id string) (string, error) {
-	v, err := o.svc.Dynamic.GetLease(ctx, actor, scope, id)
-	if err != nil {
-		return "", err
-	}
-	return v.State, nil
+// leaseState reads the lease under the caller's authority in one transaction, so
+// absent means the lease is gone and a lost grant is an error, never an absence.
+func (o *incidentOwners) leaseState(ctx context.Context, actor Actor, scope domain.Scope, id string) (state string, absent bool, err error) {
+	return o.svc.Dynamic.LeaseStateIfAuthorized(ctx, actor, scope, id)
 }
 
 // targetPause pauses one adapter target. The pause is reversible by the target's
@@ -267,8 +265,19 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 	}
 	t, err := o.svc.Adapters.PauseTarget(ctx, actor, scope, item.ObjectID)
 	if errors.Is(err, domain.ErrNotFound) {
-		// A target that no longer exists runs nothing.
-		return OwnerConfirmed, nil
+		// The pause masks a lost grant as not found too, so absence is confirmed by a
+		// read that authorizes first: a target that no longer exists runs nothing.
+		absent, err := o.svc.Adapters.TargetAbsentIfAuthorized(ctx, actor, scope, item.ObjectID)
+		if err == nil && absent {
+			return OwnerConfirmed, nil
+		}
+		if err == nil {
+			err = fmt.Errorf("%w: the target could not be paused and is not absent", domain.ErrConflict)
+		}
+		if res, ok := ownerRefused(err); ok {
+			return res, nil
+		}
+		return OwnerUnconfirmed, err
 	}
 	if err != nil {
 		if res, ok := ownerRefused(err); ok {

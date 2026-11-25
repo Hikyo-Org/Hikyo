@@ -503,8 +503,9 @@ func (s *Incidents) memberCanContain(ctx context.Context, az *authz.TxAuthorizer
 // principal that is no account (a service account or a machine holds grants but
 // owns no scheduled rotation), which isAccount tells.
 //
-// shortcut: one account read per unreached candidate until the cap, upgrade to a
-// batched read when an org has far more unreached non-accounts than accounts.
+// shortcut: one account read per unreached candidate, each charged to the lookup
+// budget (past it one scope row covers the rest), upgrade to a batched read when
+// an org has far more unreached non-accounts than accounts.
 func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reached map[domain.PrincipalID]bool, scopeID string, scope domain.Scope, isAccount func(domain.PrincipalID) (bool, error)) error {
 	seen, n := map[domain.PrincipalID]bool{}, 0
 	for _, p := range rest {
@@ -512,6 +513,13 @@ func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reache
 			continue
 		}
 		seen[p] = true
+		// Each account read is charged to the same lookup budget as every other read,
+		// so a huge unreached tail cannot run past it; when it runs out, one scope row
+		// covers the members left.
+		if !c.spend(1) {
+			c.truncated(domain.OwnerRotationHalt, scopeID, scope)
+			return nil
+		}
 		ok, err := isAccount(p)
 		if err != nil {
 			return err
