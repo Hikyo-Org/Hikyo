@@ -476,8 +476,11 @@ principal is contained, so a contained account would still have a scheduler acti
 - Limitation: an account with neither a password nor a confirmed factor (for example one that
   only signs in through a linked identity) has no pre-existing credential to prove with and
   cannot resume (`ErrNoProofCredential`, a `400`). The browser-approval reauthentication of #1539
-  is a closed set of operations and does not include resume; giving such an account a proof path
-  is an owner question, not part of this slice.
+  is a closed set of operations and does not include resume. Owner decision: the refusal stays,
+  with no proof-less path. A federated-only responder cannot resume and must hand the incident
+  to another responder who has a password or a confirmed authenticator; federated step-up is
+  tracked in #1590. The refusal carries the `400` detail `no_proof_credential`, which the web
+  dialog words as such.
 - The incident and item views carry `refused`, the count (and per-item flag) of pending items
   whose owner refused, apart from pending items that have not run.
 - `attestable` on an item is the server's own verdict (open item, open incident, a kind Hikyo

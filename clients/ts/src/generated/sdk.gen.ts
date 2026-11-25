@@ -2850,6 +2850,12 @@ export const listIncidentItems = <ThrowOnError extends boolean = false>(options:
  * `404` as for a missing one, before any proof is asked for. The surface
  * confirms the list of open items with the operator before it sends the call.
  *
+ * A caller whose account has neither a password nor a confirmed authenticator
+ * (a federated-only responder) cannot resume: the call is a `400` with the
+ * detail `no_proof_credential` and spends nothing. Such a responder must hand
+ * the incident to another responder who has a proof credential; federated
+ * step-up is tracked in #1590.
+ *
  */
 export const resumeIncident = <ThrowOnError extends boolean = false>(options: Options<ResumeIncidentData, ThrowOnError>): RequestResult<ResumeIncidentResponses, ResumeIncidentErrors, ThrowOnError> => (options.client ?? client).post<ResumeIncidentResponses, ResumeIncidentErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

@@ -210,3 +210,35 @@ func TestIncidentResumeOverHTTPWithAValidProof(t *testing.T) {
 		}
 	})
 }
+
+// A responder with neither a password nor a confirmed authenticator (a
+// federated-only account) cannot resume: Resume is refused with
+// ErrNoProofCredential and a stable wire detail, and runs nothing, spends nothing
+// and leaves the incident open. There is no proof-less path (#1590 tracks step-up).
+func TestIncidentResumeRefusesAResponderWithNoProofCredential(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newResumeFixture(t, db)
+		execRaw(t, db, `DELETE FROM totp_credentials WHERE account_id='`+f.accountID+`'`)
+		execRaw(t, db, `DELETE FROM password_credentials WHERE account_id='`+f.accountID+`'`)
+		open := f.openItems(t, db)
+		for _, proof := range []string{"anything", totpCode(t, f.uri, *f.clk)} {
+			_, err := f.incidents.Resume(t.Context(), f.actor, f.id, proof, nil)
+			if !errors.Is(err, service.ErrNoProofCredential) {
+				t.Fatalf("resume of an account with no proof credential (proof %q) = %v, want ErrNoProofCredential", proof, err)
+			}
+			var sd interface{ SafeDetail() string }
+			if !errors.As(err, &sd) || sd.SafeDetail() != "no_proof_credential" {
+				t.Fatalf("the refusal carries no stable detail: %v", err)
+			}
+		}
+		if got := f.openItems(t, db); got != open {
+			t.Errorf("a refused resume changed the open items: %d, want %d", got, open)
+		}
+		if got := queryString(t, db, `SELECT status FROM incidents WHERE id='`+f.id+`'`); got != string(domain.IncidentOpen) {
+			t.Errorf("incident status = %q, want open", got)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+f.id+`' AND outcome='done'`); n != 0 {
+			t.Errorf("%d items ran", n)
+		}
+	})
+}

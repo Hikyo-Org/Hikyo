@@ -140,6 +140,9 @@ export function useIncidentActions(id: string) {
   };
 }
 
+/** The detail a resume refused for lack of any proof credential carries (bad_request, 400). */
+const noProofCredentialDetail = 'no_proof_credential';
+
 /** The refusal wording; a 404 is deliberately the same for an unknown and a forbidden incident. */
 export function incidentFailureText(error: unknown): string {
   if (error instanceof IncidentListTooLong) {
@@ -148,7 +151,12 @@ export function incidentFailureText(error: unknown): string {
   return statusText(
     error,
     {
-      400: 'The incident scope or the proof is not valid. Enter your authenticator code, or your password if you have no authenticator.',
+      // A federated-only responder has neither: the server names that case by its detail, and no
+      // proof the dialog could collect would help.
+      400: (e) =>
+        e.code === 'bad_request' && e.detail === noProofCredentialDetail
+          ? 'Your account has no password or authenticator to confirm this. Ask another responder with one to resume the incident.'
+          : 'The incident scope or the proof is not valid. Enter your authenticator code, or your password if you have no authenticator.',
       // A wrong proof and an ended session both answer 401; only the session check declares the latter.
       401: 'That did not authorise the incident action: the password or code was not accepted, or this session has ended.',
       404: 'No such incident, or you may not work it.',

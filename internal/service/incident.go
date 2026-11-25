@@ -569,6 +569,12 @@ func rotationReadAccess(ctx context.Context, az *authz.TxAuthorizer, caller auth
 
 const resumePage = 100
 
+// errResumeNoProofCredential is ErrNoProofCredential with a stable wire detail, so
+// the operator surface can tell a responder with neither a password nor a
+// confirmed authenticator (a federated-only account: it cannot resume and must hand
+// the incident to a responder who can, #1590) from any other refused request.
+var errResumeNoProofCredential = &detailErr{err: ErrNoProofCredential, detail: "no_proof_credential"}
+
 // Resume re-reads the ledger and re-runs only the open items through their
 // registered owners. Each item records its intent before the owner runs and its
 // outcome after, in separate transactions, so a crash between the owner's own
@@ -602,6 +608,9 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, c
 		}
 		var err error
 		if evidence, err = s.Auth.VerifyReauthProof(ctx, actor.bearer, proof); err != nil {
+			if errors.Is(err, ErrNoProofCredential) {
+				return res, errResumeNoProofCredential
+			}
 			return res, err
 		}
 	}

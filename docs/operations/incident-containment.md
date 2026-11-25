@@ -383,7 +383,9 @@ not exist: run `hikyo account factor step-up` and retry.
   item you did not see. In the web dialog, a conflict replaces the list with the current
   one and asks you to confirm again. An account that has neither a
   password nor an authenticator (it signs in only through a linked identity) cannot
-  resume; give it a password or an authenticator first.
+  resume, and the server refuses with a `400` whose detail is `no_proof_credential`. Hand
+  the incident to another responder who has a password or an authenticator; federated
+  step-up is tracked in #1590.
 - `hikyo incident attest <incident> <item>` records your statement that an open item
   was dealt with outside this system. It is a statement, not a confirmation.
 - `hikyo incident close <incident>` needs `--with-residuals` while items are open.

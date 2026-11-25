@@ -78,3 +78,30 @@ it('refreshes the listed items after a conflict and asks for a new confirmation'
     expect(resumeCalls[1]).toEqual(await resumeBody('second-proof', [item('itm_b'), item('itm_c')]));
   } finally { await view.unmount(); }
 });
+
+// A responder with neither a password nor an authenticator cannot resume: the server
+// names that refusal by its detail, and the dialog says what to do, not that the
+// session ended. A different 400 keeps the generic proof wording.
+it.each([
+  ['no_proof_credential', 'Your account has no password or authenticator to confirm this. Ask another responder with one to resume the incident.'],
+  ['something_else', 'The incident scope or the proof is not valid.'],
+])('words a 400 with detail %s', async (detail, expected) => {
+  mocks.parsed.mockImplementation(async (operation: object) => {
+    if (operation === getIncidentOp) return incident;
+    if (operation === listIncidentItemsOp) return { items: [item('itm_a')] };
+    if (operation === resumeIncidentOp) throw new ApiError(400, 'bad request', detail, undefined, [], undefined, undefined, 'bad_request');
+    throw new Error('unexpected operation');
+  });
+  const view = await renderForm(<MemoryRouter initialEntries={['/?incident=inc_1']}><Incidents /></MemoryRouter>);
+  try {
+    await settleTask();
+    await act(async () => button(view.container, 'Resume open items').click());
+    const proof = document.querySelector<HTMLInputElement>('input[name="proof"]');
+    if (proof === null) throw new Error('proof input missing');
+    await act(async () => typeInto(proof, 'any-proof'));
+    await act(async () => button(document.body, 'Run open items').click());
+    await settleTask();
+    expect(document.body.textContent).toContain(expected);
+    expect(document.body.textContent).not.toContain('session ended');
+  } finally { await view.unmount(); }
+});
