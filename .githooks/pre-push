@@ -180,15 +180,12 @@ require_gotest() {
 			printf 'pre-push: %s; wait and push again, or if no push is running clear it with: rm -rf "%s" "%s.takeover" "%s".stale.*\n' "$1" "$lock" "$lock" "$lock" >&2
 			exit 64
 		}
-		# Refuse unless the lock is stale: its owner on this host is gone, or it has
-		# had no owner file for a minute or two (find -mmin +1 matches from 60 s on
-		# GNU, 120 s on BSD; a live owner writes it at once).
+		# Refuse unless the lock is stale: its recorded owner on this host is gone.
+		# A lock with no owner yet is never taken over, however old: its creator may
+		# only be stalled (a suspended machine) and would then share the tree.
 		require_stale() {
 			owner=$(cat "$lock/owner" 2>/dev/null || :)
-			if [ -z "$owner" ]; then
-				[ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || refuse "another push is taking the Go test lock $lock"
-				return 0
-			fi
+			[ -n "$owner" ] || refuse "another push is taking the Go test lock $lock (no owner recorded yet)"
 			[ "${owner#* }" = "$host" ] || refuse "a push on host ${owner#* } holds the Go test lock $lock"
 			! kill -0 "${owner%% *}" 2>/dev/null || refuse "another push (pid ${owner%% *}) is running the Go tests, holding $lock"
 		}

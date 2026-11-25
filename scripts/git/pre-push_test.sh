@@ -496,14 +496,16 @@ expect_refused 'is taking over the stale' gt2
 rmdir "$tree.lock.takeover"
 expect_ok gt2
 [ ! -e "$tree.lock" ] && [ ! -e "$tree.lock.takeover" ] || fail 'a lock was left behind'
-# A lock without an owner file is live while new (its owner has not written it
-# yet), and stale once old.
+# A lock without an owner file is never taken over, even when old: its creator
+# may only be stalled between mkdir and writing the owner.
 mkdir "$tree.lock"
 expect_refused 'is taking the Go test lock' gt2
-[ -d "$tree.lock" ] || fail 'a new ownerless lock was removed'
 touch -t 202001010000 "$tree.lock"
+expect_refused 'no owner recorded yet' gt2
+[ -d "$tree.lock" ] || fail 'an ownerless lock was removed'
+rmdir "$tree.lock"
 expect_ok gt2
-[ ! -e "$tree.lock" ] || fail 'the stale ownerless lock was left behind'
+[ ! -e "$tree.lock" ] || fail 'a lock was left behind'
 # A dirty kept tree, a pruned registration, a corrupted tree and a deleted tree
 # are all repaired, and the run is always at the pushed commit.
 kept_ok() { expect_ok gt2; [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail "$1: not at the pushed commit"; }

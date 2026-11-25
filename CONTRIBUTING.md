@@ -313,7 +313,8 @@ so the Go build and test caches, which key on the source path, stay warm between
 pushes. There is no `-trimpath`: tests find repository files through their own
 paths, and `-trimpath` made them fail. One push at a time uses the tree; a
 second push from another worktree is refused while the first runs, a lock left
-by a killed push on the same host is taken over, and a refusal prints the command
+by a killed push on the same host is taken over (one with no owner recorded yet
+never is), and a refusal prints the command
 that clears the lock. The SPA build is not needed: a placeholder
 stands in for `internal/webui/dist`.
 
