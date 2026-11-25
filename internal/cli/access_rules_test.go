@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -164,32 +165,37 @@ func TestAccessRuleVerbsNeedHumanSession(t *testing.T) {
 }
 
 // A machine rule that widens plaintext reach is refused once per environment
-// without a live window. The verb opens the window the refusal names and
-// sends the rule again, and stops when the server names the same environment
-// twice.
+// without a window that satisfies it. The verb opens the window the refusal
+// names and sends the rule again, and stops when the server names the same
+// environment twice. A live window there is bound to another operation, or the
+// rule would not have been refused, so it does not skip the ceremony.
 func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
+	slidingTOTP := apigen.RevealWindow{EffectiveWindowSeconds: 300, TotpOffered: true}
 	for _, tc := range []struct {
 		name     string
 		refusals int
 		wantCode int
 		wantPost int
 		noReveal bool
+		totp     bool
 		window   apigen.RevealWindow
 		wantErr  string
 	}{
-		{"retries_after_the_window_opens", 1, ExitOK, 2, false, apigen.RevealWindow{Live: true}, ""},
-		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false, apigen.RevealWindow{Live: true}, ""},
+		{"retries_after_the_window_opens", 1, ExitOK, 2, false, true, slidingTOTP, ""},
+		{"stops_on_a_repeated_environment", 2, ExitRefused, 2, false, true, slidingTOTP, ""},
 		// A history-only widening needs reveal-history, not reveal, so the
 		// window's can_reveal being false must not stop the ceremony.
-		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true, apigen.RevealWindow{Live: true}, ""},
+		{"retries_for_an_actor_without_current_reveal", 1, ExitOK, 2, true, true, slidingTOTP, ""},
+		{"reauthenticates_over_a_live_window_bound_elsewhere", 1, ExitOK, 2, false, true,
+			apigen.RevealWindow{Live: true, EffectiveWindowSeconds: 300, TotpOffered: true}, ""},
 		// With no window and no inline TOTP, the CLI names the one step that can
 		// open a window for this cause, never a reveal or a browser rule editor.
-		{"asks_to_raise_a_zero_window", 1, ExitAuth, 1, false, apigen.RevealWindow{}, "--reauth-window-seconds 300`, then retry"},
-		{"asks_to_enroll_without_an_authenticator", 1, ExitAuth, 1, false, apigen.RevealWindow{EffectiveWindowSeconds: 300, TotpOffered: true}, "enroll an authenticator with `hikyo account factor enrol-totp`"},
-		{"says_a_protected_environment_cannot_widen_yet", 1, ExitAuth, 1, false, apigen.RevealWindow{Protected: true}, "cannot be made yet"},
+		{"asks_to_raise_a_zero_window", 1, ExitAuth, 1, false, false, apigen.RevealWindow{}, "--reauth-window-seconds 300`, then retry"},
+		{"asks_to_enroll_without_an_authenticator", 1, ExitAuth, 1, false, false, slidingTOTP, "enroll an authenticator with `hikyo account factor enrol-totp`"},
+		{"says_a_protected_environment_cannot_widen_yet", 1, ExitAuth, 1, false, false, apigen.RevealWindow{Protected: true}, "cannot be made yet"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			posts, windows := 0, 0
+			posts, windows, reauths := 0, 0, 0
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
@@ -201,8 +207,14 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 					window.CanReveal = !tc.noReveal
 					_ = jsonwire.Encode(w, window)
 				case r.URL.Path == api.PathPrefix+"/auth/totp":
-					// A window above 0 offers TOTP; no authenticator is confirmed here.
-					_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
+					_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: tc.totp})
+				case r.URL.Path == api.PathPrefix+"/auth/reauth/totp":
+					reauths++
+					token := "hik_1_cli_rotated-rule"
+					_ = jsonwire.Encode(w, apigen.ReauthResult{
+						EnvironmentId: "env_dev", SessionId: "ses_rotated", SessionToken: &token,
+						WindowExpires: apigen.Timestamp(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)),
+					})
 				case r.Method == http.MethodPost:
 					posts++
 					if posts <= tc.refusals {
@@ -227,6 +239,7 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 				t.Fatal(err)
 			}
 			ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "", nil)
+			ios.ReadPassword = func(string) (string, error) { return "123456", nil }
 			code := Run(t.Context(), ios, []string{"access", "rule", "add", "--instance", "local", "--org", "org_one", "--project", "prj_one",
 				"--principal", "mch_one", "--capability", "read", "--only-env", "env_dev"})
 			if code != tc.wantCode || posts != tc.wantPost || windows != 1 {
@@ -235,6 +248,9 @@ func TestAccessRuleAddReauthenticatesMachineWidening(t *testing.T) {
 			}
 			if !strings.Contains(stderr.String(), tc.wantErr) {
 				t.Fatalf("stderr = %q, want %q", stderr, tc.wantErr)
+			}
+			if wantReauths := map[bool]int{true: 1}[tc.totp]; reauths != wantReauths {
+				t.Fatalf("reauths=%d, want %d: the inline ceremony must run once per refused environment", reauths, wantReauths)
 			}
 		})
 	}

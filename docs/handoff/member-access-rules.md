@@ -66,8 +66,9 @@ Each is the fail-closed reading; widen only by owner decision.
 
 - **Humans only:** rules for machines are refused (the machine widening gate
   counts per environment and would undercount a key-narrowed machine reveal).
-  Since 2026-11-20 the API and CLI accept workload and automation rules under
-  the conditions in the ADR's *Machine rules* section.
+  The API, the CLI and the Machine access rule editor accept
+  workload and automation rules under the conditions in the ADR's *Machine
+  rules* section.
 - **Publish cannot be key-narrowed:** publishing is environment-wide, so a
   key-narrowed publish could never take effect.
 - **See cannot be key-narrowed** on a rule (refused rather than widened).
@@ -194,5 +195,5 @@ running product.
 - **Still open after stage C:** a person with neither a grant nor a rule is
   not listed on Members, so the first access for an invitee comes from the
   invite template or a grant; a server-side resolver operation (ADR
-  *First implementation slice*); the Machine access rule editor (the API and
-  CLI accept machine rules since 2026-11-20).
+  *First implementation slice*). The Machine access rule editor exists
+  (#1482).

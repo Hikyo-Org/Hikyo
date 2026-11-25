@@ -24,6 +24,8 @@ export type MintRequest = MintBoundaryFields & {
   readonly accountId: string;
   readonly accountName: string;
   readonly rotating: boolean;
+  /** Id of the CREDENTIAL_LIFETIMES preset chosen in review; frozen at submit. */
+  readonly lifetimeId: string;
   readonly reach: readonly MachineDisclosureReach[];
 };
 
@@ -58,6 +60,7 @@ export type MintLifecycle<Req extends MintBoundaryFields = MintRequest, Res = Mi
 export type MintLifecycleEvent<Req extends MintBoundaryFields = MintRequest, Res = MintResult> =
   | { readonly type: 'review'; readonly request: Req }
   | { readonly type: 'submit' }
+  | { readonly type: 'set-lifetime'; readonly lifetimeId: string }
   | { readonly type: 'succeeded'; readonly requestId: number; readonly result: Res }
   | { readonly type: 'failed'; readonly requestId: number; readonly error: string }
   | { readonly type: 'confirm-stored'; readonly stored: boolean }
@@ -111,6 +114,10 @@ export function transitionMintLifecycle<Req extends MintBoundaryFields, Res>(
   switch (event.type) {
     case 'review':
       return { kind: 'reviewing', request: event.request };
+    case 'set-lifetime':
+      return (state.kind === 'reviewing' || state.kind === 'failed') && 'lifetimeId' in state.request
+        ? { ...state, request: { ...state.request, lifetimeId: event.lifetimeId } }
+        : state;
     case 'submit':
       return state.kind === 'reviewing' || state.kind === 'failed'
         ? { kind: 'submitting', request: state.request }

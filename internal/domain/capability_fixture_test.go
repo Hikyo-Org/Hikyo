@@ -14,6 +14,9 @@ import (
 type capabilityFixture struct {
 	Capabilities []capabilityFixtureAtom     `json:"capabilities"`
 	Templates    []capabilityFixtureTemplate `json:"templates"`
+	// MachineRules is each machine class's rule capabilities, as
+	// CheckMachineRule admits them; the web rule editor ports them.
+	MachineRules map[PrincipalClass][]Capability `json:"machine_rule_capabilities"`
 }
 
 type capabilityFixtureAtom struct {
@@ -70,6 +73,22 @@ func currentCapabilityFixture(t *testing.T) capabilityFixture {
 			row.SeedsByLevel[name] = seeds
 		}
 		current.Templates = append(current.Templates, row)
+	}
+	current.MachineRules = map[PrincipalClass][]Capability{}
+	for _, class := range MachineClasses() {
+		for _, capability := range Capabilities() {
+			if _, ok := RuleShapeOf(capability); !ok {
+				continue
+			}
+			rule := Rule{Capability: capability, Where: Where{
+				Projects: []ProjectID{"prj_fixture"},
+				EnvMode:  AxisOnly, Envs: map[ProjectID][]EnvID{"prj_fixture": {"env_fixture"}},
+				KeyMode: AxisAll,
+			}}
+			if CheckMachineRule(class, rule) == MachineRuleOK {
+				current.MachineRules[class] = append(current.MachineRules[class], capability)
+			}
+		}
 	}
 	return current
 }
