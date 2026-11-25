@@ -21,6 +21,27 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  # Independent of the build, so a hotfix build still publishes. It only turns
+  # this run red while nightly-promote.yml is failing or has stopped running,
+  # which publishing from a stale main would otherwise hide.
+  promotion-health:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require a recent successful promotion run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/release/promotion-health.sh
+
   # Every main commit passed the merge queue, and nightly-promote.yml lands the
   # last green dev commit through it. Nightly reuses that complete proof instead
   # of running the whole graph a second time.
