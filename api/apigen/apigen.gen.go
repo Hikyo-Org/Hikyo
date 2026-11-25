@@ -1021,6 +1021,7 @@ func (e CLILoginTransactionTransport) Valid() bool {
 
 // Defines values for CLIReauthStartRequestOperation.
 const (
+	CLIReauthStartRequestOperationAccessBypass            CLIReauthStartRequestOperation = "access.bypass"
 	CLIReauthStartRequestOperationAdapterAdopt            CLIReauthStartRequestOperation = "adapter.adopt"
 	CLIReauthStartRequestOperationAdapterConfigure        CLIReauthStartRequestOperation = "adapter.configure"
 	CLIReauthStartRequestOperationAdapterCredentialSet    CLIReauthStartRequestOperation = "adapter.credential-set"
@@ -1040,6 +1041,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestOperation enum.
 func (e CLIReauthStartRequestOperation) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestOperationAccessBypass:
+		return true
 	case CLIReauthStartRequestOperationAdapterAdopt:
 		return true
 	case CLIReauthStartRequestOperationAdapterConfigure:
@@ -1075,6 +1078,7 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
+	CLIReauthStartRequestPurposeAccess              CLIReauthStartRequestPurpose = "access"
 	CLIReauthStartRequestPurposeAdapter             CLIReauthStartRequestPurpose = "adapter"
 	CLIReauthStartRequestPurposeApprove             CLIReauthStartRequestPurpose = "approve"
 	CLIReauthStartRequestPurposeBypass              CLIReauthStartRequestPurpose = "bypass"
@@ -1090,6 +1094,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
 func (e CLIReauthStartRequestPurpose) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestPurposeAccess:
+		return true
 	case CLIReauthStartRequestPurposeAdapter:
 		return true
 	case CLIReauthStartRequestPurposeApprove:
@@ -1117,6 +1123,7 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 
 // Defines values for CLIReauthTransactionOperation.
 const (
+	CLIReauthTransactionOperationAccessBypass            CLIReauthTransactionOperation = "access.bypass"
 	CLIReauthTransactionOperationAdapterAdopt            CLIReauthTransactionOperation = "adapter.adopt"
 	CLIReauthTransactionOperationAdapterConfigure        CLIReauthTransactionOperation = "adapter.configure"
 	CLIReauthTransactionOperationAdapterCredentialSet    CLIReauthTransactionOperation = "adapter.credential-set"
@@ -1136,6 +1143,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionOperation enum.
 func (e CLIReauthTransactionOperation) Valid() bool {
 	switch e {
+	case CLIReauthTransactionOperationAccessBypass:
+		return true
 	case CLIReauthTransactionOperationAdapterAdopt:
 		return true
 	case CLIReauthTransactionOperationAdapterConfigure:
@@ -1171,6 +1180,7 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
+	CLIReauthTransactionPurposeAccess              CLIReauthTransactionPurpose = "access"
 	CLIReauthTransactionPurposeAdapter             CLIReauthTransactionPurpose = "adapter"
 	CLIReauthTransactionPurposeApprove             CLIReauthTransactionPurpose = "approve"
 	CLIReauthTransactionPurposeBypass              CLIReauthTransactionPurpose = "bypass"
@@ -1186,6 +1196,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
 func (e CLIReauthTransactionPurpose) Valid() bool {
 	switch e {
+	case CLIReauthTransactionPurposeAccess:
+		return true
 	case CLIReauthTransactionPurposeAdapter:
 		return true
 	case CLIReauthTransactionPurposeApprove:
@@ -6187,14 +6199,14 @@ type CLIReauthStart struct {
 
 // CLIReauthStartRequest `adapter` carries an adapter-routing decision over an environment set.
 // Every other purpose carries an exact environment and key set, except
-// `mint`, whose unit is its one environment and which carries no keys. The
-// browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-// names exactly the unit the decision covers.
+// `mint` and `access`, whose unit is their one environment and which carry
+// no keys. The browser runs the same purpose-bound ceremony the UI runs,
+// so `key_ids` names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
 	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	EnvironmentIds      []ID                             `json:"environment_ids"`
 
-	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter` and `mint`.
+	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
 	KeyIds        *[]ID                          `json:"key_ids,omitzero"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
@@ -6231,7 +6243,7 @@ type CLIReauthTransaction struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 
-	// KeyIds The enumerated unit the ceremony binds; empty for `adapter` and `mint`.
+	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
 	KeyIds      []ID                          `json:"key_ids"`
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`

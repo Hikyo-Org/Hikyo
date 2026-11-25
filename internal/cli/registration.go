@@ -87,7 +87,7 @@ func runAccessRegistration(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, registrationTable(policy))
 	case "set":
-		proof, err := ios.readPassword("Account-security proof (your TOTP code, or password if no factor): ")
+		proof, err := st.readProof(ios, "Account-security proof (your TOTP code, or password if no factor): ")
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func runAccessRegistration(ctx context.Context, ios IO, args []string) error {
 		fmt.Fprintf(ios.Stderr, "registration policy saved at %s; you are its authority (%s)\n", scope.label, policy.State)
 		return Render(ios.Stdout, FormatTable, registrationTable(policy))
 	default:
-		proof, err := ios.readPassword("Account-security proof (your TOTP code, or password if no factor): ")
+		proof, err := st.readProof(ios, "Account-security proof (your TOTP code, or password if no factor): ")
 		if err != nil {
 			return err
 		}

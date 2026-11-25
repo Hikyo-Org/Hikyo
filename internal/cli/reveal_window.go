@@ -128,8 +128,10 @@ func totpPromptSubject(purpose, env string) string {
 // is false, except for approve, reject, bypass, and emergency-access decisions.
 // Those decisions use their own authorization checks. Inline TOTP persists
 // the rotated session and updates the client's bearer. Window lookup, ceremony,
-// and session-persistence errors propagate. Emergency access has no browser
-// handoff here; without inline TOTP it returns a CLI authentication error.
+// and session-persistence errors propagate. Emergency access has a browser
+// handoff like a mint: the browser approval, where inline TOTP is not available.
+// `reauth.method = browser` and --approve-in-browser (State.approveInBrowser)
+// skip inline TOTP for every purpose that has a handoff, and refuse the rest.
 func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, artifact *SessionArtifact,
 	projectBase, env string, d disclosure, refusal error) error {
 	var window apigen.RevealWindow
@@ -146,7 +148,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	// here is stale and possibly bound to other keys. A new ceremony replaces it.
 	// An authorized caller arrives with the server's widening refusal over env, so
 	// a live window there does not satisfy it (typically one bound elsewhere).
-	if window.Live && !window.SingleDecision && !d.authorized {
+	// An unbound window satisfies emergency access too, so its refusal under a
+	// live one means that window is bound elsewhere; break-glass must not stall.
+	if window.Live && !window.SingleDecision && !d.authorized && d.purpose != "access" {
 		return nil
 	}
 	// Approval votes and bypasses require publish authority, not reveal. Their
@@ -170,40 +174,91 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	// enrolled authenticator; everything else is the browser's ceremony - the
 	// passkey where the window is 0, a passkey or the browser's own code entry
 	// where it slides but no authenticator stands on this account.
+	browser, err := st.approveInBrowser(client.Entry.Name)
+	if err != nil {
+		return err
+	}
 	inlineTOTP := window.EffectiveWindowSeconds > 0 && window.TotpOffered
-	if inlineTOTP {
+	// A chosen browser ceremony never falls back to a typed code and needs no
+	// enrollment check: where the purpose has no handoff, or no browser can be
+	// opened, it is refused below.
+	chosen := browser && inlineTOTP
+	if inlineTOTP && !browser {
 		var status apigen.TotpStatus
 		if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/auth/totp", nil, &status); err != nil {
 			return err
 		}
 		inlineTOTP = status.Confirmed
 	}
+	if chosen {
+		inlineTOTP = false
+	}
+	// The opener is built where a handoff will start, so a refusal for a purpose
+	// without one never blames the host's display.
+	opener := func() (func(string) error, error) {
+		if chosen {
+			return chosenBrowserOpener(ios, st, client.Entry.Name)
+		}
+		return ios.OpenURL, nil
+	}
 	if !inlineTOTP {
+		var cause, undo string
+		if chosen {
+			if cause, undo, err = st.browserChoice(client.Entry.Name); err != nil {
+				return err
+			}
+		}
 		// remedy is the one step that can open a window here: a protected
 		// environment has none, so raising its window would change nothing.
 		why := "its reveal window is 0"
 		remedy := fmt.Sprintf("raise the window with `hikyo project-settings set --env %s --reauth-window-seconds 300`", env)
 		switch {
+		case chosen:
+			why, remedy = "you chose the browser approval ("+cause+")", ""
 		case window.Protected:
 			why, remedy = "it is a protected environment", ""
 		case window.EffectiveWindowSeconds > 0:
 			why, remedy = "no authenticator is enrolled on this account",
 				fmt.Sprintf("enroll an authenticator with `hikyo account factor enrol-totp` or at %s", accountSecurityURL(client))
 		}
+		// suffix closes a refusal: the remedy as an alternative, or where the
+		// browser was chosen, the way back to a code prompt.
+		suffix := orRemedy(remedy)
+		if chosen {
+			suffix = "; or " + undo + " to enter an authenticator code here, if one is enrolled"
+		}
 		if d.purpose == "access" {
-			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
+			// The unit of emergency access is its environment, so it carries no keys (#1531).
+			if ios.OpenURL == nil {
+				return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s: the ceremony is the browser's, "+
+					"which this invocation cannot open; take it in the browser%s", env, why, suffix)
+			}
+			open, err := opener()
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(ios.Stderr, "emergency access in %s: %s, so the ceremony is the browser's. Opening it to authorize the access...\n", env, why)
+			return runCLIReauthHandoff(ctx, client, st, *artifact, d.purpose, "access.bypass", []string{env}, nil, open)
 		}
 		if d.purpose == "mint" {
 			// The unit of a mint is its environment, so it carries no keys (#1516).
 			if ios.OpenURL == nil {
 				return failf(ExitAuth, "a credential mint over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
-					"which this invocation cannot open; mint it in the browser's Machine access page%s", env, why, orRemedy(remedy))
+					"which this invocation cannot open; mint it in the browser's Machine access page%s", env, why, suffix)
+			}
+			open, err := opener()
+			if err != nil {
+				return err
 			}
 			_, _ = fmt.Fprintf(ios.Stderr, "credential mint over %s: %s, so the ceremony is the browser's. Opening it to authorize the mint...\n", env, why)
-			return runCLIReauthHandoff(ctx, client, st, *artifact, d.purpose, "identity.credential-mint", []string{env}, nil, ios.OpenURL)
+			return runCLIReauthHandoff(ctx, client, st, *artifact, d.purpose, "identity.credential-mint", []string{env}, nil, open)
 		}
 		if d.authorized && d.purpose == "" {
 			// The browser has no machine rule editor yet (issue 1541), so only a window helps.
+			if chosen {
+				return failf(ExitAuth, "a rule change that widens a machine in %s has no CLI browser handoff, and %s, "+
+					"so it cannot be made here%s", env, why, suffix)
+			}
 			if remedy == "" {
 				return failf(ExitAuth, "a rule change that widens a machine into the protected environment %s cannot be made yet: "+
 					"a protected environment has no reauthentication window, and the browser cannot edit machine rules yet", env)
@@ -213,16 +268,20 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		if d.purpose == "grant" {
 			// A machine reveal grant (`access grant`) has no CLI handoff: its
 			// ceremony runs on the browser's Machine access page.
+			if chosen {
+				return failf(ExitAuth, "a machine reveal grant over %s has no CLI browser handoff, and %s, "+
+					"so it cannot be taken here; make the grant in the browser's Machine access page%s", env, why, suffix)
+			}
 			return failf(ExitAuth, "a machine reveal grant over %s needs a reauthentication window and %s: the ceremony is the browser's, "+
-				"and the CLI has no handoff for grants; make the grant in the browser's Machine access page%s", env, why, orRemedy(remedy))
+				"and the CLI has no handoff for grants; make the grant in the browser's Machine access page%s", env, why, suffix)
 		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			if d.purpose == "publish" {
 				return failf(ExitAuth, "a publish in %s needs a reauthentication ceremony and %s: the ceremony is the browser's, "+
-					"which this invocation cannot open; complete the publish in the browser", env, why)
+					"which this invocation cannot open; complete the publish in the browser%s", env, why, chosenRemedy(chosen, suffix))
 			}
 			return failf(ExitAuth, "a disclosure in %s needs a reauthentication window and %s: the ceremony is the browser's, "+
-				"which this invocation cannot open; reveal it in the browser%s", env, why, orRemedy(remedy))
+				"which this invocation cannot open; reveal it in the browser%s", env, why, suffix)
 		}
 		keyIDs, err := d.keys(ctx, env)
 		if err != nil {
@@ -239,8 +298,12 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		if operation == "" {
 			return failf(ExitInternal, "unknown reauthentication purpose %q", d.purpose)
 		}
+		open, err := opener()
+		if err != nil {
+			return err
+		}
 		fmt.Fprintf(ios.Stderr, "disclosure in %s: %s, so the ceremony is the browser's. Opening it to authorize %d key(s)...\n", env, why, len(keyIDs))
-		return runCLIDisclosureReauth(ctx, client, st, *artifact, d.purpose, operation, env, keyIDs, ios.OpenURL)
+		return runCLIDisclosureReauth(ctx, client, st, *artifact, d.purpose, operation, env, keyIDs, open)
 	}
 	code, err := ios.readPassword(fmt.Sprintf(
 		"%s needs a reauthentication window (%ds). Enter the code from your authenticator: ",
@@ -280,4 +343,12 @@ func orRemedy(remedy string) string {
 		return ""
 	}
 	return ", or " + remedy
+}
+
+// chosenRemedy is the way back to a code prompt, only where the browser was chosen.
+func chosenRemedy(chosen bool, remedy string) string {
+	if chosen {
+		return remedy
+	}
+	return ""
 }

@@ -255,7 +255,17 @@ hikyo access request emergency --env <env-id> --capability reveal --reason "outa
 ```
 
 `emergency` needs a current reauthentication ceremony bound to the environment
-and a reason, and it is audited. `--duration` defaults to 1h, capped by the
+and a reason, and it is audited. The command asks for your authenticator code
+where the environment's window allows one. Where it does not (window 0, a
+protected environment, or no authenticator enrolled), it opens your browser to
+approve the access with a passkey, then continues; the approval covers that
+environment and no keys. If the browser cannot be opened the command fails, and when
+you chose the browser (`--approve-in-browser` or `reauth.method`) where a code would
+have worked, it refuses up front on a host other than macOS or Windows with none of `DISPLAY`,
+`WAYLAND_DISPLAY` and `BROWSER` set. At a 0-window or protected environment the
+handoff is the only way, so it is not refused up front there. The designation
+as a bypasser is checked when the access is taken, not when the browser approval
+is offered. `--duration` defaults to 1h, capped by the
 policy's `--max-duration`; an explicit longer duration is refused. It never
 changes the policy.
 

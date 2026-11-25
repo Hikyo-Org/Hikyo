@@ -58,7 +58,7 @@ func runAccountPassword(ctx context.Context, ios IO, args []string) error {
 	if !status.HasPassword {
 		proofPrompt = "TOTP code (to authorize setting a password): "
 	}
-	proof, err := ios.readPassword(proofPrompt)
+	proof, err := st.readProof(ios, proofPrompt)
 	if err != nil {
 		return err
 	}

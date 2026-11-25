@@ -19809,9 +19809,9 @@ components:
       description: |
         `adapter` carries an adapter-routing decision over an environment set.
         Every other purpose carries an exact environment and key set, except
-        `mint`, whose unit is its one environment and which carries no keys. The
-        browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-        names exactly the unit the decision covers.
+        `mint` and `access`, whose unit is their one environment and which carry
+        no keys. The browser runs the same purpose-bound ceremony the UI runs,
+        so `key_ids` names exactly the unit the decision covers.
       anyOf:
         - properties: {purpose: {enum: [developer-credential]}}
         - properties:
@@ -19820,15 +19820,15 @@ components:
       properties:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, self-config, developer-credential]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, access, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, access.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environment_ids: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
         key_ids:
           type: array
           uniqueItems: true
           maxItems: 10000
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter` and `mint`.
+          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
         pkce_challenge: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}
         redirect_uri:
           type: string
@@ -19880,13 +19880,13 @@ components:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
         state: {type: string, minLength: 1}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, self-config, developer-credential]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, access, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, access.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environments: {type: array, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit the ceremony binds; empty for `adapter` and `mint`.
+          description: The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
         redirect_uri: {type: string, format: uri}
         expires_at: {$ref: "#/components/schemas/Timestamp"}
 

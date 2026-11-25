@@ -32,7 +32,7 @@ func TestCLIReauthHandoffSchemaAdmitsEveryServicePair(t *testing.T) {
 				}
 				admitted++
 				keySet := "key_set"
-				if descriptor.purpose == PurposeAdapter || descriptor.purpose == PurposeMint {
+				if !cliReauthKeyBound(string(descriptor.purpose)) {
 					keySet = ""
 				}
 				now := time.Now()

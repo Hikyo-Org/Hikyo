@@ -37,6 +37,7 @@ const meta = z.zMeta.parse((await call('getMeta')).data);
 assert.equal(meta.server_version, 'current-server-skew-fixture');
 assert.ok(meta.api_revision >= 1);
 let mintChecked = false;
+let accessChecked = false;
 async function enrolledLogin() {
   client.setConfig({ headers: { Authorization: null } });
   const refused = await call('localLogin', {
@@ -92,6 +93,17 @@ async function enrolledLogin() {
       assert.equal(refusedMint.success, false, 'the v1.0.0 Zod transaction schema must reject a mint transaction');
       assert.deepEqual(refusedMint.error.issues.map(issue => issue.path.join('.')).sort(), ['operation', 'purpose'],
         'only the mint purpose and its operation are the failure, not any other field');
+    }
+    // The same narrow skew for the emergency access purpose (#1531).
+    if (!accessChecked) {
+      accessChecked = true;
+      const access = await call('showCliReauthTransaction', { headers: browserHeaders, path: { state: fixture.access_state } });
+      assert.equal(access.data.purpose, 'access');
+      assert.equal(access.data.operation, 'access.bypass');
+      const refusedAccess = z.zCliReauthTransaction.safeParse(access.data);
+      assert.equal(refusedAccess.success, false, 'the v1.0.0 Zod transaction schema must reject an access transaction');
+      assert.deepEqual(refusedAccess.error.issues.map(issue => issue.path.join('.')).sort(), ['operation', 'purpose'],
+        'only the access purpose and its operation are the failure, not any other field');
     }
     assert.equal(result.session.artifact, 'cli');
     assert.equal(result.principal.id, browser.principal.id);
@@ -195,4 +207,4 @@ const allOrgs = await call('listOrgs', { throwOnError: false });
 assert.equal(allOrgs.response.status, 403, 'instance-wide listing requires MFA');
 assert.equal(z.zError.parse(allOrgs.error).error.code, 'forbidden');
 await call('logout');
-console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit mldsa65 list rejected by the v1.0.0 Zod schemas while the SDK signs and verifies, CLI reauth mint transaction rejected by the v1.0.0 Zod schema, pki profile and issuer lists passed');
+console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit mldsa65 list rejected by the v1.0.0 Zod schemas while the SDK signs and verifies, CLI reauth mint and access transactions rejected by the v1.0.0 Zod schema, pki profile and issuer lists passed');
