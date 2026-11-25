@@ -282,8 +282,13 @@ request merges.
 - **Authority (D7).** Creating or revoking an all-projects rule needs Manage access over the
   complete selector in every current project and over projects created later. Only an
   organization- or instance-scope grant, or another all-projects rule, covers a future project, so a
-  manager holding `manage-members` in each current project only is refused. The conferred capability
-  follows the same bound, with the unheld-capability allowance of organization authority.
+  manager holding `manage-members` in each current project only, by grants or by project-bound
+  Manage-access rules, is refused. The conferred capability follows the same bound, with the
+  unheld-capability allowance of organization authority.
+- **Project listings.** On a project's Members page an all-projects rule is listed as manageable
+  when the viewer manages that project, the same as any rule over several projects. The listing
+  only offers the action: every create, revoke or replacement is proved again on the server over
+  all current projects and the future-project witness (D7).
 - **Key moves and pruning.** The D9 move-widening census includes all-projects rules. Deleting a
   project, environment or key never revokes an all-projects rule, which names none of them.
 

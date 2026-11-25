@@ -30,6 +30,7 @@ const (
 	apMachine  = domain.PrincipalID("mch_ap")
 	apInstance = domain.PrincipalID("usr_apinstance") // manage-members at instance scope
 	apPrjOnly  = domain.PrincipalID("usr_apprjonly")  // manage-projects at org_ap, no member management
+	apRuleMgr  = domain.PrincipalID("usr_aprulemgr")  // manage-members and read through project-bound rules only
 )
 
 type allProjectsFixture struct {
@@ -40,7 +41,7 @@ type allProjectsFixture struct {
 func seedAllProjectsFixture(t *testing.T, db *store.DB) allProjectsFixture {
 	t.Helper()
 	execRaw(t, db, `INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ('org_ap', 'org-ap', TRUE, '{}', `+ts+`)`)
-	for _, p := range []domain.PrincipalID{apAdmin, apPrjAdmin, apHolder, apInstance, apPrjOnly} {
+	for _, p := range []domain.PrincipalID{apAdmin, apPrjAdmin, apHolder, apInstance, apPrjOnly, apRuleMgr} {
 		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+string(p)+"', 'human', "+ts+")")
 	}
 	execRaw(t, db, "INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_ap', 'machine', 'automation', "+ts+")")
@@ -282,6 +283,35 @@ func runAllProjectsRules(t *testing.T, db *store.DB) {
 		}
 		if ruleCount(t, db, view.ID) != 1 {
 			t.Fatal("a refused revoke removed the rule")
+		}
+	})
+
+	// D7 also binds rule-delegated management: Manage-access rules naming every
+	// current project do not name the future-project witness.
+	t.Run("rule_delegated_management_does_not_cover_future_projects", func(t *testing.T) {
+		every := domain.Where{Projects: []domain.ProjectID{p1, p2}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}
+		for _, c := range []domain.Capability{domain.CapManageMembers, domain.CapRead} {
+			if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), service.RuleSpec{Target: apRuleMgr, Capability: c, Org: orgAP, Where: every}); err != nil {
+				t.Fatalf("give the rule manager %s over every project: %v", c, err)
+			}
+		}
+		_, err := f.rules.Create(ctx, service.LocalPrincipal(apRuleMgr), read(allProjectsWhere(domain.AxisAll)))
+		if !errors.Is(err, service.ErrRuleAllProjectsAuthority) {
+			t.Fatalf("rule-delegated manager's all-projects create = %v, want ErrRuleAllProjectsAuthority", err)
+		}
+		if err := f.rules.Revoke(ctx, service.LocalPrincipal(apRuleMgr), orgAP, view.ID); !errors.Is(err, service.ErrRuleAllProjectsAuthority) {
+			t.Fatalf("rule-delegated manager's all-projects revoke = %v, want ErrRuleAllProjectsAuthority", err)
+		}
+		if ruleCount(t, db, view.ID) != 1 {
+			t.Fatal("a refused revoke removed the rule")
+		}
+		// Positive control: the same delegated manager creates and revokes the explicit rule.
+		explicit, err := f.rules.Create(ctx, service.LocalPrincipal(apRuleMgr), read(every))
+		if err != nil {
+			t.Fatalf("rule-delegated manager's explicit rule over the same projects: %v", err)
+		}
+		if err := f.rules.Revoke(ctx, service.LocalPrincipal(apRuleMgr), orgAP, explicit.ID); err != nil {
+			t.Fatalf("rule-delegated manager revokes the explicit rule: %v", err)
 		}
 	})
 
