@@ -449,23 +449,23 @@ func TestQueueRetryWaitKeepsTheReserveForGroupJobs(t *testing.T) {
 		trustedRun("ci-queue-worker.yml", 3, failedGroupJob(31, "group-"+waitHead, "Reconcile one authenticated head without borrowing another lease")),
 	}
 	// Costs are counted before a rerun spends: the group job (41) may use the reserve, each
-	// other job (42) must leave 250 after it and after everything released before it.
+	// other job (42) must leave 480 after it and after everything released before it.
 	t.Run("below the reserve", func(t *testing.T) {
-		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 300, runs: runs}
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 530, runs: runs}
 		_, out, err := f.run()
 		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"31"}) || !strings.Contains(out, "Held to protect the window: job:21 job:11") {
 			t.Fatalf("below the reserve only the group job may spend: %v %v\n%s", err, f.accepted(), out)
 		}
 	})
 	t.Run("one request short of every job", func(t *testing.T) {
-		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 374, runs: runs}
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 604, runs: runs}
 		_, out, err := f.run()
 		if err == nil || !reflect.DeepEqual(f.accepted(), []string{"31", "21"}) || !strings.Contains(out, "Held to protect the window: job:11") {
 			t.Fatalf("the last job would cross the reserve: %v %v\n%s", err, f.accepted(), out)
 		}
 	})
 	t.Run("exactly enough for every job", func(t *testing.T) {
-		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 375, runs: runs}
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 605, runs: runs}
 		_, out, err := f.run()
 		if err != nil || !reflect.DeepEqual(f.accepted(), []string{"31", "21", "11"}) {
 			t.Fatalf("every job fits, group jobs first: %v %v\n%s", err, f.accepted(), out)
@@ -493,10 +493,10 @@ func TestQueueRetryWaitCountsInFlightRerunsAgainstTheBudget(t *testing.T) {
 	}
 	// The live remaining never drops (spend 0): only the projection can stop the release.
 	t.Run("other jobs", func(t *testing.T) {
-		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 344, runs: otherRuns()}
+		f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 574, runs: otherRuns()}
 		_, out, err := f.run()
 		if err == nil || len(f.accepted()) != 2 || !strings.Contains(out, "Held to protect the window:") {
-			t.Fatalf("344 left allows two 42-request reruns above the 250 reserve, no more: %v %v\n%s", err, f.accepted(), out)
+			t.Fatalf("574 left allows two 42-request reruns above the 480 reserve, no more: %v %v\n%s", err, f.accepted(), out)
 		}
 	})
 	t.Run("group jobs", func(t *testing.T) {
@@ -512,9 +512,9 @@ func TestQueueRetryWaitCountsInFlightRerunsAgainstTheBudget(t *testing.T) {
 func TestQueueRetryWaitStillWaitsWhenOnlyTheReserveIsGone(t *testing.T) {
 	now := int64(1795475603)
 	run := trustedRun("ci-queue-gate.yml", 1, failedGroupJob(11, "publish-"+waitHead, "Reconcile one authenticated head"))
-	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 249, runs: []waitRun{run}}
-	// 240 of 1000 is 24 percent, above the tenth the old rule kept, but below the 250 reserve.
-	f.preReset = 240
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 479, runs: []waitRun{run}}
+	// 470 of 1000 is 47 percent, above the tenth the old rule kept, but below the 480 reserve.
+	f.preReset = 470
 	recorded, _, _ := f.run()
 	if !strings.Contains(recorded, "sleep 605") {
 		t.Fatalf("below the reserve the wait must sleep to the reset:\n%s", recorded)
@@ -610,12 +610,12 @@ func TestQueueRetryWaitIgnoresRunsOlderThanThreeHours(t *testing.T) {
 }
 
 // Reproduces the gap between the Go deferral and the retry: a dev job that fails while
-// 250 to 291 requests remain (above the reserve, below reserve plus its own cost) was
+// 480 to 521 requests remain (above the reserve, below reserve plus its own cost) was
 // deferred by nobody and rerun by nobody. It now waits for the reset and is rerun once.
 func TestQueueRetryWaitReleasesANonGroupJobHeldBetweenTheReserveAndItsCost(t *testing.T) {
 	now := int64(1795475603)
 	run := trustedRun("ci-dev-gate.yml", 1, failedGroupJob(11, "dev-publish-"+waitHead, "Reconcile exact-head dev admission"))
-	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, preReset: 270, runs: []waitRun{run}}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, preReset: 500, runs: []waitRun{run}}
 	recorded, out, err := f.run()
 	if err != nil || !strings.Contains(recorded, "sleep 605") || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
 		t.Fatalf("a job held between the reserve and reserve plus cost must wait for the reset and be rerun: %v accepted=%v\n%s\n%s", err, f.accepted(), recorded, out)
@@ -631,17 +631,18 @@ func TestQueueRetryWaitReleasesANonGroupJobHeldBetweenTheReserveAndItsCost(t *te
 func TestQueueRetryWaitReleasesHeldGroupJobsAfterOneReset(t *testing.T) {
 	now := int64(1795475603)
 	var runs []waitRun
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 12; i++ {
 		runs = append(runs, trustedRun("ci-queue-worker.yml", 10+i, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile one authenticated head without borrowing another lease")))
 	}
-	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 300, runs: runs}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 480, runs: runs}
 	if err := os.WriteFile(filepath.Join(f.dir, "slept"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	recorded, out, err := f.run()
-	// 300 left fits two 41-request group reruns above a fifth of 1000; after the one reset two more fit.
-	want := []string{"104", "103", "102", "101"}
-	if err == nil || !reflect.DeepEqual(f.accepted(), want) || strings.Count(recorded, "sleep 575") != 1 || !strings.Contains(out, "Held to protect the window: job:100") {
+	// 480 left fits seven 41-request group reruns above a fifth of 1000; the other five wait for
+	// the one reset and are released after it, newest run first.
+	want := []string{"111", "110", "109", "108", "107", "106", "105", "104", "103", "102", "101", "100"}
+	if err != nil || !reflect.DeepEqual(f.accepted(), want) || strings.Count(recorded, "sleep 515") != 1 || !strings.Contains(out, "Held for the reserve: waiting for the reset") {
 		t.Fatalf("held group jobs wait for the reset once and are released once, newest run first: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
 	}
 }
@@ -683,7 +684,7 @@ func deadlineWaitRun(t *testing.T, resetIn int64) (string, string, error) {
 	step := "Reconcile one authenticated head without borrowing another lease"
 	var runs []waitRun
 	failures := map[string]int{}
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 14; i++ {
 		runs = append(runs, trustedRun("ci-queue-worker.yml", 10+i, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), step)))
 	}
 	// Two released reruns are refused every time (80 s each with their backoff) and five
@@ -696,7 +697,7 @@ func deadlineWaitRun(t *testing.T, resetIn int64) (string, string, error) {
 		failing = append(failing, trustedRun("ci-dev-gate.yml", 30+i, failedGroupJob(300+i, "dev-publish-"+fmt.Sprintf("%040x", 50+i), "Reconcile exact-head dev admission")))
 		listFail[30+i] = 99
 	}
-	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + resetIn, recovers: true, limit: 1000, after: 300, runs: append(runs, failing...), failures: failures, listFail: listFail}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + resetIn, recovers: true, limit: 1000, after: 480, runs: append(runs, failing...), failures: failures, listFail: listFail}
 	if err := os.WriteFile(filepath.Join(f.dir, "slept"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -173,12 +173,12 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"replaced pending reconcile is not rerun", []string{replaced(1, "publish-"+head), job(2, "publish-"+head, "failure", reconcile), replaced(3, "group-"+head)}, "1", healthy, []int{2}, false, ""},
 		{"only replaced pending reconciles", []string{replaced(1, "publish-"+head), replaced(2, "dev-publish-"+head)}, "1", healthy, nil, false, ""},
 		{"nothing is rerun while the budget is spent", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", spent, nil, false, "40 of 5000"},
-		// The reserve (250) is for merge-group jobs: another job is rerun only while its expected
+		// The reserve (480) is for merge-group jobs: another job is rerun only while its expected
 		// cost (42 reads) still leaves the reserve, the same rule the job itself defers on.
-		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "291 1000 1795475603", nil, false, "Held for the group reserve (291 of 1000"},
-		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "292 1000 1795475603", []int{1}, false, ""},
+		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
+		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603", []int{1}, false, ""},
 		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
-		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "291 1000 1795475603", nil, false, "Held for the group reserve"},
+		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve"},
 		{"a group job below the reserve is rerun while the publisher waits", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
 		{"a group job at fifteen percent is rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "150 1000 1795475603", []int{1}, false, ""},
 		// GitHub refuses a rerun of another job while the run is active again: one rerun per run.

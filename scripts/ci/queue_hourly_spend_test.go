@@ -67,8 +67,8 @@ func reserveConstants(t *testing.T) (reserve, nonGroupCost, groupCost int) {
 
 func TestReserveConstantsAgreeAcrossGoAndShell(t *testing.T) {
 	reserve, nonGroupCost, groupCost := reserveConstants(t)
-	if reserve != 250 || nonGroupCost != 42 || groupCost != 41 {
-		t.Fatalf("the documented figures changed (250, 42, 41), update docs/development/ci.md and the PR derivation: %d %d %d", reserve, nonGroupCost, groupCost)
+	if reserve != 480 || nonGroupCost != 42 || groupCost != 41 {
+		t.Fatalf("the documented figures changed (480, 42, 41), update docs/development/ci.md and the PR derivation: %d %d %d", reserve, nonGroupCost, groupCost)
 	}
 }
 
@@ -104,21 +104,22 @@ func TestIncidentHourSpendIsPinned(t *testing.T) {
 	// jobs started at the margin still finish.
 	gatedBound := limit - (reserve + nonGroupCost) + concurrency*nonGroupCost
 	spent := min(gatedDemand, gatedBound) + ungated + group
+	// The worst case of the reserve's own derivation: two overlapping groups of three attempts.
+	groupWorst := 2 * 3 * groupCost
+	worst := min(gatedDemand, gatedBound) + ungated + groupWorst
 	if gatedDemand <= gatedBound {
 		t.Fatalf("incident demand %d fits under the gated bound %d, the throttle would not be what holds it", gatedDemand, gatedBound)
 	}
-	if spent != 1149 || gatedBound != 876 || ungated != 232 {
-		t.Fatalf("pinned figures changed: spent %d (want 1149), gated bound %d (want 876), ungated %d (want 232)", spent, gatedBound, ungated)
+	// The reserve must cover what nothing defers plus the groups: otherwise a merge group
+	// can be starved by this repository's own spend and delayed past its timeout.
+	if ungated+group > reserve || ungated+groupWorst > reserve {
+		t.Fatalf("the reserve %d does not cover ungated %d plus a group pass %d (worst %d)", reserve, ungated, group, groupWorst)
 	}
-	// The owner accepts about 25% over the limit as delay only.
-	if over := spent - limit; over > limit/4 {
-		t.Fatalf("the throttled hour overshoots by %d, more than the accepted quarter", over)
+	// The owner accepts about 25% over the limit, as delay only.
+	if worst > limit+limit/4 {
+		t.Fatalf("the worst case %d overshoots the accepted quarter", worst)
 	}
-	// Where the excess lands: once gated work stops, what is left for group passes is the limit
-	// less everything spent. Ungated work plus one group pass exceeds the reserve by 23, and
-	// with 4 jobs in flight at the margin nothing is left (-149): a group pass can be
-	// rate-limited, which delays that merge group to the reset (it is not dropped).
-	if left := limit - spent; left >= 0 || ungated+group-reserve != 23 {
-		t.Fatalf("the reserve now covers ungated work plus a group pass (left %d, shortfall %d); update the PR body and ci.md", left, ungated+group-reserve)
+	if spent != 919 || worst != 1124 || gatedBound != 646 || ungated != 232 {
+		t.Fatalf("pinned figures changed: spent %d (want 919), worst %d (want 1124), gated bound %d (want 646), ungated %d (want 232)", spent, worst, gatedBound, ungated)
 	}
 }

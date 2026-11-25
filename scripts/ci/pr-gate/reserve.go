@@ -10,11 +10,12 @@ import (
 // groupReserve is the share of the shared token's hourly API window kept for the
 // merge-queue group jobs (#1553). Merge CI takes 36 to 73 minutes, so at most two groups
 // finish in one window, and each may run three attempts of about 41 reads: 2 x 3 x 41 =
-// 246, rounded up to 250. Every job that does not gate a merge-queue head checks
+// 246, plus the 232 requests an hour that nothing defers (event discovery, retry listings,
+// other workflows): 478, rounded up to 480. Every job that does not gate a merge-queue head checks
 // the free rate_limit endpoint first and defers instead of spending below it. Keep it in
-// step with `reserve=250` in .github/workflows/ci-queue-retry.yml and the sweep in
+// step with `reserve=480` in .github/workflows/ci-queue-retry.yml and the sweep in
 // scripts/ci/discover-dev-prs.sh.
-const groupReserve = 250
+const groupReserve = 480
 
 // nonGroupCost is the expected cost of one non-group pass (a dev publish takes about 42
 // reads). A job that passes the check must also afford itself, so it defers below

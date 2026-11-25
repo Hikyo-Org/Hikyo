@@ -242,12 +242,12 @@ run 2>/dev/null >/dev/null
 grep -q 'created=%3E%3D20' "$work/schedule.calls" || { printf 'the schedule count must be bounded to the current epoch\n' >&2; exit 1; }
 printf '1000\n' >"$work/schedule.count"
 [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'a capped count must still sweep the cap\n' >&2; exit 1; }
-# Below the reserve plus one publisher's cost (250 + 42, in either bucket) the sweep selects nothing and a PR event is unaffected.
+# Below the reserve plus one publisher's cost (480 + 42, in either bucket) the sweep selects nothing and a PR event is unaffected.
 printf '7\n' >"$work/schedule.count"
 for bucket in core graphql; do
-  jq -n --arg b "$bucket" '{resources:{core:{remaining:900},graphql:{remaining:900}}} | .resources[$b].remaining = 291' >"$work/rate.json"
+  jq -n --arg b "$bucket" '{resources:{core:{remaining:900},graphql:{remaining:900}}} | .resources[$b].remaining = 521' >"$work/rate.json"
   [ "$(run 2>/dev/null)" = '[]' ] || { printf 'the sweep must defer with %s one below the reserve plus a publisher\n' "$bucket" >&2; exit 1; }
-  jq '.resources[$b].remaining = 292' --arg b "$bucket" "$work/rate.json" >"$work/rate.next"
+  jq '.resources[$b].remaining = 522' --arg b "$bucket" "$work/rate.json" >"$work/rate.next"
   mv "$work/rate.next" "$work/rate.json"
   [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'the sweep must run with %s at the reserve plus a publisher\n' "$bucket" >&2; exit 1; }
 done

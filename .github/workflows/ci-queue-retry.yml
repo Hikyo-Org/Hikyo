@@ -4,7 +4,7 @@
 # here: each rerun is a new job with its own budget. Nothing is rerun while the
 # shared token's rate limit is nearly spent; rerun-after-reset then waits for the reset and
 # reruns them. A merge-group head must not lose the shared window to everything else, so
-# the last 250 requests of it (the reserve, see docs/development/ci.md) are for group
+# the last 480 requests of it (the reserve, see docs/development/ci.md) are for group
 # jobs: any other job is rerun only while its cost (42 reads) still leaves that many, and group jobs go
 # first. The run attempt is the only loop bound, so this
 # can neither loop nor multiply: attempt 3 publishes the terminal refusal. This
@@ -63,14 +63,14 @@ jobs:
           # budget that just failed it. Reading rate_limit does not count against the limit.
           # Keep a tenth of it free (about one reconcile's worth of reads on the 1000 per hour
           # repository token) and, for any job that does not gate a merge-queue head, the
-          # reserve (250 requests: two overlapping merge groups of three attempts at about 41
-          # reads each) for group jobs: it is rerun only while its expected cost (42 reads)
+          # reserve (480 requests: the 232 that nothing can defer, plus two overlapping merge
+          # groups of three attempts at about 41 reads each) for group jobs: it is rerun only while its expected cost (42 reads)
           # still leaves the reserve, the same rule the job itself defers on. Below that, hand
           # the run to rerun-after-reset, which reruns it after the reset, or leave it to the
           # operator (gh workflow run ci-queue-gate.yml -f pr_number=<n>). The core and graphql
           # buckets are separate; the one with the fewest requests left decides, the
           # absolute count the Go gate checks per bucket.
-          reserve=250
+          reserve=480
           other_cost=42
           read -r remaining limit reset < <(gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset | todate)"')
           [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]]
@@ -161,7 +161,7 @@ jobs:
     # the set wanted. Reruns are spaced, and each is counted at its expected cost (41 reads
     # for a group job, 42 otherwise) against the remaining budget before it is released,
     # because a released rerun spends only after it starts: it stops while that projection
-    # would cross a fifth of the window (non-group jobs: the 250-request reserve), so the
+    # would cross a fifth of the window (non-group jobs: the 480-request reserve), so the
     # burst cannot re-exhaust the window it waited for. Jobs it stops before stay failed with
     # their check pending. Only another failed gate run starts a new wait, so nothing
     # completes a held job automatically: the operator command, gh workflow run
@@ -191,9 +191,10 @@ jobs:
           started=$(date +%s)
           # Requests kept for merge-group jobs: two overlapping merge groups (CI takes 36 to 73
           # minutes, so at most two groups finish within one window) of three attempts at about
-          # 41 reads each is 246, rounded to 250. Keep in step with groupReserve in
+          # 41 reads each is 246, plus the 232 requests a window spends on work that cannot defer
+          # (event discovery, retry listings, other workflows) is 478, rounded to 480. Keep in step with groupReserve in
           # scripts/ci/pr-gate/reserve.go and the other readers of rate_limit.
-          reserve=250
+          reserve=480
           group_cost=41
           other_cost=42
           budget() { # sets remaining, limit and reset (epoch seconds) of the bucket (core or graphql) with the fewest requests left, from the free rate_limit read; returns 1 when that read fails

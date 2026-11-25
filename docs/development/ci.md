@@ -398,7 +398,7 @@ requests left decides, the absolute count the Go gate checks per bucket) and, wh
 nothing and hands the run to the `rerun-after-reset` job. Group jobs are rerun first,
 and any other job is rerun only while its expected cost (42 reads) still leaves the
 reserve (see "API reserve for merge-queue groups" below), which is also the threshold
-below which the job defers itself (it defers when `remaining - 42 < 250`, in either
+below which the job defers itself (it defers when `remaining - 42 < 480`, in either
 bucket); the others are held and handed straight to the wait, so a deferral costs
 no attempt it cannot recover. That job is a designed wait: it sleeps
 until the window's reset plus 5 seconds (refusing a reset more than 61 minutes away),
@@ -408,8 +408,8 @@ rule and attempt bound. It pages through every failed and cancelled run of that 
 (status and `created` filters, `--paginate`), with no fixed run count, and requests one
 rerun per run as above. A window that has already recovered when the job starts (a reset
 passed in between, or the sleeper queued behind another) skips only the sleep; the sweep
-still runs. If a non-group job then does not fit above the reserve (remaining between 250
-and 291, say), the job waits for the reset once and releases the held set once; a hold
+still runs. If a non-group job then does not fit above the reserve (remaining between 480
+and 521, say), the job waits for the reset once and releases the held set once; a hold
 that only group jobs suffer also waits for the reset once and releases the held group jobs, newest run per job name first (job names carry the kind and head, `group-<head>` for a group worker job and `publish-<head>` otherwise, so a group job is classified as a group job). The wait never sleeps past 66 minutes from its start (the second sleep is capped at the time left minus the 65 seconds the budget read after it can back off) and names the held jobs when the reset is later. The reruns are spaced 15 seconds apart. A released rerun spends only after
 it starts, so the live `rate_limit` does not show it yet: each is counted at its expected
 cost (41 reads for a group job, 42 otherwise) against the lower of the live remaining and
@@ -450,18 +450,18 @@ Merge CI takes 36 to 73 minutes (measured) and the `group-<sha>` job starts only
 it, so a merge-queue head cannot afford to lose the shared window to everything else:
 a wait of up to 60 minutes plus the rerun would exceed the 120-minute queue timeout.
 Within option A (the repository's `GITHUB_TOKEN`, no App token) the root fix is a
-reserve of 250 requests of the 1,000 per hour. Every job that does not gate a
+reserve of 480 requests of the 1,000 per hour. Every job that does not gate a
 merge-queue head (dev publishers, queue PR-admission publishers and head workers, the
 retirement jobs, the retry reruns of such jobs, and the scheduled dev sweep) first
 reads `rate_limit`, which costs nothing, and defers while either the core or the
-graphql bucket would be left with fewer than 250 after the job's own expected cost
-(42 reads), that is, below 292: it spends and writes nothing, its Reconcile
+graphql bucket would be left with fewer than 480 after the job's own expected cost
+(42 reads), that is, below 522: it spends and writes nothing, its Reconcile
 step fails, and the retry and wait workflows rerun it after the reset. A retirement
 job (`tidy-checks`) is not one the retry follows: its deferral is completed by the next
 hourly discovery, a push or a manual dispatch, which is acceptable because it only
 retires records of heads that are no longer active and so gates no merge. To a
 contributor a deferral looks like a red gate job whose log says "deferred: ... too few to
-leave the 250 kept for merge-group jobs after this job's own 42; this job spent nothing and
+leave the 480 kept for merge-group jobs after this job's own 42; this job spent nothing and
 is rerun after the reset"; the
 retry hands it to the wait job, which reruns it after the reset. The last run attempt
 spends instead of deferring, since nothing reruns after it; a spent window there ends as
@@ -472,9 +472,9 @@ next sweep) does. A group job
 (plain `--queue`, `--head-worker group`, the group repair and the worker dispatch) may
 spend into the reserve and is rerun first. The number is the measured group cost (about 41
 calls) times two overlapping merge groups (`max_entries_to_build` is 1, and merge CI of
-36 to 73 minutes lets at most two finish in one window) times three attempts: 246,
-rounded to 250. It lives in `groupReserve` (`scripts/ci/pr-gate/reserve.go`),
-`reserve=250` in `ci-queue-retry.yml` and `scripts/ci/discover-dev-prs.sh`. A deferred
+36 to 73 minutes lets at most two finish in one window) times three attempts: 246, plus the 232 requests an hour that nothing can defer
+(event discovery 102, retry listings about 30, other workflows about 100): 478, rounded to 480. It lives in `groupReserve` (`scripts/ci/pr-gate/reserve.go`),
+`reserve=480` in `ci-queue-retry.yml` and `scripts/ci/discover-dev-prs.sh`. A deferred
 job writes nothing, so a record already on the head stays as it is until the rerun; a
 feedback rerun's pending barrier can therefore be delayed by up to one window. A group
 job is rate-limited much less often, not never. The reserve covers the completed
@@ -483,8 +483,8 @@ group's `requested` callback (measured on the fixtures: 17 reads and 1 write, ab
 about 36 more for two groups), the worker dispatch (a group job, which never defers),
 the other workflows (under about 100 an hour, which do not check the reserve) and
 concurrent non-group jobs that all pass the check together and then spend 42 each. Group
-demand alone can exceed 250 within an hour, and so can the overshoot of those others.
-The ungated spend (event discovery 102, retry listings about 30, other workflows about 100: 232) plus one group pass exceeds the reserve by 23, so the throttled incident hour is bounded at 1,149 requests (876 gated, pinned by `TestIncidentHourSpendIsPinned`), about 15% over, and a group pass can be rate-limited. `R` was not enlarged for them (that would shift every threshold); the residual is
+demand alone can exceed 480 within an hour, and so can the overshoot of those others.
+The ungated spend (232) is part of R, so the throttled incident hour is bounded at 919 requests (gated bound 646, pinned by `TestIncidentHourSpendIsPinned`) and even two groups of three attempts (246) leave 1,124, within the quarter the owner accepted. The residual is
 completed by
 `gh workflow run ci-queue-gate.yml -f pr_number=<n>`, which also completes a group
 job that reached attempt 3 rate-limited (nothing reruns it automatically). The dispatch
@@ -610,7 +610,7 @@ start, at most 720 runs) and the epoch number is added as a stable offset: windo
 consecutive within an epoch and the sequence restarts at an arbitrary offset once per
 epoch, a shift of at most one cycle (a `shortcut:` in the script; a persisted cursor would
 remove it and needs a write the job does not have). If the count cannot be read the clock hour stands in. Unless a bucket can afford
-one publisher above the reserve (292) the sweep selects nothing. The cap delays drift detection and recovery of a
+one publisher above the reserve (522) the sweep selects nothing. The cap delays drift detection and recovery of a
 missed event by up to that many hours; it removes neither, and no correctness depends
 on it, because events and the retry path settle checks first. An empty selection leaves the run green and
 skips the publisher job.

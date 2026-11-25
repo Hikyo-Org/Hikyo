@@ -6,13 +6,13 @@ set -euo pipefail
 [[ "$GH_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dev-discovery.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-# The reserve (250 requests, see docs/development/ci.md and groupReserve in
+# The reserve (480 requests, see docs/development/ci.md and groupReserve in
 # scripts/ci/pr-gate/reserve.go) belongs to merge-queue group jobs. The sweep spends
 # nothing it could do without, so it selects no PR unless a bucket can afford one
 # publisher (its 42 reads, nonGroupCost) above the reserve, the threshold the publishers
 # defer on; events, dispatch and pushes still reach the publishers, which defer on their
 # own. The read is free, and a failed one does not stop the sweep.
-reserve=250
+reserve=480
 cost=42
 if [[ $GITHUB_EVENT_NAME == schedule ]] &&
   low=$(gh api rate_limit --jq ".resources | [.core, .graphql] | map(select(. != null and .remaining - $cost < $reserve)) | length" 2>/dev/null) &&
