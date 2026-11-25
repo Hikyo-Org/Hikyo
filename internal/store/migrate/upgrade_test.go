@@ -74,12 +74,18 @@ func runMCPAuditOriginRollback(t *testing.T, cfg store.Config) {
 // pointed at it (migration tests run migrate.Run against the config themselves).
 func postgresTestConfig(t *testing.T, label string) store.Config {
 	t.Helper()
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
+	return postgresTestConfigFrom(t, "HIKYO_TEST_POSTGRES_DSN", label)
+}
+
+// postgresTestConfigFrom is postgresTestConfig against the server named by envName.
+func postgresTestConfigFrom(t *testing.T, envName, label string) store.Config {
+	t.Helper()
+	dsn := os.Getenv(envName)
 	if dsn == "" {
 		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres migration leg must not silently skip in CI")
+			t.Fatalf("CI run without %s: the postgres migration leg must not silently skip in CI", envName)
 		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
+		t.Skipf("%s not set", envName)
 	}
 	parsed, err := url.Parse(dsn)
 	if err != nil {

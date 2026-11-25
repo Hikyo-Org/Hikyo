@@ -1,7 +1,7 @@
--- hikyo:reason refusal accounting bounds each lock wait and statement server-side so an abandoned attempt cannot keep waiting on or holding the singleton row past the caller's deadline
+-- hikyo:reason refusal accounting bounds each lock wait, each statement and the whole transaction server-side so an abandoned or idle attempt cannot keep waiting on or holding the singleton row past the caller's deadline
 -- hikyo:authn-resolution
 -- name: BoundAuthRefusalTransaction :exec
-SELECT set_config('lock_timeout', sqlc.arg(timeout_ms)::text, true), set_config('statement_timeout', sqlc.arg(timeout_ms)::text, true);
+SELECT set_config('lock_timeout', sqlc.arg(timeout_ms)::text, true), set_config('statement_timeout', sqlc.arg(timeout_ms)::text, true), set_config('transaction_timeout', sqlc.arg(timeout_ms)::text, true);
 
 -- hikyo:reason singleton pre-auth refusal accounting reads datastore time and bounded state under its transaction owner
 -- hikyo:authn-resolution
