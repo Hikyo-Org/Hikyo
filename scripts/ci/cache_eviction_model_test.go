@@ -225,7 +225,7 @@ var (
 
 // newCacheModel loads the listing, applies the prune once and the by-hand deletion of the unfamilied
 // seeds, and adds what the listing does not hold. quiet marks a weekend: nothing is busy.
-func newCacheModel(t *testing.T, quiet bool) (*cacheModel, []apiCacheEntry, time.Time) {
+func newCacheModel(t *testing.T, quiet bool, scales map[string]float64) (*cacheModel, []apiCacheEntry, time.Time) {
 	t.Helper()
 	repo := repositoryRoot(t)
 	raw, err := os.ReadFile(filepath.Join(repo, cachePruneWorkflow))
@@ -254,6 +254,11 @@ func newCacheModel(t *testing.T, quiet bool) (*cacheModel, []apiCacheEntry, time
 		accessed, err := time.Parse(time.RFC3339Nano, c.Accessed)
 		if err != nil {
 			t.Fatal(err)
+		}
+		for prefix, scale := range scales {
+			if strings.HasPrefix(c.Key, prefix) {
+				c.Size = int64(float64(c.Size) * scale)
+			}
 		}
 		m.entries = append(m.entries, &modelEntry{apiCacheEntry: c, created: created, accessed: accessed, busy: !quiet && listedAt.Sub(accessed) <= 90*time.Minute})
 	}
@@ -300,7 +305,7 @@ func TestCacheBudgetModel(t *testing.T) {
 	// A weekday: the measured per-push CodeQL churn (the listing's overlay entries, one day later),
 	// the main seed at 03:32, a dev push at 09:10, the prune every hour at :47.
 	t.Run("weekday", func(t *testing.T) {
-		m, before, listedAt := newCacheModel(t, false)
+		m, before, listedAt := newCacheModel(t, false, nil)
 		m.low, m.peak = 0, 0
 		start, end := listedAt, listedAt.Add(24*time.Hour)
 		m.now = start
@@ -338,13 +343,13 @@ func TestCacheBudgetModel(t *testing.T) {
 	// Monday 04:11: the weekly lint driver entry (1.7 GB) is saved after a quiet weekend. The old
 	// week's entry was last looked up at 04:10, fresher than every seed; the main seed was saved at
 	// 03:32, the dev seed was last restored on Friday.
-	t.Run("monday rollover", func(t *testing.T) {
-		m, _, _ := newCacheModel(t, true)
+	monday := func(t *testing.T, scales map[string]float64) *cacheModel {
+		m, _, _ := newCacheModel(t, true, scales)
 		friday := time.Date(2026, 11, 27, 20, 30, 0, 0, time.UTC)
-		monday := time.Date(2026, 11, 30, 4, 0, 0, 0, time.UTC)
+		start := time.Date(2026, 11, 30, 4, 0, 0, 0, time.UTC)
 		var old *modelEntry
 		for _, e := range m.entries {
-			if e.seed != "main" && e.created.Before(monday) {
+			if e.seed != "main" && e.created.Before(start) {
 				e.accessed = friday
 			}
 			if strings.HasPrefix(e.Key, "go-lintdriver-v2-") {
@@ -359,13 +364,17 @@ func TestCacheBudgetModel(t *testing.T) {
 		}
 		old.accessed = time.Date(2026, 11, 30, 4, 10, 0, 0, time.UTC)
 		size := old.Size
-		m.now = monday
+		m.now = start
 		m.low, m.peak = 0, 0
 		events := []modelEvent{{time.Date(2026, 11, 30, 4, 11, 0, 0, time.UTC), func() {
 			m.add("go-lintdriver-v2-Linux-X64-ubuntu26-"+strings.Repeat("a", 64)+"-2026-W49", "refs/heads/main", size, "", false)
 		}}}
-		events = append(events, hourly(monday, monday.Add(8*time.Hour), 47, m.prune)...)
+		events = append(events, hourly(start, start.Add(8*time.Hour), 47, m.prune)...)
 		m.play(events)
+		return m
+	}
+	t.Run("monday rollover", func(t *testing.T) {
+		m := monday(t, nil)
 		t.Log(m.report("monday rollover"))
 		m.requireDemand(t, 10.04)
 		if len(m.seedLost) == 0 {
@@ -373,9 +382,18 @@ func TestCacheBudgetModel(t *testing.T) {
 		}
 	})
 
+	// The same Monday with the three measured shrinks applied (docs/development/ci.md): DWARF off in
+	// the k8s-e2e entry (898 to 755 MB zstd, x0.84), DWARF off in the lint driver (1135 to 905 MB,
+	// x0.80) and the module cache holding only cache/download (791 to 437 MB, x0.55).
+	t.Run("monday rollover with the measured shrinks", func(t *testing.T) {
+		m := monday(t, map[string]float64{"go-k8s-e2e-v2-": 0.84, "go-lintdriver-v2-": 0.80, "go-mod-v2-": 0.55})
+		t.Log(m.report("monday rollover, shrunk"))
+		m.requireDemand(t, 8.97)
+	})
+
 	// Sunday 20:31: the weekly fuzz entries (0.44 GB) are saved on top of a quiet weekend.
 	t.Run("sunday fuzz rollover", func(t *testing.T) {
-		m, before, _ := newCacheModel(t, true)
+		m, before, _ := newCacheModel(t, true, nil)
 		friday := time.Date(2026, 11, 27, 20, 30, 0, 0, time.UTC)
 		sunday := time.Date(2026, 11, 29, 20, 0, 0, 0, time.UTC)
 		for _, e := range m.entries {

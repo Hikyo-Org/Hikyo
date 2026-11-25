@@ -89,45 +89,69 @@ provider-generated and historical entries; deleting YAML does not erase history.
 
 The repository uses GitHub's default 10 GB Actions cache limit; it cannot be raised (the storage-limit
 endpoint answers 402 to the workflow token). Past the limit GitHub evicts by least recent access,
-whatever the entry is. `ci-cache-prune.yml` makes the dead entries go first, so the live ones, above
-all the newest main and dev feedback seeds, are not what gets evicted.
+whatever the entry is. `ci-cache-prune.yml` removes the dead entries first, hourly, so the live ones,
+above all the newest main and dev feedback seeds, are not what gets evicted. Enforcement is not
+immediate: the repository sat at 10.646 GB, over the limit, in two listings 12 hours apart with
+entries from 11-10 still present. The model below assumes immediate eviction, the worst case.
 
-Measured on 2026-11-25 (`gh api repos/<repo>/actions/caches`, 38 entries, all on `refs/heads/main`,
-none on a pull-request ref, since every writer is main-only): 10.646 GB, already over the limit.
-Applying the workflow's own jq to that listing deletes 10 entries and 1.823 GB: nine superseded CodeQL
-overlay databases (three per language) and the older `go-feedback-v1`. The two old unfamilied
-`go-feedback-v2` entries (0.64 GB) are removed by hand after the new seeds have saved, not by the job.
+**The budget does not fit.** Everything below is measured unless marked estimated.
 
-| Steady state | GB | Source |
+| Demand once the prune has run (the low point) | GB | Source |
 | --- | --- | --- |
-| Measured entries after the prune rules and the by-hand deletion (26 entries) | 8.18 | measured, then the rules applied |
-| Main feedback seed (3 entries) | 0.69 | estimated: measured 306 MB per entry, 0.20 compression ratio |
-| Dev feedback seed (3 entries) | 0.76 | estimated, same ratio |
-| Total | 9.63 | |
-| Margin to 10.0 GB | 0.37 (3.7%) | 1.1 GB (10.3%) if the limit is 10 GiB |
+| 26 entries from the 2026-11-25 listing after the rules and the by-hand deletion | 8.18 | measured |
+| `pnpm-store-v2-host` (written on main by `ci.yml`) | 0.21 | measured: 205 MB zstd, web and clients/ts lockfiles, macOS arm64 |
+| `pnpm-store-v2-playwright` | 0.21 | estimated equal to the host store |
+| Main feedback seed (3 entries) | 0.69 | estimated: 306 MB per entry measured, ratio 0.20 |
+| Dev feedback seed (3 entries) | 0.76 | estimated |
+| Total demand | 10.04 | margin to 10.0 GB: -0.04 (a 10.74 GB limit, if it is 10 GiB: +0.70) |
 
-This is under the limit and not comfortably so. Transients add to it: the weekly `go-lintdriver-v2`
-rollover puts a second 1.7 GB entry beside the old one until the next prune tick (up to six hours),
-a peak of about 11.3 GB. That overshoot is harmless only because of the eviction order below. Growth
-beyond roughly 0.3 GB, for example a larger lint driver or k8s e2e entry, needs a decision from the
-owner: the candidates by size are `go-lintdriver-v2` 1.7 GB, `go-k8s-e2e-v2` 1.6 GB, `go-mod-v2`
-1.0 GB and `codeql-dependencies` 0.76 GB.
+The low point is not the steady state; entries arrive between ticks:
 
-Eviction model (a script over the measured listing and the estimated seed sizes, applying the real
-jq; hourly steps over 48 hours; eviction removes the least recently accessed entries until the total is
-back under 10 GB; superseded and idle entries are not restored, live entries and the seeds are restored
-by CI runs each hour, as the measured `last_accessed_at` of the current seeds shows):
+| Peak above the low point | GB | Source |
+| --- | --- | --- |
+| One CodeQL overlay set (js 0.27, go 0.23, python 0.03) before the next hourly prune | 0.52 | measured: four sets on 11-25 at 10:22, 11:29 to 11:39, 12:58 to 13:00 and 14:20 to 14:34, 66 to 88 minutes apart |
+| Weekly fuzz rollover (six entries) | 0.44 | measured: created 20:26 to 20:34 on Sunday 11-22 |
+| Weekly `go-lintdriver-v2` rollover, a second entry beside the old one until the next tick | 1.71 | measured size; the 11-25 listing shows W48 created Tuesday 14:57, so the day varies with the first successful seed run |
 
-| Day | Peak | Seeds | Evicted |
+Eviction model (`scripts/ci/cache_eviction_model_test.go`, run with `go test -run TestCacheBudgetModel
+-v`): the 2026-11-25 listing (`testdata/cache-listing-2026-11-25.json`, real keys, sizes, created and
+last-accessed times), the prune workflow's own jq applied each hour at :47, the CodeQL overlay creations
+replayed at their measured times, least recently accessed evicted first with ties against the seeds.
+Assumptions that are not in the listing: entries the listing shows touched within 90 minutes are touched
+hourly on a weekday and the others (overlays, kind, buildx, old feedback entries) only when created; on a
+quiet weekend nothing is touched after Friday 20:30 except the main seed the 03:32 schedule saves; the
+old lint driver entry was looked up at 04:10 on Monday.
+
+| Day | Demand | Peak | Result |
 | --- | --- | --- | --- |
-| Measured: no pull-request caches, weekly rollover at hour 2 | 11.34 GB | newest main and dev sets survive | the superseded week's lint driver entry, never a seed |
-| Stress, estimated: one 300 MB pull-request entry per hour (7.2 GB a day) | 11.94 GB | newest main and dev sets survive | pull-request entries first, then the superseded lint driver entry |
-| Same days, seeds never restored after saving | 11.34 and 11.94 GB | main and dev sets are evicted at the rollover | the model's worst case, which the measured access times rule out |
+| Weekday (overlay churn, main seed 03:32, dev seed 09:10) | 10.04 | 10.44 | evicts 11 live entries (overlays, kind, shellcheck, helm, cosign, go-lint, go-generated, trap) and, once those are gone, a newest main seed entry |
+| Monday 04:11 rollover after a quiet weekend | 10.04 | 11.46 | evicts four tools and `go-mod-v2`, then the **newest dev seed** (last restored Friday); the main seed (saved 03:32) survives |
+| Sunday 20:31 fuzz rollover | 10.04 | 10.02 | no live entry; a main seed entry on the tie |
+| Monday with the three shrinks below | 8.98 | 10.34 | no live entry; the newest dev seed is still evicted |
 
-What it shows: the seeds survive because they are restored by every feedback run, which keeps them
-newer than everything the prune removes or leaves idle. If a seed set stops being restored it is the
-first thing evicted once the total passes the limit, so a seed that vanishes from `gh cache list` is
-the signal that the margin above has been used up.
+So the answer for the newest seeds is: not on a normal weekday with the budget as it stands (live
+entries and eventually a main seed entry go), and the dev seed does not survive a Monday rollover after
+a quiet weekend, with or without the shrinks. A dev PR then builds cold until the first dev push of the
+day saves the seed again. Margin needed to hold the Monday rollover without eviction: demand at or below
+about 8.3 GB (10.0 minus 1.71), or 8.6 GB after the lint driver shrink.
+
+Shrink options, each measured on macOS arm64 (the k8s entry cross-compiled for linux/amd64) with a
+fresh build cache and `tar | zstd -3`; live figures are the measured ratio applied to the 11-25 entry,
+so estimated:
+
+| Option | Measured | Effect on the live entry | Cost or risk |
+| --- | --- | --- | --- |
+| `-gcflags=all=-dwarf=false` for the k8s-e2e job (`GOFLAGS`; one job writes and reads the entry) | 898 to 755 MB (x0.84) | 1.62 to about 1.36 GB (-0.26) | the e2e binaries lose DWARF |
+| The same flag for the lint driver. The driver clears `GOFLAGS` per context (`internal/lint/lint.go`), so the change is in `BuildContext.Env`, and every reader gets it from the same driver | 1135 to 905 MB (x0.80) | 1.71 to about 1.37 GB (-0.35); also the weekly overshoot | changes the compile flags of every lint context; export data is unaffected |
+| Cache only `~/go/pkg/mod/cache/download` in `go-mod-v2` (six writers) | 791 to 437 MB (x0.55) | 1.03 to about 0.57 GB (-0.46) | every restore re-extracts the modules; the time is not measured |
+| Restore the lint driver entry in the k8s job instead of keeping its own | overlap 25 MB of 4270 MB raw | none | rejected: the action IDs differ (`-trimpath`, tags, GOOS) |
+
+The first three together are about 1.07 GB. They are proposals, not changes in this PR: each touches
+cache keys or compile flags of other workflows, and the Monday dev seed still goes (peak 10.34 GB).
+Reaching it needs a decision from the owner on one of: a further 0.35 GB cut (for example the
+Playwright store, 0.21 GB, shared with the host store), saving the lint driver weekly entry after a
+trusted job has deleted the old one (a cold lint cache until the new entry lands), or accepting a cold
+dev PR build after a quiet weekend. `go-feedback-v1` stays: `ci.yml` reads it.
 
 Files live in [`.github/workflows/`](../../.github/workflows/). Display names may
 differ from filenames. `ci.yml` and `matrix-performance.yml` are reusable graphs.
