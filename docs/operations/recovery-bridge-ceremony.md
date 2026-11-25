@@ -44,6 +44,11 @@ are clean), so the sequences below are exact.
 ## Roles and custody
 
 - The owner holds the recovery key alone, offline or on hardware.
+- Two-person custody split before 1.2: until the 1.2 release one owner holds the key
+  and runs the ceremony alone, witnessed and logged. Before 1.2 ships, signing and
+  publishing separate: the key holder signs offline and cannot publish the trust
+  asset or merge the trust pull request, and a second person publishes and merges
+  but holds no signing key. This split is the ADR's condition for ending solo custody.
 - A witness watches the signing steps and countersigns the ceremony log.
 - **Online machine** (steps 0 to 3 and 6 to 8): network, `gh`, `go`, `jq`, `cosign`.
   It holds no key. **Offline signing machine** (steps 4 and 5): the key, `cosign`,
@@ -222,7 +227,10 @@ owner's step after signing; agents never publish them. Clients follow GitHub's
 redirect to its asset hosts only. Publish the first list (sequence 1) in the same
 step as the bridge: until the assets exist the endpoint answers 404, which is a
 reachable but invalid answer, so every route through a bridge is refused (fail
-closed):
+closed). The legacy nightly bridge never expires, so the list is its only
+withdrawal and its routes consult it too: until the first list is published every
+legacy-nightly upgrade is refused (unless the operator sets the check to `off`),
+so publish the first list before one is expected:
 
 ```sh
 scripts/release/recovery-bridge.sh revocation-list "$RECOVERY_KEY" "$WORK/new-trust" <SEQUENCE> "$WORK/list" <digest>...
@@ -250,12 +258,14 @@ an instance, delaying a newer revocation until the bridge's `not_after`. `check-
 runs the real checker against a local list directory (`-` for the unreachable case).
 
 Expiry and revocation govern admission, not an upgrade already admitted. An
-upgrade admitted before `not_after` can resume and finish after it, because a
-resume re-derives the route ignoring expiry and must match the journaled route
-digest exactly. A bridge revoked since the admission still refuses the forward
-resume. A security rollback is never blocked by either: it returns to the
-journaled source whatever the bridge's state. Re-sign an expired bridge only for
-installations that have not been admitted yet.
+upgrade admitted before `not_after` can resume and finish after it: a resume
+checks that the journaled route digest belongs to a valid path in the
+authenticated graph, ignoring expiry (it does not re-run the route search, which
+could pick another route once other bridges have lapsed or been revoked). A bridge
+revoked since the admission still refuses the forward resume. A security rollback
+checks the journaled route the same way and is never blocked by expiry or
+revocation: it returns to the journaled source whatever the bridge's state.
+Re-sign an expired bridge only for installations that have not been admitted yet.
 
 ## Re-signing an expired bridge
 

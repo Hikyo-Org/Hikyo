@@ -102,6 +102,9 @@ apply-time revocation list (options (a) and (c) on
   `recovery-2` signs the bridge. The `recovery-1` exception is not extended to
   bridges. The owner holds the key alone and every signing is witnessed and logged
   ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
+  Solo custody ends before 1.2: signing (the key holder, offline) and publishing
+  the trust asset and merging the trust pull request (a second person without the
+  key) must be separate people by then.
 - An independent verifier (`scripts/release/verify-recovery-bridge.sh`, jq,
   cosign and sha256 only, no shared code with the authoring tool) re-derives every
   statement field from the published declarations and compares bytes and digests.
@@ -152,17 +155,30 @@ apply-time revocation list (options (a) and (c) on
   signature, not the host, is the authority.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that
-  re-derives the route of an upgrade a journal already records (the gate's
-  in-flight and recovery resume, the maintenance configuration, the automatic
-  upgrade resume) ignores expiry and compares the re-derived route digest with
-  the journaled one, which pins the exact route that was admitted; an upgrade
-  admitted before `not_after` therefore finishes after it. A revoked bridge still
-  refuses a forward resume. A security rollback re-derives its route with neither
-  check, so neither expiry nor revocation ever blocks returning to the journaled
-  source. Journals carry no timestamp: their formats are strictly decoded and an
-  older image must still read them, so the journaled route digest is the record of
-  admission. New admissions (backup preparation, bootstrap, export, drill and
-  preflight) check both.
+  holds the journaled route digest of an upgrade (the gate's in-flight and
+  recovery resume, the maintenance configuration, the automatic upgrade resume)
+  does not repeat the admission's search and compare: a fresh search over a
+  graph with other expiry and revocation facts can pick another route than the
+  one admitted. It checks that the journaled digest is the digest of some valid
+  path in the authenticated graph (ordinary edges and every verified bridge, with
+  parallel edges kept), ignoring expiry; an upgrade admitted before `not_after`
+  therefore finishes after it. A revoked bridge on that route still refuses a
+  forward resume. A security rollback validates the journaled route the same way
+  with neither check, so neither expiry nor revocation ever blocks returning to
+  the journaled source. Journals carry no timestamp: their formats are strictly
+  decoded and an older image must still read them, so the journaled route digest
+  is the record of admission. A new admission skips an expired or revoked bridge;
+  if a revoked bridge and its re-signed replacement share a pair, the list picks
+  the live one (without the list that pair is a catalog error).
+  New admissions (backup preparation, bootstrap, export, drill, preflight and
+  automatic route discovery) check both.
+- **Legacy nightly bridge.** The `hikyo.dev/legacy-nightly-bridge/v1` bridge is a
+  recovery-signed bridge that never expires, so the revocation list is its only
+  means of withdrawal and its routes consult the list like any other bridge. The
+  consequence is a precondition: until the first list is published, the endpoint
+  answers 404, a reachable but invalid answer, and every legacy-nightly upgrade is
+  refused (fail closed) unless the operator sets the check to `off`. Publish the
+  first list before the first legacy-nightly upgrade is expected.
   Ordinary upgrades never contact the endpoint. The snapshot revocation
   (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
   re-signs the policy) remains and binds instances whose floor advanced.
