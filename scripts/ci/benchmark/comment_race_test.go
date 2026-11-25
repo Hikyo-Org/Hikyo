@@ -240,30 +240,60 @@ func patchLine(calls string, id int) string {
 	return ""
 }
 
-func TestPrepareDoesNotResetASurvivorOnceTheHeadMoved(t *testing.T) {
-	live, old, newer := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
-	log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{botCopy(t, 20, old), botCopy(t, 21, live)}})}, "none")
-	// The first PR read sees live; any later read sees a newer push.
+// laterPullRead makes every PR read after the first answer with later, a
+// shell case body (for example a JSON echo or a failing exit).
+func laterPullRead(t *testing.T, log, live, later string) {
+	t.Helper()
 	gh := filepath.Join(filepath.Dir(log), "gh")
 	script, err := os.ReadFile(gh)
 	if err != nil {
 		t.Fatal(err)
 	}
-	moved := fmt.Sprintf(`*repos/o/r/pulls/7) if [ -f '%[1]s.pr' ]; then h=%[2]s; else h=%[3]s; : >'%[1]s.pr'; fi; echo "{\"number\":7,\"state\":\"open\",\"head\":{\"sha\":\"$h\"}}";;`, log, newer, live)
+	first := fmt.Sprintf(`echo '{"number":7,"state":"open","head":{"sha":"%s"}}'`, live)
+	moved := fmt.Sprintf(`*repos/o/r/pulls/7) if [ -f '%[1]s.pr' ]; then %[2]s; else : >'%[1]s.pr'; %[3]s; fi;;`, log, later, first)
 	lines := strings.Split(string(script), "\n")
+	replaced := false
 	for i, line := range lines {
 		if strings.HasPrefix(line, "*repos/o/r/pulls/7)") {
-			lines[i] = moved
+			lines[i], replaced = moved, true
 		}
+	}
+	if !replaced {
+		t.Fatal("fake gh has no PR case to replace")
 	}
 	if err := os.WriteFile(gh, []byte(strings.Join(lines, "\n")), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
-		t.Fatal(err)
+}
+
+func TestPrepareDoesNotResetASurvivorOnceTheHeadMoved(t *testing.T) {
+	live, old, newer := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
+	for name, later := range map[string]string{
+		"moved":  fmt.Sprintf(`echo '{"number":7,"state":"open","head":{"sha":"%s"}}'`, newer),
+		"closed": fmt.Sprintf(`echo '{"number":7,"state":"closed","head":{"sha":"%s"}}'`, live),
+	} {
+		t.Run(name, func(t *testing.T) {
+			log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{botCopy(t, 20, old), botCopy(t, 21, live)}})}, "none")
+			laterPullRead(t, log, live, later)
+			if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+				t.Fatal(err)
+			}
+			if c := recorded(t, log); patchLine(c, 20) != "" {
+				t.Fatalf("a reset must not land once the PR %s:\n%s", name, c)
+			}
+		})
+	}
+}
+
+func TestPrepareReportsAFailedLiveHeadRead(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{botCopy(t, 20, old), botCopy(t, 21, live)}})}, "none")
+	laterPullRead(t, log, live, `echo 'gh: Server Error (HTTP 502)' >&2; exit 1`)
+	if err := prepare("o/r", controlEvent{Number: 7}); err == nil {
+		t.Fatal("a failed live-head read must fail prepare, not report success")
 	}
 	if c := recorded(t, log); patchLine(c, 20) != "" {
-		t.Fatalf("a reset must not land once the PR head moved:\n%s", c)
+		t.Fatalf("no reset may land without a confirmed live head:\n%s", c)
 	}
 }
 

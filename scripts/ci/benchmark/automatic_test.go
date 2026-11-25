@@ -165,7 +165,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		draft, stale, claimed, budgetExceeded              bool
 		pendingManual, lateManual, fork, missingRepository bool
 		absentComment, staleComment, lostUpdate            bool
-		lookupFailure, lookupFailureMoved                  bool
+		lookupFailure, lookupFailureMoved, lookupPullFails bool
 		superseded                                         string
 		wantRun                                            bool
 	}{
@@ -187,6 +187,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		{name: "claim replaced by a concurrent writer does not rerun", file: "go.mod", lostUpdate: true},
 		{name: "failed post-claim lookup releases the claim", file: "go.mod", lookupFailure: true},
 		{name: "failed post-claim lookup leaves a moved head's comment alone", file: "go.mod", lookupFailure: true, lookupFailureMoved: true},
+		{name: "failed post-claim lookup with a failed PR read still releases", file: "go.mod", lookupFailure: true, lookupPullFails: true},
 		{name: "automatic refreshes stale comment", file: "go.mod", staleComment: true, wantRun: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -273,6 +274,10 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				// The comment listing fails only once the claim is written.
 				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
 			}
+			if test.lookupPullFails {
+				// Once claimed, the PR read fails too.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			}
 			if test.lookupFailureMoved {
 				// Once claimed, the PR reads as a newer head.
 				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then jq '.head.sha=\"%s\"' \"$1\"; return; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"), strings.Repeat("c", 40))
@@ -284,8 +289,12 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "respond() {\n", transition, 1)), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := runBenchmark("o/r", controlEvent{WorkflowRun: r}, true); (err != nil) != test.lookupFailure {
+			err = runBenchmark("o/r", controlEvent{WorkflowRun: r}, true)
+			if (err != nil) != test.lookupFailure {
 				t.Fatalf("err=%v want error=%t", err, test.lookupFailure)
+			}
+			if test.lookupPullFails && (!strings.Contains(err.Error(), "read GitHub usage") || !strings.Contains(err.Error(), "GitHub read repos/o/r/pulls/7")) {
+				t.Fatalf("the error must carry both failed reads: %v", err)
 			}
 			if test.lookupFailure {
 				latest, err := os.ReadFile(filepath.Join(filepath.Dir(log), "latest-body"))
