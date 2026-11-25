@@ -26,6 +26,7 @@ export function Input({
   error,
   id,
   className,
+  labelHidden,
   mono,
   revealable,
   type,
@@ -36,7 +37,7 @@ export function Input({
   const [shown, setShown] = useState(false);
   const reveal = revealable === true && type === 'password';
   return (
-    <Field label={label} hint={hint} error={error} id={id} className={className} aria-describedby={describedBy} aria-invalid={invalid}>
+    <Field label={label} hint={hint} error={error} id={id} className={className} labelHidden={labelHidden} aria-describedby={describedBy} aria-invalid={invalid}>
       {(control) =>
         reveal ? (
           <span className="field__control">

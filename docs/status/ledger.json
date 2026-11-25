@@ -394,13 +394,13 @@
       "id": "OBL-UI-SCHEMA-POLISH",
       "kind": "obligation",
       "title": "Polish key-declaration and schema-editing UI",
-      "status": "open",
-      "summary": "Dialog-level visual refinement remains available within the frozen UI contract.",
+      "status": "implemented",
+      "summary": "Key create, key declaration and catalogue dialogs use the shared Field, Input, Select and Textarea atoms and token sizes, with phone-width layouts and stories for key create, catalogue manage, the schema builder, the any_of editor and the reclassify confirm (#1492).",
       "source": "docs/spec/open-items.md",
-      "nonBlocking": "Optional dialog polish does not block the implemented matrix/disclosure capability or the 1.0 release gate.",
       "evidence": [
         { "label": "UI contract", "path": "docs/spec/ui-spec.md" },
-        { "label": "1.0 blocker handoff", "path": "docs/handoff/v1-launch-blockers.md" }
+        { "label": "#1492 handoff", "path": "docs/handoff/1492-schema-dialog-conformance.md" },
+        { "label": "key create stories", "path": "web/src/routes/MatrixKeyCreate.stories.tsx" }
       ]
     },
     {
