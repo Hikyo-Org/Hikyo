@@ -250,7 +250,8 @@ if [ -w "$gitdir" ]; then
 	chmod u+w "$gitdir"
 	printf 'pre-push fixture: skipping the unwritable-stamp case (running as a user who ignores permissions)\n' >&2
 else
-	if push fe-new; then chmod u+w "$gitdir"; fail 'unwritable stamp file did not fail the hook'; fi
+	# The go test step also needs to write in the git directory; opt out of it here.
+	if (HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push fe-new); then chmod u+w "$gitdir"; fail 'unwritable stamp file did not fail the hook'; fi
 	chmod u+w "$gitdir"
 	grep -F 'Permission denied' "$out" >/dev/null || fail 'expected the stamp write error'
 fi
@@ -341,7 +342,8 @@ rm wip.go
 lint_dir=$(tail -n 1 "$logs/golangci.log" | cut -d' ' -f3-)
 [ "$lint_dir" != "$(pwd -P)" ] || fail 'ratchet ran in the checked-out tree'
 [ ! -e "$lint_dir" ] || fail 'temporary worktree was left behind'
-[ "$(git worktree list | wc -l | tr -d ' ')" = 1 ] || fail 'worktree registration left behind'
+# The kept go test worktree is the only other registration allowed.
+[ "$(git worktree list | grep -vc hikyo-gotest-tree | tr -d ' ')" = 1 ] || fail 'worktree registration left behind'
 # A branch that is not checked out is linted, and refused when bad.
 git branch -q gl-bad "$base"
 git switch -q -c gl-other "$base"
@@ -469,6 +471,17 @@ expect_ok gt
 expect_count gotest $((before + 1))
 [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f1,2)" = "$base $(git rev-parse gt)" ] || fail 'go tests were not given the merge base and run at the pushed commit'
 [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)" != "$(pwd -P)" ] || fail 'go tests ran in the pushing checkout'
+first_tree=$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)
+git switch -q -c gt2 gt
+commit_change internal/x.go
+expect_ok gt2
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)" = "$first_tree" ] || fail 'the go test worktree was not reused for the next push'
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail 'the reused go test worktree is not at the pushed commit'
+mkdir "$gitdir/hikyo-gotest-tree.lock"
+if push gt2; then fail 'a push was accepted while another go test run held the lock'; fi
+grep -F 'holds' "$out" >/dev/null || fail 'lock message missing'
+rmdir "$gitdir/hikyo-gotest-tree.lock"
+git switch -q gt
 echo 1 >"$logs/gotest-fail"
 if push gt; then fail 'a failing go test run was accepted'; fi
 grep -F 'Go tests failed' "$out" >/dev/null || fail 'go test failure message missing'

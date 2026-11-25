@@ -48,6 +48,9 @@ func runGoAffected(t *testing.T, dsn, failing string) (log, stderr string, code 
 			t.Fatal(err)
 		}
 	}
+	if err := os.MkdirAll(filepath.Join(dir, "internal/webui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	write("scripts/ci/go-affected-test.sh", string(runner))
 	write("scripts/ci/go-affected-packages.sh", "#!/bin/sh\nprintf 'm/internal/app\\nm/internal/lint\\nm/internal/isolation\\nm/pkg/a\\nm/pkg/b\\n'\n")
 	write("bin/go", `#!/bin/sh
@@ -76,6 +79,9 @@ esac
 		code = exit.ExitCode()
 	} else if err != nil {
 		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "internal/webui/dist/.placeholder")); statErr != nil {
+		t.Errorf("no placeholder for the missing SPA build: %v", statErr)
 	}
 	raw, _ := os.ReadFile(logFile)
 	return string(raw), errBuf.String(), code

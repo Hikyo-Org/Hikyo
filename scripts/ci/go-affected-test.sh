@@ -10,8 +10,9 @@
 # to test-core-packages.sh) and internal/lint (20m) run alone, since app drops
 # PostgreSQL databases. PostgreSQL tests run when HIKYO_TEST_POSTGRES_DSN is set
 # and skip otherwise; CI is unset, because with it set those tests fail instead
-# of skipping. The caller sets GOFLAGS=-trimpath, which lets the Go build cache
-# hit across worktrees (the test result cache does not, see CONTRIBUTING.md).
+# of skipping. internal/webui/dist is gitignored and built by CI; without it
+# the ui-tagged `go list` of internal/boundary cannot load, so a placeholder
+# stands in (the tests that need the real SPA run in CI).
 set -eu
 [ "$#" -eq 1 ] || {
 	printf 'usage: %s BASE\n' "$0" >&2
@@ -23,6 +24,9 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-go-affected.XXXXXX") || exit 64
 trap 'rm -rf "$work"' EXIT
 trap 'exit 130' HUP INT TERM
 
+if [ -d internal/webui ] && [ ! -e internal/webui/dist ]; then
+	mkdir internal/webui/dist && : >internal/webui/dist/.placeholder || exit 64
+fi
 "$here/go-affected-packages.sh" "$1" HEAD >"$work/all" || exit 64
 app=$(go list ./internal/app) || exit 64
 lint=$(go list ./internal/lint) || exit 64

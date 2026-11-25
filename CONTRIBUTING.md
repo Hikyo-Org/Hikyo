@@ -288,10 +288,13 @@ reaches `internal/store`) select that package. The selection adds packages that
 embed a changed file, packages that no longer load, every package whose test
 build depends on one of those, and all packages when `go.mod` or `go.sum`
 changes. Docs-only and frontend-only pushes select nothing. The tests run with
-`go test -p 2` in a temporary worktree at the pushed commit (`-trimpath`, so the
-Go build cache hits across worktrees; the test result cache mostly does not,
-because it keys the mtimes of the files tests open and each push gets a new
-worktree). `internal/isolation` (18m timeout), `internal/app` (two runs, as in
+`go test -p 2` in a detached worktree at the pushed commit, kept as
+`hikyo-gotest-tree` in the git directory and moved to each pushed commit (its
+files are reset and cleaned every time), so the Go build and test caches, which
+key on the source path, stay warm between pushes; it adds no `-trimpath`, since
+tests find repository files through their own paths. A stale
+`hikyo-gotest-tree.lock` there (a killed push) is safe to remove. The SPA build
+is not needed: a placeholder stands in for `internal/webui/dist`. `internal/isolation` (18m timeout), `internal/app` (two runs, as in
 CI) and `internal/lint` run alone afterwards. `CI` is unset for the run, and the
 hook prints the package count first. PostgreSQL tests run only when
 `HIKYO_TEST_POSTGRES_DSN` is set; otherwise the hook says they are skipped.

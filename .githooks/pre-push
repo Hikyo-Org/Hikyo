@@ -149,12 +149,16 @@ require_golangci() {
 }
 
 # Run the Go tests the pushed changes can affect (scripts/ci/go-affected-test.sh)
-# for the pushed commit $1 against merge base $2, in a detached worktree at that
-# commit like require_golangci, with the commit's own script when it has one.
+# for the pushed commit $1 against merge base $2, with the commit's own script
+# when it has one. They run in a detached worktree at exactly that commit, so
+# the checkout you push from never changes the verdict. The worktree is kept
+# between pushes and moved to the next commit: the Go build and test caches key
+# on the source path, so a fresh directory per push would recompile everything.
+# (No -trimpath here: tests locate repository files through their own paths.)
+# The selection runs inside it because it needs `go list` at the pushed commit,
+# so a push that affects no package still checks it out.
 # Exit 64 is the setup failing, 130 an interrupt; any other non-zero code is a
 # failing test.
-# The selection runs inside the worktree, not before it: it needs `go list` at
-# the pushed commit, so a push that affects no package still checks one out.
 require_gotest() {
 	if git cat-file -e "$1:scripts/ci/go-affected-test.sh" 2>/dev/null; then
 		runner=scripts/ci/go-affected-test.sh
@@ -165,27 +169,30 @@ require_gotest() {
 	(
 		# shellcheck disable=SC2046 # a list of variable names
 		unset $(git rev-parse --local-env-vars)
-		# -trimpath: the Go build cache then hits across the fresh directory of every
-		# push. The test result cache mostly does not (it keys the mtimes of opened files).
-		# shellcheck disable=SC2030,SC2031 # each subshell sets its own
-		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
-		export GOFLAGS
-		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-gotest.XXXXXX") || exit 64
-		# shellcheck disable=SC2329 # run by the EXIT trap
-		cleanup() {
-			cd "$repo_root" || :
-			git worktree remove --force "$tmp" >/dev/null 2>&1 || { rm -rf "$tmp"; git worktree prune; }
+		tree=$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-gotest-tree || exit 64
+		# One run at a time owns the tree; a killed run leaves the lock behind.
+		mkdir "$tree.lock" 2>/dev/null || {
+			printf 'pre-push: another Go test run holds %s.lock (remove it if no push is running)\n' "$tree" >&2
+			exit 64
 		}
+		# shellcheck disable=SC2329 # run by the EXIT trap
+		cleanup() { rmdir "$tree.lock" 2>/dev/null || :; }
 		trap cleanup EXIT
 		trap 'exit 130' HUP INT TERM
-		git worktree add -q --detach "$tmp" "$1" || exit 64
-		cd "$tmp" && "$runner" "$2" </dev/null
+		if [ -e "$tree/.git" ]; then
+			git -C "$tree" checkout -q -f --detach "$1" && git -C "$tree" clean -q -f -d -x || exit 64
+		else
+			rm -rf "$tree"
+			git worktree prune
+			git worktree add -q --detach "$tree" "$1" || exit 64
+		fi
+		cd "$tree" && "$runner" "$2" </dev/null
 	) || status=$?
 	[ "$status" -ne 0 ] || return 0
 	if [ "$status" -eq 130 ]; then
 		printf 'pre-push: the Go tests were interrupted\n' >&2
 	elif [ "$status" -eq 64 ]; then
-		printf 'pre-push: the Go tests could not start or finish their setup (worktree or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
+		printf 'pre-push: the Go tests could not start or finish their setup (worktree, lock or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
 	else
 		printf 'pre-push: Go tests failed; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
 	fi
