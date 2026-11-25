@@ -40,7 +40,8 @@ nonexistent incident on get, items, resume, attest, close, and for opening a for
   displayed; the web dialog, on a `409`, refreshes its list and asks again (no auto-retry).
 - A wrong proof on the web reads as a refused proof, not "Your session ended".
 - Limitation: a federated-only account has no password or enrolled factor, so it has no proof
-  path and cannot resume; recorded in the ADR for an owner decision.
+  path and cannot resume. Owner decision (#1590 tracks step-up): the server refuses with `400`
+  detail `no_proof_credential`, an empty proof included, and there is no proof-less path.
 
 ## Evidence
 
@@ -49,7 +50,7 @@ nonexistent incident on get, items, resume, attest, close, and for opening a for
 - Service: `TestIncidentAuthorizationRefusals` (including item views),
   `TestIncidentRotationViewGoneAndUnreadable`, the owner tests on `pending/owner_failed`.
 - Resume: `TestIncidentResumeNeedsAFreshProof`, `TestIncidentResumeRefusesAChangedOpenSetWithoutSpendingTheProof`,
-  `TestIncidentResumeOverHTTPWithAValidProof` (valid TOTP code, a swapped open set at the same size, a wrong digest, replay), both engines;
+  `TestIncidentResumeOverHTTPWithAValidProof` (valid TOTP code, a digest below and above the real one, replay), both engines; the same-size swap is in `TestIncidentResumeRefusesAChangedOpenSetWithoutSpendingTheProof`;
   the wire tests assert the weak session's `grant.denied` row and a late-added item (`Added == 1`).
 - Web: unit tests (including the refused count, the digest the resume request carries, and a wrong proof), Storybook stories in dark and
   light. The Playwright flow `incident containment` (open, ledger, resume with a valid TOTP

@@ -221,7 +221,7 @@ func TestIncidentResumeRefusesAResponderWithNoProofCredential(t *testing.T) {
 		execRaw(t, db, `DELETE FROM totp_credentials WHERE account_id='`+f.accountID+`'`)
 		execRaw(t, db, `DELETE FROM password_credentials WHERE account_id='`+f.accountID+`'`)
 		open := f.openItems(t, db)
-		for _, proof := range []string{"anything", totpCode(t, f.uri, *f.clk)} {
+		for _, proof := range []string{"", "anything", totpCode(t, f.uri, *f.clk)} {
 			_, err := f.incidents.Resume(t.Context(), f.actor, f.id, proof, nil)
 			if !errors.Is(err, service.ErrNoProofCredential) {
 				t.Fatalf("resume of an account with no proof credential (proof %q) = %v, want ErrNoProofCredential", proof, err)

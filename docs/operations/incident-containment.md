@@ -376,10 +376,13 @@ not exist: run `hikyo account factor step-up` and retry.
   stops unless you pass `--yes`, then asks for your authenticator code (or your
   password if you have no authenticator) and runs each open item through its owner
   function once. It cannot be undone. A one-time authenticator code is spent by that
-  call; a password is checked again on each call. The call names exactly the items you
-  were shown. If another operator reopens, adds or settles items between your listing
-  and your confirmation (even keeping the same number), the call is refused with a
-  conflict and spends nothing: list again and confirm the new set. It never runs an
+  call; a password is checked again on each call. The call names exactly the items its own
+  listing printed: `resume --yes` lists again, prints the list before the authenticator or
+  password prompt, and sends the digest of that list. If another operator reopens, adds or
+  settles items between that listing and the resume (even keeping the same number), the call
+  is refused with a conflict and spends nothing: list again and confirm the new set. Nothing
+  binds an earlier `resume` listing to a later `resume --yes` run, so check the list printed
+  before the prompt. It never runs an
   item you did not see. In the web dialog, a conflict replaces the list with the current
   one and asks you to confirm again. An account that has neither a
   password nor an authenticator (it signs in only through a linked identity) cannot

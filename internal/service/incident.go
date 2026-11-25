@@ -611,7 +611,7 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, c
 			return res, ErrReauthProofRequired
 		}
 		var err error
-		if evidence, err = s.Auth.VerifyReauthProof(ctx, actor.bearer, proof); err != nil {
+		if evidence, err = s.Auth.VerifyReauthProofNamingNoCredential(ctx, actor.bearer, proof); err != nil {
 			if errors.Is(err, ErrNoProofCredential) {
 				return res, errResumeNoProofCredential
 			}

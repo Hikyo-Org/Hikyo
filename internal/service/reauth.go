@@ -823,6 +823,18 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 	return ev, err
 }
 
+// VerifyReauthProofNamingNoCredential is VerifyReauthProof for a caller that must
+// tell an account with no proof credential from one that omitted its proof: the
+// empty proof reaches the credential selection, which answers ErrNoProofCredential
+// first and otherwise ErrReauthProofRequired, before any throttle or spend.
+func (s *Auth) VerifyReauthProofNamingNoCredential(ctx context.Context, presented, proof string) (ReauthEvidence, error) {
+	if presented == "" {
+		return ReauthEvidence{kind: reauthEvidenceExempt}, nil
+	}
+	_, ev, err := s.verifyAccountSecurityProof(ctx, presented, proof, proof)
+	return ev, err
+}
+
 // verifyAccountSecurityProof is the ONE selection of the proof an
 // account-security mutation runs under (human-auth ADR § Account-security
 // mutations, step 1): possession-first over the account's PRE-EXISTING
