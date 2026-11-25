@@ -38,7 +38,9 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-affected.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 trap 'exit 130' HUP INT TERM
 
-git diff --name-only --no-renames "$base" "$rev" >"$work/changed"
+# quotePath=false keeps non-ASCII names verbatim; a name git must still quote
+# (control characters, quotes, backslashes) cannot be matched, so it selects all.
+git -c core.quotePath=false diff --name-only --no-renames "$base" "$rev" >"$work/changed"
 [ -s "$work/changed" ] || exit 0
 
 # Non-embedded files a test reads at runtime: "changed-path-prefix package-dir".
@@ -56,8 +58,8 @@ done >"$work/extra"
 
 # Path segments that never make a Go package.
 ignored='(^|/)(testdata|[._][^/]*)(/|$)'
-git ls-tree -r --name-only "$base" >"$work/basefiles"
-git ls-tree -r --name-only "$rev" >"$work/revfiles"
+git -c core.quotePath=false ls-tree -r --name-only "$base" >"$work/basefiles"
+git -c core.quotePath=false ls-tree -r --name-only "$rev" >"$work/revfiles"
 # Nested module roots ("dir/") at REV only: a module dissolved into the main one
 # selects its packages; files of a deleted module select nothing.
 { grep '/go\.mod$' "$work/revfiles" || :; } | sed 's|go\.mod$||' | { grep -Ev "$ignored" || :; } | sort -u >"$work/nested"
@@ -65,7 +67,7 @@ git ls-tree -r --name-only "$rev" >"$work/revfiles"
 { grep '\.go$' "$work/basefiles" || :; } | sed 's|/[^/]*$||; t; s|.*||' | { grep -Ev "$ignored" || :; } | sort -u >"$work/basedirs"
 
 all=false
-if grep -Fxq -e go.mod -e go.sum "$work/changed"; then all=true; fi
+if grep -Fxq -e go.mod -e go.sum "$work/changed" || grep -q '^"' "$work/changed"; then all=true; fi
 
 cd "$root"
 go list -test -e -json=ImportPath,Dir,EmbedFiles,TestEmbedFiles,XTestEmbedFiles,Deps,Error,DepsErrors ./... >"$work/list"
@@ -81,11 +83,13 @@ jq -rs --arg root "$root" --argjson all "$all" \
 	[.[] | select((.ImportPath | contains(" [")) | not)] as $units
 	| [$units[] | select(.ImportPath | endswith(".test") | not)] as $pkgs
 	| ($pkgs | map(.Dir | rel) + ($basedirs | lines) | unique) as $pkgdirs
-	# the nearest ancestor directory holding Go files; the root package only for root files
+	# the nearest ancestor directory holding Go files; the root package only for root
+	# files and root-level testdata, _ and . directories (never for docs/ and the like)
 	| ($nested | lines) as $modules
 	| def owner: . as $file | dirname as $d
 		| if any($modules[]; . as $m | $file | startswith($m)) then null
-		  else (if $d == "" then [""] else [$d | split("/") | range(length; 0; -1) as $n | .[:$n] | join("/")] end
+		  else (if $d == "" then [""] else [$d | split("/") | range(length; 0; -1) as $n | .[:$n] | join("/")]
+				+ (if $d | test("^(testdata|[._][^/]*)(/|$)") then [""] else [] end) end
 			| map(select(. as $c | $pkgdirs | index($c) != null)) | first // null)
 		  end;
 	($changed | lines) as $files

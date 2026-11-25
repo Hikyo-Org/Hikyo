@@ -56,7 +56,8 @@ case_() {
 	"$@"
 	git add -A
 	git commit -q -m "$label"
-	got=$("$script" main HEAD | sed 's|example.com/m/||; s|example.com/m|root|' | tr '\n' ' ' | sed 's/ $//')
+	out=$("$script" main HEAD) || { printf 'affected-packages fixture failed: %s: the selector exited non-zero\n' "$label" >&2; exit 1; }
+	got=$(printf '%s\n' "$out" | sed 's|example.com/m/||; s|example.com/m|root|' | tr '\n' ' ' | sed 's/ $//')
 	[ "${got:--}" = "$want" ] || { printf 'affected-packages fixture failed: %s: got "%s", want "%s"\n' "$label" "$got" "$want" >&2; exit 1; }
 	git checkout -q main
 }
@@ -73,6 +74,9 @@ case_ 'a nested module inside a package selects nothing' '-' touch_ app/sub/s.go
 case_ 'a nested module subdirectory selects nothing' '-' touch_ desktop/internal/i.go
 case_ 'a nested module dissolved into the main module selects its package' 'app/sub' git rm -q app/sub/go.mod
 case_ 'a root package file selects the root package' 'root' touch_ root_test.go
+case_ 'a root testdata file selects the root package' 'root' sh -c 'mkdir -p testdata && echo x >testdata/case.txt'
+case_ 'a non-ASCII testdata name selects its package' 'app store' sh -c 'echo x >store/testdata/Ã©.txt'
+case_ 'a name git must quote selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' sh -c 'echo x >"store/testdata/q\"x.txt"'
 case_ 'go.mod selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' touch_ go.mod
 case_ 'go.sum selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' sh -c 'echo "example.com/x v1.0.0 h1:x" >>go.sum'
 case_ 'docs alone select nothing' '-' touch_ docs/a.md
