@@ -151,13 +151,12 @@ plan all desktop/main_darwin.go
 expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
 plan all desktop/internal/shell/shellroutes.go
 expect '.lanes.go.checks | map(.id) | index("docs-impact") != null'
-# The static registry and lint suites read Go sources and the store and lint-fixture inputs
-# ci-invariants.yml lists. They run on the tooling runner only, so the application lane's
-# critical path never carries them, and they never select on unrelated paths.
+# The static registry suites read Go sources and the store's query files. They run on the
+# tooling runner only, so the application lane's critical path never carries them.
 plan all internal/store/migrations/0001_init.sql
 expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"] and .lanes.tooling.prerequisites.go and .lanes.go.checks == []'
 plan all internal/lint/testdata/fixture/want.txt
-expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"] and .lanes.go.checks == []'
+expect '.lanes.tooling.checks == [] and .lanes.go.checks == []'
 plan all removed/final.go
 expect '(.lanes.tooling.checks | map(.id)) == ["static-invariants"]'
 plan all go.sum

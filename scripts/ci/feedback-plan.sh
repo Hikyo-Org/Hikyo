@@ -49,11 +49,11 @@ feedback_plan_build() {
 			internal/cli/testdata/help.txt | api/openapi.yaml | internal/config/variables.go) docs_impact=true ;;
 			desktop/main_darwin.go | desktop/internal/shell/shellroutes.go) docs_impact=true ;;
 		esac
-		# The static suites read Go sources and the store/lint-fixture inputs ci-invariants.yml
-		# lists. desktop/ is a nested module they never load.
+		# The static suites read Go sources and the store's query files (the isolation pin
+		# tests). desktop/ is a nested module they never load.
 		case "$path" in
 			desktop/*) ;;
-			*.go | go.mod | go.sum | internal/store/* | internal/lint/testdata/*) static_invariants=true ;;
+			*.go | go.mod | go.sum | internal/store/*) static_invariants=true ;;
 		esac
 		case "$path" in
 			web/*) web=true ;;

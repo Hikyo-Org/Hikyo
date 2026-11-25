@@ -38,9 +38,8 @@ fixture_message() { printf 'source fixture reached\n'; }
 fixture_invalid() {
 EOF
 # The packages static-invariants.sh runs. Its selection is exact: every TestInvariant*
-# in isolation and TestVetDriverRepo's default context run; a test outside those
-# (a database suite, another vet context) must stay unselected.
-mkdir -p internal/boundary internal/isolation internal/lint
+# in isolation runs; a test outside those (a database suite) must stay unselected.
+mkdir -p internal/boundary internal/isolation
 printf 'package boundary\n\nimport "testing"\n\nfunc TestBoundary(t *testing.T) {}\n' >internal/boundary/boundary_test.go
 cat >internal/isolation/invariants_test.go <<'EOF'
 package isolation
@@ -50,16 +49,6 @@ import "testing"
 func TestInvariant01Fixture(t *testing.T) {}
 
 func TestDatabaseSuiteFixture(t *testing.T) { t.Fatal("database suites must not run in feedback") }
-EOF
-cat >internal/lint/vetdriver_test.go <<'EOF'
-package lint
-
-import "testing"
-
-func TestVetDriverRepo(t *testing.T) {
-	t.Run("default", func(t *testing.T) {})
-	t.Run("windows", func(t *testing.T) { t.Fatal("only the default context runs in feedback") })
-}
 EOF
 commit_fixture
 base=$(git rev-parse HEAD)

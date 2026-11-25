@@ -13,7 +13,7 @@ import (
 
 // static-invariants.sh selects tests by name pattern, and go test passes when a
 // pattern selects nothing. These tests keep the selection honest: the named
-// registry, boundary and lint checks exist and are selected, and no selected
+// registry and boundary checks exist and are selected, and no selected
 // isolation test is anything but a source-only invariant.
 
 const staticInvariantsScript = "static-invariants.sh"
@@ -32,8 +32,8 @@ func staticInvariantSuites(t *testing.T) []staticSuite {
 	for _, m := range staticRunPattern.FindAllStringSubmatch(string(raw), -1) {
 		suites = append(suites, staticSuite{dir: m[1], binary: m[2], pattern: m[3]})
 	}
-	if len(suites) != 3 {
-		t.Fatalf("static-invariants.sh runs %d suites, want boundary, isolation and lint", len(suites))
+	if len(suites) != 2 {
+		t.Fatalf("static-invariants.sh runs %d suites, want boundary and isolation", len(suites))
 	}
 	return suites
 }
@@ -60,14 +60,12 @@ func topLevelTests(t *testing.T, dir string) map[string]string {
 	return tests
 }
 
-func TestStaticInvariantsSelectTheRegistryBoundaryAndLintChecks(t *testing.T) {
+func TestStaticInvariantsSelectTheRegistryAndBoundaryChecks(t *testing.T) {
 	suites := staticInvariantSuites(t)
-	// The three recent breakages: an unregistered cache (invariant 12), and
-	// handle and fence rule violations in tests (the lint driver, invariant 7).
+	// The cache registry breakage of #1515 (invariant 12) and the package fences.
 	required := map[string][]string{
 		"internal/boundary":  {"TestForbiddenEdges"},
 		"internal/isolation": {"TestInvariant12CacheDiscipline", "TestCacheDeclarationFindingsChecksExternalTestPackages", "TestInvariant01ClassificationTotality", "TestInvariant13AllowlistPinning"},
-		"internal/lint":      {"TestVetDriverRepo"},
 	}
 	for _, suite := range suites {
 		want := required[suite.dir]
@@ -111,18 +109,6 @@ func TestStaticInvariantsNeverSelectDatabaseSuites(t *testing.T) {
 			}
 			if selected == 0 {
 				t.Error("the isolation pattern selects no test")
-			}
-		case "internal/lint":
-			// Only the first context: the others stay in the full run.
-			if !strings.HasSuffix(suite.pattern, "/^default$") {
-				t.Errorf("lint pattern %q must stay in the default build context", suite.pattern)
-			}
-			raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "lint", "lint.go"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !regexp.MustCompile(`(?s)var Contexts = \[\]BuildContext\{\s*\{Name: "default"\}`).Match(raw) {
-				t.Error(`lint.Contexts no longer begins with the "default" context`)
 			}
 		}
 	}
