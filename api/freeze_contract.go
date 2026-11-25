@@ -42,6 +42,17 @@ var MLDSA65EnumLocations = []string{
 	"/components/schemas/TransitAlgorithm/enum",
 }
 
+// MintReauthEnumLocations is the same amendment as MintReauthEnumGrowth (the
+// api-cli-surface ADR banner of 2026-11-23, #1516), in document coordinates:
+// the only enums that may grow by `mint` or `identity.credential-mint`, each by
+// exactly its one value. Adding to it is an ADR amendment, not a code edit.
+var MintReauthEnumLocations = map[string]string{
+	"/components/schemas/CLIReauthStartRequest/properties/purpose/enum":   mintReauthPurpose,
+	"/components/schemas/CLIReauthStartRequest/properties/operation/enum": mintReauthOperation,
+	"/components/schemas/CLIReauthTransaction/properties/purpose/enum":    mintReauthPurpose,
+	"/components/schemas/CLIReauthTransaction/properties/operation/enum":  mintReauthOperation,
+}
+
 // contractCtx records whether a schema is read by clients (response), written
 // by them (request), or both. It decides which `required` edits are additive.
 type contractCtx uint8
@@ -793,7 +804,7 @@ func (w *contractWalker) required(c contractCtx, b, r map[string]any) rule {
 	}
 }
 
-// enum has set semantics and never changes, except the mldsa65 amendment.
+// enum has set semantics and never changes, except the mldsa65 and mint amendments.
 func (w *contractWalker) enum(l loc, b, r any, hb, hr bool) {
 	ba, ok1 := b.([]any)
 	ra, ok2 := r.([]any)
@@ -805,8 +816,13 @@ func (w *contractWalker) enum(l loc, b, r any, hb, hr bool) {
 	for _, v := range gone {
 		w.removed(l, fmt.Sprintf(" value %v", v))
 	}
-	if len(gone) == 0 && len(grown) == 1 && grown[0] == mldsa65 && slices.Contains(MLDSA65EnumLocations, l.String()) {
-		return
+	if len(gone) == 0 && len(grown) == 1 {
+		if grown[0] == mldsa65 && slices.Contains(MLDSA65EnumLocations, l.String()) {
+			return
+		}
+		if want, ok := MintReauthEnumLocations[l.String()]; ok && grown[0] == want {
+			return
+		}
 	}
 	for _, v := range grown {
 		w.added(l, fmt.Sprintf(" value %v", v))

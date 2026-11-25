@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"net/netip"
 	"reflect"
@@ -275,5 +276,29 @@ func TestManagedLegacyMigrationPreservesExplicitOriginBoundary(t *testing.T) {
 		if err := ValidateManagedOwnerValues(map[string]string{"HIKYO_EXTERNAL_ORIGIN": origin}); err == nil {
 			t.Fatalf("node-independent validation accepted malformed exact origin %q", origin)
 		}
+	}
+}
+
+// A padded bootstrap statement equal to the derived origin is still an operator
+// statement: the later owner-values apply must keep it explicit.
+func TestPaddedBootstrapOriginEqualToTheDerivationStaysExplicit(t *testing.T) {
+	derived, _, err := Load("server", []string{"--dev"}, env(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, padded := range []string{"", " \t"} {
+		t.Run(fmt.Sprintf("padding %q", padded), func(t *testing.T) {
+			base, _, err := LoadBootstrap("server", []string{"--dev"}, env("HIKYO_EXTERNAL_ORIGIN", padded+derived.ExternalOrigin+padded+"\n"), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := ApplyManagedOwnerValues(base, map[string]string{"HIKYO_EXTERNAL_ORIGIN": derived.ExternalOrigin})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !result.ExternalOriginExplicit {
+				t.Fatal("a bootstrap-stated origin equal to the derivation lost its explicit status")
+			}
+		})
 	}
 }

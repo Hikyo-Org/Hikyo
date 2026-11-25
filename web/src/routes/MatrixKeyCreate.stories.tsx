@@ -45,6 +45,23 @@ export const Default: Story = {
   },
 };
 
+// A name one edit away from an existing key: a caveat, not a refusal.
+export const NearMiss: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.type(canvas.getByLabelText('Key name'), 'EXISTNG_KEY');
+    await expect(canvas.getByText('Similar to existing key EXISTING_KEY. Continue if this is intentional.')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: /^declare$/i })).toBeEnabled();
+  },
+};
+
+// A whitespace-only first value is empty after trimming, and the dialog says so.
+export const WhitespaceOnlyFirstValue: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.type(canvas.getByLabelText('First value (optional)'), '   ');
+    await expect(canvas.getByText(/This value is only whitespace, so trimming leaves it empty/)).toBeVisible();
+  },
+};
+
 export const FolderPicker: Story = {
   args: { folders: ['app', 'database', 'empty-folder'], initialFolder: null },
   play: async ({ canvas, userEvent, args }) => {

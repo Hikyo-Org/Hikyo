@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { useAuth } from '../app/AuthProvider.tsx';
@@ -29,6 +29,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { Select } from '../ui/Select.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } from './useRemaskOnFocusLoss.ts';
@@ -57,6 +58,7 @@ const REMASK_MS = 10_000;
 type Shown = { readonly key: string; readonly value: string; readonly until: number };
 
 function PersonalSurface({ env }: { env: EnvRef }) {
+  const personalCaptionId = useId();
   const transport = useTransport();
   const workspace = useWorkspaceContext();
   const remote = workspace?.remote ?? '';
@@ -289,9 +291,9 @@ function PersonalSurface({ env }: { env: EnvRef }) {
         <p role="status">You hold no personal values here, and none are required.</p>
       ) : null}
       {entries.length === 0 ? null : (
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={personalCaptionId}>
           <table className="table--cards">
-            <caption className="visually-hidden">Your personal values, masked until you reveal one.</caption>
+            <caption id={personalCaptionId} className="visually-hidden">Your personal values, masked until you reveal one.</caption>
             <thead>
               <tr>
                 <th scope="col">Key</th>
@@ -353,7 +355,7 @@ function PersonalSurface({ env }: { env: EnvRef }) {
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
 
       <p className="personal-values__cli">

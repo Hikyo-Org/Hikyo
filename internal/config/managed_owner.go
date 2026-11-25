@@ -144,7 +144,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	// statement for the current hostname derivation remains explicit when the
 	// adopted seed is applied later. Stale or old IP seed values cannot replace
 	// the managed snapshot or change its historical derived-origin authority.
-	bootstrapOriginStated := origin != "" && origin == base.ExternalOrigin && origin == base.ManagedInputs["HIKYO_EXTERNAL_ORIGIN"]
+	bootstrapOriginStated := origin != "" && origin == base.ExternalOrigin && origin == strings.TrimSpace(base.ManagedInputs["HIKYO_EXTERNAL_ORIGIN"])
 	if validateNode && !base.ExternalOriginExplicit && !bootstrapOriginStated {
 		legacyScheme := "http://"
 		if inputs["HIKYO_TLS_CERT_FILE"] != "" {

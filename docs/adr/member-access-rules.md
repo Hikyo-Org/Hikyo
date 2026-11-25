@@ -250,6 +250,7 @@ this slice is narrower than D1 to D11:
 
 - **Humans only.** Rules for machine principals are refused; machines keep legacy grants. The machine
   widening gate counts reach per environment and would undercount a key-narrowed machine reveal.
+  *Superseded by the machine rules section below.*
 - **Key-aware operations are an explicit short list:** single-value reveal, staging and declaring one
   value, and key create, rename, delete and move (a move is authorized on both folders). Every other
   operation, including bulk reveal, export, diff, copy, publish, pins, delivery and definitions apply, can
@@ -275,6 +276,57 @@ this slice is narrower than D1 to D11:
   commit a widening move; a member manager has to.
 - **Resolver (D10)** answers in the web client over the org's grants, rules and key catalogue; a
   server-side resolver operation is owed.
+
+## Machine rules (2026-11-20)
+
+This settles the machine open point above for the API, the CLI and the
+editor on Machine access (D11).
+
+- **Who and what.** Workload and automation principals may hold rules. The
+  capability must be on the class's allowlist (`MachineMayHold`). `reveal` and
+  `reveal-history` stay on legacy grants, because their machine admission
+  depends on a live project opt-in and pin that a rule does not carry. Other
+  machine classes hold no rules.
+- **Never key-narrowed.** A machine rule that names keys or folders is
+  refused by name (`ErrRuleMachineKeys`). The widening gate counts reach per
+  environment, so a key-narrowed machine rule would be undercounted there.
+  Because of this, a key move never changes a machine's reach, and the D9
+  census stays human-only.
+- **Depth and project.** A machine rule names exactly one project, the
+  machine's owning project, so a rule over all projects is never a machine's.
+  A workload rule lists its environments explicitly ("only"), matching
+  `machineDepths`; an automation rule may cover every environment, including
+  later ones.
+- **Widening gate.** Rule creation and the atomic card replacement go through
+  the machine widening gate: the reach before and after the complete change is
+  diffed per authority class, and a non-empty delta needs
+  `manage-identities` on the project, the matching disclosure capability and a
+  live reauthentication window, and records `identity.grant_widened` on the
+  rule. The grant widening gate and the credential mint gate count the
+  machine's rules too, so a rule-held `read` cannot hide what a `reveal` grant
+  newly reaches.
+- **Service account deletion.** Deleting a service account removes its rules
+  without a count or confirmation, as its grants are removed.
+- **Evaluation.** The chokepoint reads machine rules through their own
+  lookup and applies the same class check on every read: a stored machine
+  rule that fails it reaches nothing. Delivery's per-key projection and SSH
+  stay blind to rules, as for people; federation's binding gate counts a
+  machine's rules in the reach it checks, as the mint gate does.
+- **Editor (D11).** A service account's side panel on Machine access lists its
+  rules and opens the Members rule editor for its class. The editor disables
+  each permission the class may not hold and shows the reason on the row. It
+  does not offer key limits, and for a workload it offers only "Only..."
+  environments. A save that the widening gate refuses for a missing
+  reauthentication runs one passkey reauthentication over the named
+  environment and sends the same change again. Members and "Who can...?" show
+  machine rules with the machine mark, read-only, and point to Machine access.
+- **Environment rename (decided in #1480, confirmed by the owner
+  2026-11-23).** While rule items bind environments by id, a rename cannot
+  widen a machine's reach, so the reauthentication step does not apply to it.
+  #1447, which binds environment selectors by name, must apply the
+  reauthentication step to machine principals gaining reach through a rename
+  or create. Creating an environment already widens an automation *all* or
+  *all, except* rule without the gate, the same as a project-scope grant.
 
 ## Rejected alternatives
 

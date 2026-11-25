@@ -64,13 +64,16 @@ type Verdict struct {
 	Errors []Failure `json:"errors,omitempty"`
 }
 
-// Normalize is the write-time trim, and the only place it lives: leading and
-// trailing whitespace is removed on every write path, for every type, using
-// Unicode whitespace semantics. It runs BEFORE validation, so a whitespace-only
-// value becomes empty and is then refused by `allow_empty` rather than stored.
+// Normalize is the write-time trim: leading and trailing whitespace is removed
+// on every write path, for every type, using Unicode whitespace semantics.
+// It runs BEFORE validation, so a whitespace-only value becomes empty and is
+// then refused by `allow_empty` rather than stored.
 //
 // It is separate from Validate because its RESULT is plaintext: the write path
 // needs the normalized bytes, and nothing else does.
+//
+// internal/config is a leaf package, so its bootstrap seed inlines the same
+// strings.TrimSpace; TestManagedSeedTrimMatchesSchemaNormalize pins the two.
 func Normalize(value string) string { return strings.TrimSpace(value) }
 
 // integerRe is the ADR's integer grammar: no leading `+`, no underscores, no

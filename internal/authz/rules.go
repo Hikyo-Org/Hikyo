@@ -87,11 +87,36 @@ func (a *TxAuthorizer) AuthorizeKey(ctx context.Context, caller Identity, op Ope
 	return a.authorizeTenant(ctx, caller, op, spec, scope, &key, nil)
 }
 
-// rulesApply reports whether a caller's rules may be consulted. The rule
-// lookup itself admits only human principals; this spares machine callers
-// the read and keeps their query count what it was.
+// rulesApply reports whether a caller's rules may be consulted: people, and
+// workload and automation credentials. Other machine classes hold no rules,
+// so they skip the read and keep their query count what it was.
 func rulesApply(caller Identity) bool {
-	return caller.Class == "" || caller.Class == domain.ClassHuman
+	return caller.Class == "" || caller.Class == domain.ClassHuman || domain.IsServiceAccountKind(caller.Class)
+}
+
+// callerRules reads the rules the chokepoint may honour for caller. A machine
+// rule that fails its class's check reaches nothing, like a rule that does
+// not validate.
+func (a *TxAuthorizer) callerRules(ctx context.Context, caller Identity) ([]domain.Rule, error) {
+	if !domain.IsServiceAccountKind(caller.Class) {
+		return a.r.Rules(ctx, caller.Principal)
+	}
+	rules, err := a.r.MachineRules(ctx, caller.Principal)
+	if err != nil {
+		return nil, err
+	}
+	return admittedMachineRules(caller.Class, rules), nil
+}
+
+// admittedMachineRules keeps the rules a machine of class c may hold.
+func admittedMachineRules(c domain.PrincipalClass, rules []domain.Rule) []domain.Rule {
+	out := make([]domain.Rule, 0, len(rules))
+	for _, r := range rules {
+		if domain.CheckMachineRule(c, r) == domain.MachineRuleOK {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // ruleSatisfiable identifies ordinary project/environment formulas that may

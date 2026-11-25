@@ -17,7 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
-// Config contains effective mail values. Password is used byte-for-byte.
+// Config contains effective mail values. Password is used exactly as stored.
 type Config struct {
 	Addr, TLS, User, Password, From, EHLO, AllowedCIDRs, CAPEM string
 }

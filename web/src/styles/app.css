@@ -3500,6 +3500,12 @@ fieldset.field > legend {
   overflow-x: auto;
 }
 
+/* The wrapper is a keyboard stop (ui/TableScroll.tsx), so its ring is drawn
+   inside the box: a card or panel that clips overflow would cut an outward one. */
+.table-scroll:focus-visible {
+  outline-offset: calc(var(--ring-width) * -1);
+}
+
 /* Mobile: every data table (not the environment matrix, which owns its own
    compact handling) fills its scrolling container, drops to the dense type
    size and tighter cell padding, one shared rule instead of a per-page
@@ -7944,6 +7950,16 @@ label.chk:has(input:disabled) {
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-container);
   background: var(--bg);
+}
+
+/* A rule's hint is prose, not an action: it takes its own line below the
+   summary instead of squeezing Where into an unreadable sliver. */
+.access-rule:has(> .access-hint) {
+  flex-wrap: wrap;
+}
+
+.access-rule > .access-hint {
+  flex-basis: 100%;
 }
 
 .access-rule__main {

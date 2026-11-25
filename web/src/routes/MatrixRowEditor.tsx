@@ -30,6 +30,7 @@ import { NamedId } from '../ui/NamedId.tsx';
 import {
   canClearMatrixCell,
   copyRequiresProtectedConfirmation,
+  describeMatrixRule,
   draftValueForMatrixCell,
   matrixDraftChanges,
   validateMatrixDeclaration,
@@ -171,13 +172,16 @@ export function MatrixRowEditor({
     generatePath(surfaceById('key-detail').path, { ...refData, key: keyRecord.id }),
     workspace?.remote ?? '',
   );
+  const rules = declarationRules(keyRecord);
+  // An any_of union is free text, so name the alternatives before anything is typed.
+  const alternativesHint = rules.length > 1 ? `Valid as ${rules.map(describeMatrixRule).join(', or ')}.` : undefined;
   const validationByEnvironment = new Map<string, MatrixDraftValidation>();
   for (const row of rows) {
     const edit = edits.get(row.environmentId);
     if (edit?.op !== 'set') {
       continue;
     }
-    const error = validateMatrixDeclaration(declarationRules(keyRecord), edit.value);
+    const error = validateMatrixDeclaration(rules, edit.value);
     if (error !== null) {
       validationByEnvironment.set(row.environmentId, error);
     }
@@ -289,6 +293,7 @@ export function MatrixRowEditor({
           <p className="matrix-editor__eyebrow">
             {environment.name}<Sep />{classification}
           </p>
+          {keyRecord.deprecated ? <Alert tone="warn">{deprecationWarning(keyRecord, rows)}</Alert> : null}
 
           {anySecret ? (
             <Checkbox
@@ -428,7 +433,9 @@ export function MatrixRowEditor({
                       hint={
                         liveValidation !== null && liveValidation.level !== 'error'
                           ? liveValidation.message
-                          : undefined
+                          : liveError === undefined
+                            ? alternativesHint
+                            : undefined
                       }
                       error={liveError ?? loneProblem}
                     >
@@ -795,6 +802,19 @@ function declarationRules(keyRecord: MatrixKey): readonly MatrixDraftRule[] {
   return keyRecord.declaration.rule === undefined
     ? keyRecord.declaration.any_of ?? []
     : [keyRecord.declaration.rule];
+}
+
+/** The key detail's deprecation caveat, counted only from the cells this editor can read. */
+function deprecationWarning(keyRecord: MatrixKey, rows: readonly EditorRow[]): string {
+  const live = rows.filter((row) => row.cell?.set === true).map((row) => row.environment.name);
+  const note = keyRecord.deprecation_note.trim();
+  return [
+    'This key is deprecated.',
+    note === '' || /[.!?]$/.test(note) ? note : `${note}.`,
+    live.length === 0
+      ? ''
+      : `It still has ${plural(live.length, 'live value')} across ${live.join(', ')}. Remove the values before deleting the key.`,
+  ].filter((part) => part !== '').join(' ');
 }
 
 /** One human line for the declaration: `string · pattern · range · required in production`. */

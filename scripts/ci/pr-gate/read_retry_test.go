@@ -264,11 +264,41 @@ func TestGitHubWriteNeverRetries(t *testing.T) {
 	attempts := fakeGH(t, `echo 'gh: HTTP 502' >&2; exit 1`)
 	var receipt map[string]any
 	err := retryingGH.write(context.Background(), "POST", "repos/Hikyo-Org/Hikyo/issues/1/comments", map[string]string{"body": "x"}, &receipt)
-	if err == nil || !strings.Contains(err.Error(), "no mutation retry attempted") {
-		t.Fatalf("write failure was not terminal: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "(HTTP 502); no mutation retry attempted") {
+		t.Fatalf("write failure was not terminal or lost its status: %v", err)
 	}
 	if attempts() != 1 || len(*waits) != 0 {
 		t.Fatalf("attempts=%d waits=%v, write must never retry", attempts(), *waits)
+	}
+}
+
+func TestGitHubWriteNamesExitStatusWithoutHTTPStatus(t *testing.T) {
+	recordReadWaits(t)
+	fakeGH(t, `echo 'connection reset' >&2; exit 4`)
+	var receipt map[string]any
+	err := retryingGH.write(context.Background(), "PATCH", "repos/Hikyo-Org/Hikyo/check-runs/1", map[string]string{"status": "queued"}, &receipt)
+	if err == nil || !strings.Contains(err.Error(), "(command exit status 4); no mutation retry attempted") || strings.Contains(err.Error(), "connection reset") {
+		t.Fatalf("write failure did not name only its exit status: %v", err)
+	}
+}
+
+func TestGitHubWriteNamesSignal(t *testing.T) {
+	recordReadWaits(t)
+	fakeGH(t, `kill -KILL $$`)
+	var receipt map[string]any
+	err := retryingGH.write(context.Background(), "PATCH", "repos/Hikyo-Org/Hikyo/check-runs/1", map[string]string{"status": "queued"}, &receipt)
+	if err == nil || !strings.Contains(err.Error(), "(command signal: killed); no mutation retry attempted") {
+		t.Fatalf("write failure did not name the signal: %v", err)
+	}
+}
+
+func TestGitHubReadNamesSignal(t *testing.T) {
+	recordReadWaits(t)
+	fakeGH(t, `kill -KILL $$`)
+	var result map[string]any
+	err := retryingGH.read(context.Background(), "repos/Hikyo-Org/Hikyo", &result)
+	if err == nil || !strings.Contains(err.Error(), "command signal: killed") {
+		t.Fatalf("read failure did not name the signal: %v", err)
 	}
 }
 

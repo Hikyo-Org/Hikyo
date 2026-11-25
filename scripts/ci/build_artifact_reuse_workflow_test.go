@@ -106,6 +106,7 @@ func TestWebFlowMatrixWorkflowArtifactReuse(t *testing.T) {
 		testCase{"missing mail fixture environment is refused", mutateJob(workflow, "web", replace("HIKYO_E2E_MAIL_BINARY: ${{ github.workspace }}/ci-artifacts/mail-sink", "HIKYO_E2E_MAIL_BINARY: wrong-binary")), "web does not pass the prebuilt mail helper to the browser harness"},
 		testCase{"missing executable restoration is refused", mutateJob(workflow, "web-go", replace("run: chmod +x ci-artifacts/hikyo-ui", "run: echo removed")), "no-egress does not restore execute permission after artifact download"},
 		testCase{"missing downloaded probe binary is refused", mutateJob(workflow, "web-go", replace("HIKYO_NO_EGRESS_BIN: ${{ github.workspace }}/ci-artifacts/hikyo-ui", "HIKYO_NO_EGRESS_BIN: wrong-binary")), "no-egress does not pass the downloaded binary to the probe"},
+		testCase{"longer snapshot retention is refused", mutateJob(workflow, "release-snapshot", replace("retention-days: 14", "retention-days: 90")), "development snapshot upload is missing retention-days: 14"},
 		testCase{"serialized release snapshot is refused", mutateJob(workflow, "release-snapshot", replace("needs: changes", "needs: [changes, app-build]")), "release snapshot is serialized behind app-build"},
 	)
 

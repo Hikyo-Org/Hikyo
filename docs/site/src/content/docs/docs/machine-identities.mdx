@@ -28,6 +28,9 @@ Record the returned stable ID. List its grants before minting a credential.
 In the browser, Machine access offers the same acts: *Create service account*,
 *Add environment grant*, *Mint credential*, *Revoke*, and *Delete*
 ([Operate Hikyo from the browser](/docs/browser-operations/#the-lifecycle)).
+Minting or rotating in the browser lets you choose the credential's lifetime
+from presets; an estimated expiry is shown before you confirm, and a notice
+after minting says when the instance policy ceiling shortened it.
 
 `--principal` takes the service account's **principal** ID (`mch_...`, the
 `principal_id` field of `hikyo sa list -o json`), not its `sa_...` row ID.
@@ -85,6 +88,17 @@ may be copied by diagnostic tooling.
 Rotate before expiry, distribute the new credential, verify it, then revoke the
 old credential. A rotate command does not make distribution atomic.
 
+Minting or rotating a credential for an account that can decrypt plaintext needs
+a fresh reauthentication over each environment the account reaches, the same as
+the Machine access page. The command asks for your authenticator code where the
+environment's window allows one. Where it does not (window 0, a protected
+environment, or no authenticator enrolled), it opens your browser to approve the
+mint with a passkey, then continues. The approval covers that environment and no
+keys. At a protected or 0-window environment it is one decision, used once;
+otherwise the passkey opens the environment's reauthentication window for its
+duration, as your authenticator code would. Without a browser the command refuses and names the
+Machine access page.
+
 ## Credential policy
 
 The instance policy limits lifetime, indefinite credentials, and the number of
@@ -94,6 +108,8 @@ live credentials per service account.
 hikyo instance-config credential-policy get
 hikyo sa credential list --sa <service-account-id>
 ```
+
+`hikyo sa credential list` shows `expired` for credentials past their expiry.
 
 Change policy only after checking existing workloads. Tightening a limit may
 require staged rotation.

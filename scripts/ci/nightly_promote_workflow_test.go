@@ -74,7 +74,7 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 		t.Fatal("promotion must run only for the schedule or a manual run on main, never for a closed pull request")
 	}
 	if promote.Environment != "nightly-release" || promote.Concurrency["group"] != "nightly-promote" || promote.Concurrency["cancel-in-progress"] != false ||
-		!reflect.DeepEqual(promote.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
+		!reflect.DeepEqual(promote.Permissions, map[string]string{"actions": "read", "checks": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("promotion must hold the protected environment, run one at a time and read with the workflow token only")
 	}
 	var minted, ran bool

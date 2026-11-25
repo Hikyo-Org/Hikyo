@@ -813,7 +813,8 @@ func pendingDraftView(change store.PendingChange, key store.CatalogueKey, presen
 		if err != nil {
 			return PendingDraft{}, fmt.Errorf("service: pending change %s: %w", change.ID, err)
 		}
-		value := string(plain)
+		// Publish normalizes the draft when it opens it; validate and show that.
+		value := schema.Normalize(string(plain))
 		crypto.Zero(plain)
 		// Template drafts report structural validity; final config schemas run
 		// after caller parameters are supplied, matching publication semantics.

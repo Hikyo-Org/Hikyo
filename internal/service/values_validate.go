@@ -111,7 +111,7 @@ func (s *Values) validate(ctx context.Context, actor Actor, scope domain.Scope, 
 			// Evaluate exactly what stage would store: stage seals the
 			// normalized value, and publish validates the stored one, so
 			// validate must not disagree with either over surrounding space.
-			stored := normalizeStoredValue(p, key, value)
+			stored := schema.Normalize(value)
 			if err := problem(validateValueWithParameters(key, stored, declarations)); err != nil {
 				return ValidatedChange{}, err
 			}

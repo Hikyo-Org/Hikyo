@@ -6,7 +6,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -472,14 +471,9 @@ func pinnedKey(n *types.Named, pinned map[string]bool) string {
 	return ""
 }
 
-// pinnedTypesCache maps a package to the pinned types reachable through its
-// imports (itself included), keyed like SensitiveTypes.
-var pinnedTypesCache sync.Map
-
+// pinnedTypesFrom maps the pinned types reachable through pkg's imports (pkg
+// included), keyed like SensitiveTypes.
 func pinnedTypesFrom(pkg *types.Package) map[string]*types.Named {
-	if v, ok := pinnedTypesCache.Load(pkg); ok {
-		return v.(map[string]*types.Named)
-	}
 	out := map[string]*types.Named{}
 	visited := map[*types.Package]bool{}
 	var walk func(*types.Package)
@@ -507,7 +501,6 @@ func pinnedTypesFrom(pkg *types.Package) map[string]*types.Named {
 		}
 	}
 	walk(pkg)
-	pinnedTypesCache.Store(pkg, out)
 	return out
 }
 

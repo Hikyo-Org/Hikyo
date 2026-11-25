@@ -168,12 +168,14 @@ const zMinted = mintMachineCredentialOp.response.pick({ value: true, clamped: tr
 export async function mintCredential(
   p: ProjectRef,
   serviceAccount: string,
+  lifetimeSeconds?: number,
 ): Promise<z.infer<typeof zMinted>> {
   return parsedPick(
     mintMachineCredentialOp,
     {
       path: { org: p.org, project: p.project, serviceAccount },
-      body: {},
+      // Absent means the server's default; the server clamps to the instance ceiling.
+      body: lifetimeSeconds === undefined ? {} : { lifetime_seconds: lifetimeSeconds },
     },
     { value: true, clamped: true, expires_at: true },
   );
@@ -772,32 +774,46 @@ export function presetFieldId(claim: string): string {
   return `binding-${claim.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
 }
 
+/** The server's DefaultCredentialLifetime (internal/service/identities.go), in seconds. */
+export const DEFAULT_CREDENTIAL_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
+
 /**
- * BINDING_LIFETIMES is the binding's own lifetime, which is #17's rule rather
- * than a convenience: a binding is a standing permission to present tokens and
- * expires on the same terms as a bearer credential, renewal is a mint, never
- * an edit, because bindings are immutable.
+ * CREDENTIAL_LIFETIMES is the lifetime choice shared by the bearer mint and
+ * the federation binding, which is #17's rule rather than a convenience: a
+ * binding is a standing permission to present tokens and expires on the same
+ * terms as a bearer credential, renewal is a mint, never an edit, because
+ * bindings are immutable.
+ *
+ * The instance ceiling is not readable by an ordinary identity manager, so the
+ * presets are not trimmed to it: the server clamps and says so (`clamped`).
  *
  * `indefinite` is present and DISABLED with its reason, exactly as the frozen
  * prototype has it: the instance opt-in that admits it is off by default, and a
  * missing option would leave an operator wondering whether the product has the
  * concept at all.
  */
-export const BINDING_LIFETIMES: ReadonlyArray<{
+export const CREDENTIAL_LIFETIMES: ReadonlyArray<{
   readonly id: string;
   readonly label: string;
   readonly seconds?: number;
   readonly disabled?: boolean;
 }> = [
-  { id: 'default', label: 'Instance default' },
+  { id: 'default', label: 'Instance default (30 days)' },
   { id: '30d', label: '30 days', seconds: 30 * 24 * 60 * 60 },
   { id: '90d', label: '90 days', seconds: 90 * 24 * 60 * 60 },
+  { id: '180d', label: '180 days', seconds: 180 * 24 * 60 * 60 },
+  { id: '1y', label: '1 year', seconds: 365 * 24 * 60 * 60 },
   {
     id: 'indefinite',
     label: 'Indefinite: requires the instance allow_indefinite opt-in',
     disabled: true,
   },
 ];
+
+/** The seconds a preset asks for; undefined for the instance default. */
+export function lifetimeSecondsFor(id: string): number | undefined {
+  return CREDENTIAL_LIFETIMES.find((entry) => entry.id === id)?.seconds;
+}
 
 /** The events a CI binding can pin. The last two are the refused pair. */
 export const CI_EVENTS = ['push', 'workflow_dispatch', 'pull_request', 'pull_request_target'] as const;

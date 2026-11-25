@@ -515,11 +515,15 @@ func (s *Definitions) executeResolution(ctx context.Context, r store.Repos, az *
 	// scoped) and cascade, minus value clearing — a live environment was already
 	// refused, so an empty one leaves nothing to clear.
 	for _, del := range res.EnvDeletes {
-		if err := s.deleteEnvironment(ctx, r, az, caller, scope, del.ID); err != nil {
+		purgedCerts, err := s.deleteEnvironment(ctx, r, az, caller, scope, del.ID)
+		if err != nil {
 			return err
 		}
-		if err := insertDefinitionEvent(ctx, r, p, caller, audit.EventEnvDeleted, "environment", del.ID,
-			audit.Payload{"name": audit.SanitizeFreeText(del.Name)}); err != nil {
+		payload := audit.Payload{"name": audit.SanitizeFreeText(del.Name)}
+		if purgedCerts > 0 {
+			payload["purged_certificates"] = purgedCerts
+		}
+		if err := insertDefinitionEvent(ctx, r, p, caller, audit.EventEnvDeleted, "environment", del.ID, payload); err != nil {
 			return err
 		}
 	}
@@ -698,37 +702,38 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 // environment out, mirroring Environments.Delete's store sequence minus value
 // clearing (a live environment was already refused).
 func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
-	scope domain.Scope, envID string) error {
+	scope domain.Scope, envID string) (int, error) {
 	envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
 	ep, err := az.Authorize(ctx, caller, authz.OpEnvDelete, envScope)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := r.Pending().DiscardEnvironment(ctx, ep); err != nil {
-		return err
+		return 0, err
 	}
 	if err := r.Snapshots().DeleteEnvironment(ctx, ep); err != nil {
-		return err
+		return 0, err
 	}
 	if err := r.Pins().DeleteEnvironment(ctx, ep); err != nil {
-		return err
+		return 0, err
 	}
 	if err := r.Catalogue().DeletePresenceForEnvironment(ctx, ep); err != nil {
-		return err
+		return 0, err
 	}
 	if err := purgeEnvironmentRotations(ctx, r, ep); err != nil {
-		return err
+		return 0, err
 	}
-	if err := r.SSH().PurgeEnvironment(ctx, ep); err != nil {
-		return err
+	purgedCerts, err := purgeEnvironmentLiveRows(ctx, r, ep)
+	if err != nil {
+		return 0, err
 	}
 	if err := purgePersonalForEnvironment(ctx, r, ep, caller.Principal, envScope.Env); err != nil {
-		return err
+		return 0, err
 	}
 	if err := releaseEnvironmentGrants(ctx, r, az, ep, caller.Principal, envScope); err != nil {
-		return err
+		return 0, err
 	}
-	return r.Environments().Delete(ctx, ep)
+	return purgedCerts, r.Environments().Delete(ctx, ep)
 }
 
 type parkedRenames struct {

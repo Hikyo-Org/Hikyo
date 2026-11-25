@@ -192,12 +192,33 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 	})
 
-	t.Run("machine_rule_refused", func(t *testing.T) {
-		_, err := f.rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), service.RuleSpec{
-			Target: mchA1, Capability: domain.CapRead, Org: orgA, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
-		if !errors.Is(err, service.ErrRuleMachine) {
-			t.Fatalf("machine rule = %v, want ErrRuleMachine", err)
+	t.Run("machine_rules_follow_the_class_rules", func(t *testing.T) {
+		// mch_a1 is an automation principal bound to project A1.
+		// A machine holds rules only through its service-account row (the
+		// fixture principal predates the table), so give it one.
+		execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) `+
+			`VALUES ('sa_mch_a1', 'mch_a1', 'org_a', 'prj_a1', 'mch-a1', 'automation', `+ts+`, 'usr_orgadmin')`)
+		bothProjects := whereIn(domain.AxisAll, nil, domain.AxisAll)
+		bothProjects.Projects = []domain.ProjectID{prjA1, prjA2}
+		foreign := domain.Where{Projects: []domain.ProjectID{prjA2}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}
+		for name, tc := range map[string]struct {
+			spec service.RuleSpec
+			want error
+		}{
+			"key items":       {service.RuleSpec{Capability: domain.CapEdit, Where: whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))}, service.ErrRuleMachineKeys},
+			"reveal":          {service.RuleSpec{Capability: domain.CapReveal, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)}, service.ErrMachineCapability},
+			"manage-members":  {service.RuleSpec{Capability: domain.CapManageMembers, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)}, service.ErrMachineCapability},
+			"two projects":    {service.RuleSpec{Capability: domain.CapRead, Where: bothProjects}, service.ErrMachineScope},
+			"foreign project": {service.RuleSpec{Capability: domain.CapRead, Where: foreign}, service.ErrMachineProject},
+		} {
+			tc.spec.Target, tc.spec.Org = mchA1, orgA
+			if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), tc.spec); !errors.Is(err, tc.want) {
+				t.Errorf("%s: machine rule = %v, want %v", name, err, tc.want)
+			}
 		}
+		// The control: the same principal takes an allowlisted, whole-key rule.
+		f.create(t, orgAdmin, service.RuleSpec{Target: mchA1, Capability: domain.CapEdit, Org: orgA,
+			Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
 	})
 
 	t.Run("shape_refusals", func(t *testing.T) {
@@ -546,7 +567,7 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 
 // countedAuthorizeKey is countedAuthorize for the key-aware entry point, on
 // value.reveal.
-func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget) (int, error) {
+func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget, classes ...domain.PrincipalClass) (int, error) {
 	t.Helper()
 	ctx := t.Context()
 	count := 0
@@ -570,7 +591,11 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count}
 		r = authn.NewSQLite(dbtx)
 	}
-	_, err := authz.NewTxAuthorizer(r, tok).AuthorizeKey(ctx, authz.Identity{Principal: principal}, authz.OpValueReveal, scope, key)
+	caller := authz.Identity{Principal: principal}
+	if len(classes) != 0 {
+		caller.Class = classes[0]
+	}
+	_, err := authz.NewTxAuthorizer(r, tok).AuthorizeKey(ctx, caller, authz.OpValueReveal, scope, key)
 	return count, err
 }
 
