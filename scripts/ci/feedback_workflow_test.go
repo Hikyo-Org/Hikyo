@@ -15,6 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// The reader's cache family comes from the PR's base branch, which the PR author cannot pick
+// without targeting that branch, and its entry from the lane's own Go scope.
+const (
+	feedbackCacheABIPrefix     = "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+	feedbackReaderFamilyOnly   = "${{ github.event.pull_request.base.ref == 'dev' && 'dev' || 'main' }}-"
+	feedbackReaderFamily       = feedbackReaderFamilyOnly + "${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}-"
+	feedbackCLIReaderCondition = "fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go && fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope == 'application'"
+)
+
 func TestFeedbackWorkflowPreservesLatestUsefulCommitAndImmutableBootstrap(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback.yml"))
 	if err != nil {
@@ -104,8 +113,8 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if job.Steps[1].With["fetch-depth"] != "2" {
 		return fmt.Errorf("immutable tooling must retain the synthetic merge's actual parents")
 	}
-	var pinnedBase, buildReader, runnerABI bool
-	buildReaders := 0
+	var pinnedBase, buildReader, cliReader, runnerABI bool
+	buildReaders, cliReaders := 0, 0
 	for _, step := range job.Steps {
 		if step.Name == "Select fast feedback domains" {
 			pinnedBase = step.ID == "plan" && step.If == "" && !step.Continue && strings.Contains(step.Run, "rev-parse HEAD^1") && strings.Contains(step.Run, `test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"`) && strings.Contains(step.Run, `export FAST_FEEDBACK_BASE="$base"`) && strings.Contains(step.Run, `plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)`)
@@ -113,8 +122,18 @@ func requireFeedbackWorkflow(raw []byte) error {
 		if step.Name == "Select Go build cache runner ABI" {
 			runnerABI = step.ID == "runner-cache-abi" && step.If == feedbackPrerequisiteCondition("go") && step.Run == `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"`
 		}
-		if step.With["path"] == ".ci-cache/go-feedback-compact" && step.Name != "Restore bounded feedback Go cache" {
+		if step.With["path"] == ".ci-cache/go-feedback-compact" && step.Name != "Restore bounded feedback Go cache" && step.Name != "Restore bounded feedback CLI Go cache" {
 			return fmt.Errorf("every build-cache reader must satisfy the exact Go-only compatibility contract")
+		}
+		if step.Name == "Restore bounded feedback CLI Go cache" {
+			cliReaders++
+			cliReader = step.Uses == "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" &&
+				step.If == feedbackCLIReaderCondition &&
+				!step.Continue && reflect.DeepEqual(step.With, map[string]string{
+				"path":         ".ci-cache/go-feedback-compact",
+				"key":          feedbackCacheABIPrefix + feedbackReaderFamilyOnly + "cli-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}",
+				"restore-keys": feedbackCacheABIPrefix + feedbackReaderFamilyOnly + "cli-",
+			})
 		}
 		if step.Name == "Restore bounded feedback Go cache" {
 			buildReaders++
@@ -122,13 +141,13 @@ func requireFeedbackWorkflow(raw []byte) error {
 				step.If == feedbackPrerequisiteCondition("go") &&
 				!step.Continue && reflect.DeepEqual(step.With, map[string]string{
 				"path":         ".ci-cache/go-feedback-compact",
-				"key":          "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}",
-				"restore-keys": "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
+				"key":          feedbackCacheABIPrefix + feedbackReaderFamily + "${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}",
+				"restore-keys": feedbackCacheABIPrefix + feedbackReaderFamily,
 			})
 		}
 
 	}
-	if !pinnedBase || !buildReader || !runnerABI || buildReaders != 1 {
+	if !pinnedBase || !buildReader || !cliReader || !runnerABI || buildReaders != 1 || cliReaders != 1 {
 		return fmt.Errorf("feedback needs a verified integration base and bounded compatible read-only Go build cache")
 	}
 	shellcheckInstallers, shellcheckRestores, releasePythonInstallers := 0, 0, 0
@@ -192,7 +211,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 		}
 		if strings.Contains(step.Uses, "cache/restore@") {
 			switch step.Name {
-			case "Restore bounded feedback Go cache", "Restore frontend dependencies":
+			case "Restore bounded feedback Go cache", "Restore bounded feedback CLI Go cache", "Restore frontend dependencies":
 			case "Restore pinned ShellCheck":
 				shellcheckRestores++
 				if step.If != feedbackPrerequisiteCondition("shellcheck") || step.Continue || !reflect.DeepEqual(step.With, map[string]string{
@@ -618,10 +637,9 @@ func TestFeedbackConcurrencyMetadataCannotCancelOrEvictCommitVerdict(t *testing.
 }
 
 func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
-	for _, name := range []string{"ci-feedback-cache.yml", "ci-feedback-backend-cache.yml"} {
+	for _, name := range []string{"ci-feedback-cache.yml"} {
 		t.Run(name, func(t *testing.T) {
-			compact := name == "ci-feedback-backend-cache.yml"
-			requireFeedbackSeed := func(w map[string]any) error { return requireFeedbackSeedProfile(w, compact) }
+			requireFeedbackSeed := func(w map[string]any) error { return requireFeedbackSeedProfile(w, false) }
 
 			raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows", name))
 			if err != nil {
@@ -640,11 +658,7 @@ func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
 				},
 				"drop required seed root": func(w map[string]any) {
 					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-					first := "./internal/cli "
-					if compact {
-						first = "./internal/app "
-					}
-					steps[4].(map[string]any)["run"] = strings.Replace(steps[4].(map[string]any)["run"].(string), first, "", 1)
+					steps[4].(map[string]any)["run"] = strings.Replace(steps[4].(map[string]any)["run"].(string), " ./scripts/ci", "", 1)
 				},
 				"masked seed job": func(w map[string]any) {
 					w["jobs"].(map[string]any)["seed"].(map[string]any)["continue-on-error"] = true
@@ -699,19 +713,26 @@ func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 }
 
+func seedStepByName(steps []any, name string) map[string]any {
+	for _, step := range steps {
+		if m := step.(map[string]any); m["name"] == name {
+			return m
+		}
+	}
+	return map[string]any{}
+}
+
 func requireFeedbackSeed(workflow map[string]any) error {
 	return requireFeedbackSeedProfile(workflow, false)
 }
 
 func requireFeedbackSeedProfile(workflow map[string]any, compact bool) error {
+	if compact {
+		return requireBackendSeed(workflow)
+	}
 	cachePath, cachePrefix := ".ci-cache/go-feedback", "go-feedback-v1-"
 	expectedEnv := map[string]any{"GOCACHE": "${{ github.workspace }}/" + cachePath}
 	packages := "go list -deps -test -export ./internal/cli ./scripts/ci"
-	if compact {
-		cachePath, cachePrefix = ".ci-cache/go-feedback-compact", "go-feedback-v2-"
-		expectedEnv = map[string]any{"GOCACHE": "${{ github.workspace }}/" + cachePath, "GOFLAGS": "-gcflags=all=-dwarf=false"}
-		packages = "go list -p 2 -deps -test -export ./internal/app ./internal/cli ./scripts/ci"
-	}
 	triggers := workflow["on"].(map[string]any)
 	if len(triggers) != 2 {
 		return fmt.Errorf("seed must run only daily or manually")
@@ -788,7 +809,7 @@ func TestFeedbackSeedSetupDiagnosticsKeepSeedFresh(t *testing.T) {
 			job := workflow["jobs"].(map[string]any)["seed"].(map[string]any)
 			steps := job["steps"].([]any)
 			setup := steps[1].(map[string]any)
-			compile := steps[4].(map[string]any)["run"].(string)
+			compile := seedStepByName(steps, "Compile a fresh feedback seed without running tests")["run"].(string)
 			prefix, _, found := strings.Cut(compile, "go list ")
 			if !found {
 				t.Fatal("actual compile guard missing")

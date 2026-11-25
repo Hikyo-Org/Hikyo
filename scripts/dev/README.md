@@ -119,18 +119,21 @@ completion guarantee is not claimed. Keep the existing signature pre-push hook;
 this command is optional, with no additional mandatory expensive hooks.
 
 Feedback uses the separate `go-feedback-v2` compact cache, prepared from trusted
-main by `ci-feedback-backend-cache.yml`. Its application, CLI and tooling exports
-use the same `-gcflags=all=-dwarf=false` compiler ABI as feedback. The existing
-version-1 cache and its production-fixture consumers retain their compiler
-defaults. Both publishers enforce the existing expanded size and file bounds.
-PR jobs cannot publish either main cache. After merging a cache bootstrap, a
-maintainer can prepare the new seed with:
+branches by `ci-feedback-backend-cache.yml` as bounded entries (`application` and
+`cli` for the go lane, `tooling` for the tooling lane), in two trust families: `main` for PRs that do not
+target dev and `dev` for PRs that target dev. Its exports use the same
+`-gcflags=all=-dwarf=false` compiler ABI as feedback. The existing version-1
+cache and its production-fixture consumers retain their compiler defaults.
+Every publisher enforces the existing expanded size and file bounds per entry.
+PR jobs cannot publish any seed. After merging a cache bootstrap, a maintainer
+can prepare the new seeds with:
 
 ```sh
 gh workflow run ci-feedback-backend-cache.yml --repo Hikyo-Org/Hikyo --ref main
+gh workflow run ci-feedback-backend-cache.yml --repo Hikyo-Org/Hikyo --ref dev
 ```
 
-Verify the main-only seed job succeeds and publishes its exact revision key
+Verify the seed jobs succeed and publish their exact revision keys
 before relying on a subsequent feedback cache restore. Publication and a warm
 local run do not establish hosted feedback acceptance or merge.
 

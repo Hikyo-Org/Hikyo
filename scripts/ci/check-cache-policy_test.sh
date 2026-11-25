@@ -456,15 +456,25 @@ if grep -F 'playwright install-deps' "$@" >/dev/null ||
 fi
 
 # Every cache writer must be trusted-main-only and must skip an upload after an
-# exact hit. This covers Go, module, and Playwright writers alike.
+# exact hit. This covers Go, module, and Playwright writers alike. The one exception
+# is the feedback seed, which also publishes its dev-family entries from dev pushes;
+# its restore side is held to the family split by feedback_cache_trust_test.go.
 for file in "$@"; do
+	dev_seed=false
+	[ "$(basename "$file")" != ci-feedback-backend-cache.yml ] || dev_seed=true
 	awk \
 		-v main_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" \
+		-v dev_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'" \
+		-v dev_seed="$dev_seed" \
 		-v hit_guard="outputs.cache-hit != 'true'" '
 		/^[[:space:]]+- name:/ { block = "" }
 		{ block = block $0 "\n" }
 		/actions\/cache\/save@/ {
 			if (index(block, main_guard) == 0 || index(block, hit_guard) == 0) {
+				bad = 1
+			}
+			# Any dev ref in a writer needs the exact dev guard and the seed workflow.
+			if (index(block, "refs/heads/dev") > 0 && (dev_seed != "true" || index(block, dev_guard) == 0)) {
 				bad = 1
 			}
 		}
