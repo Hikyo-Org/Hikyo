@@ -243,6 +243,11 @@ func prepare(repository string, e controlEvent) error {
 		if r, err := parseRequest(c.Body); err == nil && r.head == pr.Head.SHA {
 			return nil
 		}
+		// shortcut: no compare-and-swap on comments; re-checking the live head
+		// narrows, but does not close, a stale reset over a newer head's comment.
+		if latest, err := currentPull(repository, pr.Number); err != nil || latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
+			return err
+		}
 		return updateComment(repository, c, body)
 	}
 	if c.ID != 0 {
@@ -553,7 +558,11 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	// shortcut: GitHub has no compare-and-swap on comments, so a stale comment
 	// job PATCH can still land between this re-read and the rerun; narrow, not closed.
 	if after, err := botComment(repository, pr.Number); err != nil {
-		// Release the claim so automatic admission can retry this head.
+		// Release the claim so admission can retry this head, unless the PR
+		// moved on: a newer head's comment job owns the comment then.
+		if latest, lerr := currentPull(repository, pr.Number); lerr != nil || latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
+			return errors.Join(err, lerr)
+		}
 		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
 		return errors.Join(err, updateComment(repository, c, release))
 	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {

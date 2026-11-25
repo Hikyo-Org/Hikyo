@@ -225,8 +225,45 @@ func TestPrepareReconcilesARacedSurvivorFromAnOlderHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := recorded(t, log)
-	if !strings.Contains(c, "--method DELETE repos/o/r/issues/comments/21") || !strings.Contains(c, "--method PATCH repos/o/r/issues/comments/20") || !strings.Contains(c, "head="+live) {
+	if !strings.Contains(c, "--method DELETE repos/o/r/issues/comments/21") || !strings.Contains(patchLine(c, 20), "head="+live) {
 		t.Fatalf("an older-head survivor must be reset to the live head:\n%s", c)
+	}
+}
+
+// patchLine returns the recorded PATCH call for comment id, or "".
+func patchLine(calls string, id int) string {
+	for _, line := range strings.Split(calls, "\n") {
+		if strings.Contains(line, fmt.Sprintf("--method PATCH repos/o/r/issues/comments/%d ", id)) {
+			return line
+		}
+	}
+	return ""
+}
+
+func TestPrepareDoesNotResetASurvivorOnceTheHeadMoved(t *testing.T) {
+	live, old, newer := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
+	log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{botCopy(t, 20, old), botCopy(t, 21, live)}})}, "none")
+	// The first PR read sees live; any later read sees a newer push.
+	gh := filepath.Join(filepath.Dir(log), "gh")
+	script, err := os.ReadFile(gh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := fmt.Sprintf(`*repos/o/r/pulls/7) if [ -f '%[1]s.pr' ]; then h=%[2]s; else h=%[3]s; : >'%[1]s.pr'; fi; echo "{\"number\":7,\"state\":\"open\",\"head\":{\"sha\":\"$h\"}}";;`, log, newer, live)
+	lines := strings.Split(string(script), "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "*repos/o/r/pulls/7)") {
+			lines[i] = moved
+		}
+	}
+	if err := os.WriteFile(gh, []byte(strings.Join(lines, "\n")), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if c := recorded(t, log); patchLine(c, 20) != "" {
+		t.Fatalf("a reset must not land once the PR head moved:\n%s", c)
 	}
 }
 
