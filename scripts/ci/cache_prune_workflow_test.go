@@ -207,7 +207,7 @@ func requireCachePruneBehavior(script string) error {
 	}
 	// An entry that is already gone is success; any other failure is not.
 	if got, _, err := runCachePrune(script, cachePrunePages(), "3", ""); err != nil || len(got) != 4 {
-		return fmt.Errorf("a 404 on delete must count as deleted and the rest still go: %v %v", got, err)
+		return fmt.Errorf("a 404 on delete must count as deleted and the rest still go: %v %w", got, err)
 	}
 	if _, _, err := runCachePrune(script, cachePrunePages(), "", "3"); err == nil {
 		return fmt.Errorf("a failed delete must fail the job")
@@ -219,7 +219,7 @@ func requireCachePruneBehavior(script string) error {
 			Created: fmt.Sprintf("2026-10-01T00:%02d:%02dZ", i/60, i%60), Accessed: "2026-11-25T18:00:00Z"})
 	}
 	if got, _, err := runCachePrune(script, [][]apiCacheEntry{many}, "", ""); err != nil || len(got) != 100 {
-		return fmt.Errorf("one run must delete at most 100 entries, got %d: %v", len(got), err)
+		return fmt.Errorf("one run must delete at most 100 entries, got %d: %w", len(got), err)
 	}
 	return nil
 }
