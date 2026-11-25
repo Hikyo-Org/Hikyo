@@ -38,8 +38,9 @@ fixture_message() { printf 'source fixture reached\n'; }
 fixture_invalid() {
 EOF
 # The packages static-invariants.sh runs. Its selection is exact: every TestInvariant*
-# in isolation runs; a test outside those (a database suite) must stay unselected.
-mkdir -p internal/boundary internal/isolation
+# in isolation runs and lint gets the changed packages; a test outside those (a database
+# suite, the whole-module vet pass) must stay unselected.
+mkdir -p internal/boundary internal/isolation internal/lint
 printf 'package boundary\n\nimport "testing"\n\nfunc TestBoundary(t *testing.T) {}\n' >internal/boundary/boundary_test.go
 cat >internal/isolation/invariants_test.go <<'EOF'
 package isolation
@@ -49,6 +50,21 @@ import "testing"
 func TestInvariant01Fixture(t *testing.T) {}
 
 func TestDatabaseSuiteFixture(t *testing.T) { t.Fatal("database suites must not run in feedback") }
+EOF
+cat >internal/lint/vetdriver_test.go <<'EOF'
+package lint
+
+import (
+	"fmt"
+	"os"
+	"testing"
+)
+
+func TestVetDriverChangedPackages(t *testing.T) {
+	fmt.Printf("vet packages: %s\n", os.Getenv("HIKYO_VET_PACKAGES"))
+}
+
+func TestVetDriverRepo(t *testing.T) { t.Fatal("the whole-module vet pass must not run in feedback") }
 EOF
 commit_fixture
 base=$(git rev-parse HEAD)
@@ -112,6 +128,8 @@ run_feedback
 grep -F 'Go formatting passed (1 files)' "$work/output" >/dev/null
 # A Go change also runs the static invariants, and a failing one fails feedback.
 grep -F 'static-invariants.sh' "$work/output" >/dev/null
+# Lint is handed exactly the changed packages (here the root package).
+grep -Fx 'vet packages: ./.' "$work/output" >/dev/null
 printf 'package isolation\n\nimport "testing"\n\nfunc TestInvariant01Fixture(t *testing.T) { t.Fatal("static invariant broken") }\n' >internal/isolation/invariants_test.go
 commit_fixture
 refuse 'static invariant broken'

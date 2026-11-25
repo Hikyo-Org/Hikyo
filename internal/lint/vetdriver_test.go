@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -277,6 +278,22 @@ func TestVetDriverRepo(t *testing.T) {
 		}
 	} else {
 		t.Logf("ran %d of %d contexts: the unanalyzed Go file check needs every context", ran, len(Contexts))
+	}
+}
+
+// TestVetDriverChangedPackages is the fast-feedback form of TestVetDriverRepo: the
+// analyzers' per-package findings in the default context over only the packages named in
+// HIKYO_VET_PACKAGES (space separated ./paths). The whole-module parts (target presence, the
+// raw SQL aggregate, unanalyzed files, redaction pins) stay in TestVetDriverRepo.
+func TestVetDriverChangedPackages(t *testing.T) {
+	patterns := strings.Fields(os.Getenv("HIKYO_VET_PACKAGES"))
+	if len(patterns) == 0 {
+		t.Skip("HIKYO_VET_PACKAGES names no package")
+	}
+	bin := buildVetTool(t)
+	out := runRepoVet(t, bin, Contexts[0], func() []string { return repoInputFlags(t) }, patterns)
+	for _, finding := range out.Findings {
+		t.Error(finding)
 	}
 }
 

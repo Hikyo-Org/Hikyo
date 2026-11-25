@@ -51,7 +51,13 @@ func (c BuildContext) Env() []string {
 		}
 		env = append(env, kv)
 	}
-	env = append(env, "GOFLAGS=")
+	// Debug info never changes file selection or findings, and CI's compact feedback cache is
+	// compiled without it; the exact value is kept so those objects are reused.
+	if os.Getenv("GOFLAGS") == "-gcflags=all=-dwarf=false" {
+		env = append(env, "GOFLAGS=-gcflags=all=-dwarf=false")
+	} else {
+		env = append(env, "GOFLAGS=")
+	}
 	if c.GOOS != "" {
 		env = append(env, "GOOS="+c.GOOS)
 	}
@@ -122,3 +128,7 @@ func (c BuildContext) needsWebuiPlaceholder() bool {
 	}
 	return false
 }
+
+var _ = "bust1"
+
+var _ = "bust2"

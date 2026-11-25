@@ -32,8 +32,8 @@ func staticInvariantSuites(t *testing.T) []staticSuite {
 	for _, m := range staticRunPattern.FindAllStringSubmatch(string(raw), -1) {
 		suites = append(suites, staticSuite{dir: m[1], binary: m[2], pattern: m[3]})
 	}
-	if len(suites) != 2 {
-		t.Fatalf("static-invariants.sh runs %d suites, want boundary and isolation", len(suites))
+	if len(suites) != 3 {
+		t.Fatalf("static-invariants.sh runs %d suites, want boundary, isolation and lint", len(suites))
 	}
 	return suites
 }
@@ -62,9 +62,11 @@ func topLevelTests(t *testing.T, dir string) map[string]string {
 
 func TestStaticInvariantsSelectTheRegistryAndBoundaryChecks(t *testing.T) {
 	suites := staticInvariantSuites(t)
-	// The cache registry breakage of #1515 (invariant 12) and the package fences.
+	// The cache registry breakage of #1515 (invariant 12), the package fences, and the
+	// per-package lint analyzers that missed #1522 and #1523.
 	required := map[string][]string{
 		"internal/boundary":  {"TestForbiddenEdges"},
+		"internal/lint":      {"TestVetDriverChangedPackages"},
 		"internal/isolation": {"TestInvariant12CacheDiscipline", "TestCacheDeclarationFindingsChecksExternalTestPackages", "TestInvariant01ClassificationTotality", "TestInvariant13AllowlistPinning"},
 	}
 	for _, suite := range suites {
@@ -109,6 +111,18 @@ func TestStaticInvariantsNeverSelectDatabaseSuites(t *testing.T) {
 			}
 			if selected == 0 {
 				t.Error("the isolation pattern selects no test")
+			}
+		case "internal/lint":
+			// Only the changed-package form; the whole-module pass stays in the full run.
+			if suite.pattern != "^TestVetDriverChangedPackages$" {
+				t.Errorf("lint pattern %q must select only TestVetDriverChangedPackages", suite.pattern)
+			}
+			raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "lint", "lint.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !regexp.MustCompile(`(?s)var Contexts = \[\]BuildContext\{\s*\{Name: "default"\}`).Match(raw) {
+				t.Error(`lint.Contexts no longer begins with the "default" context`)
 			}
 		}
 	}
