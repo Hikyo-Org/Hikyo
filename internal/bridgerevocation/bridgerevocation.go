@@ -258,7 +258,7 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 		}
 	}
 	if !haveKnown || fresh.Sequence() > known.Sequence() {
-		if err := c.persist(list, signature); err != nil {
+		if err := c.persist(snapshot, fresh, list, signature); err != nil {
 			return Result{}, err
 		}
 	}
@@ -295,13 +295,65 @@ func (c Checker) loadKnown(snapshot releasetrust.Snapshot) (releasetrust.Verifie
 	return verified, true, nil
 }
 
-// persist replaces the stored list; the signature lands first so a crash never
-// leaves a list without the signature that authenticates it.
-func (c Checker) persist(list, signature []byte) error {
+// persist replaces the stored list under an exclusive lock and only ever raises the
+// stored sequence: Check compared against the list it read before the lock, so a
+// concurrent run may have stored a higher one since. The signature lands first so a
+// crash never leaves a list without the signature that authenticates it.
+func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.VerifiedRevocations, list, signature []byte) error {
+	release, err := c.lock()
+	if err != nil {
+		return err
+	}
+	defer release()
+	known, haveKnown, err := c.loadKnown(snapshot)
+	if err != nil {
+		return err
+	}
+	if haveKnown {
+		if known.Sequence() == fresh.Sequence() && known.Digest() != fresh.Digest() {
+			return errors.New("revocation list equivocation refused")
+		}
+		if known.Sequence() >= fresh.Sequence() {
+			return nil
+		}
+	}
 	if err := writeAtomic(filepath.Join(c.Directory, signatureFile), signature); err != nil {
 		return err
 	}
 	return writeAtomic(filepath.Join(c.Directory, listFile), list)
+}
+
+const (
+	lockFile     = ".bridge-revocations.lock"
+	lockStale    = 30 * time.Second
+	lockWait     = 10 * time.Second
+	lockInterval = 5 * time.Millisecond
+)
+
+// lock takes the state directory's persistence lock by exclusive create, which is
+// atomic on every supported platform. A lock older than lockStale belongs to a run
+// that died and is taken over.
+func (c Checker) lock() (func(), error) {
+	path := filepath.Join(c.Directory, lockFile)
+	deadline := time.Now().Add(lockWait)
+	for {
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			_ = file.Close()
+			return func() { _ = os.Remove(path) }, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
+		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > lockStale {
+			_ = os.Remove(path)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return nil, errors.New("revocation list state is locked by another run")
+		}
+		time.Sleep(lockInterval)
+	}
 }
 
 func (c Checker) clock() time.Time {
