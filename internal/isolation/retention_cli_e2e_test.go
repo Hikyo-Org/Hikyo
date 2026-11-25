@@ -3,6 +3,7 @@ package isolation
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,9 +62,9 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	cfg.BackupRecipients, cfg.BackupDir = []string{recipient}, t.TempDir()
 	cfg.BackupInterval, cfg.BackupRPO = config.DefaultBackupInterval, config.DefaultBackupRPO
 	cfg.BackupRetainCount, cfg.BackupRetainDays = config.DefaultBackupRetainCount, config.DefaultBackupRetainDays
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	firstJobs := newSchedulerLog()
 
-	first, err := app.Boot(t.Context(), cfg, log)
+	first, err := app.Boot(t.Context(), cfg, slog.New(firstJobs))
 	if err != nil {
 		t.Fatalf("first boot: %v", err)
 	}
@@ -77,7 +79,13 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	// The startup catch-up runs each job once and never retries before the next
+	// tick, so wait for that run's own completion record. A failed job then
+	// fails the test at once with its error instead of waiting for a row that
+	// will never appear.
+	firstJobs.wait(t, "payload_gc")
 	waitForCount(t, db, "SELECT COUNT(*) FROM retention_runtime WHERE id = 1 AND last_prune_success IS NOT NULL", 1)
+	firstJobs.wait(t, "backup_prune")
 	waitForCount(t, db, "SELECT COUNT(*) FROM backup_state WHERE id = 1 AND last_success_at IS NOT NULL AND last_artifact_sha256 <> '' AND last_prune_at IS NOT NULL AND prune_failure_reason = ''", 1)
 
 	rootKey, err := crypto.ReadRootKey(cfg.RootKeyFile, "")
@@ -187,7 +195,8 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	}
 	stopFirst()
 
-	second, err := app.Boot(t.Context(), cfg, log)
+	secondJobs := newSchedulerLog()
+	second, err := app.Boot(t.Context(), cfg, slog.New(secondJobs))
 	if err != nil {
 		t.Fatalf("restart boot: %v", err)
 	}
@@ -198,6 +207,7 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	defer stopSecond()
 	waitHTTP(t, "http://"+second.OperationalAddr+"/healthz")
 	waitForCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE collected_at IS NOT NULL", 3)
+	secondJobs.wait(t, "backup_prune")
 	// Payload GC precedes backup jobs. Require this startup's completed prune,
 	// not the old successful timestamp while a new attempt is in progress.
 	waitForCount(t, db, "SELECT COUNT(*) FROM backup_state WHERE id = 1 AND last_prune_attempt_id <> '"+beforeRestart.LastPruneAttemptID+"' AND last_prune_at IS NOT NULL AND prune_failure_reason = ''", 1)
@@ -496,11 +506,100 @@ func seedRetentionCLICorpus(t *testing.T, db *store.DB, principal domain.Princip
 		retentionCLIOrg, retentionCLIProject, retentionCLIEnv, principal, pinExpiry, ts, ts))
 }
 
+// retentionServerExits records a served app that stopped without being asked
+// to, keyed by test, so waits fail at once instead of outliving it.
+var retentionServerExits sync.Map
+
+// schedulerLog is the app logger for these tests. The scheduler logs "scheduler
+// job failed" with the error when a job errors, then one health record per job
+// that has a LastSuccess probe, so those records are the completion signal.
+type schedulerLog struct {
+	mu   sync.Mutex
+	jobs map[string]string // job name -> failure text, empty on success
+}
+
+func newSchedulerLog() *schedulerLog { return &schedulerLog{jobs: map[string]string{}} }
+
+func (*schedulerLog) Enabled(context.Context, slog.Level) bool { return true }
+func (l *schedulerLog) WithAttrs([]slog.Attr) slog.Handler     { return l }
+func (l *schedulerLog) WithGroup(string) slog.Handler          { return l }
+
+func (l *schedulerLog) Handle(_ context.Context, r slog.Record) error {
+	switch r.Message {
+	case "scheduler job failed", "scheduler job health", "scheduler job health check failed", "last_prune_success has never been recorded":
+	default:
+		return nil
+	}
+	var job, failure string
+	r.Attrs(func(a slog.Attr) bool {
+		switch a.Key {
+		case "job":
+			job = a.Value.String()
+		case "err":
+			failure = a.Value.String()
+		}
+		return true
+	})
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// The health record follows "scheduler job failed"; keep the first, real error.
+	if _, seen := l.jobs[job]; seen {
+		return nil
+	}
+	switch r.Message {
+	case "scheduler job health":
+		l.jobs[job] = ""
+	case "last_prune_success has never been recorded":
+		l.jobs[job] = r.Message
+	default:
+		l.jobs[job] = failure
+	}
+	return nil
+}
+
+// wait blocks until the startup run of job has finished, with no wall-clock
+// deadline: a backup takes as long as the host needs. It fails promptly when
+// the job errors or the served app dies, and is otherwise bounded by the test
+// context and the go test timeout.
+func (l *schedulerLog) wait(t *testing.T, job string) {
+	t.Helper()
+	start := time.Now()
+	for {
+		l.mu.Lock()
+		failure, done := l.jobs[job]
+		l.mu.Unlock()
+		if done && failure != "" {
+			t.Fatalf("scheduler job %s failed: %s", job, failure)
+		}
+		if done {
+			t.Logf("scheduler job %s finished after %s", job, time.Since(start).Round(time.Millisecond))
+			return
+		}
+		if err, ok := retentionServerExits.Load(t); ok {
+			t.Fatalf("server exited while waiting for scheduler job %s: %v", job, err)
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatalf("test ended while waiting for scheduler job %s", job)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
 func serveRetentionApp(t *testing.T, srv *app.Server) func() {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.ServeWithReady(ctx, nil) }()
+	go func() {
+		err := srv.ServeWithReady(ctx, nil)
+		if ctx.Err() == nil {
+			if err == nil {
+				err = errors.New("server returned before shutdown was requested")
+			}
+			retentionServerExits.LoadOrStore(t, err)
+		}
+		done <- err
+	}()
 	stopped := false
 	stop := func() {
 		if stopped {
@@ -517,7 +616,7 @@ func serveRetentionApp(t *testing.T, srv *app.Server) func() {
 			t.Error("server did not shut down within 10s")
 		}
 	}
-	t.Cleanup(stop)
+	t.Cleanup(func() { stop(); retentionServerExits.Delete(t) })
 	return stop
 }
 
