@@ -129,10 +129,17 @@ func writeAPI(method, path, body string) error {
 	var stderr bytes.Buffer
 	command.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	if _, err := command.Output(); err != nil {
-		return fmt.Errorf("GitHub write %s: %w: %s", path, err, stderr.String())
+		if strings.Contains(stderr.String(), "(HTTP 404)") {
+			err = errors.Join(err, errNotFound)
+		}
+		return fmt.Errorf("GitHub write %s: %w", path, err)
 	}
 	return nil
 }
+
+// errNotFound marks a write the API answered with 404; gh's stderr stays in the
+// job log and out of error text, which decline copies into the PR comment.
+var errNotFound = errors.New("not found")
 
 func currentPull(repository string, number int) (pull, error) {
 	var pr pull
@@ -192,7 +199,7 @@ func dedupeBotComments(repository string, duplicates []comment) error {
 			return fmt.Errorf("refusing to delete a non-bot benchmark comment")
 		}
 		err := writeAPI("DELETE", fmt.Sprintf("repos/%s/issues/comments/%d", repository, d.ID), "")
-		if err != nil && !strings.Contains(err.Error(), "HTTP 404") {
+		if err != nil && !errors.Is(err, errNotFound) {
 			return err
 		}
 	}

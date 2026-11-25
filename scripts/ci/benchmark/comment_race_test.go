@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -102,6 +103,12 @@ func TestPrepareUpdatesAnExistingMarkerCommentInsteadOfCreating(t *testing.T) {
 // answers every other call with {}. DELETE of the notFound id returns HTTP 404.
 func sequenceGH(t *testing.T, head string, listings []string, notFound string) string {
 	t.Helper()
+	return sequenceGHFailingDelete(t, head, listings, notFound, "Not Found (HTTP 404)")
+}
+
+// sequenceGHFailingDelete is sequenceGH with the failing DELETE's gh message.
+func sequenceGHFailingDelete(t *testing.T, head string, listings []string, notFound, message string) string {
+	t.Helper()
 	dir := t.TempDir()
 	for i, l := range listings {
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("list-%d", i)), []byte(l), 0600); err != nil {
@@ -112,7 +119,7 @@ func sequenceGH(t *testing.T, head string, listings []string, notFound string) s
 	script := fmt.Sprintf(`#!/bin/sh
 echo "$*" >>'%[1]s'
 case "$*" in
-*"--method DELETE"*comments/%[3]s) echo "gh: Not Found (HTTP 404)" >&2; exit 1;;
+*"--method DELETE"*comments/%[3]s) echo "gh: %[6]s" >&2; exit 1;;
 *issues/7/comments?per_page=100*)
  n=$(cat '%[2]s/n' 2>/dev/null || echo 0); last=%[4]d
  [ "$n" -gt "$last" ] && n=$last
@@ -120,7 +127,7 @@ case "$*" in
 *repos/o/r/pulls/7) echo '{"number":7,"state":"open","head":{"sha":"%[5]s"}}';;
 *) echo '{}';;
 esac
-`, log, dir, notFound, len(listings)-1, head)
+`, log, dir, notFound, len(listings)-1, head, message)
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -195,5 +202,17 @@ func TestPrepareToleratesAlreadyDeletedDuplicate(t *testing.T) {
 	}
 	if !strings.Contains(recorded(t, log), "DELETE repos/o/r/issues/comments/21") {
 		t.Fatal("expected a delete attempt")
+	}
+}
+
+func TestPrepareFailsOnAForbiddenDuplicateDelete(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	sequenceGHFailingDelete(t, head, []string{encode(t, [][]comment{{botCopy(t, 20, head), botCopy(t, 21, head)}})}, "21", "Resource not accessible by integration (HTTP 403)")
+	err := prepare("o/r", controlEvent{Number: 7})
+	if err == nil || errors.Is(err, errNotFound) {
+		t.Fatalf("a 403 on a duplicate DELETE must fail prepare, got %v", err)
+	}
+	if strings.Contains(err.Error(), "Resource not accessible") {
+		t.Fatalf("gh stderr must stay out of error text (decline posts it): %v", err)
 	}
 }
