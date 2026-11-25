@@ -204,8 +204,8 @@ func (a *TxAuthorizer) ConfirmedTOTP(ctx context.Context, accountID string) (TOT
 
 // ConsumeAuthority claims an authority atomically; false means it was already
 // consumed and the caller must fail closed.
-func (a *TxAuthorizer) ConsumeAuthority(ctx context.Context, id string, at time.Time) (bool, error) {
-	return a.r.ConsumeCredentialAuthority(ctx, id, at)
+func (a *TxAuthorizer) ConsumeAuthority(ctx context.Context, id string, at time.Time, establishedInIncident string) (bool, error) {
+	return a.r.ConsumeCredentialAuthority(ctx, id, at, establishedInIncident)
 }
 
 func (a *TxAuthorizer) ConsumeCLILogin(ctx context.Context, id string, at time.Time) (bool, error) {
@@ -477,11 +477,11 @@ func (a *TxAuthorizer) CredentialEstablish(ctx context.Context, sessionID string
 	return a.r.CredentialEstablish(ctx, sessionID, principal, at)
 }
 
-// CredentialEstablishedSince, PrincipalHasPassword and PrincipalContainedIncident are the release
+// CredentialEstablishedIn, PrincipalHasPassword and PrincipalContainedIncident are the release
 // evidence (O4 A): whether a credential establishment completed for the account
-// since a moment, and which incident contained the principal.
-func (a *TxAuthorizer) CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error) {
-	return a.r.CredentialEstablishedSince(ctx, p, since)
+// while an incident held its principal contained, and which incident contained it.
+func (a *TxAuthorizer) CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error) {
+	return a.r.CredentialEstablishedIn(ctx, p, incidentID)
 }
 
 func (a *TxAuthorizer) CredentialPolicy(ctx context.Context) (CredentialPolicy, error) {

@@ -507,13 +507,21 @@ principal is contained, so a contained account would still have a scheduler acti
   `TestIncidentContainedAccountRefusesFederatedClaim`). Containment retires outstanding
   authorities and establishment refuses one minted before it, and password and factor writes of a
   signed-in session need a session a contained account cannot hold. An establishment stamps
-  `credential_authorities.established_at` on the authority it consumes (migration 00100); a
-  sweep consumes without stamping, so neither containment's sweep nor a newer reset's ever
-  reads as an establishment, whatever clock minted the authority. Only a credential
-  authority's consumption by a password establishment stamps it; a federated claim does not.
-  The migration backfills nothing: an authority consumed before migration 00100 has no stamp, so
-  release fails closed for a password account contained across the upgrade until it establishes
-  a credential again (owner decision, #1039).
+  the id of the incident that holds the principal contained,
+  `credential_authorities.established_in_incident`, on the authority it consumes (migration
+  00101, superseding the timestamp of 00100). The establishment transaction reads the principal's
+  containing incident itself, so the stamp is decided by database state under the same
+  serialization as containment and release compares incident ids; no clock, whether of the node
+  that minted, consumed or contained, is read. A password established before containment carries
+  no stamp however far ahead its node's clock ran, and one stamped for another incident does not
+  count. A sweep consumes without stamping, so neither containment's sweep nor a newer reset's
+  ever reads as an establishment. Only a credential authority's consumption by a password
+  establishment stamps it; a federated claim does not. The migration backfills nothing: an
+  authority consumed earlier has no stamp, so release fails closed for a password account
+  contained across the upgrade until it establishes a credential again (owner decision, #1039).
+  (The existing recovery lookup's refusal of an authority minted before containment still
+  compares the authority's `created_at` with `contained_at`; it only refuses, so a skewed clock
+  can at worst refuse an establishment, never admit a release.)
   Release also binds the containing incident in the same UPDATE that clears the state, and an
   attested enumeration cut vouches only for identities linked before that enumeration.
 - Release is authorized as containment was: the same target classification applies, so a
@@ -525,7 +533,8 @@ principal is contained, so a contained account would still have a scheduler acti
   identities. A member with an identity and no password is released once its identities are
   attested. Release is also refused while another open incident recorded the principal as
   contained (its ledger item reads done though the state belongs to the first incident); the
-  refusal names that incident, and closing it lets the release proceed.
+  refusal names that incident to a caller who can read it, and gives a generic reason to one who
+  cannot, and closing it lets the release proceed.
 - Release revives and regrants nothing. The store setter advances the session generation
   again and retires pending proofs, and a revoked delegation stays revoked.
 - A restore lists the contained principals among the unreconciled (`Status.Contained`, shown

@@ -860,7 +860,15 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 
 		// The NULL guard is the atomic claim: two concurrent presentations
 		// cannot both establish a credential, and the loser fails closed.
-		claimed, err := az.ConsumeAuthority(ctx, live.ID, now)
+		// The establishment stamps the incident holding the principal, read in this
+		// transaction, so release compares incident ids and no node's clock.
+		var heldBy string
+		if contained {
+			if heldBy, err = az.PrincipalContainedIncident(ctx, account.PrincipalID); err != nil {
+				return err
+			}
+		}
+		claimed, err := az.ConsumeAuthority(ctx, live.ID, now, heldBy)
 		if err != nil {
 			return err
 		}

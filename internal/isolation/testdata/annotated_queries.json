@@ -294,7 +294,7 @@
     "engine": "postgres",
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
-    "hash": "3d4145eb876dc167ff944e83c2e7acb9dad60cf79815157ff12e358cb88daa02"
+    "hash": "3f1f2a8408b9890dc75a1e197400a8b4ba9fdb3b7ac80b5e33781bbbe47f35b3"
   },
   {
     "engine": "postgres",
@@ -596,10 +596,10 @@
   },
   {
     "engine": "postgres",
-    "name": "CountAuthorityEstablishmentsSince",
+    "name": "CountAuthorityEstablishmentsIn",
     "annotation": "authn-resolution",
-    "hash": "61d15c8873ad7d7a568118d2ef980d30c3732bfcadd834bc6cd77978b1360286",
-    "reason": "Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret."
+    "hash": "39e5f4442c95b5238f7c5f15274d4e58e12b45b459e60b249c910e9244e21277",
+    "reason": "Release counts the establishments of one principal's account stamped with one incident; it returns a count and no identifier or secret."
   },
   {
     "engine": "postgres",
@@ -4233,7 +4233,7 @@
     "engine": "sqlite",
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
-    "hash": "3d4145eb876dc167ff944e83c2e7acb9dad60cf79815157ff12e358cb88daa02"
+    "hash": "3f1f2a8408b9890dc75a1e197400a8b4ba9fdb3b7ac80b5e33781bbbe47f35b3"
   },
   {
     "engine": "sqlite",
@@ -4507,10 +4507,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "CountAuthorityEstablishmentsSince",
+    "name": "CountAuthorityEstablishmentsIn",
     "annotation": "authn-resolution",
-    "hash": "84df2d45a1467c8b8b7e9a3bd8099d5303faaa3596cfc2aa156fb53015f9d546",
-    "reason": "Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret."
+    "hash": "39e5f4442c95b5238f7c5f15274d4e58e12b45b459e60b249c910e9244e21277",
+    "reason": "Release counts the establishments of one principal's account stamped with one incident; it returns a count and no identifier or secret."
   },
   {
     "engine": "sqlite",

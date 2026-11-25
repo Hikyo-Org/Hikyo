@@ -165,7 +165,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8);
 -- concurrent presentations cannot both establish a credential.
 -- hikyo:authn-resolution
 -- name: ConsumeCredentialAuthority :execrows
-UPDATE credential_authorities SET consumed_at = sqlc.arg(consumed_at), established_at = sqlc.arg(consumed_at)
+UPDATE credential_authorities SET consumed_at = sqlc.arg(consumed_at), established_in_incident = sqlc.narg(established_in_incident)
 WHERE id = sqlc.arg(id) AND consumed_at IS NULL;
 
 -- hikyo:authn-resolution

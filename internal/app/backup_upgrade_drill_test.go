@@ -347,8 +347,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	// on rotation_runs, which goes with that table), 00097 (mint reauth handoff
 	// checks on the empty cli_reauth_handoffs) and 00098 (access reauth handoff
 	// checks on the same table), 00099 (authority index on rotations, which goes
-	// with that table) and 00100 (authority establishment marker) are on both engines.
-	versions = append(versions, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100)
+	// with that table) and 00100 and 00101 (authority establishment stamp) are on both engines.
+	versions = append(versions, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
 		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89 through 100 only")
 	}
@@ -469,9 +469,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// 00095 (OIDC lifecycle): no profile or sealed signing secret may be
 		// discarded by the reversal below.
 		"SELECT COUNT(*) FROM oidc_providers WHERE lifecycle_profile IS NOT NULL OR lifecycle_secret IS NOT NULL",
-		// 00100 (authority establishment marker): no recorded establishment may
-		// be discarded by the reversal below.
-		"SELECT COUNT(*) FROM credential_authorities WHERE established_at IS NOT NULL",
+		// 00101 (authority establishment stamp, superseding 00100's timestamp): no
+		// recorded establishment may be discarded by the reversal below.
+		"SELECT COUNT(*) FROM credential_authorities WHERE established_in_incident IS NOT NULL",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -483,8 +483,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
-	// Reverse 00100 only after proving no establishment is recorded.
-	drillExec(t, db, "ALTER TABLE credential_authorities DROP COLUMN established_at")
+	// Reverse 00100 and 00101 (together they only add this column) only after
+	// proving no establishment is recorded.
+	drillExec(t, db, "ALTER TABLE credential_authorities DROP COLUMN established_in_incident")
 	// Reverse 00095 only after proving no lifecycle profile is configured. The
 	// secret's CHECK names the profile column, so it goes first.
 	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_secret")

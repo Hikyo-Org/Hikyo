@@ -2,18 +2,20 @@
 
 Owner: [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039). Stacked on slice 4
 (`feat/1039-s4-operator-surface`, PR #1549), which is stacked on slice 3 (PR #1538).
-Local only until slice 4 merges.
+Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it does.
 
 ## Result
 
 - `Incidents.ReleasePrincipal` (ADR O4 A): audited `incident.principal_released`, needs a
   credential establishment since containment for a password account and every linked-identity
   item attested, refuses an account with neither, revives and regrants nothing.
-- Store evidence: `CredentialEstablishedSince`, `PrincipalHasPassword`,
+- Store evidence: `CredentialEstablishedIn`, `PrincipalHasPassword`,
   `PrincipalContainedIncident`, `OtherOpenIncidentHolding` (four authn-resolution queries, both
-  engines), and `ContainedAccountID` for the linked-identity read. Migration 00100 adds
-  `credential_authorities.established_at` with no backfill: release fails closed for a password
-  account contained before the upgrade until it establishes a credential again.
+  engines), and `ContainedAccountID` for the linked-identity read. Migration 00101 stamps
+  `credential_authorities.established_in_incident` (it supersedes 00100's clock-based
+  `established_at`) with no backfill: release fails closed for a password account contained
+  before the upgrade until it establishes a credential again. Release compares incident ids and
+  reads no clock.
 - `Restore.Status` lists the contained pending principals and `hikyo restore status` marks
   them; reconcile does not lift containment.
 - ADR section "Slice 5: release and restore (O4 A)".
@@ -26,6 +28,13 @@ Local only until slice 4 merges.
   `TestIncidentReleaseAcceptsARealResetEstablishment` (real reset, establish, release),
   `TestIncidentReleaseOrgIncidentWaitsForIdentityAttestation`, `TestIncidentReleaseKeepsContainmentsOrgBound`,
   `TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment`,
+  `TestIncidentReleaseIgnoresAClockAheadEstablishmentBeforeContainment` (a future-dated
+  password and authority before containment do not release, nor does another incident's stamp),
+  `TestIncidentReleaseRefusesANonContainingIncident` (account incident contains, org incident
+  also holds, first closed, release through the second is not found, attested or not),
+  `TestReleasePrincipalContainmentBindsTheContainingIncident` (the store bind alone),
+  `TestInvariantAuditRegistryClosure` (`incident.principal_released` is in the incident
+  operations' event lists),
   `TestIncidentReleaseTruncationIsKeyedPerMember`,
   `TestIncidentReleaseWaitsForAnotherOpenIncidentHoldingThePrincipal`,
   `TestIncidentReleaseCutDoesNotStandInForAListedIdentity`, and the negative
@@ -36,8 +45,9 @@ Local only until slice 4 merges.
 
 - No HTTP route, CLI verb or web control for release: the operator surface is a later slice.
 - The recovery rehearsal on an isolated instance is not run.
-- The establishment signal is `credential_authorities.established_at`, stamped only when an
-  establishment consumes an authority (never by a sweep). The real ways back are the operator reset (refused for linked
+- The establishment signal is `credential_authorities.established_in_incident`, stamped with the
+  containing incident only when a password establishment consumes an authority (never by a
+  sweep or a federated claim). The real ways back are the operator reset (refused for linked
   accounts) and the break-glass reset; recovery-code consumption and a federated claim refuse a
   contained account (negative tests). Release applies containment's org classification and reads
   the target's own identities, which an org incident now lists per member.

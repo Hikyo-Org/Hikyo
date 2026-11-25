@@ -6,6 +6,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
@@ -171,17 +173,17 @@ func ignoreDomainNotFound(err error) error {
 	return err
 }
 
-// CredentialEstablishedSince reports whether a credential establishment
-// completed for the principal's account after the given moment (O4 A). Only the newest
-// authority minted since then speaks for it: minting a newer one consumes the
-// older outstanding authorities without establishing anything.
-func (r *Resolver) CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error) {
+// CredentialEstablishedIn reports whether a credential establishment
+// completed for the principal's account while the incident held it contained (O4 A).
+// The establishment stamped the incident id it read in its own transaction, so no
+// clock is compared; a sweep consumes an authority without a stamp.
+func (r *Resolver) CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error) {
 	var n int64
 	var err error
 	if r.sq != nil {
-		n, err = r.sq.CountAuthorityEstablishmentsSince(ctx, sqlitegen.CountAuthorityEstablishmentsSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+		n, err = r.sq.CountAuthorityEstablishmentsIn(ctx, sqlitegen.CountAuthorityEstablishmentsInParams{PrincipalID: string(p), IncidentID: sql.NullString{String: incidentID, Valid: true}})
 	} else {
-		n, err = r.pg.CountAuthorityEstablishmentsSince(ctx, pggen.CountAuthorityEstablishmentsSinceParams{PrincipalID: string(p), Since: encodeTime(since)})
+		n, err = r.pg.CountAuthorityEstablishmentsIn(ctx, pggen.CountAuthorityEstablishmentsInParams{PrincipalID: string(p), IncidentID: pgtype.Text{String: incidentID, Valid: true}})
 	}
 	return n > 0, err
 }

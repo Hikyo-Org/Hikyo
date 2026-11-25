@@ -112,10 +112,10 @@ type txForwarded interface {
 	// it is not. Establishment refuses an authority minted before that moment.
 	PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error)
 
-	// CredentialEstablishedSince, PrincipalHasPassword and PrincipalContainedIncident are the release
+	// CredentialEstablishedIn, PrincipalHasPassword and PrincipalContainedIncident are the release
 	// evidence (O4 A): whether a credential establishment completed for the account
-	// since a moment, and which incident contained the principal.
-	CredentialEstablishedSince(ctx context.Context, p domain.PrincipalID, since time.Time) (bool, error)
+	// while an incident held its principal contained, and which incident contained it.
+	CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error)
 	PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error)
 	PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error)
 	// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.
@@ -190,7 +190,7 @@ type txForwarded interface {
 	// ConsumeAuthority claims an authority atomically; false means it was already
 	// consumed and the caller must fail closed.
 	//hikyo:forward ConsumeCredentialAuthority
-	ConsumeAuthority(ctx context.Context, id string, at time.Time) (bool, error)
+	ConsumeAuthority(ctx context.Context, id string, at time.Time, establishedInIncident string) (bool, error)
 	ConsumeCLIReauthHandoff(ctx context.Context, id string, at time.Time) (bool, error)
 
 	// ConsumeLoginChallenge claims a login challenge atomically; false means it was

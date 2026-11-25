@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/authn"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Release (#1039 S5, ADR O4 A): a separate audited act that needs a credential
@@ -224,7 +227,8 @@ func TestIncidentReleaseKeepsContainmentsOrgBound(t *testing.T) {
 	})
 }
 
-// Only an establishment after the containment counts, and a sweep never is one.
+// Only an establishment while the containing incident held the principal counts,
+// and a sweep never is one.
 // A reset minted before containment and swept by it is not one; an authority
 // established before containment is not one; and a skewed-ahead node's mint (R1)
 // swept by a later correct reset (R2) is not one, though R1 outranks R2 by mint
@@ -243,8 +247,9 @@ func TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment(t *testing.T) 
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release after a pre-containment reset was swept = %v, want ErrReleaseNotReady", err)
 		}
-		// Established before the containment: the marker predates it.
-		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, established_at, created_at) VALUES ('ca_rel_old', `+blobLit(db, []byte("ca-old"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+ts+`, `+ts+`, `+ts+`)`)
+		// Established before the containment: no incident held the principal, so
+		// nothing is stamped, whatever its consumed_at reads.
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_old', `+blobLit(db, []byte("ca-old"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+farFuture+`, `+ts+`)`)
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with an establishment before containment = %v, want ErrReleaseNotReady", err)
 		}
@@ -255,7 +260,7 @@ func TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment(t *testing.T) 
 		if err != nil {
 			t.Fatalf("second reset: %v", err)
 		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities WHERE id = 'ca_rel_r1' AND consumed_at IS NOT NULL AND established_at IS NULL`); n != 1 {
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities WHERE id = 'ca_rel_r1' AND consumed_at IS NOT NULL AND established_in_incident IS NULL`); n != 1 {
 			t.Fatal("the second reset did not sweep R1 without stamping it")
 		}
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
@@ -472,6 +477,112 @@ func TestRestoreReconcileDoesNotLiftContainment(t *testing.T) {
 		}
 		if s := queryString(t, db, `SELECT containment_state FROM principals WHERE id='usr_itarget'`); s != "contained" {
 			t.Errorf("containment_state = %q after reconcile, want contained", s)
+		}
+	})
+}
+
+// The establishing node's clock must not decide release: a password established
+// before containment by a node whose clock ran far ahead carries a consumed_at
+// later than contained_at, and it must still not count. The establishment stamps
+// the incident it read, so the stamp, not any timestamp, is the evidence.
+func TestIncidentReleaseIgnoresAClockAheadEstablishmentBeforeContainment(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		auth := authService(t, db)
+		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_itarget', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+farFuture+`)`)
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_fast', `+blobLit(db, []byte("ca-fast"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+farFuture+`, `+farFuture+`)`)
+		id := w.containedIncident(t, false)
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with only a clock-ahead establishment before containment = %v, want ErrReleaseNotReady", err)
+		}
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("containment_state = %q after a refused release, want contained", s)
+		}
+		// A stamp naming a different incident is not this incident's establishment.
+		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, established_in_incident, created_at) VALUES ('ca_rel_other', `+blobLit(db, []byte("ca-other"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+ts+`, 'inc_00000000-0000-0000-0000-000000000000', `+ts+`)`)
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with another incident's stamp = %v, want ErrReleaseNotReady", err)
+		}
+		// A real establishment during the incident stamps it and releases.
+		r, err := auth.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
+		if err != nil {
+			t.Fatalf("reset: %v", err)
+		}
+		if err := auth.EstablishCredential(ctx, r.Authority, "a password established during the incident"); err != nil {
+			t.Fatalf("establish: %v", err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities WHERE established_in_incident = '`+id+`'`); n != 1 {
+			t.Fatalf("authorities stamped with the incident = %d, want 1", n)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("release after an establishment during the incident: %v", err)
+		}
+	})
+}
+
+// Release through an incident that did not record the containment is one answer,
+// "not found", whatever else is true of that incident. The first incident
+// contains the account and is closed; the second also holds the principal and has
+// its identity attested. Its release attempt must not reach the readiness checks
+// (which would answer ErrReleaseNotReady for an unattested identity) nor clear the
+// state.
+func TestIncidentReleaseRefusesANonContainingIncident(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_rel','acc_itarget','oidc','https://idp.example.test','subject-rel','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		w.realOwners()
+		// Both enumerate before either contains, so both list the account.
+		first := w.openAccount(t, incResponder).Incident.ID
+		second := w.openOrg(t, incResponder)
+		w.resume(t, incResponder, first)
+		w.resume(t, incResponder, second)
+		if got := queryString(t, db, `SELECT contained_incident_id FROM principals WHERE id='usr_itarget'`); got != first {
+			t.Fatalf("contained_incident_id = %q, want the first incident %q", got, first)
+		}
+		if _, err := w.svc.Close(ctx, w.as(incResponder), first, true); err != nil {
+			t.Fatal(err)
+		}
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), second, incTarget) }
+		// Unattested: a missing containing-incident check would answer ErrReleaseNotReady.
+		if err := release(); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("release through a non-containing incident, identity unattested = %v, want not found", err)
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), second, w.itemIDByKey(t, incResponder, second, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		if err := release(); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("release through a non-containing incident, identity attested = %v, want not found", err)
+		}
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("containment_state = %q after a refused release, want contained", s)
+		}
+	})
+}
+
+// The store setter binds the containing incident in the same UPDATE that clears
+// the state, so a release naming another incident changes nothing even when the
+// service check is bypassed.
+func TestReleasePrincipalContainmentBindsTheContainingIncident(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		id := w.containedIncident(t, false)
+		err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			return az.ReleasePrincipalContainment(ctx, incTarget, "inc_00000000-0000-0000-0000-000000000000")
+		})
+		if !errors.Is(err, authn.ErrContainmentUnchanged) {
+			t.Fatalf("store release naming another incident = %v, want ErrContainmentUnchanged", err)
+		}
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("containment_state = %q, want contained", s)
+		}
+		err = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			return az.ReleasePrincipalContainment(ctx, incTarget, id)
+		})
+		if err != nil {
+			t.Fatalf("store release naming the containing incident: %v", err)
 		}
 	})
 }

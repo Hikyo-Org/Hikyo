@@ -28,7 +28,7 @@ var ErrReleaseNotReady = fmt.Errorf("%w: release condition not met", domain.ErrC
 // incident's authority is the one who releases it.
 //
 // Release returns the principal to none only when (a) a credential
-// establishment has completed since the containment was recorded, for an
+// establishment has completed during the containing incident, for an
 // account with a local password, and (b) every linked identity of the account
 // has an attested ledger item in the containing incident. It reactivates no
 // revoked delegation or credential and regrants nothing: the store setter
@@ -62,24 +62,17 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 		} else if other != "" {
 			return otherHolderRefusal(ctx, az, caller, other)
 		}
-		at, ok, err := az.PrincipalContainedAt(ctx, target)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return domain.ErrNotFound
-		}
 		hasPassword, err := az.PrincipalHasPassword(ctx, target)
 		if err != nil {
 			return err
 		}
 		if hasPassword {
-			established, err := az.CredentialEstablishedSince(ctx, target, at)
+			established, err := az.CredentialEstablishedIn(ctx, target, inc.ID)
 			if err != nil {
 				return err
 			}
 			if !established {
-				return fmt.Errorf("%w: no credential establishment has completed since containment", ErrReleaseNotReady)
+				return fmt.Errorf("%w: no credential establishment has completed during this incident's containment", ErrReleaseNotReady)
 			}
 		}
 		pending, total, err := identitiesNotAttested(ctx, az, inc.ID, target)

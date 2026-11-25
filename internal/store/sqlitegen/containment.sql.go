@@ -66,24 +66,24 @@ func (q *Queries) ContainPrincipal(ctx context.Context, arg ContainPrincipalPara
 	return result.RowsAffected()
 }
 
-const countAuthorityEstablishmentsSince = `-- name: CountAuthorityEstablishmentsSince :one
+const countAuthorityEstablishmentsIn = `-- name: CountAuthorityEstablishmentsIn :one
 SELECT CAST(COUNT(*) AS BIGINT) AS establishments FROM credential_authorities
-WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = ?1) AND credential_authorities.established_at > CAST(?2 AS TEXT)
+WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHERE accounts.principal_id = ?1) AND credential_authorities.established_in_incident = ?2
 `
 
-type CountAuthorityEstablishmentsSinceParams struct {
+type CountAuthorityEstablishmentsInParams struct {
 	PrincipalID string
-	Since       string
+	IncidentID  sql.NullString
 }
 
 // Release evidence (incident-containment ADR, O4 A). A credential establishment
-// stamps established_at on the authority it consumes; a sweep consumes without
-// stamping, so only an establishment after the containment counts, whatever the
-// clock that minted the authority read.
-// hikyo:reason Release counts the establishments of one principal's account after its containment; it returns a count and no identifier or secret.
+// stamps the incident that contained the principal on the authority it consumes; a
+// sweep consumes without stamping, so only an establishment made while that
+// incident held the principal counts, and no node's clock is compared.
+// hikyo:reason Release counts the establishments of one principal's account stamped with one incident; it returns a count and no identifier or secret.
 // hikyo:authn-resolution
-func (q *Queries) CountAuthorityEstablishmentsSince(ctx context.Context, arg CountAuthorityEstablishmentsSinceParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countAuthorityEstablishmentsSince, arg.PrincipalID, arg.Since)
+func (q *Queries) CountAuthorityEstablishmentsIn(ctx context.Context, arg CountAuthorityEstablishmentsInParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAuthorityEstablishmentsIn, arg.PrincipalID, arg.IncidentID)
 	var establishments int64
 	err := row.Scan(&establishments)
 	return establishments, err
