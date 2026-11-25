@@ -52,10 +52,10 @@ func runGoAffected(t *testing.T, dsn, failing string) (log, stderr string, code 
 		t.Fatal(err)
 	}
 	write("scripts/ci/go-affected-test.sh", string(runner))
-	write("scripts/ci/go-affected-packages.sh", "#!/bin/sh\nprintf 'm/internal/app\\nm/internal/lint\\nm/internal/isolation\\nm/pkg/a\\nm/pkg/b\\n'\n")
+	write("scripts/ci/go-affected-packages.sh", "#!/bin/sh\nprintf 'm/internal/app\\nm/internal/lint\\nm/internal/isolation\\nm/scripts/ci\\nm/pkg/a\\nm/pkg/b\\n'\n")
 	write("bin/go", `#!/bin/sh
 case "$1" in
-list) echo "m/${2#./}" ;;
+list) shift; for p in "$@"; do echo "m/${p#./}"; done ;;
 test)
 	echo "test CI=${CI-unset} $*" >>"$LOG"
 	case " $* " in *" $FAILING "*) exit 1 ;; esac
@@ -94,7 +94,6 @@ func TestGoAffectedRunnerOrderAndEnvironment(t *testing.T) {
 	}
 	want := strings.Join([]string{
 		"test CI=unset test -p 2 m/pkg/a m/pkg/b",
-		"test CI=unset test -p 2 -timeout=18m m/internal/isolation",
 		"test CI=unset test -p 2 -skip " + goAffectedPackagedPattern + " m/internal/app",
 		"test CI=unset test -p 2 -run " + goAffectedPackagedPattern + " m/internal/app",
 		"run run ./scripts/ci/prepare-lint-cache",
@@ -104,7 +103,13 @@ func TestGoAffectedRunnerOrderAndEnvironment(t *testing.T) {
 	if log != want {
 		t.Fatalf("go calls:\n%s\nwant:\n%s", log, want)
 	}
-	if !strings.Contains(stderr, "5 affected packages") || !strings.Contains(stderr, "PostgreSQL tests are skipped") {
+	if strings.Contains(log, "isolation") || strings.Contains(log, "m/scripts/ci") {
+		t.Fatalf("an excluded package ran:\n%s", log)
+	}
+	if !strings.Contains(stderr, "leaving 2 to CI") || !strings.Contains(stderr, "internal/isolation") || !strings.Contains(stderr, "scripts/ci") {
+		t.Fatalf("no notice naming the excluded packages:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "4 affected packages") || !strings.Contains(stderr, "PostgreSQL tests are skipped") {
 		t.Fatalf("missing count or DSN notice:\n%s", stderr)
 	}
 	_, stderr, _ = runGoAffected(t, "postgres://x", "")
@@ -114,7 +119,7 @@ func TestGoAffectedRunnerOrderAndEnvironment(t *testing.T) {
 }
 
 func TestGoAffectedRunnerExitCodes(t *testing.T) {
-	log, _, code := runGoAffected(t, "", "m/internal/isolation")
+	log, _, code := runGoAffected(t, "", "m/pkg/a")
 	if code != 1 || !strings.Contains(log, "m/internal/lint") {
 		t.Fatalf("a failing test: exit %d, want 1 with the later packages still run\n%s", code, log)
 	}

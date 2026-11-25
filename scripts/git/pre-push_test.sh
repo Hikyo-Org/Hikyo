@@ -477,10 +477,28 @@ commit_change internal/x.go
 expect_ok gt2
 [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)" = "$first_tree" ] || fail 'the go test worktree was not reused for the next push'
 [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail 'the reused go test worktree is not at the pushed commit'
-mkdir "$gitdir/hikyo-gotest-tree.lock"
+tree=$gitdir/hikyo-gotest-tree
+# A lock held by a live push refuses; one left by a dead process is taken over.
+mkdir "$tree.lock"
+echo $$ >"$tree.lock/pid"
 if push gt2; then fail 'a push was accepted while another go test run held the lock'; fi
-grep -F 'holds' "$out" >/dev/null || fail 'lock message missing'
-rmdir "$gitdir/hikyo-gotest-tree.lock"
+grep -F 'is running the Go tests' "$out" >/dev/null || fail 'lock message missing'
+sh -c 'echo $$' >"$tree.lock/pid"
+expect_ok gt2
+[ ! -e "$tree.lock" ] || fail 'the lock was left behind'
+# A dirty kept tree, a pruned registration, a corrupted tree and a deleted tree
+# are all repaired, and the run is always at the pushed commit.
+kept_ok() { expect_ok gt2; [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail "$1: not at the pushed commit"; }
+echo dirty >>"$tree/internal/x.go"
+echo stray >"$tree/stray.txt"
+kept_ok 'dirty tree'
+[ ! -e "$tree/stray.txt" ] || fail 'a stray file survived in the kept tree'
+git worktree prune
+kept_ok 'prune with the tree present'
+rm "$tree/.git"
+kept_ok 'corrupted tree'
+rm -rf "$tree"
+kept_ok 'deleted tree'
 git switch -q gt
 echo 1 >"$logs/gotest-fail"
 if push gt; then fail 'a failing go test run was accepted'; fi

@@ -287,20 +287,33 @@ directory with Go files, so testdata and embedded files (a migration `.sql`
 reaches `internal/store`) select that package. The selection adds packages that
 embed a changed file, packages that no longer load, every package whose test
 build depends on one of those, and all packages when `go.mod` or `go.sum`
-changes. Docs-only and frontend-only pushes select nothing. The tests run with
-`go test -p 2` in a detached worktree at the pushed commit, kept as
+changes. Docs-only and frontend-only pushes select nothing.
+
+The runner executes the selection with `go test -p 2`, `internal/app` (two runs,
+as in CI) and `internal/lint` alone afterwards, with `CI` unset and the package
+count printed first. PostgreSQL tests run only when `HIKYO_TEST_POSTGRES_DSN` is
+set; otherwise the hook says they are skipped.
+
+Limits, all left to CI:
+
+- `internal/isolation` and `scripts/ci` are never run by the hook, even when
+  selected, and the hook names them. CI shards the first six ways with an 18m
+  timeout, and the second took over 600s locally. A break only those catch, such
+  as an isolation invariant like #1515, is found by CI, not by the push.
+- Tests that read repository files at runtime without embedding them are not
+  detected, except for the few explicit paths listed in the selector.
+- PostgreSQL tests are skipped without a DSN.
+
+How it runs: the tests use a detached worktree at the pushed commit, kept as
 `hikyo-gotest-tree` in the git directory and moved to each pushed commit (its
-files are reset and cleaned every time), so the Go build and test caches, which
-key on the source path, stay warm between pushes; it adds no `-trimpath`, since
-tests find repository files through their own paths. A stale
-`hikyo-gotest-tree.lock` there (a killed push) is safe to remove. The SPA build
-is not needed: a placeholder stands in for `internal/webui/dist`. `internal/isolation` (18m timeout), `internal/app` (two runs, as in
-CI) and `internal/lint` run alone afterwards. `CI` is unset for the run, and the
-hook prints the package count first. PostgreSQL tests run only when
-`HIKYO_TEST_POSTGRES_DSN` is set; otherwise the hook says they are skipped.
-Tests that read repository files at runtime without embedding them are not
-detected, except for the few explicit paths listed in the selector; CI still runs
-the full suites. Set `HIKYO_PREPUSH_GOTEST=skip` to skip it for a WIP push.
+files are reset and cleaned every time, and a dirty or broken tree is rebuilt),
+so the Go build and test caches, which key on the source path, stay warm between
+pushes. There is no `-trimpath`: tests find repository files through their own
+paths, and `-trimpath` made them fail. One push at a time uses the tree; a
+second push from another worktree is refused while the first runs, and a lock
+left by a killed push is taken over. The SPA build is not needed: a placeholder
+stands in for `internal/webui/dist`. Set `HIKYO_PREPUSH_GOTEST=skip` to skip the
+step for a WIP push.
 
 ## Continuous integration
 

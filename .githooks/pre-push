@@ -170,18 +170,25 @@ require_gotest() {
 		# shellcheck disable=SC2046 # a list of variable names
 		unset $(git rev-parse --local-env-vars)
 		tree=$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-gotest-tree || exit 64
-		# One run at a time owns the tree; a killed run leaves the lock behind.
-		mkdir "$tree.lock" 2>/dev/null || {
-			printf 'pre-push: another Go test run holds %s.lock (remove it if no push is running)\n' "$tree" >&2
-			exit 64
-		}
+		# One run at a time owns the tree. The lock records its owner; a lock left by
+		# a killed run (owner gone) is taken over, one held by a live push refuses.
+		if ! mkdir "$tree.lock" 2>/dev/null; then
+			owner=$(cat "$tree.lock/pid" 2>/dev/null || :)
+			if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then
+				printf 'pre-push: another push (pid %s) is running the Go tests in %s; wait for it and push again\n' "$owner" "$tree" >&2
+				exit 64
+			fi
+			rm -rf "$tree.lock"
+			mkdir "$tree.lock" 2>/dev/null || exit 64
+		fi
+		# $$ is this subshell's parent shell, the hook itself, which lives as long as the run.
+		echo "$$" >"$tree.lock/pid"
 		# shellcheck disable=SC2329 # run by the EXIT trap
-		cleanup() { rmdir "$tree.lock" 2>/dev/null || :; }
+		cleanup() { rm -rf "$tree.lock"; }
 		trap cleanup EXIT
 		trap 'exit 130' HUP INT TERM
-		if [ -e "$tree/.git" ]; then
-			git -C "$tree" checkout -q -f --detach "$1" && git -C "$tree" clean -q -f -d -x || exit 64
-		else
+		# A dirty, half-removed or corrupted kept tree is rebuilt from scratch.
+		if [ ! -e "$tree/.git" ] || ! { git -C "$tree" checkout -q -f --detach "$1" && git -C "$tree" clean -q -f -d -x; } 2>/dev/null; then
 			rm -rf "$tree"
 			git worktree prune
 			git worktree add -q --detach "$tree" "$1" || exit 64
