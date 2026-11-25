@@ -88,6 +88,12 @@ type txForwarded interface {
 	// expired, current credential epoch) minted inside one org, in id order; a
 	// non-empty authority narrows it to one human.
 	LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error)
+	// LiveDeveloperCredentialInOrg reads one live delegation of the org by id; absent
+	// or no longer live is ErrNotFound.
+	LiveDeveloperCredentialInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (DeveloperCredential, error)
+	// MachineCredentialInProject reads one credential by id when its service account
+	// belongs to the project; none is ErrNotFound.
+	MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error)
 	// ServiceAccountsCreatedBy pages the service accounts a principal created
 	// (the offboarding report's created-by relation), in id order.
 	ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error)

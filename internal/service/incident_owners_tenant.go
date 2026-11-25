@@ -97,27 +97,18 @@ func (o *incidentOwners) machineCredentialRevoke(ctx context.Context, actor Acto
 func (o *incidentOwners) machineCredentialState(ctx context.Context, scope domain.Scope, id string) (saID string, live bool, err error) {
 	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		saID, live = "", false
-		accounts, err := az.ServiceAccountsIn(ctx, scope)
-		if err != nil {
-			return err
-		}
 		epoch, err := az.CredentialEpoch(ctx)
 		if err != nil {
 			return err
 		}
-		now := o.s.now()
-		for _, sa := range accounts {
-			creds, err := az.MachineCredentialsFor(ctx, sa.ID)
-			if err != nil {
-				return err
-			}
-			for _, c := range creds {
-				if c.ID == id {
-					saID, live = sa.ID, c.Live(now, epoch)
-					return nil
-				}
-			}
+		c, err := az.MachineCredentialInProject(ctx, scope, id)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil // absent in this project: no account of it holds the credential
 		}
+		if err != nil {
+			return err
+		}
+		saID, live = c.ServiceAccountID, c.Live(o.s.now(), epoch)
 		return nil
 	})
 	return saID, live, err

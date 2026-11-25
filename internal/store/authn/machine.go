@@ -1127,3 +1127,25 @@ func (r *Resolver) ServiceAccountsCreatedBy(ctx context.Context, creator domain.
 	}
 	return out, nil
 }
+
+// MachineCredentialInProject reads one credential by id when its service account
+// belongs to the project, so the cost does not depend on the project's accounts.
+// A credential of another project, or none, is ErrNotFound.
+func (r *Resolver) MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error) {
+	if r.sq != nil {
+		row, err := r.sq.GetMachineCredentialInProject(ctx, sqlitegen.GetMachineCredentialInProjectParams{
+			OrgID: string(scope.Org), ProjectID: string(scope.Project), ID: id,
+		})
+		if err != nil {
+			return MachineCredential{}, notFoundOr(err)
+		}
+		return credentialFromSQLite(sqlitegen.ListMachineCredentialsRow(row))
+	}
+	row, err := r.pg.GetMachineCredentialInProject(ctx, pggen.GetMachineCredentialInProjectParams{
+		OrgID: string(scope.Org), ProjectID: string(scope.Project), ID: id,
+	})
+	if err != nil {
+		return MachineCredential{}, notFoundOr(err)
+	}
+	return credentialFromPG(pggen.ListMachineCredentialsRow(row)), nil
+}

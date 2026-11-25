@@ -235,6 +235,67 @@ func (q *Queries) GetCredentialPolicy(ctx context.Context) (GetCredentialPolicyR
 	return i, err
 }
 
+const getMachineCredentialInProject = `-- name: GetMachineCredentialInProject :one
+SELECT mc.id, mc.service_account_id, mc.kind, mc.prefix_hint, mc.lifetime, mc.expires_at,
+       mc.credential_epoch, mc.created_at, mc.created_by, mc.revoked_at, mc.last_used_at,
+       mc.issuer_id, mc.subject, mc.audience, mc.required_claims, mc.reactivated_at
+FROM machine_credentials mc
+JOIN service_accounts sa ON sa.id = mc.service_account_id
+WHERE sa.org_id = $1 AND sa.project_id = $2 AND mc.id = $3
+`
+
+type GetMachineCredentialInProjectParams struct {
+	OrgID     string
+	ProjectID string
+	ID        string
+}
+
+type GetMachineCredentialInProjectRow struct {
+	ID               string
+	ServiceAccountID string
+	Kind             string
+	PrefixHint       pgtype.Text
+	Lifetime         string
+	ExpiresAt        pgtype.Timestamptz
+	CredentialEpoch  int64
+	CreatedAt        pgtype.Timestamptz
+	CreatedBy        string
+	RevokedAt        pgtype.Timestamptz
+	LastUsedAt       pgtype.Timestamptz
+	IssuerID         pgtype.Text
+	Subject          pgtype.Text
+	Audience         pgtype.Text
+	RequiredClaims   pgtype.Text
+	ReactivatedAt    pgtype.Timestamptz
+}
+
+// One credential of one project by id, so the incident path's cost does not grow
+// with the project's service accounts.
+// hikyo:authn-resolution
+func (q *Queries) GetMachineCredentialInProject(ctx context.Context, arg GetMachineCredentialInProjectParams) (GetMachineCredentialInProjectRow, error) {
+	row := q.db.QueryRow(ctx, getMachineCredentialInProject, arg.OrgID, arg.ProjectID, arg.ID)
+	var i GetMachineCredentialInProjectRow
+	err := row.Scan(
+		&i.ID,
+		&i.ServiceAccountID,
+		&i.Kind,
+		&i.PrefixHint,
+		&i.Lifetime,
+		&i.ExpiresAt,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.CreatedBy,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.IssuerID,
+		&i.Subject,
+		&i.Audience,
+		&i.RequiredClaims,
+		&i.ReactivatedAt,
+	)
+	return i, err
+}
+
 const getServiceAccount = `-- name: GetServiceAccount :one
 SELECT id, principal_id, org_id, project_id, name, kind, created_at, created_by
 FROM service_accounts

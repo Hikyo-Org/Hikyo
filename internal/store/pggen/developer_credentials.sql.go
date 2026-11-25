@@ -73,6 +73,57 @@ func (q *Queries) GetDeveloperCredentialPolicy(ctx context.Context) (int64, erro
 	return max_lifetime_seconds, err
 }
 
+const getLiveDeveloperCredentialInOrg = `-- name: GetLiveDeveloperCredentialInOrg :one
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
+WHERE org_id = $1 AND id = $2 AND revoked_at IS NULL AND expires_at > $3 AND credential_epoch = $4
+  AND ($5::text = '' OR authority_principal_id = $5)
+`
+
+type GetLiveDeveloperCredentialInOrgParams struct {
+	OrgID     string
+	ID        string
+	Now       pgtype.Timestamptz
+	Epoch     int64
+	Authority string
+}
+
+// Incident confirmation looks one delegation up by id inside its org, so its cost
+// does not depend on how many live delegations the org holds.
+// hikyo:reason Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org; no bearer can be recovered.
+// hikyo:authn-resolution
+func (q *Queries) GetLiveDeveloperCredentialInOrg(ctx context.Context, arg GetLiveDeveloperCredentialInOrgParams) (DeveloperCredential, error) {
+	row := q.db.QueryRow(ctx, getLiveDeveloperCredentialInOrg,
+		arg.OrgID,
+		arg.ID,
+		arg.Now,
+		arg.Epoch,
+		arg.Authority,
+	)
+	var i DeveloperCredential
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.AuthorityPrincipalID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.EnvID,
+		&i.Verifier,
+		&i.PrefixHint,
+		&i.ParentSessionID,
+		&i.ProviderID,
+		&i.Oauth2ProviderID,
+		&i.SamlProviderID,
+		&i.AuthMethod,
+		&i.AuthorityGeneration,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.PersonalConsent,
+	)
+	return i, err
+}
+
 const insertDeveloperCredential = `-- name: InsertDeveloperCredential :exec
 INSERT INTO developer_credentials (id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 `

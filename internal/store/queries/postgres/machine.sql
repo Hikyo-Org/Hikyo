@@ -200,3 +200,14 @@ SELECT id, principal_id, org_id, project_id, name, kind, created_at, created_by
 FROM service_accounts
 WHERE created_by = sqlc.arg(created_by) AND (sqlc.arg(org_id)::text = '' OR org_id = sqlc.arg(org_id)) AND id > sqlc.arg(after_id)
 ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- One credential of one project by id, so the incident path's cost does not grow
+-- with the project's service accounts.
+-- hikyo:authn-resolution
+-- name: GetMachineCredentialInProject :one
+SELECT mc.id, mc.service_account_id, mc.kind, mc.prefix_hint, mc.lifetime, mc.expires_at,
+       mc.credential_epoch, mc.created_at, mc.created_by, mc.revoked_at, mc.last_used_at,
+       mc.issuer_id, mc.subject, mc.audience, mc.required_claims, mc.reactivated_at
+FROM machine_credentials mc
+JOIN service_accounts sa ON sa.id = mc.service_account_id
+WHERE sa.org_id = sqlc.arg(org_id) AND sa.project_id = sqlc.arg(project_id) AND mc.id = sqlc.arg(id);

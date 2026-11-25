@@ -221,3 +221,32 @@ func (r *Resolver) LiveDeveloperCredentialsInOrg(ctx context.Context, org domain
 	}
 	return out, nil
 }
+
+// LiveDeveloperCredentialInOrg reads one live delegation of the org by id (and,
+// when given, authority), so the cost does not depend on how many the org holds.
+// An absent or no longer live one is ErrNotFound.
+func (r *Resolver) LiveDeveloperCredentialInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (DeveloperCredential, error) {
+	if org == "" || id == "" {
+		return DeveloperCredential{}, domain.ErrInvalid
+	}
+	epoch, err := r.CredentialEpoch(ctx)
+	if err != nil {
+		return DeveloperCredential{}, err
+	}
+	if r.sq != nil {
+		row, err := r.sq.GetLiveDeveloperCredentialInOrg(ctx, sqlitegen.GetLiveDeveloperCredentialInOrgParams{
+			OrgID: string(org), ID: id, Now: encodeTime(now), Epoch: epoch, Authority: string(authority),
+		})
+		if err != nil {
+			return DeveloperCredential{}, notFoundOr(err)
+		}
+		return sqliteDeveloper(row)
+	}
+	row, err := r.pg.GetLiveDeveloperCredentialInOrg(ctx, pggen.GetLiveDeveloperCredentialInOrgParams{
+		OrgID: string(org), ID: id, Now: pgTimestamp(now), Epoch: epoch, Authority: string(authority),
+	})
+	if err != nil {
+		return DeveloperCredential{}, notFoundOr(err)
+	}
+	return pgDeveloper(row)
+}

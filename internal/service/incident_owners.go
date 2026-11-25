@@ -331,25 +331,14 @@ func (o *incidentOwners) developerRevoke(ctx context.Context, actor Actor, item 
 }
 
 // developerCredentialLive reports whether a live delegation of the org (and, when
-// given, authority) has the id, reading the org's live delegations in pages.
+// given, authority) has the id. It is one scoped lookup, so its cost does not
+// depend on how many live delegations the org holds.
 func developerCredentialLive(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (bool, error) {
-	after := ""
-	for page := 0; page < maxScanPages; page++ {
-		rows, err := az.LiveDeveloperCredentialsInOrg(ctx, org, authority, after, authz.MaxIncidentPage, now)
-		if err != nil {
-			return false, err
-		}
-		for _, c := range rows {
-			if c.ID == id {
-				return true, nil
-			}
-		}
-		if len(rows) < authz.MaxIncidentPage {
-			return false, nil
-		}
-		after = rows[len(rows)-1].ID
+	_, err := az.LiveDeveloperCredentialInOrg(ctx, org, authority, id, now)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
 	}
-	return false, fmt.Errorf("%w: delegation listing exceeds its scan bound", domain.ErrConflict)
+	return err == nil, err
 }
 
 // ---- rotation.halt (#1471) -------------------------------------------------

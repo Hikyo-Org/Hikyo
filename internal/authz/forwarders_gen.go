@@ -791,6 +791,12 @@ func (a *TxAuthorizer) LiveAccessGrants(ctx context.Context, p domain.PrincipalI
 	return a.r.LiveAccessGrants(ctx, p, now)
 }
 
+// LiveDeveloperCredentialInOrg reads one live delegation of the org by id; absent
+// or no longer live is ErrNotFound.
+func (a *TxAuthorizer) LiveDeveloperCredentialInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (DeveloperCredential, error) {
+	return a.r.LiveDeveloperCredentialInOrg(ctx, org, authority, id, now)
+}
+
 // LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
 // expired, current credential epoch) minted inside one org, in id order; a
 // non-empty authority narrows it to one human.
@@ -867,6 +873,12 @@ func (a *TxAuthorizer) LockoutRetentionsInOrg(ctx context.Context, org domain.Or
 // LoginChallengeByID resolves a login challenge, or domain.ErrNotFound.
 func (a *TxAuthorizer) LoginChallengeByID(ctx context.Context, id string) (LoginChallenge, error) {
 	return a.r.LoginChallengeByID(ctx, id)
+}
+
+// MachineCredentialInProject reads one credential by id when its service account
+// belongs to the project; none is ErrNotFound.
+func (a *TxAuthorizer) MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error) {
+	return a.r.MachineCredentialInProject(ctx, scope, id)
 }
 
 func (a *TxAuthorizer) MachineCredentialsFor(ctx context.Context, serviceAccountID string) ([]MachineCredential, error) {

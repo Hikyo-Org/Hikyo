@@ -1376,9 +1376,22 @@
   },
   {
     "engine": "postgres",
+    "name": "GetLiveDeveloperCredentialInOrg",
+    "annotation": "authn-resolution",
+    "hash": "ad638693b4fc92f4e68a2032da7368abae0d0d63a91dbbdf29cc9a08a6b49ec5",
+    "reason": "Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org; no bearer can be recovered."
+  },
+  {
+    "engine": "postgres",
     "name": "GetLoginChallengeByID",
     "annotation": "authn-resolution",
     "hash": "a39a38c26fb30cf0f6e3b3c28ad523bbd4f850cbee7ff57760a241ec2b071fe0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetMachineCredentialInProject",
+    "annotation": "authn-resolution",
+    "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a"
   },
   {
     "engine": "postgres",
@@ -5224,9 +5237,22 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetLiveDeveloperCredentialInOrg",
+    "annotation": "authn-resolution",
+    "hash": "57a3b47fce797a577872ffaceaa23c5b81c5cd2d4bbc875bafc24d3d84df15c4",
+    "reason": "Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org; no bearer can be recovered."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetLoginChallengeByID",
     "annotation": "authn-resolution",
     "hash": "2164b777f332eae71a98c5b6be1477fc405f39f38f314fd5da0360415471752a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetMachineCredentialInProject",
+    "annotation": "authn-resolution",
+    "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a"
   },
   {
     "engine": "sqlite",
