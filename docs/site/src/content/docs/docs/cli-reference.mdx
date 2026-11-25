@@ -136,7 +136,7 @@ to be asked for an authenticator code if one is enrolled.
 | `folder`, `key` | Manage the catalogue and declarations. |
 | `values` | List, get, set, clear, diff, copy, and bulk declare. |
 | `access`, `project-settings` | Manage grants, members, temporary-access policies and requests, and protected environments. |
-| `adapter` | Configure Forgejo, GitHub Actions, GitLab, Vault KV, AWS Secrets Manager, Cloudflare, and sealed-webhook deployment adapters, targets, plans, adoption, and converge jobs. |
+| `adapter` | Configure Forgejo, GitHub Actions, GitLab, Vault KV, AWS Secrets Manager, Cloudflare, and encrypted webhook (`sealed-webhook`) deployment adapters, targets, plans, adoption, and converge jobs. |
 | `dynamic-provider`, `lease` | Register dynamic-secret providers and mint, renew, revoke, and settle short-lived leases. |
 | `rotation` | Configure scheduled PostgreSQL credential rotation: create and resume consume a publish ceremony; list (`--include-disabled`, `--limit`, `--after`), show, pause and delete name the delivered credential's expiry; `delete --abandon` (a signed-in person only) closes unsettled runs; `run-now` (always with `--confirm-destructive`; `--skip-overlap` revokes at once) requests a run outside the schedule and `runs` lists a rotation's runs. See [Scheduled credential rotation](/docs/rotation/). |
 | `ssh-ca`, `ssh-profile`, `ssh-cert` | Run SSH user CAs, define signing profiles, and issue and revoke short-lived SSH certificates. See [SSH certificates](/docs/ssh-certificates/). |

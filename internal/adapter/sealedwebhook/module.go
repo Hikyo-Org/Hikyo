@@ -165,7 +165,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	if m.Endpoint == nil {
 		return adapter.Plan{}, errors.New("sealed-webhook: module is not configured")
 	}
-	if err := adapter.ValidateSealedWebhookManifest(req.Target.NamePrefix, req.Manifest, false); err != nil {
+	if err := adapter.ValidateEncryptedWebhookManifest(req.Target.NamePrefix, req.Manifest, false); err != nil {
 		return adapter.Plan{}, err
 	}
 	if req.Gate == nil {
@@ -236,7 +236,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	if err := m.ready(); err != nil {
 		return adapter.SyncResult{}, err
 	}
-	if err := adapter.ValidateSealedWebhookManifest(req.Target.NamePrefix, req.Manifest, true); err != nil {
+	if err := adapter.ValidateEncryptedWebhookManifest(req.Target.NamePrefix, req.Manifest, true); err != nil {
 		return adapter.SyncResult{}, err
 	}
 	if req.Source.Revision < 0 || req.Source.OrgID == "" || req.Source.ProjectID == "" || req.Source.EnvironmentID == "" {

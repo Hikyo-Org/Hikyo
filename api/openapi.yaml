@@ -3523,6 +3523,71 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: resolveAccess
+      tags: [access]
+      summary: Answer who can use one permission in an environment.
+      description: |
+        "Who can...?" (member-access-rules ADR D10), evaluated by the
+        authorization chokepoint for the principals with a grant in the
+        project, an organisation-wide grant of the asked permission, or a
+        project rule the caller may manage, people and machines alike.
+        Instance operators are not listed, and grants above organisation
+        scope are not shown. It answers
+        who can, who an except of a rule leaves out (naming the rule and the
+        excepts), who has Reveal without See, and whom no grant or rule of
+        theirs reaches. Rules the caller cannot manage are never named, and
+        nothing from a sibling project appears. Without
+        `key` the question is about the whole environment, so a rule limited
+        to some keys does not reach and is listed as `key_limited`. A machine
+        whose project has machine reveal turned off holds no Reveal. The
+        answer discloses membership, so it needs `manage-members` at the
+        project and is audited as a membership read.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.resolve
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      parameters:
+        - name: permission
+          in: query
+          required: true
+          description: The permission to answer for.
+          schema:
+            $ref: "#/components/schemas/RuleCapability"
+        - name: key
+          in: query
+          required: false
+          description: One key of the project, by id. Absent asks about every key of the environment.
+          schema:
+            $ref: "#/components/schemas/ID"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The answer, in four groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessResolution"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}/grants/template:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -17880,7 +17945,7 @@ components:
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
         sealed-webhook binds only to an origin an instance admin activated in
-        the server's sealed webhook registry.
+        the server's encrypted webhook registry.
       x-extensible-enum: [forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, gitlab]
 
     AdapterTargetInput:
@@ -23593,6 +23658,87 @@ components:
           $ref: "#/components/schemas/KeyFolderPath"
         key:
           $ref: "#/components/schemas/ID"
+
+    AccessResolution:
+      type: object
+      additionalProperties: false
+      required: [permission, environment, can, excepted, needs_see, none]
+      properties:
+        permission:
+          $ref: "#/components/schemas/RuleCapability"
+        environment:
+          $ref: "#/components/schemas/ID"
+        key:
+          $ref: "#/components/schemas/ID"
+        can:
+          type: array
+          description: Principals that hold the permission here. For `reveal` and `reveal-history` they also hold See.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+        excepted:
+          type: array
+          description: Principals a rule would reach, but an except of that rule leaves this place out.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+        needs_see:
+          type: array
+          description: Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+        none:
+          type: array
+          description: Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+
+    AccessPrincipal:
+      type: object
+      additionalProperties: false
+      required: [principal_id, kind, grants, rules, excepts]
+      properties:
+        principal_id:
+          $ref: "#/components/schemas/ID"
+        principal_name:
+          type: string
+          description: Current display name or username of the person, or the service account's name; not an identifier.
+        kind:
+          $ref: "#/components/schemas/PrincipalKind"
+        grants:
+          type: array
+          description: The scopes of the grants that give the permission here.
+          items:
+            $ref: "#/components/schemas/GrantScope"
+        rules:
+          type: array
+          description: The ids of the rules that give the permission here.
+          items:
+            $ref: "#/components/schemas/ID"
+        excepts:
+          type: array
+          description: On `excepted`, each rule that would reach and what of it leaves this place out.
+          items:
+            $ref: "#/components/schemas/AccessExcept"
+
+    AccessExcept:
+      type: object
+      additionalProperties: false
+      required: [rule, environments, keys, key_limited]
+      properties:
+        rule:
+          $ref: "#/components/schemas/ID"
+        environments:
+          type: array
+          description: The excepted environments that leave this place out.
+          items:
+            $ref: "#/components/schemas/ID"
+        keys:
+          type: array
+          description: The excepted folders or keys that leave the named key out.
+          items:
+            $ref: "#/components/schemas/RuleKeyItem"
+        key_limited:
+          type: boolean
+          description: No key was named and the rule reaches only some keys of the environment.
 
     Rule:
       type: object

@@ -539,6 +539,7 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/rules":                                                            true,
 	"DELETE /api/v1/orgs/{org}/rules/{rule}":                                                   true,
 	"GET /api/v1/orgs/{org}/projects/{project}/rules":                                          true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access":              true,
 	"POST /api/v1/orgs/{org}/grants/template":                                                  true,
 	"POST /api/v1/orgs/{org}/projects":                                                         true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments":                                  true,

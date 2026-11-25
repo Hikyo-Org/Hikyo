@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 
 import type { RefusalFinding } from '../api/client.ts';
 import {
@@ -21,6 +21,7 @@ import type { MatrixRef } from '../api/keys.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Input } from '../ui/Input.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 
@@ -158,7 +159,6 @@ function useNameWrite(action: CatalogueAction) {
 function CreateFolder({ refData }: { refData: MatrixRef }) {
   const create = useCreateFolder(refData);
   const write = useNameWrite('create the folder');
-  const id = useId();
   const [path, setPath] = useState('');
   const trimmed = path.trim();
   return (
@@ -179,12 +179,10 @@ function CreateFolder({ refData }: { refData: MatrixRef }) {
         );
       }}
     >
-      <label className="visually-hidden" htmlFor={id}>
-        New folder path
-      </label>
-      <input
-        id={id}
-        className="mono"
+      <Input
+        label="New folder path"
+        labelHidden
+        mono
         value={path}
         placeholder="app/db"
         disabled={create.isPending}
@@ -227,10 +225,11 @@ function FolderRow({
   const busy = rename.isPending || remove.isPending;
   return (
     <li className="catalogue-manage__row">
-      <div className="catalogue-manage__row-main">
-        <input
-          className="mono"
-          aria-label={`Folder path for ${folder.path}`}
+      <div className="catalogue-manage__edit">
+        <Input
+          label={`Folder path for ${folder.path}`}
+          labelHidden
+          mono
           value={path}
           disabled={readOnly || busy}
           onChange={(event) => setPath(event.currentTarget.value)}
@@ -297,7 +296,6 @@ function FolderRow({
 function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
   const create = useCreateKeyGroup(refData);
   const write = useNameWrite('create the linked-key set');
-  const id = useId();
   const [name, setName] = useState('');
   const trimmed = name.trim();
   return (
@@ -318,11 +316,9 @@ function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
         );
       }}
     >
-      <label className="visually-hidden" htmlFor={id}>
-        New linked-key set name
-      </label>
-      <input
-        id={id}
+      <Input
+        label="New linked-key set name"
+        labelHidden
         value={name}
         placeholder="database"
         disabled={create.isPending}
@@ -367,9 +363,10 @@ function GroupRow({
   const busy = rename.isPending || remove.isPending;
   return (
     <li className="catalogue-manage__row">
-      <div className="catalogue-manage__row-main">
-        <input
-          aria-label={`Name for linked-key set ${group.name}`}
+      <div className="catalogue-manage__edit">
+        <Input
+          label={`Name for linked-key set ${group.name}`}
+          labelHidden
           value={name}
           disabled={readOnly || busy}
           onChange={(event) => setName(event.currentTarget.value)}

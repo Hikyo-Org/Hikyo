@@ -97,7 +97,8 @@ var SpecYAML []byte
 // write-only signing secret, endpoint URL) and the signed lifecycle event route.
 // It also adds, to a scheduled rotation, the fixed-word `halt_reason`, its
 // `last_run` and the `owed_drop_runs` counts (#148).
-const Revision = 20
+// Revision 21 adds the server-side "Who can...?" resolver, rule.resolve (#1474).
+const Revision = 21
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

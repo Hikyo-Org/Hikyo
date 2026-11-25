@@ -446,7 +446,7 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
  */
 export type AdapterProvider = string;
 
@@ -4692,6 +4692,65 @@ export type RuleKeyItem = {
     project: Id;
     folder?: KeyFolderPath;
     key?: Id;
+};
+
+export type AccessResolution = {
+    permission: RuleCapability;
+    environment: Id;
+    key?: Id;
+    /**
+     * Principals that hold the permission here. For `reveal` and `reveal-history` they also hold See.
+     */
+    can: Array<AccessPrincipal>;
+    /**
+     * Principals a rule would reach, but an except of that rule leaves this place out.
+     */
+    excepted: Array<AccessPrincipal>;
+    /**
+     * Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
+     */
+    needs_see: Array<AccessPrincipal>;
+    /**
+     * Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
+     */
+    none: Array<AccessPrincipal>;
+};
+
+export type AccessPrincipal = {
+    principal_id: Id;
+    /**
+     * Current display name or username of the person, or the service account's name; not an identifier.
+     */
+    principal_name?: string;
+    kind: PrincipalKind;
+    /**
+     * The scopes of the grants that give the permission here.
+     */
+    grants: Array<GrantScope>;
+    /**
+     * The ids of the rules that give the permission here.
+     */
+    rules: Array<Id>;
+    /**
+     * On `excepted`, each rule that would reach and what of it leaves this place out.
+     */
+    excepts: Array<AccessExcept>;
+};
+
+export type AccessExcept = {
+    rule: Id;
+    /**
+     * The excepted environments that leave this place out.
+     */
+    environments: Array<Id>;
+    /**
+     * The excepted folders or keys that leave the named key out.
+     */
+    keys: Array<RuleKeyItem>;
+    /**
+     * No key was named and the rule reaches only some keys of the environment.
+     */
+    key_limited: boolean;
 };
 
 export type Rule = {
@@ -13705,6 +13764,100 @@ export type ListProjectRulesResponses = {
 };
 
 export type ListProjectRulesResponse = ListProjectRulesResponses[keyof ListProjectRulesResponses];
+
+export type ResolveAccessData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query: {
+        /**
+         * The permission to answer for.
+         */
+        permission: RuleCapability;
+        /**
+         * One key of the project, by id. Absent asks about every key of the environment.
+         */
+        key?: Id;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access';
+};
+
+export type ResolveAccessErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ResolveAccessError = ResolveAccessErrors[keyof ResolveAccessErrors];
+
+export type ResolveAccessResponses = {
+    /**
+     * The answer, in four groups.
+     */
+    200: AccessResolution;
+};
+
+export type ResolveAccessResponse = ResolveAccessResponses[keyof ResolveAccessResponses];
 
 export type ApplyProjectTemplateData = {
     body: ApplyTemplateRequest;

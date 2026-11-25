@@ -56,3 +56,14 @@ export const ExternalInvalidIsKept: Story = {
     await expect(control).toHaveAccessibleDescription('The hint.');
   },
 };
+
+// `controlClassName` reaches the textarea beside `mono`; `className` stays on the wrapper.
+export const ControlClassName: Story = {
+  args: { label: 'First value', mono: true, controlClassName: 'matrix-editor__value', className: 'wrapper-only' },
+  play: async ({ canvas }) => {
+    const textarea = canvas.getByLabelText('First value');
+    await expect(textarea).toHaveClass('mono');
+    await expect(textarea).toHaveClass('matrix-editor__value');
+    await expect(textarea).not.toHaveClass('wrapper-only');
+  },
+};

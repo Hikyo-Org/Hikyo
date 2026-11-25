@@ -450,6 +450,7 @@ const (
 	// depth, legacy `manage-members` at that depth.
 	OpRuleListOrg         Operation = "rule.list-org"
 	OpRuleListProject     Operation = "rule.list-project"
+	OpRuleResolve         Operation = "rule.resolve"
 	OpGrantRevokeEnv      Operation = "grant.revoke-env"
 	OpGrantRevokeInstance Operation = "grant.revoke-instance"
 
@@ -4352,6 +4353,15 @@ var operationTable = map[Operation]opSpec{
 	OpRuleListProject: {
 		class:    ClassTenant,
 		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	// "Who can...?" (ADR D10) discloses membership like the rule listing,
+	// with the same authority and the same membership read event.
+	OpRuleResolve: {
+		class:    ClassTenant,
+		level:    domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventGrantMembershipRead},
