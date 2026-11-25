@@ -236,25 +236,34 @@ func prepare(repository string, e controlEvent) error {
 	if err := dedupeBotComments(repository, duplicates); err != nil {
 		return err
 	}
-	if c.ID != 0 {
-		r, err := parseRequest(c.Body)
-		if err == nil && r.head == pr.Head.SHA {
+	body := commentBody(pr, request{head: pr.Head.SHA}, "_Not run for this head._")
+	// reconcile keeps a comment already for the live head (and any admitted
+	// request on it) and resets one left on an older head.
+	reconcile := func(c comment) error {
+		if r, err := parseRequest(c.Body); err == nil && r.head == pr.Head.SHA {
 			return nil
 		}
+		return updateComment(repository, c, body)
 	}
-	body := commentBody(pr, request{head: pr.Head.SHA}, "_Not run for this head._")
+	if c.ID != 0 {
+		return reconcile(c)
+	}
+	if err := writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body); err != nil {
+		return err
+	}
+	// Re-read: a concurrent creator may have posted first, possibly for an
+	// older head, so the surviving lowest id is reconciled too.
+	c, duplicates, err = botComments(repository, pr.Number)
+	if err != nil {
+		return err
+	}
+	if err := dedupeBotComments(repository, duplicates); err != nil {
+		return err
+	}
 	if c.ID == 0 {
-		if err := writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body); err != nil {
-			return err
-		}
-		// Re-read to remove a duplicate from a concurrent creator.
-		_, duplicates, err := botComments(repository, pr.Number)
-		if err != nil {
-			return err
-		}
-		return dedupeBotComments(repository, duplicates)
+		return nil // Listing lag; the next writer reconciles.
 	}
-	return updateComment(repository, c, body)
+	return reconcile(c)
 }
 
 func authorizedRequest(repository string, e controlEvent) (pull, comment, bool, error) {
@@ -544,7 +553,9 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	// shortcut: GitHub has no compare-and-swap on comments, so a stale comment
 	// job PATCH can still land between this re-read and the rerun; narrow, not closed.
 	if after, err := botComment(repository, pr.Number); err != nil {
-		return err
+		// Release the claim so automatic admission can retry this head.
+		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
+		return errors.Join(err, updateComment(repository, c, release))
 	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {
 		// Compare the claim identity, not bytes: GitHub may normalize whitespace.
 		return nil // A concurrent writer replaced the claim; do not spend.

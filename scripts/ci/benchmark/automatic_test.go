@@ -165,6 +165,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		draft, stale, claimed, budgetExceeded              bool
 		pendingManual, lateManual, fork, missingRepository bool
 		absentComment, staleComment, lostUpdate            bool
+		lookupFailure                                      bool
 		superseded                                         string
 		wantRun                                            bool
 	}{
@@ -184,6 +185,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		{name: "newer running discovery", file: "go.mod", superseded: "in_progress"},
 		{name: "automatic creates absent comment", file: "go.mod", absentComment: true, wantRun: true},
 		{name: "claim replaced by a concurrent writer does not rerun", file: "go.mod", lostUpdate: true},
+		{name: "failed post-claim lookup releases the claim", file: "go.mod", lookupFailure: true},
 		{name: "automatic refreshes stale comment", file: "go.mod", staleComment: true, wantRun: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -266,6 +268,10 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				// After the claim PATCH, a stale comment job restores the unclaimed body.
 				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then cat \"$1\"; return; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
 			}
+			if test.lookupFailure {
+				// The comment listing fails only once the claim is written.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			}
 			if test.absentComment {
 				bodyFile := filepath.Join(filepath.Dir(log), "latest-body")
 				transition += fmt.Sprintf(" if [ \"$method\" = POST ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments' ]; then printf '%%s' \"$body\" >'%s'; fi\n if [ \"$method\" = GET ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ]; then jq -n --rawfile body '%s' '[[{id:20,user:{id:41898282},body:$body}]]'; return; fi\n", bodyFile, bodyFile, bodyFile)
@@ -273,8 +279,14 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "respond() {\n", transition, 1)), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := runBenchmark("o/r", controlEvent{WorkflowRun: r}, true); err != nil {
-				t.Fatal(err)
+			if err := runBenchmark("o/r", controlEvent{WorkflowRun: r}, true); (err != nil) != test.lookupFailure {
+				t.Fatalf("err=%v want error=%t", err, test.lookupFailure)
+			}
+			if test.lookupFailure {
+				latest, err := os.ReadFile(filepath.Join(filepath.Dir(log), "latest-body"))
+				if err != nil || !strings.Contains(string(latest), "run=0 attempt=0") {
+					t.Fatalf("a failed post-claim lookup must leave an unclaimed comment, got %q (%v)", latest, err)
+				}
 			}
 			calls, err := os.ReadFile(log)
 			if err != nil {

@@ -216,3 +216,29 @@ func TestPrepareFailsOnAForbiddenDuplicateDelete(t *testing.T) {
 		t.Fatalf("gh stderr must stay out of error text (decline posts it): %v", err)
 	}
 }
+
+func TestPrepareReconcilesARacedSurvivorFromAnOlderHead(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	survivor := botCopy(t, 20, old)
+	log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{survivor, botCopy(t, 21, live)}})}, "none")
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatal(err)
+	}
+	c := recorded(t, log)
+	if !strings.Contains(c, "--method DELETE repos/o/r/issues/comments/21") || !strings.Contains(c, "--method PATCH repos/o/r/issues/comments/20") || !strings.Contains(c, "head="+live) {
+		t.Fatalf("an older-head survivor must be reset to the live head:\n%s", c)
+	}
+}
+
+func TestPrepareKeepsARacedSurvivorOnTheLiveHead(t *testing.T) {
+	live := strings.Repeat("a", 40)
+	admitted := testComment(t, live, request{head: live, run: 10, attempt: 2})
+	admitted.ID = 20
+	log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{admitted, botCopy(t, 21, live)}})}, "none")
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if c := recorded(t, log); strings.Contains(c, "--method PATCH") {
+		t.Fatalf("an admitted request on the live head must be preserved:\n%s", c)
+	}
+}
