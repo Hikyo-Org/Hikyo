@@ -218,8 +218,10 @@ export const PhoneAnyOfEditor: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async (context) => {
     await AnyOfEditor.play?.(context);
-    const panel = context.canvas.getByRole('complementary', { name: 'Key declaration' });
-    await expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
+    // The panel body is the scroller, so an overflowing row widens it, not the aside.
+    const body = context.canvas.getByRole('complementary', { name: 'Key declaration' }).querySelector('.side-panel__body');
+    if (!(body instanceof HTMLElement)) throw new Error('panel body missing');
+    await expect(body.scrollWidth).toBeLessThanOrEqual(body.clientWidth);
   },
 };
 

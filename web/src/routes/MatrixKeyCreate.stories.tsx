@@ -144,11 +144,16 @@ const fitsPhone = async (canvasElement: HTMLElement) => {
   await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
 };
 
-// The default string declaration at phone width: the constraint pair stacks.
+// The default string declaration at phone width: the two lengths still share a
+// line, and the type select keeps the secret checkbox beside it.
 export const PhoneStringConstraints: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas, canvasElement }) => {
-    await expect(canvas.getByLabelText('Min length')).toBeVisible();
+    const top = (label: string) => canvas.getByLabelText(label).getBoundingClientRect().top;
+    await expect(top('Max length')).toBe(top('Min length'));
+    const secret = canvas.getByRole('checkbox', { name: 'secret' }).getBoundingClientRect();
+    const type = canvas.getByLabelText('Type').getBoundingClientRect();
+    await expect(secret.top).toBeLessThan(type.bottom);
     await expect(canvas.getByLabelText('Pattern (RE2, whole value)')).toBeVisible();
     await fitsPhone(canvasElement);
   },

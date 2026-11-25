@@ -146,6 +146,10 @@ export const PhonePopulated: Story = {
   play: async ({ canvas, canvasElement }) => {
     await expect(await canvas.findByLabelText('Folder path for observability/exporters')).toBeVisible();
     await expect(canvas.getByLabelText('New linked-key set name')).toBeVisible();
+    const name = canvas.getByLabelText('Folder path for database').getBoundingClientRect();
+    const [rename] = canvas.getAllByRole('button', { name: 'Rename' });
+    if (rename === undefined) throw new Error('rename missing');
+    await expect(rename.getBoundingClientRect().top).toBeGreaterThanOrEqual(name.bottom);
     const dialog = canvasElement.ownerDocument.querySelector('dialog[open]');
     if (!(dialog instanceof HTMLElement)) throw new Error('dialog missing');
     await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
