@@ -41,6 +41,24 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment` and `...RefusesFederatedClaim`,
   `TestRestoreReconcileDoesNotLiftContainment` (real archive restore and reopen).
 
+## Tested revision
+
+- Code revision `6d420e5f1` (stacked on #1549 `41bcc4a95`): the release, audit-registry and
+  pin tests (`TestIncidentRelease*`, `TestReleasePrincipalContainmentBindsTheContainingIncident`,
+  `TestInvariantAuditRegistryClosure`, `TestInvariant13AllowlistPinning`, `TestAuditCore`) pass
+  on SQLite and PostgreSQL 18 (checked before the restack onto #1549; the restack changed no
+  slice 5 file).
+- Mutants killed with `go test -overlay`: release without the stamp (real-reset release and the
+  count test fail), "any consumed authority counts" (the clock-ahead and count tests fail), the
+  service containing-incident check removed (the non-containing-incident test fails, the store
+  bind alone does not save it), the store bind removed (the store-level test fails; the service
+  test alone survives it), and the registry without `incident.principal_released`
+  (`TestInvariantAuditRegistryClosure` fails).
+- Full `./internal/isolation`, `./internal/store/...`, `./internal/service`, `./internal/app`,
+  `./internal/lint` (including `TestVetDriverRepo`) on both engines: agent-heavy job 7889 on
+  this code revision; its result is reported on the PR, not here. Lint is hosted CI (the local
+  golangci-lint is built with go1.26 and refuses the module's go1.27.4).
+
 ## Not done
 
 - No HTTP route, CLI verb or web control for release: the operator surface is a later slice.
