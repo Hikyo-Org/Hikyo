@@ -128,7 +128,3 @@ func (c BuildContext) needsWebuiPlaceholder() bool {
 	}
 	return false
 }
-
-var _ = "bust1"
-
-var _ = "bust2"
