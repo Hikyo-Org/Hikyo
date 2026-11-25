@@ -173,11 +173,14 @@ apply-time revocation list (options (a) and (c) on
   key) is unusable: bridge routes refuse under `off`, when the endpoint is unreachable
   and when the fetched list is stale, with a message naming the files. Only a fresh,
   non-stale, verified online list replaces it, and its sequence must be at or above
-  the last recorded check's sequence (the only floor still trustworthy). A list that is
+  the high-water floor (`bridge-revocations-floor.json`: the highest sequence and its
+  digest, raised only when a list is stored, under the lock, never lowered and kept apart
+  from the outcome log; a different list at the floor's sequence is equivocation). A
+  missing floor record is a first run; an unreadable one refuses. A list that is
   correctly signed by the current recovery key but bound to another (older) root is
   tolerated as nothing stored, as after a root rotation. The way out is operator
   action, never automatic: reach the endpoint so a valid list replaces it, or stop the
-  service and remove the named files, accepting that revocations known only to that
+  service and remove the named files (including the floor record), accepting that revocations known only to that
   list are lost. A security rollback is never blocked.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that

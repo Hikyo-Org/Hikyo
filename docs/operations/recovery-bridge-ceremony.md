@@ -261,8 +261,8 @@ Operator recovery for stored state: an installation keeps the last accepted list
 `HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, fsynced and replaced by one
 rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
 unreachable endpoint and with a stale list (a security rollback is never blocked); only a fresh,
-non-stale, verified list, not below the last recorded sequence, replaces it. Either reach the
-endpoint, or stop the service and remove that file (and any older `bridge-revocations.json` and
+non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list; an unreadable one refuses), replaces it. Either reach the
+endpoint, or stop the service and remove that file and the floor record (and any older `bridge-revocations.json` and
 `bridge-revocations.sigstore.json`) as an explicit operator action, accepting that revocations known
 only to that list are lost and that until the next list is stored an older validly signed list is
 bounded only by its 7-day `issued_at`. A list correctly signed but bound to an older root is tolerated

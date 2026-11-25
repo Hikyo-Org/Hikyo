@@ -253,6 +253,9 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	result := Result{Outcome: Disabled}
 	if haveKnown {
 		result.Sequence, result.Revoked = known.Sequence(), known.Revoked()
+		if err := c.ensureFloor(known); err != nil {
+			return Result{}, err
+		}
 	}
 	if c.Mode == Off {
 		return result, c.record(result)
@@ -284,10 +287,6 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	if unusable {
 		if age > MaxListAge {
 			return Result{}, fmt.Errorf("%w: the fetched list is stale and cannot replace it", ErrUnusableState)
-		}
-		// The recorded sequence of the last check is the only floor still available.
-		if _, recorded, _, recordErr := LastCheck(c.Directory); recordErr == nil && fresh.Sequence() < recorded {
-			return Result{}, errors.New("revocation list rollback refused")
 		}
 	}
 	if haveKnown {
@@ -401,7 +400,8 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 	}
 	defer release()
 	known, haveKnown, err := c.loadKnown(snapshot)
-	if err != nil && !errors.Is(err, ErrUnusableState) {
+	unusable := errors.Is(err, ErrUnusableState)
+	if err != nil && !unusable {
 		return err
 	}
 	if haveKnown {
@@ -411,6 +411,24 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 		if known.Sequence() >= fresh.Sequence() {
 			return nil
 		}
+	}
+	if unusable {
+		// The stored list is gone, so the high-water floor is the only memory left. A
+		// missing floor is a first run; an unreadable one is as unusable as the list.
+		floor, found, floorErr := c.readFloor()
+		if floorErr != nil {
+			return fmt.Errorf("%w: the sequence floor record is unreadable: %w", ErrUnusableState, floorErr)
+		}
+		if found && fresh.Sequence() < floor.Sequence {
+			return errors.New("revocation list rollback refused")
+		}
+		if found && fresh.Sequence() == floor.Sequence && fresh.Digest() != floor.Digest {
+			return errors.New("revocation list equivocation refused")
+		}
+	}
+	// The floor lands first: a crash between the two leaves a floor at or above the store.
+	if err := c.raiseFloor(fresh.Sequence(), fresh.Digest()); err != nil {
+		return err
 	}
 	raw, err := json.Marshal(storedList{List: list, Signature: signature}, jsonwire.Stable)
 	if err != nil {
@@ -423,6 +441,57 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 	_ = os.Remove(filepath.Join(c.Directory, listFile))
 	_ = os.Remove(filepath.Join(c.Directory, signatureFile))
 	return nil
+}
+
+const floorFile = "bridge-revocations-floor.json"
+
+// floorRecord is the highest list this installation accepted. Only persist and ensureFloor
+// write it, under the persistence lock, and never lower it; the outcome log is separate.
+type floorRecord struct {
+	Sequence int64                  `json:"sequence"`
+	Digest   releaseidentity.Digest `json:"digest"`
+}
+
+func (c Checker) readFloor() (floorRecord, bool, error) {
+	raw, err := os.ReadFile(filepath.Join(c.Directory, floorFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return floorRecord{}, false, nil
+	}
+	if err != nil {
+		return floorRecord{}, false, err
+	}
+	var floor floorRecord
+	if err := definitions.DecodeStrict(raw, &floor); err != nil || floor.Sequence < 1 || floor.Digest.Validate() != nil {
+		return floorRecord{}, false, errors.New("sequence floor record is malformed")
+	}
+	return floor, true, nil
+}
+
+// raiseFloor stores max(existing, new). The caller holds the lock. An unreadable existing
+// record is replaced: the list being stored is verified and the old record is already lost.
+func (c Checker) raiseFloor(sequence int64, digest releaseidentity.Digest) error {
+	if existing, found, err := c.readFloor(); err == nil && found && existing.Sequence >= sequence {
+		return nil
+	}
+	raw, err := json.Marshal(floorRecord{Sequence: sequence, Digest: digest}, jsonwire.Stable)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(c.Directory, floorFile), raw)
+}
+
+// ensureFloor gives an installation that stored its list before the floor existed a floor
+// at that list's sequence, so losing the list later cannot lower it.
+func (c Checker) ensureFloor(known releasetrust.VerifiedRevocations) error {
+	if existing, found, err := c.readFloor(); err == nil && found && existing.Sequence >= known.Sequence() {
+		return nil
+	}
+	release, err := c.lock()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return c.raiseFloor(known.Sequence(), known.Digest())
 }
 
 const (

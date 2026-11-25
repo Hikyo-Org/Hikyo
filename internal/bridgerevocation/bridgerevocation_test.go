@@ -208,6 +208,117 @@ func TestUnusableStoredStateKeepsTheRecordedFloor(t *testing.T) {
 	}
 }
 
+// The floor is its own monotonic record, written only when a list is stored: the outcome log
+// can hold any sequence without lowering it, a different list at the floor's sequence is
+// equivocation, a missing record is a first run, and an unreadable one refuses.
+func TestSequenceFloorIsAMonotonicRecordSeparateFromTheOutcomeLog(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	bridge := releaseidentity.Hash([]byte("bridge"))
+	setup := func(t *testing.T) (string, *scripted, bridgerevocation.Checker) {
+		directory := t.TempDir()
+		fetcher := &scripted{}
+		fetcher.list, fetcher.signature = signedList(t, f, 5)
+		checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+		if _, err := checker.Check(t.Context(), snapshot); err != nil {
+			t.Fatal(err)
+		}
+		// The outcome log is overwritten by hand with a lower sequence, as a stale or
+		// unreachable record would; no second check runs, so only persist wrote the floor.
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-check.json"), []byte(`{"outcome":"stale-fell-back-to-expiry","sequence":1,"at":"2026-01-01T00:00:00Z"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), []byte("torn"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return directory, fetcher, checker
+	}
+	t.Run("a lower sequence never replaces it, whatever the outcome log says", func(t *testing.T) {
+		_, fetcher, checker := setup(t)
+		fetcher.list, fetcher.signature = signedList(t, f, 3)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+			t.Fatalf("below the floor: %v", err)
+		}
+	})
+	t.Run("the same sequence with a different list is equivocation", func(t *testing.T) {
+		_, fetcher, checker := setup(t)
+		fetcher.list, fetcher.signature = signedList(t, f, 5, bridge)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "equivocation") {
+			t.Fatalf("same sequence, other digest: %v", err)
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 5)
+		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 5 {
+			t.Fatalf("the same list at the floor replaces it: %+v %v", result, err)
+		}
+	})
+	t.Run("a list tolerated from an older root does not lower it", func(t *testing.T) {
+		directory, fetcher, checker := setup(t)
+		other := testfixture.New(t)
+		raw := testfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 2, IssuedAt: testNow.Add(-time.Hour).UTC().Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(other.Pinned.Root)})
+		for name, content := range map[string][]byte{"bridge-revocations-store.json": nil, "bridge-revocations.json": raw, "bridge-revocations.sigstore.json": testfixture.Sign(t, f.RecoverySigner, raw)} {
+			if content == nil {
+				if err := os.Remove(filepath.Join(directory, name)); err != nil {
+					t.Fatal(err)
+				}
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(directory, name), content, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 2)
+		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 2 {
+			t.Fatalf("a root-rotated installation accepts the new root's list: %+v %v", result, err)
+		}
+		floor, err := os.ReadFile(filepath.Join(directory, "bridge-revocations-floor.json"))
+		if err != nil || !strings.Contains(string(floor), `"sequence":5`) {
+			t.Fatalf("the floor never drops: %s %v", floor, err)
+		}
+	})
+	t.Run("an absent floor record is a first run", func(t *testing.T) {
+		directory, fetcher, checker := setup(t)
+		if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
+			t.Fatal(err)
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 3)
+		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 3 {
+			t.Fatalf("no floor record, nothing to compare: %+v %v", result, err)
+		}
+	})
+	t.Run("a corrupt floor record refuses", func(t *testing.T) {
+		directory, fetcher, checker := setup(t)
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-floor.json"), []byte("{"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fetcher.list, fetcher.signature = signedList(t, f, 9)
+		if _, err := checker.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) {
+			t.Fatalf("an unreadable floor must refuse even a valid newer list: %v", err)
+		}
+	})
+	t.Run("a stored list from before the floor existed gets a floor", func(t *testing.T) {
+		directory := t.TempDir()
+		list, signature := signedList(t, f, 5)
+		for name, raw := range map[string][]byte{"bridge-revocations.json": list, "bridge-revocations.sigstore.json": signature} {
+			if err := os.WriteFile(filepath.Join(directory, name), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: directory}
+		if _, err := off.Check(t.Context(), snapshot); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations.json"), []byte("torn"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fetcher := &scripted{}
+		fetcher.list, fetcher.signature = signedList(t, f, 4)
+		online := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+		if _, err := online.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+			t.Fatalf("the migrated floor holds: %v", err)
+		}
+	})
+}
+
 // After a root rotation a list that is correctly signed but bound to the previous root is
 // tolerated as "none"; the same list under a wrong signature is unusable.
 func TestListBoundToAnotherRootIsToleratedOnlyWhenCorrectlySigned(t *testing.T) {
