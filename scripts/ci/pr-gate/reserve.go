@@ -31,6 +31,15 @@ func heldBackByReserve(dev, discoverRetirement, retire, targeted bool, headWorke
 	return dev || discoverRetirement || retire || targeted || headWorker == "admission" || headWorker == "ambiguous"
 }
 
+// enforceReserve is the one decision main calls before any work starts: a role that
+// heldBackByReserve names defers below the reserve, every other role runs.
+func enforceReserve(ctx context.Context, a api, dev, discoverRetirement, retire, targeted bool, headWorker string) error {
+	if !heldBackByReserve(dev, discoverRetirement, retire, targeted, headWorker) {
+		return nil
+	}
+	return deferForGroupReserve(ctx, a)
+}
+
 // deferForGroupReserve fails a job that is not a group job when either bucket it may
 // draw on (each judged by its absolute remaining, like the retry workflows) would be left
 // with fewer than groupReserve requests after this job's own cost. The job writes nothing, so the

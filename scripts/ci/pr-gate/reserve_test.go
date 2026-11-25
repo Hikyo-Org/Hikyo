@@ -49,21 +49,46 @@ func TestReserveCheckDoesNotBlockOnAFailedRateLimitRead(t *testing.T) {
 	}
 }
 
-// main must apply the check: dev admission directly, every other held-back role through
-// heldBackByReserve, both before any work starts.
-func TestMainAppliesTheReserveCheck(t *testing.T) {
+// main applies the check through enforceReserve, called once for dev admission and once for
+// every other role before any work starts; the behaviour per role is tested below.
+func TestMainCallsTheReserveDecision(t *testing.T) {
 	src, err := os.ReadFile("main.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(src)
-	for _, want := range []string{"heldBackByReserve(false, *discoverRetirement, *retire, *targeted, *headWorker)", "deferForGroupReserve(context.Background(), ghAPI{})"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("main.go lost %q", want)
-		}
+	if strings.Count(text, "enforceReserve(") != 2 || strings.Contains(text, "deferForGroupReserve(") || strings.Contains(text, "heldBackByReserve(") {
+		t.Fatal("main must reach the reserve only through enforceReserve")
 	}
-	if strings.Index(text, "deferForGroupReserve") > strings.Index(text, "err := runDevCommand(") {
+	if strings.Index(text, "enforceReserve(") > strings.Index(text, "err := runDevCommand(") {
 		t.Fatal("dev admission must check the reserve before it runs")
+	}
+}
+
+// With the window spent, every held-back role is refused and every group role runs.
+func TestEnforceReserveRefusesEachHeldBackRoleOnASpentWindow(t *testing.T) {
+	reserveWindow(t, 10, 10)
+	for _, tc := range []struct {
+		name                                  string
+		dev, discoverRetirement, retire, targ bool
+		headWorker                            string
+		refused                               bool
+	}{
+		{"dev admission", true, false, false, false, "", true},
+		{"retirement discovery", false, true, false, false, "", true},
+		{"retirement", false, false, true, false, "", true},
+		{"targeted queue admission", false, false, false, true, "", true},
+		{"admission head worker", false, false, false, false, "admission", true},
+		{"ambiguous head worker", false, false, false, false, "ambiguous", true},
+		{"group job (plain --queue)", false, false, false, false, "", false},
+		{"group head worker", false, false, false, false, "group", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := enforceReserve(t.Context(), ghAPI{}, tc.dev, tc.discoverRetirement, tc.retire, tc.targ, tc.headWorker)
+			if (err != nil) != tc.refused {
+				t.Fatalf("enforceReserve err=%v, want refused=%t", err, tc.refused)
+			}
+		})
 	}
 }
 

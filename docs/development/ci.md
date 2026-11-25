@@ -257,7 +257,7 @@ installs packages, accesses the network or changes system settings.
 
 The canonical [main policy](../../release/repository/main-ci-gate.json) requires
 `ci-queue-required`, mandatory `ALLGREEN` queue, build concurrency one, merge
-limits one, zero minimum wait, `MERGE`, and a 120-minute check-response timeout (raised from 60 by #1371).
+limits one, zero minimum wait, `MERGE`, and a 120-minute check-response timeout (raised from 60 by #1371; the live ruleset 20539346 is already at 120, and the policy files in this repository only state what is live: nothing is raised here).
 Strict branch-up-to-date checking is false only alongside mandatory queue and
 that distinct context. This delegates current-base integration to the queue;
 it does not waive signatures, DCO, stale-review dismissal or resolved threads.

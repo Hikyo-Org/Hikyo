@@ -140,7 +140,7 @@ func TestRateLimitedPublishJobCompletesItsCheckWhenRerunAfterTheReset(t *testing
 		return verify(ctx, number, sha)
 	}
 	b := admissionBudget{Started: time.Now(), Deadline: time.Now().Add(admissionReserve + 2*time.Second)}
-	if err := f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b); err == nil {
+	if err := f.q.executeTargeted(t.Context(), "pull_request_target", targetedFixtureEvent(f), b); err == nil {
 		t.Fatal("a publisher that cannot read inside its budget must fail so the retry can find it")
 	}
 	f.assertNoSuccess(t)

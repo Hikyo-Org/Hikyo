@@ -1267,7 +1267,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "dev admission requires one PR and exact held head and cannot mix producer roles")
 			os.Exit(1)
 		}
-		if err := deferForGroupReserve(context.Background(), ghAPI{}); err != nil {
+		if err := enforceReserve(context.Background(), ghAPI{}, true, false, false, false, ""); err != nil {
 			fmt.Fprintln(os.Stderr, "trusted dev gate:", err)
 			os.Exit(1)
 		}
@@ -1315,11 +1315,9 @@ func main() {
 		os.Exit(1)
 	}
 	// Only a group job (plain --queue, --head-worker group, repair, dispatch) may spend the reserve.
-	if heldBackByReserve(false, *discoverRetirement, *retire, *targeted, *headWorker) {
-		if err := deferForGroupReserve(context.Background(), ghAPI{}); err != nil {
-			fmt.Fprintln(os.Stderr, "trusted PR gate:", err)
-			os.Exit(1)
-		}
+	if err := enforceReserve(context.Background(), ghAPI{}, false, *discoverRetirement, *retire, *targeted, *headWorker); err != nil {
+		fmt.Fprintln(os.Stderr, "trusted PR gate:", err)
+		os.Exit(1)
 	}
 	checkName := os.Getenv("PR_GATE_CHECK_NAME")
 	if checkName == "" {
