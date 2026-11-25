@@ -165,15 +165,20 @@ apply-time revocation list (options (a) and (c) on
   to `not_after`, and whatever a proxy returns is still verified against the pinned
   recovery key.
   **Stored state.** The accepted list and its signature are stored as one file
-  (`bridge-revocations-store.json`, one rename), so a crash cannot leave a list
-  beside another list's signature; the earlier two-file form is still read and is
-  removed on the next store. Stored state that no longer verifies (a torn write
-  from the earlier two-file form, a damaged file, a list bound to a root that has
-  since rotated) is ignored with a warning rather than refusing every bridge route:
-  `off` never depends on it, and online treats it as nothing stored, so a valid
-  newer list replaces it. The documented cost is the lost sequence floor: until a
-  list is stored again, a replayed older list is bounded only by its signed
-  `issued_at` (7 days), like a first apply. The operator recovery is in the runbook.
+  (`bridge-revocations-store.json`, written by fsync, one rename and a directory
+  fsync before the earlier pair is removed), so a crash cannot leave a list beside
+  another list's signature; the earlier two-file form is still read. Losing known
+  revocations must never widen admission, so stored state that exists but does not
+  verify (a torn pair from the earlier form, a damaged file, a list signed by another
+  key) is unusable: bridge routes refuse under `off`, when the endpoint is unreachable
+  and when the fetched list is stale, with a message naming the files. Only a fresh,
+  non-stale, verified online list replaces it, and its sequence must be at or above
+  the last recorded check's sequence (the only floor still trustworthy). A list that is
+  correctly signed by the current recovery key but bound to another (older) root is
+  tolerated as nothing stored, as after a root rotation. The way out is operator
+  action, never automatic: reach the endpoint so a valid list replaces it, or stop the
+  service and remove the named files, accepting that revocations known only to that
+  list are lost. A security rollback is never blocked.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that
   holds the journaled route digest of an upgrade (the gate's in-flight and

@@ -246,7 +246,8 @@ type checkRecord struct {
 // returns a result without a fresh list.
 func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Result, error) {
 	known, haveKnown, err := c.loadKnown(snapshot)
-	if err != nil {
+	unusable := errors.Is(err, ErrUnusableState)
+	if err != nil && (!unusable || c.Mode == Off) {
 		return Result{}, err
 	}
 	result := Result{Outcome: Disabled}
@@ -257,6 +258,13 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 		return result, c.record(result)
 	}
 	list, signature, err := c.Fetcher.Fetch(ctx)
+	if unusable && err != nil {
+		// Only a fresh, verified online answer may replace unusable state.
+		if errors.Is(err, ErrUnreachable) {
+			return Result{}, fmt.Errorf("%w: the endpoint is unreachable, so nothing can replace it: %w", ErrUnusableState, err)
+		}
+		return Result{}, err
+	}
 	if errors.Is(err, ErrUnreachable) {
 		result.Outcome = Unreachable
 		return result, c.record(result)
@@ -272,6 +280,15 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	age := now.Sub(fresh.IssuedAt())
 	if age < -maxFutureSkew {
 		return Result{}, errors.New("revocation list is issued in the future")
+	}
+	if unusable {
+		if age > MaxListAge {
+			return Result{}, fmt.Errorf("%w: the fetched list is stale and cannot replace it", ErrUnusableState)
+		}
+		// The recorded sequence of the last check is the only floor still available.
+		if _, recorded, _, recordErr := LastCheck(c.Directory); recordErr == nil && fresh.Sequence() < recorded {
+			return Result{}, errors.New("revocation list rollback refused")
+		}
 	}
 	if haveKnown {
 		if fresh.Sequence() < known.Sequence() {
@@ -300,23 +317,42 @@ func (c Checker) Revoked(ctx context.Context, snapshot releasetrust.Snapshot) ([
 	return result.Revoked, err
 }
 
-// loadKnown returns the stored list when it verifies against this snapshot. Stored
-// state that does not verify (a torn two-file write, a list bound to a root that has
-// since rotated, a damaged file) is ignored with a warning, never an error: it must not
-// block every bridge route, and the check=off path must not depend on it. Documented
-// fallback: with no usable stored list the sequence floor is gone, so a replayed older
-// list is bounded only by its signed issued_at (7 days), like a first apply.
+// ErrUnusableState marks stored revocation state that exists but does not verify. It is
+// never a quiet "nothing stored": losing known revocations must not widen admission, so
+// bridge routes refuse until a fresh verified online list replaces the state or the
+// operator removes it explicitly.
+var ErrUnusableState = errors.New("stored recovery bridge revocation list is unusable")
+
+func (c Checker) unusable(cause error) error {
+	return fmt.Errorf("%w (%w); bridge routes are refused. Restore access to the revocation endpoint so a valid list replaces it, or, as an explicit operator action, stop the service and remove %s (and any older %s and %s), accepting that revocations known only to that list are lost",
+		ErrUnusableState, cause, filepath.Join(c.Directory, storeFile), listFile, signatureFile)
+}
+
+// loadKnown returns the stored list when it verifies against this snapshot. Nothing
+// stored, or a list correctly signed but bound to another (rotated) root, is "none". Stored
+// state that does not verify is ErrUnusableState.
 func (c Checker) loadKnown(snapshot releasetrust.Snapshot) (releasetrust.VerifiedRevocations, bool, error) {
 	list, signature, found, err := c.readStored()
 	if err != nil || !found {
 		return releasetrust.VerifiedRevocations{}, false, err
 	}
 	verified, err := snapshot.VerifyRevocations(list, signature)
-	if err != nil {
-		slog.Warn("stored recovery bridge revocation list does not verify and is ignored; a valid list replaces it", "error", err)
+	if errors.Is(err, releasetrust.ErrRevocationRoot) {
+		slog.Warn("stored recovery bridge revocation list is bound to another trust root and is not applied", "error", err)
 		return releasetrust.VerifiedRevocations{}, false, nil
 	}
+	if err != nil {
+		return releasetrust.VerifiedRevocations{}, false, c.unusable(err)
+	}
 	return verified, true, nil
+}
+
+func parseStored(raw []byte) (list, signature []byte) {
+	var stored storedList
+	if definitions.DecodeStrict(raw, &stored) != nil {
+		return nil, nil
+	}
+	return stored.List, stored.Signature
 }
 
 // readStored reads the combined store, else the earlier two files. Content that cannot
@@ -324,18 +360,25 @@ func (c Checker) loadKnown(snapshot releasetrust.Snapshot) (releasetrust.Verifie
 func (c Checker) readStored() (list, signature []byte, found bool, err error) {
 	raw, err := os.ReadFile(filepath.Join(c.Directory, storeFile))
 	if err == nil {
-		var stored storedList
-		if definitions.DecodeStrict(raw, &stored) != nil {
-			return nil, nil, true, nil
-		}
-		return stored.List, stored.Signature, true, nil
+		list, signature = parseStored(raw)
+		return list, signature, true, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, nil, false, err
 	}
 	list, err = os.ReadFile(filepath.Join(c.Directory, listFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, false, nil
+		// A store written and the pair removed between the two reads: look again, so a
+		// concurrent migration never reads as "nothing stored".
+		raw, err = os.ReadFile(filepath.Join(c.Directory, storeFile))
+		if err == nil {
+			list, signature = parseStored(raw)
+			return list, signature, true, nil
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, false, nil
+		}
+		return nil, nil, false, err
 	}
 	if err != nil {
 		return nil, nil, false, err
@@ -358,7 +401,7 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 	}
 	defer release()
 	known, haveKnown, err := c.loadKnown(snapshot)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrUnusableState) {
 		return err
 	}
 	if haveKnown {
@@ -441,6 +484,11 @@ func writeAtomic(path string, raw []byte) error {
 		_ = os.Remove(name)
 		return err
 	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		_ = os.Remove(name)
+		return err
+	}
 	if err := temporary.Close(); err != nil {
 		_ = os.Remove(name)
 		return err
@@ -449,7 +497,17 @@ func writeAtomic(path string, raw []byte) error {
 		_ = os.Remove(name)
 		return err
 	}
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	// The rename is durable before the caller removes anything it supersedes.
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = directory.Close() }()
+	return directory.Sync()
 }
 
 // LastCheck returns the recorded outcome of the previous check, for logs.

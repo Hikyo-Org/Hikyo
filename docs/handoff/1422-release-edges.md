@@ -106,9 +106,10 @@ workflow (full `check-compatibility-unchanged.sh`).
   without a policy rotation; the runtime refuses v1, so they stay inert. Agents never
   sign or publish this. The rehearsal does not yet exercise a legacy statement.
 - Revocation state (#1561 review): the accepted list and signature are one file
-  (`bridge-revocations-store.json`, one rename); unusable stored state is ignored with
-  a warning, `off` never reads it, and a valid newer list replaces it (the floor is lost
-  until then; operator recovery is in the runbook and `manual-upgrades.md`). The
+  (`bridge-revocations-store.json`, fsync plus one rename); unusable stored state refuses
+  bridge routes (off, unreachable, stale) until a fresh verified list at or above the
+  recorded floor replaces it or the operator removes the named files (runbook and
+  `manual-upgrades.md`; a rollback is never blocked). The
   native security maintenance service reads the revocation policy from the host's
   `hikyo.env`. The fetcher honors `HTTPS_PROXY`.
 

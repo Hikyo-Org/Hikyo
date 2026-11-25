@@ -71,6 +71,11 @@ func (v VerifiedRevocations) Revoked() []releaseidentity.Digest {
 
 // VerifyRevocations authenticates a revocation list under the recovery key the
 // snapshot was verified with and the root the binary pins.
+// ErrRevocationRoot marks a list whose signature verified under the recovery key but
+// that is bound to another trust root (for instance one from before a root rotation).
+// It is returned only after the signature and schema checks passed.
+var ErrRevocationRoot = errors.New("revocation list is bound to a different trust root")
+
 func (s Snapshot) VerifyRevocations(raw, signature []byte) (VerifiedRevocations, error) {
 	if !s.Valid() {
 		return VerifiedRevocations{}, errors.New("unverified trust snapshot")
@@ -90,7 +95,7 @@ func (s Snapshot) VerifyRevocations(raw, signature []byte) (VerifiedRevocations,
 		return VerifiedRevocations{}, errors.New("revocation list issued_at must be canonical UTC RFC 3339")
 	}
 	if list.TrustRootSHA256 != s.state.legacyStablePolicy {
-		return VerifiedRevocations{}, errors.New("revocation list is bound to a different trust root")
+		return VerifiedRevocations{}, ErrRevocationRoot
 	}
 	if len(list.Revoked) > MaxRevocations {
 		return VerifiedRevocations{}, errors.New("revocation list is too long")

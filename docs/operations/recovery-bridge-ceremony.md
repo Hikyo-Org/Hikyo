@@ -258,13 +258,15 @@ an instance, delaying a newer revocation until the bridge's `not_after`. `check-
 runs the real checker against a local list directory (`-` for the unreachable case).
 
 Operator recovery for stored state: an installation keeps the last accepted list in
-`HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, replaced by one rename).
-Stored state that does not verify is ignored with a warning, never fatal, and `off` does
-not read it; the next valid list overwrites it. To clear it by hand, stop the service and
-remove that file (and any older `bridge-revocations.json` and
-`bridge-revocations.sigstore.json`). The sequence floor is lost until the next list is
-stored, which is the same exposure as a first apply (bounded by the list's 7-day
-`issued_at`). The fetcher honors `HTTPS_PROXY` and `NO_PROXY`; the signature, not the path,
+`HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, fsynced and replaced by one
+rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
+unreachable endpoint and with a stale list (a security rollback is never blocked); only a fresh,
+non-stale, verified list, not below the last recorded sequence, replaces it. Either reach the
+endpoint, or stop the service and remove that file (and any older `bridge-revocations.json` and
+`bridge-revocations.sigstore.json`) as an explicit operator action, accepting that revocations known
+only to that list are lost and that until the next list is stored an older validly signed list is
+bounded only by its 7-day `issued_at`. A list correctly signed but bound to an older root is tolerated
+as nothing stored. The fetcher honors `HTTPS_PROXY` and `NO_PROXY`; the signature, not the path,
 is the authority.
 
 Expiry and revocation govern admission, not an upgrade already admitted. An
