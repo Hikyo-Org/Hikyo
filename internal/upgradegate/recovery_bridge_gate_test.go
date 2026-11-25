@@ -237,18 +237,3 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 func WriteBridgeBundleForTest(t *testing.T, f *trustfixture.Fixture, releases []trustfixture.SignedRelease, bridges []releasetrust.BridgeMaterial) string {
 	return writeBridgeBundle(t, f, releases, bridges)
 }
-
-// TestInFlightBridgedUpgradeResumesAfterNotAfter pins the behaviour the owner has
-// not yet decided (#1422 F3). Today every re-plan, including the gate's resume
-// and security-rollback paths (gate.go resume, security_rollback.go,
-// automatic_release.go, maintenance_configuration.go), drops an expired bridge,
-// so an upgrade that began before not_after cannot resume after it.
-//
-// Scenario when un-skipped: install A, run the bridge route with the operator
-// evidence up to the prepared boundary, let not_after pass (a statement whose
-// not_after is a few seconds out), then run the gate again with the same
-// evidence. Wanted, pending the decision: the in-flight operation resumes to B.
-// Actual today: the re-plan refuses with "no authenticated upgrade route".
-func TestInFlightBridgedUpgradeResumesAfterNotAfter(t *testing.T) {
-	t.Skip("blocked on the owner decision for #1422 F3: whether an expired or revoked bridge may finish an upgrade already in flight")
-}

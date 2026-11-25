@@ -326,7 +326,7 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 			if err != nil {
 				return err
 			}
-			plan, err := bundle.Plan(source, desiredTarget(request, node))
+			plan, err := bundle.PlanAdmitted(source, desiredTarget(request, node))
 			if err != nil {
 				return err
 			}
@@ -383,7 +383,7 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 		if err != nil {
 			return err
 		}
-		plan, err := bundle.Plan(source, desiredTarget(request, node))
+		plan, err := bundle.PlanAdmitted(source, desiredTarget(request, node))
 		if err != nil {
 			return err
 		}

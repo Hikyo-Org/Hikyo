@@ -150,8 +150,11 @@ A recovery bridge (v1.0.0 to the `recovery-2` release, see the
 [bridge ceremony](recovery-bridge-ceremony.md)) is time-limited and revocable.
 Its statement carries a signed `not_after` at most 30 days out; after it the
 route is refused offline ("no authenticated upgrade route") and the bundle must
-be rebuilt from a re-signed bridge. When a plan uses a bridge, the server also
-fetches the signed revocation list (default pinned URL, or the mirror in
+be rebuilt from a re-signed bridge; an upgrade admitted before `not_after` still
+finishes after it, and a security rollback is never blocked by expiry or
+revocation. When a plan uses a bridge, the server also
+fetches the signed revocation list (default: the `trust` release assets in
+`Hikyo-Org/Hikyo`, or the mirror in
 `HIKYO_UPGRADE_REVOCATION_URL`) and remembers the highest sequence it saw in
 `HIKYO_UPGRADE_STATE_DIR`, which is required for bridge routes. An unreachable
 endpoint falls back to `not_after` and is logged; a reachable but invalid answer

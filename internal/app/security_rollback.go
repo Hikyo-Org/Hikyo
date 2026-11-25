@@ -157,7 +157,7 @@ func rollbackFencedSnapshot(ctx context.Context, cfg *config.Config, run securit
 	if err != nil {
 		return report, err
 	}
-	plan, err := bundle.Plan(journal.Source, journal.Target)
+	plan, err := bundle.PlanRollback(journal.Source, journal.Target)
 	if err != nil || plan.Digest() != journal.Route {
 		return report, errors.Join(err, errors.New("journaled route differs from the authenticated bundle"))
 	}

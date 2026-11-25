@@ -18,7 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 )
 
-// fetcherFor is the production client (https only, no redirects, its timeouts)
+// fetcherFor is the production client (https only, release-host redirects only, its timeouts)
 // trusting only the given test server's certificate, if any.
 func fetcherFor(t *testing.T, base string, server *httptest.Server) bridgerevocation.HTTPFetcher {
 	t.Helper()
@@ -176,6 +176,38 @@ func TestHTTPFetcherSeparatesUnreachableFromInvalid(t *testing.T) {
 	}
 	if _, err := bridgerevocation.NewHTTPFetcher(bridgerevocation.DefaultURL); err != nil {
 		t.Fatalf("the pinned default must be accepted: %v", err)
+	}
+	if bridgerevocation.DefaultURL != "https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations" {
+		t.Fatalf("the default is the fixed trust release asset: %s", bridgerevocation.DefaultURL)
+	}
+}
+
+// GitHub serves release assets through a redirect to its asset host: that and
+// nothing else may be followed.
+func TestOnlyReleaseAssetRedirectsAreFollowed(t *testing.T) {
+	fetcher, err := bridgerevocation.NewHTTPFetcher(bridgerevocation.DefaultURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hop := func(target string, via int) error {
+		request, err := http.NewRequest(http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fetcher.Client.CheckRedirect(request, make([]*http.Request, via))
+	}
+	for _, allowed := range []string{"https://release-assets.githubusercontent.com/x?sig=1", "https://objects.githubusercontent.com/x", "https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations.json"} {
+		if err := hop(allowed, 1); err != nil {
+			t.Fatalf("%s must be followed: %v", allowed, err)
+		}
+	}
+	for _, refused := range []string{"http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x", "https://raw.githubusercontent.com/x"} {
+		if err := hop(refused, 1); !errors.Is(err, http.ErrUseLastResponse) {
+			t.Fatalf("%s must not be followed: %v", refused, err)
+		}
+	}
+	if err := hop("https://github.com/x", 3); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Fatalf("a third redirect must not be followed: %v", err)
 	}
 }
 

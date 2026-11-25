@@ -28,9 +28,24 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 )
 
-// DefaultURL is the pinned list location. The signed content, not the location,
-// carries the authority. The owner confirms the production host at the ceremony.
-const DefaultURL = "https://hikyo.dev/trust/recovery-revocations"
+// DefaultURL is the pinned list location: the two assets (".json" and
+// ".sigstore.json" are appended) of the fixed "trust" release in the Hikyo
+// repository. The owner publishes them as part of the signing step; agents never
+// do. The signed content, not the location, carries the authority.
+const DefaultURL = "https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations"
+
+// releaseHosts are the only hosts a redirect may lead to: GitHub serves release
+// assets by redirecting to its asset hosts. The signature, not the host, is the
+// authority, so this only keeps the fetcher from being steered to arbitrary hosts.
+var releaseHosts = map[string]bool{"github.com": true, "objects.githubusercontent.com": true, "release-assets.githubusercontent.com": true}
+
+// followRelease follows at most two redirects, each to https on a release host.
+func followRelease(request *http.Request, via []*http.Request) error {
+	if len(via) > 2 || request.URL.Scheme != "https" || !releaseHosts[request.URL.Hostname()] {
+		return http.ErrUseLastResponse
+	}
+	return nil
+}
 
 // MaxListAge is how old a list's signed issued_at may be and still count as a
 // current answer. A replayed older list cannot be told apart from the current
@@ -92,7 +107,8 @@ type HTTPFetcher struct {
 	Client  *http.Client
 }
 
-// NewHTTPFetcher refuses anything but an https URL and follows no redirects.
+// NewHTTPFetcher refuses anything but an https URL and follows redirects only to
+// GitHub's release asset hosts.
 func NewHTTPFetcher(base string) (HTTPFetcher, error) {
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
@@ -102,7 +118,7 @@ func NewHTTPFetcher(base string) (HTTPFetcher, error) {
 	client := &http.Client{
 		Timeout:       requestTimeout,
 		Transport:     &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: connectTimeout, Proxy: http.ProxyFromEnvironment},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		CheckRedirect: followRelease,
 	}
 	return HTTPFetcher{BaseURL: base, Client: client}, nil
 }

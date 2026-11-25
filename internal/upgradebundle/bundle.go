@@ -59,8 +59,29 @@ func (b Bundle) MaterialDigest() releaseidentity.Digest { return b.materialDiges
 
 func (b Bundle) Valid() bool                     { return b.snapshot.Valid() }
 func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
+
+// Plan is the route for a new admission: expired and revoked bridges are not used.
 func (b Bundle) Plan(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
-	plan, err := upgradecompat.PlanRoute(b.snapshot, source, target, b.nodes, b.bridges)
+	return b.plan(source, target, time.Now())
+}
+
+// PlanAdmitted is the route for an upgrade whose route digest an admission already
+// journaled. A bridge's not_after limits new admissions, so expiry is not
+// consulted; a revoked bridge still refuses it. Callers compare the digest with the
+// journaled one, which pins the exact route that was admitted.
+func (b Bundle) PlanAdmitted(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
+	return b.plan(source, target, time.Time{})
+}
+
+// PlanRollback is the route a security rollback re-derives. Neither expiry nor
+// revocation blocks it: returning to the journaled source is never refused.
+func (b Bundle) PlanRollback(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
+	return upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, time.Time{}, nil)
+}
+
+// plan treats a zero now as "ignore expiry".
+func (b Bundle) plan(source upgradecompat.InstalledSource, target releaseidentity.Identity, now time.Time) (upgradecompat.Plan, error) {
+	plan, err := upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, now, nil)
 	if err != nil || b.revocations == nil || len(plan.BridgeDigests()) == 0 {
 		return plan, err
 	}
@@ -74,7 +95,7 @@ func (b Bundle) Plan(source upgradecompat.InstalledSource, target releaseidentit
 		return plan, nil
 	}
 	// Route around the revoked bridges; with no other route the plan is refused.
-	plan, err = upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, time.Now(), revoked)
+	plan, err = upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, now, revoked)
 	if err != nil {
 		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge revoked: %w", err)
 	}

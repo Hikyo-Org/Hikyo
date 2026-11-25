@@ -108,7 +108,7 @@ func discoverReleaseRoute(ctx context.Context, installer automaticReleasePrepare
 			// Physical schema may already belong to an intermediate hop. Retain
 			// the original source and route; apply reconciliation measures its
 			// exact durable position before any process can migrate or serve.
-			plan, planErr := result.Bundle.Plan(previous.Source, target.Identity)
+			plan, planErr := result.Bundle.PlanAdmitted(previous.Source, target.Identity)
 			if planErr == nil && plan.Digest() == previous.Route {
 				result.Plan, result.Instance = plan, previous.Instance
 				return completeAutomaticRouteExecutables(ctx, installer, source, result, allowStable)

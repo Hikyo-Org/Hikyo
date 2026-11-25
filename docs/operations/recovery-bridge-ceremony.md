@@ -213,9 +213,13 @@ bundle already in an operator's hands: use the revocation list for those.
 Sign and publish the list with the recovery key, then verify it. `SEQUENCE` is the
 published list's sequence plus one (1 for the first), `PRIOR` the published
 sequence (0 if none). Publish `recovery-revocations.json` and
-`recovery-revocations.sigstore.json` at the pinned endpoint (the default is a
-placeholder until the owner names the host; operators may mirror it with
-`HIKYO_UPGRADE_REVOCATION_URL`):
+`recovery-revocations.sigstore.json` as assets of the fixed `trust` release in
+`Hikyo-Org/Hikyo`, which is the default endpoint
+(`https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations`
+plus `.json` and `.sigstore.json`; operators may mirror it with
+`HIKYO_UPGRADE_REVOCATION_URL`). Uploading or replacing those assets is the
+owner's step after signing; agents never publish them. Clients follow GitHub's
+redirect to its asset hosts only:
 
 ```sh
 scripts/release/recovery-bridge.sh revocation-list "$RECOVERY_KEY" "$WORK/new-trust" <SEQUENCE> "$WORK/list" <digest>...
@@ -241,6 +245,14 @@ catalogued bridge it covers (that bridge's `not_after` minus 30 days), and has n
 other age limit. Residual: a host can replay an older validly signed list to such
 an instance, delaying a newer revocation until the bridge's `not_after`. `check-revocations`
 runs the real checker against a local list directory (`-` for the unreachable case).
+
+Expiry and revocation govern admission, not an upgrade already admitted. An
+upgrade admitted before `not_after` can resume and finish after it, because a
+resume re-derives the route ignoring expiry and must match the journaled route
+digest exactly. A bridge revoked since the admission still refuses the forward
+resume. A security rollback is never blocked by either: it returns to the
+journaled source whatever the bridge's state. Re-sign an expired bridge only for
+installations that have not been admitted yet.
 
 ## Re-signing an expired bridge
 

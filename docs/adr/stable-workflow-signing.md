@@ -118,7 +118,7 @@ apply-time revocation list (options (a) and (c) on
   the catalog in the same step (the re-sign path in the runbook; the verifier
   refuses a new bridge whose engine, source and target pair is still catalogued).
 - **Revocation list (c).** Before a plan that uses a bridge is applied, the gate
-  fetches `hikyo.dev/recovery-revocations/v1`: a sequenced list of revoked
+  fetches the list (schema `hikyo.dev/recovery-revocations/v1`): a sequenced list of revoked
   statement digests, signed by the pinned recovery key and bound to the pinned
   root, so the endpoint is only a transport. Once an installation has stored a list, its persisted
   sequence floor refuses a lower sequence and a different list at the same
@@ -140,6 +140,28 @@ apply-time revocation list (options (a) and (c) on
   sequence, a redirect, certificate error) fails closed. A reset or EOF before any response is no
   answer (unreachable) unless it is a TLS or certificate failure. `HIKYO_UPGRADE_REVOCATION_CHECK=off` is the explicit
   operator opt-out, and `HIKYO_UPGRADE_REVOCATION_URL` points at a mirror.
+  The default endpoint is the two assets `recovery-revocations.json` and
+  `recovery-revocations.sigstore.json` of the fixed `trust` release in
+  `Hikyo-Org/Hikyo` (a stable GitHub release download URL). Publishing or
+  replacing those assets is part of the owner's signing step; agents never
+  publish them. GitHub serves release assets by redirect, so the fetcher follows
+  at most two redirects, each to https on `github.com`,
+  `objects.githubusercontent.com` or `release-assets.githubusercontent.com`; any
+  other redirect is a reachable but invalid answer. The signature, not the host,
+  is the authority.
+- **Admission time (F3).** A bridge's `not_after` and its revocation limit what
+  may be *admitted*, not what an admitted upgrade may finish. Every site that
+  re-derives the route of an upgrade a journal already records (the gate's
+  in-flight and recovery resume, the maintenance configuration, the automatic
+  upgrade resume) ignores expiry and compares the re-derived route digest with
+  the journaled one, which pins the exact route that was admitted; an upgrade
+  admitted before `not_after` therefore finishes after it. A revoked bridge still
+  refuses a forward resume. A security rollback re-derives its route with neither
+  check, so neither expiry nor revocation ever blocks returning to the journaled
+  source. Journals carry no timestamp: their formats are strictly decoded and an
+  older image must still read them, so the journaled route digest is the record of
+  admission. New admissions (backup preparation, bootstrap, export, drill and
+  preflight) check both.
   Ordinary upgrades never contact the endpoint. The snapshot revocation
   (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
   re-signs the policy) remains and binds instances whose floor advanced.
@@ -154,8 +176,8 @@ apply-time revocation list (options (a) and (c) on
   bridge into that release.
 - Residual limits, accepted by the owner: an instance that never reaches the
   endpoint is bounded by the 30-day expiry, not recalled sooner; the check record
-  is local and unsigned; the list endpoint default is a placeholder until the
-  host is named; revocation does not recall bundles already distributed, but a
+  is local and unsigned; the list endpoint is a GitHub release asset that only the
+  owner publishes; revocation does not recall bundles already distributed, but a
   distributed bundle's bridge stops planning at `not_after` and when listed.
 - Each statement binds the stable policy digest. Listing the statements in the
   policy changes that digest, so the policy is never re-signed. The bridges are
