@@ -154,17 +154,27 @@ func botComment(repository string, number int) (comment, error) {
 		return comment{}, fmt.Errorf("GitHub returned no comment-history pages")
 	}
 	var found comment
+	var duplicates []comment
 	for _, page := range pages {
 		if page == nil {
 			return comment{}, fmt.Errorf("GitHub returned incomplete comment history")
 		}
 		for _, c := range page {
 			if c.User.ID == botID && strings.HasPrefix(c.Body, marker) {
-				if found.ID != 0 {
-					return comment{}, fmt.Errorf("multiple benchmark bot comments on PR %d", number)
+				if found.ID == 0 || c.ID < found.ID {
+					found, c = c, found
 				}
-				found = c
+				if c.ID != 0 {
+					duplicates = append(duplicates, c)
+				}
 			}
+		}
+	}
+	// Racing creators may each post once; every reader keeps the lowest id and
+	// deletes the rest, so the outcome is the same whichever creator runs it.
+	for _, d := range duplicates {
+		if err := writeAPI("DELETE", fmt.Sprintf("repos/%s/issues/comments/%d", repository, d.ID), ""); err != nil {
+			return comment{}, err
 		}
 	}
 	return found, nil
@@ -205,7 +215,12 @@ func prepare(repository string, e controlEvent) error {
 	}
 	body := commentBody(pr, request{head: pr.Head.SHA}, "_Not run for this head._")
 	if c.ID == 0 {
-		return writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body)
+		if err := writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body); err != nil {
+			return err
+		}
+		// Re-read to remove a duplicate from a concurrent creator.
+		_, err := botComment(repository, pr.Number)
+		return err
 	}
 	return updateComment(repository, c, body)
 }
