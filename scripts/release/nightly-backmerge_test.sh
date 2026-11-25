@@ -64,6 +64,13 @@ if [ "$method" != GET ]; then
 	'POST repos/o/r/merges')
 		case "$MERGE" in
 		409) fail_with 'Merge conflict (HTTP 409)' ;;
+		# The first $MISSING_BASE attempts see a ref that has not propagated yet.
+		missing)
+			count=$(($(cat "$MISSING_FILE") + 1))
+			printf '%s' "$count" >"$MISSING_FILE"
+			if [ "$count" -le "$MISSING_BASE" ]; then fail_with 'Base does not exist (HTTP 404)'; fi
+			printf '%s' "$MERGED" >"$BRANCH_FILE"
+			;;
 		500) fail_with 'Server Error (HTTP 500)' ;;
 		201) printf '%s' "$MERGED" >"$BRANCH_FILE" ;;
 		# An existing branch already holds main; a fresh one at dev stays there.
@@ -113,8 +120,9 @@ fail() {
 # Defaults describe an ordinary back-merge; each case overrides what it tests.
 reset() {
 	DEV_REF=$dev COMPARE=$content PULLS='[]' PULL='{}' REFS='[]' MERGE=201 DELETE_MISSING='' DATE=20261124
-	MAIN=$main DONE=$done_sha MERGED=$merged RUN_SHA=$main ARM_FAIL=''
-	export RUN_SHA ARM_FAIL
+	MAIN=$main DONE=$done_sha MERGED=$merged RUN_SHA=$main ARM_FAIL='' MISSING_BASE=0
+	printf '0' >"$work/missing"
+	export RUN_SHA ARM_FAIL MISSING_BASE
 	printf '404' >"$work/branch"
 	export DEV_REF COMPARE PULLS PULL REFS MERGE DELETE_MISSING MAIN DONE MERGED
 }
@@ -123,7 +131,7 @@ run() {
 	status=0
 	GH_BIN=$work/gh CALLS=$work/calls READS=$work/reads BODY=$work/body BRANCH_FILE=$work/branch \
 		GH_REPO=o/r GITHUB_SHA=$RUN_SHA GH_TOKEN=read-token APP_TOKEN=app-token \
-		BACKMERGE_NOW=$now BACKMERGE_DATE=$DATE GITHUB_STEP_SUMMARY=$work/summary \
+		BACKMERGE_NOW=$now BACKMERGE_DATE=$DATE BACKMERGE_RETRY_DELAY=0 MISSING_FILE=$work/missing GITHUB_STEP_SUMMARY=$work/summary \
 		"$script" >"$work/out" 2>"$work/err" || status=$?
 	if grep -v '^read-token|' "$work/reads" >/dev/null; then fail 'a read used the App token'; fi
 	if grep -v '^app-token|' "$work/calls" >/dev/null; then fail 'a write used the workflow token'; fi
@@ -184,6 +192,26 @@ $arm_new"
 reset
 printf '%s' "$other" >"$work/branch"
 expect_refused 'an existing branch' "$branch already exists at $other"
+
+# A just-created ref can briefly read as missing: the merge is retried.
+reset
+MERGE=missing MISSING_BASE=2
+expect_ok 'a ref that propagates late'
+expect_calls 'a ref that propagates late' "$create_ref
+$merge_call
+$merge_call
+$merge_call
+$open_call
+$arm_new"
+# It is not retried forever.
+reset
+MERGE=missing MISSING_BASE=9
+expect_stuck 'a ref that never appears' "$create_ref
+$merge_call
+$merge_call
+$merge_call
+$merge_call
+$merge_call" 'Base does not exist'
 
 # 204 on a fresh branch leaves it at dev: there is nothing to propose.
 reset
