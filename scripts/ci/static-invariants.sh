@@ -19,7 +19,7 @@ trap 'rm -rf "$work"' EXIT
 root=$(pwd)
 
 # One build graph for both test binaries; they then run side by side.
-go test -c -p 2 -o "$work/" ./internal/boundary ./internal/isolation
+go test -c -o "$work/" ./internal/boundary ./internal/isolation
 printf 'static-invariants: test binaries built in %ss\n' "$SECONDS"
 
 pids=()
