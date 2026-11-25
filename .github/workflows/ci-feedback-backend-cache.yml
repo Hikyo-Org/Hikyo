@@ -5,7 +5,10 @@
 #   dev:  from pushes to dev (at most one per UTC day) or a manual run on dev; read only by
 #         feedback runs on PRs that target dev.
 # The family is part of the cache key and of every reader's restore prefix, so neither
-# family's prefix can match the other's entries.
+# family's prefix can match the other's entries. GitHub's own ref scoping is what keeps the
+# families apart at read time; the family string only keeps the prefixes honest.
+# The prune job then deletes the entries this run superseded, so the repository cache budget
+# holds one set per family instead of one per day or per commit.
 name: cache-seed-feedback-backend
 
 on:
@@ -29,6 +32,9 @@ jobs:
       ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      abi: ${{ steps.runner-cache-abi.outputs.value }}
+      day: ${{ steps.seed-day.outputs.value }}
     strategy:
       fail-fast: false
       matrix:
@@ -92,3 +98,50 @@ jobs:
         with:
           path: .ci-cache/go-feedback-compact
           key: ${{ steps.feedback-reuse.outputs.cache-primary-key }}
+
+  # Superseded seeds of the same ref, family and entry. A separate job so the one that compiles
+  # keeps a read-only token: this one holds only actions: write, checks nothing out and runs no
+  # repository code. It deletes by exact key prefix (re-checked here, not left to the server's
+  # filter) and by cache id, never the newest entry of the prefix and never the one this run named, and treats an already-deleted entry as done.
+  prune:
+    needs: seed
+    if: >-
+      success() &&
+      (((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') ||
+      ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: [application, cli, tooling]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ABI: ${{ needs.seed.outputs.abi }}
+      SEED_DAY: ${{ needs.seed.outputs.day }}
+      ENTRY: ${{ matrix.entry }}
+    steps:
+      - name: Delete the superseded seeds of this family and entry
+        run: |
+          set -euo pipefail
+          [ -n "$ABI" ] && [ -n "$SEED_DAY" ] || { echo "the seed run did not name its ABI and day" >&2; exit 1; }
+          family=main
+          suffix=$GITHUB_SHA
+          if [ "$GITHUB_REF" = refs/heads/dev ]; then family=dev; suffix=$SEED_DAY; fi
+          prefix="go-feedback-v2-${RUNNER_OS}-${RUNNER_ARCH}-${ABI}-${family}-${ENTRY}-"
+          rows=$(gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100&ref=${GITHUB_REF}&key=${prefix}" \
+            --jq '.actions_caches[] | [.id, .key, .created_at] | @tsv' |
+            awk -F'\t' -v p="$prefix" 'index($2, p) == 1' | sort -t"$(printf '\t')" -k3,3r)
+          newest=$(printf '%s\n' "$rows" | head -n 1 | cut -f1)
+          printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r id key _; do
+            [ -n "$id" ] || continue
+            [ "$id" != "$newest" ] || continue
+            case "$key" in *"-${suffix}") continue ;; esac
+            if ! gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>"${RUNNER_TEMP}/delete.err"; then
+              grep -q 'HTTP 404' "${RUNNER_TEMP}/delete.err" || { cat "${RUNNER_TEMP}/delete.err" >&2; exit 1; }
+            fi
+            printf 'deleted superseded seed %s\n' "$key"
+          done

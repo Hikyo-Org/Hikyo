@@ -54,7 +54,8 @@ func evalFeedbackExpr(expr string, vars map[string]string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("unmodelled cache key expression %q", m[1])
 		}
-		if lhs == m[2] {
+		// The expression language's == on strings ignores case, so a base named DEV picks the dev family string.
+		if strings.EqualFold(lhs, m[2]) {
 			return operand(m[3])
 		}
 		return operand(m[4])
@@ -132,9 +133,13 @@ func publishedFeedbackEntries(seedRaw []byte) ([]seededEntry, error) {
 
 // restoreFeedbackEntry mirrors actions/cache restore: the exact key, then each restore key as a
 // prefix in order, taking the newest (last published) match.
-func restoreFeedbackEntry(store []seededEntry, key, restoreKeys string) *seededEntry {
+//
+// The platform also scopes reads by ref: a PR sees entries saved on its base branch (exact case) and on the
+// default branch, nothing else. That, not the family string, is what keeps the families apart.
+func restoreFeedbackEntry(store []seededEntry, key, restoreKeys, base string) *seededEntry {
+	readable := func(e seededEntry) bool { return e.family == "main" || e.family == base }
 	for i := range store {
-		if store[i].key == key {
+		if store[i].key == key && readable(store[i]) {
 			return &store[i]
 		}
 	}
@@ -144,7 +149,7 @@ func restoreFeedbackEntry(store []seededEntry, key, restoreKeys string) *seededE
 			continue
 		}
 		for i := len(store) - 1; i >= 0; i-- {
-			if strings.HasPrefix(store[i].key, prefix) {
+			if strings.HasPrefix(store[i].key, prefix) && readable(store[i]) {
 				return &store[i]
 			}
 		}
@@ -190,11 +195,13 @@ func requireFeedbackCacheTrust(seedRaw, readerRaw []byte) error {
 	if err != nil {
 		return err
 	}
-	// Every base branch a PR can name must land in exactly one family: only a PR whose base is
-	// literally dev reads dev entries. Other names, including look-alikes, read main entries.
+	// Only a PR whose base is literally dev reads dev entries; look-alikes read main entries. The
+	// expression language's == ignores case, so a base named DEV takes the dev family string, but its
+	// ref scope holds no dev entries: it restores nothing (a cold build), never a dev entry. "" in the
+	// table means exactly that.
 	bases := map[string]string{
 		"dev": "dev", "main": "main", "release/1.0": "main", "hotfix/x": "main",
-		"dev-evil": "main", "DEV": "main", "dev/x": "main", "refs/heads/dev": "main", "": "main",
+		"dev-evil": "main", "DEV": "", "Dev": "", "dev/x": "main", "refs/heads/dev": "main", "": "main",
 	}
 	for base, family := range bases {
 		// The application lane reads its entry and the CLI entry; the tooling lane reads its own.
@@ -216,7 +223,13 @@ func requireFeedbackCacheTrust(seedRaw, readerRaw []byte) error {
 				if err != nil {
 					return err
 				}
-				got := restoreFeedbackEntry(store, key, restoreKeys)
+				got := restoreFeedbackEntry(store, key, restoreKeys, base)
+				if family == "" {
+					if got != nil {
+						return fmt.Errorf("a PR targeting %q reaches %+v through a case-folded family", base, got)
+					}
+					continue
+				}
 				if got == nil || got.family != family || got.scope != entries[i] {
 					return fmt.Errorf("a PR targeting %q on the %s lane restores %+v, want the %s family's %s entry", base, scope, got, family, entries[i])
 				}
@@ -229,7 +242,7 @@ func requireFeedbackCacheTrust(seedRaw, readerRaw []byte) error {
 		vars["env.FAST_FEEDBACK_BASE"] = "base-sha"
 		key, _ := evalFeedbackTemplate(laneKeys.key, vars)
 		restoreKeys, _ := evalFeedbackTemplate(laneKeys.restore, vars)
-		if got := restoreFeedbackEntry(store, key, restoreKeys); got != nil {
+		if got := restoreFeedbackEntry(store, key, restoreKeys, base); got != nil {
 			return fmt.Errorf("a lane with no Go scope restored %+v", got)
 		}
 	}
@@ -380,7 +393,7 @@ func requireBackendSeed(workflow map[string]any) error {
 	}
 	jobs := workflow["jobs"].(map[string]any)
 	job := jobs["seed"].(map[string]any)
-	if len(jobs) != 1 || job["runs-on"] != "ubuntu-latest" || job["timeout-minutes"] != 15 || job["continue-on-error"] != nil || job["permissions"] != nil || job["container"] != nil || job["services"] != nil || !reflect.DeepEqual(job["defaults"], map[string]any{"run": map[string]any{"working-directory": "source"}}) {
+	if len(jobs) != 2 || job["runs-on"] != "ubuntu-latest" || job["timeout-minutes"] != 15 || job["continue-on-error"] != nil || job["permissions"] != nil || job["container"] != nil || job["services"] != nil || !reflect.DeepEqual(job["defaults"], map[string]any{"run": map[string]any{"working-directory": "source"}}) {
 		return fmt.Errorf("seed must retain bounded native execution without masked or privileged overrides")
 	}
 	const trustedRefs = "((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev')"

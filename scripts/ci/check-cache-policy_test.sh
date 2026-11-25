@@ -459,24 +459,28 @@ fi
 # exact hit. This covers Go, module, and Playwright writers alike. The one exception
 # is the feedback seed, which also publishes its dev-family entries from dev pushes;
 # its restore side is held to the family split by feedback_cache_trust_test.go.
+# The whole `if:` of the save step is compared, not searched for a substring, so a guard
+# that merely contains the trusted one (`<guard> || <anything>`) fails.
 for file in "$@"; do
 	dev_seed=false
 	[ "$(basename "$file")" != ci-feedback-backend-cache.yml ] || dev_seed=true
 	awk \
 		-v main_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" \
 		-v dev_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'" \
-		-v dev_seed="$dev_seed" \
-		-v hit_guard="outputs.cache-hit != 'true'" '
-		/^[[:space:]]+- name:/ { block = "" }
-		{ block = block $0 "\n" }
+		-v dev_seed="$dev_seed" '
+		/^[[:space:]]+- name:/ { in_if = 0; cond = "" }
+		in_if && /^[[:space:]]+uses:/ { in_if = 0 }
+		in_if { line = $0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", line); cond = (cond == "" ? line : cond " " line); next }
+		/^[[:space:]]+if: >-[[:space:]]*$/ { in_if = 1; cond = ""; next }
 		/actions\/cache\/save@/ {
-			if (index(block, main_guard) == 0 || index(block, hit_guard) == 0) {
-				bad = 1
+			if (!match(cond, /steps\.[A-Za-z0-9_-]+\.outputs\.cache-hit != .true./)) { bad = 1; next }
+			hit = substr(cond, RSTART, RLENGTH)
+			if (dev_seed == "true") {
+				ok = (cond == "success() && " hit " && (" main_guard " || " dev_guard ")")
+			} else {
+				ok = (cond == "success() && " hit " && " main_guard) || (cond == "success() && " main_guard " && " hit)
 			}
-			# Any dev ref in a writer needs the exact dev guard and the seed workflow.
-			if (index(block, "refs/heads/dev") > 0 && (dev_seed != "true" || index(block, dev_guard) == 0)) {
-				bad = 1
-			}
+			if (!ok) bad = 1
 		}
 		END {
 			if (bad) exit 1
