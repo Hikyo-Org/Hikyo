@@ -113,7 +113,8 @@ export function useIncidentActions(id: string) {
     // The proof is the operator's TOTP code or password: it is held as sensitive
     // state, sent once, and never kept as mutation data.
     resume: useSensitiveMutation({
-      mutationFn: (proof: string) => parsed(resumeIncidentOp, { path: { incident: id }, body: { proof } }),
+      mutationFn: ({ proof, openItems }: { proof: string; openItems: number }) =>
+        parsed(resumeIncidentOp, { path: { incident: id }, body: { proof, open_items: openItems } }),
       onSettled: async () => { await refresh(); },
     }),
     attest: useMutation({
@@ -137,13 +138,19 @@ export function incidentFailureText(error: unknown): string {
     error,
     {
       400: 'The incident scope or the proof is not valid. Enter your authenticator code, or your password if you have no authenticator.',
-      401: commonRefusalText.sessionEnded,
+      // A wrong proof and an ended session both answer 401; only the session check declares the latter.
+      401: 'That did not authorise the incident action: the password or code was not accepted, or this session has ended.',
       404: 'No such incident, or you may not work it.',
       409: (e) => e.detail ?? 'The incident changed or is closed. Reload and try again.',
       429: commonRefusalText.requests,
     },
     'The incident action could not be completed.',
   );
+}
+
+/** The server counts refused items under pending: the work not yet run is the rest. */
+export function notYetRun(counts: { pending: number; refused: number }): number {
+  return Math.max(counts.pending - counts.refused, 0);
 }
 
 /** How an item's state reads: refused and not yet run are different things. */

@@ -52,3 +52,14 @@ func TestIncidentItemTableSeparatesRefusedFromNotYetRun(t *testing.T) {
 		}
 	}
 }
+
+// Refused items are counted under pending by the server; the table shows the work
+// that has not run apart from them.
+func TestIncidentTableNotYetRunExcludesRefused(t *testing.T) {
+	t.Parallel()
+	table := incidentTable(apigen.Incident{Id: "inc_a", ScopeKind: "account", ScopeId: "usr_a", Status: "open",
+		Counts: apigen.IncidentOutcomeCounts{Pending: 5, Refused: 2}})
+	if got := table.Rows[0][3] + "/" + table.Rows[0][4]; got != "3/2" {
+		t.Fatalf("not yet run / refused = %s, want 3/2", got)
+	}
+}

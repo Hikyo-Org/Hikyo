@@ -121,7 +121,7 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 
 	probes := map[string]func() error{
 		"resumeIncident": func() error {
-			_, err := incidents.Resume(ctx, actor, openedIncident.Incident.ID, "")
+			_, err := incidents.Resume(ctx, actor, openedIncident.Incident.ID, "", nil)
 			return err
 		},
 		"testInstanceMail": func() error {

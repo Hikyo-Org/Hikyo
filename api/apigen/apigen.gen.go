@@ -8620,7 +8620,10 @@ type IncidentOutcomeCounts struct {
 
 // IncidentResumeRequest defines model for IncidentResumeRequest.
 type IncidentResumeRequest struct {
-	// Proof Your TOTP code, or your password if you have no confirmed factor. Spent by this call only.
+	// OpenItems How many open items you listed and confirmed. The call is a 409, and spends no proof, when the incident now has a different number of open items.
+	OpenItems int `json:"open_items"`
+
+	// Proof Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
 	Proof string `json:"proof"`
 }
 

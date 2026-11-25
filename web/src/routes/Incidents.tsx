@@ -13,6 +13,7 @@ import {
   type Incident,
   type IncidentItem,
   type IncidentScope,
+  notYetRun,
 } from '../api/incidents.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -111,7 +112,7 @@ function OpenForm({ org, onOpened }: { org: string; onOpened: (id: string) => vo
 function Counts({ incident }: { incident: Incident }) {
   const counts = incident.counts;
   const entries: readonly (readonly [string, number])[] = [
-    ['Not yet run', Math.max(counts.pending - counts.refused, 0)],
+    ['Not yet run', notYetRun(counts)],
     ['Refused', counts.refused],
     ['Unconfirmed', counts.unknown],
     ['Blocked', counts.blocked],
@@ -135,7 +136,8 @@ function Ledger({ id }: { id: string }) {
   const feedback = useFeedback(incidentFailureText);
   const [attesting, setAttesting] = useState<IncidentItem | null>(null);
   const [closing, setClosing] = useState(false);
-  const [resuming, setResuming] = useState(false);
+  // The open items the operator is shown while confirming, frozen when the dialog opens.
+  const [resuming, setResuming] = useState<readonly IncidentItem[] | null>(null);
   const [proof, setProof] = useSensitiveState('');
   const proofId = useId();
 
@@ -161,7 +163,7 @@ function Ledger({ id }: { id: string }) {
             type="button"
             variant="primary"
             disabled={actions.resume.isPending || open.length === 0}
-            onClick={() => { feedback.clear(); setProof(''); setResuming(true); }}
+            onClick={() => { feedback.clear(); setProof(''); setResuming(open); }}
           >
             {actions.resume.isPending ? 'Resuming…' : 'Resume open items'}
           </Button>
@@ -197,21 +199,21 @@ function Ledger({ id }: { id: string }) {
           </table>
         </TableScroll>
       )}
-      {!resuming ? null : (
+      {resuming === null ? null : (
         <ConsequencesDialog
           title="Resume these items?"
           confirmLabel="Run open items"
           busyLabel="Resuming…"
           busy={actions.resume.isPending}
           failure={feedback.failure}
-          onCancel={() => { setResuming(false); setProof(''); feedback.clear(); }}
+          onCancel={() => { setResuming(null); setProof(''); feedback.clear(); }}
           onConfirm={() => {
             if (proof === '') return;
             const sent = proof;
             setProof('');
-            actions.resume.mutate(sent, {
+            actions.resume.mutate({ proof: sent, openItems: resuming.length }, {
               onSuccess: (r) => {
-                setResuming(false);
+                setResuming(null);
                 feedback.ok(`Resume ran ${r.examined} items: ${r.confirmed} confirmed, ${r.failed} refused, ${r.blocked} blocked, ${r.unconfirmed} unconfirmed.`);
               },
               onError: feedback.report,
@@ -220,7 +222,7 @@ function Ledger({ id }: { id: string }) {
         >
           <p>Resume runs each open item below through its owner function once. It contains the affected scope and cannot be undone.</p>
           <ul className="incident__resume-items">
-            {open.map((item) => (
+            {resuming.map((item) => (
               <li key={item.id}>{item.object_kind} <span className="mono">{item.object_id}</span>: {itemStateLabel(item)}</li>
             ))}
           </ul>
@@ -228,7 +230,7 @@ function Ledger({ id }: { id: string }) {
             <label htmlFor={`${proofId}-proof`}>Code or password</label>
             <input id={`${proofId}-proof`} name="proof" type="password" autoComplete="one-time-code" required
               value={proof} onChange={(event) => setProof(event.target.value)} />
-            <p className="settings-note">Confirm with your authenticator code if you have one, otherwise your password. The proof is used once, for this resume only.</p>
+            <p className="settings-note">Confirm with your authenticator code if you have one, otherwise your password. A one-time code is spent by this resume; a password is checked fresh each time.</p>
           </div>
         </ConsequencesDialog>
       )}

@@ -105,7 +105,8 @@ type Incidents struct {
 	Adapters *Adapters
 	Dynamic  *Dynamic
 	SCIM     *SCIM
-	// Auth verifies and spends the fresh account-security proof Resume requires.
+	// Auth verifies the fresh account-security proof Resume requires and spends a
+	// one-time code.
 	Auth *Auth
 	// Owners maps an owner function to the code that performs and confirms it.
 	// S2 registers none: the revocations arrive with the slices that own them.
@@ -572,13 +573,19 @@ const resumePage = 100
 // outcome after, in separate transactions, so a crash between the owner's own
 // commit and the ledger update leaves the item open: the next resume asks the
 // owner again, and the owner's own confirmation is what writes done.
-func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string) (ResumeResult, error) {
+//
+// expectedOpen is how many open items the operator listed and confirmed: when it
+// is set and the incident's open set has a different size, the call is a conflict
+// and spends no proof, so items another operator reopened since the listing never
+// run unseen.
+func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, expectedOpen *int) (ResumeResult, error) {
 	var res ResumeResult
 	// Resume performs the containment the ledger enumerated, so it needs a fresh
 	// account-security proof of its own (ADR O2), checked after the caller is
 	// known to hold the incident: a caller who cannot see it gets the uniform
-	// answer, never a request for a proof. The proof is spent in the first write
-	// below, so one proof covers one resume call and no other operation.
+	// answer, never a request for a proof. A one-time code is spent in the first
+	// write below, so one code covers one resume call and no other operation; a
+	// password is checked fresh on each call.
 	evidence := ReauthEvidence{kind: reauthEvidenceExempt}
 	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		_, _, err := s.incidentByID(ctx, az, actor, id, s.now())
@@ -612,6 +619,17 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string) (
 					return err
 				}
 			}
+			if first && expectedOpen != nil {
+				// The operator confirmed a listing of this many open items. Checked in the
+				// transaction that spends the proof, so a refusal here spends nothing.
+				open, err := countOpenItems(ctx, az, inc.ID)
+				if err != nil {
+					return err
+				}
+				if open != *expectedOpen {
+					return fmt.Errorf("%w: the incident now has %d open item(s), not the %d you confirmed; list them again", domain.ErrConflict, open, *expectedOpen)
+				}
+			}
 			page, err = az.IncidentItems(ctx, inc.ID, after, resumePage, true)
 			return err
 		})
@@ -626,6 +644,22 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string) (
 		}
 		if len(page) < resumePage {
 			return res, nil
+		}
+		after = page[len(page)-1].ID
+	}
+}
+
+// countOpenItems counts the items resume would run.
+func countOpenItems(ctx context.Context, az *authz.TxAuthorizer, incidentID string) (int, error) {
+	n, after := 0, ""
+	for {
+		page, err := az.IncidentItems(ctx, incidentID, after, resumePage, true)
+		if err != nil {
+			return 0, err
+		}
+		n += len(page)
+		if len(page) < resumePage {
+			return n, nil
 		}
 		after = page[len(page)-1].ID
 	}

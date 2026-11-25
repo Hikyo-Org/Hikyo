@@ -360,7 +360,8 @@ incident containment:
   missing objects. resume does the work: it lists the open items and stops
   unless you confirm them with --yes, then asks for your TOTP code (or password
   if you have no factor), runs each item through its owner function once and
-  cannot be undone. items shows a refused item (its owner said no) apart from
+  cannot be undone. It is refused, spending nothing, if the open items changed
+  since the listing. items shows a refused item (its owner said no) apart from
   one that is not yet run, and a rotation's own state as the server read it
   just now. attest records your statement that an open item was dealt with
   outside this system; it is not a confirmation. close needs --with-residuals

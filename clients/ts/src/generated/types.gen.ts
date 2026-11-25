@@ -1174,9 +1174,13 @@ export type IncidentItemList = {
 
 export type IncidentResumeRequest = {
     /**
-     * Your TOTP code, or your password if you have no confirmed factor. Spent by this call only.
+     * Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
      */
     proof: string;
+    /**
+     * How many open items you listed and confirmed. The call is a 409, and spends no proof, when the incident now has a different number of open items.
+     */
+    open_items: number;
 };
 
 /**

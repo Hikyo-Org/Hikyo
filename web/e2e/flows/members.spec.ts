@@ -1538,7 +1538,13 @@ test.describe('incident containment', () => {
     await expect(page).toHaveURL(/incident=inc_/);
 
     // Resuming runs the open items through their owners: the account is contained.
+    // The dialog lists the open items and needs a fresh authenticator code.
     await ledger.getByRole('button', { name: 'Resume open items' }).click();
+    const resume = page.getByRole('dialog', { name: 'Resume these items?' });
+    await expect(resume).toContainText(account.principal);
+    await resume.getByLabel('Code or password').fill(await nextTotpCode());
+    await resume.getByRole('button', { name: 'Run open items' }).click();
+    await expect(resume).toBeHidden();
     await expect(ledger).toContainText(/Resume ran \d+ items/);
     await expect(table).toContainText('Done');
     await expect(table).not.toContainText('Not yet run');

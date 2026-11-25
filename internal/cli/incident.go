@@ -141,7 +141,7 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		var out apigen.IncidentResumeResult
-		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/resume", apigen.IncidentResumeRequest{Proof: proof}, &out); err != nil {
+		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/resume", apigen.IncidentResumeRequest{Proof: proof, OpenItems: len(open)}, &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, Table{

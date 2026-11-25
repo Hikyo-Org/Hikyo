@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { IncidentListTooLong, incidentFailureText, isOpenItem, itemStateLabel, type IncidentItem } from './incidents.ts';
+import { ApiError } from './client.ts';
+import { commonRefusalText } from './statusText.ts';
+import { IncidentListTooLong, incidentFailureText, isOpenItem, itemStateLabel, notYetRun, type IncidentItem } from './incidents.ts';
 
 function item(over: Partial<IncidentItem>): IncidentItem {
   return {
@@ -33,5 +35,18 @@ describe('incident item state', () => {
 describe('incident failure text', () => {
   it('names the CLI when the item list outgrows the page cap, never showing a half list', () => {
     expect(incidentFailureText(new IncidentListTooLong())).toContain('hikyo incident items --open');
+  });
+
+  it('reads a wrong proof as a refused proof, not as a lost session', () => {
+    const wrongProof = incidentFailureText(new ApiError(401, 'failed'));
+    expect(wrongProof).toContain('password or code was not accepted');
+    expect(wrongProof).not.toBe(commonRefusalText.sessionEnded);
+  });
+});
+
+describe('not yet run', () => {
+  it('excludes the refused items the server counts under pending', () => {
+    expect(notYetRun({ pending: 5, refused: 2 })).toBe(3);
+    expect(notYetRun({ pending: 1, refused: 3 })).toBe(0);
   });
 });

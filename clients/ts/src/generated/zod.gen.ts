@@ -934,7 +934,8 @@ export const zIncidentItemList = z.object({
 });
 
 export const zIncidentResumeRequest = z.object({
-    proof: z.string().max(65536)
+    proof: z.string().max(65536),
+    open_items: z.int().gte(0).lte(1000000)
 });
 
 /**

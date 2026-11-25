@@ -276,7 +276,7 @@ func TestIncidentWireRefusalsAreUniformAcrossTenants(t *testing.T) {
 			return []probe{
 				{"get", http.MethodGet, id, nil},
 				{"items", http.MethodGet, id + "/items?limit=5", nil},
-				{"resume", http.MethodPost, id + "/resume", map[string]string{"proof": "000000"}},
+				{"resume", http.MethodPost, id + "/resume", map[string]any{"proof": "000000", "open_items": 0}},
 				{"attest", http.MethodPost, id + "/items/" + itemID + "/attest", nil},
 				{"close", http.MethodPost, id + "/close", map[string]bool{"with_residuals": true}},
 			}

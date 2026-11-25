@@ -142,7 +142,8 @@ func (a *API) ResumeIncident(ctx context.Context, req apigen.ResumeIncidentReque
 	if req.Body == nil {
 		return nil, domain.ErrInvalid
 	}
-	r, err := a.Incidents.Resume(ctx, service.Bearer(bearer(ctx)), string(req.Incident), req.Body.Proof)
+	openItems := req.Body.OpenItems
+	r, err := a.Incidents.Resume(ctx, service.Bearer(bearer(ctx)), string(req.Incident), req.Body.Proof, &openItems)
 	if err != nil {
 		return nil, err
 	}

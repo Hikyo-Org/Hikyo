@@ -18961,12 +18961,17 @@ components:
     IncidentResumeRequest:
       type: object
       additionalProperties: false
-      required: [proof]
+      required: [proof, open_items]
       properties:
         proof:
           type: string
           maxLength: 65536
-          description: Your TOTP code, or your password if you have no confirmed factor. Spent by this call only.
+          description: Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
+        open_items:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: How many open items you listed and confirmed. The call is a 409, and spends no proof, when the incident now has a different number of open items.
 
     IncidentResumeResult:
       type: object

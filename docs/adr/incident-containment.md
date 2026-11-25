@@ -460,12 +460,21 @@ principal is contained, so a contained account would still have a scheduler acti
   and the ledger does not move. `TestIncidentAuthorizationRefusals` covers the same at the service,
   including the item views.
 - Resume is the one operation here that acts on the incident's objects, so it needs a fresh
-  account-security proof of its own, bound to that call and spent in its first write
+  account-security proof of its own, bound to that call and checked in its first write
   transaction: the operator's TOTP code, or the password for an account with no confirmed factor
-  (the account-security reauth `proof` field, declared as `x-hikyo-reauth` on the operation). The
-  CLI lists the open items and stops unless `--yes` confirms them; the web asks the same in a
-  dialog that lists them. Open only enumerates and performs nothing. A caller who cannot see the
-  incident gets the uniform not-found before any proof is asked for.
+  (the account-security reauth `proof` field, declared as `x-hikyo-reauth` on the operation). A
+  one-time code is spent by that call, so it cannot open a second resume; a password is not
+  spent and is checked fresh on each call. The CLI lists the open items and stops unless `--yes`
+  confirms them; the web asks the same in a dialog that lists them. The request also carries
+  `open_items`, how many open items the operator listed and confirmed. When another operator has
+  reopened or settled items since, the open set has a different size and the call is a `409`
+  that spends no proof, so no item runs unseen. Open only enumerates and performs nothing. A
+  caller who cannot see the incident gets the uniform not-found before any proof is asked for.
+- Limitation: an account with neither a password nor a confirmed factor (for example one that
+  only signs in through a linked identity) has no pre-existing credential to prove with and
+  cannot resume (`ErrNoProofCredential`, a `400`). The browser-approval reauthentication of #1539
+  is a closed set of operations and does not include resume; giving such an account a proof path
+  is an owner question, not part of this slice.
 - The incident and item views carry `refused`, the count (and per-item flag) of pending items
   whose owner refused, apart from pending items that have not run.
 - `attestable` on an item is the server's own verdict (open item, open incident, a kind Hikyo

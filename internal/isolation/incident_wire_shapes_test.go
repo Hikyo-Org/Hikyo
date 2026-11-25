@@ -28,6 +28,14 @@ func TestIncidentWireRefusedReopenedAndResidualShapes(t *testing.T) {
 			t.Fatalf("a second open = id %s reopened %v added %v, want the same incident, reopened, none added", again.Id, again.Reopened, again.Added)
 		}
 
+		// An object that appeared after the first enumeration is added on the next open.
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+			`VALUES ('ses_wire_late', '`+string(wireTarget)+`', `+blobLit(db, []byte("verifier-wire-late"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
+		grown := decodeWire[apigen.Incident](t, mustCall(t, iw, tok, http.MethodPost, "/incidents", openBody))
+		if grown.Id != first.Id || grown.Added == nil || *grown.Added != 1 {
+			t.Fatalf("an open after a new session = id %s added %v, want the same incident with one added", grown.Id, grown.Added)
+		}
+
 		// One owner refuses: its items stay pending with the owner's reason, and the
 		// wire says refused for them and not for work that has not run.
 		refuse := newFakeOwner()

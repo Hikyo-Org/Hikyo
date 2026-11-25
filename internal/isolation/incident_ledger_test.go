@@ -422,7 +422,7 @@ func TestIncidentResumeRunsOnlyOpenItemsAndOnlyConfirmedIsDone(t *testing.T) {
 		owner := newFakeOwner()
 		w.withOwner(owner)
 
-		res, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "")
+		res, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -442,7 +442,7 @@ func TestIncidentResumeRunsOnlyOpenItemsAndOnlyConfirmedIsDone(t *testing.T) {
 		})
 
 		// A second resume re-reads the ledger and runs nothing: done is final.
-		again, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "")
+		again, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -467,7 +467,7 @@ func TestIncidentUnconfirmedOwnerNeverWritesDone(t *testing.T) {
 		step := func(name string, f func(authz.IncidentItem) (service.IncidentOwnerResult, error), want map[string]string) {
 			t.Helper()
 			owner.result = f
-			if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, ""); err != nil {
+			if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil); err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
 			got := w.itemMap(t, incResponder, id)
@@ -540,7 +540,7 @@ func TestIncidentResumeAfterCrashBetweenOwnerCommitAndLedgerUpdate(t *testing.T)
 				execRaw(t, db, `UPDATE incident_items SET row_version = row_version + 1 WHERE id = '`+item.ID+`'`)
 			}
 		}
-		res, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "")
+		res, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -561,7 +561,7 @@ func TestIncidentResumeAfterCrashBetweenOwnerCommitAndLedgerUpdate(t *testing.T)
 		// Resume asks the owner again; the owner sees its object already in the
 		// target state, repeats nothing, and its confirmation writes done.
 		owner.afterApply = nil
-		if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, ""); err != nil {
+		if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil); err != nil {
 			t.Fatal(err)
 		}
 		if owner.actions != 2 {
@@ -593,7 +593,7 @@ func TestIncidentResumeAfterProcessCrash(t *testing.T) {
 					t.Fatal("the simulated crash did not propagate")
 				}
 			}()
-			_, _ = w.svc.Resume(t.Context(), w.as(incResponder), id, "")
+			_, _ = w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil)
 		}()
 		key := keySession
 		if got := w.itemMap(t, incResponder, id)[key]; got != "pending/" {
@@ -604,7 +604,7 @@ func TestIncidentResumeAfterProcessCrash(t *testing.T) {
 		}
 
 		owner.afterApply = nil
-		res, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "")
+		res, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -828,7 +828,7 @@ func TestIncidentCloseResiduals(t *testing.T) {
 		if want := fmt.Sprintf(`"residuals_omitted":%d`, open-1000); !strings.Contains(payload, want) {
 			t.Errorf("closed event does not report %d omitted residuals (%d open): %s", open-1000, open, payload)
 		}
-		if _, err := w.svc.Resume(ctx, w.as(incResponder), id, ""); !errors.Is(err, domain.ErrConflict) {
+		if _, err := w.svc.Resume(ctx, w.as(incResponder), id, "", nil); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("resume of a closed incident = %v, want a conflict", err)
 		}
 		if _, err := w.svc.Close(ctx, w.as(incResponder), id, true); !errors.Is(err, domain.ErrConflict) {
@@ -855,7 +855,7 @@ func TestIncidentCleanCloseNeedsEveryObservableItemConfirmed(t *testing.T) {
 		w.withOwner(owner)
 		w.svc.Owners[domain.OwnerServiceAccountReview] = owner.run
 		w.svc.Owners[domain.OwnerAccountContain] = owner.run
-		res, err := w.svc.Resume(ctx, w.as(incResponder), id, "")
+		res, err := w.svc.Resume(ctx, w.as(incResponder), id, "", nil)
 		if err != nil || res.Confirmed != 4 {
 			t.Fatalf("resume = %+v, %v, want the four observable items confirmed", res, err)
 		}
@@ -1061,7 +1061,7 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 			assertUniformNotFound(t, itemsErr, errGhostID)
 			_, viewsErr := w.svc.ItemViews(ctx, a, v.Incident.ID, "", 10, false)
 			assertUniformNotFound(t, viewsErr, errGhostID)
-			_, resumeErr := w.svc.Resume(ctx, a, v.Incident.ID, "")
+			_, resumeErr := w.svc.Resume(ctx, a, v.Incident.ID, "", nil)
 			assertUniformNotFound(t, resumeErr, errGhostID)
 			_, closeErr := w.svc.Close(ctx, a, v.Incident.ID, true)
 			assertUniformNotFound(t, closeErr, errGhostID)
@@ -1088,7 +1088,7 @@ func runIncidentAuditLifecycle(t *testing.T, db *store.DB) {
 	w := newIncidentWorld(t, db)
 	id := w.openAccount(t, incResponder).Incident.ID
 	w.realOwners()
-	if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, ""); err != nil {
+	if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := w.svc.Close(t.Context(), w.as(incResponder), id, true); err != nil {
@@ -1102,7 +1102,7 @@ func TestIncidentAuditTrail(t *testing.T) {
 		v := w.openAccount(t, incResponder)
 		id := v.Incident.ID
 		w.withOwner(newFakeOwner())
-		if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, ""); err != nil {
+		if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := w.svc.Close(t.Context(), w.as(incResponder), id, true); err != nil {
@@ -1535,7 +1535,7 @@ func TestIncidentListsAdapterMovesAndScrubs(t *testing.T) {
 
 		// With no owner registered, resume asks nobody and nothing becomes done;
 		// the incident cannot close clean while the moves and scrubs are open.
-		res, err := w.svc.Resume(ctx, w.as(incResponder), adapterInc.Incident.ID, "")
+		res, err := w.svc.Resume(ctx, w.as(incResponder), adapterInc.Incident.ID, "", nil)
 		if err != nil || res.Confirmed != 0 {
 			t.Fatalf("resume = %+v, %v, want nothing confirmed", res, err)
 		}
@@ -1556,7 +1556,7 @@ func TestIncidentListsAdapterMovesAndScrubs(t *testing.T) {
 				return service.OwnerUnconfirmed, nil
 			},
 		}
-		if _, err := w.svc.Resume(ctx, w.as(incResponder), adapterInc.Incident.ID, ""); err != nil {
+		if _, err := w.svc.Resume(ctx, w.as(incResponder), adapterInc.Incident.ID, "", nil); err != nil {
 			t.Fatal(err)
 		}
 		for k, v := range w.itemMap(t, incResponder, adapterInc.Incident.ID) {
@@ -1634,7 +1634,7 @@ func TestIncidentFailedScrubAndStoredOrphansStayOpenUntilAttested(t *testing.T) 
 			}
 			// No owner function confirms what Hikyo cannot observe, so resume
 			// leaves these open.
-			if res, err := w.svc.Resume(ctx, w.as(incResponder), id, ""); err != nil || res.Confirmed != 0 {
+			if res, err := w.svc.Resume(ctx, w.as(incResponder), id, "", nil); err != nil || res.Confirmed != 0 {
 				t.Fatalf("resume = %+v, %v, want nothing confirmed", res, err)
 			}
 			if _, err := w.svc.Close(ctx, w.as(incResponder), id, false); !errors.Is(err, service.ErrIncidentOpenItems) {

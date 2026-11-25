@@ -375,7 +375,12 @@ not exist: run `hikyo account factor step-up` and retry.
 - `hikyo incident resume <incident> --yes` does the work. It lists the open items and
   stops unless you pass `--yes`, then asks for your authenticator code (or your
   password if you have no authenticator) and runs each open item through its owner
-  function once. It cannot be undone, and the proof covers that one call.
+  function once. It cannot be undone. A one-time authenticator code is spent by that
+  call; a password is checked again on each call. If another operator reopens or settles
+  items between your listing and your confirmation, the call is refused with a conflict
+  and spends nothing: list again and confirm the new set. An account that has neither a
+  password nor an authenticator (it signs in only through a linked identity) cannot
+  resume; give it a password or an authenticator first.
 - `hikyo incident attest <incident> <item>` records your statement that an open item
   was dealt with outside this system. It is a statement, not a confirmation.
 - `hikyo incident close <incident>` needs `--with-residuals` while items are open.

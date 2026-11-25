@@ -50,13 +50,17 @@ func TestIncidentWireRefusesOtherArtifactsAndWeakSessions(t *testing.T) {
 				{"get", http.MethodGet, "/incidents/" + id, nil},
 				{"items", http.MethodGet, "/incidents/" + id + "/items?limit=5", nil},
 				{"attest", http.MethodPost, "/incidents/" + id + "/items/" + itemID + "/attest", nil},
-				{"resume", http.MethodPost, "/incidents/" + id + "/resume", map[string]string{"proof": "000000"}},
+				{"resume", http.MethodPost, "/incidents/" + id + "/resume", map[string]any{"proof": "000000", "open_items": 0}},
 				{"close", http.MethodPost, "/incidents/" + id + "/close", map[string]bool{"with_residuals": true}},
 			}
 		}
 		state := func() string {
 			return queryStrings(t, db, `SELECT outcome || '/' || COALESCE(reason, '') || ' ' FROM incident_items ORDER BY id`) +
 				queryStrings(t, db, `SELECT status || ' ' FROM incidents ORDER BY id`)
+		}
+		denied := func() int64 {
+			return queryInt(t, db, `SELECT (SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'grant.denied' AND actor_id = '`+string(wireResponder)+`') + `+
+				`(SELECT COUNT(*) FROM audit_instance_events WHERE type = 'grant.denied' AND actor_id = '`+string(wireResponder)+`')`)
 		}
 		refused := func() int64 {
 			return queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'auth.artifact_class_refused'`)
@@ -82,7 +86,7 @@ func TestIncidentWireRefusesOtherArtifactsAndWeakSessions(t *testing.T) {
 			{"developer credential", developer, true},
 			{"single-factor session", weak, false},
 		} {
-			eventsBefore := refused()
+			eventsBefore, deniedBefore := refused(), denied()
 			for _, r := range routes(real.Id) {
 				code, body := iw.call(t, c.token, r.method, r.path, r.body)
 				if code != http.StatusNotFound || !bytes.Equal(body, control[r.name]) {
@@ -93,6 +97,11 @@ func TestIncidentWireRefusesOtherArtifactsAndWeakSessions(t *testing.T) {
 				t.Errorf("%s: %d auth.artifact_class_refused rows, want %d", c.name, got, want)
 			} else if !c.named && got != 0 {
 				t.Errorf("%s: %d auth.artifact_class_refused rows, want none (the artifact class is admitted)", c.name, got)
+			}
+			// A single-factor session is an admitted artifact class, so the refusal is the
+			// capability's own denial, recorded as one.
+			if !c.named && denied() == deniedBefore {
+				t.Errorf("%s: no grant.denied row recorded for the refused session", c.name)
 			}
 		}
 		if after := state(); after != before {
