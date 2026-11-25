@@ -348,6 +348,18 @@ func TestIncidentRotationHaltNegativeControls(t *testing.T) {
 		if r.state(t) != store.RotationStateActive {
 			t.Fatalf("a refused halt changed the rotation: %q", r.state(t))
 		}
+		// An org incident reaches only a rotation whose authority has a footprint in
+		// that org: with the authority moved to a principal that has none there, the
+		// halt is refused and the rotation untouched.
+		orgInc := w.openOrg(t, incResponder)
+		execRaw(t, db, `UPDATE rotations SET authority_principal_id='`+string(incOrgB)+`' WHERE id='`+r.rot.ID+`'`)
+		if res, err := w.svc.Owners[domain.OwnerRotationHalt](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: orgInc, OwnerFunction: domain.OwnerRotationHalt, ObjectKind: domain.ObjectKindRotation, ObjectID: r.rot.ID, Scope: r.scope()}); err == nil || res == service.OwnerConfirmed {
+			t.Errorf("an org incident halted a rotation whose authority has no footprint in the org: %v, %v", res, err)
+		}
+		if r.state(t) != store.RotationStateActive {
+			t.Fatalf("a refused halt changed the rotation: %q", r.state(t))
+		}
+		execRaw(t, db, `UPDATE rotations SET authority_principal_id='`+string(alice)+`' WHERE id='`+r.rot.ID+`'`)
 		// A restore hold stays open: the rotation is not halted.
 		execRaw(t, db, `UPDATE rotations SET restore_hold=TRUE WHERE id='`+r.rot.ID+`'`)
 		if res := run(incResponder, acc.Incident.ID); res == service.OwnerConfirmed {

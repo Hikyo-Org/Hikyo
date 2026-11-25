@@ -445,7 +445,7 @@ there is nothing to hold them with; check them before you resume one. A containe
 authority principal is not a restore hold: an incident opened on the account (or on
 an org that selects it) lists its rotations and halts each one with
 `incident_contained`, active or paused, and releasing the principal does not
-resume them. Four cases leave a rotation active, so do not read an incident as
+resume them. Five cases leave a rotation active, so do not read an incident as
 confirmation that every rotation of its members reached `halted`:
 
 - A rotation a restore holds: the incident leaves its item open until the hold clears.
@@ -460,9 +460,16 @@ confirmation that every rotation of its members reached `halted`:
   the row cannot be resumed or attested. Pause or delete those rotations yourself,
   then close the incident with residuals.
 - A rotation whose recorded authority has left the account's org (or lies outside an
-  account incident's single org): the incident lists no item for it. The executor halts
-  it by effect at its next gate, because a contained principal's grants do not load.
-  The same holds when the account's `account.contain` item was refused.
+  account incident's single org): the incident lists no item for it. When the account
+  itself was contained, the executor halts the rotation by effect at its next gate,
+  because a contained principal's grants do not load. When the account's
+  `account.contain` item was refused (the last manager of an org, say), the principal
+  stays live and nothing stops that rotation but its own halt item: pause or delete it
+  yourself.
+- A member an org incident does not select: an org incident selects members through
+  their grants and rules, so a rotation authored by an account whose only rows in the
+  org are access grants, developer credentials, SCIM users or service accounts is not
+  listed. Open an account incident for that account to reach it.
 
 Check the incident's items, not its status, before you rely on a halt. You resume a
 halted rotation yourself.
