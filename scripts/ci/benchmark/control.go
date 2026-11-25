@@ -248,7 +248,12 @@ func prepare(repository string, e controlEvent) error {
 		if latest, err := currentPull(repository, pr.Number); err != nil || latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
 			return err
 		}
-		return updateComment(repository, c, body)
+		// A 404 means a lagging cleaner's duplicate was already deleted by
+		// another cleaner; the surviving comment is reconciled by its writer.
+		if err := updateComment(repository, c, body); !errors.Is(err, errNotFound) {
+			return err
+		}
+		return nil
 	}
 	if c.ID != 0 {
 		return reconcile(c)
@@ -555,8 +560,9 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	if err := updateComment(repository, c, claim); err != nil {
 		return err
 	}
-	// shortcut: GitHub has no compare-and-swap on comments, so a stale comment
-	// job PATCH can still land between this re-read and the rerun; narrow, not closed.
+	// shortcut: GitHub has no compare-and-swap on comments, so a comment job
+	// PATCH landing after the live-head read below, before the rerun, can still
+	// clobber the claim; upgrade if that is seen in practice (e.g. a lease or ETag).
 	if after, err := botComment(repository, pr.Number); err != nil {
 		// Release the claim so admission can retry this head, unless a
 		// successful read shows the PR moved on: a newer head's comment job
@@ -571,6 +577,16 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {
 		// Compare the claim identity, not bytes: GitHub may normalize whitespace.
 		return nil // A concurrent writer replaced the claim; do not spend.
+	}
+	// A newer head's prepare may have reset the comment before our claim PATCH
+	// overwrote it, which the comment re-read cannot see. Re-check the PR.
+	latest, lerr := currentPull(repository, pr.Number)
+	if lerr != nil {
+		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
+		return errors.Join(lerr, updateComment(repository, c, release))
+	}
+	if latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
+		return prepare(repository, controlEvent{Number: pr.Number}) // Reconcile the comment to the live head.
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/actions/runs/%d/rerun", repository, run.ID), ""); err != nil {
 		return decline(err)

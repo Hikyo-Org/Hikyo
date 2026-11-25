@@ -309,3 +309,34 @@ func TestPrepareKeepsARacedSurvivorOnTheLiveHead(t *testing.T) {
 		t.Fatalf("an admitted request on the live head must be preserved:\n%s", c)
 	}
 }
+
+func TestPrepareToleratesADuplicateDeletedBeforeALaterOne(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	log := sequenceGH(t, head, []string{encode(t, [][]comment{{botCopy(t, 20, head), botCopy(t, 21, head), botCopy(t, 22, head)}})}, "21")
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatalf("a 404 on the first duplicate must not stop cleanup: %v", err)
+	}
+	if !strings.Contains(recorded(t, log), "DELETE repos/o/r/issues/comments/22") {
+		t.Fatal("the duplicate after an already-deleted one must still be deleted")
+	}
+}
+
+func TestPrepareToleratesAResetOfAnAlreadyDeletedSurvivor(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{encode(t, [][]comment{{botCopy(t, 20, old)}})}, "none")
+	gh := filepath.Join(filepath.Dir(log), "gh")
+	script, err := os.ReadFile(gh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail := "case \"$*\" in\n*\"--method PATCH\"*comments/20*) echo 'gh: Not Found (HTTP 404)' >&2; exit 1;;\n"
+	if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "case \"$*\" in\n", fail, 1)), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatalf("a 404 resetting a comment another cleaner deleted must succeed: %v", err)
+	}
+	if patchLine(recorded(t, log), 20) == "" {
+		t.Fatal("expected a reset attempt")
+	}
+}
