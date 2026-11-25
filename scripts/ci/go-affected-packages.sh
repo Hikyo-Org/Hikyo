@@ -5,8 +5,10 @@
 # Run it in a tree that holds REV (the pre-push hook uses a detached worktree);
 # `go list` reads that tree, git only supplies the changed file names.
 # Every changed or deleted file counts for the nearest ancestor directory that
-# holds Go files at BASE or REV (so testdata and embedded files reach their
-# package; a deleted file, or a whole deleted package, still does). Selected:
+# is a package at BASE or REV (testdata, dot and underscore directories are not,
+# so their files, .go included, reach the owning package, as do embedded files;
+# a deleted file, or a whole deleted package, still counts). Files in a nested
+# module (desktop/) count for nothing. Selected:
 # those packages, packages that embed a changed file, packages that no longer
 # load, every package whose test build depends on any of them, and all packages
 # when go.mod or go.sum changes. Packages without tests are never printed.
@@ -40,6 +42,8 @@ git diff --name-only --no-renames "$base" "$rev" >"$work/changed"
 [ -s "$work/changed" ] || exit 0
 
 # Non-embedded files a test reads at runtime: "changed-path-prefix package-dir".
+# The internal/store/queries rule serves only this script's own output: the
+# pre-push runner leaves internal/isolation to CI.
 extra_rules='
 chart/hikyo/crds/ internal/operator/api/v1alpha1
 internal/store/queries/ internal/isolation
@@ -50,9 +54,15 @@ printf '%s\n' "$extra_rules" | while read -r prefix dir; do
 	if grep -q "^$prefix" "$work/changed"; then printf '%s\n' "$dir"; fi
 done >"$work/extra"
 
-# Directories that hold Go files at BASE, for packages the change deletes.
+# Path segments that never make a Go package.
+ignored='(^|/)(testdata|[._][^/]*)(/|$)'
 git ls-tree -r --name-only "$base" >"$work/basefiles"
-{ grep '\.go$' "$work/basefiles" || :; } | sed 's|/[^/]*$||; t; s|.*||' | sort -u >"$work/basedirs"
+git ls-tree -r --name-only "$rev" >"$work/revfiles"
+# Nested module roots ("dir/"), at either end of the range.
+cat "$work/basefiles" "$work/revfiles" >"$work/files"
+{ grep '/go\.mod$' "$work/files" || :; } | sed 's|go\.mod$||' | { grep -Ev "$ignored" || :; } | sort -u >"$work/nested"
+# Package directories at BASE, for packages the change deletes.
+{ grep '\.go$' "$work/basefiles" || :; } | sed 's|/[^/]*$||; t; s|.*||' | { grep -Ev "$ignored" || :; } | sort -u >"$work/basedirs"
 
 all=false
 if grep -Fxq -e go.mod -e go.sum "$work/changed"; then all=true; fi
@@ -64,7 +74,7 @@ go list -test -e -json=ImportPath,Dir,EmbedFiles,TestEmbedFiles,XTestEmbedFiles,
 	exit 1
 }
 jq -rs --arg root "$root" --argjson all "$all" \
-	--rawfile changed "$work/changed" --rawfile extra "$work/extra" --rawfile basedirs "$work/basedirs" '
+	--rawfile changed "$work/changed" --rawfile extra "$work/extra" --rawfile basedirs "$work/basedirs" --rawfile nested "$work/nested" '
 	def lines: split("\n") | map(select(. != ""));
 	def rel: if . == $root then "" else ltrimstr($root + "/") end;
 	def dirname: split("/")[:-1] | join("/");
@@ -72,9 +82,12 @@ jq -rs --arg root "$root" --argjson all "$all" \
 	| [$units[] | select(.ImportPath | endswith(".test") | not)] as $pkgs
 	| ($pkgs | map(.Dir | rel) + ($basedirs | lines) | unique) as $pkgdirs
 	# the nearest ancestor directory holding Go files; the root package only for root files
-	| def owner: dirname as $d
-		| if $d == "" then [""] else [$d | split("/") | range(length; 0; -1) as $n | .[:$n] | join("/")] end
-		| map(select(. as $c | $pkgdirs | index($c) != null)) | first // null;
+	| ($nested | lines) as $modules
+	| def owner: . as $file | dirname as $d
+		| if any($modules[]; . as $m | $file | startswith($m)) then null
+		  else (if $d == "" then [""] else [$d | split("/") | range(length; 0; -1) as $n | .[:$n] | join("/")] end
+			| map(select(. as $c | $pkgdirs | index($c) != null)) | first // null)
+		  end;
 	($changed | lines) as $files
 	| (($files | map(owner | select(. != null))) + ($extra | lines)) as $dirs
 	| [$pkgs[] | (.Dir | rel) as $dir

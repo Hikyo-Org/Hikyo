@@ -12,7 +12,14 @@ git init -q -b main .
 git config user.name Fixture
 git config user.email fixture@example.com
 git config commit.gpgsign false
-mkdir -p store/testdata app util desktop docs web gone internal/operator/api/v1alpha1 chart/hikyo/crds
+mkdir -p store/testdata/x app/sub util desktop/internal docs web gone internal/operator/api/v1alpha1 chart/hikyo/crds internal/lint/testdata/badnil
+printf 'package x\n' >store/testdata/x/x.go
+printf 'package lint\n' >internal/lint/lint.go
+printf 'package lint\n\nimport "testing"\n\nfunc TestL(t *testing.T) {}\n' >internal/lint/lint_test.go
+printf 'package badnil\n' >internal/lint/testdata/badnil/aliased.go
+printf 'module example.com/sub\n\ngo 1.21\n' >app/sub/go.mod
+printf 'package sub\n' >app/sub/s.go
+printf 'package internal\n' >desktop/internal/i.go
 printf 'module example.com/m\n\ngo 1.21\n' >go.mod
 printf '' >go.sum
 printf 'package m\n' >root.go
@@ -58,9 +65,14 @@ case_ 'a .go change selects the package and its dependents' 'util' touch_ util/u
 case_ 'an embedded .sql change selects the embedder and its reverse dependencies' 'app store' touch_ store/data.sql
 case_ 'a .go change in a dependency selects the dependents' 'app store' touch_ store/store.go
 case_ 'a testdata file selects its package' 'app store' touch_ store/testdata/case.txt
+case_ 'a .go file in testdata selects its package' 'app store' touch_ store/testdata/x/x.go
+case_ 'a lint fixture selects the lint package' 'internal/lint' touch_ internal/lint/testdata/badnil/aliased.go
+case_ 'a deleted lint fixture selects the lint package' 'internal/lint' git rm -q internal/lint/testdata/badnil/aliased.go
+case_ 'a nested module inside a package selects nothing' '-' touch_ app/sub/s.go
+case_ 'a nested module subdirectory selects nothing' '-' touch_ desktop/internal/i.go
 case_ 'a root package file selects the root package' 'root' touch_ root_test.go
-case_ 'go.mod selects every package' 'root app internal/operator/api/v1alpha1 store util web' touch_ go.mod
-case_ 'go.sum selects every package' 'root app internal/operator/api/v1alpha1 store util web' sh -c 'echo "example.com/x v1.0.0 h1:x" >>go.sum'
+case_ 'go.mod selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' touch_ go.mod
+case_ 'go.sum selects every package' 'root app internal/lint internal/operator/api/v1alpha1 store util web' sh -c 'echo "example.com/x v1.0.0 h1:x" >>go.sum'
 case_ 'docs alone select nothing' '-' touch_ docs/a.md
 case_ 'the nested desktop module selects nothing' '-' touch_ desktop/d.go
 case_ 'a deleted embedded file selects the embedder' 'app store' git rm -q store/data.sql

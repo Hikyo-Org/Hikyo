@@ -281,10 +281,12 @@ Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
 Last, the hook runs the Go tests your push can affect, and only those
 (`scripts/ci/go-affected-test.sh`, which runs the selection from
 `scripts/ci/go-affected-packages.sh`; run the latter by hand with
-`scripts/ci/go-affected-packages.sh hikyo-upstream/main` in a checkout of the
-pushed commit). Every changed or deleted file counts for the nearest ancestor
-directory with Go files, so testdata and embedded files (a migration `.sql`
-reaches `internal/store`) select that package. The selection adds packages that
+`scripts/ci/go-affected-packages.sh "$(git merge-base hikyo-upstream/main HEAD)"`
+in a checkout of the pushed commit). Every changed or deleted file counts for the
+nearest ancestor directory that is a package, so embedded files (a migration
+`.sql` reaches `internal/store`) and files under `testdata`, `_*` and `.*`
+directories, `.go` fixtures included, select the owning package; files in a
+nested module (`desktop/`) select nothing. The selection adds packages that
 embed a changed file, packages that no longer load, every package whose test
 build depends on one of those, and all packages when `go.mod` or `go.sum`
 changes. Docs-only and frontend-only pushes select nothing.
@@ -310,9 +312,14 @@ files are reset and cleaned every time, and a dirty or broken tree is rebuilt),
 so the Go build and test caches, which key on the source path, stay warm between
 pushes. There is no `-trimpath`: tests find repository files through their own
 paths, and `-trimpath` made them fail. One push at a time uses the tree; a
-second push from another worktree is refused while the first runs, and a lock
-left by a killed push is taken over. The SPA build is not needed: a placeholder
-stands in for `internal/webui/dist`. Set `HIKYO_PREPUSH_GOTEST=skip` to skip the
+second push from another worktree is refused while the first runs, a lock left
+by a killed push on the same host is taken over, and a refusal prints the command
+that clears the lock. The SPA build is not needed: a placeholder
+stands in for `internal/webui/dist`.
+
+Expect about 25 minutes on a cold cache for a widely depended-on change. The
+measured warm figure (220s) is a re-run of the same commit; a push that changes a
+widely used package rebuilds and retests its dependents and takes longer. Set `HIKYO_PREPUSH_GOTEST=skip` to skip the
 step for a WIP push.
 
 ## Continuous integration

@@ -58,11 +58,13 @@ case "$1" in
 list) shift; for p in "$@"; do echo "m/${p#./}"; done ;;
 test)
 	echo "test CI=${CI-unset} $*" >>"$LOG"
-	case " $* " in *" $FAILING "*) exit 1 ;; esac
+	for failing in $FAILING; do
+		case " $* " in *" $failing "*) exit 1 ;; esac
+	done
 	;;
 run)
 	echo "run $*" >>"$LOG"
-	[ "$FAILING" != prepare ] || exit 1
+	case " $FAILING " in *" prepare "*) exit 1 ;; esac
 	;;
 esac
 `)
@@ -106,7 +108,7 @@ func TestGoAffectedRunnerOrderAndEnvironment(t *testing.T) {
 	if strings.Contains(log, "isolation") || strings.Contains(log, "m/scripts/ci") {
 		t.Fatalf("an excluded package ran:\n%s", log)
 	}
-	if !strings.Contains(stderr, "leaving 2 to CI") || !strings.Contains(stderr, "internal/isolation") || !strings.Contains(stderr, "scripts/ci") {
+	if !strings.Contains(stderr, "leaving 2 to CI (too slow for a push): internal/isolation scripts/ci\n") {
 		t.Fatalf("no notice naming the excluded packages:\n%s", stderr)
 	}
 	if !strings.Contains(stderr, "4 affected packages") || !strings.Contains(stderr, "PostgreSQL tests are skipped") {
@@ -125,5 +127,8 @@ func TestGoAffectedRunnerExitCodes(t *testing.T) {
 	}
 	if _, _, code = runGoAffected(t, "", "prepare"); code != 64 {
 		t.Fatalf("a failing lint cache: exit %d, want 64", code)
+	}
+	if _, _, code = runGoAffected(t, "", "m/pkg/a prepare"); code != 1 {
+		t.Fatalf("a failing test then a failing lint cache: exit %d, want 1", code)
 	}
 }

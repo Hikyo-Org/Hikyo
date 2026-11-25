@@ -480,12 +480,30 @@ expect_ok gt2
 tree=$gitdir/hikyo-gotest-tree
 # A lock held by a live push refuses; one left by a dead process is taken over.
 mkdir "$tree.lock"
-echo $$ >"$tree.lock/pid"
-if push gt2; then fail 'a push was accepted while another go test run held the lock'; fi
-grep -F 'is running the Go tests' "$out" >/dev/null || fail 'lock message missing'
-sh -c 'echo $$' >"$tree.lock/pid"
+echo "$$ $(uname -n)" >"$tree.lock/owner"
+expect_refused 'is running the Go tests' gt2
+grep -F "rm -rf \"" "$out" | grep -F 'hikyo-gotest-tree.lock"' >/dev/null || fail 'the refusal does not give the command that clears the lock'
+dead=$(sh -c 'echo $$')
+# Another host's lock is never taken over, even with a dead-looking pid.
+echo "$dead elsewhere.invalid" >"$tree.lock/owner"
+expect_refused 'a push on host elsewhere.invalid' gt2
+# Two pushes seeing the same dead owner: while one takes over, the other refuses
+# and leaves the lock alone.
+echo "$dead $(uname -n)" >"$tree.lock/owner"
+mkdir "$tree.lock.takeover"
+expect_refused 'is taking over the stale' gt2
+[ -f "$tree.lock/owner" ] || fail 'a push removed a lock another push was taking over'
+rmdir "$tree.lock.takeover"
 expect_ok gt2
-[ ! -e "$tree.lock" ] || fail 'the lock was left behind'
+[ ! -e "$tree.lock" ] && [ ! -e "$tree.lock.takeover" ] || fail 'a lock was left behind'
+# A lock without an owner file is live while new (its owner has not written it
+# yet), and stale once old.
+mkdir "$tree.lock"
+expect_refused 'is taking the Go test lock' gt2
+[ -d "$tree.lock" ] || fail 'a new ownerless lock was removed'
+touch -t 202001010000 "$tree.lock"
+expect_ok gt2
+[ ! -e "$tree.lock" ] || fail 'the stale ownerless lock was left behind'
 # A dirty kept tree, a pruned registration, a corrupted tree and a deleted tree
 # are all repaired, and the run is always at the pushed commit.
 kept_ok() { expect_ok gt2; [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail "$1: not at the pushed commit"; }

@@ -42,9 +42,8 @@ cp "$work/selected" "$work/all"
 grep -Fvx -e "$app" -e "$lint" "$work/all" >"$work/pool" || :
 count=$(grep -c . "$work/all" || :)
 if [ -s "$work/skipped" ]; then
-	printf 'go tests: leaving %s to CI (too slow for a push):' "$(grep -c . "$work/skipped")" >&2
-	sed 's|^.*/\(internal/\|scripts/\)|\1|; s|^|  |' "$work/skipped" | tr '\n' ' ' >&2
-	printf '\n' >&2
+	names=$(sed -e 's|^.*/internal/|internal/|' -e 's|^.*/scripts/|scripts/|' "$work/skipped" | tr '\n' ' ')
+	printf 'go tests: leaving %s to CI (too slow for a push): %s\n' "$(grep -c . "$work/skipped")" "${names% }" >&2
 fi
 if [ "$count" -eq 0 ]; then
 	printf 'go tests: no Go package left to test\n' >&2
@@ -68,7 +67,8 @@ if grep -Fxq "$lint" "$work/all"; then
 	if go run ./scripts/ci/prepare-lint-cache; then
 		go test -p 2 -timeout=20m "$lint" || status=1
 	else
-		status=64
+		# A setup failure must not hide earlier test failures.
+		[ "$status" -ne 0 ] || status=64
 	fi
 fi
 exit "$status"
