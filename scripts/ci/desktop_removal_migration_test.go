@@ -116,7 +116,7 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 				}
 				git := func(args ...string) string {
 					t.Helper()
-					cmd := exec.Command("git", args...)
+					cmd := exec.CommandContext(t.Context(), "git", args...)
 					cmd.Dir = work
 					out, err := cmd.CombinedOutput()
 					if err != nil {
@@ -137,7 +137,7 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 				// A permissive candidate checker must never replace base policy.
 				write("check-required-jobs.sh", []byte("#!/bin/sh\nexit 0\n"))
 				write("ci-job-registry.json", []byte("{}"))
-				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", gate)
+				cmd := exec.CommandContext(t.Context(), "bash", "-e", "-o", "pipefail", "-c", gate)
 				cmd.Dir = work
 				cmd.Env = append(os.Environ(), "RUNNER_TEMP="+t.TempDir(), "GITHUB_EVENT_NAME=merge_group",
 					"BASE_SHA="+baseTree, "NEEDS_JSON="+string(encode(results)), "PLAN_JSON="+string(encode(plan)))
