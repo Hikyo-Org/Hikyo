@@ -82,6 +82,8 @@ type rerunAfterResetFixture struct {
 	limit    int            // the window's size; 0 means 5000
 	after    int            // requests left once the reset has passed; 0 means 4000
 	preReset int            // requests left before the reset; 0 means 40
+	gql      int            // a constant graphql bucket (of 5000) beside core; 0 means none
+	rateFail int            // rate_limit reads that succeed before every later one fails; 0 means none fail
 }
 
 const waitHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -115,6 +117,10 @@ func (f *rerunAfterResetFixture) run() (string, string, error) {
 	}
 	if after == 0 {
 		after = 4000
+	}
+	gql := ""
+	if f.gql > 0 {
+		gql = ",\\\"graphql\\\":{\\\"remaining\\\":" + strconv.Itoa(f.gql) + ",\\\"limit\\\":5000,\\\"reset\\\":" + strconv.FormatInt(f.reset, 10) + "}"
 	}
 	write("accepted", "")
 	var cases strings.Builder
@@ -161,7 +167,8 @@ func (f *rerunAfterResetFixture) run() (string, string, error) {
 		"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; if [ \"$prev\" = -f ]; then case \"$a\" in status=*) status=${a#status=} ;; esac; fi; case \"$a\" in created=\\>=*) since=${a#created=>=} ;; esac; prev=$a; done\n" +
 		"if [ -e '" + state + "' ] && " + strconv.FormatBool(f.recovers) + "; then n=$(wc -l < '" + accepted + "' 2>/dev/null || echo 0); r=$((" + strconv.Itoa(after) + " - " + strconv.Itoa(f.spend) + " * n)); else r=" + strconv.Itoa(pre) + "; fi\n" +
 		"case \"$*\" in\n" +
-		"  'api rate_limit '*) printf '%s' \"{\\\"resources\\\":{\\\"core\\\":{\\\"remaining\\\":$r,\\\"limit\\\":" + strconv.Itoa(limit) + ",\\\"reset\\\":" + strconv.FormatInt(f.reset, 10) + "}}}\" | jq -r \"$filter\" ;;\n" +
+		"  'api rate_limit '*) n=$(cat '" + f.dir + "/rl' 2>/dev/null || echo 0); echo $((n + 1)) > '" + f.dir + "/rl'; if [ " + strconv.Itoa(f.rateFail) + " -gt 0 ] && [ $((n + 1)) -gt " + strconv.Itoa(f.rateFail) + " ]; then echo 'secret response text' >&2; exit 1; fi\n" +
+		"    printf '%s' \"{\\\"resources\\\":{\\\"core\\\":{\\\"remaining\\\":$r,\\\"limit\\\":" + strconv.Itoa(limit) + ",\\\"reset\\\":" + strconv.FormatInt(f.reset, 10) + "}" + gql + "}}\" | jq -r \"$filter\" ;;\n" +
 		"  *--method\\ POST*) last=${@: -1}; case \"$last\" in */rerun-failed-jobs) id=${last%/rerun-failed-jobs}; id=run:${id##*runs/} ;; *) id=${last##*jobs/}; id=${id%%/*} ;; esac\n" +
 		"    if [ -e '" + f.dir + "/refuse-'$id ] && [ \"$(cat '" + f.dir + "/refuse-'$id)\" -gt 0 ]; then echo $(($(cat '" + f.dir + "/refuse-'$id) - 1)) > '" + f.dir + "/refuse-'$id; echo 'secret response text' >&2; exit 1; fi\n" +
 		"    echo \"$id\" >> '" + accepted + "' ;;\n" +
@@ -596,5 +603,86 @@ func TestQueueRetryWaitIgnoresRunsOlderThanThreeHours(t *testing.T) {
 	recorded, out, err := f.run()
 	if err != nil || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
 		t.Fatalf("only the run inside the three-hour window may be rerun: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+}
+
+// Reproduces the gap between the Go deferral and the retry: a dev job that fails while
+// 250 to 291 requests remain (above the reserve, below reserve plus its own cost) was
+// deferred by nobody and rerun by nobody. It now waits for the reset and is rerun once.
+func TestQueueRetryWaitReleasesANonGroupJobHeldBetweenTheReserveAndItsCost(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-dev-gate.yml", 1, failedGroupJob(11, "dev-publish-"+waitHead, "Reconcile exact-head dev admission"))
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, preReset: 270, runs: []waitRun{run}}
+	recorded, out, err := f.run()
+	if err != nil || !strings.Contains(recorded, "sleep 605") || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
+		t.Fatalf("a job held between the reserve and reserve plus cost must wait for the reset and be rerun: %v accepted=%v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+	if strings.Index(recorded, "sleep 605") > strings.Index(recorded, "api --method POST") {
+		t.Fatalf("nothing is rerun before the reset:\n%s", recorded)
+	}
+}
+
+// A hold that only group jobs suffer does not raise the sleep threshold: the sleeper does
+// not wait for a reset it was not asked to wait for, and names what it held.
+func TestQueueRetryWaitDoesNotSleepForAGroupOnlyHold(t *testing.T) {
+	now := int64(1795475603)
+	var runs []waitRun
+	for i := 0; i < 5; i++ {
+		runs = append(runs, trustedRun("ci-queue-worker.yml", 10+i, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile complete group proof under its head lease")))
+	}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 300, runs: runs}
+	if err := os.WriteFile(filepath.Join(f.dir, "slept"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	recorded, out, err := f.run()
+	if err == nil || len(f.accepted()) != 2 || strings.Contains(recorded, "sleep 605") || !strings.Contains(out, "Held to protect the window:") {
+		t.Fatalf("group jobs held for the window are named, not waited for: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+}
+
+// The run-level endpoint reruns every failed and cancelled job, so it is used only when
+// that set is exactly the wanted set: a replaced pending job (cancelled, no step ran) in the
+// run keeps it off and the wanted job is rerun by id.
+func TestQueueRetryWaitRerunsByIdWhenAReplacedJobSharesTheRun(t *testing.T) {
+	now := int64(1795475603)
+	replaced := `{"id":13,"name":"publish-` + waitHead + `","conclusion":"cancelled","steps":[]}`
+	run := trustedRun("ci-queue-gate.yml", 7,
+		failedGroupJob(11, "publish-"+waitHead, "Reconcile one authenticated head"),
+		failedGroupJob(12, "publish-"+strings.Repeat("b", 40), "Reconcile one authenticated head"),
+		replaced)
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{run}}
+	recorded, out, err := f.run()
+	if err != nil || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
+		t.Fatalf("a replaced job in the run keeps the run-level rerun off; the wanted job is rerun by id: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+}
+
+// A rate_limit read that still fails mid-burst names every job it did not rerun and fails.
+func TestQueueRetryWaitNamesJobsWhenTheRateLimitReadFails(t *testing.T) {
+	now := int64(1795475603)
+	var runs []waitRun
+	for i := 0; i < 5; i++ {
+		runs = append(runs, trustedRun("ci-queue-worker.yml", 10+i, failedGroupJob(100+i, "group-"+fmt.Sprintf("%040x", i+1), "Reconcile complete group proof under its head lease")))
+	}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, rateFail: 2, runs: runs}
+	if err := os.WriteFile(filepath.Join(f.dir, "slept"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	recorded, out, err := f.run()
+	if err == nil || len(f.accepted()) != 1 || !strings.Contains(out, "Not read: job:101 job:102 job:103 job:104") || strings.Contains(out, "secret response text") {
+		t.Fatalf("one rerun, then every unread job named without response text, and a failing exit: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+}
+
+// The bucket with the fewest requests left decides, as in the Go gate: core has 26 percent
+// but only 260, graphql 18 percent but 900. By share the window looks healthy and the job
+// would be rerun at once into the reserve; by count it must wait for the reset.
+func TestQueueRetryWaitJudgesBucketsByTheirAbsoluteRemaining(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-dev-gate.yml", 1, failedGroupJob(11, "dev-publish-"+waitHead, "Reconcile exact-head dev admission"))
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 800, preReset: 260, gql: 900, runs: []waitRun{run}}
+	recorded, out, err := f.run()
+	if err != nil || !strings.Contains(recorded, "sleep 605") || !reflect.DeepEqual(f.accepted(), []string{"11"}) {
+		t.Fatalf("the core bucket (260 left) decides, so the job waits for the reset: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
 	}
 }

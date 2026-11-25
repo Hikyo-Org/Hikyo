@@ -231,14 +231,23 @@ printf '7\n' >"$work/schedule.count"
 # An unreadable count falls back to the clock hour and still sweeps at most the cap.
 rm -f "$work/schedule.count"
 [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'an unreadable run count must still sweep the cap\n' >&2; exit 1; }
-# Below the reserve (250 requests, in either bucket) the sweep selects nothing and a PR event is unaffected.
+# The count stops moving at GitHub's 1,000-result cap on filtered lists: from there the run
+# number of the current run is the cursor, so the window still rotates and stays deterministic.
+pulls_of 21 1
+printf '1000\n' >"$work/schedule.count"
+GITHUB_RUN_NUMBER=11 run 2>/dev/null >"$work/cap.a"
+GITHUB_RUN_NUMBER=12 run 2>/dev/null >"$work/cap.b"
+GITHUB_RUN_NUMBER=11 run 2>/dev/null >"$work/cap.c"
+cmp -s "$work/cap.a" "$work/cap.c" || { printf 'a capped count must sweep deterministically for one run number\n' >&2; exit 1; }
+! cmp -s "$work/cap.a" "$work/cap.b" || { printf 'a capped count must still move the window with the run number\n' >&2; exit 1; }
+# Below the reserve plus one publisher's cost (250 + 42, in either bucket) the sweep selects nothing and a PR event is unaffected.
 printf '7\n' >"$work/schedule.count"
 for bucket in core graphql; do
-  jq -n --arg b "$bucket" '{resources:{core:{remaining:900},graphql:{remaining:900}}} | .resources[$b].remaining = 249' >"$work/rate.json"
-  [ "$(run 2>/dev/null)" = '[]' ] || { printf 'the sweep must defer with %s one below the reserve\n' "$bucket" >&2; exit 1; }
-  jq '.resources[$b].remaining = 250' --arg b "$bucket" "$work/rate.json" >"$work/rate.next"
+  jq -n --arg b "$bucket" '{resources:{core:{remaining:900},graphql:{remaining:900}}} | .resources[$b].remaining = 291' >"$work/rate.json"
+  [ "$(run 2>/dev/null)" = '[]' ] || { printf 'the sweep must defer with %s one below the reserve plus a publisher\n' "$bucket" >&2; exit 1; }
+  jq '.resources[$b].remaining = 292' --arg b "$bucket" "$work/rate.json" >"$work/rate.next"
   mv "$work/rate.next" "$work/rate.json"
-  [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'the sweep must run with %s at the reserve\n' "$bucket" >&2; exit 1; }
+  [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'the sweep must run with %s at the reserve plus a publisher\n' "$bucket" >&2; exit 1; }
 done
 jq -n '{resources:{core:{remaining:0},graphql:{remaining:900}}}' >"$work/rate.json"
 GITHUB_EVENT_NAME=workflow_dispatch

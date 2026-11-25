@@ -187,6 +187,8 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
 		// The core and graphql buckets are separate: the one with the lower remaining share decides.
 		{"a spent graphql bucket declines the rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 20 1000 1795475603", nil, false, "20 of 1000"},
+		// The Go gate judges each bucket by its absolute remaining; the lower share (graphql here) must not win.
+		{"the bucket with the fewest requests left decides, not the lowest share", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "260 1000 1795475603 900 5000 1795475603", nil, false, "Held for the group reserve (260 of 1000"},
 		{"a healthy graphql bucket changes nothing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 900 1000 1795475603", []int{1}, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

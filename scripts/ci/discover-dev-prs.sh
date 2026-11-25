@@ -8,14 +8,16 @@ work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dev-discovery.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 # The reserve (250 requests, see docs/development/ci.md and groupReserve in
 # scripts/ci/pr-gate/reserve.go) belongs to merge-queue group jobs. The sweep spends
-# nothing it could do without, so below the reserve it selects no PR; events, dispatch
-# and pushes still reach the publishers, which defer on their own. The read is free, and
-# a failed one does not stop the sweep.
+# nothing it could do without, so it selects no PR unless a bucket can afford one
+# publisher (its 42 reads, nonGroupCost) above the reserve, the threshold the publishers
+# defer on; events, dispatch and pushes still reach the publishers, which defer on their
+# own. The read is free, and a failed one does not stop the sweep.
 reserve=250
+cost=42
 if [[ $GITHUB_EVENT_NAME == schedule ]] &&
-  low=$(gh api rate_limit --jq ".resources | [.core, .graphql] | map(select(. != null and .remaining < $reserve)) | length" 2>/dev/null) &&
+  low=$(gh api rate_limit --jq ".resources | [.core, .graphql] | map(select(. != null and .remaining - $cost < $reserve)) | length" 2>/dev/null) &&
   [[ $low =~ ^[0-9]+$ && $low != 0 ]]; then
-  printf 'sweep deferred: the rate limit is below the %s requests kept for merge-group jobs\n' "$reserve" >&2
+  printf 'sweep deferred: the rate limit leaves fewer than the %s requests kept for merge-group jobs after one publisher\n' "$reserve" >&2
   printf '[]\n'
   exit 0
 fi
@@ -51,13 +53,18 @@ fi
 # it, and every open PR is reached within ceil(open/cap) consecutive runs. A PR opened or
 # closed in between shifts the windows by at most one cycle, and expired run history
 # lowers the count without stopping the rotation; events and the retry path settle checks
-# regardless. If the count cannot be read, the hour of the clock stands in for it.
+# regardless. A run that fails or is deferred still advances the count, so the window it
+# skipped is reached ceil(open/cap) runs later: the bound is in proving runs. GitHub caps
+# a filtered list at 1,000 results, so the count can stop moving; from 1,000 on the run
+# number of this run (monotonic, no API read) is the cursor. If the count cannot be read,
+# the hour of the clock stands in for it.
 cap=${DEV_SWEEP_CAP:-5}
 cursor=$(($(date +%s) / 3600))
 if [[ $GITHUB_EVENT_NAME == schedule ]]; then
   # One idempotent REST read; a failure falls back to the clock hour, and no response is printed.
   if count=$(gh api "repos/$GH_REPO/actions/workflows/ci-dev-gate.yml/runs?event=schedule&per_page=1" --jq .total_count 2>/dev/null) && [[ $count =~ ^[0-9]+$ ]]; then
     cursor=$count
+    if [[ $count -ge 1000 && ${GITHUB_RUN_NUMBER:-} =~ ^[0-9]+$ ]]; then cursor=$GITHUB_RUN_NUMBER; fi
   fi
 fi
 jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scope" \

@@ -21,10 +21,12 @@ func TestNonGroupJobDefersBelowTheReserveAndRunsAtIt(t *testing.T) {
 		core, graphql int
 		deferred      bool
 	}{
-		{"core one below", groupReserve - 1, 900, true},
-		{"core at the reserve", groupReserve, 900, false},
-		{"graphql one below", 900, groupReserve - 1, true},
-		{"graphql at the reserve", 900, groupReserve, false},
+		// The job must afford itself: it runs only while its own cost still leaves the reserve.
+		{"core one short of reserve plus cost", groupReserve + nonGroupCost - 1, 900, true},
+		{"core at reserve plus cost", groupReserve + nonGroupCost, 900, false},
+		{"core between the reserve and reserve plus cost", groupReserve + 20, 900, true},
+		{"graphql one short of reserve plus cost", 900, groupReserve + nonGroupCost - 1, true},
+		{"graphql at reserve plus cost", 900, groupReserve + nonGroupCost, false},
 		{"both healthy", 900, 900, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
