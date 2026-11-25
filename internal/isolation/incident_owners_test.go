@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -343,6 +344,25 @@ func TestIncidentOrgListsAndHaltsSelectedMembersRotations(t *testing.T) {
 		r.w.resume(t, incResponder, id)
 		if r.state(t) != store.RotationStateHalted {
 			t.Errorf("rotation state = %q, want halted", r.state(t))
+		}
+	})
+}
+
+// An item scoped to another org is refused for the incident's own org even when
+// the operator holds the capability in both orgs: the owner never acts outside
+// the org the incident was opened on.
+func TestIncidentOwnerRefusesAnItemOutsideTheIncidentOrg(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		w := r.w
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_inc_resp_b', '`+string(incResponder)+`', 'credential-reset', 'org_b', `+ts+`)`)
+		orgInc := w.openOrg(t, incResponder)
+		res, err := w.svc.Owners[domain.OwnerRotationHalt](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: orgInc, OwnerFunction: domain.OwnerRotationHalt, ObjectKind: domain.ObjectKindRotation, ObjectID: r.rot.ID, Scope: "org_b/prj_b1/env_b1"})
+		if !errors.Is(err, domain.ErrNotFound) || res == service.OwnerConfirmed {
+			t.Errorf("an item scoped to org B on an org A incident = %v, %v, want ErrNotFound", res, err)
+		}
+		if r.state(t) != store.RotationStateActive {
+			t.Errorf("a refused halt changed the rotation: %q", r.state(t))
 		}
 	})
 }
