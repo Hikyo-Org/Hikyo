@@ -1,0 +1,146 @@
+name: nightly-desktop
+
+# The native macOS shell (#1215) is its own Go module in desktop/: Wails, cgo and
+# WebKit never reach the root module. Owner decision 2026-11-25 (docs/development/ci.md,
+# "Desktop shell (macOS)"): its validation left the dev and merge-queue critical
+# paths, because a macOS runner was not acquired for 5 of 21 ci-dev attempts, and runs
+# here against the dev and main heads instead. This workflow is advisory: nothing
+# requires it and nightly-promote and nightly-release read none of its results.
+# A failure turns this run red and keeps one tracking issue open until a green night.
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-desktop
+  cancel-in-progress: false
+
+jobs:
+  # Pins both heads once, so every leg and the report name the commits they tested.
+  heads:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      dev: ${{ steps.resolve.outputs.dev }}
+      main: ${{ steps.resolve.outputs.main }}
+    steps:
+      - name: Resolve the dev and main heads
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for branch in dev main; do
+            sha=$(gh api "repos/$GH_REPO/git/ref/heads/$branch" --jq '.object.sha')
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid $branch head." >&2; exit 1; }
+            echo "$branch=$sha" >>"$GITHUB_OUTPUT"
+          done
+
+  desktop-dev:
+    needs: heads
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      HEAD_SHA: ${{ needs.heads.outputs.dev }}
+      CGO_ENABLED: "1"
+      # The shell supports macOS 13 and later (ADR D2); without this the linker warns
+      # per object that the runner's newer SDK default is higher than the target.
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
+    steps: &desktop-steps
+      - name: Check out the pinned head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
+          cache: false
+      - name: Desktop module boundary
+        run: |
+          ./scripts/ci/check-desktop-deps_test.sh
+          ./scripts/ci/check-desktop-deps.sh
+      # Where the shell has not landed (main before promotion) only the boundary runs.
+      - name: Desktop tests with the race detector
+        if: ${{ hashFiles('desktop/go.mod') != '' }}
+        working-directory: desktop
+        run: go test -race -count=1 -p 2 ./...
+      - name: Build the probe shell
+        if: ${{ hashFiles('desktop/go.mod') != '' }}
+        working-directory: desktop
+        run: go build -p 2 -tags probe -o "$RUNNER_TEMP/hikyo-desktop-probe" .
+      - name: Build the release shell
+        if: ${{ hashFiles('desktop/go.mod') != '' }}
+        working-directory: desktop
+        run: go build -p 2 -o "$RUNNER_TEMP/hikyo-desktop" .
+      - name: Driven WKWebView lane against a fake instance
+        if: ${{ hashFiles('desktop/go.mod') != '' }}
+        working-directory: desktop
+        run: go run ./probes/driven -app "$RUNNER_TEMP/hikyo-desktop-probe" -timeout 120s
+
+  desktop-main:
+    needs: heads
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      HEAD_SHA: ${{ needs.heads.outputs.main }}
+      CGO_ENABLED: "1"
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
+    steps: *desktop-steps
+
+  # Holds the only write permission and runs no repository code: no checkout, and
+  # every value reaches the script through env. GitHub reports a runner that was
+  # never acquired as cancelled, so anything but success counts as failing. It
+  # fails the run itself so the run stays red, even when a leg was cancelled.
+  report:
+    needs: [heads, desktop-dev, desktop-main]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEV_SHA: ${{ needs.heads.outputs.dev }}
+          MAIN_SHA: ${{ needs.heads.outputs.main }}
+          DEV_RESULT: ${{ needs.desktop-dev.result }}
+          MAIN_RESULT: ${{ needs.desktop-main.result }}
+        run: |
+          set -euo pipefail
+          export TITLE='ci: nightly desktop validation failing'
+          export MARKER='<!-- hikyo-nightly-desktop -->'
+          issue_number=$(gh issue list --state open --limit 100 \
+            --json number,title,author,body \
+            --jq '.[] | select(.title == env.TITLE and (.author.login == "github-actions[bot]" or .author.login == "app/github-actions") and (.body | contains(env.MARKER))) | .number' | head -n 1)
+          if [ "$DEV_RESULT" = success ] && [ "$MAIN_RESULT" = success ]; then
+            if [ -n "$issue_number" ]; then
+              gh issue close "$issue_number" \
+                --comment "Nightly desktop validation passed on dev (\`$DEV_SHA\`) and main (\`$MAIN_SHA\`): $RUN_URL"
+            fi
+            exit 0
+          fi
+          detail=$(printf '%s\n' \
+            "Nightly desktop validation did not pass: $RUN_URL" \
+            "" \
+            "- branch dev, head \`$DEV_SHA\`: ${DEV_RESULT:-not run}" \
+            "- branch main, head \`$MAIN_SHA\`: ${MAIN_RESULT:-not run}")
+          if [ -n "$issue_number" ]; then
+            gh issue comment "$issue_number" --body "$detail"
+          else
+            gh issue create --title "$TITLE" --body "$MARKER
+
+          $detail"
+          fi
+          exit 1

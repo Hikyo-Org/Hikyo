@@ -63,6 +63,19 @@ for file in "$@"; do
 				fail 'desktop lint must run on macOS only where the module exists'
 			desktop_lint=true
 			;;
+		nightly-desktop.yml)
+			# Nightly desktop validation (owner decision 2026-11-25): the two legs run on
+			# one pinned macOS runner with no cache; the head resolver and the issue
+			# reporter are the only Linux jobs. Reuse the macOS lint's runner filter.
+			expected_runner=macos-15
+			if grep -E 'actions/cache(@|/)|cache: true' "$file" >/dev/null; then
+				fail 'nightly desktop must not use shared caches'
+			fi
+			require_line "$file" '          cache: false'
+			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 2 ] ||
+				fail 'nightly desktop must have exactly two ubuntu-latest jobs (heads and report)'
+			desktop_lint=true
+			;;
 		ops-floor.yml)
 			# The secret-free operations lane measures both native CPU floors.
 			# Keep its matrix closed to these two GitHub-hosted architectures.
@@ -237,25 +250,9 @@ for file in "$@"; do
 			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 			!skip { print }
 		' "$file" >"$runner_source"
-		# The desktop shell (#1215) is the one native macOS job: one pinned runner,
-		# no shared caches. Everything else in ci.yml stays on ubuntu-latest.
-		desktop=$(workflow_job_block "$file" desktop)
-		[ -n "$desktop" ] || fail 'ci.yml has no desktop job'
-		printf '%s\n' "$desktop" | grep -Fx "    runs-on: \${{ needs.changes.outputs.desktop_module == 'true' && 'macos-15' || 'ubuntu-latest' }}" >/dev/null ||
-			fail 'desktop must run on the pinned macos-15 runner where the module exists and on ubuntu-latest elsewhere'
-		[ "$(printf '%s\n' "$desktop" | grep -c 'runs-on:')" = 1 ] ||
-			fail 'desktop must declare exactly one runner'
-		if printf '%s\n' "$desktop" | grep -E 'actions/cache(@|/)|cache: true|cache-dependency-path' >/dev/null; then
-			fail 'desktop must not use shared caches'
-		fi
-		without_desktop=$(mktemp)
-		awk '
-			$0 == "  desktop:" { skip = 1; next }
-			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
-			!skip { print }
-		' "$runner_source" >"$without_desktop"
-		rm -f "$runner_source"
-		runner_source=$without_desktop
+		# Desktop validation left ci.yml (owner decision 2026-11-25), so no macOS job
+		# remains here beyond scan-xplat, removed above.
+		[ -z "$(workflow_job_block "$file" desktop)" ] || fail 'ci.yml must not have a desktop job'
 	fi
 	if grep -E '^[[:space:]]+runs-on:' "$runner_source" |
 		sed 's/^[[:space:]]*runs-on:[[:space:]]*//' |
