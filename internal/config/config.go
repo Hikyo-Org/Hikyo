@@ -397,6 +397,20 @@ const devSQLitePath = "hikyo-dev.db"
 // Load parses configuration for a subcommand. getenv supplies single keys;
 // environ (os.Environ() shape) is scanned for unknown HIKYO_* keys and may be
 // nil. Returned warnings are for the caller to log — Load itself never logs.
+// UpgradePolicyVariables are the operator-owned upgrade settings (the revocation
+// policy) that every process launched on the installation's behalf inherits, as
+// opposed to the per-upgrade evidence variables each launcher sets itself. A
+// launcher that filters HIKYO_UPGRADE_* must carry exactly these through.
+var UpgradePolicyVariables = []string{"HIKYO_UPGRADE_REVOCATION_CHECK", "HIKYO_UPGRADE_REVOCATION_URL"}
+
+// PolicyEnvironment is the configured value of each UpgradePolicyVariables entry.
+func (u UpgradeConfiguration) PolicyEnvironment() map[string]string {
+	return map[string]string{
+		"HIKYO_UPGRADE_REVOCATION_CHECK": u.RevocationCheck,
+		"HIKYO_UPGRADE_REVOCATION_URL":   u.RevocationURL,
+	}
+}
+
 func Load(subcommand string, args []string, getenv func(string) string, environ []string) (*Config, []string, error) {
 	return load(subcommand, args, getenv, environ, false)
 }

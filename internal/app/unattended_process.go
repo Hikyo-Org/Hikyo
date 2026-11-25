@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -199,6 +200,7 @@ func (h *unattendedProcessHost) child(ctx context.Context, executable string, ar
 	values["HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY"] = h.cfg.Upgrade.OperatorPublicKeyFile
 	values["HIKYO_UPGRADE_TARGET_MANIFEST"] = h.cfg.Upgrade.TargetManifestSHA256
 	values["HIKYO_UPGRADE_EVIDENCE"], values["HIKYO_UPGRADE_BACKUP"] = h.cfg.Upgrade.EvidenceDirectory, h.cfg.Upgrade.CiphertextPath
+	maps.Copy(values, h.cfg.Upgrade.PolicyEnvironment())
 	values["HIKYO_ROOT_KEY_FILE"] = credentialPath
 	command := exec.CommandContext(ctx, executable, args...)
 	if credential != nil {

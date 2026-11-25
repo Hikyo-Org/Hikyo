@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
 	"github.com/Hikyo-Org/hikyo/internal/config"
@@ -48,7 +49,12 @@ func bridgeRevocation(cfg *config.Config) func(context.Context, releasetrust.Sna
 		if err != nil {
 			return nil, err
 		}
-		diagnostics.Printf(ctx, 1, "Recovery bridge revocation check: %s (list sequence %d)", result.Outcome, result.Sequence)
+		if result.Outcome == bridgerevocation.Checked {
+			diagnostics.Printf(ctx, 1, "Recovery bridge revocation check: %s (list sequence %d)", result.Outcome, result.Sequence)
+		} else {
+			// Relying on not_after alone must be visible at the default level.
+			slog.WarnContext(ctx, "recovery bridge revocation list was not applied; relying on the bridge's not_after", "outcome", string(result.Outcome), "sequence", result.Sequence)
+		}
 		return result.Revoked, nil
 	}
 }
