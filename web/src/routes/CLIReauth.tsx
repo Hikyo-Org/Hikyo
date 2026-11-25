@@ -58,11 +58,11 @@ export function CLIReauth() {
     )
       ? firstEnvironment
       : undefined;
-  const names = useConsentNames(
-    owner?.org_id ?? '',
-    owner?.project_id ?? '',
-    transaction.data?.purpose !== 'adapter' && transaction.data?.purpose !== 'self-config',
-  );
+  // Only a decision that lists bound keys reads the key catalogue, so an
+  // environment-wide approval never waits on it.
+  const purpose = transaction.data?.purpose;
+  const listsKeys = purpose !== undefined && purpose !== 'adapter' && purpose !== 'self-config' && purpose !== 'mint' && purpose !== 'access';
+  const names = useConsentNames(owner?.org_id ?? '', owner?.project_id ?? '', listsKeys);
   const approve = useSensitiveMutation({
     mutationFn: async (strategy: 'factor' | 'oidc') => {
       const code = totp;
@@ -252,7 +252,7 @@ export function CLIReauth() {
               </p>
             )}
             <EnvironmentList environments={transaction.data.environments} />
-            {(disclosure && transaction.data.purpose !== 'mint' && transaction.data.purpose !== 'access') || developerCredential ? (
+            {listsKeys ? (
               <ConsentKeys keys={names.keys(transaction.data.key_ids)} />
             ) : null}
             {noProof ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {requiresPasskey ? 'This policy requires an enrolled passkey.' : 'Provider sign-in alone cannot authorise this operation.'}</Alert> : null}

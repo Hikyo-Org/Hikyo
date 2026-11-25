@@ -152,6 +152,16 @@ describe('CLI authorization names', () => {
     } finally { await unmount(); }
   });
 
+  it.each(['mint', 'access'])('reads no key catalogue for a %s handoff, so a pending one cannot hold Authorize', async (purpose) => {
+    // The gate never releases: were /keys read, Authorize would stay disabled.
+    route({ purpose, key_ids: [] }, {}, () => new Promise<void>(() => undefined));
+    const { container, unmount } = await render();
+    try {
+      expect(requested().some((path) => path.endsWith('/keys'))).toBe(false);
+      expect(authorize(container).disabled).toBe(false);
+    } finally { await unmount(); }
+  });
+
   it('looks names up once per project when the environments span projects, and still allows approval', async () => {
     route({ environments: [policy(consentIds.environment), policy('env_00000000-0000-4000-8000-0000000000ff', consentIds.org, 'prj_00000000-0000-4000-8000-0000000000ee')] });
     const { container, unmount } = await render();
