@@ -279,20 +279,25 @@ Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
 `ci-advisory-golangci` check still runs it on the pull request.
 
 Last, the hook runs the Go tests your push can affect, and only those
-(`scripts/ci/go-affected-test.sh`, which prints and runs the selection from
+(`scripts/ci/go-affected-test.sh`, which runs the selection from
 `scripts/ci/go-affected-packages.sh`; run the latter by hand with
 `scripts/ci/go-affected-packages.sh hikyo-upstream/main` in a checkout of the
-pushed commit). It selects packages with changed `.go` files, packages that embed
-a changed file (a migration `.sql` reaches `internal/store`), every package whose
-test build depends on one of those, and all packages when `go.mod` or `go.sum`
-changes. It runs them with `go test -p 2` in a temporary worktree at the pushed
-commit, `internal/app` and `internal/lint` alone afterwards, and takes unchanged
-results from the Go test cache. It prints the package count before running.
-PostgreSQL tests run only when `HIKYO_TEST_POSTGRES_DSN` is set; otherwise the
-hook says they are skipped. Tests that read repository files at runtime without
-embedding them are not detected, except for the few explicit paths listed in the
-selector; CI still runs the full suites. Set `HIKYO_PREPUSH_GOTEST=skip` to skip
-it for a WIP push.
+pushed commit). Every changed or deleted file counts for the nearest ancestor
+directory with Go files, so testdata and embedded files (a migration `.sql`
+reaches `internal/store`) select that package. The selection adds packages that
+embed a changed file, packages that no longer load, every package whose test
+build depends on one of those, and all packages when `go.mod` or `go.sum`
+changes. Docs-only and frontend-only pushes select nothing. The tests run with
+`go test -p 2` in a temporary worktree at the pushed commit (`-trimpath`, so the
+Go build cache hits across worktrees; the test result cache mostly does not,
+because it keys the mtimes of the files tests open and each push gets a new
+worktree). `internal/isolation` (18m timeout), `internal/app` (two runs, as in
+CI) and `internal/lint` run alone afterwards. `CI` is unset for the run, and the
+hook prints the package count first. PostgreSQL tests run only when
+`HIKYO_TEST_POSTGRES_DSN` is set; otherwise the hook says they are skipped.
+Tests that read repository files at runtime without embedding them are not
+detected, except for the few explicit paths listed in the selector; CI still runs
+the full suites. Set `HIKYO_PREPUSH_GOTEST=skip` to skip it for a WIP push.
 
 ## Continuous integration
 

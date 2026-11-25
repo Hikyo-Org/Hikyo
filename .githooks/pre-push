@@ -151,7 +151,10 @@ require_golangci() {
 # Run the Go tests the pushed changes can affect (scripts/ci/go-affected-test.sh)
 # for the pushed commit $1 against merge base $2, in a detached worktree at that
 # commit like require_golangci, with the commit's own script when it has one.
-# Exit 64 is the setup failing; any other non-zero code is a failing test.
+# Exit 64 is the setup failing, 130 an interrupt; any other non-zero code is a
+# failing test.
+# The selection runs inside the worktree, not before it: it needs `go list` at
+# the pushed commit, so a push that affects no package still checks one out.
 require_gotest() {
 	if git cat-file -e "$1:scripts/ci/go-affected-test.sh" 2>/dev/null; then
 		runner=scripts/ci/go-affected-test.sh
@@ -162,7 +165,8 @@ require_gotest() {
 	(
 		# shellcheck disable=SC2046 # a list of variable names
 		unset $(git rev-parse --local-env-vars)
-		# -trimpath: the fresh directory of every push hits the test cache of the last.
+		# -trimpath: the Go build cache then hits across the fresh directory of every
+		# push. The test result cache mostly does not (it keys the mtimes of opened files).
 		# shellcheck disable=SC2030,SC2031 # each subshell sets its own
 		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
 		export GOFLAGS
@@ -178,7 +182,9 @@ require_gotest() {
 		cd "$tmp" && "$runner" "$2" </dev/null
 	) || status=$?
 	[ "$status" -ne 0 ] || return 0
-	if [ "$status" -eq 64 ]; then
+	if [ "$status" -eq 130 ]; then
+		printf 'pre-push: the Go tests were interrupted\n' >&2
+	elif [ "$status" -eq 64 ]; then
 		printf 'pre-push: the Go tests could not start or finish their setup (worktree or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
 	else
 		printf 'pre-push: Go tests failed; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
@@ -224,7 +230,8 @@ while read -r local_ref local_oid remote_ref _remote_oid; do
 
 	# Any change can reach a Go test (an embedded file, go.mod); the selector
 	# decides, and prints nothing to run for a push that affects no package.
-	if [ -n "$(git diff --name-only "$merge_base" "$local_oid")" ]; then
+	changed=$(git diff --name-only "$merge_base" "$local_oid") || exit 1
+	if [ -n "$changed" ]; then
 		if [ "${HIKYO_PREPUSH_GOTEST:-}" = skip ]; then
 			printf 'pre-push: WARNING: skipping the affected Go tests for %s; CI still runs the full suites\n' "$local_ref" >&2
 		else

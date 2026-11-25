@@ -399,6 +399,7 @@ if lw_push other-bad:other-bad; then fail 'bad commit pushed from a linked workt
 grep -F 'reported issues' "$out" >/dev/null || fail 'linked-worktree refusal message missing'
 lw_push other-good:other-good || fail 'good commit pushed from a linked worktree was refused'
 [ "$(last 2)" = "$good_oid" ] || fail "linked-worktree push linted $(last 2), want $good_oid"
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$good_oid" ] || fail 'linked-worktree push did not run the go tests at the pushed commit'
 [ "$(marker)" = committed ] || fail "ran the $(marker) copy of the ratchet script, want the pushed commit's"
 # The lint tree is a fresh directory per push, and is gone afterwards.
 first_dir=$(last 3-)
@@ -471,6 +472,9 @@ expect_count gotest $((before + 1))
 echo 1 >"$logs/gotest-fail"
 if push gt; then fail 'a failing go test run was accepted'; fi
 grep -F 'Go tests failed' "$out" >/dev/null || fail 'go test failure message missing'
+echo 130 >"$logs/gotest-fail"
+if push gt; then fail 'an interrupted go test run was accepted'; fi
+grep -F 'Go tests were interrupted' "$out" >/dev/null || fail 'go test interrupt message missing'
 echo 64 >"$logs/gotest-fail"
 if push gt; then fail 'a go test setup failure was accepted'; fi
 grep -F 'could not start' "$out" >/dev/null || fail 'go test setup message missing'
