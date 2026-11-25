@@ -15,6 +15,8 @@ import {
   hasWhere,
   keyChoices,
   label,
+  machineRefusal,
+  machineWhereRefusal,
   narrowKeys,
   personName,
   PRESETS,
@@ -27,6 +29,7 @@ import {
   type Axis,
   type EnvItem,
   type KeyItem,
+  type MachineClass,
   type Rule,
   type World,
 } from './model.ts';
@@ -44,6 +47,10 @@ import { PermissionList } from './PermissionList.tsx';
  * `projects` are the projects this surface may name (one on a project's
  * Members page). What the server refuses is not offered: no "all projects",
  * and a permission the Where cannot carry is disabled with its reason.
+ *
+ * On Machine access the holder is a service account of class `machine` (D11):
+ * a permission its class may not hold is disabled with the reason, the Keys
+ * axis is not offered, and a workload rule lists its environments ("Only...").
  */
 export function RuleEditorDialog({
   world,
@@ -52,6 +59,7 @@ export function RuleEditorDialog({
   busy = false,
   showReach = true,
   failure = null,
+  machine,
   onSave,
   onRemove,
   onCancel,
@@ -60,6 +68,8 @@ export function RuleEditorDialog({
   rule: Rule;
   projects: readonly string[];
   busy?: boolean;
+  /** The holder's class when the holder is a service account. */
+  machine?: MachineClass;
   showReach?: boolean;
   failure?: string | null;
   onSave: (rule: Rule) => void;
@@ -68,10 +78,12 @@ export function RuleEditorDialog({
 }) {
   const [draft, setDraft] = useState(rule);
   const chosen = draft.projects === '*' ? projects : draft.projects;
-  const eff = effective(draft);
+  const eff = effective(draft, machine);
+  const saved = { ...draft, perms: eff };
   const where = hasWhere(draft);
-  const valid = eff.length > 0 && where;
-  const dropped = draft.perms.filter((id) => !availability(id, draft).ok);
+  const whereRefusal = machineWhereRefusal(draft, machine);
+  const valid = eff.length > 0 && where && whereRefusal === undefined;
+  const dropped = draft.perms.filter((id) => machineRefusal(id, machine) === undefined && !availability(id, draft).ok);
   const editing = rule.source.kind === 'rule';
   const unreadable = chosen.filter((p) => projectById(world, p)?.keys === null);
   const singleKeys = keyChoices(world, chosen, draft);
@@ -100,7 +112,7 @@ export function RuleEditorDialog({
           <Button type="button" disabled={busy} onClick={cancel}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" disabled={!valid || busy} aria-busy={busy ? true : undefined} onClick={() => onSave(draft)}>
+          <Button type="button" variant="primary" disabled={!valid || busy} aria-busy={busy ? true : undefined} onClick={() => onSave(saved)}>
             {busy ? 'Saving…' : 'Save'}
           </Button>
         </>
@@ -122,6 +134,7 @@ export function RuleEditorDialog({
           <>
             <AxisEditor<EnvItem>
               title="Environments"
+              modes={machine === 'workload' ? ['only'] : undefined}
               axis={draft.envs}
               onChange={(envs) => setDraft({ ...draft, envs })}
               choices={envChoices(world, chosen).map((c) => ({
@@ -135,28 +148,32 @@ export function RuleEditorDialog({
                 ),
               }))}
             />
-            <AxisEditor<KeyItem>
-              title="Keys"
-              axis={draft.keys}
-              onChange={(keys) => setDraft({ ...draft, keys })}
-              choices={folderChoices(world, chosen, draft).map((c) => ({ id: `folder:${c.folder}`, items: c.items, label: c.folder === '' ? '(no folder)' : <bdi>{c.folder}/</bdi> }))}
-            >
-              {unreadable.length > 0 ? (
-                <p className="access-hint">
-                  Key names in {unreadable.map((p) => projectName(world, p)).join(', ')} need See, which you do not hold there: its folders and keys cannot be picked
-                  here.
-                </p>
-              ) : null}
-              {singleKeys.length > 0 ? (
-                <Disclosure label={`Pick single keys (${singleKeys.length})`} className="access-picks">
-                  {singleKeys.map((item) => (
-                    <AxisChip<KeyItem> key={`${item.project}|${'key' in item ? item.key : ''}`} axis={draft.keys} items={[item]} onChange={(keys) => setDraft({ ...draft, keys })}>
-                      <KeyLabel world={world} item={item} />
-                    </AxisChip>
-                  ))}
-                </Disclosure>
-              ) : null}
-            </AxisEditor>
+            {machine !== undefined ? (
+              <AxisBox title="Keys" hint="A machine rule covers every key of its environments: key limits are for people." />
+            ) : (
+              <AxisEditor<KeyItem>
+                title="Keys"
+                axis={draft.keys}
+                onChange={(keys) => setDraft({ ...draft, keys })}
+                choices={folderChoices(world, chosen, draft).map((c) => ({ id: `folder:${c.folder}`, items: c.items, label: c.folder === '' ? '(no folder)' : <bdi>{c.folder}/</bdi> }))}
+              >
+                {unreadable.length > 0 ? (
+                  <p className="access-hint">
+                    Key names in {unreadable.map((p) => projectName(world, p)).join(', ')} need See, which you do not hold there: its folders and keys cannot be picked
+                    here.
+                  </p>
+                ) : null}
+                {singleKeys.length > 0 ? (
+                  <Disclosure label={`Pick single keys (${singleKeys.length})`} className="access-picks">
+                    {singleKeys.map((item) => (
+                      <AxisChip<KeyItem> key={`${item.project}|${'key' in item ? item.key : ''}`} axis={draft.keys} items={[item]} onChange={(keys) => setDraft({ ...draft, keys })}>
+                        <KeyLabel world={world} item={item} />
+                      </AxisChip>
+                    ))}
+                  </Disclosure>
+                ) : null}
+              </AxisEditor>
+            )}
           </>
         ) : null}
       </fieldset>
@@ -174,8 +191,9 @@ export function RuleEditorDialog({
         <PermissionList
           selected={draft.perms}
           onChange={(perms) => setDraft({ ...draft, perms })}
+          machine={machine}
           blocked={(id) => {
-            const a = availability(id, draft);
+            const a = availability(id, draft, machine);
             return a.ok ? undefined : a.why;
           }}
         />
@@ -184,9 +202,9 @@ export function RuleEditorDialog({
       <section className="access-summary" aria-label="Saves as">
         <h3 className="eyebrow">Saves as</h3>
         {valid ? (
-          <RuleSummary world={world} rule={draft} reach={showReach} />
+          <RuleSummary world={world} rule={saved} reach={showReach} />
         ) : (
-          <p className="access-summary__empty">{eff.length === 0 ? 'Tick at least one permission.' : 'Pick where this rule applies.'}</p>
+          <p className="access-summary__empty">{eff.length === 0 ? 'Tick at least one permission.' : !where ? 'Pick where this rule applies.' : whereRefusal}</p>
         )}
         {dropped.length > 0 && where ? <p className="access-hint">Left out until Where is wider: {dropped.map(label).join(', ')}.</p> : null}
         {valid && !eff.includes('read') && (eff.includes('reveal') || eff.includes('reveal-history')) ? (
@@ -199,7 +217,7 @@ export function RuleEditorDialog({
   );
 }
 
-function AxisBox({ title, hint, mode, children }: { title: string; hint: string; mode?: ReactNode; children: ReactNode }) {
+function AxisBox({ title, hint, mode, children }: { title: string; hint: string; mode?: ReactNode; children?: ReactNode }) {
   const headingId = useId();
   return (
     <div className="access-axis" role="group" aria-labelledby={headingId}>
@@ -221,12 +239,15 @@ function AxisChip<T extends EnvItem | KeyItem>({ axis, items, onChange, children
 
 function AxisEditor<T extends EnvItem | KeyItem>({
   title,
+  modes = ['all', 'only'],
   axis,
   choices,
   onChange,
   children,
 }: {
   title: string;
+  /** The ways this axis may be picked; one mode offers no choice. */
+  modes?: readonly Axis<T>['mode'][];
   axis: Axis<T>;
   choices: readonly { id: string; items: readonly T[]; label: ReactNode }[];
   onChange: (axis: Axis<T>) => void;
@@ -236,12 +257,18 @@ function AxisEditor<T extends EnvItem | KeyItem>({
   return (
     <AxisBox
       title={title}
-      hint="All, except… covers ones added later: tap to leave one out. Only… covers just what you tap."
+      hint={
+        modes.includes('all')
+          ? 'All, except… covers ones added later: tap to leave one out. Only… covers just what you tap.'
+          : 'Only… covers just what you tap: ones added later are not covered.'
+      }
       mode={
-        <ChoiceGroup legend="How to pick" layout="wrap">
-          <Radio name={group} label="All, except…" checked={axis.mode === 'all'} onChange={() => onChange(setMode(axis, 'all'))} />
-          <Radio name={group} label="Only…" checked={axis.mode === 'only'} onChange={() => onChange(setMode(axis, 'only'))} />
-        </ChoiceGroup>
+        modes.length > 1 ? (
+          <ChoiceGroup legend="How to pick" layout="wrap">
+            <Radio name={group} label="All, except…" checked={axis.mode === 'all'} onChange={() => onChange(setMode(axis, 'all'))} />
+            <Radio name={group} label="Only…" checked={axis.mode === 'only'} onChange={() => onChange(setMode(axis, 'only'))} />
+          </ChoiceGroup>
+        ) : undefined
       }
     >
       <div className="access-picks">

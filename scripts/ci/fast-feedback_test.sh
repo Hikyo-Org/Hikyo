@@ -26,7 +26,7 @@ commit_fixture() {
 }
 printf '# Fixture\n' >README.md
 printf '26.7.0\n' >.nvmrc
-printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
+printf '{"packageManager":"pnpm@12.21.0"}\n' >package.json
 printf 'module example.invalid/feedback-fixture\n\ngo 1.27.2\n' >go.mod
 # Keep the imported library unchanged relative to base: changed-file linting
 # must follow it even when it is not listed as a changed ShellCheck input.
@@ -171,7 +171,7 @@ refuse 'client dependencies missing'
 mkdir -p clients/ts/node_modules web/node_modules "$work/bin"
 cat >"$work/bin/pnpm" <<'EOF'
 #!/bin/sh
-if [ "$1" = --version ]; then printf '11.24.0\n'; exit 0; fi
+if [ "$1" = --version ]; then printf '12.21.0\n'; exit 0; fi
 if [ "$4" = test ]; then printf 'frontend unit failure\n'; exit 43; fi
 EOF
 chmod +x "$work/bin/pnpm"

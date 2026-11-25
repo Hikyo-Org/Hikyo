@@ -95,6 +95,8 @@ var SpecYAML []byte
 // `credential_valid_until_lower_bound` flag (#148).
 // Revision 20 adds the OIDC provider's directory lifecycle settings (profile,
 // write-only signing secret, endpoint URL) and the signed lifecycle event route.
+// It also adds, to a scheduled rotation, the fixed-word `halt_reason`, its
+// `last_run` and the `owed_drop_runs` counts (#148).
 const Revision = 20
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1

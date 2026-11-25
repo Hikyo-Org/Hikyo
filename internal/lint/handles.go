@@ -1,18 +1,21 @@
 package lint
 
 import (
+	"cmp"
 	"fmt"
 	"go/token"
 	"go/types"
+	"slices"
+	"strconv"
 	"strings"
 
-	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/analysis"
 )
 
 // driverHandles are the store's raw driver-handle accessors. They exist for
 // the transaction package (which must speak to the engine to open a
 // transaction) and the test harnesses (fixture seeding, query-count
-// instrumentation) — Go has no friend packages, so the accessors are
+// instrumentation): Go has no friend packages, so the accessors are
 // exported and this check is what keeps them narrow.
 //
 // Without it the whole chokepoint is bypassable in one line: any package
@@ -25,8 +28,8 @@ var driverHandles = map[string]bool{
 	"BeginSQLite": true, "BeginPostgres": true, "BeginPostgresSerialized": true,
 }
 
-// driverTypes are the concrete engine handles. Naming one at all — in a
-// signature, a field, a local, or a locally-declared interface method — is
+// driverTypes are the concrete engine handles. Naming one at all (in a
+// signature, a field, a local, or a locally-declared interface method) is
 // what the accessor check alone cannot see: a package can declare
 // `interface{ PG() *pgxpool.Pool }`, accept a *store.DB through it, and call
 // PG() on the LOCAL interface, so the selector never resolves to the store's
@@ -83,100 +86,109 @@ var generatedImporters = map[string]bool{
 	Module + "/internal/boundary":        true, // names them as strings only
 }
 
-// CheckDriverHandles enforces both allowlists across the module, test
-// packages included — a bypass in a test is still a bypass of the property
-// the tests exist to prove.
-func CheckDriverHandles(pkgs []*packages.Package) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if !strings.HasPrefix(p.PkgPath, Module+"/") && p.PkgPath != Module {
+// Handles is the handles analyzer. Imports are judged from the
+// files of the variant being analyzed.
+var Handles = &analysis.Analyzer{
+	Name: "handles",
+	Doc:  "raw driver handles and generated query packages stay inside their allowlists",
+	Run: func(pass *analysis.Pass) (any, error) {
+		if !inModule(pass.Pkg.Path()) {
+			return nil, nil
+		}
+		runHandles(pass)
+		return nil, nil
+	},
+}
+
+func runHandles(pass *analysis.Pass) {
+	base := pass.Pkg.Path()
+	info := pass.TypesInfo
+	for ident, obj := range info.Uses {
+		if obj.Pkg() == nil || obj.Pkg().Path() != Module+"/internal/store" || obj.Name() != "openConfigured" {
 			continue
 		}
-		base := strings.TrimSuffix(p.PkgPath, ".test")
-		if p.TypesInfo == nil {
+		if !permittedRawConstructor(pass.Fset, base, ident.Pos()) {
+			pass.Reportf(ident.Pos(), "private datastore construction is confined to explicit runtime, preparation and recovery openers")
+		}
+	}
+	for ident, obj := range info.Uses {
+		if permittedHandlePosition(pass.Fset, base, ident.Pos()) {
 			continue
 		}
-		for ident, obj := range p.TypesInfo.Uses {
-			if obj.Pkg() == nil || obj.Pkg().Path() != Module+"/internal/store" || obj.Name() != "openConfigured" {
-				continue
-			}
-			at := p.Fset.Position(ident.Pos())
-			if !permittedRawConstructor(p, base, ident.Pos()) {
-				findings = append(findings, fmt.Sprintf("handles: %s: private datastore construction is confined to explicit runtime, preparation and recovery openers", at))
-			}
-		}
-		{
-			for ident, obj := range p.TypesInfo.Uses {
-				if permittedHandlePosition(p, base, ident.Pos()) {
-					continue
-				}
-				fn, ok := obj.(*types.Func)
-				if !ok || !driverHandles[fn.Name()] {
-					continue
-				}
-				if fn.Pkg() == nil || fn.Pkg().Path() != Module+"/internal/store" {
-					continue
-				}
-				sig, ok := fn.Type().(*types.Signature)
-				if !ok || sig.Recv() == nil {
-					continue
-				}
-				findings = append(findings, fmt.Sprintf(
-					"handles: %s: %s calls store.DB.%s — a raw driver handle bypasses the proof boundary entirely",
-					p.Fset.Position(ident.Pos()), base, fn.Name()))
-			}
-			// Naming a driver type at all: catches the structural-interface
-			// and type-assertion escapes, where the accessor call resolves to
-			// a locally declared method rather than the store's.
-			reported := map[string]bool{}
-			report := func(pos token.Pos, named string) {
-				if named == "" || permittedHandlePosition(p, base, pos) || permittedGuardedTransaction(p, base, pos, named) {
-					return
-				}
-				at := p.Fset.Position(pos)
-				key := named + "@" + at.String()
-				if reported[key] {
-					return
-				}
-				reported[key] = true
-				findings = append(findings, fmt.Sprintf(
-					"handles: %s: %s names driver type %s — only the transaction boundary and the harnesses may hold engine handles",
-					at, base, named))
-			}
-			for ident, obj := range p.TypesInfo.Defs {
-				if obj == nil || ident == nil {
-					continue
-				}
-				report(ident.Pos(), mentionsDriverType(obj.Type(), map[types.Type]bool{}))
-			}
-			// Declarations alone miss types that exist only as expressions:
-			// an inline type assertion, and a generic instantiation like
-			// holder[*pgxpool.Pool] whose declaration carries only the type
-			// parameter. Expression types close both.
-			for expr, tv := range p.TypesInfo.Types {
-				if expr == nil {
-					continue
-				}
-				report(expr.Pos(), mentionsDriverType(tv.Type, map[types.Type]bool{}))
-			}
-		}
-		if generatedImporters[base] {
+		fn, ok := obj.(*types.Func)
+		if !ok || !driverHandles[fn.Name()] {
 			continue
 		}
-		for imp := range p.Imports {
-			if generatedPackages[imp] {
-				findings = append(findings, fmt.Sprintf(
-					"handles: %s imports %s — generated queries take chain parameters as plain values; go through the store's binding layer",
-					base, imp))
+		if fn.Pkg() == nil || fn.Pkg().Path() != Module+"/internal/store" {
+			continue
+		}
+		sig, ok := fn.Type().(*types.Signature)
+		if !ok || sig.Recv() == nil {
+			continue
+		}
+		pass.Reportf(ident.Pos(),
+			"%s calls store.DB.%s: a raw driver handle bypasses the proof boundary entirely", base, fn.Name())
+	}
+	// Naming a driver type at all: catches the structural-interface
+	// and type-assertion escapes, where the accessor call resolves to
+	// a locally declared method rather than the store's.
+	type naming struct {
+		pos   token.Pos
+		named string
+	}
+	var namings []naming
+	collect := func(pos token.Pos, named string) {
+		if named == "" || permittedHandlePosition(pass.Fset, base, pos) || permittedGuardedTransaction(pass.Fset, base, pos, named) {
+			return
+		}
+		namings = append(namings, naming{pos, named})
+	}
+	for ident, obj := range info.Defs {
+		if obj == nil || ident == nil {
+			continue
+		}
+		collect(ident.Pos(), mentionsDriverType(obj.Type(), map[types.Type]bool{}))
+	}
+	// Declarations alone miss types that exist only as expressions:
+	// an inline type assertion, and a generic instantiation like
+	// holder[*pgxpool.Pool] whose declaration carries only the type
+	// parameter. Expression types close both.
+	for expr, tv := range info.Types {
+		if expr == nil {
+			continue
+		}
+		collect(expr.Pos(), mentionsDriverType(tv.Type, map[types.Type]bool{}))
+	}
+	// One diagnostic per line and type, at its first position, so the output
+	// does not depend on map iteration order.
+	slices.SortFunc(namings, func(a, b naming) int { return cmp.Compare(a.pos, b.pos) })
+	reported := map[string]bool{}
+	for _, n := range namings {
+		at := pass.Fset.Position(n.pos)
+		key := fmt.Sprintf("%s@%s:%d", n.named, at.Filename, at.Line)
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		pass.Reportf(n.pos,
+			"%s names driver type %s: only the transaction boundary and the harnesses may hold engine handles", base, n.named)
+	}
+	if generatedImporters[base] {
+		return
+	}
+	for _, file := range pass.Files {
+		for _, spec := range file.Imports {
+			if imp, _ := strconv.Unquote(spec.Path.Value); generatedPackages[imp] {
+				pass.Reportf(spec.Pos(),
+					"%s imports %s: generated queries take chain parameters as plain values; go through the store's binding layer", base, imp)
 			}
 		}
 	}
-	return findings
 }
 
-// mentionsDriverType reports the first driver type reachable from t —
-// through signatures, interface methods, struct fields, and the usual
-// composite types — or "" if none is.
+// mentionsDriverType reports the first driver type reachable from t
+// (through signatures, interface methods, struct fields, and the usual
+// composite types), or "" if none is.
 func mentionsDriverType(t types.Type, seen map[types.Type]bool) string {
 	if t == nil || seen[t] {
 		return ""

@@ -41,8 +41,13 @@ An access rule gives one person one capability on a narrower *where* than a
 grant can: a list of projects, then every environment except some (or only
 some), then every key except some folders or keys (or only those). An
 exception narrows only its own rule; access is the union of everything a
-person's grants and rules reach, and there are no deny rules. Rules are for
-people; machines keep their grants.
+person's grants and rules reach, and there are no deny rules. A workload or
+automation machine identity may also hold a rule, with the same command and the
+machine's principal id: within its class's capability allowlist, in its owning
+project only, and never narrowed by keys or folders. A machine rule that makes
+plaintext newly reachable also needs `manage-identities` on the project, the
+matching disclosure capability and a recent reauthentication over each newly
+reachable environment; the CLI prompts for it and retries.
 
 ```bash
 hikyo access rule add --project <project-id> \
@@ -234,7 +239,17 @@ hikyo access request emergency --env <env-id> --capability reveal --reason "outa
 ```
 
 `emergency` needs a current reauthentication ceremony bound to the environment
-and a reason, and it is audited. `--duration` defaults to 1h, capped by the
+and a reason, and it is audited. The command asks for your authenticator code
+where the environment's window allows one. Where it does not (window 0, a
+protected environment, or no authenticator enrolled), it opens your browser to
+approve the access with a passkey, then continues; the approval covers that
+environment and no keys. If the browser cannot be opened the command fails, and when
+you chose the browser (`--approve-in-browser` or `reauth.method`) where a code would
+have worked, it refuses up front on a host other than macOS or Windows with none of `DISPLAY`,
+`WAYLAND_DISPLAY` and `BROWSER` set. At a 0-window or protected environment the
+handoff is the only way, so it is not refused up front there. The designation
+as a bypasser is checked when the access is taken, not when the browser approval
+is offered. `--duration` defaults to 1h, capped by the
 policy's `--max-duration`; an explicit longer duration is refused. It never
 changes the policy.
 

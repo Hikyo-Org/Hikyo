@@ -163,11 +163,12 @@ func TestGroupIndexPhaseReadsCatalogueAndPresenceOnce(t *testing.T) {
 		keys: []store.CatalogueKey{{ID: "key_a", RequiredMode: string(schema.PresenceNone), ForbiddenMode: string(schema.PresenceNone)}},
 	}
 	phase := &groupIndexPhase{}
-	first, err := phase.snapshot(t.Context(), cat, nil)
+	proof := realProof(t)
+	first, err := phase.snapshot(t.Context(), cat, proof)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := phase.snapshot(t.Context(), cat, nil)
+	second, err := phase.snapshot(t.Context(), cat, proof)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestGroupMembershipIndexDoesNotReadPresence(t *testing.T) {
 	cat := &countingGroupIndexCatalogue{
 		keys: []store.CatalogueKey{{ID: "key_a", GroupID: "group_a"}},
 	}
-	index, err := loadGroupMembershipIndex(t.Context(), cat, nil)
+	index, err := loadGroupMembershipIndex(t.Context(), cat, realProof(t))
 	if err != nil {
 		t.Fatal(err)
 	}

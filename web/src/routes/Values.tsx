@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { generatePath, Link, useParams } from "react-router";
 
 import { isDemo, demoRole, demoCanEdit } from '../demo/config.ts';
@@ -31,6 +31,7 @@ import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } fro
 import { useCeremonyTask, type CeremonyTask } from "./useCeremonyTask.ts";
 import { plural } from '../app/duration.ts';
 import { Sep } from '../ui/Sep.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { dotted } from './dotted.tsx';
 
 /**
@@ -120,6 +121,7 @@ function ValuesSurface({
   project: string;
   environment: string;
 }) {
+  const valuesCaptionId = useId();
   const env = useMemo<EnvRef>(
     () => ({ org, project, environment }),
     [org, project, environment],
@@ -338,7 +340,7 @@ function ValuesSurface({
   }, []);
 
   const recordDisclosures = useCallback(
-    (entries: Array<{ id: string; name: string; value: string }>) => {
+    (entries: Array<{ id: string; name: string; value: string }>, recorded = true) => {
       const revealedAt = Date.now();
       setNow(revealedAt);
       const until = revealedAt + REMASK_MS;
@@ -364,7 +366,7 @@ function ValuesSurface({
           message: `${subject}: ${verb} in ${String(REMASK_MS / 1000)} seconds`,
         }));
       }
-      noteDisclosure(entries.map((e) => e.name));
+      if (recorded) noteDisclosure(entries.map((e) => e.name));
     },
     [env.environment, noteDisclosure, setDisclosed],
   );
@@ -392,14 +394,16 @@ function ValuesSurface({
               setRefusal("The server disclosed no value for that key.");
               return;
             }
+            // The server classifies by key: a config response wrote no disclosure.
+            const recorded = fresh.classification === "secret";
             if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
-              noteDisclosure([fresh.name]);
+              if (recorded) noteDisclosure([fresh.name]);
               setRefusal(FOCUS_REMASK_NOTICE);
               return;
             }
             recordDisclosures([
               { id: fresh.key_id, name: fresh.name, value: fresh.value },
-            ]);
+            ], recorded);
           });
         } catch (err) {
           ceremony.commit(task, () => {
@@ -489,10 +493,12 @@ function ValuesSurface({
             });
             return;
           }
-          if (!ceremony.commit(task, () => noteDisclosure([fresh.name]))) {
+          // The server classifies by key: a config response wrote no disclosure.
+          const recorded = fresh.classification === "secret";
+          if (!ceremony.commit(task, () => { if (recorded) noteDisclosure([fresh.name]); })) {
             return;
           }
-          const message = await writeExpiringClipboard(fresh.value, true, () => ceremony.isCurrent(task));
+          const message = await writeExpiringClipboard(fresh.value, recorded, () => ceremony.isCurrent(task));
           ceremony.commit(task, () => setNotice(message));
         } catch (err) {
           ceremony.commit(task, () => setRefusal(disclosureRefusalText(err)));
@@ -622,9 +628,9 @@ function ValuesSurface({
         </Button>
       </div>
 
-      <div className="table-scroll">
+      <TableScroll aria-labelledby={valuesCaptionId}>
       <table className="values__table">
-        <caption className="visually-hidden">
+        <caption id={valuesCaptionId} className="visually-hidden">
           Values in this environment. Secret values are masked until disclosed.
         </caption>
         <thead>
@@ -713,7 +719,7 @@ function ValuesSurface({
                         onClick={() => doCopy(cell)}
                         aria-label={
                           secret
-                            ? `Copy ${cell.name} (audited disclosure)`
+                            ? `Copy ${cell.name} (audited if still secret)`
                             : `Copy ${cell.name}`
                         }
                       >
@@ -737,7 +743,7 @@ function ValuesSurface({
           })}
         </tbody>
       </table>
-      </div>
+      </TableScroll>
 
       <section className="values__audit" aria-label="Disclosure records">
         <h2>Recorded this session</h2>

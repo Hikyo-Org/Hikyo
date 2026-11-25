@@ -87,7 +87,13 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   already halts the rotation
 - [x] S2b-2 run-level `published_versions_changed` hold release: option A (status only, as
   built), accepted as recommended
-- [ ] S3 SPA status surface, parity flip
+- [x] S3 SPA status surface (merged); parity flip of the mutating rows to #1440 and the
+  halt reason and owed-drop summary in S4 (below)
+- [x] S2 Kubernetes operator e2e (`k8se2e`): `TestK8sOperator/credential_rotation_rollout`
+  (`internal/isolation/k8s_operator_rotation_e2e_test.go`) runs a rotation through the real
+  executor and publish path, then asserts the operator-managed Secret carries the rotated
+  credential and the opted-in Deployment rolled (new stamp, generation and ReplicaSet,
+  ready pod) while a bystander is untouched. Runs in the CI `k8s-e2e` job
 
 ## Decisions taken in S1 (divergences from the issue handoff flagged)
 
@@ -402,7 +408,7 @@ transaction. It is never stored, not even sealed. Order:
 | Keys serve the superseded value again before the drop (restore or manual publish) | `revoking`, assertion fails | `revoke_refused` (`published_versions_changed`), no drop, loud |
 | During `DropRole` | `revoking`, effect INTENT only | re-probe `RoleStatus`, settle |
 | Fence-losing worker after `CreateRole` (multi-node takeover) | candidate role exists, run `failed` or `quarantine` | candidate reconciler re-probes `RoleStatus(candidate_handle)` and drops it (below) |
-| Key restored after the restore assertion but before the drop (TOCTOU) | `revoking`, assertion passed | the drop proceeds; the window is the span between the assertion read and the provider call, bounded by one provider deadline, and is accepted: a restore stages a new revision, and the role was already past its overlap |
+| Key restored after the restore assertion but before the drop (TOCTOU) | `revoking`, assertion passed | the drop proceeds; the window is the span between the assertion read and the provider call, bounded by one provider deadline, and is accepted: a restore stages a new revision, and the role was already past its overlap. Since S4 round 1 the assertion is read before `LoadSupersededRole` and the provider open, so the gap between that read and the drop is slightly wider (local steps only: a store read and a provider open). A remote keyring would need a re-read after the open |
 | Run abandoned past publish (`--abandon`) | `quarantine`, `published_revision` set, superseded role may be live | revoke-obligation loop drops `superseded_handle` after the overlap deadline (below); a run abandoned while still `published` gets abandon time + delay (note 38) |
 
 **`superseded_handle` is derived across rotations.** The role being superseded is the
@@ -1598,19 +1604,181 @@ unchanged (the restore assertion guards them) and runs past their publish still 
 - The audit coverage test lacked a `rotation.run_now` emitter (a gap from S2b-1); the
   executor audit lifecycle now issues one run-now.
 
-## S3 as built (browser status surface): open owner decisions
+## S3 as built (browser status surface): owner decisions (resolved in S4)
 
-- **`halt_reason` is not on the wire (open owner decision).** The server stores a
-  halt reason (migration 00091) but neither `CredentialRotation` nor any CLI output
-  carries it, although this handoff expected `show` and `list` to. The S3 tab and the
-  user docs therefore say a rotation is halted and not why. Options: A) add
-  `halt_reason` (fixed words) to `CredentialRotation` and the CLI, recommended;
-  B) keep it audit-only and leave the docs as corrected.
-- **No last result or owed-drop summary on the list.** An owed drop appears only after
-  a rotation's runs are opened. Option: a `last_run` or `owes_drop` summary on
-  `CredentialRotation`.
-- The six mutating rotation rows in `api/parity.yaml` stay `{issue: 148}`; the owner
-  decides their parity class.
+- **`halt_reason` was not on the wire.** Resolved, option A: S4 adds it as fixed words to
+  `CredentialRotation`, `hikyo rotation list` and `show`, and the browser.
+- **No last result or owed-drop summary on the list.** Resolved, option A: S4 adds
+  `last_run` and the owed-drop counts to `CredentialRotation`.
+- The six mutating rotation rows in `api/parity.yaml` now point at #1440, "Management
+  WebUI for scheduled credential rotation", which carries the management surface.
+
+## S4 as built (halt reason, last run and owed-drop summary)
+
+API revision stays 20: it is the in-flight revision, shared with the OIDC lifecycle
+settings, so `api/spec.go` appends a sentence to the revision 20 comment and no revision
+is cut. Additive only: every new `CredentialRotation` property is a response
+property, and `halt_reason` is an open enum (`x-extensible-enum`), so the freeze check
+needs no allowance. The `halt_reason` column (migration 00091) existed; review round 1
+added one index, migration 00096 (below).
+
+- **`halt_reason`.** A fixed word, `retries_exhausted`, `authority_lost`, `gate_failed`
+  (the words the executor writes) or `unknown`. The store keeps the raw column text;
+  `service.rotationHaltWord` maps anything else (NULL, a legacy value, free text) to
+  `unknown`, and a rotation that is not halted carries none, so no provider text or
+  secret can reach the wire. The CLI prints a `HALT REASON` column, and a `HALTED` line
+  on stderr with a sentence per word. The browser puts the same sentence in the halted
+  notice and on the row. A word a client does not know is printed quoted, not
+  interpreted. The sentences live in three places; a web test keeps the browser equal to the CLI source:
+  `haltReasonSentence` (`internal/cli/credential_rotation.go`), `HALT_SENTENCES`
+  (`web/src/api/rotations.ts`) and `rotation.mdx`.
+- **`last_run`.** The newest run of the rotation (id, phase, `error_code`, `phase_at`),
+  absent when it never ran. `RotationLastRuns` reads it for a page as one correlated probe
+  per requested rotation, newest by `(started_at, id)` through `rotation_runs_rotation`
+  (checked on 100,000 runs of one rotation: SQLite answers it in microseconds, the sort
+  reads only the first group of equal start times). It equals the first row of the runs
+  list (newest by id) because a run id is a time-ordered UUIDv7 made at the instant the
+  same clock stamps `started_at`, and a rotation has at most one open run; a test on runs
+  the executor started asserts the two agree. Reviewed pin in
+  `internal/lint/testdata/reviewed_pins.json`.
+- **Owed-drop definition (single source).** A run owes a drop iff its `phase` is
+  `revoke_refused` or `quarantine`, whatever its error code. It lives in
+  `RotationOwedDropCounts` (both engine query files, one grouped aggregate per page),
+  and agrees with the CLI `noteOwedRuns` (`internal/cli/credential_rotation.go`), the
+  browser `owesDrop` (`web/src/api/rotations.ts`) and the
+  `hikyo_rotation_runs_{quarantined,revoke_refused}` gauges. An isolation test checks that
+  the summary equals the count of the runs list on both engines, including a deleted rotation
+  and a restore hold.
+- **`owed_drop_runs` and `owed_drop_runs_versions_changed`.** Two counts, never a boolean.
+  The second is the subset refused as `published_versions_changed`: the keys may serve
+  that role again, so no surface says to drop it. The CLI rotation-level `ATTENTION` line,
+  `owedSummaryText` and the row badge read "do NOT drop" and "Do not drop: restore"
+  whenever the second count is above zero, and otherwise point at
+  `hikyo rotation runs <rotation>` without repeating the per-run text. The S3 strings
+  (`owedRunText`, `restoreHoldText`, `noteOwedRuns`, `noteRestoreHold`) are unchanged.
+  The browser stays status only: no mutating button.
+- **No N+1, and not on the executor's path.** The summary is a response concern.
+  `RotationReader.Get`, `List` and every mutation return a record without it, so the
+  executor's gates and existence checks pay nothing. `RotationReader.Summarize` fills a
+  slice with two reads whatever its length; the service calls it for List after trimming
+  the page to its limit, for Get, and for the SetState and ReleaseHold responses.
+  `internal/store/rotation_summary_cost_test.go` counts the reads.
+- **Parity.** `createRotation`, `deleteRotation`, `pauseRotation`, `resumeRotation`,
+  `releaseRotationHold` and `runRotationNow` are `{issue: 1440}` in `api/parity.yaml`;
+  `check-parity-issues.sh` accepts it (#1440 open). `listRotations`, `showRotation` and
+  `listRotationRuns` stay `webui: machine-access`.
+
+### Review rounds (S4)
+
+Round 1 (two independent reviews, Security/data and Standards/Spec). Every item was fixed at
+its root; nothing was deferred.
+
+- **H1 (safety).** In `revoke()` the restore assertion (a store read) now runs before the
+  provider is opened. A transient provider failure, or a missing superseded role, on a
+  run already held as `published_versions_changed` keeps that code, and a restore that
+  follows a `role_owns_objects` refusal is detected on the next visit. Tests in
+  `internal/isolation/rotation_executor_restore_retry_test.go`. The summary never says
+  "Owes a drop" plainly when the run code is `published_versions_changed` or a restore
+  hold is on; the rotation-level CLI line and browser notice carry the per-run key
+  check ("check that neither key serves that role, because a revision restore can put it
+  back").
+- **M1 (cost).** See "No N+1" above. Migration 00096 (`rotation_runs_owed`, a partial
+  index on `(org_id, project_id, environment_id, rotation_id)` for phases
+  `revoke_refused` and `quarantine`) makes the owed counts and the deleted-rotation
+  probe read only those runs. Without it SQLite chose `rotation_runs_minter` and read
+  every run of the environment. Both engines, additive;
+  `internal/buildcompat/development.json` regenerated against PostgreSQL 18. **Re-check
+  the migration number before merge**: 00096 was the next free number on `origin/dev`
+  when it was added.
+- **M2 (deleted rotations).** `RotationList` keeps a disabled rotation when it owns a
+  `revoke_refused` or `quarantine` run (`EXISTS`, same chain), still in id order, so
+  the default browser list shows it with `deleted` in its state badge, and since round 2
+  the default CLI table prints `deleted` in its STATE cell too (round 1 said "marked
+  deleted", which was true only of the CLI `ATTENTION` line). The owed-drop notice and
+  count stay on it.
+- **M3.** The OpenAPI, `rotation.mdx` and this handoff say `owed_drop_runs` counts the runs
+  that need an operator (`revoke_refused`, `quarantine`); a run still in flight owes a
+  drop the executor carries out. The definition did not change.
+- **M4.** `unknown` has its own sentence in Go, TypeScript and `rotation.mdx`; "does not
+  know" is only for a word no client recognises. A web test keeps all three equal.
+- **L1.** A run's `error_code` reaches the summary and the runs list only as a fixed word
+  (the executor's codes and `abandoned`), else `unknown`.
+- **L2.** The browser looks halt words up with `Object.hasOwn`, so `toString` is unrecognised.
+- **L3.** The CLI table and the `HALTED` line print the halt reason through one helper.
+- **L4.** `rotation.mdx` scopes "never a yes or no" to the CLI; the browser badge is a yes/no
+  and its notice carries the count.
+- **L5.** Tests for cross-org, project, environment and rotation reads of the owed counts,
+  and for the counts in SetState and ReleaseHold responses.
+
+Round 2 (two independent reviews of 9b8a104dc, cf58e58a7 and d12fc352c). Final fix round.
+
+- **H-1 and M-1 (one root cause: the do-not-drop signal lived in a column other writers
+  replace).** A run's `last_error='published_versions_changed'` is what tells every
+  reader "a restore refused this drop, the keys may serve the role again". Two writers
+  replaced it: `extendDelivered` (an `ExtendRole` failure wrote `extend_failed` on the
+  refused run, so the next revoke never re-read the assertion), `AbandonOpenRuns`
+  (wrote `abandoned`, turning a restore refusal into a plain quarantine); deleting a
+  rotation clears its `restore_hold`, so the run's code is the only record left. Design: **the refusal is sticky in the store, no new column and
+  no migration** (00096 is unchanged). `RotationRtSettleRun` keeps the stored
+  `last_error` when the stored value is `published_versions_changed`, the stored phase
+  and the new phase are both `revoke_refused` or `quarantine`, and the settle did not
+  carry `RestoreChecked`. Only `revoke()` sets `RestoreChecked`, after a fresh
+  `RestoreAssertion` read or for a role that has expired (there the revoke settle and
+  `finish()` also set it after a failed read, which is safe: `finish` always ends in
+  `done` on that path), so only a re-read or an expired role can clear or replace the code.
+  `RotationAbandonOpenRuns` keeps it in a `CASE`. A restore refusal now survives an
+  extend outage, an abandon and a deleted rotation, and clears itself once the
+  assertion holds again (a drop then follows). A dedicated column was rejected: it
+  would need a migration, a backfill and a second source of truth for the same fact.
+  Tests (both engines): `TestRotationRestoreRefusalSurvivesExtendOutage`,
+  `TestRotationAbandonKeepsTheRestoreRefusal`,
+  `TestRotationRestoreRefusalClearsOnceTheAssertionHoldsAgain` and `...OnQuarantine...`.
+  The extend-outage and abandon tests guard stickiness: they fail when the CASE is
+  reverted (checked on both engines). The two `...ClearsOnce...` tests guard liveness
+  only: they fail if `RestoreChecked` is never set, so a refusal could never clear.
+- **Writer audit** (every writer of `rotation_runs.phase` and `last_error` that can
+  touch a `revoke_refused` or `quarantine` run):
+
+  | Writer | Verdict |
+  | --- | --- |
+  | `RotationRtInsertRun` | new run, phase `minting`: not applicable |
+  | `RotationRtClaimRun` | writes attempt and lease only, not `last_error`: safe |
+  | `RotationRtSettleRun` | the one place the rule lives (see above) |
+  | `revoke()` `hold(...)` (restore refusal, provider unavailable) | `RestoreChecked: true` after a fresh read: may set or clear, correct |
+  | `revoke()` revoking settle and `finish()` | `RestoreChecked: true`: clear the code on the way to `done`, correct |
+  | `extendDelivered` (success, failure, skip, held skip) | no `RestoreChecked`: refused code kept (was H-1) |
+  | `settleDrop` callers, `confirmAbsent`, failed rollbacks, `finishFailed` | move runs that are not refused or quarantined, or carry no `pvc`: unaffected |
+  | `haltClosing`, `haltDue`, wake and the reconciler's drop-candidate settle | keep the run's own `LastError`, or act on `minting`/`minted` runs: unaffected |
+  | `RotationAbandonOpenRuns` | keeps `pvc`, else `abandoned` (was M-1) |
+  | `RotationSetState(disabled)` | writes the rotation row only (it clears `restore_hold`); the run's code stays, so the deleted rotation keeps its warning |
+  | release-hold | writes `restore_hold` only: unaffected |
+  | restore paths | write the hold and revisions, never a run: unaffected |
+- **L-1.** The assertion read now runs before `LoadSupersededRole` and the provider open
+  (note on the TOCTOU row above).
+- **L-2.** A transient assertion read error no longer blocks settling an expired role;
+  the error is handled when the role has expired (test with `RestoreAssertionFault`).
+- **L-3.** The `RotationList` query comment says it is the environment delete's read of
+  live rotations; the API's default list uses the owed-aware query.
+- **L-4.** The CLI list prints `deleted` in the STATE cell for a deleted rotation.
+- **L-5.** A table test ties every `rotCode*` constant to the fixed error words (service)
+  and the CLI's word list to the executor's constants.
+- **L-6 and Low 3.** Key names and error codes break only after an underscore (`<wbr>`),
+  `published_versions_changed` never splits mid-word; stories and e2e check a 45 character
+  key name at 1280, 860 and 390 (name inside its cell, no sideways scroll).
+- **M-A.** `rotation.mdx` now says a deleted rotation that owes a drop is listed by default,
+  the state word is `deleted` in the CLI and browser, the checkbox is "Include all
+  deleted rotations", and "Do not drop: restore" also covers a restore hold.
+- **Low 5 to 8.** The CLI HALT REASON cell follows `State==halted` through one helper; run
+  phases and codes print bare when known and quoted otherwise; the halt reason field reads
+  `retries_exhausted: the retry window ran out`.
+- **00096.** Still the next free migration after the rebase onto origin/dev (6d8db0f4d),
+  `development.json` regenerated. Check again before merge.
+
+### Left after S4
+
+- The management WebUI for the mutating verbs is #1440, built: see `1440-rotation-webui.md`.
+- Containment ledger B is still not built (see "Incident containment").
+- Remaining owner items from earlier slices are unchanged; S4 opened none.
 
 ## S2 checklist (carried forward from review)
 

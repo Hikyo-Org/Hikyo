@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
 const retirementHistoryPages = 20
@@ -71,6 +73,7 @@ func (c *controller) retirementHistoryQuery(head, after string, first int) strin
 func (c *controller) discoverRetirements(ctx context.Context, name string, e event) (targets retirementTargets, err error) {
 	scan := newRetirementDiscoveryScan()
 	defer func() {
+		err = scan.deadlineDiagnostic(err)
 		if reportErr := scan.report(c.diagnostics, err); reportErr != nil {
 			err = errors.Join(err, reportErr)
 		}
@@ -163,7 +166,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 					return retirementTargets{}, errors.New("incomplete retirement history check suite count")
 				}
 				candidates = append(candidates, commit.OID)
-				manySuites[commit.OID] = *commit.Suites.Total > retirementSuiteMargin
+				manySuites[commit.OID] = *commit.Suites.Total > checksuites.Margin
 			default:
 				return retirementTargets{}, errors.New("unknown aggregate retirement rollup state")
 			}
@@ -240,13 +243,6 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 	return targets, nil
 }
 
-const retirementSuitePages = 50
-const retirementUnfinishedSuites = 100
-
-// REST lists runs from only a commit's newest 1000 suites. The margin covers
-// suites added between the history count and that listing.
-const retirementSuiteMargin = 900
-
 var errRetirementCheckOverflow = errors.New("retirement check inventory exceeds its complete 1000-record budget; operator review required")
 
 // REST exposes each check's app identity without traversing a foreign app's
@@ -257,26 +253,30 @@ var errRetirementCheckOverflow = errors.New("retirement check inventory exceeds 
 //
 // A commit can hold more than 1000 completed records forever, and no backfill
 // lowers that count. REST also lists runs from only the newest 1000 check
-// suites, so manySuites (more than retirementSuiteMargin) makes that listing
+// suites, so manySuites (more than checksuites.Margin) makes that listing
 // partial however few records it shows. Either way, GraphQL finds the github-actions suites
 // holding unfinished latest runs (filtered server-side, so no foreign app is
 // traversed) and REST reads only those suites. Suite status cannot stand in:
 // GitHub reports a suite completed while a synthetic run in it is queued.
-// It also reports whether the suite scan, when run, saw more suites than the
-// margin, since the commit may have gained suites after its history count.
-func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string, manySuites bool) ([]check, bool, error) {
+func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string, manySuites bool) ([]check, error) {
 	var all []check
 	err := errRetirementCheckOverflow
 	if !manySuites {
 		all, err = c.retirementCheckInventory(ctx, head, fmt.Sprintf("commits/%s/check-runs?filter=latest", head))
+		if err == nil {
+			// Suites may have grown past the margin since the history count, leaving an
+			// older suite out of that listing, so the listing is no longer complete.
+			var count int
+			if count, err = checksuites.Count(ctx, c.suiteSource(), head); err == nil && count > checksuites.Margin {
+				err = errRetirementCheckOverflow
+			}
+		}
 	}
 	if errors.Is(err, errRetirementCheckOverflow) {
-		var suites int
-		all, suites, err = c.oversizedRetirementChecks(ctx, head)
-		manySuites = manySuites || suites > retirementSuiteMargin
+		all, err = c.oversizedRetirementChecks(ctx, head)
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	unfinished := []check{}
 	for _, check := range all {
@@ -284,131 +284,31 @@ func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string
 			unfinished = append(unfinished, check)
 		}
 	}
-	return unfinished, manySuites, nil
+	return unfinished, nil
 }
 
-func (c *controller) retirementSuitesQuery(head, after string) string {
-	parts := strings.Split(c.repoName, "/")
-	args := "first:100"
-	if after != "" {
-		args += fmt.Sprintf(",after:%q", after)
-	}
-	return fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid every:checkSuites{totalCount} checkSuites(%s,filterBy:{appId:%d}){totalCount nodes{databaseId all:checkRuns(first:1,filterBy:{checkType:LATEST}){totalCount} done:checkRuns(first:1,filterBy:{checkType:LATEST,statuses:[COMPLETED]}){totalCount}} pageInfo{hasNextPage endCursor}}}}}}`, parts[0], parts[1], head, args, actionsAppID)
-}
-
-func (c *controller) oversizedRetirementChecks(ctx context.Context, head string) ([]check, int, error) {
-	suites, total, err := c.unfinishedRetirementSuites(ctx, head)
+func (c *controller) oversizedRetirementChecks(ctx context.Context, head string) ([]check, error) {
+	suites, err := checksuites.Find(ctx, c.suiteSource(), head, checksuites.Selector{})
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	all := []check{}
 	seen := make(map[int64]bool)
 	for _, suite := range suites {
 		checks, err := c.retirementCheckInventory(ctx, head, fmt.Sprintf("check-suites/%d/check-runs?filter=latest", suite))
 		if err != nil {
-			return nil, 0, fmt.Errorf("retirement check suite %d: %w", suite, err)
+			return nil, fmt.Errorf("retirement check suite %d: %w", suite, err)
 		}
 		for _, check := range checks {
 			if seen[check.ID] || check.App.ID != actionsAppID {
-				return nil, 0, fmt.Errorf("duplicate or foreign retirement check on %s in a github-actions suite; operator review required", head)
+				return nil, fmt.Errorf("duplicate or foreign retirement check on %s in a github-actions suite; operator review required", head)
 			}
 			seen[check.ID] = true
 		}
 		// A suite whose runs all finished since GraphQL counted them yields none here.
 		all = append(all, checks...)
 	}
-	return all, total, nil
-}
-
-func (c *controller) unfinishedRetirementSuites(ctx context.Context, head string) ([]int64, int, error) {
-	unfinished := []int64{}
-	seen := make(map[int64]bool)
-	seenCursors := make(map[string]bool)
-	total, every, after := -1, 0, ""
-	for page := 1; page <= retirementSuitePages; page++ {
-		var response struct {
-			Errors []jsontext.Value `json:"errors"`
-			Data   struct {
-				Repo *struct {
-					ID     int64 `json:"databaseId"`
-					Object *struct {
-						OID   string `json:"oid"`
-						Every *struct {
-							Total *int `json:"totalCount"`
-						} `json:"every"`
-						Suites *struct {
-							Total *int `json:"totalCount"`
-							Nodes []*struct {
-								ID  int64 `json:"databaseId"`
-								All *struct {
-									Total *int `json:"totalCount"`
-								} `json:"all"`
-								Done *struct {
-									Total *int `json:"totalCount"`
-								} `json:"done"`
-							} `json:"nodes"`
-							Page retirementPageInfo `json:"pageInfo"`
-						} `json:"checkSuites"`
-					} `json:"object"`
-				} `json:"repository"`
-			} `json:"data"`
-		}
-		if err := c.api.read(ctx, "graphql:"+c.retirementSuitesQuery(head, after), &response); err != nil {
-			return nil, 0, fmt.Errorf("retirement check suites for %s page %d: %w", head, page, err)
-		}
-		if len(response.Errors) != 0 {
-			return nil, 0, graphQLDiagnostic(response.Errors)
-		}
-		repo := response.Data.Repo
-		if repo == nil || repo.ID != c.repo.ID || repo.Object == nil || repo.Object.OID != head || repo.Object.Suites == nil {
-			return nil, 0, errors.New("incomplete or foreign retirement check suite snapshot")
-		}
-		part := repo.Object.Suites
-		if part.Total == nil || *part.Total < 0 || total != -1 && total != *part.Total || part.Nodes == nil || len(part.Nodes) > 100 || part.Page.More == nil {
-			return nil, 0, errors.New("incomplete or changing retirement check suite inventory")
-		}
-		total = *part.Total
-		// REST's newest-1000-suite cap counts every app's suites, not only these.
-		if repo.Object.Every == nil || repo.Object.Every.Total == nil || *repo.Object.Every.Total < total {
-			return nil, 0, errors.New("incomplete retirement check suite count")
-		}
-		every = max(every, *repo.Object.Every.Total)
-		if total > retirementSuitePages*100 {
-			return nil, 0, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
-		}
-		for _, suite := range part.Nodes {
-			if suite == nil || suite.ID <= 0 || seen[suite.ID] || suite.All == nil || suite.All.Total == nil || suite.Done == nil || suite.Done.Total == nil || *suite.Done.Total < 0 || *suite.All.Total < *suite.Done.Total {
-				return nil, 0, errors.New("incomplete or duplicate retirement check suite identity")
-			}
-			seen[suite.ID] = true
-			// Counting finished runs rather than naming unfinished states keeps a
-			// future status visible to the REST read, which refuses unknown ones.
-			if *suite.All.Total > *suite.Done.Total {
-				unfinished = append(unfinished, suite.ID)
-				if len(unfinished) > retirementUnfinishedSuites {
-					return nil, 0, fmt.Errorf("retirement checks on %s are unfinished in more than %d check suites; operator review required", head, retirementUnfinishedSuites)
-				}
-			}
-		}
-		if !*part.Page.More {
-			if len(seen) != total {
-				return nil, 0, errors.New("incomplete retirement check suite pagination")
-			}
-			return unfinished, every, nil
-		}
-		if len(seen) >= total {
-			return nil, 0, errors.New("incomplete retirement check suite pagination")
-		}
-		if len(part.Nodes) != 100 {
-			return nil, 0, errors.New("short non-final retirement check suite page")
-		}
-		if part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seenCursors[*part.Page.End] {
-			return nil, 0, errors.New("missing or repeated retirement check suite cursor")
-		}
-		after = *part.Page.End
-		seenCursors[after] = true
-	}
-	return nil, 0, fmt.Errorf("retirement checks on %s span more than %d github-actions check suites; operator review required", head, retirementSuitePages*100)
+	return all, nil
 }
 
 // retirementCheckInventory reads every check at base, a check-runs listing
@@ -456,7 +356,7 @@ func (c *controller) retirementCheckInventory(ctx context.Context, head, base st
 }
 
 func (c *controller) retirementPendingChecks(ctx context.Context, head string, manySuites bool) (bool, bool, []reporterRetirementTarget, error) {
-	checks, manySuites, err := c.unfinishedRetirementChecks(ctx, head, manySuites)
+	checks, err := c.unfinishedRetirementChecks(ctx, head, manySuites)
 	if err != nil {
 		// Up to four workers' errors are joined, so name the failing head.
 		return false, false, nil, fmt.Errorf("retirement inventory for %s: %w", head, err)
@@ -485,11 +385,6 @@ func (c *controller) retirementPendingChecks(ctx context.Context, head string, m
 		} else {
 			observation = true
 		}
-	}
-	// The owners that retire these list by commit, which REST caps at the newest
-	// 1000 suites, so they could silently miss a target routed from here.
-	if manySuites && (queue || observation || len(reporters) > 0) {
-		return false, false, nil, fmt.Errorf("unfinished synthetic context on %s, which has more than %d check suites, may be beyond what retirement can list; operator review required", head, retirementSuiteMargin)
 	}
 	return queue, observation, reporters, nil
 }
@@ -522,4 +417,14 @@ func (c *controller) reporterRetirementHint(head string, check check) (reporterR
 		return reporterRetirementTarget{}, errors.New("foreign reporter discovery repository or context name")
 	}
 	return reporterRetirementTarget{Head: head, Run: ids[2], Attempt: ids[3]}, nil
+}
+
+// suiteSource reads this repository's check suites through GraphQL.
+func (c *controller) suiteSource() checksuites.Source {
+	owner, name, _ := strings.Cut(c.repoName, "/")
+	return checksuites.Source{
+		Owner: owner, Name: name, RepoID: c.repo.ID,
+		Read:     func(ctx context.Context, query string, out any) error { return c.api.read(ctx, "graphql:"+query, out) },
+		Diagnose: graphQLDiagnostic,
+	}
 }

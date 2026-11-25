@@ -775,7 +775,7 @@ func sanitizedList(in []string, max int) []string {
 // a wrong one that happens to converge.
 //
 // It is nil in production and costs one atomic load per phase. The same shape
-// as the resolution surface's query seam. internal/lint.CheckTestObservers
+// as the resolution surface's query seam. The lint testobservers analyzer
 // enforces that production code never references either installer.
 var scimPhaseObserver atomic.Pointer[func(string, map[string]int)]
 

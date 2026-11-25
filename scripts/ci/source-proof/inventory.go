@@ -71,21 +71,23 @@ func (r *resolver) jobs(ctx context.Context, source run) ([]job, error) {
 }
 
 var fullDomains = []string{
-	"client", "compose-demo", "docs", "floor-bench", "freeze-guard", "fuzz",
+	"client", "compose-demo", "desktop", "docs", "floor-bench", "freeze-guard", "fuzz",
 	"generated", "headline-guarantee", "k8s-e2e", "lint", "race", "release-snapshot",
 	"supply-chain-checks", "test", "web", "web-go",
 }
 
 var singletonJobs = map[string][]string{
-	"changes":                  {"Classify changed paths"},
-	"lint":                     {"Shellcheck (pinned archive)", "Actionlint", "Trusted release admission contract fixtures"},
-	"preflight":                {"Format", "Go import formatting", "Generated code is fresh", "Operator CRDs and deepcopy are fresh"},
-	"supply-chain-checks":      {"Release trust and refusal fixtures", "CI job registry and workflow bijection fixture", "Nightly release fixture"},
-	"app-build":                {"Verify and build the SPA", "Build the release-shaped app"},
-	"release-snapshot":         {"Verify every native package payload", "Smoke the exact candidate image", "Classify complete snapshot manifest"},
-	"client":                   {"Typecheck", "Frozen generated client against current server, both engines"},
-	"docs":                     {"Typecheck, build, and assert O4-O6 policy content"},
-	"compose-demo":             {"Real Compose delivery round-trip"},
+	"changes":             {"Classify changed paths"},
+	"lint":                {"Shellcheck (pinned archive)", "Actionlint", "Trusted release admission contract fixtures"},
+	"preflight":           {"Format", "Go import formatting", "Generated code is fresh", "Operator CRDs and deepcopy are fresh"},
+	"supply-chain-checks": {"Release trust and refusal fixtures", "CI job registry and workflow bijection fixture", "Nightly release fixture"},
+	"app-build":           {"Verify and build the SPA", "Build the release-shaped app"},
+	"release-snapshot":    {"Verify every native package payload", "Smoke the exact candidate image", "Classify complete snapshot manifest"},
+	"client":              {"Typecheck", "Frozen generated client against current server, both engines"},
+	"docs":                {"Typecheck, build, and assert O4-O6 policy content"},
+	"compose-demo":        {"Real Compose delivery round-trip"},
+	// The one step that runs on both runners (macOS where desktop/ exists, Linux where it does not).
+	"desktop":                  {"Desktop module boundary"},
 	"web-closure":              {"Enforce flow-registry closure over the merged log"},
 	"storybook":                {"Storybook story tests (dark, the default)", "Storybook story tests (light)", "Storybook production build"},
 	"web-go":                   {"govulncheck (vulnerabilities reachable from the release-shaped binary)", "Go tests (transport, serving rules, browser session)", "Boot+idle originates zero outbound connections"},
@@ -166,7 +168,7 @@ func expectedJobs(selected selectedRun) map[string]expectedJob {
 		wanted[fmt.Sprintf("%sisolation shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Test assigned isolation cases on SQLite and PostgreSQL"}}
 		wanted[fmt.Sprintf("%sfuzz shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Fuzz every target for bounded work"}}
 	}
-	for shard := 0; shard < 12; shard++ {
+	for shard := 0; shard < 18; shard++ {
 		wanted[fmt.Sprintf("%srace shard (%d)", prefix, shard)] = expectedJob{Guard: guard, Steps: []string{"Race detector (all packages except the isolation suite)"}}
 	}
 	if selected.producer.Queue {

@@ -879,11 +879,43 @@ export type DynamicLeaseList = {
 /**
  * `paused` is an operator or cascade pause (a deleted provider, a protected
  * environment or an approval policy pauses the rotations it would break);
- * `halted` is the executor's named stop after a failed authority gate. Only a
- * full resume authorization leaves either. `disabled` is the soft delete.
+ * `halted` is the executor's named stop (a failed authority or pre-publish
+ * gate, or an exhausted retry window); the rotation's `halt_reason` names
+ * which. Only a full resume authorization leaves either. `disabled` is the
+ * soft delete.
  *
  */
 export type CredentialRotationState = 'active' | 'paused' | 'halted' | 'disabled';
+
+/**
+ * Why a halted rotation stopped, as a fixed word, never free text and never
+ * provider detail. `retries_exhausted`: the cycle's retry window ran out
+ * before a run could publish or extend the credential, so the delivered
+ * credential is not extended. `authority_lost`: the recorded person no longer
+ * holds the access the rotation needs, or one of its keys or its environment
+ * is gone. `gate_failed`: a pre-publish gate refused, for example the
+ * environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+ * server writes (a legacy or restored value). OPEN enum: a later release may
+ * add a word, so a client keeps an unrecognised one and says only that the
+ * rotation is halted.
+ *
+ */
+export type RotationHaltReason = string;
+
+/**
+ * The newest run of a rotation, the top row of its runs list: metadata only.
+ * Neither a role handle nor any provider detail is carried.
+ *
+ */
+export type RotationLastRun = {
+    id: Id;
+    phase: RotationRunPhase;
+    /**
+     * The fixed-word code of the run's last failure, if any, exactly as the runs list carries it. Never provider detail.
+     */
+    error_code?: string | null;
+    phase_at: Timestamp;
+};
 
 export type CredentialRotation = {
     id: Id;
@@ -896,6 +928,22 @@ export type CredentialRotation = {
     authority_principal_id: Id;
     created_by: Id;
     state: CredentialRotationState;
+    /**
+     * Present only while the state is halted: why the server stopped the rotation, as a fixed word.
+     */
+    halt_reason?: RotationHaltReason;
+    /**
+     * The newest run, the top row of the runs list. Absent when the rotation has never run.
+     */
+    last_run?: RotationLastRun;
+    /**
+     * How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop: those in phase revoke_refused (held on purpose, Hikyo does not drop the role) or quarantine (Hikyo may still retry the drop, but it needs a person to look), whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
+     */
+    owed_drop_runs: number;
+    /**
+     * The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first.
+     */
+    owed_drop_runs_versions_changed: number;
     /**
      * True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then.
      */
@@ -1436,7 +1484,10 @@ export type Meta = {
      * `login` needs before any session exists, and the machine protocols
      * an integration probes before using them, such as
      * `delivery-target-report/<vocabulary>` for each delivery-target
-     * report vocabulary this server accepts.
+     * report vocabulary this server accepts. `desktop-app/1` means the
+     * instance serves the embedded web application and that application
+     * implements the desktop shell handoff protocol; an instance built
+     * without it never advertises the token.
      *
      */
     protocol_capabilities: Array<ProtocolCapability>;
@@ -1849,11 +1900,11 @@ export type CliReauthStartRequest = ({
 }) & {
     developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config' | 'developer-credential';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'access' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'access.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environment_ids: Array<Id>;
     /**
-     * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+     * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
      */
     key_ids?: Array<Id>;
     pkce_challenge: string;
@@ -1902,11 +1953,11 @@ export type CliReauthTransaction = {
     developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
     state: string;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config' | 'developer-credential';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'access' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'access.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environments: Array<CliReauthEnvironmentPolicy>;
     /**
-     * The enumerated unit the ceremony binds; empty for `adapter`.
+     * The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
      */
     key_ids: Array<Id>;
     redirect_uri: string;
@@ -33791,7 +33842,7 @@ export type ListRotationsData = {
     };
     query?: {
         /**
-         * List deleted (disabled) rotations as well. Off by default.
+         * List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
          */
         include_disabled?: boolean;
         /**

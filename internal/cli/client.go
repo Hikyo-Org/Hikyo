@@ -3,21 +3,20 @@ package cli
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/clienterr"
+	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
@@ -66,19 +65,8 @@ const (
 	maxThrottledWait = 60 * time.Second
 )
 
-// RateLimitedError is a throttled response. RetryAfter is the server's
-// Retry-After, zero when the response carried no usable value.
-type RateLimitedError struct {
-	Message    string
-	RetryAfter time.Duration
-}
-
-func (e *RateLimitedError) Error() string {
-	if e.RetryAfter <= 0 {
-		return e.Message
-	}
-	return fmt.Sprintf("%s; Retry-After: %d", e.Message, int(e.RetryAfter/time.Second))
-}
+// RateLimitedError is a throttled response; see internal/clienterr.
+type RateLimitedError = clienterr.RateLimitedError
 
 // rateLimited builds the throttled exit from a 429's headers. Only the
 // delta-seconds form of Retry-After is read, because it is the only form the
@@ -146,52 +134,7 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 				"trust entry %q names an https origin with no recorded certificate pin; re-establish it", entry.Name)
 		}
 
-		if entry.TLSMode == TLSModeSystemCA {
-			// Ordinary Go TLS verifies the chain, validity and hostname against
-			// the system roots. No pin callback or verification bypass applies.
-			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-		} else {
-			pin := entry.SPKIPin
-			transport.TLSClientConfig = &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				// The pin REPLACES chain and hostname verification rather than
-				// supplementing it, deliberately: the self-hosted audience this
-				// product is built for routinely runs a certificate their own CA
-				// issued, and refusing that would push them to a worse workaround.
-				// What is left is strictly stronger than a chain for this purpose
-				// — an impostor needs the pinned private key, and a
-				// publicly-trusted certificate for the same hostname does not
-				// become acceptable just because it chains to a public root.
-				//
-				// The pin is checked against the LEAF ONLY (rawCerts[0]).
-				// Scanning the whole chain would let an attacker satisfy it by
-				// including the legitimate certificate as an intermediate while
-				// presenting a leaf whose private key they hold — the pin would
-				// match a certificate that is not the one terminating the
-				// connection.
-				VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-					if len(rawCerts) == 0 {
-						return fmt.Errorf("%s presented no certificate", entry.Origin)
-					}
-					leaf, err := x509.ParseCertificate(rawCerts[0])
-					if err != nil {
-						return fmt.Errorf("%s presented an unparseable certificate: %w", entry.Origin, err)
-					}
-					if SPKIFingerprint(leaf) == pin {
-						return nil
-					}
-					return fmt.Errorf(
-						"certificate identity for %s does not match the pin recorded at establishment (%s). "+
-							"This is what an interception looks like; it is also what a re-keyed certificate looks like. "+
-							"If the change is legitimate, re-establish the instance deliberately",
-						entry.Origin, shortPin(pin))
-				},
-				// Chain verification is intentionally replaced by the exact leaf
-				// SPKI check above so operator-issued certificates remain usable.
-				// codeql[go/disabled-certificate-check]
-				InsecureSkipVerify: true, //nolint:gosec // replaced by the leaf public-key pin above, which a valid chain alone cannot satisfy
-			}
-		}
+		transport.TLSClientConfig = clienttrust.TLSConfig(entry.Origin, entry.TLSMode, entry.SPKIPin, entry.TLSProfile)
 	} else if !isLoopbackOrigin(entry.Origin) {
 		// http to anywhere but loopback would put the bearer on the wire in
 		// clear. There is no flag for this.
@@ -212,14 +155,6 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 		}
 	}
 
-	// Applied last and only to a TLS client config, so the CA or SPKI-pin checks
-	// above stay exactly as the trust mode defines them. With HTTPS_PROXY naming
-	// an https proxy, the proxy leg shares this config: strict then also refuses a
-	// classical-only proxy, and an http proxy only tunnels the origin handshake.
-	if transport.TLSClientConfig != nil {
-		tlspolicy.Profile(entry.TLSProfile).Apply(transport.TLSClientConfig)
-	}
-
 	return &Client{
 		Entry:  entry,
 		Bearer: bearer,
@@ -236,23 +171,7 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 	}, nil
 }
 
-// isLoopbackOrigin decides whether an HTTP application origin may be carried
-// over an authenticated local socket. url.Hostname
-// strips the brackets an IPv6 literal carries, so `http://[::1]:8080` is
-// recognised — a hand-rolled colon split reads its host as "[" and refuses a
-// perfectly good loopback address.
-func isLoopbackOrigin(origin string) bool {
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	host := u.Hostname()
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
+func isLoopbackOrigin(origin string) bool { return clienttrust.IsLoopbackOrigin(origin) }
 
 // Do performs a request against the bound origin and decodes the result.
 //

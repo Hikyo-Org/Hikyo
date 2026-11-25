@@ -24,7 +24,7 @@ func (q *Queries) GetModel(ctx context.Context, id string) (Item, error) { panic
 	if err := os.WriteFile(filepath.Join(dir, "queries.sql.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	contracts, err := readGeneratedContracts(dir, "postgres")
+	contracts, err := readGeneratedContracts(osSource{}, dir, "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func (q *Queries) GetKey(ctx context.Context,id string) (GetKeyRow,error) { q.db
 	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	apis, err := readGeneratedContracts(dir, "postgres")
+	apis, err := readGeneratedContracts(osSource{}, dir, "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func (q *Queries) GetKey(ctx context.Context,id string) (GetKeyRow,error) { q.db
 	if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
 		t.Fatal(err)
 	}
-	apis, err = readGeneratedContracts(dir, "postgres")
+	apis, err = readGeneratedContracts(osSource{}, dir, "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,6 @@ package isolation
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestAdapterMoveGeneratedQueriesRejectForeignChain(t *testing.T) {
@@ -75,7 +75,7 @@ func TestAdapterMoveGeneratedQueriesRejectForeignChain(t *testing.T) {
 				}
 			}
 		}
-		if after := read(); !reflect.DeepEqual(before, after) {
+		if after := read(); !reflectx.Equal(before, after) {
 			t.Fatalf("foreign chain changed pending move: before=%+v after=%+v", before, after)
 		}
 		if claims := queryInt(t, db, "SELECT COUNT(*) FROM adapter_route_move_claims WHERE move_id='arm_scope_guard'"); claims != claimsBefore {

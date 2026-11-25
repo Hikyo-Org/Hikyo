@@ -23,9 +23,11 @@ case "$workspace" in
 esac
 export pnpm_config_store_dir="$workspace/.ci-cache/pnpm/store"
 pnpm_version=$(pnpm --version)
+# A PR head behind the pnpm 12 bump still declares 11. Both use store layout v11,
+# and the cache key below carries the exact version.
 case "$pnpm_version" in
-	11.*) ;;
-	*) printf 'CI pnpm cache requires pinned pnpm 11\n' >&2; exit 1 ;;
+	11.* | 12.*) ;;
+	*) printf 'CI pnpm cache requires pinned pnpm 11 or 12\n' >&2; exit 1 ;;
 esac
 case "$pnpm_version" in
 	*[!0-9.]* | '') printf 'invalid pnpm version\n' >&2; exit 1 ;;

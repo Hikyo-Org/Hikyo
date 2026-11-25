@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/analysis"
 )
 
 // Grant-lock analyzer (#54 B14). credential-reset's org-bounded test is made
@@ -16,17 +16,17 @@ import (
 // same lock and therefore serialize behind (or ahead of) the reset. That
 // guarantee holds only if EVERY grant writer takes the lock. The general grant
 // surface is #55's; this analyzer pins the obligation now so a future grant
-// writer cannot forget it — a grant writer that skips the lock is a build
+// writer cannot forget it: a grant writer that skips the lock is a build
 // failure, not a review miss.
 //
 // The check is structural, like the sole-writer analyzer it is modelled on: any
-// function — in ANY module package, not just the resolution surface — that names
+// function (in ANY module package, not just the resolution surface) that names
 // a grant-table-mutating generated query must also take the principal-row lock in
 // the same body, and the lock must type-resolve to the REAL LockPrincipalRow (the
 // generated query or the authn resolver wrapper that calls it), not merely any
 // selector spelled that way. Residual, stated so it is not mistaken for more:
 // the analyzer cannot prove the lock is taken on the RIGHT principal row, nor
-// that it precedes the write in execution order within the same transaction —
+// that it precedes the write in execution order within the same transaction:
 // that is review's job. Where it cannot be sure it errs toward flagging
 // (fail-closed): a grant writer with no resolvable lock at all is a build
 // failure, never a silent pass.
@@ -57,16 +57,25 @@ var lockDefiners = map[string]bool{
 	Module + "/internal/store/authn":     true,
 }
 
-// GrantWriters returns the mutating generated queries that target the grant
+// queryInputs are the sqlc query files the grant and denial analyzers derive
+// their writer sets from.
+func queryInputs(string) ([]InputSpec, error) {
+	return []InputSpec{
+		{Dir: "internal/store/queries/sqlite", Exts: []string{".sql"}},
+		{Dir: "internal/store/queries/postgres", Exts: []string{".sql"}},
+	}, nil
+}
+
+// grantWriters returns the mutating generated queries that target the grant
 // table, derived from the query files rather than a curated list so a new grant
 // writer is covered the moment it is added. Classification is by SQL verb/target,
 // NOT the sqlc command annotation: an `INSERT ... RETURNING` is a `:one` yet
 // writes a grant row (the old cmd-based skip classified it as a read and let it
 // through). Only a SELECT on the grant table is a read.
-func GrantWriters(repoRoot string) (map[string]bool, error) {
+func grantWriters(src source, repoRoot string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, engine := range []string{"sqlite", "postgres"} {
-		queries, err := ParseQueries(filepath.Join(repoRoot, "internal", "store", "queries", engine))
+		queries, err := parseQueries(src, filepath.Join(repoRoot, "internal", "store", "queries", engine))
 		if err != nil {
 			return nil, err
 		}
@@ -84,51 +93,68 @@ func GrantWriters(repoRoot string) (map[string]bool, error) {
 	return out, nil
 }
 
-// CheckGrantLock enforces the obligation over EVERY module package that can call
-// a generated grant-mutation query, not only the resolution surface: a grant
-// write is a grant write wherever it is issued from. It scans all loaded
-// packages except the generated query packages themselves (whose method bodies
-// ARE the queries, not callers of them). testdata fixtures are never loaded by
-// the `module/...` pattern, so the negative fixture does not false-positive the
-// repo run.
-func CheckGrantLock(pkgs []*packages.Package, repoRoot string) []string {
-	writers, err := GrantWriters(repoRoot)
-	if err != nil {
-		return []string{"grantlock: " + err.Error()}
-	}
-	if len(writers) == 0 {
-		return []string{"grantlock: no grant-table writers found — the analyzer would be vacuously green"}
-	}
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		path := strings.TrimSuffix(p.PkgPath, ".test")
-		if p.TypesInfo == nil || generatedPackages[path] {
-			continue
+// reachesGenerated reports whether pkg can name a generated query: it is, or
+// transitively imports, a sqlc output package.
+func reachesGenerated(pkg *types.Package) bool {
+	for path := range generatedPackages {
+		if findPackage(pkg, path) != nil {
+			return true
 		}
-		findings = append(findings, checkGrantLockPkg(p, writers, lockName)...)
 	}
-	return findings
+	return false
 }
 
-// CheckGrantLockIn is CheckGrantLock scoped to ONE named surface, so the negative
-// fixture can prove the check fires on a lockless grant writer and stays silent
-// outside the surface it is pointed at.
-func CheckGrantLockIn(pkgs []*packages.Package, surface string, writers map[string]bool, lock string) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if strings.TrimSuffix(p.PkgPath, ".test") != surface || p.TypesInfo == nil {
-			continue
+// GrantLock enforces the obligation over EVERY module package that can call a
+// generated grant-mutation query, not only the resolution surface: a grant
+// write is a grant write wherever it is issued from, and its in-package test
+// files are packages' callers too. It skips the generated query packages
+// themselves (whose method bodies ARE the queries, not callers of them);
+// testdata fixtures are never loaded by the `module/...` pattern, so the
+// negative fixture does not false-positive the repo run. The writer set comes
+// from the declared query files.
+var GrantLock = newGrantLock()
+
+func newGrantLock() *analysis.Analyzer {
+	a := &analysis.Analyzer{Name: "grantlock", Doc: "every grant-table writer takes the principal-row lock"}
+	surface := ""
+	a.Flags.StringVar(&surface, "surface", "", "analyze only this package (default: every module package)")
+	in := flagInputs(a)
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		path := pass.Pkg.Path()
+		if !inModule(path) || generatedPackages[path] || (surface != "" && path != surface) {
+			return nil, nil
 		}
-		findings = append(findings, checkGrantLockPkg(p, writers, lock)...)
+		if path == surface || path == Module+"/internal/store/authn" {
+			reportTarget(pass)
+		}
+		if !reachesGenerated(pass.Pkg) {
+			return nil, nil
+		}
+		src, root, err := in.open()
+		if err != nil {
+			reportRefusal(pass, err)
+			return nil, nil
+		}
+		writers, err := grantWriters(src, root)
+		if err != nil {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: err.Error()})
+			return nil, nil
+		}
+		if len(writers) == 0 {
+			pass.Report(analysis.Diagnostic{Pos: packagePos(pass), Message: "no grant-table writers found: the analyzer would be vacuously green"})
+			return nil, nil
+		}
+		checkGrantLockPass(pass, writers, lockName)
+		return nil, nil
 	}
-	return findings
+	return a
 }
 
-// checkGrantLockPkg reports every function in p that names a grant-mutating
-// writer but does not take the real principal-row lock in the same body.
-func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string) []string {
-	var findings []string
-	for _, file := range p.Syntax {
+// checkGrantLockPass reports every function of the pass's package that names a
+// grant-mutating writer but does not take the real principal-row lock in the
+// same body.
+func checkGrantLockPass(pass *analysis.Pass, writers map[string]bool, lock string) {
+	for _, file := range pass.Files {
 		ast.Inspect(file, func(n ast.Node) bool {
 			fn, ok := n.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
@@ -140,7 +166,7 @@ func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string
 				if !ok {
 					return true
 				}
-				obj, ok := p.TypesInfo.Uses[sel.Sel]
+				obj, ok := pass.TypesInfo.Uses[sel.Sel]
 				if !ok {
 					return true
 				}
@@ -150,7 +176,7 @@ func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string
 				}
 				pkgPath := f.Pkg().Path()
 				// The lock counts only when it type-resolves to the REAL
-				// LockPrincipalRow — the generated query or the authn wrapper —
+				// LockPrincipalRow (the generated query or the authn wrapper),
 				// not merely a selector spelled that way (a struct field or an
 				// unrelated method named LockPrincipalRow no longer satisfies it).
 				if f.Name() == lock && lockDefiners[pkgPath] {
@@ -162,12 +188,11 @@ func checkGrantLockPkg(p *packages.Package, writers map[string]bool, lock string
 				return true
 			})
 			if namesWriter && !namesLock {
-				findings = append(findings, fmt.Sprintf(
-					"grantlock: %s: %s writes a grant table but does not take the %s principal-row lock — every grant writer must hold it so credential-reset's org-bounded test is serializable (#54 B14)",
-					p.Fset.Position(fn.Pos()), fn.Name.Name, lock))
+				pass.Report(analysis.Diagnostic{Pos: fn.Pos(), Message: fmt.Sprintf(
+					"%s writes a grant table but does not take the %s principal-row lock: every grant writer must hold it so credential-reset's org-bounded test is serializable (#54 B14)",
+					fn.Name.Name, lock)})
 			}
 			return true
 		})
 	}
-	return findings
 }

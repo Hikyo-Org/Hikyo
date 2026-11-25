@@ -3,7 +3,8 @@
 Status: **not an operative capability claim. Owner authorized merge of this
 documentation on 2026-11-04 (maintainer security approval for this PR only). The owner
 recorded the dispositions for F-01 to F-11 on 2026-11-04 (see Follow-ups); F-01, F-04,
-F-05 and F-09 are decided, and the other follow-ups stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
+F-05 and F-09 are decided; F-03 (in the staged-rollout runbook), F-06, F-08 and
+F-10 are recorded (2026-11-23); F-02, F-07 and F-11 stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
 under [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Stacked on the
 transport policy (PR #1156; the register was written and tested on its head
 `f5d5491829d6`; the base has since moved and the sweep was not rerun on it;
@@ -14,7 +15,7 @@ main merge-base `b22eb0adb6480b3b2c61b8c86dee6df1a5a552a8`). The tested candidat
 [ADR register](../../adr/post-quantum-migration.md#decision-register). This
 document changes no DEC row and builds no mechanism. A claim here is only what
 a row proves. "Read" means the primary source was read for this document on
-**2026-11-03**.
+**2026-11-03** unless a row states another date.
 
 ## Facts that differ from the register
 
@@ -51,15 +52,18 @@ a row proves. "Read" means the primary source was read for this document on
    column for key types). The IANA [JOSE registry XML](https://www.iana.org/assignments/jose/jose.xml)
    lists `alg` `ML-DSA-44`, `ML-DSA-65`, `ML-DSA-87`, "Implementation Requirements:
    Optional", same dates. Migration says the JOSE identifier status "was not
-   checked". `go-jose` v4.1.6 still has no ML-DSA, so the HOLD on #1130 and E-04
-   hold, but "no identifier exists" is no longer the reason.
+   checked". `go-jose` v4.1.6, the pin when this was written, had no ML-DSA. v4.1.8
+   (2026-11-02) added it behind a `go1.27` build tag and `dev` now pins v4.1.9
+   (rechecked 2026-11-23, F-06); Hikyo's key loader and signature allowlists
+   still accept no ML-DSA, so E-04 holds, but "no identifier exists" is no
+   longer the reason.
 3. **WebAuthn Level 3 is a W3C Recommendation (2026-08-25).** Its full text
    contains no mention of ML-DSA or post-quantum (0 matches, whole document
    read locally). ML-DSA credentials ride the generic COSE algorithm field.
 4. **The strict profile reaches no external hop, and not every selector is
    deployable.** Each selector: the server reads `HIKYO_TLS_PROFILE`
    (`internal/config/config.go:537`) for the listener only; the CLI uses the
-   per-origin trust entry field `tls_profile` (`internal/cli/trust.go:96`); the
+   per-origin trust entry field `tls_profile` (`internal/cli/trust.go:87`); the
    operator client has a library option `WithTLSProfile` that its
    `defaultClientFactory` (`internal/operator/clientadapter.go:22`) never
    passes, so **no deployed operator can select strict** (as
@@ -128,7 +132,7 @@ below or local-only:
 the CLI and operator clients to Hikyo (I11, owned, #1127), `internal/updater`
 (unix socket), `internal/hostupgrade` and `internal/app/unattended_process.go`
 (local health probes configured by the operator), `internal/netpolicy` (library),
-`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:224` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
+`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:162` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
 local `git` with remote access disabled. Inbound listeners are I09 (#1127). The
 re-sweep with the `DefaultTransport` and `LoadDefaultConfig` terms found the SAML
 metadata proxy leg (X11), the AWS STS and ambient credential chain (X23), and
@@ -139,6 +143,15 @@ are E-03, E-11 and E-15. A later census that finds another outbound client must
 add a row.
 
 ## Table A: facts
+
+Versions in Tables A and B and the exception terms are candidate-time
+snapshots unless a row says otherwise. The rows X10, X12, X15, X22, E-04
+and E-13 were updated to the `dev` pins on 2026-11-23; every other version
+is a snapshot and was not re-measured. Known drifts on `dev`:
+`golang.org/x/crypto` v0.59.0 (rows say v0.58.0), Go 1.27.4 (rows say
+1.27.3), `pgx` v5.13.0 (rows say v5.11.0), `go-mail` v0.8.2 (rows say
+v0.8.1), `go-smtp` v0.26.0 (rows say v0.25.0) and `aws-sdk-go-v2` v1.48.0
+(rows say v1.47.5).
 
 Lifetime `H` is the confidentiality or verification horizon from the
 [inventory](inventory.md). "Chain" cells say "not observed" where no handshake
@@ -156,19 +169,19 @@ so a classical chain is never assumed.
 | X07 | OpenSSH session key exchange (I25; Hikyo is not a party) | SSH transport | Local OpenSSH 10.3p1 (LibreSSL 3.3.6); `mlkem768x25519-sha256` default since 10.0 ([RFC 10042](https://www.rfc-editor.org/rfc/rfc10042), Informational, Aug 2026); github.com offers it (fact 5) | Session lifetime | **Hybrid**: `mlkem768x25519-sha256` observed (fixture) | Host key `ssh-ed25519` in the fixture (a fixture property); a 10.6 client also offers `ssh-mldsa44-ed25519` | Operator `known_hosts` | n/a |
 | X08 | SSH CA certificates and KRL (I25) | OpenSSH user certificates and KRL (`internal/sshca`) | Hikyo `x/crypto/ssh` v0.58.0; OpenSSH 10.6 composite (fact 1) | CA trust lifetime: until the CA leaves every sshd `TrustedUserCAKeys`. Hikyo-issued certificates are bounded by TTL; a forged one is not | n/a | **Classical** CA, observed with `ssh-keygen -L`: Ed25519 (`ssh-ed25519`), ECDSA P-256 (`ecdsa-sha2-nistp256`), RSA 3072 (`rsa-sha2-512`) (`sshca/keys.go:39-45`). The user key in the fixture is Ed25519 (`ED25519-CERT` is its type, not the CA's signature) | sshd `TrustedUserCAKeys` / KRL | CA rollover; KRL; sealed CA key |
 | X09 | WebAuthn / COSE (I19) | WebAuthn L3 REC 2026-08-25; COSE IANA entries (fact 2) | `go-webauthn` v0.18.2 (verifies ML-DSA AKP on go1.27); authenticator versions unknown | Credential lifetime | n/a | RP offers the library default list, classical (`webauthnrp.go:104`, no `WithCredentialParameters`); no ML-DSA credential is created | Authenticator and RP ID | Other credentials; recovery codes |
-| X10 | OIDC id_token and JWKS signing (I17, I18) | OIDC/JOSE; RFC 9964 defines JOSE `ML-DSA-65` | `go-oidc` v3.21.0, `go-jose` v4.1.6 (no ML-DSA, module searched) | Token validity | n/a | Accepts RS256/384/512, ES256/384/512, PS256/384/512 only (`oidcrp.go:34-38`, `oidcfed.go:119,128`) | IdP JWKS over X11 | Admin reconfigures; re-fetch |
+| X10 | OIDC id_token and JWKS signing (I17, I18) | OIDC/JOSE; RFC 9964 defines JOSE `ML-DSA-65` | `go-oidc` v3.21.0, `go-jose` v4.1.9 (rechecked `dev` pin; candidate v4.1.6; ML-DSA in `mldsa.go` since v4.1.8, Go 1.27 build tag; not accepted by Hikyo's allowlists) | Token validity | n/a | Accepts RS256/384/512, ES256/384/512, PS256/384/512 only (`oidcrp.go:34-38`, `oidcfed.go:119,128`) | IdP JWKS over X11 | Admin reconfigures; re-fetch |
 | X11 | Federation TLS: discovery, JWKS, token, userinfo, SAML metadata (I17) | HTTPS (`federationhttp/client.go:137`, `ca.go:57`, `oidcfed.go:343`, `oauth2rp.go:68` default transport). **SAML metadata leg:** `saml_providers.go:977` clones `http.DefaultTransport`, keeping ambient `ProxyFromEnvironment`, and `:1115` runs TLS to an `https://` proxy before the nested session; the proxy is outside any claim | IdP peer unknown | Token or assertion | Peer-controlled; Go default offered; unknown | Chain not observed | IdP CA or WebPKI | Re-fetch |
-| X12 | SAML SP and IdP signing (I18) | XML-DSig; allowlist `samlsp/response.go:43` | `gosaml2` v0.12.0, `goxmldsig` v1.6.1; no XML-DSig ML-DSA identifier found | Assertion window; SP key 10 years | n/a | RSA-SHA256/384/512, ECDSA-SHA256/384/512; SP key RSA-3072 | IdP metadata, confirmed | SP key rollover |
+| X12 | SAML SP and IdP signing (I18) | XML-DSig; allowlist `samlsp/response.go:43` | `gosaml2` v0.12.0, `goxmldsig` v1.6.1 (latest release 2026-08-04; RSA and ECDSA only, no ML-DSA); an ML-DSA identifier exists only in an Internet-Draft ([draft-eastlake-rfc9231bis-xmlsec-uris-11](https://datatracker.ietf.org/doc/html/draft-eastlake-rfc9231bis-xmlsec-uris), 2026-11-19, latest revision at 2026-11-23; the URIs are unchanged from -09 (2026-08-21), `http://www.w3.org/2026/08/xmldsig-more#ml-dsa-65`), not an RFC or W3C Recommendation | Assertion window; SP key 10 years | n/a | RSA-SHA256/384/512, ECDSA-SHA256/384/512; SP key RSA-3072 | IdP metadata, confirmed | SP key rollover |
 | X13 | Database client crypto: primary and dynamic PostgreSQL (I12, I13) | PostgreSQL TLS; `verify-full` required except `localhost`, loopback IPs and unix sockets (`config.go:1395-1408`, `postgres.go:94`) | `pgx` v5.11.0; PostgreSQL 18 default `ssl_groups` `X25519:prime256v1` ([docs](https://www.postgresql.org/docs/current/runtime-config-connection.html)) | Database copies | Server-controlled; hybrid needs an operator-set group on an OpenSSL build that has it (not verified) | Chain not observed | Operator CA | Database restore |
 | X14 | Cloud and provider key custody (I08, I22) | Hikyo custody is software only (DEC-12); no KMS key is used for Hikyo's own keys | AWS KMS [key specs](https://docs.aws.amazon.com/kms/latest/developerguide/asymmetric-key-specs.html) (undated page): `ML_DSA_44/65/87`, `ML_KEM_512/768/1024`, `SYMMETRIC_DEFAULT` AES-256-GCM | n/a | n/a | n/a | n/a | n/a |
-| X15 | SOPS, kubeconfig and OpenBao imports, ambient SDK sources, **and key services SOPS contacts** (I28, I30) | SOPS file decryption with the ambient keyring: age, GPG, and KMS, Vault Transit and the other SOPS key sources `gcpkms`, `azkv`, `hcvault`, `hckms`; "a file encrypted to a KMS or Vault Transit key CONTACTS THAT KEY SERVICE" (`importer/sops.go:20-23`, `cli/importer.go:233`); `importer/k8s.go:66,251`, `importer/vault.go:267` | `sops` v3.13.3, `client-go` v0.37.1, `openbao/api/v2` v2.7.1; key-service builds unknown | Source ciphertext and data keys | Source key policy (age X25519, PGP, KMS) and source TLS | Source | Source operator | Re-import |
-| X16 | Third-party trust services (I26, I27, I31, I32; E-03) | Sigstore, Kyverno image verification and chart policy, Apple, OS packages, Go checksum database, commit signing | [Sigstore blog 2025-06-06](https://blog.sigstore.dev/post-quantum-2025/): the public good instance "will wait for reliable and vetted PQCA to be part of Go's `crypto` package"; no later statement read. Others not read | Release and source history | n/a | Not read for Kyverno, Apple, OS packages, sumdb, commit signing | Service operators | Vendor process |
+| X15 | SOPS, kubeconfig and OpenBao imports, ambient SDK sources, **and key services SOPS contacts** (I28, I30) | SOPS file decryption with the ambient keyring: age, GPG, and KMS, Vault Transit and the other SOPS key sources `gcpkms`, `azkv`, `hcvault`, `hckms`; "a file encrypted to a KMS or Vault Transit key CONTACTS THAT KEY SERVICE" (`importer/sops.go:20-23`, `cli/importer.go:233`); `importer/k8s.go:66,251`, `importer/vault.go:267` | `sops` v3.13.3, `client-go` v0.37.2 (rechecked `dev` pin; candidate v0.37.1), `openbao/api/v2` v2.7.1; key-service builds unknown | Source ciphertext and data keys | Source key policy (age X25519, PGP, KMS) and source TLS | Source | Source operator | Re-import |
+| X16 | Third-party trust services (I26, I27, I31, I32; E-03) | Sigstore, Kyverno image verification and chart policy, Apple, OS packages, Go checksum database, commit signing | Read 2026-11-23: the sources read state no PQ issuance or signing in production. **Sigstore:** [Post-Quantum Cryptography for Sigstore](https://blog.sigstore.dev/pqc-sigstore/) (2026-10-02) targets a production-ready PQC public instance for mid-2027, names ML-DSA, and keeps the classical instance running until a turndown tentatively 2029 or 2030; it describes no PQC capability as live and keeps Rekor v1 the default. It supersedes the [2025-06-06 post](https://blog.sigstore.dev/post-quantum-2025/) ("will wait for reliable and vetted PQCA to be part of Go's `crypto` package"); [Trail of Bits, 2026-01-29](https://blog.trailofbits.com/2026/01/29/building-cryptographic-agility-into-sigstore/) describes algorithm-agility work and ML-DSA prototypes, not a deployment. **Apple:** [Apple Platform Security, quantum-secure cryptography](https://support.apple.com/guide/security/secc7c82e533/web) (published 2026-01-28) lists iMessage PQ3 (iOS 17.4), quantum-secure TLS in the developer networking APIs and CryptoKit ML-KEM and ML-DSA (iOS 26), and SSH key exchange (macOS 26); it makes no statement that code signing, update signing or certificate issuance is post-quantum. **OS packages:** [Red Hat, 2025-10-07, updated 2026-02-27](https://developers.redhat.com/articles/2025/10/07/signing-rpm-packages-using-quantum-resistant-cryptography) calls RPM hybrid ML-DSA signing (RPM 6, RHEL 10.1) a technology preview "not intended for production use" and does not say Red Hat's own repositories are signed with it; [Ubuntu 26.04 post](https://discourse.ubuntu.com/t/post-quantum-support-in-the-upcoming-26-04-lts/76840) (2026-02-12) covers key exchange and library ML-DSA, not archive signing; no Debian or Ubuntu archive PQ signing statement found. **Commit signing:** [RFC 9980](https://www.rfc-editor.org/rfc/rfc9980) (June 2026) standardizes ML-DSA+Ed25519 composite OpenPGP signatures, but [GitHub's commit-signature documentation](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) lists only GPG, SSH and S/MIME verification and says nothing on PQ. **Kyverno:** no PQ statement found in the v1.17 or v1.18 announcements or the `verifyImages` docs (latest release v1.20.0, 2026-11-12, release notes not read in full) and no PQ issue in its repository. **Go checksum database:** no PQ statement found; the [design](https://go.googlesource.com/proposal/+/refs/heads/master/design/25530-sumdb.md) signs tree heads and allows a new log URL, and no Go issue on PQ signing was found | Release and source history | n/a | None found for Kyverno, Apple signing, Debian or Ubuntu archives, sumdb or GitHub commit verification; Sigstore, Red Hat RPM and OpenPGP are plans, previews or specs | Service operators | Vendor process |
 | X17 | Mail relay (I16) | SMTP over TLS or STARTTLS, `MinVersion` TLS 1.2 (`mail.go:107`) | `go-mail` v0.8.1, `go-smtp` v0.25.0; relay unknown | Retained mail | Relay-controlled; unknown | Chain not observed | Relay CA | Credential update |
 | X18 | TLS terminators outside the process (I10) | Reverse proxy, ingress, CDN | Operator topology unknown | Unknown | Outside the process | Operator | Operator | Operator |
 | X19 | Sealed webhook delivery to a receiver (I14, I21) | HTTPS push of an age-encrypted envelope (`sealedwebhook/client.go:118-120`, public-egress dialer) | Receiver build unknown; protocol 1 payload is age X25519 (first-party, PQ version is #1128) | Receiver retention; envelope at most 5 min | Payload: age X25519 (classical). TLS hop: receiver-controlled; unknown | Chain not observed; ack Ed25519 | Receiver CA or WebPKI | New generation moves the destination id |
 | X20 | Update check, release download, self-update (I11, I26) | HTTPS to GitHub release hosts (`updatecheck/source.go:88`, `releaseDownloadHost`; `selfupdate/selfupdate.go:61`), public dialer, TLS 1.2 minimum | GitHub endpoint unknown | Public data; authenticity is I26 | Peer-controlled; unknown | Authenticity is signed metadata (P-256, E-11, E-15), not the TLS chain | WebPKI plus pinned release trust | Reinstall |
 | X21 | Pairing: remote fetch, directory, identity probe, proxy leg (I11, I20) | HTTPS to another Hikyo instance with a leaf SPKI pin (`remotefetch/remotefetch.go:248`, `pairing.go`, `directory.go`, `pairing_identity.go:58`) | Peer is a Hikyo instance; its listener may be strict (#1127) | Pairing credentials | Client at compat (Go default offered); peer may be strict | Pin replaces chain verification (E-20); SRP and DPoP classical (E-01) | Pin read over a classical chain | Revoke, re-pair |
-| X22 | Kubernetes API and kubelet (I30) | Bearer-token HTTPS via client-go (`cmd/hikyo/config_rollout.go:59`, `app/self_config_deployment.go:106`, `operator/manager.go:124`, `storagehealth/kubernetes.go:60`) | `client-go` v0.37.1; API server and kubelet builds unknown | Short-lived tokens | Cluster-controlled; unknown | Cluster CA, chain not observed | Cluster CA | Token refresh |
+| X22 | Kubernetes API and kubelet (I30) | Bearer-token HTTPS via client-go (`cmd/hikyo/config_rollout.go:59`, `app/self_config_deployment.go:106`, `operator/manager.go:124`, `storagehealth/kubernetes.go:60`) | `client-go` v0.37.2 (rechecked `dev` pin; candidate v0.37.1); API server and kubelet builds unknown | Short-lived tokens | Cluster-controlled; unknown | Cluster CA, chain not observed | Cluster CA | Token refresh |
 | X23 | AWS STS and the ambient credential chain (I14) | Separate `sts.<region>` endpoint (`awssm/auth.go:265-267`) with its own client and `STSAllowedCIDRs` dialer (`client.go:162-168`); AssumeRole and WebIdentity (`auth.go:289-302`); `LoadDefaultConfig` (`auth.go:313`) whose SDK-owned sources (IMDS, ECS, IRSA files) keep the SDK transport (`auth.go:270-272`). **Read from code, not run** | `aws-sdk-go-v2` v1.47.5; STS is not named in the AWS blog (X05) | Temporary credentials until expiry | STS: peer-controlled, unknown. Default IMDS (`http://169.254.169.254`) and ECS (`http://169.254.170.2`) endpoints: plain HTTP, no TLS | STS chain not observed; no chain on the plain-HTTP default IMDS and ECS endpoints | WebPKI; link-local or private ambient endpoints | Re-assume the role |
 | X24 | Installer downloads (I26; Hikyo's Go TLS does not apply) | `curl --proto =https` to the release source (`install/install.sh.in:78`, which also sets `--tlsv1.2`), and to `api.github.com`, `github.com` releases including cosign, and `raw.githubusercontent.com` (`install/upgrade-nightly.sh:365-380`, no `--tlsv1.2`) | Host `curl` and its TLS library; versions unknown | Public artifacts | Host-library-defined; unknown | Authenticity is pinned root hash and signed metadata (E-11, E-15), not this transport | Pinned root hash | Reinstall |
 ## Table B: disposition
@@ -185,16 +198,16 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 | X04 | unknown | none beyond source | Peer build named | Unknown | F-02 | E-07, E-08 |
 | X05 | compatibility-only | source: AWS blog and doc; negotiated group NOTRUN; AWS limits the claim to non-FIPS endpoints | Authorized capture; AWS states FIPS endpoint support | Strict could work only where a non-FIPS endpoint negotiates the group | F-02 | E-07, E-08 |
 | X06 | unknown | source: Cloudflare doc does not name `api.cloudflare.com` | Capture or doc names the host | Unknown | F-02 | E-07, E-08 |
-| X07 | out of profile | local: OpenSSH 10.3p1 negotiated `mlkem768x25519-sha256`; classical-only client accepted by default sshd; refused with `KexAlgorithms mlkem768x25519-sha256`; github.com handshake (fact 5) | **Fired:** OpenSSH 10.6 offers a PQ signature by default; remaining: an operator names a fleet | The control is sshd `KexAlgorithms` (fixture). `WarnWeakCrypto` only logs a weak client and is not a control. Hikyo carries no SSH session | F-03: runbook line for sshd operators (#1135) | E-02 limits only the signatures |
+| X07 | out of profile | local: OpenSSH 10.3p1 negotiated `mlkem768x25519-sha256`; classical-only client accepted by default sshd; refused with `KexAlgorithms mlkem768x25519-sha256`; github.com handshake (fact 5) | **Fired:** OpenSSH 10.6 offers a PQ signature by default; remaining: an operator names a fleet | The control is sshd `KexAlgorithms` (fixture). `WarnWeakCrypto` only logs a weak client and is not a control. Hikyo carries no SSH session | F-03 done (#1177): [runbook section](../../operations/pqc-staged-rollout.md#operator-owned-hybrid-only-ssh-key-exchange-x07-f-03) | E-02 limits only the signatures |
 | X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04 (decided 2026-11-04): the composite is not adopted (ML-DSA-44 is outside DEC-02, DEC-03 did not select composites) | E-02 |
 | X09 | unknown | source: IANA, W3C, go-webauthn; no primary authenticator or platform statement read | A primary authenticator statement; a change of position on credential parameters | RP creates classical credentials only; offering library PQC parameters would include ML-DSA-44 (excluded by DEC-02) | F-05 (decided 2026-11-04): classical credentials only | E-05 |
-| X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` has no ML-DSA | `go-jose` adds ML-DSA; an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06: #1130/#1132 note | E-04 |
+| X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` v4.1.9 (rechecked `dev` pin; candidate v4.1.6) has ML-DSA (Go 1.27) but the allowlists and key loader refuse it | Hikyo widens key loading and the allowlist together (tracked in #1180; see the F-06 row and commit 5a6606bfd, which closed #1191); an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06 recheck recorded (#1180 stays open): #1130 and #1132 notes posted 2026-11-23 | E-04 |
 | X11 | unknown | source only, including the SAML metadata proxy leg | As X02 | Unknown | F-02 | E-04, E-08 |
-| X12 | blocked | source: allowlist; no XML-DSig ML-DSA identifier found by search | A standards body defines the identifier; `goxmldsig` supports it | As X10 | F-06 | E-04 |
+| X12 | blocked | source: allowlist; ML-DSA identifier only in an Internet-Draft (-11, 2026-11-19); `goxmldsig` v1.6.1 has none | The identifier is published as an RFC or W3C Recommendation; `goxmldsig` supports it | As X10 | F-06 recheck recorded (#1180 stays open) | E-04 |
 | X13 | compatibility-only | source: PostgreSQL 18 docs; `verify-full` enforced; negotiated group NOTRUN | Authorized fixture; operator names the server build | Strict is not selectable; server-controlled | F-07 (HOLD until a hybrid-capable PostgreSQL is named) | E-08 |
 | X14 | out of profile | source: AWS key spec reference; Hikyo custody is software only, so no KMS key is used for Hikyo's own keys | An external custody seam is designed | None for Hikyo keys | none | none (key-service contact is X15, E-13) |
-| X15 | unknown | source: `importer/sops.go` disclosure; key-service builds and the `gcpkms`, `azkv`, `hcvault`, `hckms` sources not read | Source key policy named per import | Imports carry the source's policy; a KMS or Vault Transit file contacts that service | F-08 (#1135) | E-13 |
-| X16 | unknown | source: Sigstore blog is 17 months old; nothing current read for Kyverno, Apple, OS packages, sumdb or commit signing | A service states PQ issuance or signing | None | F-10 | E-03 |
+| X15 | unknown | source: `importer/sops.go` disclosure; key-service builds and the `gcpkms`, `azkv`, `hcvault`, `hckms` sources not read. **No PQ claim** covers the SOPS, kubeconfig and OpenBao imports or the key services SOPS contacts (F-08, [qualification](qualification.md)) | Source key policy named per import | Imports carry the source's policy; a KMS or Vault Transit file contacts that service | F-08 done (#1182); the operator runbook wording for import sources is #1135 scope and outside #1182 | E-13 |
+| X16 | unknown | source: statements read 2026-11-23 (X16 row); none states PQ issuance or signing in service; Sigstore targets mid-2027 | A service states PQ issuance or signing in production | None | F-10 done (#1184); recheck at the trigger | E-03 |
 | X17 | unknown | source only | Relay named | Unknown | F-02 | E-07, E-08 |
 | X18 | out of profile | none | Topology supplied | Outside the claim | none | E-08 |
 | X19 | unknown | source only; payload PQ is #1128 | Receiver named; #1128 lands | Strict would affect only the TLS leg; envelope is first-party | F-02; payload: #1128 | E-07, E-08 |
@@ -209,21 +222,22 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 Each line is a title and a one-sentence body, filed as the linked issue. All
 are owned by Marc Went. Rows served are in Table B. On 2026-11-04 the owner accepted
 the dispositions proposed for F-01 to F-11. F-01, F-04, F-05 and F-09 are decided
-in their bodies below; F-02, F-03, F-06, F-07, F-08, F-10 and F-11 stay open as
+in their bodies below; F-03, F-06, F-08 and F-10 are recorded in this file
+(2026-11-23, #1177, #1180 (stays open), #1182, #1184); F-02, F-07 and F-11 stay open as
 tracked work.
 
 | ID | Title | Body | Rows |
 | --- | --- | --- | --- |
 | [F-01](https://github.com/Hikyo-Org/Hikyo/issues/1175) | Decide what strict means for the GitHub sealed-box submission | Decided 2026-11-04: strict does not disable the GitHub Actions secret route, because the provider requires a libsodium sealed box (no PQ alternative, no second wrapper) and strict does not govern that route (F-09). It stays exception E-06, recorded in the migration register | X01 |
 | [F-02](https://github.com/Hikyo-Org/Hikyo/issues/1176) | Authorized read-only capture of the negotiated TLS group on external hops | In a named environment, capture the negotiated TLS group and certificate key type for each external hop, record peer and version, and update the matching exception row; no provider write. | X02 to X06, X11, X17, X19, X20, X22, X23, X24 |
-| [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. | X07 |
+| [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. Done 2026-11-23: [runbook section](../../operations/pqc-staged-rollout.md#operator-owned-hybrid-only-ssh-key-exchange-x07-f-03) recommends exactly that line, with an operator-owned sntrup761 option for pre-9.9 clients outside DEC-01, and OpenSSH versions checked against the release notes | X07 |
 | [F-04](https://github.com/Hikyo-Org/Hikyo/issues/1178) | Decide whether to track OpenSSH's composite SSH signature | Decided 2026-11-04: Hikyo does not adopt `ssh-mldsa44-ed25519`, because DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or `x/crypto` adds one. | X08 |
 | [F-05](https://github.com/Hikyo-Org/Hikyo/issues/1179) | Decide WebAuthn credential parameters and recovery for ML-DSA | Decided 2026-11-04: the relying party does not offer ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes). It stays on classical credentials under E-05, with no enrollment or recovery work. Recheck on a primary authenticator statement. | X09 |
-| [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. Decided 2026-11-13 (#1191): federation key loading (`jwkssource.decodeJWKS`) accepts only RSA, ECDSA and Ed25519 keys (the `oidcfed` allowlist has no EdDSA, so Ed25519 loads but verifies nothing today), so enabling federation ML-DSA must widen that key-type set and the `oidcfed` signature allowlist together. | X10, X12 |
+| [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. Decided 2026-11-13 (commit 5a6606bfd, which closed #1191): federation key loading (`jwkssource.decodeJWKS`) accepts only RSA, ECDSA and Ed25519 keys (the `oidcfed` allowlist has no EdDSA, so Ed25519 loads but verifies nothing today), so enabling federation ML-DSA must widen that key-type set and the `oidcfed` signature allowlist together. Recheck 2026-11-23: `go-jose` v4.1.8 added ML-DSA (Go 1.27 build tag), `dev` pins v4.1.9; `goxmldsig` v1.6.1 has none; an XML-DSig ML-DSA identifier exists only in an Internet-Draft (-11, 2026-11-19; E-04) | X10, X12 |
 | [F-07](https://github.com/Hikyo-Org/Hikyo/issues/1181) | Build a disposable hybrid-capable PostgreSQL fixture | Provide a disposable PostgreSQL 18 with an OpenSSL build that has a hybrid group and `ssl_groups` set, and capture the group Hikyo's client negotiates. HOLD until a server build is named | X13 |
-| [F-08](https://github.com/Hikyo-Org/Hikyo/issues/1182) | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). | X15 |
+| [F-08](https://github.com/Hikyo-Org/Hikyo/issues/1182) | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). Done 2026-11-23 in X15 and E-13 here and in the [qualification](qualification.md) import row | X15 |
 | [F-09](https://github.com/Hikyo-Org/Hikyo/issues/1183) | Decide per-route strict selection for external hops | Decided 2026-11-04: narrowed under DEC-06. Strict stays on the listener and owned clients, with no strict claim on any external route, and no per-route selector is built; see [strict-route refusal](#strict-route-refusal) | all |
-| [F-10](https://github.com/Hikyo-Org/Hikyo/issues/1184) | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package, commit signing and Go checksum database statements on PQ issuance and signing and update X16 and E-03. | X16 |
+| [F-10](https://github.com/Hikyo-Org/Hikyo/issues/1184) | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package, commit signing and Go checksum database statements on PQ issuance and signing and update X16 and E-03. Done 2026-11-23: no service states PQ issuance or signing in production (X16, E-03) | X16 |
 | [F-11](https://github.com/Hikyo-Org/Hikyo/issues/1185) | Run the AWS ambient credential sources in an authorized environment | In a named AWS environment, run IMDS, ECS and IRSA credential discovery and record the transport each uses and whether it can negotiate a hybrid group. | X23 |
 
 ### Residual risk by route class
@@ -270,6 +284,9 @@ route in this register:
   P-256, RSA 3072). A PQ session key exchange protects traffic only where the
   operator's sshd negotiates it (observed locally with OpenSSH 10.3p1). Hikyo
   makes no claim about it, and none about OpenSSH 10.6's composite signature.
+- X15: Hikyo makes no PQ claim for SOPS, kubeconfig or OpenBao imports or for
+  the key services SOPS contacts; the source's key policy and TLS govern
+  (E-13).
 - X09 to X12: signatures verified by Hikyo are RSA, ECDSA or Ed25519. A PQ
   signature from an IdP or authenticator is refused (OIDC, SAML) or not
   requested (WebAuthn). No PQ authenticity claim.
@@ -349,12 +366,12 @@ E-15, E-20) are not repeated. These terms are pointed to from the
 | ID | Routes (same as Table B) | Peer and version known | Why ineffective | Recheck trigger |
 | --- | --- | --- | --- | --- |
 | E-02 | X07, X08 | OpenSSH 10.3p1 local only; `x/crypto/ssh` v0.58.0; no deployed sshd named | Peer unnamed | `x/crypto` adds composite; draft becomes an RFC; DEC-02 or DEC-03 revisited |
-| E-03 | X16 (includes I31: Kyverno and chart policy) | None named | Peers unnamed, no versions | A service states PQ issuance |
-| E-04 | X10, X11, X12 | Libraries: `go-oidc` v3.21.0, `go-jose` v4.1.6, `gosaml2` v0.12.0, `goxmldsig` v1.6.1; no IdP | IdP unnamed | `go-jose` ML-DSA; XML-DSig identifier; an IdP issues PQ |
+| E-03 | X16 (includes I31: Kyverno and chart policy) | None named; statements read 2026-11-23: Sigstore public instance (PQC targeted mid-2027), Kyverno (no PQ statement found in the v1.17 and v1.18 announcements and `verifyImages` docs; v1.20.0 notes not fully read), Apple (no signing statement), RHEL 10.1 RPM (technology preview), Debian and Ubuntu archives (none found), GitHub commit verification (GPG, SSH, S/MIME), Go checksum database (none found) | Peers unnamed, no versions; no service states PQ issuance or signing in production | A service states PQ issuance or signing in production, for example the Sigstore PQC public instance |
+| E-04 | X10, X11, X12 | Libraries: `go-oidc` v3.21.0, `go-jose` v4.1.9 (rechecked `dev` pin; candidate v4.1.6; ML-DSA since v4.1.8, Go 1.27 only), `gosaml2` v0.12.0, `goxmldsig` v1.6.1 (no ML-DSA); no IdP; rechecked 2026-11-23 | IdP unnamed | Hikyo allowlists and key loader accept ML-DSA (tracked in #1180; see the F-06 row and commit 5a6606bfd, which closed #1191); `goxmldsig` adds ML-DSA; the XML-DSig identifier is published as an RFC or W3C Recommendation; an IdP issues PQ |
 | E-05 | X09 | `go-webauthn` v0.18.2; no authenticator | Authenticator unnamed | Primary authenticator statement; a change of position on credential parameters |
 | E-06 | X01 | Effective 2026-11-04: GitHub Actions secrets API; libsodium sealed box as documented on 2026-11-03, API version `2022-11-28`; expires 2027-05-03 | None | GitHub documents a PQ option or a different algorithm |
 | E-07 | X02 to X06, X17, X19, X23 | Go 1.27.3 client; no peer | Peers unnamed | A peer is named and captured |
-| E-13 | X15 | `sops` v3.13.3, `client-go` v0.37.1, `openbao/api/v2` v2.7.1; no source | Sources unnamed | Source key policy named |
+| E-13 | X15 | `sops` v3.13.3, `client-go` v0.37.2 (rechecked `dev` pin; candidate v0.37.1), `openbao/api/v2` v2.7.1; no source; no PQ claim covers the import sources or their key services | Sources unnamed | Source key policy named |
 
 ## Recovery, enrollment and rotation
 
@@ -393,3 +410,22 @@ AWS [blog](https://aws.amazon.com/blogs/security/ml-kem-post-quantum-tls-now-sup
 [Go `crypto/tls`](https://pkg.go.dev/crypto/tls);
 [Sigstore](https://blog.sigstore.dev/post-quantum-2025/). FIDO vendor commentary
 was seen only in search results and supports no row.
+
+## Sources read 2026-11-23
+
+Follow-ups F-03, F-06, F-08 and F-10: OpenSSH
+[release notes](https://www.openssh.org/releasenotes.html) and
+[sshd_config(5)](https://man.openbsd.org/sshd_config); Sigstore posts
+([2026-10-02](https://blog.sigstore.dev/pqc-sigstore/),
+[2025-06-06](https://blog.sigstore.dev/post-quantum-2025/)) and
+[Trail of Bits, 2026-01-29](https://blog.trailofbits.com/2026/01/29/building-cryptographic-agility-into-sigstore/);
+[Apple Platform Security](https://support.apple.com/guide/security/secc7c82e533/web);
+[Red Hat RPM PQ signing](https://developers.redhat.com/articles/2025/10/07/signing-rpm-packages-using-quantum-resistant-cryptography);
+[Ubuntu 26.04 PQ post](https://discourse.ubuntu.com/t/post-quantum-support-in-the-upcoming-26-04-lts/76840);
+[RFC 9980](https://www.rfc-editor.org/rfc/rfc9980);
+[GitHub commit signature docs](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification);
+[Go sumdb design](https://go.googlesource.com/proposal/+/refs/heads/master/design/25530-sumdb.md);
+Kyverno v1.17 and v1.18 announcements and `verifyImages` docs;
+[draft-eastlake-rfc9231bis-xmlsec-uris-11](https://datatracker.ietf.org/doc/html/draft-eastlake-rfc9231bis-xmlsec-uris);
+`go-jose` v4.1.8 and v4.1.9 releases and `mldsa.go`; `goxmldsig` releases,
+`xml_constants.go`, issues and pull requests.

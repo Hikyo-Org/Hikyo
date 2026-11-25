@@ -1,5 +1,5 @@
 virtualStoreType: global
-# pnpm 11 hard-errors (ERR_PNPM_IGNORED_BUILDS) on any transitive install script
+# pnpm hard-errors (ERR_PNPM_IGNORED_BUILDS) on any transitive install script
 # that is not decided here, so every entry below is a deliberate yes/no. This is
 # the file `pnpm approve-builds` writes to; it does not touch the lockfile, so
 # `--frozen-lockfile` is unaffected.

@@ -3,6 +3,12 @@ version: 2
 
 project_name: hikyo
 
+git:
+  # The desktop-v series (ADR D13) shares commits with v tags and must never be
+  # picked as the current or previous tag.
+  ignore_tags:
+    - "desktop-v*"
+
 before:
   hooks:
     # Keep the growing compatibility inventory out of exec arguments/environment.

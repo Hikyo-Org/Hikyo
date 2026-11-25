@@ -301,7 +301,7 @@ test.describe('environment matrix', () => {
         .click();
       const secretEditor = page.getByRole('dialog');
       await expect(secretEditor.getByRole('button', { name: `Reveal ${secret}` })).toBeVisible();
-      await expect(secretEditor.getByRole('button', { name: `Copy ${secret} (audited disclosure)` })).toBeVisible();
+      await expect(secretEditor.getByRole('button', { name: `Copy ${secret} (audited if still secret)` })).toBeVisible();
       await expect(secretEditor.getByRole('button', { name: 'Edit all environments' })).toBeVisible();
       await expect(secretEditor.getByRole('link', { name: 'Open Values' })).toHaveCount(0);
       await secretEditor.getByRole('button', { name: `Reveal ${secret}` }).click();
@@ -320,7 +320,7 @@ test.describe('environment matrix', () => {
         .getByRole('button', { name: new RegExp(`${secret} in production:`) })
         .click();
       const productionSecretEditor = page.getByRole('dialog');
-      await productionSecretEditor.getByRole('button', { name: `Copy ${secret} (audited disclosure)` }).click();
+      await productionSecretEditor.getByRole('button', { name: `Copy ${secret} (audited if still secret)` }).click();
       await expect(page.getByRole('heading', { name: 'copy to clipboard · production' })).toBeVisible();
       await page.getByRole('button', { name: 'Use a passkey' }).click();
       await expect(productionSecretEditor.getByRole('status').filter({ hasText: 'Copied' })).toContainText(

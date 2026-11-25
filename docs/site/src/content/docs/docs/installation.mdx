@@ -17,6 +17,7 @@ prereleases; source builds are available for local evaluation and development.
 | Install stable %STABLE_VERSION% | [Stable downloads](#stable-downloads) | Verified release archives, packages, image and chart |
 | Try Hikyo locally | [Getting started](/docs/getting-started/) | Loopback-only server, SQLite, embedded web UI |
 | Try the latest `main` build | [Unsigned development snapshot](#unsigned-development-snapshots) | Exact-commit archive for six desktop/server targets |
+| Use hosted instances from a Mac window | [Desktop app](/docs/desktop-app/) | Native client with no server, from a separate release channel (not published yet) |
 | Install the macOS CLI | [macOS DMG and Homebrew](#macos-dmg-and-homebrew) | Apple Silicon or Intel executable from a published release |
 | Run a signed nightly on a systemd host | [Upgrades](/docs/upgrades/#one-command-nightly-upgrade) | `sudo hikyo upgrade` with verified release evidence and a tested encrypted backup |
 | Pull a nightly for Docker or Kubernetes | [Nightly container images](#nightly-container-images) | Distroless image for Linux amd64 and arm64 |
@@ -36,7 +37,8 @@ It distinguishes chart publication from source availability and keeps existing
 manual installations on their separate upgrade path.
 For controller ownership of a signed chart, use
 [Kubernetes GitOps](/docs/kubernetes-gitops/) for Flux and Argo CD configurations
-with exact chart pins and explicit activation. These recipes refuse stable 1.0.0.
+with exact chart pins and explicit activation. These recipes refuse the stable 1.0.0
+chart; the 1.1.0 chart carries its fixes.
 
 ## Stable downloads
 
@@ -61,9 +63,11 @@ For native installation, Compose and Helm runtime inputs, continue with
 
 <Callout type="info" title="Publication and qualification">
   The [1.0.0 release notes](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0)
-  retain platform/install, provider, MCP and operational follow-ups. A published
+  list platform/install, provider, MCP and operational follow-ups; the
+  [implementation status](/implementation-status/) tracks what remains. A published
   artifact does not establish acceptance of your deployment. Homebrew has a
-  separate tap publication step; use the verified DMG while its cask is unavailable.
+  separate tap publication step after each release; use the verified DMG until the
+  cask carries %STABLE_VERSION%.
 </Callout>
 
 ## Verify a stable bundle
@@ -188,8 +192,11 @@ keys, install a service, or start a server.
 
 ## macOS DMG and Homebrew
 
-Hikyo is a command-line tool with an embedded browser UI. The DMG contains
-`hikyo` and `LICENSE`, rather than an application to drag into Applications.
+The `hikyo` DMG installs a command-line tool with an embedded browser UI. It
+contains `hikyo` and `LICENSE`, so it is not an application to drag into
+Applications. The separate [desktop app](/docs/desktop-app/) is the Mac
+application. It is not published yet and will have its own release channel. A Mac needs no server to use a
+hosted instance: the CLI works against one directly.
 On [GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases), choose the
 release and download its `Darwin_arm64.dmg` for Apple Silicon or
 `Darwin_x86_64.dmg` for Intel. Follow the
@@ -375,7 +382,7 @@ supported host platforms. The Unix-socket local evaluation flow is for Linux
 and macOS; Windows CLI connections require HTTPS. Platform qualification limits
 remain recorded in the release notes.
 
-The server is designed to run as one binary. The browser UI is embedded when
+The server is designed to run as one binary, and the desktop app is not part of it. The browser UI is embedded when
 the binary is built with the `ui` build tag.
 
 ## What to read next

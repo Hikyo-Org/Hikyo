@@ -19,7 +19,7 @@ vi.mock('../api/account.ts', () => ({
   useAuthMethods: () => ({ isError: false, refetch: vi.fn() }),
 }));
 vi.mock('../app/AuthProvider.tsx', () => ({
-  useAuth: () => ({ state: { status: 'authenticated' }, identity: { session: { assurance: { method: 'local-password' } } }, refreshSession: vi.fn() }),
+  useAuth: () => ({ state: { status: 'authenticated' }, identity: { principal: { display_name: 'Ada' }, session: { assurance: { method: 'local-password' } } }, refreshSession: vi.fn() }),
 }));
 vi.mock('../api/values.ts', () => ({
   runDeveloperCredentialPasskeyCeremony: vi.fn(),
@@ -56,8 +56,8 @@ async function render() {
   return view;
 }
 const authorize = (container: HTMLElement) => {
-  const found = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Authorize CLI');
-  if (found === undefined) throw new Error('missing Authorize CLI');
+  const found = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Authorize');
+  if (found === undefined) throw new Error('missing Authorize');
   return found;
 };
 const requested = () => fetcher.mock.calls.map(([input]) => (input instanceof Request ? new URL(input.url).pathname : ''));
@@ -130,12 +130,44 @@ describe('CLI authorization names', () => {
     } finally { await unmount(); }
   });
 
-  it('keeps IDs and looks nothing up when the environments span projects', async () => {
+  it('words a mint handoff as a machine credential decision and lists no keys', async () => {
+    route({ purpose: 'mint', operation: 'identity.credential-mint', key_ids: [] });
+    const { container, unmount } = await render();
+    try {
+      expect(container.textContent).toContain('mint a machine credential');
+      expect(container.textContent).toContain('can decrypt secret values in the environment below');
+      expect(container.querySelector('.ceremony__keys')).toBeNull();
+      expect(authorize(container).disabled).toBe(false);
+    } finally { await unmount(); }
+  });
+
+  it('words an emergency access handoff as a time-bound decision and lists no keys', async () => {
+    route({ purpose: 'access', operation: 'access.bypass', key_ids: [] });
+    const { container, unmount } = await render();
+    try {
+      expect(container.textContent).toContain('take emergency temporary access');
+      expect(container.textContent).toContain('without the approval its policy normally requires');
+      expect(container.querySelector('.ceremony__keys')).toBeNull();
+      expect(authorize(container).disabled).toBe(false);
+    } finally { await unmount(); }
+  });
+
+  it.each(['mint', 'access'])('reads no key catalogue for a %s handoff, so a pending one cannot hold Authorize', async (purpose) => {
+    // The gate never releases: were /keys read, Authorize would stay disabled.
+    route({ purpose, key_ids: [] }, {}, () => new Promise<void>(() => undefined));
+    const { container, unmount } = await render();
+    try {
+      expect(requested().some((path) => path.endsWith('/keys'))).toBe(false);
+      expect(authorize(container).disabled).toBe(false);
+    } finally { await unmount(); }
+  });
+
+  it('looks names up once per project when the environments span projects, and still allows approval', async () => {
     route({ environments: [policy(consentIds.environment), policy('env_00000000-0000-4000-8000-0000000000ff', consentIds.org, 'prj_00000000-0000-4000-8000-0000000000ee')] });
     const { container, unmount } = await render();
     try {
-      expect(requested()).toEqual([]);
-      expect(container.textContent).toContain(consentIds.environment);
+      expect(requested().filter((path) => path.endsWith('/environments'))).toHaveLength(2);
+      expect(container.textContent).toContain('env_00000000-0000-4000-8000-0000000000ff');
       expect(authorize(container).disabled).toBe(false);
     } finally { await unmount(); }
   });

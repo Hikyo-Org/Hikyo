@@ -16,6 +16,9 @@ permissions:
 
 jobs:
   resolve:
+    # The desktop series (desktop-v<version>) is not a hikyo release and has no
+    # SemVer v tag to validate. Skip it before any step; validate then skips too.
+    if: ${{ github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'desktop-v') }}
     runs-on: ubuntu-latest
     outputs:
       available: ${{ steps.resolve.outputs.available }}
@@ -145,7 +148,7 @@ jobs:
           --bundle "$RUNNER_TEMP/security-release/runtime-bundle"
           --postgres-dsn 'postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test?sslmode=disable'
           --steps 24 --timeout 10m --output "$RUNNER_TEMP/security-release/attacks.json"
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false

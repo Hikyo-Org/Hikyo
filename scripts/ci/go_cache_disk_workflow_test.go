@@ -21,7 +21,6 @@ func normalizeGoReuseDiskPreparation(jobs map[string]map[string]any) error {
 		"supply-chain-checks": true, "app-build": true, "client": true,
 		"compose-demo": true, "web-go": true, "test_core": true, "test_core_serial": true,
 		"isolation_shard": true, "headline-guarantee": true,
-		"release-snapshot": true,
 	}
 	want := map[string]any{"name": goReuseDiskStep, "run": goReuseDiskScript, "timeout-minutes": 3}
 	for name, job := range jobs {
@@ -42,11 +41,7 @@ func normalizeGoReuseDiskPreparation(jobs map[string]map[string]any) error {
 			with, _ := step["with"].(map[string]any)
 			key, _ := with["key"].(string)
 			uses, _ := step["uses"].(string)
-			prefix := "go-test-v2-"
-			if name == "release-snapshot" {
-				prefix = "go-release-snapshot-v2-"
-			}
-			if strings.HasPrefix(uses, "actions/cache/restore@") && strings.HasPrefix(key, prefix) {
+			if strings.HasPrefix(uses, "actions/cache/restore@") && strings.HasPrefix(key, "go-test-v2-") {
 				if restored >= 0 {
 					return fmt.Errorf("%s: duplicate shared Go cache restore", name)
 				}
@@ -85,7 +80,7 @@ func TestGoReuseDiskPreparationWorkflow(t *testing.T) {
 	if err := normalizeGoReuseDiskPreparation(load()); err != nil {
 		t.Fatal(err)
 	}
-	for _, owner := range []string{"web-go", "release-snapshot"} {
+	for _, owner := range []string{"web-go", "test_core_serial"} {
 		t.Run(owner, func(t *testing.T) {
 			for _, mutation := range []string{"missing", "conditional", "command", "deadline", "late", "duplicate", "unrelated-job"} {
 				t.Run(mutation, func(t *testing.T) {

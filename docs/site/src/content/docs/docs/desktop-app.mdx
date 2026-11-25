@@ -1,0 +1,221 @@
+---
+title: Desktop app
+description: Use hosted Hikyo instances from a native macOS window, with sign-in and passkeys handled by your browser.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/desktop-app.mdx
+---
+
+The Hikyo desktop app is a native macOS window onto instances that someone else
+hosts, or that you run elsewhere. It is a thin client. It contains no server,
+no datastore, no root key and no copy of the web UI. For each connection it
+loads that instance's own web UI, so the instance's version decides what you
+see.
+
+This page describes version 1. It is not available yet: see
+[Install the app](#install-the-app).
+
+## You don't need a server on your Mac
+
+Installing Hikyo on a Mac places one `hikyo` executable and starts no server.
+Against a hosted instance, the CLI already works without one:
+
+```bash
+hikyo login https://hikyo.example.com --tls-mode system-ca
+```
+
+See [Identity and access](/docs/identity-and-access/#human-sessions) and
+[Contexts and targets](/docs/contexts/). Run a local server only to evaluate
+Hikyo or to develop against it: see [Getting started](/docs/getting-started/).
+The desktop app does not run a server for real secrets, and it is not a
+goal of version 1 to do so.
+
+## Requirements
+
+- macOS 13 or newer.
+- An instance whose server advertises the `desktop-app/1` capability in
+  `GET /api/v1/meta`. That needs the first Hikyo release that includes the desktop-app
+  capability (planned in [#1458](https://github.com/Hikyo-Org/Hikyo/pull/1458),
+  not released yet), and a server built with the embedded web UI. An older instance is refused by name.
+  The app tells you which server version it needs and offers to open the
+  instance in your browser instead. There is no partly working mode.
+- A browser on the same Mac, for sign-in and passkeys.
+
+## Install the app
+
+The app will be published in the `Hikyo-Org/Hikyo` releases under its own
+`desktop-v` tags, at the same version as `hikyo`. It is never part of the signed
+`hikyo` releases, and the `hikyo` DMGs do not contain it.
+
+> **Download location: not published yet.** The release channel does not exist
+> at the time of writing. This page will link the signed, notarized download
+> here once it does. Until then, do not install a build from any other source.
+
+### Verify the download
+
+Each release carries `desktop-inventory.json` and its signature bundle
+`desktop-inventory.sigstore.json`. The inventory lists every DMG with its size
+and SHA-256. Replace `VERSION` with the release version and `ARCH` with `arm64` (Apple
+silicon) or `x86_64` (Intel):
+
+```sh
+cosign verify-blob \
+  --bundle desktop-inventory.sigstore.json \
+  --certificate-identity https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@refs/tags/vVERSION \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  desktop-inventory.json
+shasum -a 256 Hikyo-Desktop-VERSION-ARCH.dmg
+```
+
+The hash must equal the one listed for that file in the inventory. Then ask
+Gatekeeper to assess the disk image:
+
+```sh
+spctl -a -vv -t open --context context:primary-signature Hikyo-Desktop-VERSION-ARCH.dmg
+```
+
+Expect `accepted` and `source=Notarized Developer ID`. Any other source, or a
+rejection, means you should not open the file.
+
+Version 1 has no updater and no update check. To upgrade, download and verify
+the new release by hand.
+
+## Add a connection
+
+1. Open the app and enter the instance address, for example
+   `https://hikyo.example.com`. A name is optional.
+2. Choose how to trust the instance:
+   - **System certificate authorities.** Right for a public certificate.
+   - **Pin its key.** Right for a certificate your own authority issued.
+   There is no option to skip certificate checks.
+3. The app contacts the instance and shows a confirmation with its origin and
+   the SPKI fingerprint of its key. For a pin, it also states that the pin
+   breaks when the instance rotates its key. Check the fingerprint with the
+   instance's operator through another channel before you choose **Trust and
+   continue**. The app sends nothing else to the instance before you confirm.
+4. The app checks that the instance advertises `desktop-app/1`.
+5. Sign in, as described next.
+
+## Sign in
+
+Sign-in always happens in your system browser, on the instance's real address.
+The web UI's login form never runs in the app. Hikyo opens your browser, you
+finish signing in there, and the app receives the result on a loopback address
+on your Mac. Your instance's passkey, OIDC and SAML sign-in methods run in that browser.
+
+If the loopback sign-in cannot run, the app falls back to a device code. You can
+also choose it up front with the option to sign in with a code on another
+device. The app then shows a verification address and a code. Only approve a
+code you started yourself.
+
+The app signs in as an ordinary CLI session, with the same limits as the CLI:
+30 days idle and 90 days absolute. It sends `User-Agent: Hikyo-Desktop/<version>`,
+which session records and the audit view show as a label. That label is
+asserted by the client, so operators cannot rely on it to tell the app from the
+CLI.
+
+The session token lives in your login keychain, in an item whose access list
+trusts only this app, matched by its code signature rather than where it is
+installed, so moving the app to another folder keeps its sessions. It is not
+shared with the CLI, and the page in the window never sees it. If a sign-in returns a different account than the connection used before,
+the app asks you to confirm before it uses it.
+
+If the connection details stored on disk no longer match the keychain item, the
+app refuses to open the connection and says so. Remove the connection and add it
+again.
+
+The app also refuses a keychain item that it cannot prove is its own: one that
+another program created or can read, or one made by a different build or a
+different signer of the app (a rebuilt development copy, for example). It never
+reads such an item. The connection shows that the saved session was not used,
+and **Sign in** replaces the item with a new one after you confirm the instance
+address. The old session is not revoked by that. If you no longer need it,
+revoke it from another signed-in session.
+
+When a session ends, the app opens the system browser to sign in again. After
+you sign out yourself, it waits until you choose **Sign in**.
+
+## What continues in the browser
+
+Some actions cannot run on the app's own origin. For these the app opens the
+instance in your browser, because the browser holds your passkeys:
+
+- **Passkey reveals and other protected actions** (reveal, copy, publish,
+  approve, reject, bypass, adapter and self-config). The window stays as it
+  is, the browser asks for your passkey, and the app finishes the action when
+  you return to the window. If your instance offers TOTP for the action, you can
+  enter it in the window instead.
+- **Developer credentials.** Minting stays a terminal action and is refused in
+  the app.
+- **Passkey mint and access** without TOTP, **session step-up by passkey**,
+  **passkey enrolment** and **identity linking.** The app offers
+  **Continue in browser**, which opens the same page on the instance's real
+  address, under a separate browser session.
+
+Passkey enrolment and identity linking in the browser end every session of
+that account, including the app's. After either, sign in to the app again.
+
+The app also hides workspace launch, and it will not open the instance's handoff and approval pages
+(`/login/cli`, `/reauth/cli` and `/workspace/approve`) from a link on the page, which narrows the ways a hostile
+page can steer you into approving a login you did not start.
+
+## Downloads and the clipboard
+
+Every download opens a save panel, and saved files carry the macOS quarantine
+attribute. Nothing is written without the panel. After you copy a secret, the
+app clears the clipboard later, only if you have not copied something else
+since.
+
+## Remove a connection
+
+Choose **Remove**, then **Confirm remove**. The app first revokes the
+connection's session on the instance, then deletes the connection, its browser
+storage and its keychain item together. If the revocation fails, the app says
+so ("The session could not be revoked on the instance"): the connection is
+still removed, and the session stays valid until it expires, up to 30 days idle
+or 90 days absolute. Revoke it from another signed-in session. The same message
+appears when the keychain item was refused as described above, because the app
+will not send a token it cannot trust.
+
+## Limits you should know
+
+- **Pin protection ends at the browser hop.** The pin applies to the app's own
+  connection. Your browser uses its own trust store, so someone holding a
+  certificate your browser trusts for that address is not stopped by the pin.
+  If the browser cannot reach the instance, the app only sees a timeout.
+- **A compromised instance can misuse the session.** The web UI it serves runs
+  in the window and the instance receives the session token with each request,
+  so it can replay the token until it expires or you revoke it. That is up to
+  30 days idle and 90 days absolute, longer than a browser session, and
+  matches the CLI.
+- **Approvals can be phished.** An attacker can start a login for a device you
+  do not control and send you to approve it. Confirm that a code or request is
+  yours before you approve it.
+- **Browser pages can show raw identifiers.** The browser step shows names for
+  environments and keys you can read and raw IDs for the rest, and a hostile
+  page chooses them in the app. Check what you approve.
+- **A process running as you** may be able to reach the keychain item through a
+  prompt or by bypassing the app's code signature. It is the same boundary as
+  your browser profile.
+- **A session can outlive the app.** If a revocation fails, or the app crashes
+  at the wrong moment, a session can stay valid with no holder, up to 30 days
+  idle and 90 days absolute, until you revoke it from another signed-in session.
+- **You still use a browser.** Some work stays there, so keep a browser session
+  too.
+- **No telemetry.** The app connects only to the instances you configured and
+  sends no crash reports. An instance's own page can still request other
+  addresses, as far as its Content Security Policy allows.
+- **Depends on Wails internals.** The app adds native navigation and download
+  handling on Wails' internals, and refuses to open a window if they are not as
+  expected, so a framework upgrade can break it until it is rechecked.
+- **Not verified on real hardware yet.** Only the passkey reveal has been run
+  through the browser hop, and only against a local instance. Real Touch ID, a
+  hosted instance, a pinned key, OIDC and SAML sign-in, the other browser hops
+  and real downloads must be observed on a signed build before release.
+
+Windows and Linux are not supported.
+
+## Related
+
+- [Operate Hikyo from the browser](/docs/browser-operations/)
+- [Identity and access](/docs/identity-and-access/)
+- [Account security](/docs/account-security/)
+- [Architecture](/docs/architecture/)

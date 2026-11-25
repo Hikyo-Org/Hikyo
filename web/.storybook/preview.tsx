@@ -69,6 +69,8 @@ const preview: Preview = {
         ...MINIMAL_VIEWPORTS,
         phone: { name: 'Phone 390', styles: { width: '390px', height: '844px' }, type: 'mobile' },
         phoneNarrow: { name: 'Phone 360', styles: { width: '360px', height: '780px' }, type: 'mobile' },
+        // A desktop window at 400% zoom: 320px wide, little height for a dialog.
+        zoom400: { name: 'Zoom 400% (320x256)', styles: { width: '320px', height: '256px' }, type: 'desktop' },
       },
     },
     docs: { container: HikyoDocsContainer, renderer: createDocsRenderer },

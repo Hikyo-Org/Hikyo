@@ -51,6 +51,9 @@ type RotationExecutor struct {
 	// halting settle. A test lands the hold there to prove the settle decides on the
 	// hold at write time. nil in production.
 	AfterExtendHoldRead func()
+	// RestoreAssertionFault is a conformance seam: a non-nil error it returns stands
+	// in for a failed read of the restore assertion at the revoke step.
+	RestoreAssertionFault func() error
 	// BeforeHeldRead is a conformance seam: it runs immediately before the
 	// executor's own restore-hold read at a candidate-drop or recovery site
 	// (recover, reconcile:entry, reconcile:predrop, drop_orphan, drop_candidate),
@@ -1444,7 +1447,10 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: "done", NextAttempt: rotationExtendDue(run.CandidateValidUntil)})
 	}
 	hold := func(phase, code string) error {
-		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: phase, LastError: code, NextAttempt: now.Add(rotationBackoff(run.AttemptCount))})
+		// Only called after a fresh restore assertion read this visit, or for a role that
+		// has expired (the revoke settle and finish() then also set it after a failed read:
+		// finish always ends in done there), so it may replace a restore refusal's code.
+		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: phase, LastError: code, NextAttempt: now.Add(rotationBackoff(run.AttemptCount)), RestoreChecked: true})
 	}
 	refusedPhase := run.Phase
 	if executorPhase {
@@ -1484,33 +1490,57 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		}
 		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: from, Phase: run.Phase, LastError: run.LastError, NextAttempt: wake})
 	}
+	// The restore assertion is a store read and needs no provider, so it is read
+	// first: a provider that cannot be opened (or a role that cannot be loaded) must
+	// never replace the restore refusal with a transient code. While the assertion
+	// fails, the keys may serve the superseded role again and nothing but the
+	// provider can prove it dead, so every path that cannot reach the provider
+	// keeps the run held as published_versions_changed, which tells the operator
+	// not to drop the role. It is read before the role is loaded and the provider
+	// opened, so a restore that lands between that read and the drop is the same
+	// accepted race as before, a little wider by the local steps in between (a remote
+	// keyring would need a re-read after the open). A read that fails blocks the
+	// revoke, but not the settle of a role that has already expired: nothing about
+	// an expired role is live, so there is no restore to refuse.
+	holds, holdsErr := e.Runtime.RestoreAssertion(ctx, run)
+	if e.RestoreAssertionFault != nil {
+		if fault := e.RestoreAssertionFault(); fault != nil {
+			holds, holdsErr = false, fault
+		}
+	}
+	unreachable := func() error {
+		if !holds {
+			return hold(refusedPhase, rotCodeVersionsChanged)
+		}
+		return hold(run.Phase, rotCodeProvider)
+	}
 	role, err := e.Runtime.LoadSupersededRole(ctx, run, now)
+	if errors.Is(err, store.ErrNotFound) && holdsErr != nil {
+		return holdsErr
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		// The lease was lost, or no run minted this role: nothing to act on safely.
 		e.warn("rotation revoke found no minting run for its superseded role", run, "revoke", err)
-		return hold(run.Phase, rotCodeProvider)
+		return unreachable()
 	}
 	if err != nil {
 		return err
 	}
 	expired := roleExpired(role.ValidUntil, role.ExtendUncertain, now)
+	if holdsErr != nil && !expired {
+		return holdsErr
+	}
 	provider, openErr := e.openWith(ctx, run, role.Material)
 	if openErr != nil {
 		e.warn("rotation revoke could not open its provider", run, "revoke", openErr)
 		if !expired {
-			return hold(run.Phase, rotCodeProvider)
+			return unreachable()
 		}
 	} else {
 		defer provider.Close()
 	}
-	if !expired {
-		holds, err := e.Runtime.RestoreAssertion(ctx, run)
-		if err != nil {
-			return err
-		}
-		if !holds && !e.supersededDead(ctx, provider, run.SupersededHandle, now) {
-			return hold(refusedPhase, rotCodeVersionsChanged)
-		}
+	if !expired && !holds && !e.supersededDead(ctx, provider, run.SupersededHandle, now) {
+		return hold(refusedPhase, rotCodeVersionsChanged)
 	}
 	intent, err := e.intent(run, "revoke", now)
 	if err != nil {
@@ -1525,7 +1555,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		return err
 	}
 	if err := e.Runtime.Settle(ctx, run, store.RotationSettle{
-		Now: now, FromPhases: from, Phase: revokingPhase, LastError: "", NextAttempt: now, KeepLease: true, Open: &intent, Close: stale,
+		Now: now, FromPhases: from, Phase: revokingPhase, LastError: "", NextAttempt: now, KeepLease: true, Open: &intent, Close: stale, RestoreChecked: true,
 	}); err != nil {
 		if errors.Is(err, store.ErrRotationFenceLost) {
 			return nil
@@ -1553,7 +1583,7 @@ func (e *RotationExecutor) revoke(ctx context.Context, run store.RotationRun) er
 		if err != nil {
 			return err
 		}
-		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: []string{revokingPhase}, Phase: phase, LastError: code, NextAttempt: next, Close: closed, NotConverged: notConverged})
+		return e.settleDrop(ctx, run, store.RotationSettle{Now: now, FromPhases: []string{revokingPhase}, Phase: phase, LastError: code, NextAttempt: next, Close: closed, NotConverged: notConverged, RestoreChecked: true})
 	}
 	switch {
 	case err == nil:

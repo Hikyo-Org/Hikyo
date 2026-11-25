@@ -14,9 +14,15 @@ import {
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
+import { isAppMode } from '../app/shell.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
+import {
+  appModeWorkspaceReason,
+  continueInBrowserAction,
+  useWorkspaceHandoff,
+  workspaceHandoffAction,
+} from './useWorkspaceHandoff.ts';
 
 /**
  * WorkspaceScope is the boundary between operating THIS instance and operating a
@@ -242,16 +248,20 @@ function WorkspaceBanner({ origin }: { origin: string }) {
  */
 export function Reconnect({ origin, name }: { origin: string; name: string }) {
   const handoff = useWorkspaceHandoff(origin, {
-    preparation: { kind: 'establishment' },
+    preparation: isAppMode()
+      ? { kind: 'refused', message: appModeWorkspaceReason }
+      : { kind: 'establishment' },
     onFailMessage: (error) =>
       error instanceof WorkspaceError
         ? error.message
         : 'The workspace could not be reconnected. Check that this instance allowlists this origin.',
   });
-  const action = workspaceHandoffAction(handoff, {
-    ready: 'Reconnect',
-    authorising: 'Waiting for sign-in…',
-  });
+  const action = isAppMode()
+    ? continueInBrowserAction
+    : workspaceHandoffAction(handoff, {
+        ready: 'Reconnect',
+        authorising: 'Waiting for sign-in…',
+      });
 
   return (
     <div className="page page--chrome">

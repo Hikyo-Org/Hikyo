@@ -8,8 +8,13 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -180,7 +185,10 @@ var ageImporters = map[string]bool{
 
 type pkg struct {
 	ImportPath   string
+	Dir          string
 	GoFiles      []string
+	TestGoFiles  []string
+	XTestGoFiles []string
 	Imports      []string
 	TestImports  []string
 	XTestImports []string
@@ -590,4 +598,105 @@ func TestTransitMockCustodyIsTestOnly(t *testing.T) {
 			}
 		}
 	})
+}
+
+// internal/testutil holds helpers for tests. A package importing it from a
+// non-test file would link test scaffolding into a product binary.
+func TestTestutilIsTestOnly(t *testing.T) {
+	const testutil = module + "/internal/testutil"
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			for _, imp := range p.Imports {
+				if matchesDependencyPrefix(imp, testutil) {
+					t.Errorf("%s imports %s outside a test file: internal/testutil is test-only", p.ImportPath, imp)
+				}
+			}
+		}
+	})
+}
+
+// reflectx wraps reflect for tests so that no package handling authz.Proof
+// imports reflect. Without unsafe, reflect can still write unexported fields
+// through reflect.NewAt(t, v.Addr().UnsafePointer()), so reflectx may use
+// neither unsafe nor those entry points. The check is syntactic: it rejects
+// reflect.NewAt, reflect.SliceHeader/StringHeader and the UnsafePointer,
+// UnsafeAddr and Pointer() accessors, so a legitimate use must be spelled
+// differently or the rule widened deliberately.
+func TestReflectxCannotForgeUnexportedFields(t *testing.T) {
+	const reflectx = module + "/internal/testutil/reflectx"
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		found := false
+		for _, p := range pkgs {
+			if p.ImportPath != reflectx {
+				continue
+			}
+			found = true
+			if slices.Contains(allImports(p), "unsafe") {
+				t.Errorf("%s imports unsafe", p.ImportPath)
+			}
+			var files []string
+			files = append(files, p.GoFiles...)
+			files = append(files, p.TestGoFiles...)
+			files = append(files, p.XTestGoFiles...)
+			for _, f := range files {
+				src, err := os.ReadFile(filepath.Join(p.Dir, f))
+				if err != nil {
+					t.Fatalf("read %s: %v", f, err)
+				}
+				for _, use := range forgingReflectUses(t, f, string(src)) {
+					t.Errorf("%s: %s", f, use)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%s was not listed: the rule would be vacuous", reflectx)
+		}
+	})
+}
+
+func TestForgingReflectUsesFires(t *testing.T) {
+	src := `package x
+import "reflect"
+func f(v reflect.Value) {
+	reflect.NewAt(v.Type(), v.Addr().UnsafePointer()).Elem().Set(v)
+	_ = v.UnsafeAddr()
+	_ = v.Pointer()
+	var _ reflect.SliceHeader
+	_ = reflect.Pointer
+}`
+	got := forgingReflectUses(t, "x.go", src)
+	if len(got) != 5 {
+		t.Fatalf("want 5 findings (NewAt, UnsafePointer, UnsafeAddr, Pointer(), SliceHeader), got %d: %v", len(got), got)
+	}
+}
+
+// forgingReflectUses lists the reflect entry points that write unexported
+// state without importing unsafe.
+func forgingReflectUses(t *testing.T, name, src string) []string {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), name, src, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.SelectorExpr:
+			if id, ok := n.X.(*ast.Ident); ok && id.Name == "reflect" {
+				switch n.Sel.Name {
+				case "NewAt", "SliceHeader", "StringHeader":
+					out = append(out, "reflect."+n.Sel.Name)
+				}
+			}
+			if n.Sel.Name == "UnsafePointer" || n.Sel.Name == "UnsafeAddr" {
+				out = append(out, n.Sel.Name)
+			}
+		case *ast.CallExpr:
+			if sel, ok := n.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Pointer" {
+				out = append(out, "Pointer()")
+			}
+		}
+		return true
+	})
+	return out
 }

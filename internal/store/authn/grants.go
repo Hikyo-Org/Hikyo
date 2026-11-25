@@ -18,7 +18,7 @@ import (
 // (grant.create / grant.revoke / ...); what happens here is the write.
 //
 // Every mutating method is named in lint.ResolutionSurfaceWriters, and every
-// one takes the principal-row lock (lint.CheckGrantLock).
+// one takes the principal-row lock (the lint grantlock analyzer).
 
 // GrantRow is one stored grant with its row id, so origins can be attached
 // and the row revoked individually.

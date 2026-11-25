@@ -3,13 +3,13 @@ package service
 import (
 	"errors"
 	"math"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 func TestAccessCapabilitiesWithin(t *testing.T) {
@@ -197,7 +197,7 @@ func TestAccessBypassReauthIntent(t *testing.T) {
 		t.Fatalf("cross-environment binding: %v", err)
 	}
 	fromOperation, err := newReauthIntentForOperation(authz.OpAccessBypass, "env_prod", nil)
-	if err != nil || !reflect.DeepEqual(intent, fromOperation) {
+	if err != nil || !reflectx.Equal(intent, fromOperation) {
 		t.Fatalf("operation constructor differs: %+v, %v", fromOperation, err)
 	}
 	if _, err := NewAccessBypassReauthIntent(""); !errors.Is(err, domain.ErrInvalid) {
@@ -206,7 +206,11 @@ func TestAccessBypassReauthIntent(t *testing.T) {
 	if _, err := NewDisclosureReauthIntent(PurposeAccess, []string{"env_prod", "env_dev"}, nil); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("multiple environments: %v", err)
 	}
-	if cliReauthPurposeOperation(PurposeAccess, authz.OpAccessBypass) {
-		t.Fatal("emergency access admitted to unsupported CLI handoff")
+	// The CLI handoff binds the same environment-only unit (#1531).
+	if !cliReauthPurposeOperation(PurposeAccess, authz.OpAccessBypass) || cliReauthKeyBound(string(PurposeAccess)) {
+		t.Fatal("emergency access is not admitted to the CLI handoff as an environment-only unit")
+	}
+	if cliReauthPurposeOperation(PurposeAccess, authz.OpApprovalBypass) {
+		t.Fatal("the access purpose admitted another operation")
 	}
 }

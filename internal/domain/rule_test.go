@@ -165,3 +165,43 @@ func TestSelectedEnvironmentDefinitionsOnlyProjectForNamedKey(t *testing.T) {
 		t.Fatal("excluded destination")
 	}
 }
+
+func TestCheckMachineRule(t *testing.T) {
+	const org, p1, p2 = OrgID("org"), ProjectID("p1"), ProjectID("p2")
+	where := func(envMode AxisMode, envs []EnvID, projects ...ProjectID) Where {
+		w := Where{Projects: projects, EnvMode: envMode, KeyMode: AxisAll}
+		if len(envs) > 0 {
+			w.Envs = map[ProjectID][]EnvID{projects[0]: envs}
+		}
+		return w
+	}
+	folder := where(AxisAll, nil, p1)
+	folder.Keys = map[ProjectID][]RuleKeyItem{p1: {{Folder: "db", IsFolder: true}}}
+	for name, tc := range map[string]struct {
+		class PrincipalClass
+		cap   Capability
+		where Where
+		want  MachineRuleFault
+	}{
+		"automation edit on one project":    {ClassAutomation, CapEdit, where(AxisAll, nil, p1), MachineRuleOK},
+		"automation read except an env":     {ClassAutomation, CapRead, where(AxisAll, []EnvID{"prod"}, p1), MachineRuleOK},
+		"workload read on listed envs":      {ClassWorkload, CapRead, where(AxisOnly, []EnvID{"dev"}, p1), MachineRuleOK},
+		"workload read on every env":        {ClassWorkload, CapRead, where(AxisAll, nil, p1), MachineRuleDepth},
+		"workload read except an env":       {ClassWorkload, CapRead, where(AxisAll, []EnvID{"prod"}, p1), MachineRuleDepth},
+		"automation on two projects":        {ClassAutomation, CapRead, where(AxisAll, nil, p1, p2), MachineRuleDepth},
+		"workload edit":                     {ClassWorkload, CapEdit, where(AxisOnly, []EnvID{"dev"}, p1), MachineRuleCapability},
+		"automation reveal":                 {ClassAutomation, CapReveal, where(AxisAll, nil, p1), MachineRuleCapability},
+		"automation reveal-history":         {ClassAutomation, CapRevealHistory, where(AxisAll, nil, p1), MachineRuleCapability},
+		"automation manage-members":         {ClassAutomation, CapManageMembers, where(AxisAll, nil, p1), MachineRuleCapability},
+		"provisioning connection":           {ClassProvisioning, CapRead, where(AxisAll, nil, p1), MachineRuleCapability},
+		"instance connection":               {ClassInstanceConn, CapRead, where(AxisAll, nil, p1), MachineRuleCapability},
+		"developer":                         {ClassDeveloper, CapRead, where(AxisAll, nil, p1), MachineRuleCapability},
+		"automation read narrowed by keys":  {ClassAutomation, CapRead, folder, MachineRuleKeys},
+		"automation only-keys with no item": {ClassAutomation, CapEdit, Where{Projects: []ProjectID{p1}, EnvMode: AxisAll, KeyMode: AxisOnly}, MachineRuleKeys},
+	} {
+		r := Rule{Capability: tc.cap, Org: org, Where: tc.where}
+		if got := CheckMachineRule(tc.class, r); got != tc.want {
+			t.Errorf("%s: CheckMachineRule = %d, want %d", name, got, tc.want)
+		}
+	}
+}

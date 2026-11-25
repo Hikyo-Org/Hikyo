@@ -50,12 +50,23 @@ else
 			select_class compose
 			;;
 		esac
+		# desktop/ is its own module, built and tested only by the desktop job. It
+		# compiles these root packages (check-desktop-deps.sh fails when one is missing
+		# from this list; it does not detect stale extras) and derives its refusal list from api/openapi.yaml.
+		case "$path" in
+		desktop/* | api/openapi.yaml | api/*.go | internal/audit/* | internal/clientauth/* | internal/clienterr/* | internal/clienttrust/* | internal/crypto/* | internal/delivery/* | internal/domain/* | internal/filedurability/* | internal/freetext/* | internal/jsonwire/* | internal/operation/* | internal/securefile/* | internal/tlspolicy/*)
+			select_class desktop
+			;;
+		esac
 		case "$path" in
 		cmd/hikyo/main.go | cmd/hikyo/rootkey_stage.go | internal/crypto/rootkey_stage.go | internal/crypto/rootkey_stage_test.go | internal/securefile/atomic.go | internal/securefile/atomic_test.go)
 			select_class chart-runtime
 			;;
 		esac
 		case "$path" in
+		# Only the desktop job builds this nested module; the root Go lanes cannot.
+		desktop/*)
+			;;
 		.github/workflows/*)
 			all_jobs
 			;;
@@ -102,8 +113,9 @@ else
 			select_class client
 			;;
 		# The operator (Go under test by the kind e2e) and the kind e2e test
-		# itself carry the *.go integration set PLUS the k8s_e2e job.
-		internal/operator/* | internal/isolation/k8s_*)
+		# itself carry the *.go integration set PLUS the k8s_e2e job. The rotation
+		# rollout subtest reuses the two rotation fixtures below.
+		internal/operator/* | internal/isolation/k8s_* | internal/isolation/rotation_e2e_test.go | internal/isolation/rotation_executor_e2e_test.go)
 			select_class operator
 			;;
 		# Generated CRDs feed the generated-freshness diff and chart validation,

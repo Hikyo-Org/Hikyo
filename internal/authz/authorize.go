@@ -274,7 +274,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		// A key-aware call resolves its key from the database on this path
 		// whether or not any rule needs it: the denial's query count then
 		// depends on the operation, never on which rules or keys exist.
-		rules, err := a.r.Rules(ctx, principal)
+		rules, err := a.callerRules(ctx, caller)
 		if err != nil {
 			return nil, err
 		}
@@ -412,7 +412,7 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 		return err
 	}
 	if rulesApply(caller) && (ruleSatisfiable(spec.formula) || targetRule != nil || ruleNavigationOperation(op)) {
-		if _, err := a.r.Rules(ctx, caller.Principal); err != nil {
+		if _, err := a.callerRules(ctx, caller); err != nil {
 			return err
 		}
 		if key != nil {

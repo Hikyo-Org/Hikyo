@@ -2,7 +2,7 @@ import { WorkspaceSettingsLink } from './WorkspaceSettingsLink.tsx';
 import { useSelfConfig } from '../api/selfConfig.ts';
 import { SystemProjectNotice } from './InstanceConfig.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { type CSSProperties, type MouseEvent, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type CSSProperties, type MouseEvent, type PointerEvent, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { isDemo } from '../demo/config.ts';
@@ -24,6 +24,7 @@ import {
   usePublishMatrix,
   useReclassifyKey,
   useStageMatrixValue,
+  TIGHTEN_ADVISORY,
   useInitializeMatrixValue,
   type MatrixKeyList,
   type MatrixEnvironmentRow,
@@ -63,6 +64,7 @@ import {
   computeIndexedMatrixProblems,
   groupProblemCounts,
   indexMatrixProblems,
+  isSecret,
   keysForMatrixFilter,
   normalizeMatrixDraftValue,
   requiredInEnvironment,
@@ -241,6 +243,7 @@ export function Matrix({
   const [validationErrors, setValidationErrors] = useState<readonly MatrixValidationError[]>([]);
   const [publishOpen, setPublishOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [tightened, setTightened] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<{
     readonly owner: Selection;
     readonly message: string;
@@ -293,6 +296,13 @@ export function Matrix({
   // also moves the envs picker out of that column (it has no room) and
   // into the head row above the table.
   const phone = useMediaQuery(`(max-width: ${String(BREAKPOINTS.phone)}px)`);
+
+  // Column widths the user dragged (ColumnResizer), or 'fit' after a tap: the
+  // column's content width (app.css). Widening the key column past icon-only
+  // brings the key names back on a phone.
+  const [keyWidth, setKeyWidth] = useState<number | 'fit'>();
+  const [environmentWidths, setEnvironmentWidths] = useState<ReadonlyMap<string, number | 'fit'>>(new Map());
+  const keyNamesShown = !phone || keyWidth === 'fit' || (keyWidth ?? 0) >= KEY_NAME_WIDTH;
 
   // The legend and environment-picker are native <details> popovers. Native
   // <details> only close by re-clicking their summary, so, like the prototype's
@@ -497,6 +507,15 @@ export function Matrix({
   useProjectSidebar(projectSidebarState);
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
+  );
+  // The widest key row, in characters, sizes a key column fitted by a tap (app.css,
+  // `--matrix-key-fit`): the name, then the linked-keys glyph and required label beside it.
+  const keyRowChars = useMemo(
+    () => groups.reduce((most, group) => group.keys.reduce((widest, key) => {
+      const required = requiredLabel(key, environments);
+      return Math.max(widest, key.name.length + (key.group_id === '' ? 0 : LINKED_MARK_CHARS) + (required === '' ? 0 : required.length + 1));
+    }, most), 0),
+    [groups, environments],
   );
   // Each environment's longest cell text, from the data rather than the DOM:
   // the table is virtualised, so the longest value may not be rendered. Its
@@ -1040,6 +1059,10 @@ export function Matrix({
         <Alert tone="done">{notice}</Alert>
       )}
 
+      {tightened === null ? null : (
+        <Alert tone="warn">{tightened}</Alert>
+      )}
+
       {backgroundRefreshError ? (
         <Alert tone="warn">Live matrix refresh failed. Your loaded data and open edits are preserved; retrying automatically.</Alert>
       ) : null}
@@ -1146,34 +1169,58 @@ export function Matrix({
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>
               <table
-                className="matrix__table"
+                className={phone && keyNamesShown ? 'matrix__table matrix__table--key-names' : 'matrix__table'}
                 ref={matrixTable}
                 // The key column compacts when the environments' nominal widths
                 // leave it less than its full width (app.css, .matrix__table).
-                style={{ '--env-count': visibleEnvironments.length } as CSSProperties}
+                style={{
+                  '--env-count': visibleEnvironments.length,
+                  '--key-chars': keyRowChars,
+                  // Clamped in CSS, so a rotation or narrower window re-fits it: never under
+                  // the column's floor, and always a touch target of values beside it.
+                  ...(keyWidth === undefined
+                    ? {}
+                    : { '--matrix-key': `clamp(var(--matrix-key-min), ${keyWidth === 'fit' ? 'var(--matrix-key-fit)' : `${String(keyWidth)}px`}, 100cqi - var(--touch))` }),
+                } as CSSProperties}
               >
                 <thead ref={setMatrixHead}>
                   <tr>
-                    <th scope="col">
+                    {/* Named "Key" outright, or the resize handle inside joins the name. */}
+                    <th scope="col" aria-label="Key">
                       <div className="matrix__key-heading">
                         {/* The icon stays visible once the phone breakpoint
                             hides the word (app.css): the header must never
                             go blank. Desktop keeps both, same as a key row's
-                            own icon-then-name order; the accessible name is
-                            still "Key" either way. */}
+                            own icon-then-name order, and so does a phone key
+                            column widened to show names; the accessible name
+                            is still "Key" either way. */}
                         <Glyph name="key" />
-                        <span className="visually-hidden-phone">Key</span>
+                        <span className={keyNamesShown ? undefined : 'visually-hidden'}>Key</span>
                         {phone ? null : environmentPicker}
                       </div>
+                      <ColumnResizer
+                        label="Key"
+                        onResize={setKeyWidth}
+                        // A tap fits the column to its names (showing them on a phone, even after a narrowing
+                        // to icon-only); a second restores the default.
+                        onTap={() => setKeyWidth(keyWidth === undefined || !keyNamesShown ? 'fit' : undefined)}
+                      />
                     </th>
                     {visibleEnvironments.map((environment) => {
+                      const width = environmentWidths.get(environment.id);
                       const revision = revisionsByEnvironment.get(environment.id);
                       const degraded = degradedByEnvironment.get(environment.id);
                       return (
                         <th
                           scope="col"
                           key={environment.id}
-                          style={{ '--chars': longestByEnvironment.get(environment.id)?.length ?? 0 } as CSSProperties}
+                          className={width === 'fit' ? 'matrix__column--fit' : undefined}
+                          style={{
+                            '--chars': longestByEnvironment.get(environment.id)?.length ?? 0,
+                            // min-width too: an overflowing table otherwise shrinks it back toward the header.
+                            width: width === 'fit' ? undefined : width,
+                            minWidth: width === 'fit' ? undefined : width,
+                          } as CSSProperties}
                         >
                           <span>{environment.name}</span>
                           {/* DESIGN.md: the protected state is named in text, in
@@ -1213,6 +1260,20 @@ export function Matrix({
                               <span className="btn__label">{`rev ${String(revision)} · history`}</span>
                             </Link>
                           )}
+                          <ColumnResizer
+                            label={environment.name}
+                            onResize={(width) => {
+                              setEnvironmentWidths((current) => new Map(current).set(environment.id, width));
+                            }}
+                            // A tap fits the column to its longest value; a second restores the default.
+                            onTap={() => {
+                              setEnvironmentWidths((current) => {
+                                const next = new Map(current);
+                                if (!next.delete(environment.id)) next.set(environment.id, 'fit');
+                                return next;
+                              });
+                            }}
+                          />
                         </th>
                       );
                     })}
@@ -1269,7 +1330,7 @@ export function Matrix({
                                 }
                               >
                                 <Glyph name="chevron-down" className="matrix__group-chevron" />
-                                <span>{group.name}</span>
+                                <span className="matrix__group-name">{group.name}</span>
                                 <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
                                   <Badge tone="danger">
@@ -1283,13 +1344,14 @@ export function Matrix({
                                 ) : null}
                               </button>
                               {/* env-matrix 31: declare a key straight into this
-                                  group. Hidden while collapsed to match the
-                                  prototype, you open a group, then add to it. */}
+                                  group, from the row's visible right end. Hidden
+                                  while collapsed to match the prototype, you
+                                  open a group, then add to it. */}
                               {collapsed || declarationsLocked ? null : (
                                 <Button
                                   type="button"
                                   variant="quiet"
-                                  className="matrix__add-key"
+                                  className="btn--compact matrix__add-key"
                                   aria-label={`Add key to ${group.name}`}
                                   onClick={() => {
                                     setCreateError(null);
@@ -1329,7 +1391,7 @@ export function Matrix({
                           <MatrixKeyLink
                             keyRecord={key}
                             to={keyDetailLink(key.id)}
-                            phone={phone}
+                            iconOnly={!keyNamesShown}
                             onOpen={(anchor) => {
                               keyDetailOpener.current = anchor;
                             }}
@@ -1451,12 +1513,8 @@ export function Matrix({
             for (const change of changes) {
               try {
                 if (change.operation === 'set') {
-                  // Owner metadata can still be loading. Preserve the SMTP
-                  // password at this boundary; the server's protected profile
-                  // decides normalization without an asynchronous UI guess.
-                  const normalizedValue = selectedKey.classification === 'secret' && selectedKey.name === 'HIKYO_MAIL_PASSWORD'
-                    ? change.value
-                    : normalizeMatrixDraftValue(change.value);
+                  // schema-model.md trims every value on every write path; no key is exempt (#1492).
+                  const normalizedValue = normalizeMatrixDraftValue(change.value);
                   if (normalizedValue !== change.value) normalizedCount += 1;
                   const staged = await stage.mutateAsync({
                     environment: change.environmentId,
@@ -1469,7 +1527,10 @@ export function Matrix({
                   const environmentName =
                     environments.find((candidate) => candidate.id === change.environmentId)?.name ??
                     change.environmentId;
-                  for (const finding of staged.findings ?? []) {
+                  // A cell that is a secret is no config to keep: its value never
+                  // rides into this config-only warning.
+                  const secretCell = isSecret(valuesByCell.get(cellID(selectedKey.id, change.environmentId)), selectedKey);
+                  for (const finding of secretCell ? [] : staged.findings ?? []) {
                     warnItems.push({
                       environmentId: change.environmentId,
                       environmentName,
@@ -1605,6 +1666,7 @@ export function Matrix({
               ? undefined
               : async () => {
                   await reclassify.mutateAsync({ key: warn.keyId, classification: 'secret' });
+                  setTightened(`Reclassified ${warn.keyName} as secret. ${TIGHTEN_ADVISORY}`);
                 }
           }
           onDismiss={async (item) => {
@@ -1676,61 +1738,255 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
+/** The one tip on screen: opening a tip hides whichever other one is open. */
+let shownTip: { readonly id: string; readonly hide: () => void } | null = null;
+/** The tip whose anchor has keyboard focus: it returns when what replaced it closes. */
+let focusedTip: { readonly id: string; readonly reopen: () => void; readonly dismiss: () => void } | null = null;
+/** After Escape, hover opens nothing until the pointer really moves, so one resting under the closed tip does not open its neighbour's. */
+let hoverSuppressed = false;
+/**
+ * A pointer passing over cells on its way elsewhere opens no tips. A fixed
+ * delay, not `--dur`: that token is a transition length and is 0 under reduced
+ * motion, which is when this is needed most.
+ */
+const TIP_HOVER_DELAY_MS = 300;
+
+/**
+ * A manual popover (`.matrix__key-tip`) anchored under an element: the key
+ * column's name preview and a cell's full value share it. A manual popover,
+ * because an auto one light-dismisses on a tap's own pointer events, before the
+ * click. Outside press and Escape (from anywhere, so a hover-opened tip closes
+ * too) close it. It is fixed, so any scroll or resize re-places it against the
+ * anchor (focus scrolling a cell into view must not leave it behind) and it
+ * closes once the anchor is no longer what is visible at its centre (scrolled
+ * out, or under the sticky header or key column). Only one is open at a time;
+ * it flips above the anchor and is clamped into the viewport. Leaving for the
+ * tip itself keeps it open, so its text can be pointed at (WCAG 1.4.13): the
+ * tip touches its anchor for that. A tip opened by keyboard focus comes back
+ * when something that replaced it closes, or the anchor scrolls back into view,
+ * for as long as the anchor keeps focus (Escape ends that).
+ */
+function useAnchoredTip(anchor: RefObject<HTMLElement | null>, eligible: () => boolean = () => true) {
+  const tip = useRef<HTMLSpanElement>(null);
+  const listeners = useRef<AbortController | null>(null);
+  const watching = useRef<AbortController | null>(null);
+  const dismissed = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
+  const id = useId();
+  // Read through a ref so a new closure each render does not re-bind everything.
+  const eligibleRef = useRef(eligible);
+  // Layout phase: a focus restored inside a commit must read this render's value.
+  useLayoutEffect(() => {
+    eligibleRef.current = eligible;
+  });
+  const isOpen = useCallback(() => tip.current?.matches(':popover-open') === true, []);
+  const hide = useCallback(() => {
+    listeners.current?.abort();
+    listeners.current = null;
+    window.clearTimeout(timer.current);
+    if (shownTip?.id === id) shownTip = null;
+    if (tip.current?.matches(':popover-open') === true) tip.current.hidePopover();
+  }, [id]);
+  // The part of the anchor the reader sees (null when none), checked at its middle.
+  const visibleBox = useCallback(() => {
+    const el = anchor.current;
+    if (el === null) return null;
+    const rect = el.getBoundingClientRect();
+    // The client box: a classic scrollbar inside the well hides what it covers.
+    const scroller = el.closest('.matrix__scroll');
+    const outer = scroller?.getBoundingClientRect();
+    const well =
+      scroller === null || scroller === undefined || outer === undefined
+        ? undefined
+        : {
+            left: outer.left + scroller.clientLeft,
+            top: outer.top + scroller.clientTop,
+            right: outer.left + scroller.clientLeft + scroller.clientWidth,
+            bottom: outer.top + scroller.clientTop + scroller.clientHeight,
+          };
+    // The sticky key column and header cover the well's edge: only what is
+    // clear of them counts as visible.
+    const keyColumn = el.closest('tr')?.querySelector(':scope > th');
+    const clearLeft = keyColumn === null || keyColumn === undefined || keyColumn.contains(el) ? 0 : keyColumn.getBoundingClientRect().right;
+    // Only the header's cells are sticky (the thead box scrolls away), and so is
+    // a group row's label once it has reached the header. The label's bar
+    // overruns its key-column cell to the visible width, opaque, so it is the
+    // bar's box that covers value cells, not the cell's.
+    let clearTop = 0;
+    if (el.closest('thead') === null) {
+      const table = el.closest('table');
+      clearTop = table?.querySelector('thead th')?.getBoundingClientRect().bottom ?? 0;
+      const headerBottom = clearTop;
+      for (const label of table?.querySelectorAll('tbody > tr.matrix__group-row > th') ?? []) {
+        // Stuck is read off the cell, which pins a pixel into the header; the bar's top only meets it.
+        const stuck = label.getBoundingClientRect().top <= headerBottom;
+        const box = (label.querySelector('.matrix__group-row-inner') ?? label).getBoundingClientRect();
+        if (!label.contains(el) && stuck && box.left < rect.right && box.right > Math.max(rect.left, clearLeft)) clearTop = Math.max(clearTop, box.bottom);
+      }
+    }
+    const left = Math.max(rect.left, 0, well?.left ?? 0, clearLeft);
+    const right = Math.min(rect.right, window.innerWidth, well?.right ?? window.innerWidth);
+    const top = Math.max(rect.top, 0, well?.top ?? 0, clearTop);
+    const bottom = Math.min(rect.bottom, window.innerHeight, well?.bottom ?? window.innerHeight);
+    if (left >= right || top >= bottom) return null;
+    const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+    return hit !== null && (el.contains(hit) || tip.current?.contains(hit) === true) ? { left } : null;
+  }, [anchor]);
+  const place = useCallback(() => {
+    const el = anchor.current;
+    const popover = tip.current;
+    const seen = visibleBox();
+    // Resize and scroll re-place it: a link whose name now shows needs no tip.
+    if (el === null || popover === null || seen === null || !eligibleRef.current()) return false;
+    const rect = el.getBoundingClientRect();
+    // Measured at the left edge, where the viewport cannot narrow it.
+    popover.style.setProperty('--tip-x', '0px');
+    popover.style.setProperty('--tip-y', `${rect.bottom}px`);
+    popover.removeAttribute('data-cut');
+    if (popover.scrollHeight > popover.clientHeight) popover.setAttribute('data-cut', '');
+    const box = popover.getBoundingClientRect();
+    // Beside the part that shows, not the part under the sticky column.
+    popover.style.setProperty('--tip-x', `${Math.max(0, Math.min(seen.left, window.innerWidth - box.width))}px`);
+    // Not enough room below: sit above, touching the anchor as it does below.
+    if (rect.bottom + box.height > window.innerHeight && rect.top >= box.height) {
+      popover.style.setProperty('--tip-y', `${rect.top - box.height}px`);
+    }
+    return true;
+  }, [anchor, visibleBox]);
+  const close = useCallback(() => {
+    hide();
+    if (focusedTip !== null && focusedTip.id !== id) focusedTip.reopen();
+  }, [hide, id]);
+  const open = useCallback(() => {
+    const popover = tip.current;
+    if (popover === null || popover.matches(':popover-open') || !eligibleRef.current() || visibleBox() === null) return;
+    shownTip?.hide();
+    shownTip = { id, hide };
+    popover.showPopover();
+    if (!place()) {
+      hide();
+      return;
+    }
+    listeners.current = new AbortController();
+    const { signal } = listeners.current;
+    const inside = (target: EventTarget | null) =>
+      target instanceof Node && (anchor.current?.contains(target) === true || popover.contains(target));
+    document.addEventListener('pointerdown', (event) => {
+      if (!inside(event.target)) {
+        dismissed.current = true;
+        hide();
+      }
+    }, { signal });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      dismissed.current = true;
+      focusedTip?.dismiss();
+      if (!hoverSuppressed) {
+        hoverSuppressed = true;
+        document.addEventListener('pointermove', () => { hoverSuppressed = false; }, { once: true });
+      }
+      hide();
+    }, { signal });
+    const replace = () => {
+      if (!place()) close();
+    };
+    document.addEventListener('scroll', replace, { signal, capture: true });
+    window.addEventListener('resize', replace, { signal });
+  }, [anchor, close, hide, id, place, visibleBox]);
+  const reopen = useCallback(() => {
+    if (!dismissed.current && shownTip === null && anchor.current?.matches(':focus-visible') === true) open();
+  }, [anchor, open]);
+  const focusOpen = useCallback(() => {
+    dismissed.current = false;
+    focusedTip = { id, reopen, dismiss: () => { dismissed.current = true; } };
+    watching.current?.abort();
+    watching.current = new AbortController();
+    const { signal } = watching.current;
+    document.addEventListener('scroll', reopen, { signal, capture: true });
+    window.addEventListener('resize', reopen, { signal });
+    open();
+    // Focus a closing modal hands back lands before the modal is gone from
+    // under the anchor, so the visibility check can fail once: try again.
+    requestAnimationFrame(reopen);
+  }, [id, open, reopen]);
+  // A native listener, not React's onFocus: focus the platform restores when a
+  // modal closes lands inside React's commit, where the synthetic event is lost.
+  useEffect(() => {
+    const el = anchor.current;
+    if (el === null) return;
+    const onFocus = () => {
+      if (el.matches(':focus-visible')) focusOpen();
+    };
+    el.addEventListener('focus', onFocus);
+    return () => el.removeEventListener('focus', onFocus);
+  }, [anchor, focusOpen]);
+  const blur = () => {
+    watching.current?.abort();
+    watching.current = null;
+    if (focusedTip?.id === id) focusedTip = null;
+    close();
+  };
+  // A tip clicked away is not coming back by itself.
+  const dismiss = () => {
+    dismissed.current = true;
+    close();
+  };
+  const openOnHover = () => {
+    if (hoverSuppressed) return;
+    window.clearTimeout(timer.current);
+    // Escape on another tip may land while this waits: it holds every hover off.
+    timer.current = window.setTimeout(() => { if (!hoverSuppressed) open(); }, TIP_HOVER_DELAY_MS);
+  };
+  useEffect(() => () => {
+    watching.current?.abort();
+    if (focusedTip?.id === id) focusedTip = null;
+    hide();
+  }, [hide, id]);
+  // Keyboard focus still asks for the tip, so a pointer passing off it keeps it.
+  const focusHolds = () => anchor.current?.matches(':focus-visible') === true;
+  const anchorLeave = (event: { relatedTarget: EventTarget | null }) => {
+    if (focusHolds()) return;
+    if (!(event.relatedTarget instanceof Node && tip.current?.contains(event.relatedTarget) === true)) close();
+  };
+  const tipLeave = (event: { relatedTarget: EventTarget | null }) => {
+    if (focusHolds()) return;
+    if (!(event.relatedTarget instanceof Node && anchor.current?.contains(event.relatedTarget) === true)) close();
+  };
+  // A render can make the anchor ineligible (a key column widened to show names).
+  useLayoutEffect(() => {
+    if (isOpen() && !eligibleRef.current()) close();
+  });
+  const cancelHover = () => window.clearTimeout(timer.current);
+  return { tip, isOpen, open, openOnHover, cancelHover, blur, close, dismiss, anchorLeave, tipLeave };
+}
+
 /**
  * The key cell's link, plus the name preview for the icon-only phone
- * column: a popover anchored to the icon, shown on hover/focus on a
- * hover-capable pointer, or by a first tap on a coarse one (a second tap, now
+ * column: a popover anchored to the icon, shown on mouse or pen hover (after a short
+ * delay), on keyboard focus, or by a first tap on a touch or pen pointer (a second tap, now
  * that it is open, proceeds to the declaration detail as any other click
  * would). Screen readers and keyboard users never see this detour: the
  * link's accessible name is unchanged, and `event.detail` is 0 for a
  * keyboard-triggered click, so Enter always activates it directly.
  *
- * Above the phone breakpoint the popover never opens and a click navigates.
+ * With the name shown (above the phone breakpoint, or a key column widened
+ * past icon-only) the popover never opens and a click navigates.
  */
 function MatrixKeyLink({
   keyRecord,
   to,
-  phone,
+  iconOnly,
   onOpen,
 }: {
   keyRecord: MatrixKey;
   to: string;
-  phone: boolean;
+  iconOnly: boolean;
   onOpen: (anchor: HTMLAnchorElement) => void;
 }) {
   const link = useRef<HTMLAnchorElement>(null);
-  const tip = useRef<HTMLSpanElement>(null);
-
-  const dismiss = useRef<AbortController | null>(null);
-  useEffect(() => () => dismiss.current?.abort(), []);
-
-  const tipOpen = () => tip.current?.matches(':popover-open') === true;
-  const closeTip = () => {
-    dismiss.current?.abort();
-    dismiss.current = null;
-    if (tipOpen()) tip.current?.hidePopover();
-  };
-  // A manual popover: an auto one light-dismisses on the tap's own pointer
-  // events, before the click, so the second tap would find it closed and
-  // reopen it instead of navigating. Outside press and Escape close it here.
-  const openTip = () => {
-    const rect = link.current?.getBoundingClientRect();
-    if (rect === undefined || tip.current === null || tipOpen()) return;
-    tip.current.style.setProperty('--tip-x', `${rect.left}px`);
-    tip.current.style.setProperty('--tip-y', `${rect.bottom}px`);
-    tip.current.showPopover();
-    dismiss.current = new AbortController();
-    const { signal } = dismiss.current;
-    document.addEventListener('pointerdown', (event) => {
-      if (!(event.target instanceof Node && link.current?.contains(event.target) === true)) closeTip();
-    }, { signal });
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeTip();
-    }, { signal });
-  };
-  const previewOnHover = () => {
-    if (phone && window.matchMedia('(hover: hover)').matches) openTip();
-  };
+  // The pointer that started the click: not every engine delivers click as a PointerEvent.
+  const pressedBy = useRef('');
+  const { tip, isOpen: tipOpen, open: openTip, openOnHover, cancelHover, blur, close: closeTip, anchorLeave, tipLeave } = useAnchoredTip(link, () => iconOnly);
 
   return (
     <>
@@ -1739,16 +1995,30 @@ function MatrixKeyLink({
         className="matrix__key mono"
         aria-label={`Declaration of ${keyRecord.name}${keyRecord.classification === 'secret' ? ', secret' : ''}`}
         to={to}
-        onMouseEnter={previewOnHover}
-        onFocus={previewOnHover}
+        // A mouse or pen can hover; a tap's compatibility mouse events are not a
+        // hover, which would open the preview that the first tap opens itself.
+        onPointerEnter={(event: PointerEvent<HTMLAnchorElement>) => {
+          pressedBy.current = '';
+          if (event.pointerType !== 'touch') openOnHover();
+        }}
+        onPointerDown={(event: PointerEvent<HTMLAnchorElement>) => {
+          pressedBy.current = event.pointerType;
+          // A pen enters before it presses: a press held past the hover delay
+          // must not open the name, or this tap's click would navigate.
+          cancelHover();
+        }}
         onPointerLeave={(event: PointerEvent<HTMLAnchorElement>) => {
           // Touch can synthesize mouseleave after opening the first-tap
-          // preview. Only non-touch pointer exits should dismiss it here.
-          if (event.pointerType !== 'touch') closeTip();
+          // preview, and a pen that cannot hover leaves before its tap's click:
+          // only a hover's exit dismisses it here.
+          if (event.pointerType !== 'touch' && pressedBy.current !== 'pen') anchorLeave(event);
         }}
-        onBlur={closeTip}
+        onBlur={blur}
         onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-          if (phone && event.detail > 0 && !tipOpen()) {
+          // Only a touch's first tap opens the preview; a mouse click navigates.
+          const mouse = pressedBy.current === 'mouse';
+          pressedBy.current = '';
+          if (iconOnly && event.detail > 0 && !mouse && !tipOpen()) {
             event.preventDefault();
             openTip();
             return;
@@ -1762,12 +2032,101 @@ function MatrixKeyLink({
         ) : (
           <><Glyph name="config" className="matrix__key-glyph--config" /> </>
         )}
-        <span className="matrix__key-name visually-hidden-phone">{keyRecord.name}</span>
+        <span className={iconOnly ? 'matrix__key-name visually-hidden' : 'matrix__key-name'}>{keyRecord.name}</span>
       </Link>
-      <span ref={tip} popover="manual" className="matrix__key-tip" aria-hidden="true">
+      <span ref={tip} popover="manual" className="matrix__key-tip" aria-hidden="true" onPointerLeave={tipLeave}>
         {keyRecord.name}
       </span>
     </>
+  );
+}
+
+/** The linked-keys glyph and its gap in a key row, in mono characters (`--matrix-icon` plus a gap). */
+const LINKED_MARK_CHARS = 3;
+/** A phone key column at least this wide shows key names: twice `--touch` (44px, tokens.css), the icon-only width. */
+const KEY_NAME_WIDTH = 88;
+/** Pointer travel under this many pixels is a tap on the handle, not a drag (a finger wobbles more). */
+const TAP_SLOP = { touch: 10, other: 4 };
+/** One arrow-key press on a focused handle, in pixels. */
+const KEY_STEP = 16;
+
+/**
+ * A column's resize handle on its header cell's trailing edge: drag it
+ * (mouse, pen or touch), or focus it and press the arrow keys; a tap or Enter
+ * is the column's `onTap`, the single-pointer way to widen it (WCAG 2.5.7). Matrix-only (DESIGN.md, Column resize).
+ * Its range is 0 to the matrix well's width, the most a column can usefully take.
+ * Reports the header cell's new width or the tap; the matrix decides how
+ * either applies to its column.
+ */
+function ColumnResizer({ label, onResize, onTap }: { label: string; onResize: (width: number) => void; onTap: () => void }) {
+  const handle = useRef<HTMLSpanElement>(null);
+  const drag = useRef<{ x: number; width: number; slop: number; moved: boolean } | null>(null);
+  const [now, setNow] = useState(0);
+  const [max, setMax] = useState(0);
+  const cellWidth = () => handle.current?.parentElement?.getBoundingClientRect().width ?? 0;
+  // Every reported width stays in the separator's range, 0 to the well's width.
+  const resize = (width: number) => {
+    onResize(Math.max(0, Math.min(width, handle.current?.closest('.matrix__scroll')?.clientWidth ?? width)));
+  };
+  // The separator's value is the column's rendered width, whatever set it.
+  useEffect(() => {
+    const cell = handle.current?.parentElement;
+    if (cell === null || cell === undefined) return;
+    const well = cell.closest('.matrix__scroll');
+    const observer = new ResizeObserver(() => {
+      setNow(Math.round(cell.getBoundingClientRect().width));
+      setMax(well?.clientWidth ?? 0);
+    });
+    observer.observe(cell);
+    if (well !== null) observer.observe(well);
+    return () => observer.disconnect();
+  }, []);
+  const end = () => {
+    drag.current = null;
+  };
+  return (
+    <span
+      ref={handle}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label} column`}
+      aria-valuenow={now}
+      aria-valuemin={0}
+      aria-valuemax={Math.max(now, max)}
+      tabIndex={0}
+      className="matrix__resizer"
+      onPointerDown={(event: PointerEvent<HTMLSpanElement>) => {
+        if (!event.isPrimary || event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { x: event.clientX, width: cellWidth(), slop: event.pointerType === 'touch' ? TAP_SLOP.touch : TAP_SLOP.other, moved: false };
+      }}
+      onPointerMove={(event: PointerEvent<HTMLSpanElement>) => {
+        const start = drag.current;
+        if (start === null) return;
+        const dx = event.clientX - start.x;
+        if (!start.moved && Math.abs(dx) < start.slop) return;
+        start.moved = true;
+        resize(start.width + dx);
+      }}
+      onPointerUp={() => {
+        if (drag.current?.moved === false) onTap();
+        end();
+      }}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onTap();
+          return;
+        }
+        const step = event.key === 'ArrowRight' ? KEY_STEP : event.key === 'ArrowLeft' ? -KEY_STEP : 0;
+        if (step === 0) return;
+        event.preventDefault();
+        resize(cellWidth() + step);
+      }}
+    />
   );
 }
 
@@ -1776,7 +2135,7 @@ function cellState(
   cell: ValueCell | undefined,
   keyRecord: MatrixKey,
   problems: readonly { readonly kind: string }[],
-): { state: string; stateGlyph: GlyphName | null; stateClass: string } {
+): { state: string; stateGlyph: GlyphName | null; stateClass: string; full?: string } {
   if (problems.some((problem) => problem.kind === 'required-absent')) {
     return { state: 'required · absent', stateGlyph: 'alert', stateClass: 'matrix-cell--problem' };
   }
@@ -1785,13 +2144,20 @@ function cellState(
     // "value problem" tells you where to click; reading `cross ten` tells you
     // what happened. `offendingValue` is absent for anything the caller may not
     // read, so a secret stays a secret in its own failure.
-    return { state: offendingValue(cell, keyRecord) ?? 'value problem', stateGlyph: 'cross', stateClass: 'matrix-cell--problem' };
+    const flat = flatValue(cell, keyRecord);
+    return {
+      state: offendingValue(cell, keyRecord) ?? 'value problem',
+      stateGlyph: 'cross',
+      stateClass: 'matrix-cell--problem',
+      ...(flat === null ? {} : { full: flat }),
+    };
   }
-  if (cell?.set === true && keyRecord.classification === 'secret') {
+  // One decision for the mask and the tip: secret if the key or the cell says so.
+  if (cell?.set === true && isSecret(cell, keyRecord)) {
     return { state: '••••••••', stateGlyph: null, stateClass: 'matrix-cell--secret' };
   }
   if (cell?.set === true) {
-    return { state: cell.value ?? 'set', stateGlyph: null, stateClass: 'matrix-cell--set' };
+    return { state: cell.value ?? 'set', stateGlyph: null, stateClass: 'matrix-cell--set', ...(cell.value === undefined ? {} : { full: cell.value }) };
   }
   return { state: '· absent', stateGlyph: null, stateClass: 'matrix-cell--absent' };
 }
@@ -1819,7 +2185,7 @@ function MatrixCell({
   const invalidDraft = draft?.advisory?.valid === false;
   const validationDeferred = draft?.advisory?.validation_deferred === true;
   const validationProblem = problems.find((problem) => problem.kind === 'validation');
-  const { state, stateGlyph, stateClass } = cellState(cell, keyRecord, problems);
+  const { state, stateGlyph, stateClass, full } = cellState(cell, keyRecord, problems);
   // env-matrix 31 fixes the changed/draft vocabulary to bare marks, not
   // sentences: a set cell carries a delta mark when it changed since publish
   // and a draft dot when it holds an unpublished edit. The revision and the
@@ -1843,17 +2209,39 @@ function MatrixCell({
     validationDeferred ? 'template schema validated at fetch' : null,
     personal?.words ?? null,
   ].filter((word): word is string => word !== null);
-  const label = `${keyRecord.name} in ${environment.name}: ${stateGlyph === null ? '' : 'problem, '}${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
+  const label = `${keyRecord.name} in ${environment.name}: ${stateGlyph === null ? '' : 'problem, '}${full ?? state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
+
+  const button = useRef<HTMLButtonElement>(null);
+  const valueEl = useRef<HTMLSpanElement>(null);
+  // The tip is for what the cell does not show in full: text cut in code (a
+  // long offending value) or clipped by the column.
+  const clipped = () => {
+    const value = valueEl.current;
+    return full !== undefined && value !== null && (full !== state || value.scrollWidth > value.clientWidth);
+  };
+  // Keyboard focus shows it, including focus returned by closing the editor
+  // with the keyboard (the reader is back on the cell and sees its value, as on
+  // Tab). Focus restored by a key press counts as keyboard focus (Escape
+  // closes the editor either way). See the hook's native listener.
+  const { tip, openOnHover, blur, close, dismiss, anchorLeave, tipLeave } = useAnchoredTip(button, clipped);
 
   return (
     <>
       <button
+        ref={button}
         type="button"
         className={`matrix-cell ${stateClass}`}
         aria-label={label}
-        onClick={onOpen}
+        // A tap fires compatibility mouse events too, so only a mouse or pen hovers.
+        onPointerEnter={(event) => { if (event.pointerType !== 'touch') openOnHover(); }}
+        onPointerLeave={anchorLeave}
+        onClick={() => {
+          close();
+          onOpen();
+        }}
+        onBlur={blur}
       >
-        <span className="matrix-cell__value">
+        <span className="matrix-cell__value" ref={valueEl}>
           {stateGlyph === null ? null : <><Glyph name={stateGlyph} /> </>}
           {state}
         </span>
@@ -1889,6 +2277,11 @@ function MatrixCell({
         ) : null}
         {stateClass === 'matrix-cell--problem' ? null : <Glyph name="edit" className="matrix-cell__edit" />}
       </button>
+      {full === undefined ? null : (
+        <span ref={tip} popover="manual" className="matrix__key-tip matrix__key-tip--value" aria-hidden="true" onPointerLeave={tipLeave} onClick={dismiss}>
+          {full}
+        </span>
+      )}
       {validationProblem === undefined ? null : (
         <span className="matrix-cell__error">{validationProblem.message}</span>
       )}
@@ -1953,6 +2346,14 @@ function MatrixLegend() {
 /** How much of a rejected value a cell shows before the CSS ellipsis takes over. */
 const OFFENDING_VALUE_CHARS = 42;
 
+function flatValue(cell: ValueCell | undefined, keyRecord: MatrixKey): string | null {
+  if (isSecret(cell, keyRecord)) return null;
+  const value = cell?.value;
+  if (value === undefined || value === '') return null;
+  const flat = value.replace(/\s+/g, ' ').trim();
+  return flat === '' ? null : flat;
+}
+
 /**
  * offendingValue is the rejected value as a cell may print it, or null when the
  * cell must not print one.
@@ -1963,11 +2364,8 @@ const OFFENDING_VALUE_CHARS = 42;
  * object in a table row is a column of whitespace.
  */
 function offendingValue(cell: ValueCell | undefined, keyRecord: MatrixKey): string | null {
-  if (keyRecord.classification === 'secret') return null;
-  const value = cell?.value;
-  if (value === undefined || value === '') return null;
-  const flat = value.replace(/\s+/g, ' ').trim();
-  if (flat === '') return null;
+  const flat = flatValue(cell, keyRecord);
+  if (flat === null) return null;
   return flat.length > OFFENDING_VALUE_CHARS
     ? `${flat.slice(0, OFFENDING_VALUE_CHARS)}…`
     : flat;

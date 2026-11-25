@@ -29,7 +29,7 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 	if err != nil {
 		return apigen.CredentialRotation{}, err
 	}
-	return apigen.CredentialRotation{
+	out := apigen.CredentialRotation{
 		Id:                     apigen.ID(v.ID),
 		EnvironmentId:          apigen.ID(v.EnvironmentID),
 		ProviderId:             apigen.ID(v.ProviderID),
@@ -46,7 +46,23 @@ func credentialRotationResponse(v service.RotationView) (apigen.CredentialRotati
 		Generation:             v.Generation,
 		CreatedAt:              created,
 		UpdatedAt:              updated,
-	}, nil
+		// The two counts of runs that owe a role a drop: the summary read for the
+		// whole page, the same definition the CLI and the gauges use.
+		OwedDropRuns:                v.OwedDropRuns,
+		OwedDropRunsVersionsChanged: v.OwedDropRunsVersionsChanged,
+	}
+	if v.HaltReason != "" {
+		reason := apigen.RotationHaltReason(v.HaltReason)
+		out.HaltReason = &reason
+	}
+	if v.LastRunSummary != nil {
+		last := apigen.RotationLastRun{Id: apigen.ID(v.LastRunSummary.ID), Phase: apigen.RotationRunPhase(v.LastRunSummary.Phase), PhaseAt: v.LastRunSummary.PhaseAt}
+		if v.LastRunSummary.ErrorCode != "" {
+			last.ErrorCode = &v.LastRunSummary.ErrorCode
+		}
+		out.LastRun = &last
+	}
+	return out, nil
 }
 
 func (a *API) ListRotations(ctx context.Context, req apigen.ListRotationsRequestObject) (apigen.ListRotationsResponseObject, error) {

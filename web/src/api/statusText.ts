@@ -1,5 +1,13 @@
 import { ApiError } from './client.ts';
 
+/** withDetail appends the server's safe detail sentence when it carried one. */
+export function withDetail(base: string, error: unknown): string {
+  if (error instanceof ApiError && error.detail !== undefined && error.detail !== '') {
+    return `${base} (${error.detail})`;
+  }
+  return base;
+}
+
 type StatusMessage = string | ((error: ApiError) => string);
 
 /** Keep feature wording and safe details while sharing status dispatch. */

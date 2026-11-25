@@ -161,6 +161,13 @@
   },
   {
     "engine": "postgres",
+    "name": "BoundAuthRefusalTransaction",
+    "annotation": "authn-resolution",
+    "hash": "599198454e0e834f65ba079795d0fde7f79be7b492f1ac38dfe41430d5f469fd",
+    "reason": "refusal accounting bounds each lock wait, each statement and the whole transaction server-side so an abandoned or idle attempt cannot keep waiting on or holding the singleton row past the caller's deadline"
+  },
+  {
+    "engine": "postgres",
     "name": "CLILoginByCode",
     "annotation": "authn-resolution",
     "hash": "66c6844a51250d697f3ed0e583eead076f98b45cba7428ae0220b52d4ada0d5d",
@@ -2169,6 +2176,13 @@
     "name": "ListMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "4f070bd0e263a733cc37357480c0a6fa37a892f651e4be9143b4248f91ae9498"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListMachineRulesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ba5d775ec8370046b22966c16c10edc7ffd52c1ad894108117a55199b2c6687f",
+    "reason": "Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
   },
   {
     "engine": "postgres",
@@ -5996,6 +6010,13 @@
     "name": "ListMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "e771adf3d2972f9fbf73a467876fc26f0d77eea3092f3ccb93c27dba4179f9a4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListMachineRulesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ba5d775ec8370046b22966c16c10edc7ffd52c1ad894108117a55199b2c6687f",
+    "reason": "Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
   },
   {
     "engine": "sqlite",

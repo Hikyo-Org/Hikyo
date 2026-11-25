@@ -57,6 +57,19 @@ func TestProtectedImportRequiresExactWrittenKeyCeremony(t *testing.T) {
 		if result, err := fixture.values.Import(ctx, service.Bearer(token), scope, req); err != nil || len(result.Imported) != 0 {
 			t.Fatalf("skip-only import: %+v, %v", result, err)
 		}
+		// A covered destination refuses on the approval gate before a human is
+		// asked for the ceremony this write would otherwise need.
+		admin := service.LocalPrincipal(fixture.admin.boot.PrincipalID)
+		if _, err := (&service.Approvals{DB: db}).CreatePolicy(ctx, admin, domain.Scope{Org: orgA, Project: prjA1}, service.ApprovalPolicyInput{
+			EnvironmentID: string(envA1), MinApprovals: 1, RequestTTLSeconds: 3600, Enabled: true,
+			Approvers: []service.ApprovalApproverSpec{{Kind: "principal", SubjectID: string(fixture.admin.boot.PrincipalID)}},
+		}); err != nil {
+			t.Fatalf("policy for %s: %v", envA1, err)
+		}
+		req.Overwrite = []string{ceremonySecretA}
+		if _, err := fixture.values.Import(ctx, service.Bearer(token), scope, req); !errors.Is(err, service.ErrApprovalRequired) {
+			t.Fatalf("protected import into a covered destination: %v, want approval required", err)
+		}
 	})
 }
 

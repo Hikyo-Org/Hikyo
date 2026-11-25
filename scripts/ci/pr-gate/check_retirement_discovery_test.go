@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
 type retirementDiscoveryAPI struct{ *fakeAPI }
@@ -441,7 +442,7 @@ func TestReporterDiscoveryReusesSameHistoryAndCheckReads(t *testing.T) {
 	for _, n := range f.api.reads {
 		requests += n
 	}
-	if requests != 4 || len(f.api.writes) != 0 {
+	if requests != 5 || len(f.api.writes) != 0 {
 		t.Fatalf("reporter hints added reads or mutation: reads=%d writes=%d", requests, len(f.api.writes))
 	}
 }
@@ -666,12 +667,16 @@ func retirementSuitesResponse(f *queueFixture, head string, total int, suites []
 func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 	for _, tc := range []struct{ fault, wantErr string }{
 		{fault: ""},
-		{fault: "many suites, few records", wantErr: "may be beyond what retirement can list"},
+		{fault: "many suites, few records"},
 		{fault: "many suites, all finished"},
-		{fault: "suites grew past margin", wantErr: "may be beyond what retirement can list"},
-		{fault: "foreign suites grew past margin", wantErr: "may be beyond what retirement can list"},
-		{fault: "missing every-app suite count", wantErr: "incomplete retirement check suite count"},
-		{fault: "fewer suites than github-actions", wantErr: "incomplete retirement check suite count"},
+		{fault: "suites grew past margin"},
+		{fault: "suites grew during the commit read"},
+		{fault: "recount at the margin stays on REST"},
+		{fault: "recount of a foreign repository", wantErr: "incomplete or foreign check suite count"},
+		{fault: "recount without a suite count", wantErr: "incomplete or foreign check suite count"},
+		{fault: "foreign suites grew past margin"},
+		{fault: "missing every-app suite count", wantErr: "incomplete check suite count"},
+		{fault: "fewer suites than github-actions", wantErr: "incomplete check suite count"},
 		{fault: "suites at margin stay on REST"},
 		{fault: "exactly 100 unfinished suites"},
 		{fault: "all completed"},
@@ -679,25 +684,26 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 		{fault: "unnamed unfinished status"},
 		{fault: "missing history suite count", wantErr: "incomplete retirement history check suite count"},
 		{fault: "GraphQL error with data", wantErr: "incomplete server result"},
-		{fault: "suite page unavailable", wantErr: "retirement check suites for"},
-		{fault: "foreign repository", wantErr: "foreign retirement check suite snapshot"},
-		{fault: "foreign object", wantErr: "foreign retirement check suite snapshot"},
-		{fault: "null suites", wantErr: "foreign retirement check suite snapshot"},
-		{fault: "missing suite total", wantErr: "changing retirement check suite inventory"},
-		{fault: "changing suite total", wantErr: "changing retirement check suite inventory"},
-		{fault: "null suite nodes", wantErr: "changing retirement check suite inventory"},
-		{fault: "oversized suite page", wantErr: "changing retirement check suite inventory"},
-		{fault: "missing page info", wantErr: "changing retirement check suite inventory"},
-		{fault: "null suite", wantErr: "duplicate retirement check suite identity"},
-		{fault: "invalid suite ID", wantErr: "duplicate retirement check suite identity"},
-		{fault: "duplicate suite", wantErr: "duplicate retirement check suite identity"},
-		{fault: "missing run counts", wantErr: "duplicate retirement check suite identity"},
-		{fault: "more finished than latest", wantErr: "duplicate retirement check suite identity"},
-		{fault: "short suite pagination", wantErr: "incomplete retirement check suite pagination"},
-		{fault: "partial suite page", wantErr: "short non-final retirement check suite page"},
-		{fault: "more pages past total", wantErr: "incomplete retirement check suite pagination"},
-		{fault: "missing suite cursor", wantErr: "repeated retirement check suite cursor"},
-		{fault: "repeated suite cursor", wantErr: "repeated retirement check suite cursor"},
+		{fault: "suite page unavailable", wantErr: "check suites for"},
+		{fault: "suite page cut by the deadline", wantErr: "ran out of time after 1 check suite pages"},
+		{fault: "foreign repository", wantErr: "foreign check suite snapshot"},
+		{fault: "foreign object", wantErr: "foreign check suite snapshot"},
+		{fault: "null suites", wantErr: "foreign check suite snapshot"},
+		{fault: "missing suite total", wantErr: "changing check suite inventory"},
+		{fault: "changing suite total", wantErr: "changing check suite inventory"},
+		{fault: "null suite nodes", wantErr: "changing check suite inventory"},
+		{fault: "oversized suite page", wantErr: "changing check suite inventory"},
+		{fault: "missing page info", wantErr: "changing check suite inventory"},
+		{fault: "null suite", wantErr: "duplicate check suite identity"},
+		{fault: "invalid suite ID", wantErr: "duplicate check suite identity"},
+		{fault: "duplicate suite", wantErr: "duplicate check suite identity"},
+		{fault: "missing run counts", wantErr: "inconsistent check suite run counts"},
+		{fault: "more finished than latest", wantErr: "inconsistent check suite run counts"},
+		{fault: "short suite pagination", wantErr: "incomplete check suite pagination"},
+		{fault: "partial suite page", wantErr: "short non-final check suite page"},
+		{fault: "more pages past total", wantErr: "incomplete check suite pagination"},
+		{fault: "missing suite cursor", wantErr: "repeated check suite cursor"},
+		{fault: "repeated suite cursor", wantErr: "repeated check suite cursor"},
 		{fault: "too many unfinished suites", wantErr: "more than 100 check suites"},
 		{fault: "too many suites", wantErr: "more than 5000 github-actions check suites"},
 		{fault: "foreign run in suite", wantErr: "in a github-actions suite"},
@@ -715,10 +721,24 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			switch tc.fault {
 			case "many suites, few records", "many suites, all finished":
 				// REST would show these 100 records as complete; the suite count must win.
-				node["checkSuites"] = map[string]any{"totalCount": retirementSuiteMargin + 1}
+				node["checkSuites"] = map[string]any{"totalCount": checksuites.Margin + 1}
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
+			case "suites grew during the commit read", "recount at the margin stays on REST", "recount of a foreign repository", "recount without a suite count":
+				// History counted one suite and the listing is complete; only the recount
+				// after reading it differs: past the margin the listing cannot be trusted.
+				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
+				repoID, suites := f.c.repo.ID, map[string]any{"totalCount": checksuites.Margin + 1}
+				switch tc.fault {
+				case "recount at the margin stays on REST":
+					suites = map[string]any{"totalCount": checksuites.Margin}
+				case "recount of a foreign repository":
+					repoID++
+				case "recount without a suite count":
+					suites = nil
+				}
+				f.api.responses["graphql:"+f.c.suiteSource().CountQuery(head)] = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": repoID, "object": map[string]any{"oid": head, "checkSuites": suites}}}}
 			case "suites at margin stay on REST":
-				node["checkSuites"] = map[string]any{"totalCount": retirementSuiteMargin}
+				node["checkSuites"] = map[string]any{"totalCount": checksuites.Margin}
 				f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": 100, "check_runs": native}
 			case "missing history suite count":
 				delete(node, "checkSuites")
@@ -767,7 +787,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				suiteRuns = map[int64][]map[string]any{7: {native[1]}}
 			case "foreign suites grew past margin":
 				// REST's suite cap also counts other apps' suites, which the scan filters out.
-				suites["every"] = map[string]any{"totalCount": retirementSuiteMargin + 1}
+				suites["every"] = map[string]any{"totalCount": checksuites.Margin + 1}
 			case "missing every-app suite count":
 				delete(suites, "every")
 			case "fewer suites than github-actions":
@@ -819,7 +839,7 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				second[0] = suite(101, 1)
 			case "too many suites":
 				// Refused on the first page, before reading the rest.
-				firstPage = retirementSuitesResponse(f, head, retirementSuitePages*100+1, first, true, "c1")
+				firstPage = retirementSuitesResponse(f, head, checksuites.MaxSuites+1, first, true, "c1")
 			case "foreign run in suite":
 				foreign := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
 				foreign["app"] = map[string]any{"id": 42, "slug": "other"}
@@ -829,13 +849,13 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			case "GraphQL error with data":
 				firstPage["errors"] = []map[string]string{{"message": "incomplete server result"}}
 			}
-			f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "")] = firstPage
-			f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "c1")] = retirementSuitesResponse(f, head, secondTotal, second, secondMore, secondCursor)
+			f.api.responses["graphql:"+retirementSuitesQuery(f, head, "")] = firstPage
+			f.api.responses["graphql:"+retirementSuitesQuery(f, head, "c1")] = retirementSuitesResponse(f, head, secondTotal, second, secondMore, secondCursor)
 			if tc.fault == "suites grew past margin" {
 				// History counted one suite; the scan forced by record overflow sees 901.
-				for page, cursor := 0, ""; page*100 <= retirementSuiteMargin; page++ {
+				for page, cursor := 0, ""; page*100 <= checksuites.Margin; page++ {
 					nodes := []map[string]any{}
-					for id := int64(page*100 + 1); id <= int64(min(page*100+100, retirementSuiteMargin+1)); id++ {
+					for id := int64(page*100 + 1); id <= int64(min(page*100+100, checksuites.Margin+1)); id++ {
 						unfinished := 0
 						if id == 7 {
 							unfinished = 2
@@ -843,13 +863,16 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 						nodes = append(nodes, suite(id, unfinished))
 					}
 					next := fmt.Sprintf("g%d", page+1)
-					f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, cursor)] = retirementSuitesResponse(f, head, retirementSuiteMargin+1, nodes, (page+1)*100 <= retirementSuiteMargin, next)
+					f.api.responses["graphql:"+retirementSuitesQuery(f, head, cursor)] = retirementSuitesResponse(f, head, checksuites.Margin+1, nodes, (page+1)*100 <= checksuites.Margin, next)
 					cursor = next
 				}
 				delete(suiteRuns, 101)
 			}
 			if tc.fault == "suite page unavailable" {
-				f.api.responses["graphql:"+f.c.retirementSuitesQuery(head, "c1")] = errors.New("suite page unavailable")
+				f.api.responses["graphql:"+retirementSuitesQuery(f, head, "c1")] = errors.New("suite page unavailable")
+			}
+			if tc.fault == "suite page cut by the deadline" {
+				f.api.responses["graphql:"+retirementSuitesQuery(f, head, "c1")] = context.DeadlineExceeded
 			}
 			for id, runs := range suiteRuns {
 				response := map[string]any{"total_count": len(runs), "check_runs": runs}
@@ -867,9 +890,19 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 				if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) {
 					t.Fatalf("100 unfinished suites = %+v/%v, want accepted", got, err)
 				}
-			case "suites at margin stay on REST":
-				if err != nil || !noTargets || f.api.reads["graphql:"+f.c.retirementSuitesQuery(head, "")] != 0 {
+			case "suites at margin stay on REST", "recount at the margin stays on REST":
+				if err != nil || !noTargets || f.api.reads["graphql:"+retirementSuitesQuery(f, head, "")] != 0 {
 					t.Fatalf("commit at the suite margin = %+v/%v, want a REST-only inventory", got, err)
+				}
+			case "many suites, few records", "suites grew during the commit read", "suites grew past margin", "foreign suites grew past margin":
+				// These once refused, because the owners that retire a target listed by
+				// commit; they read per suite now, so the target is routed instead.
+				wantReporters := []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}}
+				if tc.fault == "suites grew past margin" {
+					wantReporters = []reporterRetirementTarget{}
+				}
+				if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) || !reflect.DeepEqual(got.Observation, []string{head}) || !reflect.DeepEqual(got.ReporterTargets, wantReporters) {
+					t.Fatalf("oversized commit = %+v/%v, want its unfinished targets routed", got, err)
 				}
 			case "":
 				if !strings.Contains(diagnostic.String(), `"suite_pages":2`) {
@@ -898,7 +931,12 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			if strings.HasPrefix(tc.fault, "many suites") && f.api.reads[retirementChecksPath(f, head, 1)] != 0 {
 				t.Fatal("commit beyond the suite margin was read through its partial REST listing")
 			}
-			if tc.fault == "too many suites" && f.api.reads["graphql:"+f.c.retirementSuitesQuery(head, "c1")] != 0 {
+			if strings.HasPrefix(tc.fault, "recount") || tc.fault == "suites grew during the commit read" {
+				if f.api.reads[retirementChecksPath(f, head, 1)] != 1 || f.api.reads["graphql:"+f.c.suiteSource().CountQuery(head)] != 1 {
+					t.Fatal("the commit listing and its recount were not each read once")
+				}
+			}
+			if tc.fault == "too many suites" && f.api.reads["graphql:"+retirementSuitesQuery(f, head, "c1")] != 0 {
 				t.Fatal("suite scan read past a refused first page")
 			}
 			if f.api.reads[retirementChecksPath(f, head, 2)] != 0 || len(f.api.writes) != 0 {
@@ -906,4 +944,8 @@ func TestRetirementDiscoveryReadsUnfinishedSuitesAboveBudget(t *testing.T) {
 			}
 		})
 	}
+}
+
+func retirementSuitesQuery(f *queueFixture, head, after string) string {
+	return f.c.suiteSource().SuitesQuery(head, after, checksuites.Selector{})
 }

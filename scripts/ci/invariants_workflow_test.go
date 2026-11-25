@@ -23,11 +23,12 @@ const (
 )
 
 type invariantsStep struct {
-	ID   string            `yaml:"id,omitempty"`
-	Name string            `yaml:"name,omitempty"`
-	Uses string            `yaml:"uses,omitempty"`
-	With map[string]string `yaml:"with,omitempty"`
-	Run  string            `yaml:"run,omitempty"`
+	ID      string            `yaml:"id,omitempty"`
+	Name    string            `yaml:"name,omitempty"`
+	Timeout int               `yaml:"timeout-minutes,omitempty"`
+	Uses    string            `yaml:"uses,omitempty"`
+	With    map[string]string `yaml:"with,omitempty"`
+	Run     string            `yaml:"run,omitempty"`
 }
 
 // The decoder rejects unknown keys, so any trigger option, job condition,
@@ -138,8 +139,8 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 	if job.Name != invariantsJobName || strings.Contains(job.Name, "${{") {
 		fail("job name %q must be the static %q", job.Name, invariantsJobName)
 	}
-	if job.Runner != "ubuntu-latest" || job.Timeout != 20 {
-		fail("job must run on ubuntu-latest with a 20 minute budget, got %q and %d", job.Runner, job.Timeout)
+	if job.Runner != "ubuntu-latest" || job.Timeout != 40 {
+		fail("job must run on ubuntu-latest with a 40 minute budget, got %q and %d", job.Runner, job.Timeout)
 	}
 	if !reflect.DeepEqual(job.Env, map[string]string{"EXPECTED_HEAD": invariantsHeadRef}) {
 		fail("job env %v, want only EXPECTED_HEAD", job.Env)
@@ -161,7 +162,18 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		},
 		reference["go-module-cache"],
 		reference["runner-cache-abi"],
+		{
+			// Two large cache restores follow; the runner needs the space first.
+			Name:    "Reserve disk for shared Go cache restore",
+			Timeout: 3,
+			Run:     "./scripts/ci/prepare-go-cache-disk.sh",
+		},
 		reference["test-go-cache"],
+		{
+			Name: lintDriverRestoreName,
+			Uses: reference["test-go-cache"].Uses,
+			With: map[string]string{"path": "~/.cache/go-build", "key": lintDriverModulePrefix, "restore-keys": lintDriverRunnerPrefix},
+		},
 		{
 			Name: "Prepare lint compiler cache",
 			Run:  "go run ./scripts/ci/prepare-lint-cache",
@@ -172,7 +184,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		},
 		{
 			Name: "Lint driver tests",
-			Run:  "go test -count=1 " + invariantsLintPackage,
+			Run:  "go test -count=1 -timeout=20m " + invariantsLintPackage,
 		},
 	}
 	if len(job.Steps) != len(want) {
@@ -181,7 +193,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 	}
 	for index := range want {
 		got, expected := job.Steps[index], want[index]
-		if index >= 3 && index <= 5 {
+		if index == 3 || index == 4 || index == 6 {
 			// Display names of the mirrored steps belong to ci.yml; the job has
 			// to carry the same ids, actions and inputs.
 			got.Name, expected.Name = "", ""
@@ -193,7 +205,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 	if job.Steps[2].With["cache"] != "false" {
 		fail("setup-go must not publish its own cache")
 	}
-	for _, index := range []int{3, 5} {
+	for _, index := range []int{3, 6, 7} {
 		if !strings.HasPrefix(job.Steps[index].Uses, "actions/cache/restore@") {
 			fail("step %d must restore caches only", index+1)
 		}
@@ -246,6 +258,9 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		return match[1]
 	}
 	checkoutPin, restorePin := pin("actions/checkout"), pin("actions/cache/restore")
+	lintDriverStep := "      - name: " + lintDriverRestoreName + "\n        uses: " + restorePin + "\n        with:\n" +
+		"          path: ~/.cache/go-build\n          key: " + lintDriverModulePrefix + "\n" +
+		"          restore-keys: " + lintDriverRunnerPrefix + "\n"
 	appendStep := func(step string) func(string) string {
 		return func(s string) string { return s + step }
 	}
@@ -271,7 +286,7 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"extra path":               replace("      - 'release/**'\n", "      - 'release/**'\n      - 'docs/**'\n"),
 		"write permission":         replace("  contents: read\n", "  contents: write\n"),
 		"extra permission":         replace("  contents: read\n", "  contents: read\n  pull-requests: write\n"),
-		"job permission override":  replace("    timeout-minutes: 20\n", "    timeout-minutes: 20\n    permissions:\n      contents: write\n"),
+		"job permission override":  replace("    timeout-minutes: 40\n", "    timeout-minutes: 40\n    permissions:\n      contents: write\n"),
 		"secret in environment":    replace("    env:\n", "    env:\n      TOKEN: ${{ secrets.CI_TOKEN }}\n"),
 		"token in environment":     replace("    env:\n", "    env:\n      GH_TOKEN: ${{ github.token }}\n"),
 		"other runner":             replace("runs-on: ubuntu-latest", "runs-on: ubuntu-24.04"),
@@ -279,8 +294,8 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"dynamic job name":         replace("name: "+invariantsJobName, "name: "+invariantsJobName+" ${{ github.event.action }}"),
 		"renamed job":              replace("name: "+invariantsJobName, "name: invariants"),
 		"conditional job":          replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    if: github.event.action != 'edited'\n"),
-		"continue on error":        replace("    timeout-minutes: 20\n", "    timeout-minutes: 20\n    continue-on-error: true\n"),
-		"longer budget":            replace("timeout-minutes: 20", "timeout-minutes: 60"),
+		"continue on error":        replace("    timeout-minutes: 40\n", "    timeout-minutes: 40\n    continue-on-error: true\n"),
+		"longer budget":            replace("timeout-minutes: 40", "timeout-minutes: 60"),
 		"no cancellation":          replace("cancel-in-progress: true", "cancel-in-progress: false"),
 		"shared concurrency group": replace("repository-invariants-${{ github.event.pull_request.number }}", "ci-advisory-invariants"),
 		"extra job":                appendStep("  other:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"),
@@ -302,6 +317,9 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"run id in cache key":      replace("key: go-test-v2-${{ runner.os }}", "key: go-test-v2-${{ github.run_id }}-${{ runner.os }}"),
 		"cache save step":          appendStep("      - uses: " + reuseSaveAction + " # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go-test-v2\n"),
 		"artifact upload":          appendStep("      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n        with:\n          path: .\n"),
+		"lint driver key drift":    replace("key: go-lintdriver-v2-", "key: go-lintdriver-v3-"),
+		"lint driver narrow keys":  replace("          restore-keys: "+lintDriverRunnerPrefix+"\n", ""),
+		"dropped lint driver seed": replace(lintDriverStep, ""),
 		"skipped lint cache":       replace("      - name: Prepare lint compiler cache\n        run: go run ./scripts/ci/prepare-lint-cache\n", ""),
 		"dropped boundary package": replace(" ./internal/boundary", ""),
 		"dropped lint package":     replace(" ./internal/lint", ""),

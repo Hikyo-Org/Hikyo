@@ -371,7 +371,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	var clockMu sync.Mutex
 	clock := time.Now().UTC()
 	now := func() time.Time { clockMu.Lock(); defer clockMu.Unlock(); return clock }
-	advance := func(d time.Duration) { clockMu.Lock(); clock = clock.Add(d); clockMu.Unlock() }
+	advance := func(d time.Duration) { clockMu.Lock(); clock = stepWorkerClock(clock, d); clockMu.Unlock() }
 	newWorker := func(id string) *adapter.Worker {
 		runtime := store.NewAdapterRuntime(db, authorizePush)
 		return &adapter.Worker{

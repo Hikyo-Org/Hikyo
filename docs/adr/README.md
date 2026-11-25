@@ -32,6 +32,7 @@ for its ripple register.
 
 | Cited as | File |
 | --- | --- |
+| action-approval ADR (proposed) | [action-approval.md](./action-approval.md) |
 | api-cli-surface ADR | [api-cli-surface.md](./api-cli-surface.md) |
 | audit-model ADR | [audit-model.md](./audit-model.md) |
 | compose-integration ADR | [compose-integration.md](./compose-integration.md) |
@@ -49,6 +50,7 @@ for its ripple register.
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |
 | k8s-integration ADR | [k8s-integration.md](./k8s-integration.md) |
 | k8s-condition-reporting ADR | [k8s-condition-reporting.md](./k8s-condition-reporting.md) |
+| lint-analysis-driver ADR | [lint-analysis-driver.md](./lint-analysis-driver.md) |
 | transit ADR | [transit.md](./transit.md) |
 | machine-identities ADR | [machine-identities.md](./machine-identities.md) |
 | member-access-rules ADR | [member-access-rules.md](./member-access-rules.md) |

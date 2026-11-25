@@ -2905,12 +2905,17 @@ paths:
       tags: [access]
       summary: Create one member access rule.
       description: |
-        One capability for one person, with a `where` of projects,
+        One capability for one principal, with a `where` of projects,
         environments and keys. The caller needs `manage-members` covering the
         complete selector on every project and may delegate only capabilities
         held there, unless org or instance authority permits unheld grants.
-        Rules are for people: a machine principal is refused. Use replaceRules
-        to edit a grouped rule card atomically.
+        A workload or automation principal may hold a rule under its class's
+        allowlist and depth, in its owning project only, and never narrowed by
+        keys. A machine rule that makes plaintext newly reachable also needs
+        `manage-identities` on the project, the matching disclosure capability
+        and a live reauthentication window over each newly reachable
+        environment; a 409 names the environment to reauthenticate over. Use
+        replaceRules to edit a grouped rule card atomically.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -2960,6 +2965,8 @@ paths:
         top-level principal. At least one revoke or create item is required.
         A missing removal refuses the whole batch.
         Sessions are invalidated only after all authorization checks succeed.
+        For a machine principal the machine widening gate judges the complete
+        change, as on createRule.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -6323,7 +6330,7 @@ paths:
         An account-security mutation proved by the selected local credential.
         Requires a password, another external identity, or a complete usable
         passkey login set to remain after removal; TOTP alone is insufficient.
-        Deletes the identity's sessions and
+        Deletes every session of the principal, whichever artifact it holds, and
         reissues the acting session. The reissued token replaces the old one.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
@@ -14500,7 +14507,9 @@ paths:
       description: |
         Metadata only: no credential, candidate handle or password is stored or
         returned. Deleted (disabled) rotations are history and are listed only
-        with `include_disabled`. The list is paged in id order (`limit`, default
+        with `include_disabled`, except one that owns a run owing a provider role
+        a drop (`owed_drop_runs` above zero), which is always listed so the
+        warning is not lost with the delete. The list is paged in id order (`limit`, default
         100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
         currently delivered into the rotation's keys lapses, once a run has
         published one. Slice one of scheduled rotation records the
@@ -14514,7 +14523,7 @@ paths:
         - name: include_disabled
           in: query
           required: false
-          description: List deleted (disabled) rotations as well. Off by default.
+          description: List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
           schema: {type: boolean, default: false}
         - name: limit
           in: query
@@ -18454,14 +18463,44 @@ components:
       description: |
         `paused` is an operator or cascade pause (a deleted provider, a protected
         environment or an approval policy pauses the rotations it would break);
-        `halted` is the executor's named stop after a failed authority gate. Only a
-        full resume authorization leaves either. `disabled` is the soft delete.
+        `halted` is the executor's named stop (a failed authority or pre-publish
+        gate, or an exhausted retry window); the rotation's `halt_reason` names
+        which. Only a full resume authorization leaves either. `disabled` is the
+        soft delete.
       enum: [active, paused, halted, disabled]
+
+    RotationHaltReason:
+      type: string
+      description: |
+        Why a halted rotation stopped, as a fixed word, never free text and never
+        provider detail. `retries_exhausted`: the cycle's retry window ran out
+        before a run could publish or extend the credential, so the delivered
+        credential is not extended. `authority_lost`: the recorded person no longer
+        holds the access the rotation needs, or one of its keys or its environment
+        is gone. `gate_failed`: a pre-publish gate refused, for example the
+        environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+        server writes (a legacy or restored value). OPEN enum: a later release may
+        add a word, so a client keeps an unrecognised one and says only that the
+        rotation is halted.
+      x-extensible-enum: [retries_exhausted, authority_lost, gate_failed, unknown]
+
+    RotationLastRun:
+      type: object
+      additionalProperties: false
+      required: [id, phase, phase_at]
+      description: |
+        The newest run of a rotation, the top row of its runs list: metadata only.
+        Neither a role handle nor any provider detail is carried.
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        phase: {$ref: "#/components/schemas/RotationRunPhase"}
+        error_code: {type: [string, "null"], description: "The fixed-word code of the run's last failure, if any, exactly as the runs list carries it. Never provider detail."}
+        phase_at: {$ref: "#/components/schemas/Timestamp"}
 
     CredentialRotation:
       type: object
       additionalProperties: false
-      required: [id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, restore_hold, generation, created_at, updated_at]
+      required: [id, environment_id, provider_id, key_id, username_key_id, interval_seconds, revocation_delay_seconds, authority_principal_id, created_by, state, restore_hold, owed_drop_runs, owed_drop_runs_versions_changed, generation, created_at, updated_at]
       properties:
         id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
@@ -18473,6 +18512,10 @@ components:
         authority_principal_id: {$ref: "#/components/schemas/ID"}
         created_by: {$ref: "#/components/schemas/ID"}
         state: {$ref: "#/components/schemas/CredentialRotationState"}
+        halt_reason: {$ref: "#/components/schemas/RotationHaltReason", description: "Present only while the state is halted: why the server stopped the rotation, as a fixed word."}
+        last_run: {$ref: "#/components/schemas/RotationLastRun", description: "The newest run, the top row of the runs list. Absent when the rotation has never run."}
+        owed_drop_runs: {type: integer, format: int64, minimum: 0, description: "How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop: those in phase revoke_refused (held on purpose, Hikyo does not drop the role) or quarantine (Hikyo may still retry the drop, but it needs a person to look), whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed."}
+        owed_drop_runs_versions_changed: {type: integer, format: int64, minimum: 0, description: "The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first."}
         restore_hold: {type: boolean, description: "True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then."}
         next_run_at: {type: [string, "null"], format: date-time, description: Set only while the rotation is active.}
         credential_expires_at: {type: [string, "null"], format: date-time, description: "When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it."}
@@ -19107,7 +19150,10 @@ components:
             `login` needs before any session exists, and the machine protocols
             an integration probes before using them, such as
             `delivery-target-report/<vocabulary>` for each delivery-target
-            report vocabulary this server accepts.
+            report vocabulary this server accepts. `desktop-app/1` means the
+            instance serves the embedded web application and that application
+            implements the desktop shell handoff protocol; an instance built
+            without it never advertises the token.
           items:
             $ref: "#/components/schemas/ProtocolCapability"
 
@@ -19225,6 +19271,7 @@ components:
         - saml
         - webauthn
         - delivery-target-report/1
+        - desktop-app/1
 
     EstablishCredentialRequest:
       description: |
@@ -19696,9 +19743,10 @@ components:
       required: [purpose, operation, environment_ids, pkce_challenge, redirect_uri]
       description: |
         `adapter` carries an adapter-routing decision over an environment set.
-        Every non-adapter purpose carries an exact environment and key set. The
-        browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-        names exactly the unit the decision covers.
+        Every other purpose carries an exact environment and key set, except
+        `mint` and `access`, whose unit is their one environment and which carry
+        no keys. The browser runs the same purpose-bound ceremony the UI runs,
+        so `key_ids` names exactly the unit the decision covers.
       anyOf:
         - properties: {purpose: {enum: [developer-credential]}}
         - properties:
@@ -19707,15 +19755,15 @@ components:
       properties:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config, developer-credential]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, access, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, access.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environment_ids: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
         key_ids:
           type: array
           uniqueItems: true
           maxItems: 10000
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
         pkce_challenge: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}
         redirect_uri:
           type: string
@@ -19767,13 +19815,13 @@ components:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
         state: {type: string, minLength: 1}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config, developer-credential]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, access, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, access.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environments: {type: array, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit the ceremony binds; empty for `adapter`.
+          description: The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
         redirect_uri: {type: string, format: uri}
         expires_at: {$ref: "#/components/schemas/Timestamp"}
 

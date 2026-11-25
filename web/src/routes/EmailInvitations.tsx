@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { listFailureText, useEmailInvitations, useRevokeEmailInvitation, revokeFailureText } from '../api/emailInvitations.ts';
 import { formatWhen } from '../lib/formatWhen.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { Panel } from './Sections.tsx';
 
 /**
@@ -20,6 +21,7 @@ export function EmailInvitations({
   invitedByName: (principal: string) => string;
   onRevoked: (email: string) => void;
 }) {
+  const invitationsCaptionId = useId();
   const invitations = useEmailInvitations(org, true);
   const revoke = useRevokeEmailInvitation(org);
   // A refused refresh must not keep showing the last page or its Revoke buttons.
@@ -49,9 +51,9 @@ export function EmailInvitations({
       )}
       {all.length > 0 && items.length === 0 ? <p role="status">{`No invitation matches “${find.trim()}”.`}</p> : null}
       {items.length === 0 ? null : (
-        <div className="table-scroll">
+        <TableScroll aria-labelledby={invitationsCaptionId}>
           <table className="values__table">
-            <caption className="visually-hidden">Pending email invitations for this organisation</caption>
+            <caption id={invitationsCaptionId} className="visually-hidden">Pending email invitations for this organisation</caption>
             <thead>
               <tr>
                 <th scope="col">Email</th>
@@ -83,7 +85,7 @@ export function EmailInvitations({
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </Panel>
   );

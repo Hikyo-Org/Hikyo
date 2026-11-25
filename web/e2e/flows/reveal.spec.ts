@@ -260,7 +260,7 @@ test.describe('reveal ceremonies', () => {
     // Copy WITHOUT display: the cell is still masked when the copy is asked
     // for, and the ceremony runs anyway.
     await expect(page.getByLabel(`${secret} is masked`)).toBeVisible();
-    await page.getByRole('button', { name: `Copy ${secret} (audited disclosure)` }).click();
+    await page.getByRole('button', { name: `Copy ${secret} (audited if still secret)` }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Use a passkey' }).click();
 
     const notice = page.getByRole('status').filter({ hasText: 'recorded as a disclosure' });
@@ -537,7 +537,7 @@ test.describe('reveal ceremonies', () => {
     // deliberately not purpose-scoped.
     const trailBefore = countDisclosureEvents();
     const secret = seed.secrets[0] ?? '';
-    await page.getByRole('button', { name: `Copy ${secret} (audited disclosure)` }).click();
+    await page.getByRole('button', { name: `Copy ${secret} (audited if still secret)` }).click();
     const copyDialog = page.getByRole('dialog');
     await expect(copyDialog).toBeVisible();
     // Told the truth about what it is, while signing the route it takes.

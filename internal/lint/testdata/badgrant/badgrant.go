@@ -21,7 +21,7 @@ func LockedWriter(ctx context.Context, q *sqlitegen.Queries, lock string, p sqli
 
 // LocklessWriter is the violation: a grant-table write with no principal-row
 // lock, which the credential-reset org-bounded test relies on.
-func LocklessWriter(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertGrantParams) error {
+func LocklessWriter(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.InsertGrantParams) error { // want "LocklessWriter writes a grant table but does not take the LockPrincipalRow principal-row lock"
 	return q.InsertGrant(ctx, p)
 }
 
@@ -41,7 +41,7 @@ func (fakeLocker) LockPrincipalRow(ctx context.Context, id string) error { retur
 // lock (a same-named method on an unrelated type). A bare-name match would
 // wrongly clear it; the type-resolved check must still flag it, proving the
 // A5 hardening closes the "any selector merely named LockPrincipalRow" bypass.
-func DecoyLockWriter(ctx context.Context, q *sqlitegen.Queries, l fakeLocker, p sqlitegen.InsertGrantParams) error {
+func DecoyLockWriter(ctx context.Context, q *sqlitegen.Queries, l fakeLocker, p sqlitegen.InsertGrantParams) error { // want "DecoyLockWriter writes a grant table but does not take the LockPrincipalRow principal-row lock"
 	if err := l.LockPrincipalRow(ctx, "x"); err != nil {
 		return err
 	}
