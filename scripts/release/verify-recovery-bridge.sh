@@ -30,7 +30,9 @@
 # derivation. `revocation-list` checks a signed revocation list (LIST_DIR holds
 # recovery-revocations.json and recovery-revocations.sigstore.json): the recovery
 # signature, the binding to the root, the schema, a canonical issued_at that is not in
-# the future and at most 7 days old, sorted unique digests and a sequence of
+# the future and not older than the newest catalogued bridge's not_after minus 30
+# days (lists are signed at publication and on revocation, never on a schedule),
+# sorted unique digests and a sequence of
 # PRIOR_SEQUENCE plus one (0 when none was published). ROOT_SHA256 and
 # RECOVERY_KEY_SHA256 pin the committed root.json and recovery public key (take them from
 # the base checkout, never from the proposal): TRUST must match both, so a list cannot
@@ -275,7 +277,16 @@ revocation-list)
 	check 'the list has no duplicate keys' no_duplicate_keys "$list"
 	check 'the list signature verifies with the pinned recovery key' verify_blob "$list" "$2/recovery-revocations.sigstore.json"
 	check 'the list has exactly the schema, sequence, issued_at, trust_root_sha256 and revoked fields' jq -e '(keys == ["issued_at", "revoked", "schema", "sequence", "trust_root_sha256"]) and .schema == "hikyo.dev/recovery-revocations/v1"' "$list"
-	check 'issued_at is canonical UTC, not in the future and at most 7 days old (older lists are stale to clients)' jq -e --argjson now "$now" '.issued_at | (type == "string") and ((fromdateiso8601 | todate) == .) and (fromdateiso8601 <= $now) and (fromdateiso8601 >= $now - 604800)' "$list"
+	check 'issued_at is canonical UTC and not in the future' jq -e --argjson now "$now" '.issued_at | (type == "string") and ((fromdateiso8601 | todate) == .) and (fromdateiso8601 <= $now)' "$list"
+	# A list is signed at publication and on revocation, never on a schedule, so there is no
+	# upper age. It cannot be older than the newest bridge it covers: that bridge is signed
+	# at most 30 days before its not_after, so an earlier issued_at predates the bridge.
+	newest=$(jq -r '.bridges[]' "$trust/catalog.json" | while read -r digest; do
+		jq -r 'select(.schema == "hikyo.dev/recovery-bridge/v2") | .not_after' "$trust/bridges/$digest/statement.json"
+	done | sort | tail -n 1)
+	if [ -n "$newest" ]; then
+		check 'issued_at is not older than the newest catalogued bridge (not_after minus 30 days)' jq -e --arg newest "$newest" '(.issued_at | fromdateiso8601) >= (($newest | fromdateiso8601) - 2592000)' "$list"
+	fi
 	check 'the list is bound to the pinned trust root' equal "$(jq -r '.trust_root_sha256' "$list")" "$pinned_root"
 	check 'the list sequence is the prior sequence plus one' equal "$(jq '.sequence' "$list")" "$((prior + 1))"
 	check 'revoked digests are sorted, unique, 64 hex characters and at most 256' jq -e '(.revoked | length <= 256) and (.revoked == (.revoked | unique)) and all(.revoked[]; test("^[0-9a-f]{64}$"))' "$list"

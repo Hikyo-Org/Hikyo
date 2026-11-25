@@ -231,10 +231,15 @@ sequence and a different list at the same sequence. An instance that has stored
 nothing (a v1.0.0 install applying the bridge) cannot tell a replay by sequence,
 so the list carries a signed `issued_at`: anything older than 7 days is stale and
 behaves like an unreachable endpoint (the bridge's own `not_after` decides; the
-list's entries still apply). Re-issue the list with the next sequence at least
-weekly while any bridge is live; the verifier refuses a list that is older than
-7 days or dated in the future. Residual: a host can replay a list up to 7 days old
-to such an instance, delaying a newer revocation by at most that long. `check-revocations`
+list's entries still apply). Sign a list when a bridge is published and again
+whenever something is revoked, never on a schedule: freshness buys no security,
+because whoever controls the endpoint can already force the unreachable path and
+fall back to `not_after`, and a stale list's revocations still apply, so a stale
+list only makes the recorded outcome (`stale-fell-back-to-expiry`) honest. The
+verifier refuses a list dated in the future and a list older than the newest
+catalogued bridge it covers (that bridge's `not_after` minus 30 days), and has no
+other age limit. Residual: a host can replay an older validly signed list to such
+an instance, delaying a newer revocation until the bridge's `not_after`. `check-revocations`
 runs the real checker against a local list directory (`-` for the unreachable case).
 
 ## Re-signing an expired bridge

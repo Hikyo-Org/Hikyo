@@ -209,10 +209,18 @@ func TestStaleListFallsBackToExpiryAndNeverCountsAsChecked(t *testing.T) {
 	if err != nil || result.Outcome != bridgerevocation.Stale || !bridgerevocation.Contains(result.Revoked, []releaseidentity.Digest{bridge}) {
 		t.Fatalf("a stale list keeps its entries: %+v %v", result, err)
 	}
-	// A list issued far in the future is refused.
-	fetcher.list, fetcher.signature = signedListAt(t, f, testNow.Add(48*time.Hour), 3)
-	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "future") {
-		t.Fatalf("a future-dated list is refused: %v", err)
+	// The clock-skew allowance is exactly 24 hours: at the limit is accepted,
+	// one second beyond is refused.
+	skew := 24 * time.Hour
+	fetcher.list, fetcher.signature = signedListAt(t, f, testNow.Add(skew), 3)
+	if _, err := checker.Check(t.Context(), snapshot); err != nil {
+		t.Fatalf("a list issued at the skew limit is accepted: %v", err)
+	}
+	for sequence, issued := range map[int64]time.Time{4: testNow.Add(skew + time.Second), 5: testNow.Add(48 * time.Hour)} {
+		fetcher.list, fetcher.signature = signedListAt(t, f, issued, sequence)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "future") {
+			t.Fatalf("a list issued beyond the skew limit is refused: %v", err)
+		}
 	}
 }
 

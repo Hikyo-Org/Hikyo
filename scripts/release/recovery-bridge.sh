@@ -166,8 +166,9 @@ revoke() {
 # trust root and signed by the recovery key. SEQUENCE must be the published
 # list's sequence plus one (1 for the first list); a client refuses anything
 # lower. The list carries a signed issued_at: a client treats a list older than
-# 7 days as stale (it falls back to not_after, like an unreachable endpoint), so
-# re-issue the list, with the next sequence, at least weekly.
+# 7 days as stale (it falls back to not_after, like an unreachable endpoint, and
+# the entries still apply). Sign a list when a bridge is published and whenever
+# something is revoked, never on a schedule: freshness buys no security.
 # Publish both files at the pinned endpoint.
 revocation_list() {
 	[ "$#" -ge 4 ] || fail 'usage: revocation-list KEY TRUST SEQUENCE OUT DIGEST...'

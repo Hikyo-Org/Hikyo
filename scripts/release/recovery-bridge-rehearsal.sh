@@ -397,7 +397,7 @@ list_fails 'exactly the schema' 'a validly signed list without issued_at'
 edit_list '.schema = "hikyo.dev/recovery-revocations/v2"'
 list_fails 'exactly the schema' 'a validly signed list with another schema'
 edit_list '.issued_at = "2020-01-01T00:00:00Z"'
-list_fails 'issued_at is canonical UTC' 'a validly signed list issued long ago (stale to clients)'
+list_fails 'not older than the newest catalogued bridge' 'a validly signed list issued before the bridge existed'
 edit_list '.issued_at = "2099-01-01T00:00:00Z"'
 list_fails 'issued_at is canonical UTC' 'a validly signed list issued in the future'
 edit_list '.issued_at = "2026-01-01T01:00:00+01:00"'
@@ -421,11 +421,14 @@ cp "$scratch/key/other/cosign.pub" "$scratch/rekeyed/$(jq -r '.recovery.public_k
 expect_fail 'recovery public key is the committed one' 'a list checked against a swapped recovery key file under the committed root' \
 	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/rekeyed" "$scratch/list1" 0 "$pin_root" "$pin_key"
 rm -rf "$scratch/rekeyed"
-# The verifier also refuses a list the clients would call stale.
+# A list is signed at publication and on revocation, never on a schedule, so the verifier
+# has no maximum age: it refuses only a list that predates the newest bridge. This one is
+# 8 days old, so it is stale to the checker below and, as the bridge was authored today,
+# predates the bridge too.
 ISSUED_AT=$(($(date +%s) - 8 * 86400)) "$ceremony" revocation-list "$recovery_key" "$scratch/new" 1 "$scratch/list-old" "$first" >/dev/null
 mkdir "$scratch/t"
 cp "$scratch/list-old/recovery-revocations.json" "$scratch/list-old/recovery-revocations.sigstore.json" "$scratch/t/"
-list_fails 'issued_at is canonical UTC' 'a list issued eight days ago'
+list_fails 'not older than the newest catalogued bridge' 'a list issued eight days ago, before the bridge was authored'
 # The real apply-time checker, run on the ceremony's own lists. With no network the
 # fallback is the bridge's signed expiry; a reachable list revokes; replays are refused.
 mkdir "$scratch/state"

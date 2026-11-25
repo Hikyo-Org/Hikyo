@@ -126,9 +126,14 @@ apply-time revocation list (options (a) and (c) on
   at its first bridge apply) the floor cannot tell a replay, so each list also
   carries a signed `issued_at`: a list older than 7 days is `stale`, never
   `checked`, and falls back to the signed expiry like an unreachable endpoint
-  (its entries still apply). The residual is an endpoint that replays a list at
-  most 7 days old to such an installation; the recovery key must re-issue the
-  list weekly for it to count as current. If the endpoint is unreachable (DNS, dial or timeout, HTTP
+  (its entries still apply). The list is signed when a bridge is published and
+  whenever something is revoked, never on a schedule: the offline recovery key
+  is not exercised weekly because freshness buys no security (an endpoint
+  controller can force the unreachable path anyway, and stale entries still
+  apply). The residual is an endpoint that replays an older validly signed list
+  to such an installation, delaying a newer revocation until `not_after`. The
+  verifier refuses a future-dated list and one older than the newest bridge it
+  covers. If the endpoint is unreachable (DNS, dial or timeout, HTTP
   502, 503 or 504), the check falls back to the signed expiry and the last
   verified list, and records that locally. A reachable but invalid answer (other
   status, a body cut short, oversized body, bad signature, wrong root, older
