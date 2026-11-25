@@ -139,7 +139,11 @@ reauthorize() {
 	cosign_sign "$key" "$out/metadata.json" "$out/metadata.sigstore.json"
 	# The catalog lists the bridges; stable-policy.json (and its digest) stay as they were.
 	added=$(for digest in $digests; do printf '%s\n' "$digest"; done | jq -R . | jq -s .)
-	jq --arg metadata "$(sha256_of "$out/metadata.json")" --arg policy "$(sha256_of "$out/stable-policy.json")" --argjson added "$added" --argjson replaced "$replaced" \
+	# Hash into variables first: a failure inside jq's --arg "$(...)" would only exit that
+	# subshell and the script would sign a catalog over an empty digest.
+	metadata_sha=$(sha256_of "$out/metadata.json") || exit 1
+	policy_sha=$(sha256_of "$out/stable-policy.json") || exit 1
+	jq --arg metadata "$metadata_sha" --arg policy "$policy_sha" --argjson added "$added" --argjson replaced "$replaced" \
 		'.sequence += 1 | .stable_metadata_sha256 = $metadata | .stable_policy_sha256 = $policy | .bridges = (((.bridges - $replaced) + $added) | unique)' \
 		"$trust/catalog.json" >"$out/catalog.json"
 	cosign_sign "$key" "$out/catalog.json" "$out/catalog.sigstore.json"
@@ -168,7 +172,8 @@ revoke() {
 	recovery_id=$(jq -r '.recovery.id' "$trust/root.json")
 	jq --arg id "$recovery_id" '.sequence += 1 | .event.signed_by = $id | del(.source_commit, .release_tag)' "$trust/metadata.json" >"$out/metadata.json"
 	cosign_sign "$key" "$out/metadata.json" "$out/metadata.sigstore.json"
-	jq --arg metadata "$(sha256_of "$out/metadata.json")" --argjson removed "$removed" \
+	metadata_sha=$(sha256_of "$out/metadata.json") || exit 1
+	jq --arg metadata "$metadata_sha" --argjson removed "$removed" \
 		'.sequence += 1 | .stable_metadata_sha256 = $metadata | .bridges -= $removed' "$trust/catalog.json" >"$out/catalog.json"
 	cosign_sign "$key" "$out/catalog.json" "$out/catalog.sigstore.json"
 	mv "$out" "$final"
@@ -191,8 +196,9 @@ revocation_list() {
 	case "$sequence" in '' | *[!0-9]* | 0*) fail 'SEQUENCE must be a positive integer' ;; esac
 	[ ! -e "$out" ] || fail "$out already exists"
 	revoked=$(for digest in "$@"; do printf '%s\n' "$digest"; done | sort -u | jq -R . | jq -s .)
+	root_sha=$(sha256_of "$trust/root.json") || exit 1
 	mkdir -p "$out"
-	jq -n --argjson sequence "$sequence" --arg issued "$(jq -nr --argjson at "${ISSUED_AT:-$(date +%s)}" '$at | todate')" --arg root "$(sha256_of "$trust/root.json")" --argjson revoked "$revoked" \
+	jq -n --argjson sequence "$sequence" --arg issued "$(jq -nr --argjson at "${ISSUED_AT:-$(date +%s)}" '$at | todate')" --arg root "$root_sha" --argjson revoked "$revoked" \
 		'{schema: "hikyo.dev/recovery-revocations/v1", sequence: $sequence, issued_at: $issued, trust_root_sha256: $root, revoked: ($revoked | map(select(. != "")))}' \
 		>"$out/recovery-revocations.json"
 	cosign_sign "$key" "$out/recovery-revocations.json" "$out/recovery-revocations.sigstore.json"

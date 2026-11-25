@@ -95,10 +95,11 @@ func discoverReleaseRoute(ctx context.Context, cfg *config.Config, installer aut
 		preferred = previous.Source.Identity
 	}
 	var lastPlanError error
+	revocations := onceRevocation(bridgeRevocation(cfg))
 	depths := map[releaseidentity.Identity]int{target.Identity: 0}
 	expandedDepth := 0
 	for {
-		result.Bundle, err = loadGuardedBundle(ctx, cfg, result.Directory, pinned, floor)
+		result.Bundle, err = loadGuardedBundleWith(ctx, revocations, result.Directory, pinned, floor)
 		if err != nil {
 			return result, err
 		}
@@ -114,7 +115,8 @@ func discoverReleaseRoute(ctx context.Context, cfg *config.Config, installer aut
 				result.Plan, result.Instance = plan, previous.Instance
 				return completeAutomaticRouteExecutables(ctx, installer, source, result, allowStable)
 			}
-			lastPlanError = errors.New("unfinished upgrade no longer has its exact authenticated original route")
+			// Keep the cause: a revoked bridge must read as revoked to the operator.
+			lastPlanError = fmt.Errorf("unfinished upgrade no longer has its exact authenticated original route: %w", planErr)
 		} else {
 			for _, candidate := range result.Bundle.Sources(engine) {
 				actual, inspectErr := database.Installed(ctx, candidate.Migrations)

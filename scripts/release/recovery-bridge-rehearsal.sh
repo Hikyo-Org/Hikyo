@@ -353,6 +353,13 @@ pin_key=$(sha256_of "$scratch/base/recovery-rehearsal.pub")
 "$ceremony" revocation-list "$recovery_key" "$scratch/new" 2 "$scratch/list2" >/dev/null
 "$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/list1" 0 "$pin_root" "$pin_key" >/dev/null
 printf 'ok: the verifier accepts the first list\n'
+# With no hash tool the ceremony must refuse, not sign a list over an empty digest
+# (a failure inside jq's --arg "$(...)" would only exit that subshell).
+mkdir "$scratch/nohash"
+for tool in jq sort dirname cat mkdir date; do ln -s "$(command -v "$tool")" "$scratch/nohash/$tool"; done
+check_refused 'neither shasum nor sha256sum is installed' 'a list is not signed when no SHA-256 tool is available' \
+	env PATH="$scratch/nohash" /bin/sh "$ceremony" revocation-list "$recovery_key" "$scratch/new" 9 "$scratch/list-nohash" "$first"
+[ ! -e "$scratch/list-nohash" ] || { printf 'a list directory was left behind without a digest\n'; exit 1; }
 list_fails() { # PATTERN DESCRIPTION: the list in scratch/t must be refused by the targeted check
 	expect_fail "$1" "$2" "$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/new" "$scratch/t" "${3:-0}" "$pin_root" "$pin_key"
 	rm -rf "$scratch/t"

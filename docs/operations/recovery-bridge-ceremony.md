@@ -257,6 +257,16 @@ other age limit. Residual: a host can replay an older validly signed list to suc
 an instance, delaying a newer revocation until the bridge's `not_after`. `check-revocations`
 runs the real checker against a local list directory (`-` for the unreachable case).
 
+Operator recovery for stored state: an installation keeps the last accepted list in
+`HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, replaced by one rename).
+Stored state that does not verify is ignored with a warning, never fatal, and `off` does
+not read it; the next valid list overwrites it. To clear it by hand, stop the service and
+remove that file (and any older `bridge-revocations.json` and
+`bridge-revocations.sigstore.json`). The sequence floor is lost until the next list is
+stored, which is the same exposure as a first apply (bounded by the list's 7-day
+`issued_at`). The fetcher honors `HTTPS_PROXY` and `NO_PROXY`; the signature, not the path,
+is the authority.
+
 Expiry and revocation govern admission, not an upgrade already admitted. An
 upgrade admitted before `not_after` can resume and finish after it: a resume
 checks that the journaled route digest belongs to a valid path in the
@@ -273,9 +283,17 @@ The legacy nightly bridge (`hikyo.dev/legacy-nightly-bridge/v2`) expires like ev
 other bridge, so a signing ceremony for it includes choosing its `not_after`: the
 owner picks a canonical UTC instant at most 30 days after signing and passes it as
 `scripts/release/nightly legacy-bridges --not-after ...`; the tool refuses a missing,
-past, non-canonical or longer-than-30-day value. The owner signs each statement
-offline with the recovery key (see [signed nightlies](./signed-nightlies.md)),
-catalogues the digests, and publishes the first revocation list with them. Agents
+past, non-canonical or longer-than-30-day value. The owner's offline steps: author
+the unsigned statements with that command, sign each with `recovery-bridge.sh sign`
+(the recovery key never leaves the signing machine), catalogue the digests with
+`recovery-bridge.sh reauthorize`, and publish the first revocation list with them. A
+lapsed legacy bridge is re-authored with a new `--not-after` and re-signed the same
+way; the new statement is a new digest on the same pair, and the old one is dropped
+from the catalog in the same step (a revoked or lapsed statement and its replacement
+may share a pair only while the revocation list names the old one). The committed `v1`
+digests are policy-listed, so they cannot be dropped without a policy rotation; the
+runtime refuses `v1`, so they stay inert. The rehearsal does not yet cover this
+path with a legacy statement; the generator and the verifier's age selector do. Agents
 never sign or publish; repository fixtures use throwaway keys. The expiry-free
 `legacy-nightly-bridge/v1` statements in the committed catalog stay refused by the
 runtime until this step replaces them. The revocation-list verifier counts these

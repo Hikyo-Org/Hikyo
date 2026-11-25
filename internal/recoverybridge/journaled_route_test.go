@@ -161,3 +161,39 @@ func TestJournaledRouteSurvivesALapsedBridgeShadowingItsPair(t *testing.T) {
 		t.Fatalf("the replacement plans after the old bridge lapsed: %v %v", plan.BridgeDigests(), err)
 	}
 }
+
+// An empty journaled digest is not "any route": without the validity check it would run
+// a fresh admission search and accept whatever it finds, and the zero-step route (source
+// equals target) must match only its own digest.
+func TestJournaledRouteRefusesAnEmptyOrForeignDigest(t *testing.T) {
+	f := testfixture.New(t)
+	a, da := release(t, f, 1, 2, "x", nil)
+	c, dc := release(t, f, 2, 3, "x", nil)
+	base := time.Now().UTC().Truncate(time.Second)
+	x := bridgesBetween(t, f, a, c, da, dc, base, base.Add(10*24*time.Hour))
+	ea := sqliteOf(da)
+	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: a.Identity}, Migrations: ea.Migrations, SchemaSHA256: ea.SchemaSHA256}
+	r := assemble(t, f, []testfixture.SignedRelease{a, c}, []recoverybridge.Statement{x}, source, c.Identity)
+	admitted, err := r.at(base)
+	if err != nil || admitted.Digest() == "" {
+		t.Fatalf("the route to match must admit: %v", err)
+	}
+	for name, want := range map[string]releaseidentity.Digest{"empty": "", "malformed": "not-a-digest"} {
+		if _, err := r.match(want); !errors.Is(err, upgradecompat.ErrJournaledRoute) {
+			t.Fatalf("a %s journaled digest must be refused, not searched afresh: %v", name, err)
+		}
+	}
+	// Source equals target: only the empty route's own digest matches.
+	same := r
+	same.target = a.Identity
+	empty, err := same.at(base)
+	if err != nil || len(empty.Steps()) != 0 {
+		t.Fatalf("source equal to target plans no steps: %v", err)
+	}
+	if plan, err := same.match(empty.Digest()); err != nil || plan.Digest() != empty.Digest() {
+		t.Fatalf("the zero-step route matches its own digest: %v", err)
+	}
+	if _, err := same.match(admitted.Digest()); !errors.Is(err, upgradecompat.ErrJournaledRoute) {
+		t.Fatalf("a journaled route with steps does not match the zero-step route: %v", err)
+	}
+}

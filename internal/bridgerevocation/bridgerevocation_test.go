@@ -76,6 +76,10 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 	}
 
 	fetcher.err = nil
+	remembered, err := os.ReadFile(filepath.Join(directory, "bridge-revocations-store.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	other := testfixture.New(t)
 	for name, tc := range map[string]struct {
 		list, signature []byte
@@ -98,9 +102,8 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 				t.Fatalf("want refusal %q, got %v", tc.want, err)
 			}
 			// A refusal never replaces the remembered list.
-			stored, readErr := os.ReadFile(filepath.Join(directory, "bridge-revocations.json"))
-			want, _ := signedList(t, f, 5, bridge)
-			if readErr != nil || string(stored) != string(want) {
+			stored, readErr := os.ReadFile(filepath.Join(directory, "bridge-revocations-store.json"))
+			if readErr != nil || string(stored) != string(remembered) {
 				t.Fatalf("the stored list changed after a refusal: %v", readErr)
 			}
 		})
@@ -118,12 +121,109 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 		t.Fatalf("a replay of the older list is refused: %v", err)
 	}
 
-	// A corrupted stored list is not skipped.
-	if err := os.WriteFile(filepath.Join(directory, "bridge-revocations.json"), []byte("{}"), 0o600); err != nil {
+	// A corrupted stored list is ignored, not fatal: the valid list below replaces it.
+	if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := checker.Check(t.Context(), snapshot); err == nil {
-		t.Fatal("a stored list that no longer verifies must refuse")
+	fetcher.list, fetcher.signature = signedList(t, f, 7)
+	if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 7 {
+		t.Fatalf("a valid list replaces a corrupt stored one: %+v %v", result, err)
+	}
+}
+
+// A stored list that no longer verifies (a torn two-file write from an earlier release,
+// a corrupt file, or a list bound to a rotated root) must not block every bridge route:
+// check=off ignores it and an online run replaces it with the valid newer list.
+func TestUnusableStoredStateNeitherBlocksOffNorAValidNewerList(t *testing.T) {
+	f := testfixture.New(t)
+	other := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	tornList, _ := signedList(t, f, 3)
+	_, tornSignature := signedList(t, f, 4)
+	otherList, otherSignature := signedList(t, other, 9)
+	for name, files := range map[string]map[string][]byte{
+		"torn pair (list N beside signature N+1)": {"bridge-revocations.json": tornList, "bridge-revocations.sigstore.json": tornSignature},
+		"list without its signature":              {"bridge-revocations.json": tornList},
+		"stored under another trust root":         {"bridge-revocations.json": otherList, "bridge-revocations.sigstore.json": otherSignature},
+		"damaged combined file":                   {"bridge-revocations-store.json": []byte("not json")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			write := func(directory string) {
+				for file, raw := range files {
+					if err := os.WriteFile(filepath.Join(directory, file), raw, 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			offDirectory := t.TempDir()
+			write(offDirectory)
+			off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: offDirectory}
+			if result, err := off.Check(t.Context(), snapshot); err != nil || result.Outcome != bridgerevocation.Disabled {
+				t.Fatalf("off must not depend on stored state: %+v %v", result, err)
+			}
+			onDirectory := t.TempDir()
+			write(onDirectory)
+			fetcher := &scripted{}
+			fetcher.list, fetcher.signature = signedList(t, f, 2)
+			online := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: onDirectory, Now: func() time.Time { return testNow }}
+			if result, err := online.Check(t.Context(), snapshot); err != nil || result.Outcome != bridgerevocation.Checked || result.Sequence != 2 {
+				t.Fatalf("a valid newer list replaces unusable stored state: %+v %v", result, err)
+			}
+			// The replacement is now the floor: an older list is a rollback again.
+			fetcher.list, fetcher.signature = signedList(t, f, 1)
+			if _, err := online.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+				t.Fatalf("the replacement list is the new floor: %v", err)
+			}
+		})
+	}
+}
+
+// The list and its signature are one file, so no state can hold one list beside another's signature.
+func TestAcceptedListIsStoredAsOneFile(t *testing.T) {
+	f := testfixture.New(t)
+	directory := t.TempDir()
+	fetcher := &scripted{}
+	fetcher.list, fetcher.signature = signedList(t, f, 1)
+	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+	if _, err := checker.Check(t.Context(), f.Snapshot(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+		if _, err := os.Stat(filepath.Join(directory, gone)); err == nil {
+			t.Fatalf("%s is the superseded two-file form and must not be written", gone)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(directory, "bridge-revocations-store.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An installation upgraded from the two-file form keeps its sequence floor, and the next
+// accepted list moves it to the single file and removes the pair.
+func TestLegacyTwoFileStateIsReadAndMigrated(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	directory := t.TempDir()
+	list, signature := signedList(t, f, 5)
+	for name, raw := range map[string][]byte{"bridge-revocations.json": list, "bridge-revocations.sigstore.json": signature} {
+		if err := os.WriteFile(filepath.Join(directory, name), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fetcher := &scripted{}
+	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+	fetcher.list, fetcher.signature = signedList(t, f, 4)
+	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+		t.Fatalf("the earlier form's floor still refuses a lower sequence: %v", err)
+	}
+	fetcher.list, fetcher.signature = signedList(t, f, 6)
+	if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 6 {
+		t.Fatalf("a newer list is accepted: %+v %v", result, err)
+	}
+	for _, gone := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+		if _, err := os.Stat(filepath.Join(directory, gone)); err == nil {
+			t.Fatalf("%s must be removed once the single file holds the list", gone)
+		}
 	}
 }
 

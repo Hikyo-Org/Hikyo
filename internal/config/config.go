@@ -106,10 +106,14 @@ type Config struct {
 	// client tunnels through, from HIKYO_DIRECTORY_PROXY. Empty is the default
 	// and means direct egress.
 	//
-	// It is EXPLICIT CONFIGURATION and nothing else: http.ProxyFromEnvironment
-	// is deliberately not consulted anywhere, because ambient HTTP_PROXY
-	// discovery would let a process's environment redirect authenticated fleet
-	// traffic. https only — the CONNECT request names the remote host, so a
+	// It is EXPLICIT CONFIGURATION and nothing else for fleet traffic:
+	// http.ProxyFromEnvironment is deliberately not consulted by the directory,
+	// pairing or operator clients, because ambient HTTP_PROXY discovery would let
+	// a process's environment redirect authenticated fleet traffic. The one
+	// exception is the recovery bridge revocation fetcher (internal/bridgerevocation):
+	// it carries no credentials, and a proxy-only host would otherwise see the
+	// endpoint as unreachable and fall back to the bridge's not_after. Whatever a
+	// proxy returns is still verified against the pinned recovery key. https only — the CONNECT request names the remote host, so a
 	// plaintext proxy publishes the fleet topology to the path.
 	DirectoryProxy string
 	// PairingSPKIPin optionally states the externally served TLS public key.

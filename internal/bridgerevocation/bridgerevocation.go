@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -108,7 +109,9 @@ type HTTPFetcher struct {
 }
 
 // NewHTTPFetcher refuses anything but an https URL and follows redirects only to
-// GitHub's release asset hosts.
+// GitHub's release asset hosts. It honors the proxy environment (HTTPS_PROXY): the
+// request carries no credentials, a proxy-only host would otherwise see the endpoint as
+// unreachable, and the signed content, not the path, is the authority.
 func NewHTTPFetcher(base string) (HTTPFetcher, error) {
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
@@ -216,10 +219,20 @@ type Checker struct {
 }
 
 const (
+	// storeFile holds the accepted list and its signature as one document, replaced by
+	// a single rename, so a crash never leaves a list beside another list's signature.
+	storeFile = "bridge-revocations-store.json"
+	// listFile and signatureFile are the earlier two-file form, still read (and removed
+	// on the next store) so an installation's floor survives the upgrade.
 	listFile      = "bridge-revocations.json"
 	signatureFile = "bridge-revocations.sigstore.json"
 	checkFile     = "bridge-revocations-check.json"
 )
+
+type storedList struct {
+	List      []byte `json:"list"`
+	Signature []byte `json:"signature"`
+}
 
 type checkRecord struct {
 	Outcome  Outcome `json:"outcome"`
@@ -287,29 +300,57 @@ func (c Checker) Revoked(ctx context.Context, snapshot releasetrust.Snapshot) ([
 	return result.Revoked, err
 }
 
+// loadKnown returns the stored list when it verifies against this snapshot. Stored
+// state that does not verify (a torn two-file write, a list bound to a root that has
+// since rotated, a damaged file) is ignored with a warning, never an error: it must not
+// block every bridge route, and the check=off path must not depend on it. Documented
+// fallback: with no usable stored list the sequence floor is gone, so a replayed older
+// list is bounded only by its signed issued_at (7 days), like a first apply.
 func (c Checker) loadKnown(snapshot releasetrust.Snapshot) (releasetrust.VerifiedRevocations, bool, error) {
-	list, err := os.ReadFile(filepath.Join(c.Directory, listFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return releasetrust.VerifiedRevocations{}, false, nil
-	}
-	if err != nil {
+	list, signature, found, err := c.readStored()
+	if err != nil || !found {
 		return releasetrust.VerifiedRevocations{}, false, err
-	}
-	signature, err := os.ReadFile(filepath.Join(c.Directory, signatureFile))
-	if err != nil {
-		return releasetrust.VerifiedRevocations{}, false, fmt.Errorf("stored revocation list lacks its signature: %w", err)
 	}
 	verified, err := snapshot.VerifyRevocations(list, signature)
 	if err != nil {
-		return releasetrust.VerifiedRevocations{}, false, fmt.Errorf("stored revocation list no longer verifies: %w", err)
+		slog.Warn("stored recovery bridge revocation list does not verify and is ignored; a valid list replaces it", "error", err)
+		return releasetrust.VerifiedRevocations{}, false, nil
 	}
 	return verified, true, nil
 }
 
+// readStored reads the combined store, else the earlier two files. Content that cannot
+// be parsed comes back as found with empty bytes, which then fails verification.
+func (c Checker) readStored() (list, signature []byte, found bool, err error) {
+	raw, err := os.ReadFile(filepath.Join(c.Directory, storeFile))
+	if err == nil {
+		var stored storedList
+		if definitions.DecodeStrict(raw, &stored) != nil {
+			return nil, nil, true, nil
+		}
+		return stored.List, stored.Signature, true, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, false, err
+	}
+	list, err = os.ReadFile(filepath.Join(c.Directory, listFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, false, nil
+	}
+	if err != nil {
+		return nil, nil, false, err
+	}
+	signature, err = os.ReadFile(filepath.Join(c.Directory, signatureFile))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, false, err
+	}
+	return list, signature, true, nil
+}
+
 // persist replaces the stored list under an exclusive lock and only ever raises the
 // stored sequence: Check compared against the list it read before the lock, so a
-// concurrent run may have stored a higher one since. The signature lands first so a
-// crash never leaves a list without the signature that authenticates it.
+// concurrent run may have stored a higher one since. The list and its signature are
+// one file, written by a single rename.
 func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.VerifiedRevocations, list, signature []byte) error {
 	release, err := c.lock()
 	if err != nil {
@@ -328,10 +369,17 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 			return nil
 		}
 	}
-	if err := writeAtomic(filepath.Join(c.Directory, signatureFile), signature); err != nil {
+	raw, err := json.Marshal(storedList{List: list, Signature: signature}, jsonwire.Stable)
+	if err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(c.Directory, listFile), list)
+	if err := writeAtomic(filepath.Join(c.Directory, storeFile), raw); err != nil {
+		return err
+	}
+	// The earlier two-file form is superseded; a leftover pair would only confuse a reader.
+	_ = os.Remove(filepath.Join(c.Directory, listFile))
+	_ = os.Remove(filepath.Join(c.Directory, signatureFile))
+	return nil
 }
 
 const (

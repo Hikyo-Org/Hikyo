@@ -475,12 +475,23 @@ func (d *nativeSecurityDriver) Prepare(ctx context.Context, target securitymaint
 	return result, nil
 }
 
+// nativeSecurityRevocationGuard carries the operator's revocation policy. The host has
+// no config.Config, and the maintenance service loads no EnvironmentFile, so the policy
+// comes from the host's own environment (hikyo.env), never the process environment.
+func nativeSecurityRevocationGuard(host nativeSecurityHost) *config.Config {
+	environment := host.Environment()
+	return &config.Config{Upgrade: config.UpgradeConfiguration{
+		StateDirectory:  host.Config().StateDirectory,
+		RevocationCheck: environment["HIKYO_UPGRADE_REVOCATION_CHECK"],
+		RevocationURL:   environment["HIKYO_UPGRADE_REVOCATION_URL"],
+	}}
+}
+
 func stageNativeSecurityRoute(ctx context.Context, prepared preparedSecurityRelease, installation nativeSecurityInstallation) (automaticRoute, error) {
 	if prepared.Installer == nil || prepared.Source == nil {
 		return automaticRoute{}, errors.New("native security route requires independent release preparation")
 	}
-	// The host has no config.Config; the revocation policy is the operator's environment.
-	guard := &config.Config{Upgrade: config.UpgradeConfiguration{StateDirectory: installation.Host.Config().StateDirectory, RevocationCheck: os.Getenv("HIKYO_UPGRADE_REVOCATION_CHECK"), RevocationURL: os.Getenv("HIKYO_UPGRADE_REVOCATION_URL")}}
+	guard := nativeSecurityRevocationGuard(installation.Host)
 	route, err := discoverReleaseRoute(ctx, guard, unattendedRouteInstaller{prepared.Installer}, prepared.Source, prepared.Target, prepared.Pinned,
 		installation.Inspection, installation.Database.Engine, nil, true)
 	if err != nil {

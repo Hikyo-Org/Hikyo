@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -277,7 +276,7 @@ func TestStaleListFallsBackToExpiryAndNeverCountsAsChecked(t *testing.T) {
 	}
 }
 
-func TestStoredStateFailuresRefuse(t *testing.T) {
+func TestUnrecordableStateRefuses(t *testing.T) {
 	f := testfixture.New(t)
 	snapshot := f.Snapshot(t)
 	directory := t.TempDir()
@@ -286,13 +285,6 @@ func TestStoredStateFailuresRefuse(t *testing.T) {
 	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
 	if _, err := checker.Check(t.Context(), snapshot); err != nil {
 		t.Fatal(err)
-	}
-	// A stored list whose signature is missing is not skipped.
-	if err := os.Remove(filepath.Join(directory, "bridge-revocations.sigstore.json")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "lacks its signature") {
-		t.Fatalf("a stored list without its signature must refuse: %v", err)
 	}
 	// A state directory that cannot record the outcome refuses.
 	readOnly := t.TempDir()
@@ -306,5 +298,87 @@ func TestStoredStateFailuresRefuse(t *testing.T) {
 	}
 	if _, err := off.Check(t.Context(), snapshot); err == nil {
 		t.Fatal("a state directory that cannot record the outcome must refuse")
+	}
+}
+
+// Once a list is stored, the list later going absent (404) falls back to the stored list
+// and its sequence floor: its entries still apply and an older list is still a rollback.
+// A list that is present but invalid still refuses.
+func TestAbsentListFallsBackToTheStoredListAndItsFloor(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	bridge := releaseidentity.Hash([]byte("bridge"))
+	list, signature := signedList(t, f, 5, bridge)
+	mode := "list"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case mode == "absent":
+			http.NotFound(w, r)
+		case mode == "invalid":
+			_, _ = w.Write([]byte("{"))
+		case strings.HasSuffix(r.URL.Path, ".sigstore.json"):
+			_, _ = w.Write(signature)
+		default:
+			_, _ = w.Write(list)
+		}
+	}))
+	defer server.Close()
+	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcherFor(t, server.URL+"/r", server), Directory: t.TempDir(), Now: func() time.Time { return testNow }}
+	if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Outcome != bridgerevocation.Checked || result.Sequence != 5 {
+		t.Fatalf("the list is applied and stored: %+v %v", result, err)
+	}
+	mode = "absent"
+	result, err := checker.Check(t.Context(), snapshot)
+	if err != nil || result.Outcome != bridgerevocation.Unreachable || result.Sequence != 5 || !bridgerevocation.Contains(result.Revoked, []releaseidentity.Digest{bridge}) {
+		t.Fatalf("an absent list falls back to the stored list and its floor: %+v %v", result, err)
+	}
+	mode = "invalid"
+	if _, err := checker.Check(t.Context(), snapshot); err == nil {
+		t.Fatal("a present but invalid list must refuse, not fall back")
+	}
+}
+
+// A 404 at the end of a redirect is judged like a 404 at the endpoint: the list being
+// absent is no answer, its signature being absent is invalid. (The redirect policy is
+// opened for the test server; the hosts it allows are pinned by TestOnlyReleaseAssetRedirectsAreFollowed.)
+func TestNotFoundAtARedirectTargetIsJudgedLikeNotFoundAtTheEndpoint(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/gone" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "/gone", http.StatusFound)
+	}))
+	defer server.Close()
+	fetcher := fetcherFor(t, server.URL+"/r", server)
+	fetcher.Client.CheckRedirect = nil
+	if _, _, err := fetcher.Fetch(t.Context()); !errors.Is(err, bridgerevocation.ErrUnreachable) {
+		t.Fatalf("a list that redirects to nothing is absent: %v", err)
+	}
+	signatureGone := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/gone":
+			http.NotFound(w, r)
+		case strings.HasSuffix(r.URL.Path, ".sigstore.json"):
+			http.Redirect(w, r, "/gone", http.StatusFound)
+		default:
+			_, _ = w.Write([]byte("{}"))
+		}
+	}))
+	defer signatureGone.Close()
+	fetcher = fetcherFor(t, signatureGone.URL+"/r", signatureGone)
+	fetcher.Client.CheckRedirect = nil
+	if _, _, err := fetcher.Fetch(t.Context()); err == nil || errors.Is(err, bridgerevocation.ErrUnreachable) {
+		t.Fatalf("a signature that redirects to nothing fails closed: %v", err)
+	}
+}
+
+// The fetcher deliberately honors the proxy environment (see NewHTTPFetcher): a
+// proxy-only host would otherwise treat the endpoint as unreachable.
+func TestFetcherHonorsTheProxyEnvironment(t *testing.T) {
+	fetcher := fetcherFor(t, "https://revocations.example/list", nil)
+	transport, ok := fetcher.Client.Transport.(*http.Transport)
+	if !ok || transport.Proxy == nil {
+		t.Fatal("the production fetcher must resolve its proxy from the environment")
 	}
 }

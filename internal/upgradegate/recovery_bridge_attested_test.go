@@ -3,7 +3,7 @@ package upgradegate_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"strings"

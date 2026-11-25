@@ -13,11 +13,18 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 )
 
+// revocationLookup is the gate's lazy revocation hook.
+type revocationLookup = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error)
+
 // guardBridges makes a bundle's plans consult the revocation list when the route
 // uses a recovery bridge, so an export or drill cannot mint evidence for a
 // revoked bridge.
 func guardBridges(ctx context.Context, cfg *config.Config, bundle upgradebundle.Bundle) upgradebundle.Bundle {
-	lookup, snapshot := bridgeRevocation(cfg), bundle.Snapshot()
+	return guardBridgesWith(ctx, bridgeRevocation(cfg), bundle)
+}
+
+func guardBridgesWith(ctx context.Context, lookup revocationLookup, bundle upgradebundle.Bundle) upgradebundle.Bundle {
+	snapshot := bundle.Snapshot()
 	return bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return lookup(ctx, snapshot) })
 }
 
@@ -25,11 +32,32 @@ func guardBridges(ctx context.Context, cfg *config.Config, bundle upgradebundle.
 // consume upgrade evidence, with the revocation guard attached. These commands
 // never call upgradebundle.Load directly (a test enforces it), so none can skip it.
 func loadGuardedBundle(ctx context.Context, cfg *config.Config, directory string, pinned releasetrust.PinnedTrust, floor releaseidentity.SnapshotFloor) (upgradebundle.Bundle, error) {
+	return loadGuardedBundleWith(ctx, bridgeRevocation(cfg), directory, pinned, floor)
+}
+
+func loadGuardedBundleWith(ctx context.Context, lookup revocationLookup, directory string, pinned releasetrust.PinnedTrust, floor releaseidentity.SnapshotFloor) (upgradebundle.Bundle, error) {
 	bundle, err := upgradebundle.Load(ctx, directory, pinned, floor)
 	if err != nil {
 		return upgradebundle.Bundle{}, err
 	}
-	return guardBridges(ctx, cfg, bundle), nil
+	return guardBridgesWith(ctx, lookup, bundle), nil
+}
+
+// onceRevocation remembers each snapshot's answer, so a discovery that reloads its growing
+// bundle several times fetches the list once. Only answers are remembered: a refusal is
+// asked again, and a route that never uses a bridge never asks.
+func onceRevocation(lookup revocationLookup) revocationLookup {
+	answers := map[releaseidentity.Digest][]releaseidentity.Digest{}
+	return func(ctx context.Context, snapshot releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+		if revoked, ok := answers[snapshot.Digest()]; ok {
+			return revoked, nil
+		}
+		revoked, err := lookup(ctx, snapshot)
+		if err == nil {
+			answers[snapshot.Digest()] = revoked
+		}
+		return revoked, err
+	}
 }
 
 // newRevocationFetcher is the production https client; tests replace it to reach a
@@ -41,7 +69,7 @@ var newRevocationFetcher = func(address string) (bridgerevocation.Fetcher, error
 // bridgeRevocation builds the gate's lazy revocation lookup from configuration.
 // A bad setting is not reported until a route actually needs a recovery bridge,
 // where it refuses that route; ordinary upgrades never reach it.
-func bridgeRevocation(cfg *config.Config) func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
+func bridgeRevocation(cfg *config.Config) revocationLookup {
 	return func(ctx context.Context, snapshot releasetrust.Snapshot) ([]releaseidentity.Digest, error) {
 		mode, err := bridgerevocation.ParseMode(cfg.Upgrade.RevocationCheck)
 		if err != nil {

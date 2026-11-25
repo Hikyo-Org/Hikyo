@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
@@ -88,6 +89,12 @@ func resolveSelectedUpgrade(ctx context.Context, cfg *config.Config, selectionDi
 	return next, nil
 }
 
+// upgradeSourceRequest is the preflight's gate request. Its revocation hook is the real
+// checker, so a revoked bridge refuses the preflight as it refuses the gate.
+func upgradeSourceRequest(cfg *config.Config, pinned releasetrust.PinnedTrust, public []byte) upgradegate.Request {
+	return upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(cfg.Store.Engine), BundleDirectory: cfg.Upgrade.BundleDirectory, StateDirectory: cfg.Upgrade.StateDirectory, InitialOperatorPublicKey: public, Pinned: pinned, LegacyWritersStopped: cfg.Upgrade.LegacyWritersStopped, BridgeRevocation: bridgeRevocation(cfg)}
+}
+
 // inspectUpgradeSource deliberately does not call upgradeRequest: that path
 // creates development state and ciphertext copies as part of actual execution.
 func inspectUpgradeSource(ctx context.Context, cfg *config.Config, installed os.FileInfo, preparing bool) (upgradegate.ConfigurationProof, error) {
@@ -102,7 +109,7 @@ func inspectUpgradeSource(ctx context.Context, cfg *config.Config, installed os.
 	if err != nil {
 		return upgradegate.ConfigurationProof{}, err
 	}
-	request := upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Engine(cfg.Store.Engine), Path: cfg.Store.Path, DSN: cfg.Store.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(cfg.Store.Engine), BundleDirectory: cfg.Upgrade.BundleDirectory, StateDirectory: cfg.Upgrade.StateDirectory, InitialOperatorPublicKey: public, Pinned: pinned, LegacyWritersStopped: cfg.Upgrade.LegacyWritersStopped, BridgeRevocation: bridgeRevocation(cfg)}
+	request := upgradeSourceRequest(cfg, pinned, public)
 	if cfg.Upgrade.EvidenceDirectory != "" {
 		for _, item := range []struct {
 			name  string

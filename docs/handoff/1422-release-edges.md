@@ -102,7 +102,15 @@ workflow (full `check-compatibility-unchanged.sh`).
   is the limit). The two legacy v1 statements in the committed catalog
   (`release/trust/BRIDGES.md`) therefore plan no route until the owner re-signs v2
   statements offline (`scripts/release/nightly legacy-bridges --not-after ...`) and
-  replaces their digests in a new catalog. Agents never sign or publish this.
+  catalogues them. The v1 digests are policy-listed, so they cannot leave the catalog
+  without a policy rotation; the runtime refuses v1, so they stay inert. Agents never
+  sign or publish this. The rehearsal does not yet exercise a legacy statement.
+- Revocation state (#1561 review): the accepted list and signature are one file
+  (`bridge-revocations-store.json`, one rename); unusable stored state is ignored with
+  a warning, `off` never reads it, and a valid newer list replaces it (the floor is lost
+  until then; operator recovery is in the runbook and `manual-upgrades.md`). The
+  native security maintenance service reads the revocation policy from the host's
+  `hikyo.env`. The fetcher honors `HTTPS_PROXY`.
 
 - Bridge for v1.0.0 (option B): tooling, independent verifier, rehearsal and
   ceremony runbook are in the bridge PR (`docs/operations/recovery-bridge-ceremony.md`).

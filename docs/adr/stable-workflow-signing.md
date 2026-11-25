@@ -152,9 +152,28 @@ apply-time revocation list (options (a) and (c) on
   `objects.githubusercontent.com` or `release-assets.githubusercontent.com`; any
   other redirect is a reachable but invalid answer. A 404 for the list asset
   (nothing published yet) is no answer, like an unreachable endpoint: the route plans, a
-  warning is logged, and the signed `not_after` is the limit. A list that is
-  present without its signature, badly signed, malformed or bound to another root
-  fails closed. The signature, not the host, is the authority.
+  warning is logged, and the signed `not_after` is the limit; a 404 at the end of a
+  redirect is judged the same way. A list that is
+  present without its signature (a 404 for the `.sigstore.json` asset), badly signed,
+  malformed or bound to another root fails closed. Once a list is stored, an absent
+  list falls back to the stored list and its sequence floor. The signature, not the
+  host, is the authority. A 429 or any other unlisted status stays a reachable but
+  invalid answer and fails closed.
+  The fetcher honors the proxy environment (`HTTPS_PROXY`, `NO_PROXY`): unlike the
+  fleet clients, which use only an explicit proxy setting, it sends no credentials,
+  a proxy-only host would otherwise see the endpoint as unreachable and fall back
+  to `not_after`, and whatever a proxy returns is still verified against the pinned
+  recovery key.
+  **Stored state.** The accepted list and its signature are stored as one file
+  (`bridge-revocations-store.json`, one rename), so a crash cannot leave a list
+  beside another list's signature; the earlier two-file form is still read and is
+  removed on the next store. Stored state that no longer verifies (a torn write
+  from the earlier two-file form, a damaged file, a list bound to a root that has
+  since rotated) is ignored with a warning rather than refusing every bridge route:
+  `off` never depends on it, and online treats it as nothing stored, so a valid
+  newer list replaces it. The documented cost is the lost sequence floor: until a
+  list is stored again, a replayed older list is bounded only by its signed
+  `issued_at` (7 days), like a first apply. The operator recovery is in the runbook.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that
   holds the journaled route digest of an upgrade (the gate's in-flight and
@@ -188,8 +207,15 @@ apply-time revocation list (options (a) and (c) on
   plans with a warning and expiry is the limit. An expired bridge is refused whatever
   the list says, a present but invalid list refuses, and a revoked entry blocks a
   forward resume while a security rollback is never blocked.
-  `HIKYO_UPGRADE_REVOCATION_CHECK=off` stays as the explicit operator opt-out (and
-  keeps hermetic fixtures off the network); a stored list still applies.
+  `HIKYO_UPGRADE_REVOCATION_CHECK=off` stays as the explicit operator opt-out; a
+  usable stored list still applies. Repository fixtures do not use it: they point
+  `HIKYO_UPGRADE_REVOCATION_URL` at an unresolvable host, so the unreachable path is
+  what they exercise. The native security maintenance service reads the policy from
+  the host's `hikyo.env` (it loads no `EnvironmentFile`), so `off` or a mirror URL
+  set there is honored at discovery too.
+  The two committed `v1` digests are policy-listed, so they cannot leave the catalog
+  without a policy rotation; the runtime refuses `v1`, so they stay inert and cannot
+  admit a route, whatever they once allowed.
   Ordinary upgrades never contact the endpoint. The snapshot revocation
   (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
   re-signs the policy) remains and binds instances whose floor advanced.
