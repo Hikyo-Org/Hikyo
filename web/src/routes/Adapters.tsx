@@ -1,3 +1,4 @@
+import { isAppMode } from '../app/shell.ts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useParams, useSearchParams } from 'react-router';
@@ -2063,7 +2064,8 @@ function AdapterCeremony({
       if (policy.sliding.length > 0) {
         await runAdapterTOTPCeremony(ask.operation, [...ask.environmentIds], code.trim());
       }
-      for (const environment of policy.passkey) {
+      // One browser hop covers the whole set in the desktop app.
+      for (const environment of isAppMode() ? policy.passkey.slice(0, 1) : policy.passkey) {
         await runAdapterPasskeyCeremony({ operation: ask.operation, environmentId: environment, environmentIds: [...ask.environmentIds] });
       }
       ask.resolve();

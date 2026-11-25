@@ -732,8 +732,10 @@ export const zDynamicLeaseList = z.object({
 /**
  * `paused` is an operator or cascade pause (a deleted provider, a protected
  * environment or an approval policy pauses the rotations it would break);
- * `halted` is the executor's named stop after a failed authority gate. Only a
- * full resume authorization leaves either. `disabled` is the soft delete.
+ * `halted` is the executor's named stop (a failed authority or pre-publish
+ * gate, or an exhausted retry window); the rotation's `halt_reason` names
+ * which. Only a full resume authorization leaves either. `disabled` is the
+ * soft delete.
  *
  */
 export const zCredentialRotationState = z.enum([
@@ -743,29 +745,20 @@ export const zCredentialRotationState = z.enum([
     'disabled'
 ]);
 
-export const zCredentialRotation = z.object({
-    id: zId,
-    environment_id: zId,
-    provider_id: zId,
-    key_id: zId,
-    username_key_id: zId,
-    interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
-    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800)),
-    authority_principal_id: zId,
-    created_by: zId,
-    state: zCredentialRotationState,
-    restore_hold: z.boolean(),
-    next_run_at: z.iso.datetime().nullish(),
-    credential_expires_at: z.iso.datetime().nullish(),
-    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
-    created_at: zTimestamp,
-    updated_at: zTimestamp
-});
-
-export const zCredentialRotationList = z.object({
-    items: z.array(zCredentialRotation),
-    next_after: z.string().max(128).optional()
-});
+/**
+ * Why a halted rotation stopped, as a fixed word, never free text and never
+ * provider detail. `retries_exhausted`: the cycle's retry window ran out
+ * before a run could publish or extend the credential, so the delivered
+ * credential is not extended. `authority_lost`: the recorded person no longer
+ * holds the access the rotation needs, or one of its keys or its environment
+ * is gone. `gate_failed`: a pre-publish gate refused, for example the
+ * environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+ * server writes (a legacy or restored value). OPEN enum: a later release may
+ * add a word, so a client keeps an unrecognised one and says only that the
+ * rotation is halted.
+ *
+ */
+export const zRotationHaltReason = z.string();
 
 export const zCreateRotationRequest = z.object({
     provider_id: zId,
@@ -806,6 +799,46 @@ export const zRotationRunPhase = z.enum([
     'quarantine',
     'failed'
 ]);
+
+/**
+ * The newest run of a rotation, the top row of its runs list: metadata only.
+ * Neither a role handle nor any provider detail is carried.
+ *
+ */
+export const zRotationLastRun = z.object({
+    id: zId,
+    phase: zRotationRunPhase,
+    error_code: z.string().nullish(),
+    phase_at: zTimestamp
+});
+
+export const zCredentialRotation = z.object({
+    id: zId,
+    environment_id: zId,
+    provider_id: zId,
+    key_id: zId,
+    username_key_id: zId,
+    interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800)),
+    authority_principal_id: zId,
+    created_by: zId,
+    state: zCredentialRotationState,
+    halt_reason: zRotationHaltReason.optional(),
+    last_run: zRotationLastRun.optional(),
+    owed_drop_runs: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    owed_drop_runs_versions_changed: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    restore_hold: z.boolean(),
+    next_run_at: z.iso.datetime().nullish(),
+    credential_expires_at: z.iso.datetime().nullish(),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    created_at: zTimestamp,
+    updated_at: zTimestamp
+});
+
+export const zCredentialRotationList = z.object({
+    items: z.array(zCredentialRotation),
+    next_after: z.string().max(128).optional()
+});
 
 export const zRotationRun = z.object({
     id: zId,
@@ -1459,6 +1492,8 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'approve',
         'reject',
         'bypass',
+        'mint',
+        'access',
         'self-config',
         'developer-credential'
     ]),
@@ -1472,6 +1507,8 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
+        'access.bypass',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',
@@ -1521,6 +1558,8 @@ export const zCliReauthTransaction = z.object({
         'approve',
         'reject',
         'bypass',
+        'mint',
+        'access',
         'self-config',
         'developer-credential'
     ]),
@@ -1534,6 +1573,8 @@ export const zCliReauthTransaction = z.object({
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
+        'access.bypass',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',

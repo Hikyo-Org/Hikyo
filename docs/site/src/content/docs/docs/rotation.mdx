@@ -60,7 +60,8 @@ Because no per-publish ceremony will ever gate the unattended publishes that
 follow, **creating and resuming a rotation each consume a publish
 reauthentication ceremony** over the environment and both keys, the same step a
 values publish of those keys takes. `hikyo rotation create` and `hikyo rotation
-resume` prompt for it through the usual browser handoff.
+resume` prompt for it through the usual browser handoff, and the browser's
+**Rotations** tab asks for it before it sends the act.
 
 The person who creates the rotation is recorded as the authority principal, and
 the executor will re-check their authority in full before every step that can still
@@ -143,13 +144,19 @@ when the provider cannot be reached.
 Failed runs retry with a bounded exponential backoff (5 minutes doubling to 6
 hours, at most 12 attempts) inside a window that always leaves the superseded role
 valid for the overlap. When the window or the attempt cap is spent, the rotation
-moves to `halted` with a named reason: `retries_exhausted` (the schedule ran
-out), `authority_lost` (the recorded person no longer holds the access) or
-`gate_failed` (the environment became protected, a key changed, or a draft
-appeared). A halted rotation shows `halted` as its state in `show` and `list`, and does not
-extend the delivered credential; the reason is recorded server side but the API does
-not expose it today, so `show`, `list` and the browser state that it is halted and
-not why; `resume` starts a new cycle. As the delivered credential nears its
+moves to `halted` with a named reason, a fixed word the API returns as `halt_reason`
+(never free text, never a provider message):
+
+- `retries_exhausted`: the retry window ran out before a run could publish or extend the credential.
+- `authority_lost`: the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone.
+- `gate_failed`: a pre-publish gate refused: the environment became protected, a key changed or a draft appeared.
+- `unknown`: the server halted the rotation without a reason it can name (a halt recorded before the reason was kept, for one).
+
+A halted rotation does not extend the delivered credential. `hikyo rotation show` and
+`hikyo rotation list` print a `HALT REASON` column (a `-` when the rotation is not halted)
+and a `HALTED` line on stderr with the same sentence as the list above, and the
+browser says the same. A word this client does not know is printed quoted and
+never interpreted. `resume` starts a new cycle. As the delivered credential nears its
 expiry, the server extends its `VALID UNTIL` while the rotation is active and
 the gate still holds.
 
@@ -199,8 +206,9 @@ hikyo rotation runs rot_0198... --env production
 ```
 
 `--interval` and `--revocation-delay` take Go durations (`90m`, `720h`) or a whole
-number of days with a `d` suffix (`30d`). `list` shows live rotations; add
-`--include-disabled` to include deleted history. A page holds up to `--limit`
+number of days with a `d` suffix (`30d`). `list` shows live rotations and any deleted
+one that still owns a run owing a provider role a drop (marked deleted); add
+`--include-disabled` to include all deleted history. A page holds up to `--limit`
 rotations (1 to 500, default 100) in id order; when more follow, the CLI prints the
 `--after` value that continues the list. `pause`, `resume` and `delete`
 accept `--expected-generation N`, which fails
@@ -287,29 +295,85 @@ check that neither key serves that role (and reassign what it owns, for
 follow, the CLI prints the `--after` value that continues the list. It needs only
 **read** on the environment.
 
+Each rotation also carries a summary of its runs, so a list or a show tells you at a
+glance without reading the run history: `last_run` (its id, phase, error code and last
+change) and two counts. `owed_drop_runs` is the number of runs that need your attention because they owe a
+provider role a drop: every run in the phase `revoke_refused` (held on purpose;
+Hikyo does not drop the role) or `quarantine` (Hikyo may still retry the drop, but
+it needs a person to look), whatever its error code (the same runs the per-run
+`ATTENTION` lines and the `hikyo_rotation_runs_{quarantined,revoke_refused}` gauges
+count). A run still in flight (`published`, `overlap` or `revoking`) also owes a drop,
+but the executor carries it out itself, so it is not counted and a zero does not mean
+no role is waiting to be dropped.
+`owed_drop_runs_versions_changed` is the part of that count a restore refused
+(`published_versions_changed`). The CLI prints `LAST RUN` and `OWED DROPS` columns
+and, when a rotation owes a drop, one rotation-level `ATTENTION` line that counts
+the runs and points at `hikyo rotation runs <rotation>` for each run's own line. That
+line carries the same key check as the run's own: check that neither key serves that
+role, because a revision restore can put it back. When any of them was refused after a
+restore, or a restore hold is on, it says **do NOT drop** the role until the keys have
+moved off it or you have checked; no rotation-level text ever tells you to drop a role.
+The CLI never shows the count as a yes or no. The browser badge says whether a rotation
+owes a drop (`Owes a drop`, or `Do not drop: restore`) and its notice carries the count.
+A deleted rotation can still owe a drop, and the count stays on it: the default list
+(CLI and browser) still shows a deleted rotation that owns such a run, with `deleted` in
+its state cell, so the warning is not lost with the delete. The CLI also marks it
+deleted on its `ATTENTION` line.
+
 ## In the browser
 
 **Machine access** has a **Rotations** tab that shows an environment's rotations
-and the runs of one of them. It is status only: creating, pausing, resuming,
-running and deleting a rotation, and lifting a restore hold, are `hikyo rotation`
-commands, and the tab has no button for any of them. It needs **read** on the
+and the runs of one of them, and takes the same acts as `hikyo rotation`, with the
+same authorization and refusals:
+
+- **Create rotation** asks for the provider (one that can mint: active, with its
+  admin credential set), the password key (a secret key outside any key group), the
+  role name key, the interval in hours and the overlap in minutes.
+- Each rotation row offers only the acts its state allows: **Pause** and **Run now**
+  on an active rotation, **Resume** on a paused or halted one, **Delete** on any live
+  one, and **Release hold** instead of resume, run-now and delete while a restore
+  holds it. A deleted rotation takes no act.
+- Create, resume, run-now and release-hold then ask you to confirm the publish over
+  the environment and both keys with a passkey, a code or your identity provider,
+  even in an unprotected environment; a live re-authentication window you opened in
+  this browser session covers it, unless it was a one-time passkey confirmation.
+  Pause and delete need no confirmation step beyond their dialog.
+- **Release hold** shows the reconcile-then-release instruction first, and its button
+  stays disabled until you tick that you have reconciled the grants and the provider
+  credential and read the runs. It never resumes a paused or halted rotation; an
+  active one publishes on its schedule again.
+- **Run now** can skip the overlap, which revokes the superseded credential as soon as
+  the new one is published. **Delete** can close the rotation's unsettled runs instead
+  of refusing while one is in flight; that revokes nothing.
+- Every act sends the generation the tab read, so a change someone made since is
+  refused as a conflict instead of overwritten, and every refusal is shown in the
+  sentence plus the server's named reason. The tab never shows or stores a credential.
+
+Reading the tab needs **read** on the
 environment. A person who lacks it gets the API's answer (the same not-found for a
 rotation that is absent), which the tab words as "Listing them needs read on this
 environment" without saying whether anything exists.
 
 The list shows each rotation's id, keys (by name, with the key id on hover), provider
 (kind, origin and id), interval and overlap, its state as a word (`active`, `paused`,
-`halted` or `disabled`), the next run, when the delivered credential expires, and its
-record: authority principal, creator, generation and created and updated times. That is
-everything the API returns for a rotation, which `hikyo rotation show` prints only partly
-in its table; the environment is the one you chose above the list. A halted rotation is
-flagged with the command that resumes it, and when it is also
-held after a restore the tab says to lift the hold first. The tab does not say why a
-rotation halted: the reason is recorded server side but the API does not expose it
-today. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
+`halted` or `deleted`; the CLI table and the browser badge both say `deleted` for a
+deleted rotation, the API field is `disabled`), the next run, when the delivered credential expires, its last
+run (id, phase, error code and when it last changed) and its record: authority
+principal, creator, generation and created and updated times. That is everything the
+API returns for a rotation; the environment is the one you chose above the list. A halted
+rotation is flagged with the command that resumes it, the notice and the row name why
+it halted in the same words as the CLI (see the halt reasons above), and when it is also
+held after a restore the tab says to lift the hold first. A rotation with a run that owes
+a provider drop carries a badge in its state cell, "Owes a drop", and the rotation-level
+`ATTENTION` line the CLI prints, naming `hikyo rotation runs <rotation>`; when a
+restore refused any of those drops, or a restore hold is on, the badge reads "Do not
+drop: restore" and the line says **do NOT drop** the role until the keys have moved off
+it or you have checked. The badge is words, not
+only a colour. A rotation held after a restore gets a `RESTORE HOLD` alert with the exact
 `hikyo rotation release-hold <rotation>` command, and its next run reads "Held after a
-restore: no run starts". Deleted rotations are listed only when you tick **Include deleted
-rotations**.
+restore: no run starts". A deleted rotation that still owes a drop is listed by default, with
+`deleted` in its state cell; tick **Include all deleted rotations** to list every other
+deleted one too.
 
 **Show runs** opens the timeline of one rotation, newest first: phase, trigger,
 start and last change, the published revision, the overlap, the fixed-word error

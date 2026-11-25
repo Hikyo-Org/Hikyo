@@ -1688,7 +1688,7 @@ var registry = map[EventType]TypeSpec{
 		"action":  {Kind: KindString, Required: true, Enum: []string{"add", "delete"}},
 	}),
 	EventEnvRenamed: hierarchyEvent(renameSchema("name")),
-	EventEnvDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventEnvDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}, "purged_certificates": {Kind: KindInt, NonNegative: true}}),
 	// The resulting order, not only its length: an investigator must be able to
 	// tell "production and staging swapped" from any other permutation of the
 	// same set. audit.Schema has no list kind, so the order is one

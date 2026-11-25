@@ -157,7 +157,7 @@ func TestAdapterTransientPreparationSQLFailureRollsBackAndRetries(t *testing.T) 
 			if module.prepared != 0 || queryInt(t, db, `SELECT COUNT(*) FROM adapter_outbox WHERE id='job_gitlab' AND state='queued' AND lease_owner IS NULL`) != 1 || queryInt(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_gitlab_a' AND effective_name='P_FAIL' AND state='reserved'`) != 1 || queryInt(t, db, `SELECT COUNT(*) FROM adapter_effects WHERE target_id='tgt_gitlab_a'`) != 0 || queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_gitlab_a' AND provider_lease_job_id IS NULL`) != 1 {
 				t.Fatalf("SQL failure attempt %d became terminal or leaked provider custody", attempt+1)
 			}
-			clock = clock.Add(2 * time.Minute)
+			clock = stepWorkerClock(clock, 2*time.Minute)
 		}
 	})
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
 import { metadataReadDenied } from '../api/metadataQuery.ts';
@@ -10,6 +10,7 @@ import { formatWhen } from '../lib/formatWhen.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { Select } from '../ui/Select.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { TransitCreateKey, TransitKeyManagement } from './TransitKeyManagement.tsx';
@@ -17,6 +18,7 @@ import { TransitOperations } from './TransitOperations.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
 
 export function TransitKeyFacts({ transitKey }: { transitKey: TransitKey }) {
+  const versionsCaptionId = useId();
   return <>
     <dl className="adapters__facts">
       <dt>Algorithm</dt><dd>{transitKey.algorithm}</dd><dt>Custody</dt><dd>{transitKey.custody}</dd>
@@ -31,10 +33,10 @@ export function TransitKeyFacts({ transitKey }: { transitKey: TransitKey }) {
     </dl>
     <h3>Key versions</h3>
     {transitKey.algorithm === 'mldsa65' ? <p className="field__hint">Public keys of this ML-DSA-65 key are base64 SubjectPublicKeyInfo (SPKI), which verifiers load after decoding the base64 or wrapping it as PEM. Ed25519 keys show the raw 32-byte key.</p> : null}
-    <div className="table-scroll"><table className="values__table machine__table">
-      <caption className="visually-hidden">Public version metadata for {transitKey.name}</caption><thead><tr><th scope="col">Version</th><th scope="col">Material status</th><th scope="col">Created</th><th scope="col">Public key</th></tr></thead>
+    <TableScroll aria-labelledby={versionsCaptionId}><table className="values__table machine__table">
+      <caption id={versionsCaptionId} className="visually-hidden">Public version metadata for {transitKey.name}</caption><thead><tr><th scope="col">Version</th><th scope="col">Material status</th><th scope="col">Created</th><th scope="col">Public key</th></tr></thead>
       <tbody>{transitKey.versions.map((version) => <tr key={String(version.version)}><td>{String(version.version)}</td><td>{version.material}</td><td>{formatWhen(version.created_at)}</td><td>{version.public_key == null ? 'None' : <TextareaPublicKey value={version.public_key} version={String(version.version)} />}</td></tr>)}</tbody>
-    </table></div>
+    </table></TableScroll>
     <h3>Caller entries</h3>{transitKey.callers.length === 0 ? <p>No caller restrictions. Any principal with crypto-use on this environment may use the allowed operations.</p> : <ul>{transitKey.callers.map((caller) => <li key={caller.principal_id}><NamedId id={caller.principal_id} name={transitKey.principal_names?.[caller.principal_id]} />: {caller.operations.join(', ')}</li>)}</ul>}
   </>;
 }
@@ -46,6 +48,7 @@ function TextareaPublicKey({ value, version }: { value: string; version: string 
 /** Public metadata is cacheable; cryptographic input and output are owned only
  * by the keyed child surface, which unmounts at every authority boundary. */
 export function TransitKeys() {
+  const listCaptionId = useId();
   const { org = '', project = '' } = useParams();
   const [search, setSearch] = useSearchParams();
   const environments = useEnvironments(org, project);
@@ -89,7 +92,7 @@ export function TransitKeys() {
         {listing.isPending ? <p role="status">Loading Transit keys…</p> : null}
         {listing.isError ? <Alert>{transitRefusalText(listing.error)}</Alert> : null}
         {listAvailable && listing.data?.items.length === 0 ? <p role="status">No Transit keys in this environment.</p> : null}
-        {listAvailable && (listing.data?.items.length ?? 0) > 0 ? <div className="table-scroll"><table className="values__table machine__table"><caption className="visually-hidden">Transit keys in the selected environment</caption><thead><tr><th scope="col">Name</th><th scope="col">Algorithm</th><th scope="col">State</th><th scope="col">Latest version</th><th scope="col">Rotation</th><th scope="col">Deletion</th><th scope="col">Actions</th></tr></thead><tbody>{listing.data?.items.map((entry) => <tr key={entry.id}><th scope="row" className="mono">{entry.name}</th><td>{entry.algorithm}</td><td><Badge tone={entry.state === 'active' ? 'ok' : 'changed'}>{entry.state}</Badge>{entry.compromised_through_version > 0n ? <Badge tone="danger">Compromised versions</Badge> : null}</td><td>{String(entry.latest_version)}</td><td>{entry.rotation_due ? <Badge tone="changed">Rotation due</Badge> : 'Not due'}</td><td>{entry.deletion_after == null ? 'Not scheduled' : formatWhen(entry.deletion_after)}</td><td><Button type="button" readOnlySafe onClick={() => select('key', entry.name)}>Inspect {entry.name}</Button></td></tr>)}</tbody></table></div> : null}
+        {listAvailable && (listing.data?.items.length ?? 0) > 0 ? <TableScroll aria-labelledby={listCaptionId}><table className="values__table machine__table"><caption id={listCaptionId} className="visually-hidden">Transit keys in the selected environment</caption><thead><tr><th scope="col">Name</th><th scope="col">Algorithm</th><th scope="col">State</th><th scope="col">Latest version</th><th scope="col">Rotation</th><th scope="col">Deletion</th><th scope="col">Actions</th></tr></thead><tbody>{listing.data?.items.map((entry) => <tr key={entry.id}><th scope="row" className="mono">{entry.name}</th><td>{entry.algorithm}</td><td><Badge tone={entry.state === 'active' ? 'ok' : 'changed'}>{entry.state}</Badge>{entry.compromised_through_version > 0n ? <Badge tone="danger">Compromised versions</Badge> : null}</td><td>{String(entry.latest_version)}</td><td>{entry.rotation_due ? <Badge tone="changed">Rotation due</Badge> : 'Not due'}</td><td>{entry.deletion_after == null ? 'Not scheduled' : formatWhen(entry.deletion_after)}</td><td><Button type="button" readOnlySafe onClick={() => select('key', entry.name)}>Inspect {entry.name}</Button></td></tr>)}</tbody></table></TableScroll> : null}
       </section>
       {selected === null ? <p>Select a key to inspect its public metadata and operations.</p> : <section className="card machine__card" aria-label="Selected Transit key">
         <h2>{selected}</h2>{detail.isPending ? <p role="status">Loading Transit key…</p> : null}{detail.isError ? <Alert>{transitRefusalText(detail.error)}</Alert> : null}

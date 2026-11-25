@@ -47,6 +47,7 @@ func TestK8sOperator(t *testing.T) {
 	t.Run("all_keys", func(t *testing.T) { testAllKeys(t, restCfg, sch) })
 	t.Run("converge", func(t *testing.T) { testConverge(t, restCfg, sch) })
 	t.Run("native_secret_types", func(t *testing.T) { testNativeSecretTypes(t, restCfg, sch) })
+	t.Run("credential_rotation_rollout", func(t *testing.T) { testCredentialRotationRollout(t, restCfg, sch) })
 	t.Run("rotate_token_key", func(t *testing.T) { testRotateTokenKey(t, restCfg, sch) })
 	t.Run("designation_refusals", func(t *testing.T) { testDesignationRefusals(t, restCfg, sch) })
 	t.Run("managed_secret_conflict", func(t *testing.T) { testManagedSecretConflict(t, restCfg, sch) })

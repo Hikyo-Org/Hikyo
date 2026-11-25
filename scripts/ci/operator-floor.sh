@@ -52,7 +52,7 @@ trap 'exit 143' TERM
 if kind get clusters 2>/dev/null | grep -Fxq "$cluster"; then
 	echo 'operator-floor: refusing an existing cluster' >&2; exit 1
 fi
-node_image='kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5'
+node_image='kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed'
 base_image='alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b'
 chart_flags=(--namespace operator-floor --set operator.enabled=true --set 'operator.namespaces={operator-floor}' --set image.digest="sha256:$(printf '%064d' 0)" --set rootKey.existingSecret=unused --set database.existingSecret=unused --set tls.existingSecret=unused --set externalOrigin=https://floor.invalid --set upgrade.existingClaim=unused-public --set upgrade.stateExistingClaim=unused-installation)
 # Validate chart inputs before provisioning any cluster. Helm validates the

@@ -16,12 +16,14 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/database"
 	"github.com/pressly/goose/v3/lock"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
 // Run applies all pending migrations, roll-forward only. Any error means the
@@ -199,7 +201,11 @@ func withProvider(ctx context.Context, cfg store.Config, fn func(*goose.Provider
 			db.SetMaxOpenConns(1)
 		}
 	case store.EnginePostgres:
-		db, err = sql.Open("pgx", cfg.DSN)
+		// The shared session setup refuses a server below PostgreSQL 18 before any migration runs.
+		var connConfig *pgx.ConnConfig
+		if connConfig, err = pgx.ParseConfig(cfg.DSN); err == nil {
+			db = stdlib.OpenDB(*connConfig, stdlib.OptionAfterConnect(upgrade.SetPostgresSessionTimeouts))
+		}
 		dialect, dir = database.DialectPostgres, "migrations/postgres"
 		// Running pg migrations without the session lock would be a
 		// silent downgrade; a locker failure is a hard failure.

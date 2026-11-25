@@ -406,7 +406,7 @@ func runSCIMCredential(ctx context.Context, ios IO, args []string) (returnErr er
 	case "mint":
 		// `∧ reauthentication` (§7): the proof is prompted for, never a flag —
 		// a password or TOTP code on a command line lands in shell history.
-		proof, err := ios.readPassword(
+		proof, err := st.readProof(ios,
 			"Account-security proof (your TOTP code, or password if no factor): ")
 		if err != nil {
 			return err

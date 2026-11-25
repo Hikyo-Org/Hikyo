@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { FederatedClaimPin } from '@hikyo/client';
 import {
-  BINDING_LIFETIMES,
+  CREDENTIAL_LIFETIMES,
+  lifetimeSecondsFor,
   bindingFailureText,
   CI_EVENTS,
   FEDERATION_PRESETS,
@@ -404,7 +405,7 @@ export function BindingDialog({
           keyIds: [],
         });
       }
-      const seconds = BINDING_LIFETIMES.find((entry) => entry.id === lifetime)?.seconds;
+      const seconds = lifetimeSecondsFor(lifetime);
       issued = true;
       const result = await create.mutateAsync({
         serviceAccount: account,
@@ -632,7 +633,7 @@ export function BindingDialog({
             edited();
           }}
         >
-          {BINDING_LIFETIMES.map((entry) => (
+          {CREDENTIAL_LIFETIMES.map((entry) => (
             <option key={entry.id} value={entry.id} disabled={entry.disabled === true}>
               {entry.label}
             </option>

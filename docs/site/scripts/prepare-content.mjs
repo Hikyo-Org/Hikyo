@@ -77,6 +77,7 @@ const siteLinks = new Map([
   ['online-signing.md#custody-and-recovery', '/release/online-signing/#custody-and-recovery'],
   ['apple-signing.md', '/release/apple-signing/'],
   ['apple-signing.md#one-time-credential-setup', '/release/apple-signing/#one-time-credential-setup'],
+  ['apple-signing.md#desktop-app', '/release/apple-signing/#desktop-app'],
   ['../handoff/apple-signing.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/handoff/apple-signing.md'],
   ['legacy-offline-signing.md', '/release/legacy-offline-signing/'],
   ['../adr/stable-workflow-signing.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/stable-workflow-signing.md'],

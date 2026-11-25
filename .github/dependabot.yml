@@ -29,7 +29,7 @@ updates:
 
   # npm version updates. Security updates are configured separately in the
   # repository settings and still go to main; these options do not apply to
-  # them. Dependabot's default 3-day cooldown already outlasts pnpm 11's 1-day
+  # them. Dependabot's default 3-day cooldown already outlasts pnpm's 1-day
   # minimum release age, so no cooldown is set.
   - package-ecosystem: npm
     directories:

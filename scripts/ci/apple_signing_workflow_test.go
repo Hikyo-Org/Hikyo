@@ -97,6 +97,15 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 			}
 			for key, value := range step.Env {
 				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") {
+					if name == "desktop-app" {
+						// The desktop job is one macOS job, so its credentials stay
+						// step-scoped and pinned to exact commands in
+						// desktop_release_workflow_test.go.
+						if desktopCredentialSteps[step.Name] != step.Run {
+							t.Fatal("desktop credentials escaped their step")
+						}
+						continue
+					}
 					owner := "apple-sign"
 					if key == "APPLE_NOTARY_KEY_P8" {
 						owner = "apple-notarize"

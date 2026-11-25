@@ -8,7 +8,7 @@ one active run finishes, with only the newest pending run retained.
 
 Frozen release candidates target **main** and enter its mandatory single-entry
 queue. **ci-queue-required** admits the exact PR head and then requires complete
-current-base merge-group proof. Branches under `release/` always select all 16
+current-base merge-group proof. Branches under `release/` always select all 17
 domains. Dev movement never cancels a fixed candidate's validation.
 
 Stable consumers and signed nightlies can reuse authenticated complete proof for
@@ -25,12 +25,14 @@ for activation, promotion and operator commands.
 | Refresh the bounded feedback compiler cache | `cache-seed-feedback-backend` | Daily or manual, trusted main only. Compiles application, CLI and CI tooling exports without DWARF in a fresh dedicated directory, checks its size and file count, then publishes the version-2 seed that the application and tooling feedback lanes read. Dispatch it manually after this workflow changes or a `go.mod`/`go.sum` change lands. |
 | Refresh the production-fixture compiler cache | `cache-seed-feedback` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
 | Refresh the shared race compiler cache | `cache-seed-race` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
+| Refresh the lint driver compiler cache | `cache-seed-lint` | Daily or manual, trusted main only. Prepares the lint matrix compiler cache and runs the `internal/lint` tests in a fresh cache, then publishes one entry per ISO week that `test_core_serial` and `ci-advisory-invariants` restore by prefix. Its key follows `go.mod`, `go.sum`, the tool modules, the runner toolchain and the week, so a seed is at most a week stale. Expect up to two seeds during a weekly rotation, plus one per module change; superseded seeds go idle and age out after seven days. Run it manually after a dependency or toolchain change on main. |
 | Refresh the pinned tool downloads | `cache-seed-tools` | Daily or manual, trusted main only. Downloads each checksum-pinned release file (ShellCheck, kind, Cosign, Node, Helm, the Calico manifest) with bounded backoff and publishes one entry per `scripts/ci/pinned-tools/<name>.pin`. `lint`, `supply-chain-checks`, `k8s-e2e`, reliability and `ci-feedback` restore it so a GitHub release outage does not fail them. Dispatch it manually after a pin file changes. |
 | Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, the golangci-lint config, workflows, Git hooks, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Run the Storybook suite before merge | `ci-advisory-storybook` | Advisory, per PR push touching `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, `docs/site/scripts/test-csp.mjs`, `scripts/ci/storybook-suite.sh` or the workflow's setup helpers (`install-corepack.sh`, `export-pnpm-cache.sh`). Runs the same commands as the `storybook` job in `ci.yml` (story tests in both palettes, production build, theme and docs checks, static demo) on the exact PR head in the Playwright container. The pre-push hook runs the same script locally. Not a required context; `ci-dev` and the queue still run the job. |
 | Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, noctx, staticcheck `SA*` except `SA4006`/`SA4009`, `QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline of those rules is not enforced. A second strict pass runs wastedassign, unused and staticcheck `SA4006`/`SA4009` (`.golangci-strict.yml`) on every whole changed package (a moved file counts for both packages), because those rules hold at zero across the repo. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
+| Lint the desktop module | `ci-advisory-golangci-desktop` | Advisory, per PR push touching `desktop/`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-version`, `scripts/ci/run-go-tool.sh` or the workflow itself. Pinned `golangci-lint` over the whole nested module on macOS; a Linux pre-job skips the macOS job where `desktop/go.mod` does not exist. The strict pass runs only where `.golangci-strict.yml` exists. |
 | Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
-| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
+| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 17 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
 | Validate all of main | `ci-main` | Weekly or manual full graph, including development snapshot artifacts. The schedule is the automatic writer of main-scoped compile caches. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
@@ -78,7 +80,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Queue diagnostics | `ci-queue-report.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run). Neither grants merge authority. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
-| Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
+| Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml`, `ci-lint-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards, the reliability race suite, `test_core_serial` and the advisory invariants job only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Pinned tool seed | `ci-tool-cache.yml` | Trusted-main-only producer of the pinned release-file entries. Every other workflow only restores them, and the helper verifies each file's SHA-256 before use, so a poisoned or stale entry cannot run. |
 | Release preparation | `release-compatibility-check.yml`, `security-patch-plan.yml` | Both are read-only and tag nothing. The compatibility check is a manual pre-tag comparison; the planner keeps one issue with the commands for the signed tag. Both need the default branch, so they go live at promotion. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
@@ -137,6 +139,51 @@ changes `internal/cli/testdata/help.txt`, `api/openapi.yaml` or
 range opts out. On failure, the check names the page that usually needs the
 update. Feedback tooling comes from the PR's integration merge, so the check
 applies to a PR once the check is on that PR's base branch.
+
+The `docs-impact` check also covers the desktop shell: a change to
+`desktop/internal/shell/shellroutes.go` (the `/__shell` routes) or
+`desktop/main_darwin.go` (the launch environment) needs a change to
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`, or the same opt-out
+trailer. User docs under `docs/site/src/content/docs/` also satisfy it.
+
+### Desktop shell (macOS)
+
+`desktop/` is a nested Go module (the Wails shell, #1215). Wails, cgo and WebKit
+must never reach the root build, so the root lanes and the root module never load it; they cannot
+(`go list ./desktop/...` from the root is an error) and `golangci-lint-new.sh`
+lints it from inside `desktop/` instead. The registry domain `desktop` and the
+`desktop` job in `ci.yml` own it:
+
+1. The runner follows the tree. Where `desktop/go.mod` exists the job runs on a
+   pinned `macos-15` hosted runner (paid minutes), with no cache restored or
+   written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
+   Where it does not (main and dev before the shell lands) a full plan still needs
+   the job to report success, so it runs on `ubuntu-latest`, executes only step 2
+   and costs seconds. The `changes` job publishes `desktop_module` for this.
+2. `scripts/ci/check-desktop-deps.sh` keeps Wails and its platform bindings out of
+   the root `go.mod` and `go.sum` and refuses a `go.work` or a root requirement on
+   `desktop/`. Where `desktop/` exists it also requires `replace
+   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`, and lists every root
+   package `desktop/` compiles (`go list -deps`, darwin, probe tag) and fails when
+   the classifier would not select the desktop job for it.
+3. On macOS: `go test -race ./...`, a `-tags probe` build, a release build, and the
+   driven WKWebView lane, `go run ./probes/driven`, which opens the probe shell
+   against a fake instance (Playwright cannot drive WKWebView).
+4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
+   out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
+   over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
+   inside it, new code and then the strict rules on the whole module, for the
+   pre-push hook and `ci-advisory-golangci`.
+
+The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
+(the refusal list derives from it) and the root packages `desktop/` imports, and
+nothing else for `desktop/` changes: those paths do not select `test`, `race`,
+`fuzz` or the other Go domains. A root `go.mod` or `go.sum` change, a workflow
+change and every unknown path still select the full plan, including `desktop`.
+Fast feedback keeps `desktop/` out of the root compile (`go-compile`) and compiles
+it with its own `desktop-compile` check, `go -C desktop test -c`, only where
+`desktop/go.mod` exists. The frozen conservation baseline stays exact: `desktop` is
+the only domain beyond its list, and the baseline jobs are unchanged.
 
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
@@ -243,7 +290,7 @@ in [run 38230781293](https://github.com/Hikyo-Org/Hikyo/actions/runs/38230781293
 That verifies the forced active-policy queue-read path, not populated membership
 or full-group merge acceptance. The legitimate policy/guide follow-up provides
 that first hosted acceptance; do not call queue delivery complete before its
-actual group, all 16 domains, trusted publication and landed tree are verified.
+actual group, all 17 domains, trusted publication and landed tree are verified.
 
 For an authorized main-only reconciliation with authenticated administrator
 access, run from the repository root:
@@ -562,15 +609,34 @@ No terminal check is reset, foreign checks are not patched, and complete
 historical scans and their existing bounds remain. These final mutable reads
 are not an atomic GitHub authority transaction.
 
-Race weights are recalibrated from all twelve JSON timing artifacts of successful
-full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
-discovery and database serialization are unchanged. The source snapshot contains
-800 planner units, including whole-package units; this is not a test count.
-The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
-is not hosted latency proof. PR #893 bootstrap copies the planner from its
-immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
-are exercised after landing; a later legitimate full group must establish the
-approximately 35-minute target.
+Race weights are recalibrated from all twelve `race-timings-*` JSON artifacts of
+ci-dev run 44901528773, attempt 1, on dev 4c7d11f6c; all twelve race shards
+passed. Complete target discovery and database serialization are unchanged.
+The planner prefers shards where each package's modelled `go test` invocation
+stays within a 600-second budget, half of the 20-minute `-timeout`, before it
+balances shard totals. The budget is a preference, not a guarantee: when no
+shard fits, `bestRaceShard` places the unit on the cheapest shard. The planner
+test fails if the repository's plan has any invocation over the budget, and it
+schedules every shard the way `test-race-packages.sh` runs it (two `xargs`
+lanes in shard order, then the filtered app and service suites one at a time),
+requiring 1.5 times that wall plus 120 seconds of job overhead to fit the
+30-minute job limit. Twelve shards schedule up to 1196 seconds on the Linux
+inventory, 1914 seconds with that margin. The race shard count is 18 because a
+merge group plans with the base branch's planner but takes the shard count from
+the merge ref. Main's previous planner put race shard 6 at the job limit in
+merge groups 45168962693 and 45175593611, at least about 1.2 times its
+scheduled wall (the app suite was cancelled 287 seconds in). At 18 shards that
+planner schedules at most 1101 seconds, 1772 seconds with margin, only about 28
+seconds under the limit. Its greedy placement is sensitive to the inventory:
+adding one 1-second package to main's tree moved its worst 18-shard plan to
+1189 seconds, 1903 seconds with margin. That residual risk lasts until this
+planner lands on main, because the ceiling test checks only the current
+planner.
+The current planner schedules at most 801 seconds at 18 shards, 1321 seconds
+with margin.
+This model is not hosted latency proof. Merge groups plan with the base
+branch's planner, so the new weights take effect after they land on main and
+are backmerged to dev.
 
 Trusted-main probes demonstrated that omitting terminal reset fields retains
 completed/success and that the explicit-null candidate is rejected. Those
@@ -626,23 +692,41 @@ suites added before REST reads it) is read differently: a GraphQL scan of its
 `github-actions` suites compares each suite's latest and finished run counts,
 and REST reads only the suites where they differ. Suite status is not used;
 GitHub reports a suite completed while a synthetic run in it is still queued.
-The retire and reporter owners list checks by commit under the same REST cap,
-so an unfinished synthetic context on a commit with more than 900 suites refuses
-all targets instead of being routed to an owner that may not see it. No operator
-tool clears that refusal: it lasts until the context completes, the commit's
-rollup turns `SUCCESS` or the commit leaves the window. Targeted dispatch on a
-head with more than 1,000 suites can likewise miss such a context and report
-success. API failures, incomplete pages, more
-than 5,000 `github-actions` suites or 100 unfinished suites on such a commit,
-more than 1,000 records in one suite's listing or more than 100 target heads
-refuse all targets. A suite-count refusal persists until the commit's rollup
-turns `SUCCESS` or it leaves the 1,000-commit window, about three weeks at the
-current merge rate. A commit still
-gaining checks, such as a busy main head, can change its totals mid-scan and
-refuse until the next run. A full window takes about three to four minutes, so
-discovery has a five-minute deadline. Each 100 suites scanned adds about 2 s and
-history pages run one after another, so the deadline, not the suite cap, bounds
-oversized commits: about 40 more suite pages per window than today's 36. Window completion is not
+The retire and reporter owners read the same way: past 900 suites (a count read
+before every listing) they list a check's runs only in the `github-actions`
+suites that hold runs of its name, one REST listing per suite, so a context on an
+oversized commit is routed, retired and found by the reporter like any other.
+Queue admission lists a head's checks at least three times inside its 45-second
+read budget and each listing repeats the scan (about 1.4 s per 100 suites for the
+owners' scan). Past 900 suites admission may time out; at 1,000 the scans alone
+take about 42 s. It then fails closed and the PR needs a new head.
+Because those reads open only `github-actions` suites, the owners also list the
+name by commit and refuse another app's same-name record there, as a listing by
+commit alone did, each by its own rule. The queue verdict refuses any other
+app's same-name record. Retirement refuses one only when its external ID carries
+the controller prefix. The reporter refuses one only when its external ID matches
+the report's. They refuse when the `github-actions` suite total changes during a
+scan, so a head still gaining suites can refuse until a later attempt. The
+controller and the queue verdict refuse a `github-actions` record the listing by
+commit shows but the suite inventory lacks, instead of treating it as absent,
+whether or not its external ID carries the controller prefix; the reporter
+compares only records with the report's external ID. At 900 suites or fewer each
+owner reads the commit listing, then counts every app's suites again and
+refuses if the count has passed 900, since REST could then have left an older
+suite out of the listing. Retirement discovery does the same after its commit
+read and then reads by suite instead of refusing.
+Both use the shared `scripts/ci/checksuites` reader. A suite inventory that
+cannot be completed, a run reported by two suites, or a check in more than 100
+suites refuses instead of listing partially. Discovery refuses all targets on
+API failures, incomplete pages, more than 5,000 `github-actions` suites or 100
+unfinished suites on a candidate, more than 1,000 records in one suite's listing
+or more than 100 target heads. A commit still gaining checks, such as a busy main
+head, can change its totals mid-scan and refuse until the next run. A full window
+takes about three to four minutes, so discovery has a five-minute deadline. Each
+100 suites scanned adds about 2 s and history pages run one after another, so the
+deadline, not the suite cap, bounds oversized commits: about 40 more suite pages
+per window than today's 36. Running out of time after suite pages reports how many
+pages and history pages were read. Window completion is not
 evidence that all history was cleaned.
 Legacy observer heads run in batches of at most ten unique heads concurrently
 under their one global lease and compiled executable. Every child is awaited,

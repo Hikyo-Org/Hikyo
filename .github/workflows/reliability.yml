@@ -110,7 +110,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install pinned Corepack
@@ -198,7 +198,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
@@ -259,9 +259,9 @@ jobs:
         id: plan
         shell: bash
         run: |
-          # These invariants share lint.LoadRepo's process-local cache. Keep
-          # them together until golang/go#81122 is fixed in our toolchain.
-          analyzers='["TestInvariant07ProofSignatures","TestInvariant09ForgeryGuard","TestInvariant09aDriverHandleConfinement","TestInvariant09bTransactionResultsAreDetached","TestInvariant12CacheDiscipline","TestInvariantAuditRedaction"]'
+          # Whole-module static sweeps run serially in their own job, apart from
+          # the database-backed shards.
+          analyzers='["TestInvariant12CacheDiscipline","TestPackageScopeNamesSkipsNestedTreesButSweepsIgnoredFiles"]'
           matrix='[]'
           for shard in $(seq 0 7); do
             targets=$(./scripts/ci/analysis-shards isolation-race --root . --shard "$shard" --shards 8 |
@@ -392,7 +392,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Require a recent end-to-end fallback notification test

@@ -192,7 +192,11 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['CredentialRotation']['properties']['next_run_at','credential_expires_at']
+  - target: $['components']['schemas']['RotationLastRun']['properties']['error_code']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['CredentialRotation']['properties']['halt_reason','last_run','next_run_at','credential_expires_at']
     update:
       x-omitempty: false
       x-omitzero: true

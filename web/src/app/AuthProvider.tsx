@@ -28,7 +28,7 @@ import {
   type ExpectedSessionRotation,
 } from '../api/sessionEpoch.ts';
 
-import { ApiError, isThrottled, parsed, readCsrfToken } from '../api/client.ts';
+import { ApiError, isOwnArtifact, isThrottled, parsed, readCsrfToken } from '../api/client.ts';
 import { transitionWorkspaceOwner } from '../api/workspace.ts';
 import { makeQueryClient, retireQueryClient } from './queryClient.ts';
 import { RuntimeMaintenanceBoundary } from './RuntimeMaintenanceBoundary.tsx';
@@ -509,7 +509,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
           verified.session !== identity.session.id || verified.principal !== identity.principal.id ||
           current.state.status !== 'authenticated' || current.identity === null ||
           identity.principal.id !== current.identity.principal.id ||
-          identity.session.id !== current.identity.session.id || identity.session.artifact !== 'browser') return false;
+          identity.session.id !== current.identity.session.id || !isOwnArtifact(identity.session.artifact)) return false;
       verifiedRemintRef.current = null;
       // whoami already proved this remint, so its whoami-only fields carry
       // over; a dropped `enrolment_required` would paint the shell over the

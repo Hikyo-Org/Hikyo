@@ -4,14 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
 
-	"github.com/Hikyo-Org/hikyo/internal/pathutil"
+	"golang.org/x/tools/go/analysis"
 )
 
 // This file is analyzer 2 (tenant-isolation ADR, invariant 8): sqlc queries
@@ -84,8 +84,12 @@ func maskSQLCArgs(s string) string {
 // ParseScopeDirectives reads the hikyo:table directives from every migration
 // file in dir.
 func ParseScopeDirectives(dir string) (map[string]TableRule, error) {
+	return parseScopeDirectives(osSource{}, dir)
+}
+
+func parseScopeDirectives(fsrc source, dir string) (map[string]TableRule, error) {
 	out := map[string]TableRule{}
-	if err := eachSQLFile(dir, func(path, src string) error {
+	if err := eachSQLFile(fsrc, dir, func(path, src string) error {
 		for _, m := range directiveRe.FindAllStringSubmatch(src, -1) {
 			table, class, chain := m[1], m[2], m[3]
 			if _, dup := out[table]; dup {
@@ -109,23 +113,23 @@ func ParseScopeDirectives(dir string) (map[string]TableRule, error) {
 	return out, nil
 }
 
-// CollectTables replays the migration set's table statements in version order
+// collectTables replays the migration set's table statements in version order
 // and returns two sets: the tables that exist at rest (`live`), and every name
 // a CREATE ever mentioned (`named`).
 //
-// They differ because of the sqlite rebuild — create a twin, copy, drop the
-// original, rename the twin over it — which is the only way that engine reaches
+// They differ because of the sqlite rebuild (create a twin, copy, drop the
+// original, rename the twin over it), which is the only way that engine reaches
 // a column with no default, since it can neither add a NOT NULL column without
 // one nor drop one afterwards (migration 00006 established the shape, 00009
 // reuses it). The two sets exist because the two checks that consume them want
 // opposite things: "every table is classified" must ask about live tables only,
 // or it would demand a directive for a name that is gone by commit; "no
-// directive dangles" must ask about every name, or declaring the twin — which
-// 00006 does on both engines — would look like a stale entry.
-func CollectTables(dir string) (live, named []string, err error) {
+// directive dangles" must ask about every name, or declaring the twin (which
+// 00006 does on both engines) would look like a stale entry.
+func collectTables(fsrc source, dir string) (live, named []string, err error) {
 	alive := map[string]bool{}
 	seen := map[string]bool{}
-	if err := eachSQLFile(dir, func(_, src string) error {
+	if err := eachSQLFile(fsrc, dir, func(_, src string) error {
 		for _, stmt := range tableStatementRe.FindAllStringSubmatch(src, -1) {
 			switch {
 			case stmt[1] != "": // CREATE TABLE x
@@ -157,9 +161,11 @@ func sortedSet(m map[string]bool) []string {
 
 // ParseQueries reads every sqlc query block in dir, with its hikyo
 // annotation if the line directly above the name line carries one.
-func ParseQueries(dir string) ([]Query, error) {
+func ParseQueries(dir string) ([]Query, error) { return parseQueries(osSource{}, dir) }
+
+func parseQueries(fsrc source, dir string) ([]Query, error) {
 	var out []Query
-	if err := eachSQLFile(dir, func(path, src string) error {
+	if err := eachSQLFile(fsrc, dir, func(path, src string) error {
 		lines := strings.Split(src, "\n")
 		for i := 0; i < len(lines); i++ {
 			m := nameRe.FindStringSubmatch(strings.TrimSpace(lines[i]))
@@ -205,10 +211,56 @@ func ParseQueries(dir string) ([]Query, error) {
 	return out, nil
 }
 
-// CheckSQLPredicates runs analyzer 2 over both engines' migration and query
-// directories under repoRoot, including the cross-engine agreement checks
-// (same tables, directives, and query contracts on both engines).
-func CheckSQLPredicates(repoRoot string) []string {
+func sqlPredicateSpecs(string) ([]InputSpec, error) {
+	specs, _ := queryInputs("")
+	for _, engine := range []string{"sqlite", "postgres"} {
+		specs = append(specs,
+			InputSpec{Dir: "internal/store/migrations/" + engine, Exts: []string{".sql"}},
+			InputSpec{Dir: "internal/store/" + map[string]string{"sqlite": "sqlitegen", "postgres": "pggen"}[engine], Exts: []string{".go"}})
+	}
+	// The reviewed scoped queries name the test files that exercise them. A pin
+	// file that does not decode is the check's own finding, not a declaration.
+	reviews, err := readScopedQueryReviews()
+	if err != nil {
+		return specs, nil
+	}
+	tests := map[string]bool{}
+	for _, byName := range reviews {
+		for _, review := range byName {
+			for _, evidence := range append(slices.Clone(review.Tests), review.FlowTests...) {
+				if clean, _, ok := scopedEvidencePath(evidence); ok {
+					tests[filepath.ToSlash(clean)] = true
+				}
+			}
+		}
+	}
+	for _, rel := range slices.Sorted(maps.Keys(tests)) {
+		specs = append(specs, InputSpec{File: rel})
+	}
+	return specs, nil
+}
+
+// SQLPredicates runs the sqlpredicate check over the declared migrations, queries,
+// generated query APIs and the test files the reviewed pins cite, once, on
+// internal/store.
+var SQLPredicates = newSQLPredicates()
+
+func newSQLPredicates() *analysis.Analyzer {
+	var noPins bool
+	return fileCheck{
+		name: "sqlpredicate", doc: "tenant-chain predicates of every query, scope directives and cross-engine agreement",
+		anchor: Module + "/internal/store",
+		flags: func(a *analysis.Analyzer) {
+			a.Flags.BoolVar(&noPins, "nopins", false, "hold the repository to no reviewed scoped queries and no legacy annotations (fixtures)")
+		},
+		run: func(src source, root string) ([]string, error) { return checkSQLPredicates(src, root, noPins), nil },
+	}.analyzer()
+}
+
+// checkSQLPredicates is the check; noPins holds the repository to no reviewed
+// scoped queries and no legacy annotation names, for a fixture that carries
+// only the queries under test.
+func checkSQLPredicates(src source, repoRoot string, noPins bool) []string {
 	var findings []string
 	perEngine := map[string][]Query{}
 	perEngineRules := map[string]map[string]TableRule{}
@@ -217,22 +269,26 @@ func CheckSQLPredicates(repoRoot string) []string {
 	if err != nil {
 		return []string{"sqlpredicate: cannot read scoped query reviews: " + err.Error()}
 	}
+	legacy := legacyAnnotationNames
+	if noPins {
+		reviews, legacy = map[string]map[string]scopedQueryReview{}, map[string]bool{}
+	}
 
 	for _, engine := range []string{"sqlite", "postgres"} {
 		migDir := filepath.Join(repoRoot, "internal", "store", "migrations", engine)
 		queryDir := filepath.Join(repoRoot, "internal", "store", "queries", engine)
 
-		rules, err := ParseScopeDirectives(migDir)
+		rules, err := parseScopeDirectives(src, migDir)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
-		live, named, err := CollectTables(migDir)
+		live, named, err := collectTables(src, migDir)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
 		for _, t := range live {
 			if _, ok := rules[t]; !ok {
-				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): table %q has no hikyo:table scope directive — the derived registry must be total", engine, t))
+				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): table %q has no hikyo:table scope directive: the derived registry must be total", engine, t))
 			}
 		}
 		everNamed := map[string]bool{}
@@ -245,25 +301,25 @@ func CheckSQLPredicates(repoRoot string) []string {
 			}
 		}
 
-		queries, err := ParseQueries(queryDir)
+		queries, err := parseQueries(src, queryDir)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
 		perEngine[engine] = queries
 		perEngineRules[engine] = rules
 		generatedDir := filepath.Join(repoRoot, "internal", "store", map[string]string{"sqlite": "sqlitegen", "postgres": "pggen"}[engine])
-		contracts, err := readGeneratedContracts(generatedDir, engine)
+		contracts, err := readGeneratedContracts(src, generatedDir, engine)
 		if err != nil {
 			return append(findings, "sqlpredicate: "+err.Error())
 		}
 		perEngineContracts[engine] = contracts
 		for _, q := range queries {
-			if q.Annotation != "" && q.Reason == "" && !legacyAnnotationNames[q.Name] {
+			if q.Annotation != "" && q.Reason == "" && !legacy[q.Name] {
 				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): %s: new annotation requires an explicit hikyo:reason authority justification", engine, q.Name))
 			}
 			if reviewed, ok := reviews[engine][q.Name]; ok {
 				api, generated := contracts[q.Name]
-				findings = append(findings, checkScopedQueryReview(engine, q, api, generated, reviewed, repoRoot)...)
+				findings = append(findings, checkScopedQueryReview(src, engine, q, api, generated, reviewed, repoRoot)...)
 			} else {
 				findings = append(findings, checkQuery(engine, q, rules)...)
 			}
@@ -283,7 +339,7 @@ func CheckSQLPredicates(repoRoot string) []string {
 			}
 		}
 	}
-	for name := range legacyAnnotationNames {
+	for name := range legacy {
 		live := false
 		for _, queries := range perEngine {
 			for _, q := range queries {
@@ -297,7 +353,7 @@ func CheckSQLPredicates(repoRoot string) []string {
 		}
 	}
 
-	findings = append(findings, crossEngine(perEngine, perEngineRules, perEngineContracts)...)
+	findings = append(findings, crossEngine(perEngine, perEngineRules, perEngineContracts, noPins)...)
 	return findings
 }
 
@@ -322,7 +378,7 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 	// outright, forcing a provable rewrite.
 	for _, banned := range []string{" UNION ", "WITH ", " EXCEPT ", " INTERSECT ", "ON CONFLICT"} {
 		if strings.Contains(upper, banned) || strings.HasPrefix(upper, strings.TrimSpace(banned)+" ") {
-			return []string{fmt.Sprintf("%s: unprovable shape (%s) — rewrite into a form the analyzer accepts or annotate under review", label, strings.TrimSpace(banned))}
+			return []string{fmt.Sprintf("%s: unprovable shape (%s): rewrite into a form the analyzer accepts or annotate under review", label, strings.TrimSpace(banned))}
 		}
 	}
 	if findings, supported := checkScopedMembership(engine, q, sql, rules); supported {
@@ -347,7 +403,7 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 
 	table, kind, ok := statementTarget(upper)
 	if !ok {
-		return []string{label + ": unrecognised statement shape — the analyzer only accepts single-table SELECT/INSERT/UPDATE/DELETE"}
+		return []string{label + ": unrecognised statement shape: the analyzer only accepts single-table SELECT/INSERT/UPDATE/DELETE"}
 	}
 	tableName := strings.ToLower(table)
 	rule, known := rules[tableName]
@@ -357,9 +413,9 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 
 	switch rule.Class {
 	case "authn":
-		return []string{fmt.Sprintf("%s: table %q is the resolution surface — only hikyo:authn-resolution annotated queries may touch it", label, tableName)}
+		return []string{fmt.Sprintf("%s: table %q is the resolution surface: only hikyo:authn-resolution annotated queries may touch it", label, tableName)}
 	case "system":
-		return []string{fmt.Sprintf("%s: table %q is system-owned — store queries may not touch it", label, tableName)}
+		return []string{fmt.Sprintf("%s: table %q is system-owned: store queries may not touch it", label, tableName)}
 	case "instance":
 		// Instance-class tables (principals) hold no tenant chain; the
 		// authorization data around them is authn-class. Nothing to require.
@@ -448,12 +504,12 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 		if chain[col] && !boundParameterRe.MatchString(m[3]) {
 			return []string{fmt.Sprintf("%s: chain column %q must bind a parameter, never a literal", label, col)}
 		}
-		// Chain columns require equality — a range predicate on a chain
+		// Chain columns require equality: a range predicate on a chain
 		// column is not a tenant address. Non-chain columns may carry the
 		// comparison operators (cursor and time-range predicates on the
 		// audit trails); they only ever narrow within the chain conjunct.
 		if chain[col] && op != "=" {
-			return []string{fmt.Sprintf("%s: chain column %q used with %q — chain conjuncts must be equality", label, col, op)}
+			return []string{fmt.Sprintf("%s: chain column %q used with %q: chain conjuncts must be equality", label, col, op)}
 		}
 		if op == "=" {
 			present[col] = true
@@ -501,13 +557,13 @@ func checkSet(label, sql, upper string, chainCols []string) []string {
 	var out []string
 	for _, col := range immutable {
 		if setColRe(col).MatchString(set) {
-			out = append(out, fmt.Sprintf("%s: SET names immutable column %q — chain columns never mutate; re-parenting is a new row", label, col))
+			out = append(out, fmt.Sprintf("%s: SET names immutable column %q: chain columns never mutate; re-parenting is a new row", label, col))
 		}
 	}
 	return out
 }
 
-func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRule, contracts map[string]map[string]generatedContract) []string {
+func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRule, contracts map[string]map[string]generatedContract, noPins bool) []string {
 	var out []string
 	byName := map[string]map[string]Query{}
 	allNames := map[string]bool{}
@@ -546,6 +602,9 @@ func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRu
 		out = append(out, compareQueryContracts(name, sqQuery, pgQuery, sqContract, pgContract)...)
 	}
 	for engine, pins := range approvedEngineOnlyQueries {
+		if noPins {
+			break
+		}
 		for name := range pins {
 			if _, exists := byName[engine][name]; !exists {
 				out = append(out, fmt.Sprintf("sqlpredicate: %s-only query %q was removed; retire its engine protocol pin", engine, name))
@@ -567,17 +626,18 @@ func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRu
 	return out
 }
 
-func eachSQLFile(dir string, fn func(path, src string) error) error {
-	entries, err := os.ReadDir(dir)
+func eachSQLFile(src source, dir string, fn func(path, src string) error) error {
+	names, err := src.ReadDir(dir)
 	if err != nil {
 		return err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+	slices.Sort(names)
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
-		b, err := pathutil.ReadFileWithin(dir, path)
+		path := filepath.Join(dir, name)
+		b, err := src.ReadFile(path)
 		if err != nil {
 			return err
 		}

@@ -22,7 +22,7 @@ func TestContainmentGatesRepo(t *testing.T) {
 }
 
 func TestContainmentGatesCatchesMissingCondition(t *testing.T) {
-	queries, err := ParseQueries(filepath.Join("testdata", "badcontainment"))
+	queries, err := ParseQueries(filepath.Join("testdata", "badcontainmentgates", "internal", "store", "queries", "sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

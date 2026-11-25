@@ -2,15 +2,16 @@ import type { ReactNode } from 'react';
 
 import { Badge } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
-import type { Person, Rule, World } from './model.ts';
+import { MACHINE_RULE_HINT, type Person, type Rule, type World } from './model.ts';
 import { MachineBadge, RuleSummary } from './parts.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
 
 /**
  * The people of a Members page with their access rules: one card per rule
  * (its permissions, then Where, then what it reaches), and the actions that
- * open the rule editor. Existing scope-wide access can join the same list;
- * machines keep their scope-wide access and are never offered a narrowed rule.
+ * open the rule editor. Existing scope-wide access can join the same list.
+ * A machine's rules show here too, but its class decides what they may carry,
+ * so they are added and edited on Machine access (D11).
  *
  * A rule that also names projects this page does not show (a project's
  * Members page sees only its own part) is read-only here: editing or removing
@@ -61,6 +62,8 @@ export function RulesPanel({
                       <RuleSummary world={world} rule={rule} reach={showReach} />
                       {rule.source.kind === 'rule' && rule.source.otherProjects ? (
                         <p className="access-hint">Also applies to other projects: change it on the organisation's Members page.</p>
+                      ) : person.kind === 'machine' ? (
+                        <p className="access-hint">{MACHINE_RULE_HINT}</p>
                       ) : canEdit ? (
                         <Button type="button" variant="quiet" data-rule-action onClick={() => onEdit(rule)}>
                           Edit<span className="visually-hidden"> rule {i + 1} of {person.name}</span>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
+import { ContinueInBrowserError } from '../app/shell.ts';
 import { accountFailureText, passkeyCreationOptions } from './account.ts';
 
 const bytes = (source: BufferSource): number[] =>
@@ -92,6 +93,10 @@ describe('accountFailureText', () => {
     [409, 'conflicts with the account'],
   ])('maps status %i honestly', (status, expected) => {
     expect(accountFailureText(new ApiError(status, 'failed'))).toContain(expected);
+  });
+
+  it('passes a browser-continuation refusal through as its own reason', () => {
+    expect(accountFailureText(new ContinueInBrowserError('Adding a passkey needs your browser.'))).toBe('Adding a passkey needs your browser.');
   });
 
   it('does not claim a failed server attempt was unchanged', () => {

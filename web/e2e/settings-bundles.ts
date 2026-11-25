@@ -125,7 +125,15 @@ test('anonymous settings navigation retains the sign-in gate', async ({ page }) 
   await expect(page).toHaveURL(`${BASE_URL}/login?returnTo=%2Fsettings`);
   await expect(page.getByRole('heading', { name: 'Sign in to Hikyo', exact: true })).toBeVisible();
   const assets = await page.evaluate(() => performance.getEntriesByType('resource').map((entry) => new URL(entry.name).pathname));
-  expect(assets.some((file) => /\/(?:settings|AccountSecurity)-/.test(file))).toBe(false);
+  // By module ownership, not file name: a shared chunk can take its name from
+  // `api/settings.ts`, which the shell imports.
+  const routes = new Set(screens.map((screen) => `web/src/routes/${screen.module}.tsx`));
+  const byFile = new Map(inventory.map((chunk): [string, SettingsChunk] => [`/${chunk.file}`, chunk]));
+  const scripts = assets.filter((file) => file.startsWith('/assets/') && file.endsWith('.js'));
+  expect(scripts.length).toBeGreaterThan(0);
+  // An asset the inventory does not know could hold anything: refuse it.
+  expect(scripts.filter((file) => !byFile.has(file))).toEqual([]);
+  expect(scripts.flatMap((file) => byFile.get(file)?.routes ?? []).filter((route) => routes.has(route))).toEqual([]);
 });
 
 test.describe('settings navigation history', () => {

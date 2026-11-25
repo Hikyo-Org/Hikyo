@@ -47,7 +47,7 @@ and binary with:
 ```bash
 npm install --global --ignore-scripts corepack@0.35.0
 corepack enable
-corepack install --global pnpm@11.24.0
+corepack install --global pnpm@12.21.0
 pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
@@ -134,6 +134,17 @@ not prove DNS, TLS, or reverse-proxy routing.
 </Callout>
 
 ## PostgreSQL boundary
+
+Hikyo requires PostgreSQL 18 or later. It reads `server_version_num` when it
+connects and refuses an older server before it migrates, serves, restores or
+writes anything:
+
+```text
+unsupported PostgreSQL server version 17.9 (server_version_num 170009); Hikyo requires PostgreSQL 18 or later (server_version_num 180000)
+```
+
+Upgrade the server to PostgreSQL 18 or later, or restore into a new PostgreSQL 18
+server, then start Hikyo again.
 
 Remote PostgreSQL DSNs must name the host explicitly and use `sslmode=verify-full`
 for certificate and hostname verification. CA-only `sslmode=verify-ca` and

@@ -7,8 +7,8 @@
 -- The rule lookup authorize() makes when the principal's grants alone do not
 -- satisfy a formula. It carries EXACTLY the gates ListGrantsForPrincipal
 -- carries (active privacy state, reconciled up to the restore epoch) plus
--- kind = 'human': rules are human-only, and a machine row that somehow exists
--- is inert here rather than trusted. One row per selector item; every rule
+-- kind = 'human'. Machine rules have their own lookup below, so a machine row
+-- is never read as a person's. One row per selector item; every rule
 -- has at least its project items, so the inner join drops nothing real.
 -- hikyo:authn-resolution
 -- name: ListRulesForPrincipal :many
@@ -22,6 +22,27 @@ JOIN principals AS p ON p.id = r.principal_id
 JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.principal_id = sqlc.arg(principal_id)
   AND p.kind = 'human'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id;
+
+-- The machine twin of ListRulesForPrincipal: the same gates with kind =
+-- 'machine'. A separate query keeps every human-only reader human-only. The
+-- caller applies the machine class's live rule check to every row.
+-- hikyo:reason Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row.
+-- hikyo:authn-resolution
+-- name: ListMachineRulesForPrincipal :many
+SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, i.project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = sqlc.arg(principal_id)
+  AND p.kind = 'machine'
   AND p.privacy_state = 'active'
   AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)

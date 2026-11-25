@@ -239,11 +239,13 @@ func TestRetirementDiscoveryReportsUnrelatedCandidateCostsSeparately(t *testing.
 		Requests            int    `json:"rest_requests"`
 		Pages               int    `json:"rest_pages"`
 		SuitePages          *int   `json:"suite_pages"`
+		SuiteCounts         *int   `json:"suite_counts"`
 		ElapsedMS           int64  `json:"elapsed_ms"`
 		Status              string `json:"status"`
 		Workers             int    `json:"worker_limit"`
 	}
-	if err != nil || json.Unmarshal(diagnostic.Bytes(), &record) != nil || record.Snapshot != heads[0] || record.Commits != 5 || record.CandidatesAttempted != 5 || record.CandidatesCompleted != 5 || record.Requests != 5 || record.Pages != 5 || record.SuitePages == nil || *record.SuitePages != 0 || record.Status != "success" || record.Workers != 4 || record.ElapsedMS < 0 || output.Len() != 0 || len(got.Queue) != 1 {
+	// One recount per candidate; the history page's own suite count is not one.
+	if err != nil || json.Unmarshal(diagnostic.Bytes(), &record) != nil || record.SuiteCounts == nil || *record.SuiteCounts != 5 || record.Snapshot != heads[0] || record.Commits != 5 || record.CandidatesAttempted != 5 || record.CandidatesCompleted != 5 || record.Requests != 5 || record.Pages != 5 || record.SuitePages == nil || *record.SuitePages != 0 || record.Status != "success" || record.Workers != 4 || record.ElapsedMS < 0 || output.Len() != 0 || len(got.Queue) != 1 {
 		t.Fatalf("scan cost hidden or mixed with output: targets=%+v diagnostic=%s output=%q error=%v", got, diagnostic.String(), output.String(), err)
 	}
 }
@@ -322,5 +324,21 @@ func TestRetirementDiscoveryDiagnosticFailureDiscardsTargets(t *testing.T) {
 				t.Fatalf("diagnostic failure silently produced targets: %+v/%v", got, err)
 			}
 		})
+	}
+}
+
+func TestDiscoveryNamesCheckSuitePagesWhenTheyExhaustTheDeadline(t *testing.T) {
+	scan := newRetirementDiscoveryScan()
+	if err := scan.deadlineDiagnostic(context.DeadlineExceeded); err == nil || err.Error() != context.DeadlineExceeded.Error() {
+		t.Fatalf("a deadline without suite pages was rewritten: %v", err)
+	}
+	scan.suitePages.Add(36)
+	scan.historyPages = 4
+	err := scan.deadlineDiagnostic(fmt.Errorf("history page 5: %w", context.DeadlineExceeded))
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "after 36 check suite pages and 4 of its history pages") {
+		t.Fatalf("deadline error = %v, want the suite pages named", err)
+	}
+	if err := scan.deadlineDiagnostic(errors.New("refused")); err == nil || err.Error() != "refused" {
+		t.Fatal("a refusal was rewritten")
 	}
 }

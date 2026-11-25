@@ -1,9 +1,14 @@
 package lint
 
 import (
+	"go/ast"
+	"go/parser"
 	"go/token"
 	"maps"
+	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -15,24 +20,23 @@ func TestRawDriverAuthorityIsExactFileScoped(t *testing.T) {
 	allowed := files.AddFile("/owned/internal/store/admission.go", -1, 100)
 	injected := files.AddFile("/owned/internal/store/new_writer.go", -1, 100)
 	adjacentTest := files.AddFile("/owned/internal/store/new_writer_test.go", -1, 100)
-	p := &packages.Package{Fset: files}
-	if !permittedHandlePosition(p, Module+"/internal/store", allowed.Pos(1)) {
+	if !permittedHandlePosition(files, Module+"/internal/store", allowed.Pos(1)) {
 		t.Fatal("reviewed admission boundary refused")
 	}
 	for _, f := range []*token.File{injected, adjacentTest} {
-		if permittedHandlePosition(p, Module+"/internal/store", f.Pos(1)) {
+		if permittedHandlePosition(files, Module+"/internal/store", f.Pos(1)) {
 			t.Fatalf("new file received ambient authority: %s", f.Name())
 		}
 	}
-	if permittedRawConstructor(p, Module+"/internal/store", injected.Pos(1)) {
+	if permittedRawConstructor(files, Module+"/internal/store", injected.Pos(1)) {
 		t.Fatal("new runtime file received private constructor authority")
 	}
-	if permittedHandlePosition(p, Module+"/internal/service", allowed.Pos(1)) {
+	if permittedHandlePosition(files, Module+"/internal/service", allowed.Pos(1)) {
 		t.Fatal("matching basename granted another package authority")
 	}
 	// Run the actual typed bypass fixture pretending it resides in store. A
 	// package-only allowlist would silently approve the injected writer.
-	pkgs, err := Load("./testdata/badhandle")
+	pkgs, err := loadDefault("./testdata/badhandle")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +45,14 @@ func TestRawDriverAuthorityIsExactFileScoped(t *testing.T) {
 			pkg.PkgPath = Module + "/internal/store"
 		}
 	}
-	findings := CheckDriverHandles(pkgs)
+	findings := checkDriverHandles(pkgs)
 	assertFindings(t, findings, []string{"calls store.DB.PG", "names driver type database/sql.DB"})
 }
 
 func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 	const harness = Module + "/scripts/security/artifact-harness"
 	const runtimeFile = "/scripts/security/artifact-harness/runtime.go"
-	pkgs, err := Load("../../scripts/security/artifact-harness")
+	pkgs, err := loadDefault("../../scripts/security/artifact-harness")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,10 +98,9 @@ func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 			candidate.PkgPath = tt.owner
 			candidate.Fset = files
 			if tt.generated {
-				candidate.Imports = maps.Clone(actual.Imports)
-				candidate.Imports[Module+"/internal/store/pggen"] = &packages.Package{PkgPath: Module + "/internal/store/pggen"}
+				addImport(&candidate, Module+"/internal/store/pggen")
 			}
-			findings := CheckDriverHandles([]*packages.Package{&candidate})
+			findings := checkDriverHandles([]*packages.Package{&candidate})
 			var driverFindings []string
 			for _, finding := range findings {
 				if strings.Contains(finding, "names driver type github.com/jackc/pgx/v5.Conn") {
@@ -116,5 +119,125 @@ func TestArtifactHarnessDriverAuthorityIsExactFileScoped(t *testing.T) {
 				t.Fatalf("unexpected allowed-harness findings: %v", findings)
 			}
 		})
+	}
+}
+
+// addImport adds an import spec to the first file of a copy of the package; the
+// analyzer judges imports from the variant's files, not from Imports.
+func addImport(p *packages.Package, path string) {
+	file := *p.Syntax[0]
+	file.Imports = append(slices.Clone(file.Imports), &ast.ImportSpec{
+		Path: &ast.BasicLit{ValuePos: file.Package, Kind: token.STRING, Value: strconv.Quote(path)},
+	})
+	p.Syntax = slices.Clone(p.Syntax)
+	p.Syntax[0] = &file
+}
+
+// Every inventoried file exists: a renamed or deleted harness file must leave
+// the inventory instead of silently keeping its authority for a same-named
+// successor.
+func TestDriverFilesExist(t *testing.T) {
+	for file := range driverFiles {
+		if _, err := os.Stat(filepath.Join(moduleRoot(), filepath.FromSlash(file))); err != nil {
+			t.Errorf("driverFiles entry %s: %v", file, err)
+		}
+	}
+}
+
+// externalTestFiles must match the package clauses on disk, and the file
+// scoping must accept the external package only for those entries.
+func TestExternalTestFilesMatchPackageClauses(t *testing.T) {
+	for file := range driverFiles {
+		if !strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(), filepath.FromSlash(file)), nil, parser.PackageClauseOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if external := strings.HasSuffix(parsed.Name.Name, "_test"); external != externalTestFiles[file] {
+			t.Errorf("%s: package %s but externalTestFiles=%v", file, parsed.Name.Name, externalTestFiles[file])
+		}
+	}
+	for file := range externalTestFiles {
+		if !driverFiles[file] {
+			t.Errorf("externalTestFiles entry %s is not inventoried", file)
+		}
+	}
+	files := token.NewFileSet()
+	external := files.AddFile("/owned/internal/store/keys_test.go", -1, 100)
+	inPackage := files.AddFile("/owned/internal/upgradegate/gate_test.go", -1, 100)
+	if !permittedHandlePosition(files, Module+"/internal/store_test", external.Pos(1)) {
+		t.Fatal("an external test entry was refused under its _test package")
+	}
+	if permittedHandlePosition(files, Module+"/internal/upgradegate_test", inPackage.Pos(1)) {
+		t.Fatal("an in-package-only entry was accepted under the external _test package")
+	}
+	if !permittedHandlePosition(files, Module+"/internal/upgradegate", inPackage.Pos(1)) {
+		t.Fatal("an in-package entry was refused under its own package")
+	}
+}
+
+// A //line directive cannot lend a file the authority of an inventoried path:
+// the decision reads the file on disk.
+func TestInventoriedPathClaimedByLineDirectiveIsRefused(t *testing.T) {
+	const claimed = "/owned/internal/isolation/oauth2_e2e_test.go"
+	if !driverFiles["internal/isolation/oauth2_e2e_test.go"] {
+		t.Fatal("the claimed path is no longer inventoried; pick another")
+	}
+	files := token.NewFileSet()
+	f := files.AddFile("/owned/internal/isolation/new_writer_test.go", -1, 100)
+	f.SetLines([]int{0})
+	f.AddLineInfo(0, claimed, 1)
+	if got := files.Position(f.Pos(1)).Filename; got != claimed {
+		t.Fatalf("directive not applied: %s", got)
+	}
+	if permittedHandlePosition(files, Module+"/internal/isolation", f.Pos(1)) {
+		t.Fatal("a //line claim received an inventoried file's authority")
+	}
+}
+
+// Every inventory entry still earns its place: with the inventory emptied,
+// each entry's file produces at least one handles diagnostic in some analysis
+// context. A file that no longer needs a raw handle must leave the inventory,
+// so the inventory only pays down.
+func TestDriverFilesAreAllUsed(t *testing.T) {
+	saved := driverFiles
+	driverFiles = map[string]bool{}
+	defer func() { driverFiles = saved }()
+	dirs := map[string]bool{}
+	for file := range saved {
+		dirs[Module+"/"+filepath.ToSlash(filepath.Dir(file))] = true
+	}
+	patterns := slices.Sorted(maps.Keys(dirs))
+	used := map[string]bool{}
+	root := filepath.ToSlash(moduleRoot()) + "/"
+	for _, ctx := range Contexts {
+		var pkgs []*packages.Package
+		for _, pattern := range patterns {
+			loaded, err := loadFixture(ctx, true, pattern)
+			if err != nil && strings.Contains(err.Error(), "build constraints exclude all Go files") {
+				continue // a package that does not build under this context
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			pkgs = append(pkgs, loaded...)
+		}
+		for _, finding := range checkDriverHandles(pkgs) {
+			posn, _, _ := strings.Cut(finding, ": handles: ")
+			if i := strings.LastIndex(posn, ":"); i >= 0 {
+				posn = posn[:i]
+			}
+			if i := strings.LastIndex(posn, ":"); i >= 0 {
+				posn = posn[:i]
+			}
+			used[strings.TrimPrefix(filepath.ToSlash(posn), root)] = true
+		}
+	}
+	for file := range saved {
+		if !used[file] {
+			t.Errorf("driverFiles entry %s produces no handles diagnostic without it; remove it from the inventory", file)
+		}
 	}
 }

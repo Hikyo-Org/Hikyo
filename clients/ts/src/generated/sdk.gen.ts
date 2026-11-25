@@ -1300,12 +1300,17 @@ export const listOrgRules = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * Create one member access rule.
  *
- * One capability for one person, with a `where` of projects,
+ * One capability for one principal, with a `where` of projects,
  * environments and keys. The caller needs `manage-members` covering the
  * complete selector on every project and may delegate only capabilities
  * held there, unless org or instance authority permits unheld grants.
- * Rules are for people: a machine principal is refused. Use replaceRules
- * to edit a grouped rule card atomically.
+ * A workload or automation principal may hold a rule under its class's
+ * allowlist and depth, in its owning project only, and never narrowed by
+ * keys. A machine rule that makes plaintext newly reachable also needs
+ * `manage-identities` on the project, the matching disclosure capability
+ * and a live reauthentication window over each newly reachable
+ * environment; a 409 names the environment to reauthenticate over. Use
+ * replaceRules to edit a grouped rule card atomically.
  *
  */
 export const createRule = <ThrowOnError extends boolean = false>(options: Options<CreateRuleData, ThrowOnError>): RequestResult<CreateRuleResponses, CreateRuleErrors, ThrowOnError> => (options.client ?? client).post<CreateRuleResponses, CreateRuleErrors, ThrowOnError>({
@@ -1327,6 +1332,8 @@ export const createRule = <ThrowOnError extends boolean = false>(options: Option
  * top-level principal. At least one revoke or create item is required.
  * A missing removal refuses the whole batch.
  * Sessions are invalidated only after all authorization checks succeed.
+ * For a machine principal the machine widening gate judges the complete
+ * change, as on createRule.
  *
  */
 export const replaceRules = <ThrowOnError extends boolean = false>(options: Options<ReplaceRulesData, ThrowOnError>): RequestResult<ReplaceRulesResponses, ReplaceRulesErrors, ThrowOnError> => (options.client ?? client).post<ReplaceRulesResponses, ReplaceRulesErrors, ThrowOnError>({
@@ -2731,7 +2738,7 @@ export const linkIdentity = <ThrowOnError extends boolean = false>(options: Opti
  * An account-security mutation proved by the selected local credential.
  * Requires a password, another external identity, or a complete usable
  * passkey login set to remain after removal; TOTP alone is insufficient.
- * Deletes the identity's sessions and
+ * Deletes every session of the principal, whichever artifact it holds, and
  * reissues the acting session. The reissued token replaces the old one.
  *
  */
@@ -6088,7 +6095,9 @@ export const settleLease = <ThrowOnError extends boolean = false>(options: Optio
  *
  * Metadata only: no credential, candidate handle or password is stored or
  * returned. Deleted (disabled) rotations are history and are listed only
- * with `include_disabled`. The list is paged in id order (`limit`, default
+ * with `include_disabled`, except one that owns a run owing a provider role
+ * a drop (`owed_drop_runs` above zero), which is always listed so the
+ * warning is not lost with the delete. The list is paged in id order (`limit`, default
  * 100, at most 500; `after` continues from `next_after`). `credential_expires_at` is when the credential
  * currently delivered into the rotation's keys lapses, once a run has
  * published one. Slice one of scheduled rotation records the

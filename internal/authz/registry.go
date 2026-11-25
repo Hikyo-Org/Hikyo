@@ -1001,12 +1001,19 @@ const (
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
 	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
 	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+	// StoreDynamicLeasesPurgeEnvironment removes a deleted environment's terminal
+	// lease and effect rows, refusing while a lease is live (#1420).
+	StoreDynamicLeasesPurgeEnvironment StoreOp = "dynamic.PurgeEnvironment"
 
 	// Scheduled credential rotation configuration (#148, S1). Proof-carrying,
 	// environment-bound; the run state machine (S2) adds its own ops.
-	StoreRotationsCreate        StoreOp = "rotations.Create"
-	StoreRotationsGet           StoreOp = "rotations.Get"
-	StoreRotationsList          StoreOp = "rotations.List"
+	StoreRotationsCreate StoreOp = "rotations.Create"
+	StoreRotationsGet    StoreOp = "rotations.Get"
+	StoreRotationsList   StoreOp = "rotations.List"
+	// StoreRotationsSummarize reads the run summary (last run, owed-drop counts) of
+	// the rotations a response returns (#148 S4). Only the operations whose response
+	// carries a rotation hold it; the executor and the gates never do.
+	StoreRotationsSummarize     StoreOp = "rotations.Summarize"
 	StoreRotationsSetState      StoreOp = "rotations.SetState"
 	StoreRotationsCountOpenRuns StoreOp = "rotations.CountOpenRuns"
 	// StoreRotationsPurgeEnvironment removes a deleted environment's rotation
@@ -1121,6 +1128,15 @@ const (
 	StorePKICertificatesCountLive       StoreOp = "pki.CountLiveCertificates"
 	StorePKICertificatesRevokeLive      StoreOp = "pki.RevokeLiveCertificates"
 	StorePKICertificatesRevokedEntries  StoreOp = "pki.RevokedEntries"
+	// StorePKICertificatesPurgeEnvironment purges an environment's terminal
+	// certificate history with its delete, refusing while one is live (#1420).
+	StorePKICertificatesPurgeEnvironment StoreOp = "pki.PurgeEnvironment"
+	// StoreAdaptersGuardEnvironmentDelete refuses an environment delete while it
+	// holds adapter targets or configure fences (#1420).
+	StoreAdaptersGuardEnvironmentDelete StoreOp = "adapters.GuardEnvironmentDelete"
+	// StoreDynamicProvidersPurgeProject removes a deleted project's tombstoned
+	// providers, refusing while one is active (#1420).
+	StoreDynamicProvidersPurgeProject StoreOp = "dynamic.PurgeProjectProviders"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -1553,6 +1569,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// Rotation inspect is a bare-read (`read@env`) (#148).
 	StoreRotationsGet:           true,
 	StoreRotationsList:          true,
+	StoreRotationsSummarize:     true,
 	StoreRotationsCountOpenRuns: true,
 	StoreRotationsListRuns:      true,
 	// SSH reads of public trust material and certificate metadata (#155).
@@ -2512,6 +2529,8 @@ var operationTable = map[Operation]opSpec{
 			// A project's dismissals are removed with it (#74, ADR section 4
 			// lifecycle).
 			StoreScanningDismissalsDeleteByProject: true,
+			// Tombstoned dynamic providers go with it; an active one refuses.
+			StoreDynamicProvidersPurgeProject: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventProjectDeleted},
 	},
@@ -2629,7 +2648,11 @@ var operationTable = map[Operation]opSpec{
 			// Rotation rows (#148) go with it too, but only once no rotation
 			// is live and no run is in flight: the purge refuses otherwise.
 			StoreRotationsPurgeEnvironment: true,
-			StoreEnvironmentsDelete:        true, StoreAuditTenantInsert: true,
+			// Terminal dynamic leases go with it (#1420); a live lease, any
+			// certificate row or any adapter target or configure fence refuses.
+			StoreDynamicLeasesPurgeEnvironment:   true,
+			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
@@ -2981,8 +3004,10 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreRotationsPurgeEnvironment: true,
-			StoreDefinitionsPlanGet:        true, StoreDefinitionsPlanApply: true,
+			StoreRotationsPurgeEnvironment:       true,
+			StoreDynamicLeasesPurgeEnvironment:   true,
+			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
@@ -4304,7 +4329,9 @@ var operationTable = map[Operation]opSpec{
 		level:    domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRuleCreated},
+		// A machine rule that makes plaintext newly reachable is a second
+		// fact, as on the grant routes.
+		events: []audit.EventType{audit.EventRuleCreated, audit.EventMachineGrantWidened},
 	},
 	OpRuleRevoke: {
 		class:    ClassTenant,
@@ -5514,13 +5541,13 @@ var operationTable = map[Operation]opSpec{
 	OpRotationInspect: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
-		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsList: true},
+		storeOps:    map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsList: true, StoreRotationsSummarize: true},
 		auditedNone: true,
 	},
 	OpRotationPause: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationResume: {
@@ -5539,13 +5566,13 @@ var operationTable = map[Operation]opSpec{
 		postGrantForbidden: true,
 		// Resume re-checks the provider can mint and both keys still exist and are
 		// secret-classified before the per-key authority checks.
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationDelete: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsSetState: true, StoreRotationsCountOpenRuns: true, StoreRotationsAbandonOpenRuns: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRotationConfigured, audit.EventRotationQuarantined, audit.EventRotationRunOutcome},
 	},
 	OpRotationRunNow: {
@@ -5577,7 +5604,7 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapReveal, At: domain.LevelEnv},
 		},
 		postGrantForbidden: true,
-		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
+		storeOps:           map[StoreOp]bool{StoreRotationsGet: true, StoreRotationsSummarize: true, StoreRotationsReleaseHold: true, StoreDynamicProvidersGet: true, StoreCatalogueGet: true, StoreApprovalPolicyCovering: true, StorePendingListForOwnerInEnvironment: true, StoreAuditTenantInsert: true},
 		events:             []audit.EventType{audit.EventRotationConfigured},
 	},
 	OpRotationRuns: {

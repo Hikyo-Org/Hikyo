@@ -30,6 +30,8 @@ type pkiStoreQueries interface {
 	pkiDeleteProfileBindings(ctx context.Context, id string) error
 	pkiSetIssuerHold(ctx context.Context, id string, hold int64, rowVersion int64, at time.Time) (int64, error)
 	pkiCountLiveCertificates(ctx context.Context, issuerID string, now time.Time) (int64, error)
+	pkiListLiveEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, now time.Time, limit int) ([]string, error)
+	pkiPurgeTerminalEnvironmentCertificates(ctx context.Context, chain domain.Scope, now time.Time) (int64, error)
 	pkiRevokeLiveCertificates(ctx context.Context, issuerID, reason string, at time.Time) (int64, error)
 	pkiRevokedEntries(ctx context.Context, issuerID string, now time.Time) ([]PKIRevokedEntry, error)
 	pkiRevokedChildren(ctx context.Context, issuerID string, now time.Time) ([]pkiRevokedChild, error)
@@ -736,4 +738,24 @@ func (q pgPKIStoreQueries) pkiWriteError(err error) error {
 }
 func (q pgPKIStoreQueries) pkiWriteRows(n int64, err error) (int64, error) {
 	return n, q.pkiWriteError(err)
+}
+
+func (q sqlitePKIStoreQueries) pkiListLiveEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, now time.Time, limit int) ([]string, error) {
+	return q.queries.PKIListLiveEnvironmentCertificateIDs(ctx, sqlitegen.PKIListLiveEnvironmentCertificateIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: fixedStamp(now), RowLimit: int64(limit)})
+}
+
+func (q pgPKIStoreQueries) pkiListLiveEnvironmentCertificateIDs(ctx context.Context, chain domain.Scope, now time.Time, limit int) ([]string, error) {
+	rowLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	return q.queries.PKIListLiveEnvironmentCertificateIDs(ctx, pggen.PKIListLiveEnvironmentCertificateIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: pgRequiredTime(now), RowLimit: rowLimit})
+}
+
+func (q sqlitePKIStoreQueries) pkiPurgeTerminalEnvironmentCertificates(ctx context.Context, chain domain.Scope, now time.Time) (int64, error) {
+	return q.pkiWriteRows(q.queries.PKIPurgeTerminalEnvironmentCertificates(ctx, sqlitegen.PKIPurgeTerminalEnvironmentCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: fixedStamp(now)}))
+}
+
+func (q pgPKIStoreQueries) pkiPurgeTerminalEnvironmentCertificates(ctx context.Context, chain domain.Scope, now time.Time) (int64, error) {
+	return q.pkiWriteRows(q.queries.PKIPurgeTerminalEnvironmentCertificates(ctx, pggen.PKIPurgeTerminalEnvironmentCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: pgRequiredTime(now)}))
 }

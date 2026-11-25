@@ -450,7 +450,7 @@ func writeCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
 	}
-	sealed, err := sealer.SealValue(valueAAD(entry), []byte(normalizeStoredValue(p, key, value)))
+	sealed, err := sealer.SealValue(valueAAD(entry), []byte(schema.Normalize(value)))
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -630,7 +630,7 @@ func (s *Values) stageWithin(ctx context.Context, r store.Repos, az *authz.TxAut
 	if operation == store.PendingSet {
 		if sealed, err = sealer.SealField(
 			pendingAAD(string(scope.Org), string(scope.Project), string(scope.Env), key.ID, versionID),
-			[]byte(normalizeStoredValue(p, key, value))); err != nil {
+			[]byte(schema.Normalize(value))); err != nil {
 			return stageWriteResult{}, err
 		}
 		// Writer fence: refuse if the sealer's DEK version was retired by a
@@ -739,6 +739,22 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 		if err != nil {
 			return declareWriteResult{}, err
 		}
+		// The approval gate in republish would refuse a covered destination
+		// anyway; check every destination first so no protected destination
+		// asks for, or consumes, a ceremony in a call that cannot complete.
+		for _, envID := range envIDs {
+			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
+			if _, err := az.AuthorizeKey(ctx, caller, authz.OpValueSet, envScope, keyTarget); err != nil {
+				return declareWriteResult{}, err
+			}
+			publishProof, err := az.Authorize(ctx, caller, authz.OpValuePublish, envScope)
+			if err != nil {
+				return declareWriteResult{}, err
+			}
+			if err := refuseCoveredEnvironment(ctx, r, publishProof, envScope.Env); err != nil {
+				return declareWriteResult{}, err
+			}
+		}
 		for _, envID := range envIDs {
 			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
 			p, err := az.AuthorizeKey(ctx, caller, authz.OpValueSet, envScope, keyTarget)
@@ -780,15 +796,6 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 				return declareWriteResult{}, err
 			}
 			if settings.Protected {
-				// The approval gate in republish would refuse a covered environment
-				// anyway; check it first so no ceremony is asked for, or consumed.
-				publishProof, err := az.Authorize(ctx, caller, authz.OpValuePublish, envScope)
-				if err != nil {
-					return declareWriteResult{}, err
-				}
-				if err := refuseCoveredEnvironment(ctx, r, publishProof, envScope.Env); err != nil {
-					return declareWriteResult{}, err
-				}
 				if skipsCeremony(caller) {
 					return declareWriteResult{}, ProtectedDestinationRefusal(envScope.Env)
 				}

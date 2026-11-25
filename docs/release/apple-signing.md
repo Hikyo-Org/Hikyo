@@ -254,8 +254,10 @@ This preserves the exact signed bytes for inspection after an Apple service
 failure; it does not authorize rebuilding, resubmitting an uncertain upload,
 or adding files to an already-published manifest.
 
-Hikyo is a command-line executable with an embedded web UI. Each DMG contains
-`hikyo` and `LICENSE`; it is not a macOS application bundle. Download the DMG
+The `hikyo` DMG holds a command-line executable with an embedded web UI. Each
+DMG contains `hikyo` and `LICENSE`; it is not a macOS application bundle. The
+desktop app is a separate artifact, released as `desktop-v*` releases in
+this repository (see [Desktop app](#desktop-app)), and never part of these DMGs. Download the DMG
 matching the Mac's architecture from the verified public release. After opening
 it, copy `hikyo` to a writable directory on the user's executable search path,
 preserving its signature and execute permission, and run `hikyo --help`.
@@ -297,3 +299,33 @@ been verified, and a harmless test
 disk image has been submitted to Apple. See the [configuration handoff](../handoff/apple-signing.md)
 for its processing and acceptance status. No Hikyo release or live tap was
 published or changed during setup.
+
+## Desktop app
+
+The stable tag's `release.yml` run also builds `Hikyo.app` for arm64 and
+x86_64 on macOS 15 (stable versions only; never 0.x, release candidates or
+nightlies). Job `desktop-app` uses the same `apple-signing` environment and
+Developer ID identity as above, so GitHub may ask for approval once per
+architecture.
+
+1. `scripts/release/build-desktop-app.sh` builds the app and signs it with the
+   hardened runtime and the entitlements in
+   `desktop/build/darwin/entitlements.plist` (an empty dictionary; the app is
+   not sandboxed). It never uses `--deep`.
+2. The app is notarized with `notarytool submit --wait` and stapled, then
+   placed in a DMG with an `Applications` link. The DMG is signed, notarized and
+   stapled too.
+3. `verify` checks the signature, the stapled tickets and Gatekeeper
+   assessment (`spctl`) of the exact bytes.
+
+Credentials are step-scoped inside that one job: the P12 only in the signing
+steps, the notary key only in the notarization steps. This differs from the
+CLI lane's separate jobs; the workflow test allows exactly those steps.
+
+The x86_64 app is cross-compiled on an arm64 runner and is signature-checked
+but not launched. Job `desktop-draft` signs `desktop-inventory.json` (file
+names, sizes and SHA-256 values) with the keyless stable workflow identity and
+stages the `desktop-v<version>` draft. Each architecture's DMG is handed over under an attempt-qualified artifact name, with its SHA-256 recorded as a job output that the staging step re-checks. The tag does not exist until
+`ceremony.sh publish` publishes that draft after the CLI release. Apple-service
+failures are handled as above: rerun the failed jobs; do not resubmit an
+uncertain notarization by hand.

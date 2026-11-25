@@ -47,6 +47,8 @@ import { Glyph } from './Glyph.tsx';
  * the panel renders the heading and a Close button itself, focuses the
  * heading, and returns focus to whatever had it when the panel mounted.
  */
+// A refused dialog the platform closed anyway is `data-reopening` until it reopens.
+const MODAL_OPEN = 'dialog[open], dialog[data-reopening]';
 const TABBABLE =
   'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])';
 
@@ -141,14 +143,14 @@ export function SidePanel({
         event.target instanceof Element &&
         panel.current?.contains(event.target) !== true &&
         event.target.closest('.toast') === null &&
-        document.querySelector('dialog[open]') === null &&
+        document.querySelector(MODAL_OPEN) === null &&
         !edited()
       ) {
         latest.current.onClose();
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented && document.querySelector('dialog[open]') === null) {
+      if (event.key === 'Escape' && !event.defaultPrevented && document.querySelector(MODAL_OPEN) === null) {
         event.preventDefault();
         onEscape();
       }

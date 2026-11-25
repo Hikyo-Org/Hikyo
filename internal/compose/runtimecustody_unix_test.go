@@ -81,6 +81,129 @@ func TestRuntimeCustodyRefusesUnsafeParent(t *testing.T) {
 	}
 }
 
+// An ancestor above the parent can rename the parent away and substitute its
+// own, so the parent rule applies to every ancestor, also through a symlinked
+// ancestor's target hierarchy.
+func TestRuntimeCustodyRefusesReplaceableAncestor(t *testing.T) {
+	base := t.TempDir()
+	shared := filepath.Join(base, "shared")
+	parent := filepath.Join(shared, "private")
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shared, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(parent, alias); err != nil {
+		t.Fatal(err)
+	}
+	k := testKeys(t)
+	rl := begin(t, t.TempDir(), nil)
+	for name, dir := range map[string]string{"direct": parent, "through a symlink": alias} {
+		runtime := filepath.Join(dir, "runtime")
+		if _, _, err := rl.WriteGeneration(runtime, k, "api", []byte("A=1\n")); !errors.Is(err, ErrRuntimeCustody) {
+			t.Errorf("%s: WriteGeneration err=%v, want ErrRuntimeCustody", name, err)
+		}
+		if err := os.MkdirAll(runtime, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := RuntimeDirCustody(runtime); !errors.Is(err, ErrRuntimeCustody) {
+			t.Errorf("%s: RuntimeDirCustody err=%v, want ErrRuntimeCustody", name, err)
+		}
+	}
+	// The same hierarchy with a sticky shared directory is accepted.
+	if err := os.Chmod(shared, 0o777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := rl.WriteGeneration(filepath.Join(alias, "runtime"), k, "api", []byte("A=1\n")); err != nil {
+		t.Fatalf("sticky ancestor refused: %v", err)
+	}
+}
+
+// An ancestor above the parent that no other user can write is still refused
+// when it is owned by neither the effective uid nor root: its owner can rename
+// the hierarchy below it.
+func TestRuntimeCustodyRefusesForeignOwnedAncestor(t *testing.T) {
+	if os.Geteuid() == 0 {
+		// Root owns the hierarchy, and a root-owned ancestor is always accepted.
+		t.Skip("needs a non-root owner for the shifted effective uid to refuse")
+	}
+	grand := filepath.Join(t.TempDir(), "team")
+	runtime := filepath.Join(grand, "private", "runtime")
+	if err := os.MkdirAll(runtime, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(grand, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Control: owned by the effective uid, the hierarchy above the parent passes.
+	if err := checkRuntimeAncestors(runtime, grand, map[string]bool{}, 0); err != nil {
+		t.Fatalf("own non-writable ancestors refused: %v", err)
+	}
+	foreignUID(t)
+	err := checkRuntimeAncestors(runtime, grand, map[string]bool{}, 0)
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "is owned by uid") {
+		t.Fatalf("foreign-owned ancestor err=%v, want an ownership refusal", err)
+	}
+}
+
+// A hierarchy moved between the open and the ancestor walk leaves the walk
+// vetting another directory, so the path must still name the opened root.
+func TestRuntimeCustodyRefusesRuntimeDirMovedDuringCheck(t *testing.T) {
+	base := t.TempDir()
+	runtime := filepath.Join(base, "a", "run")
+	if err := os.MkdirAll(runtime, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := openRuntimeRoot(runtime, false)
+	if err != nil {
+		t.Fatalf("unmoved runtime dir refused: %v", err)
+	}
+	_ = root.Close()
+	t.Cleanup(func() { runtimeOpened = func() {} })
+	runtimeOpened = func() {
+		if err := os.Rename(filepath.Join(base, "a"), filepath.Join(base, "old")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(runtime, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root, err = openRuntimeRoot(runtime, false)
+	if err == nil {
+		_ = root.Close()
+	}
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "moved during the custody check") {
+		t.Fatalf("runtime dir moved during the check: err=%v, want a custody refusal", err)
+	}
+}
+
+// The ancestor walk vets the cleaned path, but the kernel resolves `..` after
+// a symlink, so link/.. may traverse a hierarchy the walk never saw.
+func TestRuntimeCustodyRefusesUncleanRuntimeDir(t *testing.T) {
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "a", "run"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(base, "a"), filepath.Join(base, "link")); err != nil {
+		t.Fatal(err)
+	}
+	unclean := filepath.Join(base, "link") + "/../a/run"
+	root, err := openRuntimeRoot(unclean, false)
+	if err == nil {
+		_ = root.Close()
+	}
+	if !errors.Is(err, ErrRuntimeCustody) || !strings.Contains(err.Error(), "not a clean absolute path") {
+		t.Fatalf("openRuntimeRoot(%s) err=%v, want a custody refusal", unclean, err)
+	}
+	for _, path := range []string{unclean, base + "/a/run/", base + "/a//run", base + "/a/./run", "../a/run"} {
+		if err := RuntimeDirCustody(path); !errors.Is(err, ErrRuntimeCustody) {
+			t.Fatalf("RuntimeDirCustody(%s) = %v, want a custody refusal", path, err)
+		}
+	}
+}
+
 func TestRuntimeCustodyMissingDirIsNotAFailure(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent")
 	if err := RuntimeDirCustody(missing); err != nil {

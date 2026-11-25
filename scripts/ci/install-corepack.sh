@@ -14,6 +14,11 @@ if [ "$actual" != "$corepack_version" ]; then
 fi
 
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
+# Corepack runs pnpm at the version the working checkout declares, so pin from
+# that checkout. Feedback CI runs this script from the merge commit but works in
+# the PR head, which may predate a pnpm bump on its base.
+manifest_root=$(git rev-parse --show-toplevel 2>/dev/null) || manifest_root=$repo_root
+[ -f "$manifest_root/web/package.json" ] || manifest_root=$repo_root
 package_manager=
 for manifest in \
 	web/package.json \
@@ -22,7 +27,7 @@ for manifest in \
 	scripts/mcp-conformance/package.json
 do
 	declared=$(node -p 'require(process.argv[1]).packageManager' \
-		"$repo_root/$manifest")
+		"$manifest_root/$manifest")
 	case "$declared" in
 		pnpm@*) ;;
 		*)

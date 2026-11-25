@@ -89,6 +89,32 @@ type RotationRecord struct {
 	// RestoreHold is set by a restore and cleared by ReleaseHold: a held rotation
 	// starts no run and takes no pre-publish step, whatever its state.
 	RestoreHold bool
+	// HaltReason is the stored reason a halted rotation stopped, exactly as the
+	// column holds it (empty unless the state is halted). It is a short code the
+	// executor wrote, but an archive may carry any text, so a transport maps it to a
+	// fixed word (service.rotationHaltWord) and never passes it on.
+	RawHaltReason string
+	// LastRun is the newest run by id, the top row of the runs list; nil when the
+	// rotation has never run. Set by Get and List, not by the cascade pauses.
+	LastRun *RotationLastRun
+	// OwedDropRuns counts the rotation's runs that still owe a provider role a drop:
+	// phase revoke_refused or quarantine, over its whole history. It is the
+	// definition the CLI ATTENTION lines, the browser notice and the
+	// hikyo_rotation_runs_{revoke_refused,quarantined} gauges use. Set by Get and List.
+	OwedDropRuns int64
+	// OwedDropRunsVersionsChanged is the part of OwedDropRuns a restore refused with
+	// the published_versions_changed code: the keys may be serving that role again,
+	// so it must never be read as "drop it".
+	OwedDropRunsVersionsChanged int64
+}
+
+// RotationLastRun is the summary of a rotation's newest run: metadata only, with
+// the fixed-word error code the runs list already carries.
+type RotationLastRun struct {
+	ID        string
+	Phase     string
+	ErrorCode string
+	PhaseAt   string
 }
 
 // RotationCreate is one rotation configuration. The environment is bound from
@@ -118,8 +144,12 @@ type RotationSetState struct {
 // RotationListQuery is one page of a rotation list.
 type RotationListQuery struct {
 	IncludeDisabled bool
-	After           string
-	Limit           int
+	// KeepOwed lists, without IncludeDisabled, also a deleted rotation that owns a run
+	// still owing a provider role a drop. The API's default list sets it; the
+	// environment delete's "live rotations" read does not.
+	KeepOwed bool
+	After    string
+	Limit    int
 }
 
 // RotationRunRequest is one run-now request: the run the rotation will start (its
@@ -174,6 +204,10 @@ type RotationRunRecord struct {
 // RotationReader is the read side.
 type RotationReader interface {
 	Get(ctx context.Context, p authz.Proof, rotationID string) (RotationRecord, error)
+	// Summarize fills, in place, each row's last run and owed-drop counts (the runs
+	// that need an operator: revoke_refused and quarantine) with two reads for the
+	// whole slice. Get and List leave them empty: only a response needs them.
+	Summarize(ctx context.Context, p authz.Proof, rows []RotationRecord) error
 	// List returns up to Limit of the environment's rotations whose id sorts after
 	// After, in id order; disabled history only with IncludeDisabled. Each carries
 	// its delivered-credential expiry, read for the whole page in one query.
@@ -282,6 +316,11 @@ type rotationStoreQueries interface {
 	// credentialExpiries returns the delivered-credential expiry per key, from the
 	// latest published run of each key, in one read.
 	credentialExpiries(ctx context.Context, chain domain.Scope, keyIDs []string) (map[string]string, error)
+	// lastRuns returns the newest run of each of the rotations that has one, and
+	// owedDropCounts the runs owing a drop (and the share a restore refused), each in
+	// one read for the whole page.
+	lastRuns(ctx context.Context, chain domain.Scope, rotationIDs []string) (map[string]RotationLastRun, error)
+	owedDropCounts(ctx context.Context, chain domain.Scope, rotationIDs []string) (map[string][2]int64, error)
 	// claim takes one key for a rotation; a taken key is reported by
 	// uniqueViolation, never by constraint text.
 	claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (uniqueViolation bool, err error)
@@ -357,7 +396,51 @@ func (r rotationQueries) get(ctx context.Context, chain domain.Scope, rotationID
 	if err != nil {
 		return RotationRecord{}, err
 	}
-	return r.withExpiry(ctx, chain, rec)
+	rec, err = r.withExpiry(ctx, chain, rec)
+	if err != nil {
+		return RotationRecord{}, err
+	}
+	return rec, nil
+}
+
+// Summarize fills the last run and the owed-drop counts of the rotations a response
+// returns, from two reads for the whole slice whatever its length. It is not part of
+// Get, List or any mutation: the executor's gates and the existence checks read a
+// rotation on every sweep and must not pay for a summary no transport shows, so the
+// service asks for it once, for the rotations it returns, after trimming a page.
+func (r rotationQueries) Summarize(ctx context.Context, p authz.Proof, rows []RotationRecord) error {
+	chain, err := r.envChain(p, authz.StoreRotationsSummarize)
+	if err != nil {
+		return err
+	}
+	return r.summarize(ctx, chain, rows)
+}
+
+// summarize is Summarize after the proof: two reads for the slice, whatever its length.
+func (r rotationQueries) summarize(ctx context.Context, chain domain.Scope, rows []RotationRecord) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, len(rows))
+	for i := range rows {
+		ids[i] = rows[i].ID
+	}
+	last, err := r.queries.lastRuns(ctx, chain, ids)
+	if err != nil {
+		return err
+	}
+	owed, err := r.queries.owedDropCounts(ctx, chain, ids)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		if run, ok := last[rows[i].ID]; ok {
+			rows[i].LastRun = &run
+		}
+		counts := owed[rows[i].ID]
+		rows[i].OwedDropRuns, rows[i].OwedDropRunsVersionsChanged = counts[0], counts[1]
+	}
+	return nil
 }
 
 func (r rotationQueries) withExpiry(ctx context.Context, chain domain.Scope, rec RotationRecord) (RotationRecord, error) {
@@ -385,6 +468,12 @@ func (r rotationQueries) List(ctx context.Context, p authz.Proof, q RotationList
 	if q.Limit <= 0 || q.Limit > RotationListMaxLimit+1 {
 		return nil, fmt.Errorf("%w: rotation list limit out of range", domain.ErrInvalid)
 	}
+	return r.page(ctx, chain, q)
+}
+
+// page is one page of rotations with their delivered-credential expiry, from one
+// read each; it carries no run summary (see Summarize).
+func (r rotationQueries) page(ctx context.Context, chain domain.Scope, q RotationListQuery) ([]RotationRecord, error) {
 	rows, err := r.queries.list(ctx, chain, q)
 	if err != nil {
 		return nil, err
@@ -639,6 +728,14 @@ func (q sqliteRotationQueries) list(ctx context.Context, chain domain.Scope, lq 
 		for _, c := range all {
 			rows = append(rows, sqlitegen.RotationGetRow(c))
 		}
+	} else if lq.KeepOwed {
+		kept, err := q.q.RotationListOrOwed(ctx, sqlitegen.RotationListOrOwedParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range kept {
+			rows = append(rows, sqlitegen.RotationGetRow(c))
+		}
 	} else {
 		live, err := q.q.RotationList(ctx, sqlitegen.RotationListParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: int64(lq.Limit)})
 		if err != nil {
@@ -663,6 +760,14 @@ func (q pgRotationQueries) list(ctx context.Context, chain domain.Scope, lq Rota
 			return nil, err
 		}
 		for _, c := range all {
+			rows = append(rows, pggen.RotationGetRow(c))
+		}
+	} else if lq.KeepOwed {
+		kept, err := q.q.RotationListOrOwed(ctx, pggen.RotationListOrOwedParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), AfterID: lq.After, PageLimit: pageLimit})
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range kept {
 			rows = append(rows, pggen.RotationGetRow(c))
 		}
 	} else {
@@ -816,6 +921,62 @@ func (q pgRotationQueries) credentialExpiries(ctx context.Context, chain domain.
 		}
 	}
 	return expiryStamps(picks), nil
+}
+
+func (q sqliteRotationQueries) lastRuns(ctx context.Context, chain domain.Scope, ids []string) (map[string]RotationLastRun, error) {
+	rows, err := q.q.RotationLastRuns(ctx, sqlitegen.RotationLastRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RotationIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]RotationLastRun, len(rows))
+	for _, row := range rows {
+		run := RotationLastRun{ID: row.ID, Phase: row.Phase, ErrorCode: row.LastError.String, PhaseAt: row.PhaseAt}
+		if err := normalizeStoredTimes(&run.PhaseAt); err != nil {
+			return nil, err
+		}
+		out[row.RotationID] = run
+	}
+	return out, nil
+}
+
+func (q pgRotationQueries) lastRuns(ctx context.Context, chain domain.Scope, ids []string) (map[string]RotationLastRun, error) {
+	rows, err := q.q.RotationLastRuns(ctx, pggen.RotationLastRunsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RotationIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]RotationLastRun, len(rows))
+	for _, row := range rows {
+		run := RotationLastRun{ID: row.ID, Phase: row.Phase, ErrorCode: row.LastError.String, PhaseAt: pgStoredStamp(row.PhaseAt)}
+		if err := normalizeStoredTimes(&run.PhaseAt); err != nil {
+			return nil, err
+		}
+		out[row.RotationID] = run
+	}
+	return out, nil
+}
+
+func (q sqliteRotationQueries) owedDropCounts(ctx context.Context, chain domain.Scope, ids []string) (map[string][2]int64, error) {
+	rows, err := q.q.RotationOwedDropCounts(ctx, sqlitegen.RotationOwedDropCountsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RotationIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][2]int64, len(rows))
+	for _, row := range rows {
+		out[row.RotationID] = [2]int64{row.Owed, row.VersionsChanged}
+	}
+	return out, nil
+}
+
+func (q pgRotationQueries) owedDropCounts(ctx context.Context, chain domain.Scope, ids []string) (map[string][2]int64, error) {
+	rows, err := q.q.RotationOwedDropCounts(ctx, pggen.RotationOwedDropCountsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RotationIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][2]int64, len(rows))
+	for _, row := range rows {
+		out[row.RotationID] = [2]int64{row.Owed, row.VersionsChanged}
+	}
+	return out, nil
 }
 
 func (q sqliteRotationQueries) claim(ctx context.Context, chain domain.Scope, keyID, rotationID string) (bool, error) {
@@ -996,7 +1157,7 @@ func sqliteRotation(c sqlitegen.RotationGetRow) (RotationRecord, error) {
 		ID: c.ID, EnvironmentID: c.EnvironmentID, ProviderID: c.ProviderID, KeyID: c.KeyID, UsernameKeyID: c.UsernameKeyID,
 		IntervalSeconds: c.IntervalSeconds, RevocationDelaySeconds: c.RevocationDelaySeconds,
 		AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedBy: c.CreatedBy, State: c.State,
-		NextRunAt: c.NextRunAt.String, Generation: c.Generation, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, RestoreHold: c.RestoreHold != 0,
+		NextRunAt: c.NextRunAt.String, Generation: c.Generation, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, RestoreHold: c.RestoreHold != 0, RawHaltReason: c.HaltReason.String,
 	}
 	if err := normalizeStoredTimes(&out.NextRunAt, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		return RotationRecord{}, err
@@ -1009,7 +1170,7 @@ func pgRotation(c pggen.RotationGetRow) (RotationRecord, error) {
 		ID: c.ID, EnvironmentID: c.EnvironmentID, ProviderID: c.ProviderID, KeyID: c.KeyID, UsernameKeyID: c.UsernameKeyID,
 		IntervalSeconds: c.IntervalSeconds, RevocationDelaySeconds: c.RevocationDelaySeconds,
 		AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedBy: c.CreatedBy, State: c.State,
-		NextRunAt: pgStoredStamp(c.NextRunAt), Generation: c.Generation, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt), RestoreHold: c.RestoreHold,
+		NextRunAt: pgStoredStamp(c.NextRunAt), Generation: c.Generation, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt), RestoreHold: c.RestoreHold, RawHaltReason: c.HaltReason.String,
 	}
 	if err := normalizeStoredTimes(&out.NextRunAt, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		return RotationRecord{}, err

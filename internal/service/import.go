@@ -464,6 +464,15 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 			if err != nil {
 				return err
 			}
+			// The approval gate in republish would refuse a covered environment
+			// anyway; check it first so no ceremony is asked for, or consumed.
+			publishProof, err := az.Authorize(ctx, caller, authz.OpValuePublish, scope)
+			if err != nil {
+				return err
+			}
+			if err := refuseCoveredEnvironment(ctx, r, publishProof, scope.Env); err != nil {
+				return err
+			}
 			if settings.Protected && skipsCeremony(caller) {
 				// Import has no field to confirm a protected write, and a machine
 				// confirmation is explicit, never implied (permission-model ADR).

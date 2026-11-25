@@ -993,6 +993,10 @@ type AdapterRepo interface {
 	BeginConfigureEffect(ctx context.Context, p authz.Proof, fence AdapterConfigureFence) error
 	FinishConfigureEffect(ctx context.Context, p authz.Proof, targetID, effectID, outcome string, at time.Time) error
 	AddTarget(ctx context.Context, p authz.Proof, mutation AdapterTargetUpdate) (AdapterTargetAddResult, error)
+	// GuardEnvironmentDelete is a *LiveRowsError (ErrAdapterTargetsInEnvironment)
+	// while the proof's environment has any adapter target (live or tombstoned)
+	// or configure fence.
+	GuardEnvironmentDelete(ctx context.Context, p authz.Proof) error
 	RecordCredentialExpiry(ctx context.Context, p authz.Proof, adapterID string, expiresAt time.Time) error
 	UpdateTarget(ctx context.Context, p authz.Proof, mutation AdapterTargetUpdate) (AdapterTargetUpdateResult, error)
 	MoveTarget(ctx context.Context, p authz.Proof, mutation AdapterRouteMoveMutation) (AdapterRouteMoveResult, error)

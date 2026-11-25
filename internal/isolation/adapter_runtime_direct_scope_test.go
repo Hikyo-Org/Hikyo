@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -168,7 +168,7 @@ func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 					if err != nil || n != 0 {
 						t.Fatalf("%s refusal=%d %v", coordinate, n, err)
 					}
-					if after := snapshot(); !reflect.DeepEqual(before, after) {
+					if after := snapshot(); !reflectx.Equal(before, after) {
 						t.Fatalf("%s refusal wrote: %v -> %v", coordinate, before, after)
 					}
 				}

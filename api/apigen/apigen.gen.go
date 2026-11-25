@@ -1021,6 +1021,7 @@ func (e CLILoginTransactionTransport) Valid() bool {
 
 // Defines values for CLIReauthStartRequestOperation.
 const (
+	CLIReauthStartRequestOperationAccessBypass            CLIReauthStartRequestOperation = "access.bypass"
 	CLIReauthStartRequestOperationAdapterAdopt            CLIReauthStartRequestOperation = "adapter.adopt"
 	CLIReauthStartRequestOperationAdapterConfigure        CLIReauthStartRequestOperation = "adapter.configure"
 	CLIReauthStartRequestOperationAdapterCredentialSet    CLIReauthStartRequestOperation = "adapter.credential-set"
@@ -1028,6 +1029,7 @@ const (
 	CLIReauthStartRequestOperationApprovalBypass          CLIReauthStartRequestOperation = "approval.bypass"
 	CLIReauthStartRequestOperationApprovalVote            CLIReauthStartRequestOperation = "approval.vote"
 	CLIReauthStartRequestOperationDeveloperCredentialMint CLIReauthStartRequestOperation = "developer-credential.mint"
+	CLIReauthStartRequestOperationIdentityCredentialMint  CLIReauthStartRequestOperation = "identity.credential-mint"
 	CLIReauthStartRequestOperationSelfConfigAdopt         CLIReauthStartRequestOperation = "self-config.adopt"
 	CLIReauthStartRequestOperationSelfConfigApply         CLIReauthStartRequestOperation = "self-config.apply"
 	CLIReauthStartRequestOperationSelfConfigTest          CLIReauthStartRequestOperation = "self-config.test"
@@ -1039,6 +1041,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestOperation enum.
 func (e CLIReauthStartRequestOperation) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestOperationAccessBypass:
+		return true
 	case CLIReauthStartRequestOperationAdapterAdopt:
 		return true
 	case CLIReauthStartRequestOperationAdapterConfigure:
@@ -1052,6 +1056,8 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 	case CLIReauthStartRequestOperationApprovalVote:
 		return true
 	case CLIReauthStartRequestOperationDeveloperCredentialMint:
+		return true
+	case CLIReauthStartRequestOperationIdentityCredentialMint:
 		return true
 	case CLIReauthStartRequestOperationSelfConfigAdopt:
 		return true
@@ -1072,11 +1078,13 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
+	CLIReauthStartRequestPurposeAccess              CLIReauthStartRequestPurpose = "access"
 	CLIReauthStartRequestPurposeAdapter             CLIReauthStartRequestPurpose = "adapter"
 	CLIReauthStartRequestPurposeApprove             CLIReauthStartRequestPurpose = "approve"
 	CLIReauthStartRequestPurposeBypass              CLIReauthStartRequestPurpose = "bypass"
 	CLIReauthStartRequestPurposeCopy                CLIReauthStartRequestPurpose = "copy"
 	CLIReauthStartRequestPurposeDeveloperCredential CLIReauthStartRequestPurpose = "developer-credential"
+	CLIReauthStartRequestPurposeMint                CLIReauthStartRequestPurpose = "mint"
 	CLIReauthStartRequestPurposePublish             CLIReauthStartRequestPurpose = "publish"
 	CLIReauthStartRequestPurposeReject              CLIReauthStartRequestPurpose = "reject"
 	CLIReauthStartRequestPurposeReveal              CLIReauthStartRequestPurpose = "reveal"
@@ -1086,6 +1094,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
 func (e CLIReauthStartRequestPurpose) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestPurposeAccess:
+		return true
 	case CLIReauthStartRequestPurposeAdapter:
 		return true
 	case CLIReauthStartRequestPurposeApprove:
@@ -1095,6 +1105,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 	case CLIReauthStartRequestPurposeCopy:
 		return true
 	case CLIReauthStartRequestPurposeDeveloperCredential:
+		return true
+	case CLIReauthStartRequestPurposeMint:
 		return true
 	case CLIReauthStartRequestPurposePublish:
 		return true
@@ -1111,6 +1123,7 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 
 // Defines values for CLIReauthTransactionOperation.
 const (
+	CLIReauthTransactionOperationAccessBypass            CLIReauthTransactionOperation = "access.bypass"
 	CLIReauthTransactionOperationAdapterAdopt            CLIReauthTransactionOperation = "adapter.adopt"
 	CLIReauthTransactionOperationAdapterConfigure        CLIReauthTransactionOperation = "adapter.configure"
 	CLIReauthTransactionOperationAdapterCredentialSet    CLIReauthTransactionOperation = "adapter.credential-set"
@@ -1118,6 +1131,7 @@ const (
 	CLIReauthTransactionOperationApprovalBypass          CLIReauthTransactionOperation = "approval.bypass"
 	CLIReauthTransactionOperationApprovalVote            CLIReauthTransactionOperation = "approval.vote"
 	CLIReauthTransactionOperationDeveloperCredentialMint CLIReauthTransactionOperation = "developer-credential.mint"
+	CLIReauthTransactionOperationIdentityCredentialMint  CLIReauthTransactionOperation = "identity.credential-mint"
 	CLIReauthTransactionOperationSelfConfigAdopt         CLIReauthTransactionOperation = "self-config.adopt"
 	CLIReauthTransactionOperationSelfConfigApply         CLIReauthTransactionOperation = "self-config.apply"
 	CLIReauthTransactionOperationSelfConfigTest          CLIReauthTransactionOperation = "self-config.test"
@@ -1129,6 +1143,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionOperation enum.
 func (e CLIReauthTransactionOperation) Valid() bool {
 	switch e {
+	case CLIReauthTransactionOperationAccessBypass:
+		return true
 	case CLIReauthTransactionOperationAdapterAdopt:
 		return true
 	case CLIReauthTransactionOperationAdapterConfigure:
@@ -1142,6 +1158,8 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 	case CLIReauthTransactionOperationApprovalVote:
 		return true
 	case CLIReauthTransactionOperationDeveloperCredentialMint:
+		return true
+	case CLIReauthTransactionOperationIdentityCredentialMint:
 		return true
 	case CLIReauthTransactionOperationSelfConfigAdopt:
 		return true
@@ -1162,11 +1180,13 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
+	CLIReauthTransactionPurposeAccess              CLIReauthTransactionPurpose = "access"
 	CLIReauthTransactionPurposeAdapter             CLIReauthTransactionPurpose = "adapter"
 	CLIReauthTransactionPurposeApprove             CLIReauthTransactionPurpose = "approve"
 	CLIReauthTransactionPurposeBypass              CLIReauthTransactionPurpose = "bypass"
 	CLIReauthTransactionPurposeCopy                CLIReauthTransactionPurpose = "copy"
 	CLIReauthTransactionPurposeDeveloperCredential CLIReauthTransactionPurpose = "developer-credential"
+	CLIReauthTransactionPurposeMint                CLIReauthTransactionPurpose = "mint"
 	CLIReauthTransactionPurposePublish             CLIReauthTransactionPurpose = "publish"
 	CLIReauthTransactionPurposeReject              CLIReauthTransactionPurpose = "reject"
 	CLIReauthTransactionPurposeReveal              CLIReauthTransactionPurpose = "reveal"
@@ -1176,6 +1196,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
 func (e CLIReauthTransactionPurpose) Valid() bool {
 	switch e {
+	case CLIReauthTransactionPurposeAccess:
+		return true
 	case CLIReauthTransactionPurposeAdapter:
 		return true
 	case CLIReauthTransactionPurposeApprove:
@@ -1185,6 +1207,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeCopy:
 		return true
 	case CLIReauthTransactionPurposeDeveloperCredential:
+		return true
+	case CLIReauthTransactionPurposeMint:
 		return true
 	case CLIReauthTransactionPurposePublish:
 		return true
@@ -6109,14 +6133,15 @@ type CLIReauthStart struct {
 }
 
 // CLIReauthStartRequest `adapter` carries an adapter-routing decision over an environment set.
-// Every non-adapter purpose carries an exact environment and key set. The
-// browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-// names exactly the unit the decision covers.
+// Every other purpose carries an exact environment and key set, except
+// `mint` and `access`, whose unit is their one environment and which carry
+// no keys. The browser runs the same purpose-bound ceremony the UI runs,
+// so `key_ids` names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
 	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	EnvironmentIds      []ID                             `json:"environment_ids"`
 
-	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
 	KeyIds        *[]ID                          `json:"key_ids,omitzero"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
@@ -6153,7 +6178,7 @@ type CLIReauthTransaction struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 
-	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`.
+	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
 	KeyIds      []ID                          `json:"key_ids"`
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`
@@ -6917,6 +6942,9 @@ type CredentialRotation struct {
 	EnvironmentId ID    `json:"environment_id"`
 	Generation    int64 `json:"generation"`
 
+	// HaltReason Present only while the state is halted: why the server stopped the rotation, as a fixed word.
+	HaltReason *RotationHaltReason `json:"halt_reason,omitzero"`
+
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id              ID    `json:"id"`
 	IntervalSeconds int64 `json:"interval_seconds"`
@@ -6924,8 +6952,17 @@ type CredentialRotation struct {
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
 	KeyId ID `json:"key_id"`
 
+	// LastRun The newest run, the top row of the runs list. Absent when the rotation has never run.
+	LastRun *RotationLastRun `json:"last_run,omitzero"`
+
 	// NextRunAt Set only while the rotation is active.
 	NextRunAt *time.Time `json:"next_run_at,omitzero"`
+
+	// OwedDropRuns How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop: those in phase revoke_refused (held on purpose, Hikyo does not drop the role) or quarantine (Hikyo may still retry the drop, but it needs a person to look), whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
+	OwedDropRuns int64 `json:"owed_drop_runs"`
+
+	// OwedDropRunsVersionsChanged The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first.
+	OwedDropRunsVersionsChanged int64 `json:"owed_drop_runs_versions_changed"`
 
 	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
 	ProviderId ID `json:"provider_id"`
@@ -6936,8 +6973,10 @@ type CredentialRotation struct {
 
 	// State `paused` is an operator or cascade pause (a deleted provider, a protected
 	// environment or an approval policy pauses the rotations it would break);
-	// `halted` is the executor's named stop after a failed authority gate. Only a
-	// full resume authorization leaves either. `disabled` is the soft delete.
+	// `halted` is the executor's named stop (a failed authority or pre-publish
+	// gate, or an exhausted retry window); the rotation's `halt_reason` names
+	// which. Only a full resume authorization leaves either. `disabled` is the
+	// soft delete.
 	State CredentialRotationState `json:"state"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
@@ -6957,8 +6996,10 @@ type CredentialRotationList struct {
 
 // CredentialRotationState `paused` is an operator or cascade pause (a deleted provider, a protected
 // environment or an approval policy pauses the rotations it would break);
-// `halted` is the executor's named stop after a failed authority gate. Only a
-// full resume authorization leaves either. `disabled` is the soft delete.
+// `halted` is the executor's named stop (a failed authority or pre-publish
+// gate, or an exhausted retry window); the rotation's `halt_reason` names
+// which. Only a full resume authorization leaves either. `disabled` is the
+// soft delete.
 type CredentialRotationState string
 
 // DEKRotation defines model for DEKRotation.
@@ -9090,7 +9131,10 @@ type Meta struct {
 	// `login` needs before any session exists, and the machine protocols
 	// an integration probes before using them, such as
 	// `delivery-target-report/<vocabulary>` for each delivery-target
-	// report vocabulary this server accepts.
+	// report vocabulary this server accepts. `desktop-app/1` means the
+	// instance serves the embedded web application and that application
+	// implements the desktop shell handoff protocol; an instance built
+	// without it never advertises the token.
 	ProtocolCapabilities []ProtocolCapability `json:"protocol_capabilities"`
 
 	// ServerVersion The build's version string; `dev` for unreleased builds.
@@ -10961,6 +11005,34 @@ type RotateSSHCARequest struct {
 
 	// PrivateKey An unencrypted private key to import as the new key. Omit to generate.
 	PrivateKey *string `json:"private_key,omitzero"`
+}
+
+// RotationHaltReason Why a halted rotation stopped, as a fixed word, never free text and never
+// provider detail. `retries_exhausted`: the cycle's retry window ran out
+// before a run could publish or extend the credential, so the delivered
+// credential is not extended. `authority_lost`: the recorded person no longer
+// holds the access the rotation needs, or one of its keys or its environment
+// is gone. `gate_failed`: a pre-publish gate refused, for example the
+// environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+// server writes (a legacy or restored value). OPEN enum: a later release may
+// add a word, so a client keeps an unrecognised one and says only that the
+// rotation is halted.
+type RotationHaltReason = string
+
+// RotationLastRun The newest run of a rotation, the top row of its runs list: metadata only.
+// Neither a role handle nor any provider detail is carried.
+type RotationLastRun struct {
+	// ErrorCode The fixed-word code of the run's last failure, if any, exactly as the runs list carries it. Never provider detail.
+	ErrorCode *string `json:"error_code,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Phase The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+	Phase RotationRunPhase `json:"phase"`
+
+	// PhaseAt RFC 3339 UTC, microsecond precision.
+	PhaseAt Timestamp `json:"phase_at"`
 }
 
 // RotationRun defines model for RotationRun.
@@ -14020,7 +14092,7 @@ type ListRevisionsParams struct {
 
 // ListRotationsParams defines parameters for ListRotations.
 type ListRotationsParams struct {
-	// IncludeDisabled List deleted (disabled) rotations as well. Off by default.
+	// IncludeDisabled List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
 	IncludeDisabled *bool `form:"include_disabled" json:"include_disabled,omitzero"`
 
 	// Limit Maximum rotations on this page, in id order.

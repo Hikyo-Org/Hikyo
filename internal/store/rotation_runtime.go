@@ -145,6 +145,10 @@ type RotationSettle struct {
 	// run at "never": the decision is made with the halt write, so a hold landing after
 	// the caller last read the rotation cannot strand the run.
 	DueIfHeld bool
+	// RestoreChecked says this settle follows a fresh read of the restore assertion
+	// (the revoke step). Without it a run held as published_versions_changed keeps
+	// that code through any settle that leaves it refused or quarantined.
+	RestoreChecked bool
 	// KeepLease leaves the lease held, for a settle that is followed by a
 	// provider call in the same claim.
 	KeepLease bool

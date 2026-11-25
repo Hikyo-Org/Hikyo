@@ -6,6 +6,11 @@ Scope: source and published documentation, security-channel evidence and unsent
 quarterly test preparation. Endpoint: signed PR for maintainer review. #79 stays
 open. This handoff does not update the release plan, acceptance ledger or roadmap.
 
+> **2026-11-20 (#1117):** the sections below, up to the dated section at the end, are the
+> October 28 snapshot and name the former `security@developwent.io` address and its August receipt. For the current
+> canonical `security@hikyo.app` receipt, checker commands and send address, use the
+> [dated section at the end](#canonical-fallback-receipt-2026-11-20-1117).
+
 ## Current disposition
 
 | Evidence | Result | What it establishes |
@@ -218,3 +223,73 @@ changed here; no database fixture is required for shell/docs-only changes.
 Independent review is NOTRUN. Cross-provider review is SKIPPED because the
 approved Anthropic subscription is unavailable; no paid/provider fallback or
 ADR waiver was used. Maintainer review and merge remain held.
+
+## Canonical fallback receipt (2026-11-20, #1117)
+
+Inspected `dev` at `521861891361ed9137ec153e9cc5126dc2e299c8`. This section adds to the
+October 28 snapshot above and does not change it. The snapshot's fallback rows, custody notes
+and commands describe the former address and stay as historical evidence. The
+release, docs and reliability gates have used `security@hikyo.app` since the
+contact migration (`b71b0de95`).
+
+### Two receipts, two addresses
+
+| Field | August record (historical) | October record (current) |
+| --- | --- | --- |
+| Address | `security@developwent.io` (former) | `security@hikyo.app` (canonical) |
+| Recorded by | `bead14076` (#126) | `4ca8cfa0e` ([#1120](https://github.com/Hikyo-Org/Hikyo/pull/1120)) |
+| Sent | `2026-08-13T07:09:44Z` | `2026-10-28T13:53:35Z` |
+| Received | `2026-08-13T07:09:54Z` | `2026-10-28T13:53:47Z` |
+| Message-ID SHA-256 | `b032cf8e5302aa852305cf9aadd8b24cfeb8b6e90811b918692a7c5c8b6a8093` | `82be0c88124869b240f8286c7f868b347de0d252fd86d3cbd4a0784cea3df2c1` |
+| Metadata file SHA-256 | `159adfcc4797325aff6b2fd875e3abd6e10553ce08294bb3f3fe93015f70ce84` | `33d6f0c98070e61f5edde00e1c10b1b1038b32bd3fe114b2b6e18eb8593f151b` |
+| 93-day boundary | `2026-11-14T07:09:54Z` (expired) | `2027-01-29T13:53:47Z` |
+| Passes the canonical fallback gate | No | Yes, until the boundary |
+
+Both metadata hashes were recomputed from the recording commits' blobs on 2026-11-20.
+The in-tree copy of the August record is `release/repository/fallback-channel-test-2026-08-13.json`.
+The August record never qualified `security@hikyo.app`. Between the migration
+and #1120, the canonical record was `pending` with null timestamps, so the gate
+failed. Keep the August values as history only. Do not copy them into the
+canonical record, and do not reset or reuse any timestamp or hash.
+
+### What the October record does and does not prove
+
+| Leg | Status | Source |
+| --- | --- | --- |
+| Independent external send, delivery to `security@hikyo.app` | Recovered | #1120: the times and Message-ID hash came from the original mailbox headers, and both Received timestamps agree. The originals are in protected custody. |
+| Maintainer acknowledgment sent | Recovered | #1120: a sent reply from the canonical address references the same original Message-ID. |
+| Original sender received the acknowledgment | Not located | No sender-side receipt has been recovered. This is unobserved, not failed. |
+| Acknowledgment within seven days | Not established | The reply's sent time and the sender-side receipt time are not recorded. |
+| PVR self-report submission, maintainer notification, acknowledgment, reporter receipt | HOLD | PVR is enabled (API `enabled: true`, re-read 2026-11-20). Neither the October snapshot nor #1117 records a qualifying private-report receipt. Enablement is not a receipt. |
+
+The fallback validator checks the attested delivery metadata. It does not
+validate PVR or prove acknowledgment. The record's own note says it covers
+fallback delivery only, not private-report or acknowledgment-receipt acceptance.
+
+### Checker commands (canonical)
+
+```sh
+scripts/ci/check-fallback-channel-test.sh \
+  release/repository/fallback-channel-test.json security@hikyo.app
+scripts/ci/check-docs-live.sh https://hikyo.app security@hikyo.app
+```
+
+Run on 2026-11-20 with the real clock:
+
+- The fallback check passed: "recent end-to-end notification receipt passed".
+- The live docs check passed. Its output also says "GET/MX checks do not prove notification delivery or acknowledgement".
+- The same record checked against the former address exits 1, so wrong-address evidence still fails.
+
+Clock-override runs of the committed record with `HIKYO_FALLBACK_TEST_NOW` show where the window ends:
+
+- It is accepted at `2027-01-29T13:53:47Z` and refused one second later.
+- These runs only locate the boundary. They are not acceptance evidence.
+
+### Remaining for #1117 (owner only)
+
+1. Before `2027-01-29T13:53:47Z`, or before any release check after it, record a newer genuine canonical receipt through a normal signed, DCO-signed PR. Send any new test to `security@hikyo.app`, not the former address in quarterly packet step 3. Otherwise the release and scheduled fallback gates fail again.
+2. From protected custody, recover the original sender's receipt of the October acknowledgment and its UTC time. If it cannot be found, record it as unobserved.
+3. Confirm the existing PVR submission, maintainer notification, acknowledgment and reporter receipt. Publish only redacted UTC times and hashes, as in steps 5 and 6 of the quarterly packet above.
+4. #1117 does not authorize an agent to send email, submit a report or notify anyone.
+
+Validation for this section: `git diff --check`, the two checker commands and the clock-override runs above. The change is documentation only, so no product tests apply.

@@ -1,26 +1,14 @@
 package cli
 
 import (
+	"cmp"
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
-	"maps"
-	"net"
-	"net/http"
-	"net/url"
-	"os/exec"
 	"runtime"
-	"slices"
-	"sync"
-	"time"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/clientauth"
 )
-
-const cliReauthCallbackPath = "/callback"
 
 // runCLIAdapterReauth binds the callback before opening the browser, then
 // silently rotates the local bearer after an exact state + PKCE exchange.
@@ -49,152 +37,98 @@ func runCLIReauthHandoffTarget(ctx context.Context, client *Client, state *State
 }
 
 func runCLIReauthHandoffIntents(ctx context.Context, client *Client, state *State, artifact SessionArtifact, purpose, operation string, environmentIDs, keyIDs []string, selfConfig *apigen.SelfConfigReauthIntent, developer *apigen.DeveloperCredentialReauthIntent, openURL func(string) error) error {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	rotated, err := clientauth.Reauth(ctx, authTransport{client}, clientauth.ReauthRequest{
+		Purpose: purpose, Operation: operation, EnvironmentIDs: environmentIDs, KeyIDs: keyIDs,
+		SelfConfig: selfConfig, DeveloperCredential: developer,
+	}, openURL)
 	if err != nil {
-		return failf(ExitUnavailable, "binding the CLI reauthentication callback: %v", err)
-	}
-	defer listener.Close()
-
-	rawVerifier := make([]byte, 32)
-	if _, err := rand.Read(rawVerifier); err != nil {
-		return failf(ExitInternal, "generating the CLI reauthentication proof: %v", err)
-	}
-	verifier := base64.RawURLEncoding.EncodeToString(rawVerifier)
-	digest := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(digest[:])
-	redirectURI := "http://" + listener.Addr().String() + cliReauthCallbackPath
-	environments := make([]apigen.ID, len(environmentIDs))
-	for i, environmentID := range environmentIDs {
-		environments[i] = apigen.ID(environmentID)
-	}
-	request := apigen.CLIReauthStartRequest{
-		SelfConfig:          selfConfig,
-		DeveloperCredential: developer,
-		Purpose:             apigen.CLIReauthStartRequestPurpose(purpose),
-		Operation:           apigen.CLIReauthStartRequestOperation(operation),
-		EnvironmentIds:      environments,
-		PkceChallenge:       challenge,
-		RedirectUri:         redirectURI,
-	}
-	if len(keyIDs) > 0 {
-		keys := make([]apigen.ID, len(keyIDs))
-		for i, keyID := range keyIDs {
-			keys[i] = apigen.ID(keyID)
-		}
-		request.KeyIds = &keys
-	}
-	var started apigen.CLIReauthStart
-	if err := client.Do(ctx, http.MethodPost, api.PathPrefix+"/auth/cli-reauth/start", request, &started); err != nil {
 		return err
 	}
-
-	target, err := url.Parse(client.Entry.Origin)
-	if err != nil {
-		return failf(ExitInternal, "the trusted instance origin is invalid: %v", err)
-	}
-	target.Path = "/reauth/cli"
-	target.RawPath = ""
-	target.RawQuery = url.Values{"transaction": []string{started.State}}.Encode()
-	target.Fragment = ""
-
-	code := make(chan string, 1)
-	var callbackOnce sync.Once
-	callback := http.NewServeMux()
-	callback.HandleFunc(cliReauthCallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !exactCallbackQuery(r.URL.Query(), started.State) {
-			http.Error(w, "This CLI authorization callback did not match the request.", http.StatusBadRequest)
-			return
-		}
-		accepted := false
-		callbackOnce.Do(func() {
-			accepted = true
-			code <- r.URL.Query().Get("code")
-		})
-		if accepted {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte("CLI authorization received. Return to the terminal.\n"))
-			return
-		}
-		http.Error(w, "This CLI authorization callback was already used.", http.StatusConflict)
-	})
-	server := &http.Server{Handler: callback, ReadHeaderTimeout: 5 * time.Second}
-	defer server.Close()
-	go func() { _ = server.Serve(listener) }()
-
-	if openURL == nil {
-		openURL = OpenBrowser
-	}
-	if err := openURL(target.String()); err != nil {
-		return failf(ExitUnavailable, "opening the browser for CLI authorization: %v", err)
-	}
-
-	wait := time.Until(started.ExpiresAt)
-	if wait <= 0 || wait > 5*time.Minute {
-		wait = 5 * time.Minute
-	}
-	deadline := time.NewTimer(wait)
-	defer deadline.Stop()
-	select {
-	case value := <-code:
-		return redeemCLIReauth(ctx, client, state, artifact, value, []byte(verifier))
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-deadline.C:
-		return failf(ExitAuth, "CLI authorization expired; start the command again")
-	}
-}
-
-func exactCallbackQuery(values url.Values, state string) bool {
-	keys := slices.Sorted(maps.Keys(values))
-	return slices.Equal(keys, []string{"code", "state"}) && len(values["code"]) == 1 && values.Get("code") != "" && len(values["state"]) == 1 && values.Get("state") == state
+	return storeRotatedSession(client, state, artifact, rotated)
 }
 
 // OpenBrowser launches the platform browser for the CLI front channel.
-func OpenBrowser(target string) error {
-	command, err := browserCommand(target, runtime.GOOS)
-	if err != nil {
-		return err
+func OpenBrowser(target string) error { return clientauth.OpenBrowser(target) }
+
+// noGraphicalSession reports a host where a browser cannot be shown: any OS but
+// macOS and Windows with none of DISPLAY, WAYLAND_DISPLAY and BROWSER. Launchers such as xdg-open start
+// fine there and then never show anything, so the handoff would wait out its
+// five minutes. macOS and Windows are not checked: `open` over SSH still targets
+// the GUI session. A set BROWSER is honoured by xdg-open and VS Code Remote, so
+// a host with it can complete the handoff without a display.
+func noGraphicalSession(goos string, getenv func(string) string) bool {
+	switch goos {
+	case "darwin", "windows":
+		return false
 	}
-	if err := command.Start(); err != nil {
-		return fmt.Errorf("starting the browser: %w", err)
-	}
-	_ = command.Process.Release()
-	return nil
+	return getenv("DISPLAY") == "" && getenv("WAYLAND_DISPLAY") == "" && getenv("BROWSER") == ""
 }
 
-// Validate before invoking an OS URL handler, which may also open files or
-// dispatch custom schemes to other applications. Do not echo handoff tokens.
-func browserCommand(target, platform string) (*exec.Cmd, error) {
-	u, err := url.Parse(target)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
-		return nil, fmt.Errorf("browser URL must be an absolute http or https URL without credentials")
+// browserChoice says which control made the browser the ceremony and what undoes
+// it. The remedy is conditional because a window above 0 only offers a code;
+// it does not prove an authenticator is enrolled. Every chosen-browser message
+// is built from it.
+func (s *State) browserChoice(instance string) (cause, remedy string, err error) {
+	m, err := s.ReauthMethodFor(instance)
+	if err != nil {
+		return "", "", err
 	}
-	switch platform {
-	case "darwin":
-		return exec.Command("open", target), nil
-	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", target), nil
+	setting := m == ReauthBrowser
+	config := "`hikyo config set reauth.method auto --instance " + instance + "`"
+	switch {
+	case s.forceBrowser && setting:
+		return "--approve-in-browser and reauth.method", "drop --approve-in-browser and run " + config, nil
+	case setting:
+		return "reauth.method", "run " + config, nil
 	default:
-		return exec.Command("xdg-open", target), nil
+		return "--approve-in-browser", "drop --approve-in-browser", nil
 	}
+}
+
+// chosenBrowserOpener is the opener for a ceremony the account picked with
+// reauth.method or --approve-in-browser although a typed code was offered. It
+// refuses before the handoff starts on a host with no graphical session, says so
+// before the handoff waits, and names the remedy when no browser can be opened.
+// The handoff URL is not printed: it carries the opaque transaction state (see
+// OpenBrowser).
+func chosenBrowserOpener(ios IO, st *State, instance string) (func(string) error, error) {
+	cause, remedy, err := st.browserChoice(instance)
+	if err != nil {
+		return nil, err
+	}
+	tail := remedy + " to enter an authenticator code here, if one is enrolled"
+	if noGraphicalSession(cmp.Or(ios.HostOS, runtime.GOOS), ios.Env.Getenv) {
+		return nil, failf(ExitAuth, "you chose the browser approval (%s), but this host has no graphical session (DISPLAY, WAYLAND_DISPLAY and BROWSER are all empty); %s", cause, tail)
+	}
+	open := ios.OpenURL
+	if open == nil {
+		open = OpenBrowser
+	}
+	return func(target string) error {
+		_, _ = fmt.Fprintf(ios.Stderr, "You chose the browser approval (%s); waiting for it. With no browser here, press Ctrl-C and %s.\n", cause, tail)
+		if err := open(target); err != nil {
+			return fmt.Errorf("%w; you chose the browser approval (%s), so no code prompt was offered: %s", err, cause, tail)
+		}
+		return nil
+	}, nil
 }
 
 // redeemCLIReauth completes a browser-approved handoff and replaces the local
 // bearer without returning it to any rendering or logging path.
 func redeemCLIReauth(ctx context.Context, client *Client, state *State, artifact SessionArtifact, code string, verifier []byte) error {
-	var result apigen.CLIReauthRedeemed
-	request := apigen.CLIReauthRedeemRequest{Code: code, PkceVerifier: string(verifier)}
-	if err := client.Do(ctx, http.MethodPost, api.PathPrefix+"/auth/cli-reauth/redeem", request, &result); err != nil {
+	rotated, err := clientauth.RedeemReauth(ctx, authTransport{client}, code, verifier)
+	if err != nil {
 		return err
 	}
-	if result.SessionToken == "" {
-		return failf(ExitInternal, "server returned no rotated CLI session token")
-	}
-	artifact.Token = result.SessionToken
-	artifact.SessionID = string(result.SessionId)
+	return storeRotatedSession(client, state, artifact, rotated)
+}
+
+func storeRotatedSession(client *Client, state *State, artifact SessionArtifact, rotated clientauth.RotatedSession) error {
+	artifact.Token = rotated.Token
+	artifact.SessionID = rotated.SessionID
 	if err := state.PutSession(artifact); err != nil {
 		return err
 	}
-	client.Bearer = result.SessionToken
+	client.Bearer = rotated.Token
 	return nil
 }
