@@ -43,7 +43,7 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
 
 ## Tested revision
 
-- Code revision `6d420e5f1` (stacked on #1549 `41bcc4a95`): the release, audit-registry and
+- Code revision `6d420e5f1`, before a later restack onto #1549 that changed no slice 5 file: the release, audit-registry and
   pin tests (`TestIncidentRelease*`, `TestReleasePrincipalContainmentBindsTheContainingIncident`,
   `TestInvariantAuditRegistryClosure`, `TestInvariant13AllowlistPinning`, `TestAuditCore`) pass
   on SQLite and PostgreSQL 18 (checked before the restack onto #1549; the restack changed no
