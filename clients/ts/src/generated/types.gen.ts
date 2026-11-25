@@ -4711,7 +4711,7 @@ export type AccessResolution = {
      */
     needs_see: Array<AccessPrincipal>;
     /**
-     * Members of the org that no grant or rule of theirs reaches here.
+     * Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
      */
     none: Array<AccessPrincipal>;
 };
