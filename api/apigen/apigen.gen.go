@@ -5137,7 +5137,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
@@ -5340,7 +5340,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -6545,7 +6545,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.

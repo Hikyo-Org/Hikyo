@@ -63,7 +63,7 @@ export function providerLabel(provider: string): string {
     case 'github-actions':
       return 'GitHub Actions';
     case 'sealed-webhook':
-      return 'Sealed webhook';
+      return 'Encrypted webhook';
     case 'vault-kv':
       return 'Vault / OpenBao KV';
     case 'aws-secrets-manager':

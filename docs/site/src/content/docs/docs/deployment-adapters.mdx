@@ -1,6 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo, GitHub Actions, GitLab, Cloudflare, AWS Secrets Manager, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, GitLab, Cloudflare, AWS Secrets Manager, Vault/OpenBao KV v2, or an encrypted webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -32,7 +32,7 @@ reads settings but decodes only names and types, discarding plaintext fields.
 AWS and Vault read metadata only; their provider sections explain how metadata
 detects external changes. CI adapters cannot detect provider-side value drift;
 run a converge to restore published Hikyo values. The
-[sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
+[encrypted webhook](#encrypted-webhook-receivers) adapter pushes to a generic HTTPS receiver
 an instance administrator has pinned; it has no read path at all.
 
 ## Requirements
@@ -652,14 +652,16 @@ hikyo adapter create --provider vault-kv \
 For a private Vault address, add an egress exception keyed by
 `https://HOST:PORT` (without the namespace).
 
-## Sealed webhook receivers
+## Encrypted webhook receivers
 
-The `sealed-webhook` adapter pushes values to your own HTTPS service. Each
+The encrypted webhook adapter pushes values to your own HTTPS service. Its
+provider type is `sealed-webhook`, the name that the CLI, the API and the
+stored adapter keep. Each
 value is encrypted to the receiver's pinned age key and each request is
 signed by the Hikyo instance, so the values never appear in a URL, header,
 log, audit payload, or response. The receiver answers with a signed
 acknowledgement bound to the exact request. The wire contract is
-[the sealed webhook protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/sealed-webhook.md),
+[the receiver protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/sealed-webhook.md),
 and `cmd/hikyo-receiver-example` is a reference receiver.
 
 **Endpoints are instance configuration.** A project cannot point Hikyo at an
@@ -709,7 +711,7 @@ acknowledgement (wrong key, bad signature, wrong request binding) fails the
 job and marks the target as needing attention. A receiver refuses to
 overwrite a name it did not receive from this target and answers `conflict`.
 Resolve it by releasing the name on the receiver or renaming with a prefix;
-`hikyo adapter adopt` is refused for sealed-webhook targets because the
+`hikyo adapter adopt` is refused for encrypted webhook targets because the
 protocol has no adopt intent.
 
 **Rotation.** To rotate the Hikyo signing key, pin the new public key on the

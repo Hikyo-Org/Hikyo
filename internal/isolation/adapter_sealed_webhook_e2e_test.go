@@ -322,7 +322,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_sw_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',`+ts+`)`)
 	kr := probeKeyring(t, db)
 	svc := &service.Adapters{DB: db, Keyring: kr, ModuleFactory: func(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
-		if provider != adapter.SealedWebhookProvider {
+		if provider != adapter.EncryptedWebhookProvider {
 			return nil, fmt.Errorf("unexpected provider %s", provider)
 		}
 		module, release, err := reg.build(config.Origin, credential)
@@ -333,7 +333,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	}}
 	operator := service.LocalPrincipal(alice)
 	created, err := svc.Create(ctx, operator, scope, service.CreateAdapterRequest{
-		Provider: string(adapter.SealedWebhookProvider), Origin: recv.origin, Credential: []byte(swBinding),
+		Provider: string(adapter.EncryptedWebhookProvider), Origin: recv.origin, Credential: []byte(swBinding),
 		Target: service.AdapterTargetInput{
 			EnvironmentID: string(envA1), DestinationKind: string(adapter.Organization), DestinationOwner: swNamespace,
 			KeySelection: &service.AdapterKeySelection{Include: []string{"SHARED_*"}},

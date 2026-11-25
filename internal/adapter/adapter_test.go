@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, EncryptedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}
@@ -237,7 +237,7 @@ func TestDestinationKindsArePartitionedByProvider(t *testing.T) {
 	entries := []ManifestEntry{{KeyID: "key", CanonicalName: "TOKEN", Classification: SecretClassification, Value: "abcdefgh"}}
 	cases := map[Provider][]Destination{
 		GitLabProvider:            {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}},
-		SealedWebhookProvider:     {{Kind: Organization, Owner: "receiver"}},
+		EncryptedWebhookProvider:  {{Kind: Organization, Owner: "receiver"}},
 		CloudflareProvider:        {{Kind: WorkersScript, Owner: "account", Name: "script"}, {Kind: PagesProject, Owner: "account", Name: "project", Environment: "preview"}},
 		VaultKVProvider:           {{Kind: Repository, Owner: "secret", Name: "app"}},
 		ForgejoProvider:           {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}},
