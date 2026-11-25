@@ -157,9 +157,9 @@ fetches the signed revocation list (default: the `trust` release assets in
 `Hikyo-Org/Hikyo`, or the mirror in
 `HIKYO_UPGRADE_REVOCATION_URL`) and remembers the highest sequence it saw in
 `HIKYO_UPGRADE_STATE_DIR`, which is required for bridge routes. An unreachable
-endpoint falls back to `not_after` and is logged; a reachable but invalid answer
+endpoint falls back to `not_after` and logs a warning; a reachable but invalid answer
 refuses the route. `HIKYO_UPGRADE_REVOCATION_CHECK=off` skips the network and is
-your explicit decision to rely on `not_after` alone. Ordinary upgrades never
+your explicit decision to rely on `not_after` alone (also logged as a warning). `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` from the service environment file reach the upgrade child, so a proxy-only host can reach the endpoint. Ordinary upgrades never
 contact the endpoint.
 
 Fresh installation pins the configured operator public key before database
