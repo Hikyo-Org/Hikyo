@@ -27,6 +27,7 @@ api) shift ;;
 pr)
 	shift
 	printf '%s|pr %s\n' "$GH_TOKEN" "$*" >>"$CALLS"
+	[ -z "${ARM_FAIL:-}" ] || exit 1
 	exit 0
 	;;
 *) exit 9 ;;
@@ -65,6 +66,8 @@ if [ "$method" != GET ]; then
 		409) fail_with 'Merge conflict (HTTP 409)' ;;
 		500) fail_with 'Server Error (HTTP 500)' ;;
 		201) printf '%s' "$MERGED" >"$BRANCH_FILE" ;;
+		# An existing branch already holds main; a fresh one at dev stays there.
+		204) ;;
 		esac
 		;;
 	'DELETE '*)
@@ -81,6 +84,7 @@ repos/o/r/git/ref/heads/dev)
 	[ "$DEV_REF" != 404 ] || fail_with 'Not Found (HTTP 404)'
 	json="{\"object\":{\"sha\":\"$DEV_REF\"}}"
 	;;
+repos/o/r/git/ref/heads/main) json="{\"object\":{\"sha\":\"$MAIN\"}}" ;;
 repos/o/r/git/ref/heads/backmerge/auto-*)
 	sha=$(cat "$BRANCH_FILE")
 	[ "$sha" != 404 ] || fail_with 'Not Found (HTTP 404)'
@@ -109,7 +113,8 @@ fail() {
 # Defaults describe an ordinary back-merge; each case overrides what it tests.
 reset() {
 	DEV_REF=$dev COMPARE=$content PULLS='[]' PULL='{}' REFS='[]' MERGE=201 DELETE_MISSING='' DATE=20261124
-	MAIN=$main DONE=$done_sha MERGED=$merged
+	MAIN=$main DONE=$done_sha MERGED=$merged RUN_SHA=$main ARM_FAIL=''
+	export RUN_SHA ARM_FAIL
 	printf '404' >"$work/branch"
 	export DEV_REF COMPARE PULLS PULL REFS MERGE DELETE_MISSING MAIN DONE MERGED
 }
@@ -117,7 +122,7 @@ run() {
 	for log in calls reads; do : >"$work/$log"; done
 	status=0
 	GH_BIN=$work/gh CALLS=$work/calls READS=$work/reads BODY=$work/body BRANCH_FILE=$work/branch \
-		GH_REPO=o/r GITHUB_SHA=$main GH_TOKEN=read-token APP_TOKEN=app-token \
+		GH_REPO=o/r GITHUB_SHA=$RUN_SHA GH_TOKEN=read-token APP_TOKEN=app-token \
 		BACKMERGE_NOW=$now BACKMERGE_DATE=$DATE GITHUB_STEP_SUMMARY=$work/summary \
 		"$script" >"$work/out" 2>"$work/err" || status=$?
 	if grep -v '^read-token|' "$work/reads" >/dev/null; then fail 'a read used the App token'; fi
@@ -140,8 +145,8 @@ expect_stuck() {
 	grep -F -- "$3" "$work/err" >/dev/null || fail "$1 did not say '$3': $(cat "$work/err")"
 }
 expect_refused() { expect_stuck "$1" '' "$2"; }
-# Arguments: number, head ref, repository, author id (the release App by default).
-pulls() { printf '[{"number":%s,"user":{"id":%s},"head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}]' "$1" "${4:-320493937}" "$2" "$other" "${3:-O/R}"; }
+# Arguments: number, head ref, repository, author id (the release App by default), base.
+pulls() { printf '[{"number":%s,"user":{"id":%s},"base":{"ref":"%s"},"head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}]' "$1" "${4:-320493937}" "${5:-dev}" "$2" "$other" "${3:-O/R}"; }
 # Arguments: mergeable, mergeable_state, auto_merge, age in seconds.
 detail() {
 	created=$(date -u -r $((now - ${4:-60})) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$((now - ${4:-60}))" +%Y-%m-%dT%H:%M:%SZ)
@@ -151,6 +156,7 @@ detail() {
 create_ref="app-token|POST repos/o/r/git/refs ref=refs/heads/$branch sha=$dev"
 merge_call="app-token|POST repos/o/r/merges base=$branch head=$main commit_message=Merge main fffffff into dev"
 open_call="app-token|POST repos/o/r/pulls title=chore(release): back-merge main into dev head=$branch base=dev body=..."
+upd="app-token|POST repos/o/r/merges base=$old head=$main commit_message=Merge main fffffff into dev"
 arm_new="app-token|pr merge 88 --repo o/r --auto --merge --match-head-commit $merged"
 fresh="$create_ref
 $merge_call
@@ -179,14 +185,47 @@ reset
 printf '%s' "$other" >"$work/branch"
 expect_refused 'an existing branch' "$branch already exists at $other"
 
-# 204: the branch already contains main, so the head stays at dev.
+# 204 on a fresh branch leaves it at dev: there is nothing to propose.
 reset
 MERGE=204
-expect_ok 'merge 204'
-expect_calls 'merge 204' "$create_ref
-$merge_call
-$open_call
-app-token|pr merge 88 --repo o/r --auto --merge --match-head-commit $dev"
+expect_stuck 'merge 204 on a fresh branch' "$create_ref
+$merge_call" 'left it at dev'
+
+# 204 on an open back-merge: its branch already holds main.
+reset
+PULLS=$(pulls 70 "$old")
+printf '%s' "$merged" >"$work/branch"
+PULL=$(detail true clean '{"x":1}')
+MERGE=204
+expect_ok 'merge 204 on an open back-merge'
+expect_calls 'merge 204 on an open back-merge' "$upd"
+
+# A re-run keeps its old GITHUB_SHA; main's live tip is what counts.
+reset
+RUN_SHA=$done_sha
+expect_ok 'a re-run of an older main commit'
+expect_calls 'a re-run of an older main commit' "$fresh"
+
+# A pattern branch heading a pull request into another base is in use: keep it.
+reset
+COMPARE='{"status":"identical","total_commits":0,"commits":[]}'
+PULLS=$(pulls 75 "$old" O/R 320493937 main)
+REFS="[{\"ref\":\"refs/heads/$old\",\"object\":{\"sha\":\"$other\"}}]"
+expect_ok 'a branch used by a pull request into main'
+expect_calls 'a branch used by a pull request into main' ''
+
+# A failed re-arm still reports an overdue back-merge's recovery route.
+reset
+PULLS=$(pulls 70 "$old")
+printf '%s' "$merged" >"$work/branch"
+PULL=$(detail true blocked null 30000)
+ARM_FAIL=1
+expect_stuck 'a failed re-arm of an overdue back-merge' "$upd
+app-token|pr merge 70 --repo o/r --auto --merge --match-head-commit $merged" 'branching.md#manual-back-merge'
+# A younger one reports the re-arm failure itself.
+PULL=$(detail true blocked null)
+expect_stuck 'a failed re-arm' "$upd
+app-token|pr merge 70 --repo o/r --auto --merge --match-head-commit $merged" 'could not be queued again'
 
 reset
 MERGE=409
@@ -232,7 +271,6 @@ expect_ok 'truncated merges'
 expect_calls 'truncated merges' "$fresh"
 
 # An open back-merge takes the new main into its own branch.
-upd="app-token|POST repos/o/r/merges base=$old head=$main commit_message=Merge main fffffff into dev"
 reset
 PULLS=$(pulls 70 "$old")
 printf '%s' "$merged" >"$work/branch"
@@ -337,7 +375,7 @@ reset
 DATE=2026-11-24
 expect_refused 'an invalid date' 'invalid date'
 reset
-PULLS='[{"number":"x","user":{"id":320493937},"head":{"ref":"backmerge/auto-20261120-1234567","sha":"","repo":{"full_name":"o/r"}}}]'
+PULLS='[{"number":"x","user":{"id":320493937},"base":{"ref":"dev"},"head":{"ref":"backmerge/auto-20261120-1234567","sha":"","repo":{"full_name":"o/r"}}}]'
 expect_refused 'an invalid number' 'invalid pull request number'
 reset
 PULLS=$(pulls 70 "$old")
@@ -351,7 +389,7 @@ MERGE=204
 printf 'nothex' >"$work/branch"
 expect_stuck 'an invalid head commit' "$upd" 'invalid head commit'
 reset
-PULLS="[{\"number\":70,\"user\":{\"id\":320493937},\"head\":{\"ref\":\"$old\",\"sha\":\"$other\",\"repo\":{\"full_name\":\"o/r\"}}},{\"number\":71,\"user\":{\"id\":320493937},\"head\":{\"ref\":\"backmerge/auto-20261121-7654321\",\"sha\":\"$other\",\"repo\":{\"full_name\":\"o/r\"}}}]"
+PULLS="[{\"number\":70,\"user\":{\"id\":320493937},\"base\":{\"ref\":\"dev\"},\"head\":{\"ref\":\"$old\",\"sha\":\"$other\",\"repo\":{\"full_name\":\"o/r\"}}},{\"number\":71,\"user\":{\"id\":320493937},\"base\":{\"ref\":\"dev\"},\"head\":{\"ref\":\"backmerge/auto-20261121-7654321\",\"sha\":\"$other\",\"repo\":{\"full_name\":\"o/r\"}}}]"
 expect_refused 'two automatic back-merges' 'are both automatic back-merges'
 
 printf 'nightly backmerge fixture passed\n'

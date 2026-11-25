@@ -58,6 +58,8 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
       - name: Back-merge main into dev
+        # Leaves promotion time inside the job's deadline if an API call stalls.
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
           APP_TOKEN: ${{ steps.app.outputs.token }}

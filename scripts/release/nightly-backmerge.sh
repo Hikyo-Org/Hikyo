@@ -59,8 +59,8 @@ stuck() {
 # Merges main into branch $1. Returns 1 on a conflict (HTTP 409); 201 is a new
 # merge commit and 204 (no output) means the branch already contains main.
 merge_main() {
-	if write api -X POST "repos/$GH_REPO/merges" -f "base=$1" -f "head=$GITHUB_SHA" \
-		-f "commit_message=Merge main $(printf '%.7s' "$GITHUB_SHA") into dev" >/dev/null 2>"$work/err"; then
+	if write api -X POST "repos/$GH_REPO/merges" -f "base=$1" -f "head=$main_sha" \
+		-f "commit_message=Merge main $short into dev" >/dev/null 2>"$work/err"; then
 		return 0
 	elif grep -F '(HTTP 409)' "$work/err" >/dev/null; then
 		return 1
@@ -71,12 +71,11 @@ merge_main() {
 is_sha() { printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 
 printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || die 'invalid repository'
-is_sha "$GITHUB_SHA" || die 'invalid main commit'
+is_sha "$GITHUB_SHA" || die 'invalid workflow commit'
 now=${BACKMERGE_NOW:-$(date +%s)}
 printf '%s\n' "$now" | grep -Eq '^[0-9]+$' || die 'invalid clock'
 date_utc=${BACKMERGE_DATE:-$(date -u +%Y%m%d)}
 printf '%s\n' "$date_utc" | grep -Eq '^[0-9]{8}$' || die 'invalid date'
-short=$(printf '%.7s' "$GITHUB_SHA")
 tab=$(printf '\t')
 
 dev_sha=$(branch_sha dev)
@@ -85,6 +84,11 @@ if [ -z "$dev_sha" ]; then
 	exit 0
 fi
 is_sha "$dev_sha" || die 'invalid dev commit'
+# Main's live tip, not this run's commit: a re-run keeps an old GITHUB_SHA and must
+# not judge, merge or close against it. Every main commit passed the merge queue.
+main_sha=$(branch_sha main)
+is_sha "$main_sha" || die 'invalid main commit'
+short=$(printf '%.7s' "$main_sha")
 
 # Only this repository's pull requests count. A back-merge is automatic only when
 # the release App opened it (the id the landed job pins); the same branch name
@@ -92,14 +96,14 @@ is_sha "$dev_sha" || die 'invalid dev commit'
 # classified in jq, so a branch name reaches the shell only after matching the
 # exact pattern.
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
-"$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=dev&per_page=100" --jq \
-	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\") | (.head.ref | test(\"$branch_re\")) as \$named | [.number, (if \$named and .user.id == 320493937 then \"auto\" elif \$named then \"other\" elif (.head.ref | startswith(\"backmerge/\")) then \"human\" else \"other\" end), .head.ref] | @tsv" >"$work/open"
+"$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&per_page=100" --jq \
+	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\") | (.head.ref | test(\"$branch_re\")) as \$named | [.number, (if .base.ref != \"dev\" then \"other\" elif \$named and .user.id == 320493937 then \"auto\" elif \$named then \"other\" elif (.head.ref | startswith(\"backmerge/\")) then \"human\" else \"other\" end), .head.ref] | @tsv" >"$work/open"
 auto='' auto_ref='' human=''
 : >"$work/heads"
 while IFS=$tab read -r number kind ref; do
 	[ -n "$number" ] || continue
 	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
-	# Every open head is in use, whatever its kind.
+	# Every open head is in use, whatever its kind or base.
 	printf '%s\n' "$ref" >>"$work/heads"
 	case "$kind" in
 	human)
@@ -145,7 +149,7 @@ retire_auto() {
 }
 
 # Commits main has that dev lacks.
-compare=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...$GITHUB_SHA")
+compare=$("$GH_BIN" api "repos/$GH_REPO/compare/dev...$main_sha")
 status=$(printf '%s' "$compare" | jq -er '.status')
 case "$status" in
 behind | identical)
@@ -188,14 +192,20 @@ PR
 	if [ "$mergeable" = false ] || [ "$state" = dirty ]; then
 		stuck "$pr_url" 'it conflicts with dev'
 	fi
-	# Re-arm before the age check, so an old pull request still gets its chance.
+	# Re-arm before the age check, so an old pull request still gets its chance. A
+	# failed re-arm still lets an overdue one report its recovery route.
+	rearm=ok
 	if [ "$armed" != true ]; then
-		write pr merge "$auto" --repo "$GH_REPO" --auto --merge --match-head-commit "$head"
-		note "nightly-backmerge: queued back-merge #$auto again."
+		if write pr merge "$auto" --repo "$GH_REPO" --auto --merge --match-head-commit "$head"; then
+			note "nightly-backmerge: queued back-merge #$auto again."
+		else
+			rearm=failed
+		fi
 	fi
 	if [ $((now - created)) -gt "$max_age" ]; then
 		stuck "$pr_url" "it has not landed after more than $((max_age / 3600)) hours"
 	fi
+	[ "$rearm" = ok ] || die "back-merge #$auto could not be queued again"
 	note "nightly-backmerge: back-merge #$auto now carries main $short and is queued."
 	exit 0
 fi
@@ -208,6 +218,9 @@ write api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=
 merge_main "$branch" || stuck "$server/$GH_REPO/tree/$branch" 'main conflicts with dev'
 head=$(branch_sha "$branch")
 is_sha "$head" || die "invalid commit on $branch"
+# Dev lacks main, so the merge must have moved the branch; a head equal to dev has
+# nothing to propose.
+[ "$head" != "$dev_sha" ] || die "merging main into $branch left it at dev"
 body=$(printf 'Merges main %s into dev so the next promotion'\''s CI-definition check passes.\n\nOpened and queued by nightly-promote.yml (nightly-backmerge). The head is its own merge commit, never main. Do not push to this branch.\n\nIf it conflicts, resolve it by hand: %s\n' "$short" "$docs")
 number=$(write api -X POST "repos/$GH_REPO/pulls" -f 'title=chore(release): back-merge main into dev' \
 	-f "head=$branch" -f base=dev -f "body=$body" --jq '.number')

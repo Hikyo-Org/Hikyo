@@ -23,13 +23,15 @@ printf '%s\n' "$GH_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || fail 
 now=${PROMOTION_HEALTH_NOW:-$(date +%s)}
 printf '%s\n' "$now" | grep -Eq '^[0-9]{1,12}$' || fail 'invalid clock'
 since=$((now - window))
+# The window counts from completion, but the API filters by creation: list runs
+# created up to six hours earlier, longer than one can queue and run.
 # jq formats the timestamp, since GNU and BSD date disagree on how.
-since_iso=$(jq -nr "$since | todate")
+listed_iso=$(jq -nr "$((since - 21600)) | todate")
 
 # The window bounds the listing, which every merge to main also adds runs to. The
 # landing trigger is the only other event, and its runs are not promotions.
-"$GH_BIN" api --paginate "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$since_iso&per_page=100" --jq \
-	".workflow_runs[] | select(.event != \"pull_request_target\" and ((.created_at | fromdateiso8601?) // 0) >= $since) | [.created_at, .id, (.conclusion // \"-\")] | @tsv" \
+"$GH_BIN" api --paginate "repos/$GH_REPO/actions/workflows/nightly-promote.yml/runs?branch=main&status=completed&created=%3E%3D$listed_iso&per_page=100" --jq \
+	".workflow_runs[] | select(.event != \"pull_request_target\" and ((.updated_at | fromdateiso8601?) // 0) >= $since) | [.created_at, .id, (.conclusion // \"-\")] | @tsv" \
 	>"$work/runs" 2>"$work/err" || {
 	# gh's reason, kept from being read as a workflow command.
 	head -n 5 "$work/err" | tr -cd '[:print:]\n' | sed 's/::/: :/g' >&2

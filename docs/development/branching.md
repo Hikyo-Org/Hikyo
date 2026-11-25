@@ -214,7 +214,10 @@ a PR over three hours old, even when the run also re-arms or replaces it.
 Dev must contain main before promotion can pass: the source proof refuses a dev whose
 CI definitions differ from main's, and hotfixes land on main directly. `nightly-promote`
 therefore back-merges main into dev automatically, first thing each run and right after
-every merged non-promotion PR into main. When main has real commits dev lacks, it creates
+every merged PR into main whose head is a branch of this repository not named
+`release/nightly-*`. A merged fork PR starts no immediate back-merge; the next scheduled
+or manual run picks it up. It works from main's live tip, so a re-run of an older run
+acts on current main. When main has real commits dev lacks, it creates
 `backmerge/auto-<yyyymmdd>-<main sha7>` at dev, merges main into it through the merges
 API, opens a `chore(release): back-merge main into dev` PR from that branch, and queues
 auto-merge on the exact head. The head is always its own merge commit, never `main`
@@ -248,7 +251,10 @@ changes `ci-dev-gate.yml` therefore cannot flow through the automatic back-merge
 gate refuses it and, after six hours, the run reports it stuck. That case needs a manual
 back-merge whose head is main's exact SHA: push `backmerge/main-into-dev-<yyyymmdd>` at
 main's tip, with no merge commit of its own, and open its PR into `dev`. The automatic
-back-merge treats it as manual and stands aside.
+back-merge treats it as manual and stands aside. If that exact-main head also conflicts
+with dev, there is no self-service route: resolving the conflict changes the head's SHA,
+which the gate then refuses. Escalate to a maintainer, who decides whether to change the
+dev side first or adjust the gate.
 
 A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
 written, because nightlies reuse proof instead of running the full graph. It

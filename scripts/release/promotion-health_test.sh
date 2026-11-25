@@ -34,9 +34,9 @@ fail() {
 	printf 'promotion health fixture failed: %s\n' "$1" >&2
 	exit 1
 }
-# Arguments: age in hours, id, conclusion, event.
+# Arguments: age in hours, id, conclusion, event, and the hours it ran (default 0).
 iso() { jq -nr "$((now - $1 * 3600)) | todate"; }
-rec() { printf '{"created_at":"%s","id":%s,"conclusion":%s,"event":"%s"}' "$(iso "$1")" "$2" "$3" "$4"; }
+rec() { printf '{"created_at":"%s","updated_at":"%s","id":%s,"conclusion":%s,"event":"%s"}' "$(iso "$1")" "$(iso "$(($1 - ${5:-0}))")" "$2" "$3" "$4"; }
 runs() { printf '{"workflow_runs":[%s]}' "$1"; }
 run() {
 	: >"$work/reads"
@@ -69,6 +69,8 @@ expect_fail 'only landing runs' "$(runs "$(rec 2 104 '"success"' pull_request_ta
 # The API filters the window; the script checks it too.
 expect_fail 'a run older than the window' "$(runs "$(rec 37 105 '"success"' schedule)")" 'has stopped running'
 expect_pass 'a run inside the window' "$(runs "$(rec 35 106 '"success"' schedule)")"
+# The window counts from completion: started before it, finished inside it.
+expect_pass 'a run that finished inside the window' "$(runs "$(rec 37 109 '"success"' schedule 2)")"
 
 # The newest run by creation time counts, wherever it is listed.
 mixed="$(rec 30 110 '"failure"' schedule),$(rec 6 111 '"success"' schedule),$(rec 20 112 '"failure"' schedule)"

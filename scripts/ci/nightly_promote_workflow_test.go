@@ -14,18 +14,21 @@ type promoteWorkflow struct {
 	On          map[string]yaml.Node `yaml:"on"`
 	Permissions map[string]string    `yaml:"permissions"`
 	Jobs        map[string]struct {
-		If          string            `yaml:"if"`
-		Environment string            `yaml:"environment"`
-		Permissions map[string]string `yaml:"permissions"`
-		Concurrency map[string]any    `yaml:"concurrency"`
-		Steps       []struct {
-			Name string            `yaml:"name"`
-			If   string            `yaml:"if"`
-			ID   string            `yaml:"id"`
-			Uses string            `yaml:"uses"`
-			Run  string            `yaml:"run"`
-			Env  map[string]string `yaml:"env"`
-			With map[string]string `yaml:"with"`
+		If              string            `yaml:"if"`
+		Environment     string            `yaml:"environment"`
+		Permissions     map[string]string `yaml:"permissions"`
+		Concurrency     map[string]any    `yaml:"concurrency"`
+		ContinueOnError any               `yaml:"continue-on-error"`
+		Steps           []struct {
+			Name            string            `yaml:"name"`
+			If              string            `yaml:"if"`
+			ID              string            `yaml:"id"`
+			Uses            string            `yaml:"uses"`
+			Run             string            `yaml:"run"`
+			Env             map[string]string `yaml:"env"`
+			With            map[string]string `yaml:"with"`
+			TimeoutMinutes  int               `yaml:"timeout-minutes"`
+			ContinueOnError any               `yaml:"continue-on-error"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -97,7 +100,8 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 				step.With["permission-contents"] == "write" && step.With["permission-pull-requests"] == "write" && len(step.With) == 6
 		case step.Run == "./scripts/release/nightly-backmerge.sh":
 			// Before promotion, which must still run when this fails.
-			backmerged = !ran && step.If == "" && reflect.DeepEqual(step.Env, promoteEnv)
+			// Its own deadline leaves promotion time inside the job's 15 minutes.
+			backmerged = !ran && step.If == "" && step.TimeoutMinutes == 5 && reflect.DeepEqual(step.Env, promoteEnv)
 		case step.Run != "":
 			ran = step.Run == "./scripts/release/nightly-promote.sh" && backmerged &&
 				step.If == "${{ !cancelled() && steps.app.outcome == 'success' }}" && reflect.DeepEqual(step.Env, promoteEnv)
@@ -190,6 +194,15 @@ func TestNightlyReportsBrokenPromotion(t *testing.T) {
 	health, ok := workflow.Jobs["promotion-health"]
 	if !ok || health.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(health.Permissions, map[string]string{"actions": "read", "contents": "read"}) || len(health.Steps) != 2 {
 		t.Fatal("promotion-health must be a main-only, read-only job with a checkout and one script step")
+	}
+	// continue-on-error would hide a red promotion as surely as skipping the job.
+	if health.ContinueOnError != nil {
+		t.Fatal("promotion-health must not set continue-on-error")
+	}
+	for _, step := range health.Steps {
+		if step.ContinueOnError != nil {
+			t.Fatalf("promotion-health step %q must not set continue-on-error", step.Name)
+		}
 	}
 	var raw struct {
 		Jobs map[string]struct {
