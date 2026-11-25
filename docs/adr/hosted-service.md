@@ -12,7 +12,7 @@ Context: the locked ADRs describe one trusted operator, 1 to 3 orgs, and a full 
 
 ## Vocabulary
 
-The [glossary](../../GLOSSARY.md) settles these terms. On 2026-11-19, round 1 of [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334) renamed terms in this ADR, with no change in meaning: "installation" became **instance**, "Managed" became **Standard**, "holder" became **key holder**, and "holder secret" and "presented key" became **holder key**.
+The [glossary](../../GLOSSARY.md) settles these terms. On 2026-11-19, round 1 of [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334) renamed terms in this ADR, with no change in meaning: "installation" became **instance**, "Managed" became **Standard**, "holder" became **key holder**, "holder secret" and "presented key" became **holder key**, and "unsealing" became **switching to Standard**.
 
 - **Instance**: one running Hikyo service, made up of its datastore, its root key and its server nodes. This ADR avoids "pod", which already has a meaning in the [k8s-integration ADR](./k8s-integration.md).
 - **Org**: unchanged. The tenant boundary and the billing customer.
@@ -58,7 +58,7 @@ The setting applies only when an org is created. Changing it never alters an exi
 
 **Sealed protects data at rest and against application-level access. It does not stop capture from production or tampering.** An operator cannot read a Sealed environment that has never had unattended access, or has rotated since, at rest, or through grants or application settings. Anyone with production access can still get in: capturing holder keys in memory or with a modified server, capturing raw service-account tokens or replaying a logged request within its window (decision 12), logging plaintext values in responses at TLS termination, or writing to the live datastore to forge the mode or a key holder's public key, and waiting for the customer's next write, grant or rotation. This is more work and a deliberate act, but this design does not prevent it. An operator able to ship a server can do this regardless, so a protocol defending only the datastore path would add much complexity for little gain against the operator. The owner accepted this on 2026-11-04: as with any hosted service that decrypts on the server, customers trust the operator not to capture or tamper. On 2026-11-06 the owner confirmed that this acceptance covers capture from production, not only tampering. Sealed raises what a breach of that trust takes, from a setting or a grant to deliberately capturing or changing something in production.
 
-**There is no conversion in either direction.** Retained backups hold the old server-wrapped keys, so sealing an existing org would promise something false, and unsealing would need a server slot. A customer who wants a different mode creates a new org and imports, which re-encrypts every value.
+**There is no conversion in either direction.** Retained backups hold the old server-wrapped keys, so sealing an existing org would promise something false, and switching to Standard would need a server slot. A customer who wants a different mode creates a new org and imports, which re-encrypts every value.
 
 The mode appears in `whoami`, in the UI, and in the org's audit trail at creation.
 
