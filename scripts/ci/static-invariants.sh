@@ -20,12 +20,13 @@ root=$(pwd)
 
 # One build graph for the three test binaries; they then run side by side.
 go test -c -p 2 -o "$work/" ./internal/boundary ./internal/isolation ./internal/lint
+printf 'static-invariants: test binaries built in %ss\n' "$SECONDS"
 
 pids=()
 run_in() {
 	local dir=$1 binary=$2
 	shift 2
-	(cd "$root/$dir" && "$work/$binary" "$@") &
+	(cd "$root/$dir" && "$work/$binary" "$@" && printf 'static-invariants: %s finished at %ss\n' "$dir" "$SECONDS") &
 	pids+=("$!")
 }
 run_in internal/boundary boundary.test
