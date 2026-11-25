@@ -75,6 +75,20 @@ func runRuleResolve(t *testing.T, db *store.DB) {
 		t.Fatalf("carol without a key = %+v, want key-limited", v)
 	}
 
+	// A machine is answered from its own class-checked rules, exactly as the
+	// chokepoint admits it, not from the human rule read.
+	execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) `+
+		`VALUES ('sa_mch_a1', 'mch_a1', 'org_a', 'prj_a1', 'mch-a1', 'automation', `+ts+`, 'usr_orgadmin')`)
+	mchEdit := f.create(t, orgAdmin, service.RuleSpec{Target: mchA1, Capability: domain.CapEdit, Org: orgA,
+		Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
+	edit, err := f.rules.Resolve(t.Context(), service.LocalPrincipal(orgAdmin), dev, domain.CapEdit, f.dbKeyID)
+	if err != nil {
+		t.Fatalf("resolve edit: %v", err)
+	}
+	if v := state(edit, mchA1); v.State != authz.AccessCan || !slices.Equal(v.Rules, []string{mchEdit}) {
+		t.Fatalf("machine with an edit rule = %+v, want can through %s", v, mchEdit)
+	}
+
 	// The answer discloses membership: a principal without manage-members is
 	// refused as if the environment did not exist.
 	if _, err := f.rules.Resolve(t.Context(), service.LocalPrincipal(carol), dev, domain.CapReveal, ""); err == nil {

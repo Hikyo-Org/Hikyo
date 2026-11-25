@@ -176,7 +176,8 @@ func (q accessQuestion) answer(ctx context.Context, principal domain.PrincipalID
 	}
 	var rules []domain.Rule
 	if rulesApply(caller) {
-		if rules, err = q.a.r.Rules(ctx, principal); err != nil {
+		// The chokepoint's own read: machines are answered from their class-checked machine rules.
+		if rules, err = q.a.callerRules(ctx, caller); err != nil {
 			return out, false, err
 		}
 	}
