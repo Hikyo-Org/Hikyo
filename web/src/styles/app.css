@@ -2896,22 +2896,15 @@ fieldset.field > legend {
   border-color: var(--danger);
 }
 
-/* Declare-key modal (env-matrix 31). Field pairs stack tight; ui/Dialog is the
-   shell and the copy fieldsets are the rules below. */
-.matrix-key-create__field {
+/* Declare-key modal (env-matrix 31). Every control is a ui/Field, so label,
+   hint and gap come from the atom; ui/Dialog is the shell and the copy
+   fieldsets are the rules below. The name and first-value blocks add the
+   near-miss alert and the infer row under their field at the same gap. */
+.matrix-key-create__name,
+.matrix-key-create__value {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-}
-
-.matrix-key-create label:not(.chk label) {
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
-}
-
-.matrix-key-create__field input,
-.matrix-key-create__field textarea {
-  width: 100%;
 }
 
 /* Type-specific constraint editors (#492). Only the selected type's fieldset is
@@ -2920,7 +2913,7 @@ fieldset.field > legend {
 .matrix-key-create__constraints {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--line);
@@ -2929,15 +2922,9 @@ fieldset.field > legend {
 }
 
 .matrix-key-create__constraints legend {
-  padding: 0 6px;
+  padding: 0 var(--space-1);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
-}
-
-.matrix-key-create__constraints label:not(.chk label) {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
 }
 
 .matrix-key-create__constraint-row {
@@ -2946,8 +2933,10 @@ fieldset.field > legend {
   flex-wrap: wrap;
 }
 
-.matrix-key-create__constraint-row label {
-  flex: 1 1 120px;
+/* Two numbers share a line until each would drop under about three controls wide. */
+.matrix-key-create__constraint-row > .field {
+  flex: 1 1 calc(var(--control) * 3);
+  min-width: 0;
 }
 
 /* JSON Schema builder (routes/JsonSchemaBuilder). A field row wraps at phone
@@ -3028,14 +3017,14 @@ fieldset.field > legend {
 }
 
 .matrix-key-create__presence legend {
-  padding: 0 6px;
+  padding: 0 var(--space-1);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
 
 .matrix-key-create__presence-modes {
   display: flex;
-  gap: 14px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -3045,15 +3034,23 @@ fieldset.field > legend {
   font-size: var(--fs-sm);
 }
 
+/* The type select and the secret checkbox share a line, level with the
+   select rather than its label. */
 .matrix-key-create__type {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  align-items: flex-end;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
-.matrix-key-create__type select {
-  min-width: 130px;
+.matrix-key-create__type > .field:not(.chk) {
+  flex: 0 1 calc(var(--control) * 5);
+  min-width: 0;
+}
+
+/* A control-tall box centres the checkbox on the select beside it. */
+.matrix-key-create__type > .chk {
+  min-height: var(--control);
 }
 
 .matrix-row-editor__row-head {
@@ -6763,11 +6760,6 @@ label.chk:has(input:disabled) {
   gap: 6px;
 }
 
-.key-detail__hint {
-  margin: 0;
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
-}
 
 .key-detail__presence-impact {
   padding: var(--space-3);
@@ -6796,11 +6788,18 @@ label.chk:has(input:disabled) {
   margin: 0;
 }
 
+/* The reclassify confirm's copy and impact list are spaced by the dialog's
+   own gap; browser paragraph margins on top of it left a blank line between
+   each block. */
+.key-detail__confirm > :is(p, ul) {
+  margin: 0;
+}
+
 /* #493 folder & key-group lifecycle dialog. ui/Dialog is the shell. */
 .catalogue-manage__section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .catalogue-manage__section h3 {
@@ -6827,12 +6826,9 @@ label.chk:has(input:disabled) {
   flex-direction: column;
 }
 
-/* The create forms took their column and gap from `.matrix-editor form`, which
-   outranked the shared rule above on specificity. That shell rule is gone, so
-   the column is stated here; the gap lands on the dialog's own 12px. */
+/* A create form is its name field and its button on one line; alerts wrap
+   under them at full width. */
 .catalogue-manage__create {
-  flex-direction: column;
-  gap: var(--space-3);
   flex-wrap: wrap;
   align-items: center;
 }
@@ -6840,7 +6836,30 @@ label.chk:has(input:disabled) {
 .catalogue-manage__row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
+}
+
+/* An editable row: the name takes the free width, the count and the actions
+   keep their size. */
+.catalogue-manage__edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.catalogue-manage__edit > .field,
+.catalogue-manage__create > .field {
+  flex: 1 1 18ch;
+  min-width: 0;
+}
+
+.catalogue-manage__create > :not(.field) {
+  flex-basis: 100%;
+}
+
+.catalogue-manage__create > .btn {
+  flex-basis: auto;
 }
 
 /* Checkbox, label, input as three columns, so the inputs line up; a wrapping
@@ -6852,9 +6871,14 @@ label.chk:has(input:disabled) {
   align-items: center;
 }
 
-.catalogue-manage__row-main input,
-.catalogue-manage__create input {
-  flex: 1 1 12ch;
+/* Phone: the name and the key count each take a line and the actions share
+   the next, so no button is pushed past the sheet edge. */
+@media (max-width: 700px) {
+  .catalogue-manage__edit > .field,
+  .catalogue-manage__create > .field,
+  .catalogue-manage__edit > .catalogue-manage__meta {
+    flex-basis: 100%;
+  }
 }
 
 .catalogue-manage__meta {
@@ -7610,10 +7634,11 @@ label.chk:has(input:disabled) {
   list-style: none;
 }
 
+/* The add button sits level with the select, not with its label. */
 .key-detail__add-alternative {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }

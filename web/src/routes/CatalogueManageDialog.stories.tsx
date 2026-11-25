@@ -139,3 +139,15 @@ export const CreateRefused: Story = {
     ).toBeVisible();
   },
 };
+
+// At phone width each row stacks its name control over its actions; nothing scrolls sideways.
+export const PhonePopulated: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(await canvas.findByLabelText('Folder path for observability/exporters')).toBeVisible();
+    await expect(canvas.getByLabelText('New linked-key set name')).toBeVisible();
+    const dialog = canvasElement.ownerDocument.querySelector('dialog[open]');
+    if (!(dialog instanceof HTMLElement)) throw new Error('dialog missing');
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+  },
+};

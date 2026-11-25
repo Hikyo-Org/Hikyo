@@ -215,10 +215,10 @@ describe('MatrixKeyCreate', () => {
     const nameField = byLabel(view.container, 'matrix-create-name');
     await act(async () => set(nameField, 'log level'));
     expect(nameField.value).toBe('log level');
-    const preview = view.container.querySelector('#matrix-create-name-preview');
+    const preview = view.container.querySelector('#matrix-create-name-hint');
     expect(preview?.textContent).toBe('Will be declared as LOG_LEVEL in folder app/');
     expect(preview?.hasAttribute('role')).toBe(false);
-    expect(nameField.getAttribute('aria-describedby')).toBe('matrix-create-name-preview');
+    expect(nameField.getAttribute('aria-describedby')).toBe('matrix-create-name-hint');
     await view.unmount();
   });
 

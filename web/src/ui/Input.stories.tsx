@@ -104,3 +104,13 @@ export const ExternalInvalidIsKept: Story = {
     await expect(control).toHaveAccessibleDescription('The hint.');
   },
 };
+
+// `labelHidden` keeps the accessible name where a row already names the control visually.
+export const LabelHidden: Story = {
+  args: { label: 'Folder path for database', labelHidden: true, mono: true, defaultValue: 'database' },
+  play: async ({ canvas }) => {
+    const input = canvas.getByLabelText('Folder path for database');
+    await expect(input).toHaveValue('database');
+    await expect(canvas.getByText('Folder path for database')).toHaveClass('visually-hidden');
+  },
+};

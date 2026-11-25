@@ -177,6 +177,52 @@ export const ReclassifyConfirm: Story = {
   },
 };
 
+// The reclassify confirm at phone width: the dialog fits, its actions stay reachable.
+export const PhoneReclassifyConfirm: Story = {
+  ...ReclassifyConfirm,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async (context) => {
+    await ReclassifyConfirm.play?.(context);
+    const dialog = context.canvasElement.ownerDocument.querySelector('dialog[open]');
+    if (!(dialog instanceof HTMLElement)) throw new Error('dialog missing');
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+  },
+};
+
+// An any_of declaration in the rule editor: one fieldset per alternative,
+// each with its own Remove, then the add row and the summary.
+const anyOf = {
+  ...record,
+  classification: 'config',
+  declaration: {
+    any_of: [
+      { type: 'url', schemes: ['postgres'] },
+      { type: 'string', min_length: 12, allow_empty: false, pattern: '^dsn:' },
+    ],
+  },
+} satisfies z.input<typeof zKey>;
+
+export const AnyOfEditor: Story = {
+  parameters: app({ key: { body: anyOf } }),
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('heading', { name: 'Edit value rules & presence' })).toBeVisible();
+    await expect(canvas.getByRole('group', { name: 'Alternative 2' })).toBeVisible();
+    await expect(canvas.getAllByRole('button', { name: 'Remove alternative' })).toHaveLength(2);
+    await expect(canvas.getByLabelText('Add alternative of type')).toBeVisible();
+  },
+};
+
+// The any_of editor at phone width: the add row wraps instead of overflowing the panel.
+export const PhoneAnyOfEditor: Story = {
+  ...AnyOfEditor,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async (context) => {
+    await AnyOfEditor.play?.(context);
+    const panel = context.canvas.getByRole('complementary', { name: 'Key declaration' });
+    await expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
+  },
+};
+
 // Tightening a config key: the confirm states what reclassification cannot undo.
 export const TightenConfirm: Story = {
   parameters: app({ key: { body: { ...record, classification: 'config' } } }),
