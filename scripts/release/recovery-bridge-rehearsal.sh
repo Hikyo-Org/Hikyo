@@ -429,6 +429,7 @@ expect_fail 'its statement is readable' 'a list checked against a tree with a ca
 	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/nostatement" "$scratch/list1" 0 "$pin_root" "$pin_key"
 rm -rf "$scratch/nostatement"
 # The ceremony tool resolves relative paths before it changes directory.
+mkdir "$scratch/state-relative"
 (cd "$scratch" && "$ceremony" check-revocations new state-relative list1 "$first" >/dev/null)
 printf 'ok: the ceremony tool accepts relative paths\n'
 rm -rf "$scratch/state-relative"
