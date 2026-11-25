@@ -59,7 +59,7 @@ ignored='(^|/)(testdata|[._][^/]*)(/|$)'
 git ls-tree -r --name-only "$base" >"$work/basefiles"
 git ls-tree -r --name-only "$rev" >"$work/revfiles"
 # Nested module roots ("dir/") at REV only: a module dissolved into the main one
-# selects its packages, and files of a deleted module fall to an ancestor.
+# selects its packages; files of a deleted module select nothing.
 { grep '/go\.mod$' "$work/revfiles" || :; } | sed 's|go\.mod$||' | { grep -Ev "$ignored" || :; } | sort -u >"$work/nested"
 # Package directories at BASE, for packages the change deletes.
 { grep '\.go$' "$work/basefiles" || :; } | sed 's|/[^/]*$||; t; s|.*||' | { grep -Ev "$ignored" || :; } | sort -u >"$work/basedirs"
