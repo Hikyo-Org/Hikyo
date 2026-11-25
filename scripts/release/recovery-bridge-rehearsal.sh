@@ -415,6 +415,12 @@ ISSUED_AT=$(date +%s) COSIGN_PASSWORD='' "$ceremony" revocation-list "$scratch/k
 expect_fail 'trust root is the committed one' 'a list checked against a tree whose root and recovery key were swapped' \
 	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/rerooted" "$scratch/list-rerooted" 0 "$pin_root" "$pin_key"
 rm -rf "$scratch/rerooted" "$scratch/list-rerooted"
+# Same root, but the recovery key file itself swapped: only the key pin can refuse it.
+cp -R "$scratch/new" "$scratch/rekeyed"
+cp "$scratch/key/other/cosign.pub" "$scratch/rekeyed/$(jq -r '.recovery.public_key' "$scratch/rekeyed/root.json")"
+expect_fail 'recovery public key is the committed one' 'a list checked against a swapped recovery key file under the committed root' \
+	"$script_dir/verify-recovery-bridge.sh" revocation-list "$scratch/rekeyed" "$scratch/list1" 0 "$pin_root" "$pin_key"
+rm -rf "$scratch/rekeyed"
 # The verifier also refuses a list the clients would call stale.
 ISSUED_AT=$(($(date +%s) - 8 * 86400)) "$ceremony" revocation-list "$recovery_key" "$scratch/new" 1 "$scratch/list-old" "$first" >/dev/null
 mkdir "$scratch/t"
