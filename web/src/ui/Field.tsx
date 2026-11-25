@@ -11,6 +11,8 @@ export type FieldProps = {
   /** A refusal for THIS control: announced, glyph-carried, and the control is marked invalid. */
   error?: string;
   className?: string;
+  /** Keep the label for assistive tech only, where a row's context already names the control visually. */
+  labelHidden?: boolean;
 };
 
 /**
@@ -60,6 +62,7 @@ export function Field({
   hint,
   error,
   className,
+  labelHidden,
   id,
   'aria-describedby': describedByProp,
   'aria-invalid': invalidProp,
@@ -75,7 +78,7 @@ export function Field({
   const { main, note } = typeof label === 'string' ? splitLabelNote(label) : { main: null, note: null };
   return (
     <div className={cx('field', className)}>
-      <label htmlFor={controlId}>
+      <label htmlFor={controlId} className={labelHidden === true ? 'visually-hidden' : undefined}>
         {note === null ? label : (
           <>
             {main} <span className="field__label-note">{note}</span>

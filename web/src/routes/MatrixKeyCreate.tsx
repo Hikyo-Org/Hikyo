@@ -10,7 +10,11 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Field } from '../ui/Field.tsx';
+import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
+import { Select } from '../ui/Select.tsx';
+import { Textarea } from '../ui/Textarea.tsx';
 import { JsonSchemaBuilder } from './JsonSchemaBuilder.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
 import { selectOption } from './selectOption.ts';
@@ -326,54 +330,46 @@ export function MatrixKeyCreate({
           <Alert tone="info">{GIT_DEFINITIONS_NOTICE}</Alert>
         ) : null}
 
-        <div className="matrix-key-create__field">
-          <label htmlFor="matrix-create-folder">Group</label>
-          <Combobox
-            id="matrix-create-folder"
-            className="mono"
-            options={folders}
-            optionsLabel="folders"
-            emptyMessage="No matching folders. Enter a new folder name to create it when you declare the key."
-            autoCapitalize="none"
-            spellCheck={false}
-            aria-describedby="matrix-create-folder-hint"
-            placeholder="group (e.g. app)"
-            value={folder}
-            onValueChange={setFolder}
-          />
-          <p id="matrix-create-folder-hint" className="field__hint">
-            Choose an existing folder or type a new folder name.
-          </p>
-        </div>
+        <Field id="matrix-create-folder" label="Group" hint="Choose an existing folder or type a new folder name.">
+          {(control) => (
+            <Combobox
+              {...control}
+              className="mono"
+              options={folders}
+              optionsLabel="folders"
+              emptyMessage="No matching folders. Enter a new folder name to create it when you declare the key."
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="group (e.g. app)"
+              value={folder}
+              onValueChange={setFolder}
+            />
+          )}
+        </Field>
 
-        <div className="matrix-key-create__field">
-          <label htmlFor="matrix-create-name">Key name</label>
-          <input
+        <div className="matrix-key-create__name">
+          {/* The preview is the hint, not a live region: it changes on every
+              keystroke, and a status that re-announces each character is noise. */}
+          <Input
             id="matrix-create-name"
             ref={nameField}
-            className="mono"
+            label="Key name"
+            mono
             autoComplete="off"
             placeholder="KEY_NAME"
             value={name}
-            aria-describedby={normalizedName === '' ? undefined : 'matrix-create-name-preview'}
+            hint={normalizedName === '' ? undefined : `Will be declared as ${normalizedName}${normalizedFolder === '' ? '' : ` in folder ${normalizedFolder}/`}`}
             onChange={(event) => setName(event.target.value)}
           />
-          {/* Not a live region: it changes on every keystroke, and a status
-              that re-announces each character is noise, not help. */}
-          {normalizedName === '' ? null : (
-            <p className="matrix-editor__hint" id="matrix-create-name-preview">
-              {`Will be declared as ${normalizedName}${normalizedFolder === '' ? '' : ` in folder ${normalizedFolder}/`}`}
-            </p>
-          )}
           {nearMiss === null ? null : (
             <Alert tone="warn">{`Similar to existing key ${nearMiss}. Continue if this is intentional.`}</Alert>
           )}
         </div>
 
         <div className="matrix-key-create__type">
-          <label htmlFor="matrix-create-type">Type</label>
-          <select
+          <Select
             id="matrix-create-type"
+            label="Type"
             value={type}
             onChange={(event) => {
               setType(selectOption(TYPE_OPTIONS.map((option) => option.type), event.target.value));
@@ -386,7 +382,7 @@ export function MatrixKeyCreate({
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
           <Checkbox
             label="secret"
             checked={secret}
@@ -414,37 +410,31 @@ export function MatrixKeyCreate({
           <fieldset className="matrix-key-create__constraints">
             <legend>String constraints (optional)</legend>
             <div className="matrix-key-create__constraint-row">
-              <label>
-                <span>Min length</span>
-                <input
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  value={minLength}
-                  onChange={(event) => setMinLength(event.target.value)}
-                />
-              </label>
-              <label>
-                <span>Max length</span>
-                <input
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  value={maxLength}
-                  onChange={(event) => setMaxLength(event.target.value)}
-                />
-              </label>
-            </div>
-            <label className="matrix-key-create__field">
-              <span>Pattern (RE2, whole value)</span>
-              <input
-                className="mono"
-                autoComplete="off"
-                placeholder="^[a-z][a-z0-9-]*$"
-                value={pattern}
-                onChange={(event) => setPattern(event.target.value)}
+              <Input
+                label="Min length"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={minLength}
+                onChange={(event) => setMinLength(event.target.value)}
               />
-            </label>
+              <Input
+                label="Max length"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={maxLength}
+                onChange={(event) => setMaxLength(event.target.value)}
+              />
+            </div>
+            <Input
+              label="Pattern (RE2, whole value)"
+              mono
+              autoComplete="off"
+              placeholder="^[a-z][a-z0-9-]*$"
+              value={pattern}
+              onChange={(event) => setPattern(event.target.value)}
+            />
             <Checkbox
               label="allow empty value"
               checked={allowEmpty}
@@ -457,24 +447,20 @@ export function MatrixKeyCreate({
           <fieldset className="matrix-key-create__constraints">
             <legend>Integer constraints (optional)</legend>
             <div className="matrix-key-create__constraint-row">
-              <label>
-                <span>Minimum</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={min}
-                  onChange={(event) => setMin(event.target.value)}
-                />
-              </label>
-              <label>
-                <span>Maximum</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={max}
-                  onChange={(event) => setMax(event.target.value)}
-                />
-              </label>
+              <Input
+                label="Minimum"
+                type="number"
+                inputMode="numeric"
+                value={min}
+                onChange={(event) => setMin(event.target.value)}
+              />
+              <Input
+                label="Maximum"
+                type="number"
+                inputMode="numeric"
+                value={max}
+                onChange={(event) => setMax(event.target.value)}
+              />
             </div>
           </fieldset>
         ) : null}
@@ -482,33 +468,29 @@ export function MatrixKeyCreate({
         {type === 'enum' ? (
           <fieldset className="matrix-key-create__constraints">
             <legend>Enum members</legend>
-            <label className="matrix-key-create__field">
-              <span>One member per line</span>
-              <textarea
-                className="mono"
-                rows={2}
-                autoComplete="off"
-                placeholder={'debug\ninfo\nwarn\nerror'}
-                value={members}
-                onChange={(event) => setMembers(event.target.value)}
-              />
-            </label>
+            <Textarea
+              label="One member per line"
+              mono
+              rows={2}
+              autoComplete="off"
+              placeholder={'debug\ninfo\nwarn\nerror'}
+              value={members}
+              onChange={(event) => setMembers(event.target.value)}
+            />
           </fieldset>
         ) : null}
 
         {type === 'url' ? (
           <fieldset className="matrix-key-create__constraints">
             <legend>Allowed URL schemes</legend>
-            <label className="matrix-key-create__field">
-              <span>Comma-separated (blank allows any)</span>
-              <input
-                className="mono"
-                autoComplete="off"
-                placeholder="https, http"
-                value={schemes}
-                onChange={(event) => setSchemes(event.target.value)}
-              />
-            </label>
+            <Input
+              label="Comma-separated (blank allows any)"
+              mono
+              autoComplete="off"
+              placeholder="https, http"
+              value={schemes}
+              onChange={(event) => setSchemes(event.target.value)}
+            />
           </fieldset>
         ) : null}
 
@@ -517,23 +499,22 @@ export function MatrixKeyCreate({
           Descriptions and other free-text fields are exported to Git and treated as public. Never
           paste secret values.
         </p>
-        <div className="matrix-key-create__field">
-          <label htmlFor="matrix-create-description">Description (optional)</label>
-          <textarea
-            id="matrix-create-description"
-            rows={2}
-            autoComplete="off"
-            placeholder="What this key configures"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </div>
+        <Textarea
+          id="matrix-create-description"
+          label="Description (optional)"
+          rows={2}
+          autoComplete="off"
+          placeholder="What this key configures"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+        />
 
-        <div className="matrix-key-create__field">
-          <label htmlFor="matrix-create-value">First value (optional)</label>
-          <textarea
+        <div className="matrix-key-create__value">
+          <Textarea
             id="matrix-create-value"
-            className={`mono matrix-editor__value${secret && !showTyping ? ' matrix-editor__value--masked' : ''}`}
+            label="First value (optional)"
+            mono
+            controlClassName={`matrix-editor__value${secret && !showTyping ? ' matrix-editor__value--masked' : ''}`}
             rows={2}
             autoComplete="off"
             placeholder={secret ? 'first value (hidden)' : type === 'json' ? 'first value (json)' : 'first value'}

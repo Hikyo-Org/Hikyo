@@ -1,10 +1,10 @@
-# #1492: key-declaration and schema-editing dialog conformance (Part A)
+# #1492: key-declaration and schema-editing dialog conformance (Parts A and B)
 
-Snapshot: 2026-11-23. Ledger obligation `OBL-UI-SCHEMA-POLISH` stays `open`: this
-PR delivers Part A of [#1492](https://github.com/Hikyo-Org/Hikyo/issues/1492) only.
-Part B (dialog visual polish) is still owed.
+Snapshot: 2026-11-25. Part A merged in #1496. Part B (dialog visual polish) is
+the follow-up PR described under [Part B](#part-b-dialog-visual-polish), which
+marks ledger obligation `OBL-UI-SCHEMA-POLISH` implemented.
 
-## What changed
+## Part A: what changed
 
 The UI-only gaps between the dialogs and the locked
 [ui-spec requirements](../spec/ui-spec.md#key-declaration--schema-editing-requirements)
@@ -26,7 +26,7 @@ There are new stories:
 - `MatrixKeyCreate/NearMiss` and `WhitespaceOnlyFirstValue`
 - `MatrixRowEditor/AnyOfHint`, `DeprecatedKey` and `MultilineValue`
 
-## Evidence
+## Part A evidence
 
 - `pnpm exec tsc --noEmit -p .` is clean.
 - `oxlint` on `src/routes` and `src/api/matrix.ts`: exit 0.
@@ -38,12 +38,19 @@ There are new stories:
 - History claim verified: snapshot entries keep their write-time classification (`internal/service/revision_diff.go`), and the revision diff needs only `read` (`OpValueExport`). The `revision_diff_is_per_key_and_secret_safe` conformance scenario now tightens `CONFIG` to `secret` and asserts a plain reader still diffs the pre-tighten plaintexts. The advisory text matches that behaviour and is unchanged. This is service-level evidence; the history UI was not exercised at runtime.
 - An independent Standards and Spec review raised one blocking finding: the scan-warn path tightened without the advisory. It also raised low and nit findings, all fixed. Cross-provider review was not run.
 
+## Part B: dialog visual polish
+
+| Item | Change |
+| --- | --- |
+| Shared atoms | `MatrixKeyCreate`, `KeyDeclarationDetail` and `CatalogueManageDialog` render every text control through `ui/Field`, `Input`, `Select` and `Textarea`; the two folder comboboxes go through `Field`'s render function. `Field` gained `labelHidden` (catalogue rows, whose context names the control) and `Textarea` gained `controlClassName` (the masked first value). The name preview is now the field hint, `matrix-create-name-hint`. |
+| Tokens | The `.matrix-key-create*` rules carry no raw px beyond hairlines. The `app.css` adherence budget fell from 206 to 198. |
+| Phone layout | Below 700px the catalogue rows put the name, the key count and the actions on separate lines instead of pushing Rename and Delete past the sheet (the dialog was 400px wide in a 368px box). The desktop rows also lost a three-column grid that did not fit four children. The `any_of` add button aligns with its select, and the reclassify confirm drops paragraph margins stacked on the dialog gap. |
+| Stories | `MatrixKeyCreate`: `PhoneStringConstraints`, `PhoneSchemaBuilder`. `CatalogueManageDialog`: `PhonePopulated`. `KeyDeclarationDetail`: `AnyOfEditor`, `PhoneAnyOfEditor`, `PhoneReclassifyConfirm`. `JsonSchemaBuilder` already had `PhoneRules` and `PhoneNested`. The phone stories assert that nothing scrolls sideways. |
+
+Evidence for Part B (before/after screenshots, checks, Playwright flows and review) is in its PR. Screenshots are kept locally, not hosted.
+
 ## Remaining
 
-1. **Part B of #1492:**
-   - Move the raw controls in `MatrixKeyCreate`, `KeyDeclarationDetail` and `CatalogueManageDialog` onto the `Field`, `Input`, `Select` and `Textarea` atoms.
-   - Replace the raw px values with tokens.
-   - Add phone layout (below 700px) and stories for key create, catalogue manage, the schema builder, the `any_of` editor and the reclassify confirm.
-   - Mark `OBL-UI-SCHEMA-POLISH` implemented only after Part B merges.
-2. **CLI advisory:** the CLI prints no tighten advisory. That is tracked in [#1493](https://github.com/Hikyo-Org/Hikyo/issues/1493).
-3. **Owner question:** the server still preserves `HIKYO_MAIL_PASSWORD` byte-for-byte for self-config writes (`internal/service/self_config_values.go`) and managed bootstrap files (`internal/config/managed.go`), and the catalogue description says so. The owner decision covered the matrix. Whether the server, CLI and bootstrap paths follow is open.
+1. **CLI advisory:** the CLI prints no tighten advisory. That is tracked in [#1493](https://github.com/Hikyo-Org/Hikyo/issues/1493).
+2. **`HIKYO_MAIL_PASSWORD` trimming:** resolved after Part A. The server trims it on every write path (#1522) and every bootstrap value is trimmed (#1523). Upgraded installs may still show the old catalogue description, tracked in [#1562](https://github.com/Hikyo-Org/Hikyo/issues/1562).
+3. **`FolderCleanupDialog`** still uses the `catalogue-manage__row-main` three-column grid and a bare checkbox and combobox. It was outside #1492's named dialogs and is unchanged.
