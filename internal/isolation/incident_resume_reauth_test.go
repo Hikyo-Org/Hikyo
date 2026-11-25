@@ -240,5 +240,98 @@ func TestIncidentResumeRefusesAResponderWithNoProofCredential(t *testing.T) {
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+f.id+`' AND outcome='done'`); n != 0 {
 			t.Errorf("%d items ran", n)
 		}
+
+		// Over HTTP the same refusal is a 400 bad_request whose detail names it, which
+		// is what the web dialog keys on.
+		srv := httptest.NewTLSServer(server.New(&server.API{Auth: f.auth, Incidents: f.incidents}, nil))
+		t.Cleanup(srv.Close)
+		env := accessWireEnv{srv: srv}
+		path := api.PathPrefix + "/incidents/" + f.id + "/resume"
+		status, body := env.callAs(t, f.token, http.MethodPost, path, map[string]any{"proof": "anything", "items_digest": f.openDigest(t, db)})
+		if status != http.StatusBadRequest {
+			t.Fatalf("resume without a proof credential over HTTP = %d %s, want 400", status, body)
+		}
+		refusal := decodeWire[apigen.Error](t, body)
+		if refusal.Error.Code != apigen.ErrorCodeBadRequest || refusal.Error.Detail == nil || *refusal.Error.Detail != "no_proof_credential" {
+			t.Fatalf("the 400 body = %s, want code bad_request and detail no_proof_credential", body)
+		}
+	})
+}
+
+// An empty confirmed digest is a value, not "no digest": Resume called in
+// process with one is refused as a changed open set before anything is spent, and
+// the same unspent code then runs the real set.
+func TestIncidentResumeRefusesAnEmptyDigestBeforeSpendingAnything(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newResumeFixture(t, db)
+		open := f.openItems(t, db)
+		*f.clk = f.base.Add(120 * time.Second)
+		code := totpCode(t, f.uri, *f.clk)
+		empty := ""
+		if _, err := f.incidents.Resume(t.Context(), f.actor, f.id, code, &empty); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("resume with an empty digest = %v, want a conflict", err)
+		}
+		if got := f.openItems(t, db); got != open {
+			t.Fatalf("a refused resume changed the open items: %d, want %d", got, open)
+		}
+		digest := f.openDigest(t, db)
+		if _, err := f.incidents.Resume(t.Context(), f.actor, f.id, code, &digest); err != nil {
+			t.Fatalf("the code spent by an empty-digest refusal: %v", err)
+		}
+	})
+}
+
+// The open set is read in full, page by page: with more open items than one page,
+// the digest of the first page is a changed set (a conflict that runs nothing) and
+// the digest of all of them runs every item.
+func TestIncidentResumeReadsEveryPageOfOpenItems(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newResumeFixture(t, db)
+		execRaw(t, db, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 250) `+
+			`INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, created_at, updated_at) `+
+			`SELECT 'itm_page_' || i, '`+f.id+`', 'session.revoke', 'session', 'ses_page_' || i, 'instance', 'pending', '', `+ts+`, `+ts+` FROM n`)
+		open := f.openItems(t, db)
+		if open <= 250 {
+			t.Fatalf("the fixture has %d open items, want more than 250", open)
+		}
+		*f.clk = f.base.Add(120 * time.Second)
+		code := totpCode(t, f.uri, *f.clk)
+		firstPage := api.IncidentItemsDigest(strings.Fields(queryStrings(t, db, `SELECT id || ' ' FROM (SELECT id FROM incident_items WHERE incident_id='`+f.id+`' AND outcome IN ('pending','unknown','blocked') ORDER BY id LIMIT 100) p`)))
+		if _, err := f.incidents.Resume(t.Context(), f.actor, f.id, code, &firstPage); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("resume confirming only the first page = %v, want a conflict", err)
+		}
+		all := f.openDigest(t, db)
+		res, err := f.incidents.Resume(t.Context(), f.actor, f.id, code, &all)
+		if err != nil {
+			t.Fatalf("resume of every page: %v", err)
+		}
+		if res.Examined+res.Skipped != open {
+			t.Fatalf("resume visited %d items, want all %d", res.Examined+res.Skipped, open)
+		}
+	})
+}
+
+// Resume runs the snapshot it checked, not the open set as it reads later: an
+// item that becomes open after the digest check does not run in this call.
+func TestIncidentResumeRunsOnlyTheCheckedSnapshot(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newResumeFixture(t, db)
+		open := f.openItems(t, db)
+		*f.clk = f.base.Add(120 * time.Second)
+		code := totpCode(t, f.uri, *f.clk)
+		digest := f.openDigest(t, db)
+		f.incidents.AfterSnapshot = func() {
+			execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, created_at, updated_at) VALUES ('itm_zz_late', '`+f.id+`', 'session.revoke', 'session', 'ses_zz_late', 'instance', 'pending', '', `+ts+`, `+ts+`)`)
+		}
+		res, err := f.incidents.Resume(t.Context(), f.actor, f.id, code, &digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Examined+res.Skipped != open {
+			t.Fatalf("resume visited %d items, want the %d it checked", res.Examined+res.Skipped, open)
+		}
+		if got := queryString(t, db, `SELECT outcome || '/' || reason FROM incident_items WHERE id='itm_zz_late'`); got != "pending/" {
+			t.Fatalf("the item added after the check = %q, want it untouched", got)
+		}
 	})
 }

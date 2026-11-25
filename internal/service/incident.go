@@ -119,6 +119,10 @@ type Incidents struct {
 	// the default. Tests lower it to reach the truncation path.
 	MaxLookups int
 	Now        func() time.Time
+	// AfterSnapshot, when set, runs once Resume has checked and snapshotted the
+	// open set and before it runs the first item. Tests use it to change the ledger
+	// at exactly that point; production leaves it nil.
+	AfterSnapshot func()
 }
 
 func (s *Incidents) now() time.Time { return nowOr(s.Now) }
@@ -638,6 +642,9 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, c
 	})
 	if err != nil {
 		return res, err
+	}
+	if s.AfterSnapshot != nil {
+		s.AfterSnapshot()
 	}
 	for _, itemID := range ids {
 		if err := s.runItem(ctx, actor, id, itemID, &res); err != nil {
