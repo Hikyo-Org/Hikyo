@@ -240,6 +240,11 @@ func TestIncidentResumeRefusesAResponderWithNoProofCredential(t *testing.T) {
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+f.id+`' AND outcome='done'`); n != 0 {
 			t.Errorf("%d items ran", n)
 		}
+		// The shared check keeps its order for every other caller: an empty proof is
+		// "proof required" before any credential is looked up, even for this account.
+		if _, err := f.auth.VerifyReauthProof(t.Context(), f.token, ""); !errors.Is(err, service.ErrReauthProofRequired) {
+			t.Errorf("VerifyReauthProof(session, \"\") on an account with no proof credential = %v, want ErrReauthProofRequired", err)
+		}
 
 		// Over HTTP the same refusal is a 400 bad_request whose detail names it, which
 		// is what the web dialog keys on.
