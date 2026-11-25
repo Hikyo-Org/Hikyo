@@ -51,20 +51,27 @@ fi
 # by number and the window starts at count x cap mod open. It reads no check record and
 # writes no state, so nothing a run writes (or refreshes without changing state) can move
 # it, and every open PR is reached within ceil(open/cap) consecutive runs. A PR opened or
-# closed in between shifts the windows by at most one cycle, and expired run history
-# lowers the count without stopping the rotation; events and the retry path settle checks
-# regardless. A run that fails or is deferred still advances the count, so the window it
-# skipped is reached ceil(open/cap) runs later: the bound is in proving runs. GitHub caps
-# a filtered list at 1,000 results, so the count can stop moving; from 1,000 on the run
-# number of this run (monotonic, no API read) is the cursor. If the count cannot be read,
-# the hour of the clock stands in for it.
+# closed in between shifts the windows by at most one cycle; events and the retry path
+# settle checks regardless. A run that fails or is deferred still advances the count, so the
+# window it skipped is reached ceil(open/cap) runs later: the bound is in proving runs.
+# GitHub reports at most 1,000 results for a filtered list, and retention can delete old
+# runs, so a count of all schedule runs could stop moving. The count is therefore taken
+# within the current 30-day epoch only (created >= the epoch start, at most 720 runs even
+# at one an hour) and the epoch number is added as a stable offset. Windows are consecutive
+# within an epoch; the sequence restarts at an arbitrary offset at each epoch boundary,
+# which shifts the windows by at most one cycle once a month.
+# shortcut: one extra cycle of delay once per 30-day epoch; upgrade to a persisted cursor
+# (a repository variable) only if that delay ever matters, which needs a write this job
+# does not have. If the count cannot be read, the hour of the clock stands in for it.
 cap=${DEV_SWEEP_CAP:-5}
 cursor=$(($(date +%s) / 3600))
 if [[ $GITHUB_EVENT_NAME == schedule ]]; then
   # One idempotent REST read; a failure falls back to the clock hour, and no response is printed.
-  if count=$(gh api "repos/$GH_REPO/actions/workflows/ci-dev-gate.yml/runs?event=schedule&per_page=1" --jq .total_count 2>/dev/null) && [[ $count =~ ^[0-9]+$ ]]; then
-    cursor=$count
-    if [[ $count -ge 1000 && ${GITHUB_RUN_NUMBER:-} =~ ^[0-9]+$ ]]; then cursor=$GITHUB_RUN_NUMBER; fi
+  epoch_seconds=2592000
+  epoch=$(($(date +%s) / epoch_seconds))
+  since=$(jq -nr --argjson at "$((epoch * epoch_seconds))" '$at | todate')
+  if count=$(gh api "repos/$GH_REPO/actions/workflows/ci-dev-gate.yml/runs?event=schedule&per_page=1&created=%3E%3D$since" --jq .total_count 2>/dev/null) && [[ $count =~ ^[0-9]+$ && $count -lt 1000 ]]; then
+    cursor=$((epoch * 1000 + count))
   fi
 fi
 jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" --arg scope "$scope" \

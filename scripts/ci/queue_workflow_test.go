@@ -289,7 +289,7 @@ func queueWorkerContract(raw []byte) error {
 		return err
 	}
 	head := "${{ matrix.work.head }}"
-	if j.Name != "publish-"+head || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+head || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "" || j.Timeout.Value != "${{ matrix.work.kind == 'group' && 10 || 1 }}" || !reflect.DeepEqual(j.Permissions, map[string]string{"actions": "read", "checks": "write", "contents": "read", "pull-requests": "read"}) {
+	if j.Name != "${{ matrix.work.kind == 'group' && 'group' || 'publish' }}-"+head || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+head || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "" || j.Timeout.Value != "${{ matrix.work.kind == 'group' && 10 || 1 }}" || !reflect.DeepEqual(j.Permissions, map[string]string{"actions": "read", "checks": "write", "contents": "read", "pull-requests": "read"}) {
 		return fmt.Errorf("headworker must share exactSHA lease/minimalpermissions and independentgroupbudget")
 	}
 	var strategy map[string]any

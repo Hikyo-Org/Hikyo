@@ -145,6 +145,8 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 	const runLevel = 0 // the run-level endpoint rather than a job id
 	const healthy, spent = "4000 5000 1795475603", "40 5000 1795475603"
 	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
+	// The worker names its jobs by kind and runs one step for every kind.
+	const workerReconcile = "Reconcile one authenticated head without borrowing another lease"
 	for _, tc := range []struct {
 		name      string
 		jobs      []string
@@ -185,6 +187,9 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
 		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},
 		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
+		// Worker group jobs are named group-<sha> in the worker run and may spend the reserve.
+		{"a worker group job at 270 of 1000 is rerun", []string{job(1, "group-"+head, "failure", workerReconcile)}, "1", "270 1000 1795475603", []int{1}, false, ""},
+		{"a worker publisher at 270 of 1000 is held while its group job runs", []string{job(1, "publish-"+head, "failure", workerReconcile), job(2, "group-"+strings.Repeat("c", 40), "failure", workerReconcile)}, "1", "270 1000 1795475603", []int{2}, false, "Held for the group reserve (270 of 1000"},
 		// The core and graphql buckets are separate: the one with the lower remaining share decides.
 		{"a spent graphql bucket declines the rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 20 1000 1795475603", nil, false, "20 of 1000"},
 		// The Go gate judges each bucket by its absolute remaining; the lower share (graphql here) must not win.

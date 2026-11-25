@@ -410,7 +410,7 @@ rerun per run as above. A window that has already recovered when the job starts 
 passed in between, or the sleeper queued behind another) skips only the sleep; the sweep
 still runs. If a non-group job then does not fit above the reserve (remaining between 250
 and 291, say), the job waits for the reset once and releases the held set once; a hold
-that only group jobs suffer does not raise the sleep threshold, and those jobs are named. The reruns are spaced 15 seconds apart. A released rerun spends only after
+that only group jobs suffer also waits for the reset once and releases the held group jobs, newest run per job name first (job names carry the kind and head, `group-<head>` for a group worker job and `publish-<head>` otherwise, so a group job is classified as a group job). The wait never sleeps past 66 minutes from its start (the second sleep is capped at the time left) and names the held jobs when the reset is later. The reruns are spaced 15 seconds apart. A released rerun spends only after
 it starts, so the live `rate_limit` does not show it yet: each is counted at its expected
 cost (41 reads for a group job, 42 otherwise) against the lower of the live remaining and
 the budget when releasing began, and the job stops starting reruns when that projection
@@ -604,11 +604,12 @@ based on them can starve a PR. Every open PR is re-proved within ceil(open/5)
 consecutive runs; a PR opened or closed in between shifts the windows by at most one
 cycle. A run that fails or is deferred still advances the count, so the window it skipped
 is reached ceil(open/5) runs later: the bound is in proving runs, not in all runs. GitHub
-returns at most 1,000 results for a filtered list, so the count can stop moving, and
-expired run history can lower it; from 1,000 on the run number of the current run
-(monotonic, no read) is the cursor, and a count that plateaus below that by retention is
-the one case this does not cover (not observed, and nothing correct depends on the
-sweep). If the count cannot be read the clock hour stands in. Unless a bucket can afford
+returns at most 1,000 results for a filtered list, and retention can delete old runs, so
+the count is taken within the current 30-day epoch only (`created` at or after the epoch
+start, at most 720 runs) and the epoch number is added as a stable offset: windows are
+consecutive within an epoch and the sequence restarts at an arbitrary offset once per
+epoch, a shift of at most one cycle (a `shortcut:` in the script; a persisted cursor would
+remove it and needs a write the job does not have). If the count cannot be read the clock hour stands in. Unless a bucket can afford
 one publisher above the reserve (292) the sweep selects nothing. The cap delays drift detection and recovery of a
 missed event by up to that many hours; it removes neither, and no correctness depends
 on it, because events and the retry path settle checks first. An empty selection leaves the run green and

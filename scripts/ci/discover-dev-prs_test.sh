@@ -19,6 +19,7 @@ if [ "$1" = api ] && [ "$2" = rate_limit ]; then
   exit 0
 fi
 if [ "$1" = api ] && [ "${2#repos/owner/repo/actions/workflows/ci-dev-gate.yml/runs?event=schedule}" != "$2" ]; then
+  printf '%s\n' "$2" >>"$DEV_DISCOVERY_FIXTURE/schedule.calls"
   [ -e "$DEV_DISCOVERY_FIXTURE/schedule.count" ] || exit 1
   cat "$DEV_DISCOVERY_FIXTURE/schedule.count"
   exit 0
@@ -202,7 +203,7 @@ for open in 1 4 5 6 21 22 40; do
   for first in 1 700; do # numbers need not be dense or small
     pulls_of "$open" "$first"
     sweeps=$(((open + cap - 1) / cap))
-    for base in 0 123457; do # run counts the history may start from
+    for base in 0 457; do # in-epoch counts the history may start from (below the 1,000 cap)
       covered=''
       hour_covered=''
       hour=0
@@ -231,15 +232,16 @@ printf '7\n' >"$work/schedule.count"
 # An unreadable count falls back to the clock hour and still sweeps at most the cap.
 rm -f "$work/schedule.count"
 [ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'an unreadable run count must still sweep the cap\n' >&2; exit 1; }
-# The count stops moving at GitHub's 1,000-result cap on filtered lists: from there the run
-# number of the current run is the cursor, so the window still rotates and stays deterministic.
+# The count is taken within the current 30-day epoch: the stub records the request, which must
+# carry the epoch's created bound, and a count at GitHub's 1,000-result cap is not trusted
+# (the clock stands in), so a plateaued count can never pin one window.
 pulls_of 21 1
+: >"$work/schedule.calls"
+printf '7\n' >"$work/schedule.count"
+run 2>/dev/null >/dev/null
+grep -q 'created=%3E%3D20' "$work/schedule.calls" || { printf 'the schedule count must be bounded to the current epoch\n' >&2; exit 1; }
 printf '1000\n' >"$work/schedule.count"
-GITHUB_RUN_NUMBER=11 run 2>/dev/null >"$work/cap.a"
-GITHUB_RUN_NUMBER=12 run 2>/dev/null >"$work/cap.b"
-GITHUB_RUN_NUMBER=11 run 2>/dev/null >"$work/cap.c"
-cmp -s "$work/cap.a" "$work/cap.c" || { printf 'a capped count must sweep deterministically for one run number\n' >&2; exit 1; }
-! cmp -s "$work/cap.a" "$work/cap.b" || { printf 'a capped count must still move the window with the run number\n' >&2; exit 1; }
+[ "$(run 2>/dev/null | jq length)" = "$cap" ] || { printf 'a capped count must still sweep the cap\n' >&2; exit 1; }
 # Below the reserve plus one publisher's cost (250 + 42, in either bucket) the sweep selects nothing and a PR event is unaffected.
 printf '7\n' >"$work/schedule.count"
 for bucket in core graphql; do

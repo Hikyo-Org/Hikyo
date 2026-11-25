@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   publish:
-    name: publish-${{ matrix.work.head }}
+    name: ${{ matrix.work.kind == 'group' && 'group' || 'publish' }}-${{ matrix.work.head }}
     if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.work.kind == 'group' && 10 || 1 }}

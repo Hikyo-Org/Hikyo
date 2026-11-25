@@ -81,7 +81,7 @@ jobs:
           fi
           # Every failed or cancelled job of the attempt, with whether it is a publisher or
           # group job whose reconcile step failed (the only kind worth another budget). Worker
-          # group jobs share the publish- name, and reconcile always runs, so a failed setup
+          # worker jobs are named by kind (group-<sha> for a group job, publish-<sha> otherwise), and reconcile always runs, so a failed setup
           # counts too. Discovery is left alone. A pending job that a newer one replaced ends
           # cancelled without running a step, so it never qualifies.
           failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
@@ -227,10 +227,13 @@ jobs:
           }
           # Sleeps to the reset, then re-reads; returns 1, saying why, when no rerun may follow.
           wait_for_reset() {
-            local wait
+            local wait cap
             wait=$((reset + 5 - $(date +%s)))
-            if [ "$wait" -gt 3660 ]; then
-              echo "The rate limit resets in $wait seconds, beyond one window; not waiting."
+            # One window at most, and never past the 66 minutes after which no rerun starts.
+            cap=$((started + 3960 - $(date +%s)))
+            if [ "$cap" -gt 3660 ]; then cap=3660; fi
+            if [ "$wait" -gt "$cap" ]; then
+              echo "The rate limit resets in $wait seconds, beyond the $cap this job can still wait; not waiting."
               return 1
             fi
             echo "Rate limit has $remaining of $limit requests left; waiting $wait seconds for the reset."
@@ -267,7 +270,7 @@ jobs:
           }
           list_jobs() { # $1 run id, $2 attempt: every failed or cancelled job, and whether it qualifies
             gh api --paginate "repos/$GH_REPO/actions/runs/$1/attempts/$2/jobs?per_page=100" \
-              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end)"'
+              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end) \(.name)"'
           }
           # A listing that still fails after its retries is named and skipped, so one bad read
           # cannot cost every other rerun; the job then fails visibly at the end.
@@ -289,26 +292,33 @@ jobs:
           group_plan=""
           other_plan=""
           plan_run() { # $1 run id, $2 job lines
-            local id kind qualifies total=0 g=() o=() count
-            while read -r id kind qualifies; do
+            local id kind qualifies name total=0 g=() o=() gh=() oh=() count
+            while read -r id kind qualifies name; do
               [ -n "$id" ] || continue
               total=$((total + 1))
               [ "$qualifies" = 1 ] || continue
-              [[ "$id" =~ ^[1-9][0-9]*$ ]]
-              if [ "$kind" = group ]; then g+=("$id"); else o+=("$id"); fi
+              [[ "$id" =~ ^[1-9][0-9]*$ && "$name" =~ ^((dev-)?publish|group)-[0-9a-f]{40}$ ]]
+              if [ "$kind" = group ]; then
+                g+=("$id")
+                gh+=("$name")
+              else
+                o+=("$id")
+                oh+=("$name")
+              fi
             done <<<"$2"
             count=$((${#g[@]} + ${#o[@]}))
             [ "$count" -gt 0 ] || return 0
+            # Entries are "type id cost run key": the key is the job name (kind and head), or the run for a run-level rerun.
             if [ "$count" -ge 2 ] && [ "$count" = "$total" ] && { [ "${#g[@]}" = 0 ] || [ "${#o[@]}" = 0 ]; }; then
               if [ "${#g[@]}" -gt 0 ]; then
-                group_plan="${group_plan}run $1 $((count * group_cost))"$'\n'
+                group_plan="${group_plan}run $1 $((count * group_cost)) $1 run$1"$'\n'
               else
-                other_plan="${other_plan}run $1 $((count * other_cost))"$'\n'
+                other_plan="${other_plan}run $1 $((count * other_cost)) $1 run$1"$'\n'
               fi
             elif [ "${#g[@]}" -gt 0 ]; then
-              group_plan="${group_plan}job ${g[0]} $group_cost"$'\n'
+              group_plan="${group_plan}job ${g[0]} $group_cost $1 ${gh[0]}"$'\n'
             else
-              other_plan="${other_plan}job ${o[0]} $other_cost"$'\n'
+              other_plan="${other_plan}job ${o[0]} $other_cost $1 ${oh[0]}"$'\n'
             fi
           }
           while read -r run_id attempt; do
@@ -321,6 +331,11 @@ jobs:
             fi
             plan_run "$run_id" "$found"
           done <<<"$runs"
+          # Newest run first, and one entry per job name (kind and head): a stale run of an earlier head
+          # must not take a release slot ahead of the current one.
+          newest_per_head() { sort -k4,4nr | awk 'NF && !seen[$5]++'; }
+          group_plan=$(printf '%s' "$group_plan" | newest_per_head)
+          other_plan=$(printf '%s' "$other_plan" | newest_per_head)
           # Space the reruns and count each one at its expected cost before it is released: a
           # released rerun spends only after it starts, so the live budget does not yet show
           # it. A group job may spend down to a fifth of the window; any other job leaves the
@@ -371,18 +386,20 @@ jobs:
             done <<<"$retry_plan"
             retry_plan=""
           }
-          while read -r type id cost; do
+          while read -r type id cost rest; do
             [ -n "$id" ] || continue
             spend_rerun "$type" "$id" "$cost" group
           done <<<"$group_plan"
-          while read -r type id cost; do
+          while read -r type id cost rest; do
             [ -n "$id" ] || continue
             spend_rerun "$type" "$id" "$cost" other
           done <<<"$other_plan"
-          # A window that had recovered when this job started skipped the sleep, but a non-group
-          # job that did not fit above the reserve (or the projection) fits after the reset: wait
-          # for it once and release the held set once. Group-only holds do not trigger this.
-          if [ -n "$retry_plan" ] && [ "$slept" = 0 ] && [[ "$retry_plan" == *" other"$'\n'* ]]; then
+          # A window that had recovered when this job started skipped the sleep, but a job that
+          # did not fit above its floor (the reserve for a non-group job, a fifth of the window
+          # for a group job, or the projection of the reruns just released) fits after the
+          # reset: wait for it once and release the held set once. Nothing else completes a
+          # held merge-group job.
+          if [ -n "$retry_plan" ] && [ "$slept" = 0 ]; then
             echo "Held for the reserve: waiting for the reset to release them once."
             if wait_for_reset; then
               budget_at_start=$remaining
