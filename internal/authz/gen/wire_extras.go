@@ -379,7 +379,11 @@ var reviewedWireExtras = wireExtras{
 		// off ClassStub in the same change that registered its operations; the
 		// totality invariant refuses a stub verb that already has operations, which
 		// is exactly the "implementation rides in on a stale class" case.
-		"cli:import":          {Class: "ClassTenant"},
+		"cli:import": {Class: "ClassTenant"},
+		// `incident` reaches only the incident routes, which are classed
+		// unauthenticated (owner-accepted exception, #1569): the service decides
+		// the authority from the incident's target, and the answer is uniform.
+		"cli:incident":        {Class: "ClassUnauthenticated"},
 		"cli:instance-config": {Class: "ClassInstance"},
 		// `key` reaches the catalogue and the group routes, all tenant-class.
 		"cli:key":   {Class: "ClassTenant"},

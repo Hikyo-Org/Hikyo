@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -574,17 +575,19 @@ const resumePage = 100
 // commit and the ledger update leaves the item open: the next resume asks the
 // owner again, and the owner's own confirmation is what writes done.
 //
-// expectedOpen is how many open items the operator listed and confirmed: when it
-// is set and the incident's open set has a different size, the call is a conflict
-// and spends no proof, so items another operator reopened since the listing never
-// run unseen.
-func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, expectedOpen *int) (ResumeResult, error) {
+// confirmed is the digest (api.IncidentItemsDigest) of the open item ids the
+// operator listed and confirmed. When it is set and the incident's open items
+// are not exactly that set, the call is a conflict that spends no proof: the
+// set is read and compared in the transaction that spends the proof. The call
+// then runs only the items of that snapshot, so an item reopened or added later
+// never runs unseen. A nil digest is for in-process callers with no operator.
+func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, confirmed *string) (ResumeResult, error) {
 	var res ResumeResult
 	// Resume performs the containment the ledger enumerated, so it needs a fresh
 	// account-security proof of its own (ADR O2), checked after the caller is
 	// known to hold the incident: a caller who cannot see it gets the uniform
-	// answer, never a request for a proof. A one-time code is spent in the first
-	// write below, so one code covers one resume call and no other operation; a
+	// answer, never a request for a proof. A one-time code is spent in the write
+	// below, so one code covers one resume call and no other operation; a
 	// password is checked fresh on each call.
 	evidence := ReauthEvidence{kind: reauthEvidenceExempt}
 	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
@@ -602,64 +605,53 @@ func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, e
 			return res, err
 		}
 	}
-	after := ""
-	first := true
-	for {
-		var page []authz.IncidentItem
-		err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-			caller, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
-			if err != nil {
+	var ids []string
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		caller, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
+		if err != nil {
+			return err
+		}
+		if inc.Status != domain.IncidentOpen {
+			return fmt.Errorf("%w: incident is closed", domain.ErrConflict)
+		}
+		if evidence.kind != reauthEvidenceExempt {
+			if err := s.Auth.ConsumeReauthEvidence(ctx, az, evidence, caller.Principal); err != nil {
 				return err
 			}
-			if inc.Status != domain.IncidentOpen {
-				return fmt.Errorf("%w: incident is closed", domain.ErrConflict)
-			}
-			if first && evidence.kind != reauthEvidenceExempt {
-				if err := s.Auth.ConsumeReauthEvidence(ctx, az, evidence, caller.Principal); err != nil {
-					return err
-				}
-			}
-			if first && expectedOpen != nil {
-				// The operator confirmed a listing of this many open items. Checked in the
-				// transaction that spends the proof, so a refusal here spends nothing.
-				open, err := countOpenItems(ctx, az, inc.ID)
-				if err != nil {
-					return err
-				}
-				if open != *expectedOpen {
-					return fmt.Errorf("%w: the incident now has %d open item(s), not the %d you confirmed; list them again", domain.ErrConflict, open, *expectedOpen)
-				}
-			}
-			page, err = az.IncidentItems(ctx, inc.ID, after, resumePage, true)
+		}
+		if ids, err = openItemIDs(ctx, az, inc.ID); err != nil {
 			return err
-		})
-		if err != nil {
+		}
+		if confirmed != nil && api.IncidentItemsDigest(ids) != *confirmed {
+			return fmt.Errorf("%w: the incident's open items are not the set you confirmed (it has %d now); list them again", domain.ErrConflict, len(ids))
+		}
+		return nil
+	})
+	if err != nil {
+		return res, err
+	}
+	for _, itemID := range ids {
+		if err := s.runItem(ctx, actor, id, itemID, &res); err != nil {
 			return res, err
 		}
-		first = false
-		for _, it := range page {
-			if err := s.runItem(ctx, actor, id, it.ID, &res); err != nil {
-				return res, err
-			}
-		}
-		if len(page) < resumePage {
-			return res, nil
-		}
-		after = page[len(page)-1].ID
 	}
+	return res, nil
 }
 
-// countOpenItems counts the items resume would run.
-func countOpenItems(ctx context.Context, az *authz.TxAuthorizer, incidentID string) (int, error) {
-	n, after := 0, ""
+// openItemIDs reads the ids of every open item of the incident, page by page.
+func openItemIDs(ctx context.Context, az *authz.TxAuthorizer, incidentID string) ([]string, error) {
+	var ids []string
+	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, resumePage, true)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		n += len(page)
+		for _, it := range page {
+			ids = append(ids, it.ID)
+		}
 		if len(page) < resumePage {
-			return n, nil
+			return ids, nil
 		}
 		after = page[len(page)-1].ID
 	}

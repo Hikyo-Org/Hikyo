@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +84,21 @@ func (f resumeFixture) openItems(t *testing.T, db *store.DB) int {
 	return int(queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+f.id+`' AND outcome IN ('pending','unknown','blocked')`))
 }
 
+// openDigest is the digest an operator would send for the incident's open items now.
+func (f resumeFixture) openDigest(t *testing.T, db *store.DB) string {
+	t.Helper()
+	ids := strings.Fields(queryStrings(t, db, `SELECT id || ' ' FROM incident_items WHERE incident_id='`+f.id+`' AND outcome IN ('pending','unknown','blocked')`))
+	return api.IncidentItemsDigest(ids)
+}
+
+// swapOpenSet settles one open item and reopens one out-of-scope one, so the open
+// set changes while its size does not.
+func (f resumeFixture) swapOpenSet(t *testing.T, db *store.DB) {
+	t.Helper()
+	execRaw(t, db, `UPDATE incident_items SET outcome='done', reason='' WHERE id=(SELECT MIN(id) FROM incident_items WHERE incident_id='`+f.id+`' AND outcome IN ('pending','unknown','blocked'))`)
+	execRaw(t, db, `UPDATE incident_items SET outcome='pending', reason='' WHERE id=(SELECT MIN(id) FROM incident_items WHERE incident_id='`+f.id+`' AND outcome='out_of_scope')`)
+}
+
 // Resume performs the containment the ledger enumerated, so it needs a fresh
 // account-security proof of its own (ADR O2). Each refusal below leaves the
 // incident untouched, and a one-time code is spent by one call.
@@ -138,14 +154,21 @@ func TestIncidentResumeRefusesAChangedOpenSetWithoutSpendingTheProof(t *testing.
 		}
 		*f.clk = f.base.Add(120 * time.Second)
 		code := totpCode(t, f.uri, *f.clk)
-		stale := open + 1
-		if _, err := f.incidents.Resume(ctx, f.actor, f.id, code, &stale); !errors.Is(err, domain.ErrConflict) {
-			t.Fatalf("resume of a changed open set = %v, want a conflict", err)
+		confirmed := f.openDigest(t, db)
+		// Same size, different members: one item settled and another reopened.
+		f.swapOpenSet(t, db)
+		if got := f.openItems(t, db); got != open {
+			t.Fatalf("the swap changed the open count: %d, want %d", got, open)
+		}
+		if _, err := f.incidents.Resume(ctx, f.actor, f.id, code, &confirmed); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("resume of a swapped open set = %v, want a conflict", err)
 		}
 		if got := f.openItems(t, db); got != open {
 			t.Fatalf("a refused resume changed the open set: %d, want %d", got, open)
 		}
-		if _, err := f.incidents.Resume(ctx, f.actor, f.id, code, &open); err != nil {
+		// The same unspent code runs the set the operator lists again.
+		again := f.openDigest(t, db)
+		if _, err := f.incidents.Resume(ctx, f.actor, f.id, code, &again); err != nil {
 			t.Fatalf("the unspent code did not run the confirmed set: %v", err)
 		}
 	})
@@ -165,17 +188,24 @@ func TestIncidentResumeOverHTTPWithAValidProof(t *testing.T) {
 		*f.clk = f.base.Add(120 * time.Second)
 		code := totpCode(t, f.uri, *f.clk)
 
-		if status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "open_items": open + 1}); status != http.StatusConflict {
-			t.Fatalf("resume with a stale count = %d %s, want 409", status, body)
+		if status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "items_digest": api.IncidentItemsDigest(nil)}); status != http.StatusConflict {
+			t.Fatalf("resume with the wrong set = %d %s, want 409", status, body)
 		}
-		status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "open_items": open})
+		// A digest below and one above the real one are both refused, so the comparison is equality.
+		if status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "items_digest": strings.Repeat("f", 64)}); status != http.StatusConflict {
+			t.Fatalf("resume with a larger digest = %d %s, want 409", status, body)
+		}
+		if status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "items_digest": strings.Repeat("0", 64)}); status != http.StatusConflict {
+			t.Fatalf("resume with a smaller digest = %d %s, want 409", status, body)
+		}
+		status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "items_digest": f.openDigest(t, db)})
 		if status != http.StatusOK {
 			t.Fatalf("resume with a valid code = %d %s, want 200", status, body)
 		}
 		if got := decodeWire[apigen.IncidentResumeResult](t, body); int(got.Examined+got.Skipped) != open {
 			t.Fatalf("examined+skipped = %d, want %d", got.Examined+got.Skipped, open)
 		}
-		if status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "open_items": 0}); status == http.StatusOK {
+		if status, body := env.callAs(t, bearer, http.MethodPost, path, map[string]any{"proof": code, "items_digest": strings.Repeat("0", 64)}); status == http.StatusOK {
 			t.Fatalf("a replayed code resumed again: %d %s", status, body)
 		}
 	})

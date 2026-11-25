@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
 import { commonRefusalText } from './statusText.ts';
-import { IncidentListTooLong, incidentFailureText, isOpenItem, itemStateLabel, notYetRun, type IncidentItem } from './incidents.ts';
+import { IncidentListTooLong, incidentFailureText, isOpenItem, itemStateLabel, notYetRun, resumeBody, type IncidentItem } from './incidents.ts';
 
 function item(over: Partial<IncidentItem>): IncidentItem {
   return {
@@ -41,6 +41,16 @@ describe('incident failure text', () => {
     const wrongProof = incidentFailureText(new ApiError(401, 'failed'));
     expect(wrongProof).toContain('password or code was not accepted');
     expect(wrongProof).not.toBe(commonRefusalText.sessionEnded);
+  });
+});
+
+describe('resume request', () => {
+  it('sends the digest of exactly the listed items, in any order', async () => {
+    // The same vector pins the server's api.IncidentItemsDigest.
+    const digest = '3dbcd4b098200b219ec0411f546330e8a2430e5baed3762ecb0a6280a4f5d8a4';
+    expect(await resumeBody('123456', [item({ id: 'itm_b' }), item({ id: 'itm_a' })])).toEqual({ proof: '123456', items_digest: digest });
+    expect((await resumeBody('123456', [item({ id: 'itm_a' })])).items_digest).not.toBe(digest);
+    expect((await resumeBody('123456', [])).items_digest).not.toBe(digest);
   });
 });
 

@@ -101,6 +101,17 @@ export function useOpenIncident() {
   });
 }
 
+/**
+ * The resume request for the open items the operator was shown: the proof and
+ * the digest of exactly those items (lowercase hex SHA-256 of their ids sorted
+ * bytewise and joined by a newline), so the server refuses a set that changed.
+ */
+export async function resumeBody(proof: string, shown: readonly IncidentItem[]): Promise<{ proof: string; items_digest: string }> {
+  const ids = shown.map((item) => item.id).sort().join('\n');
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ids));
+  return { proof, items_digest: Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('') };
+}
+
 /** Resume, attest and close each refresh the incident and its items. */
 export function useIncidentActions(id: string) {
   const queries = useQueryClient();
@@ -113,8 +124,8 @@ export function useIncidentActions(id: string) {
     // The proof is the operator's TOTP code or password: it is held as sensitive
     // state, sent once, and never kept as mutation data.
     resume: useSensitiveMutation({
-      mutationFn: ({ proof, openItems }: { proof: string; openItems: number }) =>
-        parsed(resumeIncidentOp, { path: { incident: id }, body: { proof, open_items: openItems } }),
+      mutationFn: async ({ proof, items }: { proof: string; items: readonly IncidentItem[] }) =>
+        parsed(resumeIncidentOp, { path: { incident: id }, body: await resumeBody(proof, items) }),
       onSettled: async () => { await refresh(); },
     }),
     attest: useMutation({

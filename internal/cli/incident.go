@@ -141,7 +141,7 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		var out apigen.IncidentResumeResult
-		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/resume", apigen.IncidentResumeRequest{Proof: proof, OpenItems: len(open)}, &out); err != nil {
+		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/resume", incidentResumeRequest(proof, open), &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, Table{
@@ -210,6 +210,17 @@ func incidentOpenBody(scope, account, adapter string, flags commonFlags) (apigen
 // incidentOpenItemPages bounds how many pages the resume confirmation reads, so a
 // ledger the surface cannot list in full is refused rather than half confirmed.
 const incidentOpenItemPages = 40
+
+// incidentResumeRequest is the resume call for the open items the operator was shown:
+// the proof, and the digest of exactly those items, so the server refuses a set
+// that changed since.
+func incidentResumeRequest(proof string, listed []apigen.IncidentItem) apigen.IncidentResumeRequest {
+	ids := make([]string, len(listed))
+	for i, it := range listed {
+		ids[i] = it.Id
+	}
+	return apigen.IncidentResumeRequest{Proof: proof, ItemsDigest: api.IncidentItemsDigest(ids)}
+}
 
 // incidentOpenItems lists every open item of one incident, page by page.
 func incidentOpenItems(ctx context.Context, client *Client, id string) ([]apigen.IncidentItem, error) {

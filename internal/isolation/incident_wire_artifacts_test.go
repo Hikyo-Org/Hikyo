@@ -50,7 +50,7 @@ func TestIncidentWireRefusesOtherArtifactsAndWeakSessions(t *testing.T) {
 				{"get", http.MethodGet, "/incidents/" + id, nil},
 				{"items", http.MethodGet, "/incidents/" + id + "/items?limit=5", nil},
 				{"attest", http.MethodPost, "/incidents/" + id + "/items/" + itemID + "/attest", nil},
-				{"resume", http.MethodPost, "/incidents/" + id + "/resume", map[string]any{"proof": "000000", "open_items": 0}},
+				{"resume", http.MethodPost, "/incidents/" + id + "/resume", map[string]any{"proof": "000000", "items_digest": "0000000000000000000000000000000000000000000000000000000000000000"}},
 				{"close", http.MethodPost, "/incidents/" + id + "/close", map[string]bool{"with_residuals": true}},
 			}
 		}

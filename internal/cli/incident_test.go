@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
@@ -50,6 +51,18 @@ func TestIncidentItemTableSeparatesRefusedFromNotYetRun(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("cells = %v, want %v", got, want)
 		}
+	}
+}
+
+// Resume confirms exactly the items listed, whatever their order.
+func TestIncidentResumeRequestCarriesTheDigestOfTheListedItems(t *testing.T) {
+	t.Parallel()
+	got := incidentResumeRequest("123456", []apigen.IncidentItem{{Id: "iti_b"}, {Id: "iti_a"}})
+	if want := api.IncidentItemsDigest([]string{"iti_a", "iti_b"}); got.ItemsDigest != want || got.Proof != "123456" {
+		t.Fatalf("request = %+v, want digest %s", got, want)
+	}
+	if empty := incidentResumeRequest("123456", nil); empty.ItemsDigest == got.ItemsDigest {
+		t.Fatal("a different listing produced the same digest")
 	}
 }
 

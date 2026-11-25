@@ -466,9 +466,12 @@ principal is contained, so a contained account would still have a scheduler acti
   one-time code is spent by that call, so it cannot open a second resume; a password is not
   spent and is checked fresh on each call. The CLI lists the open items and stops unless `--yes`
   confirms them; the web asks the same in a dialog that lists them. The request also carries
-  `open_items`, how many open items the operator listed and confirmed. When another operator has
-  reopened or settled items since, the open set has a different size and the call is a `409`
-  that spends no proof, so no item runs unseen. Open only enumerates and performs nothing. A
+  `items_digest`, the SHA-256 of the sorted ids of the open items the operator listed and
+  confirmed. In the transaction that spends the proof the server reads every open item id and
+  compares the digest; when another operator has reopened, added or settled items since, the set
+  differs (even at the same size) and the call is a `409` that spends no proof. A matching call
+  runs exactly the ids it checked, never an item added after, and an item settled meanwhile is
+  skipped. A set the CLI cannot list in full (over 40 pages) is refused before the call. Open only enumerates and performs nothing. A
   caller who cannot see the incident gets the uniform not-found before any proof is asked for.
 - Limitation: an account with neither a password nor a confirmed factor (for example one that
   only signs in through a linked identity) has no pre-existing credential to prove with and

@@ -376,9 +376,12 @@ not exist: run `hikyo account factor step-up` and retry.
   stops unless you pass `--yes`, then asks for your authenticator code (or your
   password if you have no authenticator) and runs each open item through its owner
   function once. It cannot be undone. A one-time authenticator code is spent by that
-  call; a password is checked again on each call. If another operator reopens or settles
-  items between your listing and your confirmation, the call is refused with a conflict
-  and spends nothing: list again and confirm the new set. An account that has neither a
+  call; a password is checked again on each call. The call names exactly the items you
+  were shown. If another operator reopens, adds or settles items between your listing
+  and your confirmation (even keeping the same number), the call is refused with a
+  conflict and spends nothing: list again and confirm the new set. It never runs an
+  item you did not see. In the web dialog, a conflict replaces the list with the current
+  one and asks you to confirm again. An account that has neither a
   password nor an authenticator (it signs in only through a linked identity) cannot
   resume; give it a password or an authenticator first.
 - `hikyo incident attest <incident> <item>` records your statement that an open item

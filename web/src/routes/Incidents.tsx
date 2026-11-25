@@ -15,6 +15,7 @@ import {
   type IncidentScope,
   notYetRun,
 } from '../api/incidents.ts';
+import { ApiError } from '../api/client.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { formatWhen } from '../lib/formatWhen.ts';
 import { Alert } from '../ui/Alert.tsx';
@@ -109,7 +110,7 @@ function OpenForm({ org, onOpened }: { org: string; onOpened: (id: string) => vo
   );
 }
 
-function Counts({ incident }: { incident: Incident }) {
+export function Counts({ incident }: { incident: Incident }) {
   const counts = incident.counts;
   const entries: readonly (readonly [string, number])[] = [
     ['Not yet run', notYetRun(counts)],
@@ -211,12 +212,22 @@ function Ledger({ id }: { id: string }) {
             if (proof === '') return;
             const sent = proof;
             setProof('');
-            actions.resume.mutate({ proof: sent, openItems: resuming.length }, {
+            actions.resume.mutate({ proof: sent, items: resuming }, {
               onSuccess: (r) => {
                 setResuming(null);
                 feedback.ok(`Resume ran ${r.examined} items: ${r.confirmed} confirmed, ${r.failed} refused, ${r.blocked} blocked, ${r.unconfirmed} unconfirmed.`);
               },
-              onError: feedback.report,
+              onError: (error) => {
+                feedback.report(error);
+                // The open items changed since they were listed: show the current ones and
+                // make the operator confirm them again; nothing is retried automatically.
+                if (error instanceof ApiError && error.status === 409) {
+                  void items.refetch().then((fresh) => {
+                    const current = (fresh.data ?? []).filter(isOpenItem);
+                    setResuming(current.length === 0 ? null : current);
+                  });
+                }
+              },
             });
           }}
         >

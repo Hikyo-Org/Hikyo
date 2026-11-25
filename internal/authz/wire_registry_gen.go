@@ -33,6 +33,7 @@ var wireRegistry = map[string]wireEntry{
 	"cli:file-target":                     {Class: ClassTenant},
 	"cli:folder":                          {Class: ClassTenant},
 	"cli:import":                          {Class: ClassTenant},
+	"cli:incident":                        {Class: ClassUnauthenticated},
 	"cli:instance-config":                 {Class: ClassInstance},
 	"cli:key":                             {Class: ClassTenant},
 	"cli:lease":                           {Class: ClassTenant},
