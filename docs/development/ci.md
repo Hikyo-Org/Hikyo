@@ -8,7 +8,7 @@ one active run finishes, with only the newest pending run retained.
 
 Frozen release candidates target **main** and enter its mandatory single-entry
 queue. **ci-queue-required** admits the exact PR head and then requires complete
-current-base merge-group proof. Branches under `release/` always select all 17
+current-base merge-group proof. Branches under `release/` always select all 16
 domains. Dev movement never cancels a fixed candidate's validation.
 
 Stable consumers and signed nightlies can reuse authenticated complete proof for
@@ -32,12 +32,13 @@ for activation, promotion and operator commands.
 | Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, noctx, staticcheck `SA*` except `SA4006`/`SA4009`, `QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline of those rules is not enforced. A second strict pass runs wastedassign, unused and staticcheck `SA4006`/`SA4009` (`.golangci-strict.yml`) on every whole changed package (a moved file counts for both packages), because those rules hold at zero across the repo. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
 | Lint the desktop module | `ci-advisory-golangci-desktop` | Advisory, per PR push touching `desktop/`, `.golangci.yml`, `.golangci-strict.yml`, `scripts/ci/golangci-lint-version`, `scripts/ci/run-go-tool.sh` or the workflow itself. Pinned `golangci-lint` over the whole nested module on macOS; a Linux pre-job skips the macOS job where `desktop/go.mod` does not exist. The strict pass runs only where `.golangci-strict.yml` exists. |
 | Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
-| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 17 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
+| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
 | Validate all of main | `ci-main` | Weekly or manual full graph, including development snapshot artifacts. The schedule is the automatic writer of main-scoped compile caches. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
 | Run operations-floor acceptance | `release-ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
 | Measure performance | `perf-codspeed` or `perf-control` | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
+| Validate desktop nightly | `nightly-desktop` | Daily at 03:41 UTC or manual on main. Runs the macOS desktop validation against the dev and main heads and keeps one `ci: nightly desktop validation failing` issue open until a green night. Advisory: not required by dev or the queue. |
 | Promote dev to main for the nightly | `nightly-promote` | Daily at 22:17 UTC or manual on main. First back-merges main into dev through a `backmerge/auto-*` PR with auto-merge when dev lacks real main commits (also right after each merged same-repository PR into main whose head is not `release/nightly-*`, so fork PRs wait for the next run; stuck after 6 hours or a conflict fails the run; a hand-made `backmerge/*` PR takes precedence). Then opens a `release/nightly-*` PR for the last green dev commit when main lacks it and queues it. A merged promotion starts the nightly. |
 | Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch path, built and signed from main after complete verified source proof of that exact commit. A commit that is already published is skipped. The independent `promotion-health` job fails the run when the latest scheduled or manual `nightly-promote` run did not succeed or none completed in 36 hours, without blocking publication. |
 | Check compatibility before tagging | `release-compatibility-check` | Manual, on main, read-only. For a given `X.Y.Z` it generates the upgrade-compatibility declaration at main's tip and compares it with the highest earlier stable release's signed declaration, and requires the reviewed release-source edge from that release (see [online signing](../release/online-signing.md)). It tags and publishes nothing and `release-build` does not depend on it. Dispatch works only from main, so it goes live when a promotion lands it there. |
@@ -79,6 +80,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. `fuzz-report.yml` also keeps the one issue open while dev is red. |
 | Queue diagnostics | `ci-queue-report.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run). Neither grants merge authority. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
+| Nightly desktop | `nightly-desktop.yml` | Advisory macOS validation of the dev and main heads (owner decision 2026-11-25), kept off the dev and queue critical paths. Holds the only `issues: write` permission in its own report job. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
 | Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml`, `ci-lint-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards, the reliability race suite, `test_core_serial` and the advisory invariants job only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Pinned tool seed | `ci-tool-cache.yml` | Trusted-main-only producer of the pinned release-file entries. Every other workflow only restores them, and the helper verifies each file's SHA-256 before use, so a poisoned or stale entry cannot run. |
@@ -151,39 +153,68 @@ trailer. User docs under `docs/site/src/content/docs/` also satisfy it.
 `desktop/` is a nested Go module (the Wails shell, #1215). Wails, cgo and WebKit
 must never reach the root build, so the root lanes and the root module never load it; they cannot
 (`go list ./desktop/...` from the root is an error) and `golangci-lint-new.sh`
-lints it from inside `desktop/` instead. The registry domain `desktop` and the
-`desktop` job in `ci.yml` own it:
+lints it from inside `desktop/` instead.
 
-1. The runner follows the tree. Where `desktop/go.mod` exists the job runs on a
-   pinned `macos-15` hosted runner (paid minutes), with no cache restored or
-   written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to `-mmacosx-version-min=13.0`.
-   Where it does not (main and dev before the shell lands) a full plan still needs
-   the job to report success, so it runs on `ubuntu-latest`, executes only step 2
-   and costs seconds. The `changes` job publishes `desktop_module` for this.
-2. `scripts/ci/check-desktop-deps.sh` keeps Wails and its platform bindings out of
-   the root `go.mod` and `go.sum` and refuses a `go.work` or a root requirement on
-   `desktop/`. Where `desktop/` exists it also requires `replace
-   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`, and lists every root
-   package `desktop/` compiles (`go list -deps`, darwin, probe tag) and fails when
-   the classifier would not select the desktop job for it.
-3. On macOS: `go test -race ./...`, a `-tags probe` build, a release build, and the
-   driven WKWebView lane, `go run ./probes/driven`, which opens the probe shell
-   against a fake instance (Playwright cannot drive WKWebView).
-4. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
+**Owner decision 2026-11-25** ([ci-coverage-cuts ADR](../adr/ci-coverage-cuts.md)):
+desktop validation is not part of `ci.yml`, so it gates neither `ci-dev` nor the
+merge queue. The `macos-15` job was not acquired in 5 of 21 `ci-dev` attempts and kept
+dev red. `nightly-desktop.yml` owns it instead, daily at 03:41 UTC or by manual
+dispatch on main:
+
+1. A `heads` job pins the dev and main commits and picks each leg's runner: `macos-15`
+   (paid minutes) where `desktop/go.mod` exists at that commit, `ubuntu-latest` where
+   it does not (main before promotion), so a boundary-only leg cannot fail on macOS
+   capacity. `desktop-dev` and `desktop-main` each check out their exact commit, with
+   no cache restored or written and `CGO_CFLAGS` and `CGO_LDFLAGS` set to
+   `-mmacosx-version-min=13.0`. A leg step fails when the module exists on a
+   non-macOS runner.
+2. Each runs `scripts/ci/check-desktop-deps.sh`. It keeps Wails and its platform
+   bindings out of the root `go.mod` and `go.sum` and refuses a `go.work` or a root
+   requirement on `desktop/`. Where `desktop/` exists it also requires `replace
+   github.com/Hikyo-Org/hikyo => ../` in `desktop/go.mod`, and its third check keeps
+   `feedback-plan.sh` honest: every root package that `desktop/` compiles must select
+   the `desktop-compile` fast-feedback check.
+3. Where `desktop/go.mod` exists: `go test -race ./...`, a `-tags probe` build, a
+   release build, and the driven WKWebView lane, `go run ./probes/driven`, which
+   opens the probe shell against a fake instance (Playwright cannot drive WKWebView).
+   Main before the shell lands runs only step 2, on Linux, so until promotion brings
+   the module to main, the main leg covers only the boundary check.
+4. A `report` job runs with `issues: write` only, no checkout and no repository code.
+   When either leg is not `success` (a runner that is never acquired is reported as
+   `cancelled`), it looks the issue up by the `ci-nightly-desktop` label plus an exact title, marker and
+   bot-author match, then opens or comments on the one issue titled `ci: nightly desktop
+   validation failing` with the run link and each branch's head SHA and result, then
+   fails, so the run stays red. It runs only on main; a manual run from another ref skips
+   it. A later green night closes the issue with a comment.
+   A `shim` job (no checkout, API reads only) checks whether the desktop-removal shim
+   in `ci.yml` is dead: once neither head's job registry lists `desktop`, the shim and
+   its migration tests are dead code (tracked in #1595). The report keeps that in its
+   own issue, `ci: desktop-removal shim check (#1595)` (label
+   `ci-desktop-removal-shim`), opened, with the actual state in its body, when the shim is dead or its check cannot
+   read a file, and closed once it is healthy. The desktop issue follows only the two legs, so
+   a dead shim never hides a desktop failure; either failing keeps the run red.
+   Each night costs two issue-list calls, plus one write per issue when its failure
+   repeats (a comment) or it closes, and two when it is first opened (the label, then
+   the issue).
+5. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
    inside it, new code and then the strict rules on the whole module, for the
    pre-push hook and `ci-advisory-golangci`.
 
-The classifier selects the `desktop` domain for `desktop/*`, `api/openapi.yaml`
-(the refusal list derives from it) and the root packages `desktop/` imports, and
-nothing else for `desktop/` changes: those paths do not select `test`, `race`,
-`fuzz` or the other Go domains. A root `go.mod` or `go.sum` change, a workflow
-change and every unknown path still select the full plan, including `desktop`.
-Fast feedback keeps `desktop/` out of the root compile (`go-compile`) and compiles
-it with its own `desktop-compile` check, `go -C desktop test -c`, only where
-`desktop/go.mod` exists. The frozen conservation baseline stays exact: `desktop` is
-the only domain beyond its list, and the baseline jobs are unchanged.
+Nothing requires `nightly-desktop`, and `nightly-promote` and `nightly-release` read
+none of its results. A red night therefore does not stop promotion or publication; it
+only keeps the issue open. Desktop edits select no `ci.yml` job: `desktop/*` is a
+known path with an empty plan, so a desktop-only PR gets an empty plan, and the
+root packages it imports select only their own domains. A root `go.mod` or `go.sum` change, a workflow change and every unknown path
+still select the full plan. Fast feedback keeps `desktop/` out of the root compile
+(`go-compile`) and compiles it with its own `desktop-compile` check, `go -C desktop
+test -c`, only where `desktop/go.mod` exists; that Ubuntu check stays on the PR
+admission path. The frozen conservation baseline is exact again: `desktop` is not a
+domain.
+
+Until the main-to-dev backmerge lands this change, `ci.yml`'s `ci-required` step adapts
+a protected base that still registers `desktop` (see the comment there).
 
 Every merge group selects all domains from the trusted
 [job registry](../../scripts/ci/ci-job-registry.json), using the immutable current
@@ -290,7 +321,7 @@ in [run 38230781293](https://github.com/Hikyo-Org/Hikyo/actions/runs/38230781293
 That verifies the forced active-policy queue-read path, not populated membership
 or full-group merge acceptance. The legitimate policy/guide follow-up provides
 that first hosted acceptance; do not call queue delivery complete before its
-actual group, all 17 domains, trusted publication and landed tree are verified.
+actual group, all 16 domains, trusted publication and landed tree are verified.
 
 For an authorized main-only reconciliation with authenticated administrator
 access, run from the repository root:
@@ -703,9 +734,10 @@ take about 42 s. It then fails closed and the PR needs a new head.
 Because those reads open only `github-actions` suites, the owners also list the
 name by commit and refuse another app's same-name record there, as a listing by
 commit alone did, each by its own rule. The queue verdict refuses any other
-app's same-name record. Retirement refuses one only when its external ID carries
-the controller prefix. The reporter refuses one only when its external ID matches
-the report's. They refuse when the `github-actions` suite total changes during a
+app's same-name record. The controller and retirement refuse one only when its
+external ID carries the controller prefix or it has the `github-actions` app ID
+or slug. The reporter refuses one only when its external ID matches the
+report's. They refuse when the `github-actions` suite total changes during a
 scan, so a head still gaining suites can refuse until a later attempt. The
 controller and the queue verdict refuse a `github-actions` record the listing by
 commit shows but the suite inventory lacks, instead of treating it as absent,

@@ -66,7 +66,7 @@ expect_refusal() { # LABEL TEXT
 
 reset
 run || fail 'a clean layout was refused'
-grep -F 'desktop/ stays out of the root module; 4 root packages' "$out" >/dev/null || fail 'success message wrong'
+grep -F 'desktop/ stays out of the root module; 4 root packages select desktop-compile' "$out" >/dev/null || fail 'success message wrong'
 
 reset
 printf 'github.com/wailsapp/wails/v3 v3.1.0\n' >>"$work/repo/go.mod"
@@ -140,29 +140,29 @@ reset
 : >"$STUB_LIST_FAIL"
 expect_refusal 'a go list failure' 'go list failed'
 
-# A root package desktop/ compiles that the classifier does not select is the
+# A root package desktop/ compiles that the feedback planner does not select is the
 # drift this check exists for.
 reset
 printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST"
-expect_refusal 'an import the classifier does not select' 'scripts/ci/gotools, but a change there does not select the desktop job'
+expect_refusal 'an import the feedback planner does not select' 'scripts/ci/gotools, but a change there does not select the desktop-compile check'
 
 # The default build can import what the probe build does not, and the reverse.
 reset
 printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST"
 sed '$d' "$STUB_LIST" >"$STUB_LIST_PROBE"
-expect_refusal 'a default-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop job'
+expect_refusal 'a default-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop-compile check'
 reset
 cp "$STUB_LIST" "$STUB_LIST_PROBE"
 printf 'github.com/Hikyo-Org/hikyo/scripts/ci/gotools\n' >>"$STUB_LIST_PROBE"
-expect_refusal 'a probe-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop job'
+expect_refusal 'a probe-build-only import' 'scripts/ci/gotools, but a change there does not select the desktop-compile check'
 
 # Only desktop's own external test package is skipped; a real root package of that name counts.
 reset
 printf 'github.com/Hikyo-Org/hikyo/desktop_test\n' >>"$STUB_LIST"
-expect_refusal 'a real root package named desktop_test' 'desktop/ imports desktop_test, but a change there does not select the desktop job'
+expect_refusal 'a real root package named desktop_test' 'desktop/ imports desktop_test, but a change there does not select the desktop-compile check'
 
 reset
 printf 'fmt\ngithub.com/Hikyo-Org/hikyo/desktop\n' >"$STUB_LIST"
 expect_refusal 'no root imports' 'imports no root packages'
 
-printf 'check-desktop-deps fixture: root go.mod, go.work, replace and classifier coverage refusals passed\n'
+printf 'check-desktop-deps fixture: root go.mod, go.work, replace and feedback planner coverage refusals passed\n'

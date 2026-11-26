@@ -161,12 +161,16 @@ func TestForecastCountsFailedAttemptsAndExcludesOldRequestedPace(t *testing.T) {
 
 func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 	for _, test := range []struct {
-		name, file                                         string
-		draft, stale, claimed, budgetExceeded              bool
-		pendingManual, lateManual, fork, missingRepository bool
-		absentComment, staleComment                        bool
-		superseded                                         string
-		wantRun                                            bool
+		name, file                                                        string
+		draft, stale, claimed, budgetExceeded                             bool
+		pendingManual, lateManual, fork, missingRepository                bool
+		absentComment, staleComment, lostUpdate                           bool
+		lookupFailure, lookupFailureMoved, lookupPullFails                bool
+		lookupFailureClosed, movedAfterClaim, closedAfterClaim            bool
+		closedMovedAfterClaim, lookupFailureClosedMoved                   bool
+		lowerSurvivor, garbledSurvivor, claimedPullFails, movedResetFails bool
+		superseded                                                        string
+		wantRun                                                           bool
 	}{
 		{name: "runtime change", file: "internal/service/values.go", wantRun: true},
 		{name: "web change", file: "web/src/routes/Matrix.tsx", wantRun: true},
@@ -183,6 +187,19 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 		{name: "newer completed discovery", file: "go.mod", superseded: "completed"},
 		{name: "newer running discovery", file: "go.mod", superseded: "in_progress"},
 		{name: "automatic creates absent comment", file: "go.mod", absentComment: true, wantRun: true},
+		{name: "claim replaced by a concurrent writer does not rerun", file: "go.mod", lostUpdate: true},
+		{name: "failed post-claim lookup releases the claim", file: "go.mod", lookupFailure: true},
+		{name: "failed post-claim lookup resets a moved head's comment to the live head", file: "go.mod", lookupFailure: true, lookupFailureMoved: true},
+		{name: "failed post-claim lookup on a closed and moved PR does not rewrite the comment", file: "go.mod", lookupFailure: true, lookupFailureClosedMoved: true},
+		{name: "claim on a closed and moved PR does not rerun or rewrite the comment", file: "go.mod", closedMovedAfterClaim: true},
+		{name: "failed post-claim lookup on a PR closed at the same head still releases", file: "go.mod", lookupFailure: true, lookupFailureClosed: true},
+		{name: "failed reset after the PR moved off the claimed head reports a wrapped error", file: "go.mod", movedResetFails: true},
+		{name: "failed PR read after a matching re-read releases the claim and fails", file: "go.mod", claimedPullFails: true},
+		{name: "claim over a newer head's reset comment does not rerun and resets to the live head", file: "go.mod", movedAfterClaim: true},
+		{name: "claim on a PR closed at the same head after the claim releases without a rerun", file: "go.mod", closedAfterClaim: true},
+		{name: "re-read returning a lower-id survivor does not rerun", file: "go.mod", lowerSurvivor: true},
+		{name: "re-read returning an unparseable survivor does not rerun", file: "go.mod", garbledSurvivor: true},
+		{name: "failed post-claim lookup with a failed PR read still releases", file: "go.mod", lookupFailure: true, lookupPullFails: true},
 		{name: "automatic refreshes stale comment", file: "go.mod", staleComment: true, wantRun: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -261,6 +278,47 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			if test.lateManual {
 				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && grep -q 'workflows/codspeed.yml/runs' '%s'; then jq '.[0][0].body |= sub(\"- \\\\[ \\\\] Run benchmark\"; \"- [x] Run benchmark\")' \"$1\"; return; fi\n", log)
 			}
+			if test.lostUpdate {
+				// After the claim PATCH, a stale comment job restores the unclaimed body.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then cat \"$1\"; return; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			}
+			if test.lookupFailure {
+				// The comment listing fails only once the claim is written.
+				// Only the first listing fails, so a reset through prepare can list.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s' && [ ! -f '%s.listfail' ]; then : >'%s.listfail'; echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"), log, log)
+			}
+			if test.lookupPullFails || test.claimedPullFails {
+				// Once claimed, the PR read fails too.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			}
+			if test.lookupFailureMoved {
+				// Once claimed, the PR reads as a newer head.
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then jq '.head.sha=\"%s\"' \"$1\"; return; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"), strings.Repeat("c", 40))
+			}
+			claimedGate := fmt.Sprintf("[ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			if test.lookupFailureClosed {
+				transition += " if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && " + claimedGate + "; then jq '.state=\"closed\"' \"$1\"; return; fi\n"
+			}
+			if test.movedAfterClaim || test.movedResetFails {
+				// The PR moves on only after the claim PATCH; prepare then reads the same live head.
+				transition += " if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && " + claimedGate + "; then jq '.head.sha=\"" + strings.Repeat("c", 40) + "\"' \"$1\"; return; fi\n"
+			}
+			if test.movedResetFails {
+				transition += " if [ \"$method\" = PATCH ] && printf '%s' \"$body\" | grep -q 'head=" + strings.Repeat("c", 40) + "'; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n"
+			}
+			if test.closedMovedAfterClaim || test.lookupFailureClosedMoved {
+				transition += " if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && " + claimedGate + "; then jq '.state=\"closed\" | .head.sha=\"" + strings.Repeat("c", 40) + "\"' \"$1\"; return; fi\n"
+			}
+			if test.closedAfterClaim {
+				transition += " if [ \"$endpoint\" = 'repos/o/r/pulls/7' ] && " + claimedGate + "; then jq '.state=\"closed\"' \"$1\"; return; fi\n"
+			}
+			if test.lowerSurvivor {
+				// The re-read returns the claim body under a lower id.
+				transition += " if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && " + claimedGate + "; then jq --arg body \"$(cat '" + filepath.Join(filepath.Dir(log), "latest-body") + "')\" '.[0][0].id=19 | .[0][0].body=$body' \"$1\"; return; fi\n"
+			}
+			if test.garbledSurvivor {
+				transition += " if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && " + claimedGate + "; then jq '.[0][0].body=\"<!-- hikyo-benchmark garbled -->\"' \"$1\"; return; fi\n"
+			}
 			if test.absentComment {
 				bodyFile := filepath.Join(filepath.Dir(log), "latest-body")
 				transition += fmt.Sprintf(" if [ \"$method\" = POST ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments' ]; then printf '%%s' \"$body\" >'%s'; fi\n if [ \"$method\" = GET ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ]; then jq -n --rawfile body '%s' '[[{id:20,user:{id:41898282},body:$body}]]'; return; fi\n", bodyFile, bodyFile, bodyFile)
@@ -268,8 +326,46 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "respond() {\n", transition, 1)), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := runBenchmark("o/r", controlEvent{WorkflowRun: r}, true); err != nil {
-				t.Fatal(err)
+			err = runBenchmark("o/r", controlEvent{WorkflowRun: r}, true)
+			if (err != nil) != (test.lookupFailure || test.lookupFailureClosedMoved || test.claimedPullFails || test.movedResetFails) {
+				t.Fatalf("err=%v want error=%t", err, test.lookupFailure)
+			}
+			if test.lookupPullFails && (!strings.Contains(err.Error(), "read GitHub usage") || !strings.Contains(err.Error(), "GitHub read repos/o/r/pulls/7")) {
+				t.Fatalf("the error must carry both failed reads: %v", err)
+			}
+			if test.lookupFailure {
+				latest, err := os.ReadFile(filepath.Join(filepath.Dir(log), "latest-body"))
+				want := "run=0 attempt=0"
+				if test.lookupFailureMoved {
+					want = "head=" + strings.Repeat("c", 40) + " run=0 attempt=0" // Reset to the live head.
+				}
+				if test.lookupFailureClosedMoved {
+					want = "run=10 attempt=2" // A closed PR's comment is left for its reopen to reset.
+				}
+				if err != nil || !strings.Contains(string(latest), want) {
+					t.Fatalf("a failed post-claim lookup must leave an unclaimed comment, got %q (%v)", latest, err)
+				}
+			}
+			if test.movedResetFails && !strings.Contains(err.Error(), "reset benchmark comment after the PR moved off "+head[:12]) {
+				t.Fatalf("the reset error must be wrapped: %v", err)
+			}
+			if test.closedMovedAfterClaim {
+				latest, err := os.ReadFile(filepath.Join(filepath.Dir(log), "latest-body"))
+				if err != nil || !strings.Contains(string(latest), "run=10 attempt=2") {
+					t.Fatalf("a closed and moved PR's comment must not be rewritten, got %q (%v)", latest, err)
+				}
+			}
+			if test.claimedPullFails || test.closedAfterClaim {
+				latest, err := os.ReadFile(filepath.Join(filepath.Dir(log), "latest-body"))
+				if err != nil || !strings.Contains(string(latest), "run=0 attempt=0") {
+					t.Fatalf("the claim must be released, got %q (%v)", latest, err)
+				}
+			}
+			if test.movedAfterClaim {
+				latest, err := os.ReadFile(filepath.Join(filepath.Dir(log), "latest-body"))
+				if err != nil || !strings.Contains(string(latest), "head="+strings.Repeat("c", 40)+" run=0 attempt=0") {
+					t.Fatalf("the comment must be reset to the live head, got %q (%v)", latest, err)
+				}
 			}
 			calls, err := os.ReadFile(log)
 			if err != nil {
@@ -286,6 +382,9 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				if !strings.Contains(string(calls), "workloads=16") || strings.Contains(string(calls), "workflows/codspeed.yml/runs") {
 					t.Fatal("browser-only admission must bind browser scope without collecting paid-run usage")
 				}
+			}
+			if test.lostUpdate && !strings.Contains(string(calls), "--method PATCH") {
+				t.Fatal("expected the claim PATCH before the lost update")
 			}
 			if !test.wantRun && strings.Contains(string(calls), "--method POST") {
 				t.Fatal("ineligible PR must not trigger a run")

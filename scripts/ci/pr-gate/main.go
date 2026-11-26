@@ -858,6 +858,10 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 			return nil, errors.New("untrusted controller check identity")
 		}
+		// listOwnedChecksAt refuses this mixed identity on a listing by commit.
+		if v.App.ID == actionsAppID || v.App.Slug == "github-actions" {
+			return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
+		}
 	}
 	var own []check
 	seen := make(map[int64]bool)
