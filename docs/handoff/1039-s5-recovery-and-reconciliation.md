@@ -54,11 +54,12 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
 
 ## Tested revision
 
-- Code revision `6d420e5f1`, before a later restack onto #1549 that changed no slice 5 file: the release, audit-registry and
-  pin tests (`TestIncidentRelease*`, `TestReleasePrincipalContainmentBindsTheContainingIncident`,
-  `TestInvariantAuditRegistryClosure`, `TestInvariant13AllowlistPinning`, `TestAuditCore`) pass
-  on SQLite and PostgreSQL 18 (checked before the restack onto #1549; the restack changed no
-  slice 5 file).
+- Code revision `898222daa` (rebased onto #1549 `adf0eb850`; later commits on this branch change only this document).
+  All runs went through `agent-heavy` with `-p 2 -parallel 2 -timeout 90m`, every part finished, on SQLite and
+  PostgreSQL 18 (`forEngines`): `./internal/isolation` in nine `-run` parts (A-B, C-D, E-H, I, L-O, P, R, S, T-Z) with 0 failures
+  (`TestInvariant01ClassificationTotality` passes; the skips are env-gated emulator and smoke tests); `./internal/app` whole
+  (drill tests included); `./internal/store/...`; `./internal/lint -run TestVetDriverRepo`; and
+  `scripts/ci/golangci-lint-new.sh origin/feat/1039-s4-operator-surface` (0 issues, both passes).
 - Mutants killed with `go test -overlay`: release without the stamp (real-reset release and the
   count test fail), "any consumed authority counts" (the clock-ahead and count tests fail), the
   service containing-incident check removed (the non-containing-incident test fails, the store
@@ -69,7 +70,7 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   engines): no listing on attest and a "listed only" rule, auto-attesting the listed identities, a created_at
   rule (slow-clock repro), no relisting by a refused release, the listing's audit event dropped or given the wrong actor (truncation test), the proof step dropped (proof test), the stamp
   clear dropped (re-containment test), the stamp replaced by a clock comparison (the real clock-ahead establishment test), the open-item check dropped (open-item test).
-- Full-package results (`./internal/isolation`, `./internal/store/...`, `./internal/service`, `./internal/app`, `./internal/lint` including `TestVetDriverRepo`, both engines) are not claimed here: the implementation ran only the focused tests above, and the full run is the review's. Lint: see the golangci-lint-new result recorded below.
+- `./internal/service` was run whole on the earlier head `2f73e5a8c` (passes); it is not part of the run above.
 
 ## Not done
 
