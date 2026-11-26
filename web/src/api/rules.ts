@@ -108,13 +108,13 @@ export function wideningEnvironment(error: unknown): string | undefined {
  * cause, which proves nothing was written; a second refusal over the same
  * environment is thrown as the server's own 409.
  */
-export async function saveRule(org: string, before: Rule | null, draft: Rule): Promise<void> {
+export async function saveRule(org: string, before: Rule | null, draft: Rule, orgProjects: readonly string[] = []): Promise<void> {
   const plan = savePlan(before, draft);
   if (plan.create.length === 0 && plan.revoke.length === 0) return;
   const body = {
     principal: draft.member,
     revoke: [...plan.revoke],
-    create: plan.create.map((capability) => createBody(draft, capability)),
+    create: plan.create.map((capability) => createBody(draft, capability, orgProjects)),
   };
   const reauthenticated = new Set<string>();
   for (;;) {
@@ -182,7 +182,10 @@ export function useRuleMutations(org: string) {
     }
   };
   return {
-    save: useMutation({ mutationFn: (input: { before: Rule | null; draft: Rule }) => saveRule(org, input.before, input.draft), onSettled: settle }),
+    save: useMutation({
+      mutationFn: (input: { before: Rule | null; draft: Rule; orgProjects?: readonly string[] }) => saveRule(org, input.before, input.draft, input.orgProjects),
+      onSettled: settle,
+    }),
     remove: useMutation({ mutationFn: (rule: Rule) => removeRule(org, rule), onSettled: settle }),
   };
 }

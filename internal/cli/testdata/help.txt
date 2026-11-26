@@ -493,7 +493,7 @@ access:
   hikyo access grant remove --principal <id> --capability <atom>
   hikyo access grant template --principal <id> --template <name>
   hikyo access rule list [--org O] [--project P] [-o table|json]
-  hikyo access rule add --principal <id> --capability <atom> [--in-project P]...
+  hikyo access rule add --principal <id> --capability <atom> [--in-project P... | --all-projects]
       [--only-env E | --except-env E]... [--only-folder F | --only-key K]...
       [--except-folder F | --except-key K]...   (items: [PROJECT:]ID or [PROJECT:]PATH)
   hikyo access rule remove <rule>

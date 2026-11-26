@@ -12,12 +12,14 @@ import (
 // RecoveryRead and RecoveryWrite are confined to an authenticated operator
 // scratch database. Ordinary service constructors cannot accept RecoveryDB.
 // Callbacks retain ordinary repository proofs and cannot escape an attempt.
+// The resolver is always the historical one bound to the source schema: at the
+// current schema its gates are all off and it reads exactly as authn.NewPG or
+// authn.NewSQLite, so the schema thresholds live only in recovery_compat.go.
 func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 	version, err := db.SourceMigrationVersion()
 	if err != nil {
 		return err
 	}
-	historical := version < 89
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()
@@ -27,10 +29,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 				return err
 			}
 			defer tx.Rollback(ctx)
-			resolver := authn.NewPG(tx)
-			if historical {
-				resolver = authn.NewHistoricalRecoveryPG(tx, version)
-			}
+			resolver := authn.NewHistoricalRecoveryPG(tx, version)
 			az := authz.NewTxAuthorizer(resolver, tok)
 			outcome := fn(ctx, store.PGTxReadRepos(tx, tok), az)
 			if outcome != nil {
@@ -45,10 +44,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 			return err
 		}
 		defer tx.Rollback()
-		resolver := authn.NewSQLite(tx)
-		if historical {
-			resolver = authn.NewHistoricalRecoverySQLite(tx, version)
-		}
+		resolver := authn.NewHistoricalRecoverySQLite(tx, version)
 		az := authz.NewTxAuthorizer(resolver, tok)
 		outcome := fn(ctx, store.SQLiteTxReadRepos(tx, tok), az)
 		if outcome != nil {
@@ -64,7 +60,6 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 	if err != nil {
 		return err
 	}
-	historical := version < 89
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()
@@ -74,10 +69,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 				return err
 			}
 			defer tx.Rollback(ctx)
-			resolver := authn.NewPG(tx)
-			if historical {
-				resolver = authn.NewHistoricalRecoveryPG(tx, version)
-			}
+			resolver := authn.NewHistoricalRecoveryPG(tx, version)
 			az := authz.NewTxAuthorizer(resolver, tok)
 			outcome := fn(ctx, store.PGTxRepos(tx, tok), az)
 			if outcome != nil {
@@ -92,10 +84,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 			return err
 		}
 		defer tx.Rollback()
-		resolver := authn.NewSQLite(tx)
-		if historical {
-			resolver = authn.NewHistoricalRecoverySQLite(tx, version)
-		}
+		resolver := authn.NewHistoricalRecoverySQLite(tx, version)
 		az := authz.NewTxAuthorizer(resolver, tok)
 		outcome := fn(ctx, store.SQLiteTxRepos(tx, tok), az)
 		if outcome != nil {

@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// FutureProjectWitness stands for a project created after the check: no
+// stored project id has its spelling, so only an all-projects Where names it.
+// Authority over an all-projects rule is checked in every current project and
+// in this witness, so a list of today's projects never covers tomorrow's.
+const FutureProjectWitness ProjectID = "~future-project"
+
 // WhereUnionContainsInProject checks the additive union, including selectors
 // whose exceptions complement one another. The finite witnesses partition
 // the symbolic selector space, rather than enumerating the current catalogue:
@@ -21,7 +27,7 @@ func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID,
 				envs = append(envs, env)
 			}
 		}
-		for _, item := range where.Keys[project] {
+		for _, item := range where.KeysIn(project) {
 			if item.IsFolder {
 				if !slices.Contains(folders, item.Folder) {
 					folders = append(folders, item.Folder)
@@ -73,7 +79,7 @@ func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID,
 				continue
 			}
 			if !slices.ContainsFunc(outers, func(outer Where) bool {
-				return slices.Contains(outer.Projects, project) && selectorEnvMatches(outer, project, env) && selectorKeyMatches(outer, project, key)
+				return outer.Names(project) && selectorEnvMatches(outer, project, env) && selectorKeyMatches(outer, project, key)
 			}) {
 				return false
 			}
@@ -88,7 +94,7 @@ func selectorEnvMatches(where Where, project ProjectID, env EnvID) bool {
 }
 
 func selectorKeyMatches(where Where, project ProjectID, key RuleKey) bool {
-	matched := slices.ContainsFunc(where.Keys[project], func(item RuleKeyItem) bool {
+	matched := slices.ContainsFunc(where.KeysIn(project), func(item RuleKeyItem) bool {
 		if !item.IsFolder {
 			return key.ID != "" && key.ID == item.KeyID
 		}
@@ -104,13 +110,13 @@ func selectorKeyMatches(where Where, project ProjectID, key RuleKey) bool {
 // environments and keys. keyFolders must come from the current transaction;
 // missing key metadata refuses containment instead of assuming a folder.
 func (outer Where) ContainsWhereInProject(inner Where, project ProjectID, keyFolders map[string]string) bool {
-	if !slices.Contains(outer.Projects, project) || !slices.Contains(inner.Projects, project) {
+	if !outer.Names(project) || !inner.Names(project) {
 		return false
 	}
 	if !axisContains(outer.EnvMode, outer.Envs[project], inner.EnvMode, inner.Envs[project]) {
 		return false
 	}
-	o, i := outer.Keys[project], inner.Keys[project]
+	o, i := outer.KeysIn(project), inner.KeysIn(project)
 	if inner.KeyMode == AxisOnly {
 		for _, selected := range i {
 			switch outer.KeyMode {
