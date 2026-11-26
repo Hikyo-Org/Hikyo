@@ -383,8 +383,8 @@ not exist: run `hikyo account factor step-up` and retry.
   is refused with a conflict and spends nothing: list again and confirm the new set. Nothing
   binds an earlier `resume` listing to a later `resume --yes` run, so check the list printed
   before the prompt. It never runs an item you did not see. In the web dialog, a conflict
-  replaces the list with the current one and asks you to confirm again. An account that has neither a
-  password nor an authenticator (it signs in only through a linked identity) cannot
+  replaces the list with the current one and asks you to confirm again. An account that has
+  neither a password nor an authenticator (it signs in only through a linked identity) cannot
   resume, and the server refuses with a `400` whose detail is `no_proof_credential`. Hand
   the incident to another responder who has a password or an authenticator; federated
   step-up is tracked in #1590.

@@ -67,4 +67,8 @@ func TestNoProofCredentialDetailHasItsOwnWording(t *testing.T) {
 	if other.Error() != "bad (other)" {
 		t.Fatalf("another detail = %q, want the generic form", other.Error())
 	}
+	conflict := errorFromResponse(http.StatusConflict, http.Header{}, []byte(`{"error":{"code":"conflict","message":"busy","detail":"no_proof_credential"}}`))
+	if conflict.Error() != "busy (no_proof_credential)" {
+		t.Fatalf("the detail on another code = %q, want the generic form", conflict.Error())
+	}
 }
