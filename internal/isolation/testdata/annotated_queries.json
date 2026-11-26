@@ -1310,7 +1310,7 @@
     "name": "GetDeveloperCredentialInScope",
     "annotation": "authn-resolution",
     "hash": "4c58dd0f67f561bd218687c854e2e49332f22c66f338aaf50aca3dd1ae9d4321",
-    "reason": "Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered."
+    "reason": "Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered."
   },
   {
     "engine": "postgres",
@@ -1386,7 +1386,7 @@
     "name": "GetLiveDeveloperCredentialInOrg",
     "annotation": "authn-resolution",
     "hash": "ad638693b4fc92f4e68a2032da7368abae0d0d63a91dbbdf29cc9a08a6b49ec5",
-    "reason": "Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org; no bearer can be recovered."
+    "reason": "Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered."
   },
   {
     "engine": "postgres",
@@ -2071,6 +2071,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListDeveloperCredentialsByAuthority",
+    "annotation": "authn-resolution",
+    "hash": "610a78d7e09d0b2905390a01786b6e6d94f84b26e6cc5ed8ae504ea9f16c4b76",
+    "reason": "Terminal security invalidation reads one authority's delegation metadata atomically with its authorizing mutation; no bearer can be recovered."
+  },
+  {
+    "engine": "postgres",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
     "hash": "3830e70f104853a361b3812795ccf98e87a3b3cb32a6c549225732cc3d8ee74a"
@@ -2178,7 +2185,7 @@
     "name": "ListLiveDeveloperCredentialsInOrg",
     "annotation": "authn-resolution",
     "hash": "2c6dbc4dc4ff3d6e132ebc53d74956877e9b127045d201f9f24c162e4fbb96c1",
-    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded."
+    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident; no bearer can be recovered and the page is bounded."
   },
   {
     "engine": "postgres",
@@ -2610,6 +2617,13 @@
     "name": "MachineCredentialByVerifier",
     "annotation": "authn-resolution",
     "hash": "845cdcc10c445ea545fb47ef3a8a292a98471773bca7991bae5ab54862668706"
+  },
+  {
+    "engine": "postgres",
+    "name": "MachineCredentialExistsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "24a466e957390ff3303b88d5748b17db48c48f6d7757e48c1cd55fb15a8a4d23",
+    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned."
   },
   {
     "engine": "postgres",
@@ -5235,7 +5249,7 @@
     "name": "GetDeveloperCredentialInScope",
     "annotation": "authn-resolution",
     "hash": "f45b532a243ae75d72eef20744f83d66783aad891c14ed44543fbf3cfb10229d",
-    "reason": "Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered."
+    "reason": "Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered."
   },
   {
     "engine": "sqlite",
@@ -5311,7 +5325,7 @@
     "name": "GetLiveDeveloperCredentialInOrg",
     "annotation": "authn-resolution",
     "hash": "57a3b47fce797a577872ffaceaa23c5b81c5cd2d4bbc875bafc24d3d84df15c4",
-    "reason": "Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org; no bearer can be recovered."
+    "reason": "Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered."
   },
   {
     "engine": "sqlite",
@@ -5996,6 +6010,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListDeveloperCredentialsByAuthority",
+    "annotation": "authn-resolution",
+    "hash": "610a78d7e09d0b2905390a01786b6e6d94f84b26e6cc5ed8ae504ea9f16c4b76",
+    "reason": "Terminal security invalidation reads one authority's delegation metadata atomically with its authorizing mutation; no bearer can be recovered."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
     "hash": "723663c9963884b5ec2ec29c90248a291aa198d803d1486dcbd74a8d6c168521"
@@ -6103,7 +6124,7 @@
     "name": "ListLiveDeveloperCredentialsInOrg",
     "annotation": "authn-resolution",
     "hash": "f9e3f81adf6fed2402d8fd5f8af097012d1c98962cb3d64bc8e139d874f75ac4",
-    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded."
+    "reason": "Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident; no bearer can be recovered and the page is bounded."
   },
   {
     "engine": "sqlite",
@@ -6535,6 +6556,13 @@
     "name": "MachineCredentialByVerifier",
     "annotation": "authn-resolution",
     "hash": "ec44641fd3fc57c8bea6e32001e782c24a8452af5771919a4596b978bd0bc051"
+  },
+  {
+    "engine": "sqlite",
+    "name": "MachineCredentialExistsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "24a466e957390ff3303b88d5748b17db48c48f6d7757e48c1cd55fb15a8a4d23",
+    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned."
   },
   {
     "engine": "sqlite",

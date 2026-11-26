@@ -56,9 +56,29 @@ func (r *Resolver) DeveloperCredentialByVerifier(ctx context.Context, v []byte) 
 	return pgDeveloper(row)
 }
 func (r *Resolver) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCredential, error) {
+	return r.listDeveloperCredentials(ctx, "")
+}
+
+// DeveloperCredentialsByAuthority reads one authority's delegations, revoked and
+// expired included, by the developer_credentials_authority index.
+func (r *Resolver) DeveloperCredentialsByAuthority(ctx context.Context, authority domain.PrincipalID) ([]DeveloperCredential, error) {
+	if authority == "" {
+		return nil, domain.ErrInvalid
+	}
+	return r.listDeveloperCredentials(ctx, authority)
+}
+
+// listDeveloperCredentials reads every delegation, or one authority's when given.
+func (r *Resolver) listDeveloperCredentials(ctx context.Context, authority domain.PrincipalID) ([]DeveloperCredential, error) {
 	out := []DeveloperCredential{}
 	if r.sq != nil {
-		rows, err := r.sq.ListDeveloperCredentials(ctx)
+		var rows []sqlitegen.DeveloperCredential
+		var err error
+		if authority != "" {
+			rows, err = r.sq.ListDeveloperCredentialsByAuthority(ctx, string(authority))
+		} else {
+			rows, err = r.sq.ListDeveloperCredentials(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +90,13 @@ func (r *Resolver) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCre
 			out = append(out, c)
 		}
 	} else {
-		rows, err := r.pg.ListDeveloperCredentials(ctx)
+		var rows []pggen.DeveloperCredential
+		var err error
+		if authority != "" {
+			rows, err = r.pg.ListDeveloperCredentialsByAuthority(ctx, string(authority))
+		} else {
+			rows, err = r.pg.ListDeveloperCredentials(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}

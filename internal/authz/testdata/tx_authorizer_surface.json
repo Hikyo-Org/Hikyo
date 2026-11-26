@@ -212,6 +212,7 @@
   "LockoutRetentions": "func(ctx context.Context) ([]LockoutRetention, error)",
   "LockoutRetentionsInOrg": "func(ctx context.Context, org domain.OrgID) ([]LockoutRetention, error)",
   "LoginChallengeByID": "func(ctx context.Context, id string) (LoginChallenge, error)",
+  "MachineCredentialExistsInOrg": "func(ctx context.Context, org domain.OrgID, id string) (bool, error)",
   "MachineCredentialInProject": "func(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error)",
   "MachineCredentialsFor": "func(ctx context.Context, serviceAccountID string) ([]MachineCredential, error)",
   "MachineRevealOptIn": "func(ctx context.Context, caller Identity, project domain.ProjectID) (bool, int64, error)",

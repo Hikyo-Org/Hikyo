@@ -880,6 +880,12 @@ func (a *TxAuthorizer) LoginChallengeByID(ctx context.Context, id string) (Login
 	return a.r.LoginChallengeByID(ctx, id)
 }
 
+// MachineCredentialExistsInOrg reports whether a credential id is held by any
+// service account of the org, revoked or not.
+func (a *TxAuthorizer) MachineCredentialExistsInOrg(ctx context.Context, org domain.OrgID, id string) (bool, error) {
+	return a.r.MachineCredentialExistsInOrg(ctx, org, id)
+}
+
 // MachineCredentialInProject reads one credential by id when its service account
 // belongs to the project; none is ErrNotFound.
 func (a *TxAuthorizer) MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error) {

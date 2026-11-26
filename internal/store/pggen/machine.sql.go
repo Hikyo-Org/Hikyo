@@ -790,6 +790,28 @@ func (q *Queries) MachineCredentialByVerifier(ctx context.Context, verifier []by
 	return i, err
 }
 
+const machineCredentialExistsInOrg = `-- name: MachineCredentialExistsInOrg :one
+SELECT COUNT(*) FROM machine_credentials mc
+JOIN service_accounts sa ON sa.id = mc.service_account_id
+WHERE sa.org_id = $1 AND mc.id = $2
+`
+
+type MachineCredentialExistsInOrgParams struct {
+	OrgID string
+	ID    string
+}
+
+// Whether a credential id is placed anywhere in the org, so incident confirmation
+// tells one deleted apart from one held by another project's service account.
+// hikyo:reason Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned.
+// hikyo:authn-resolution
+func (q *Queries) MachineCredentialExistsInOrg(ctx context.Context, arg MachineCredentialExistsInOrgParams) (int64, error) {
+	row := q.db.QueryRow(ctx, machineCredentialExistsInOrg, arg.OrgID, arg.ID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const revokeAllMachineCredentials = `-- name: RevokeAllMachineCredentials :execrows
 UPDATE machine_credentials SET revoked_at = $1
 WHERE service_account_id = $2 AND revoked_at IS NULL

@@ -148,6 +148,30 @@ func TestIncidentDeveloperRevokeReadsOnlyItsOwnRow(t *testing.T) {
 	})
 }
 
+// Containing an account revokes the person's delegations by their authority and
+// never reads the whole table: another person's row that no decoder can read does
+// not reach it, and stays untouched. Only SQLite can hold such a row.
+func TestIncidentAccountContainReadsOnlyItsOwnDelegations(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		if db.Engine() != store.EngineSQLite {
+			t.Skip("an undecodable timestamp needs SQLite's TEXT column")
+		}
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		inc := w.openAccount(t, incResponder).Incident.ID
+		insertDeveloperCredential(t, db, "devc_unreadable", "devp_unreadable", string(incOrgB), "org_b", "prj_b1", "env_b1", "not-a-time")
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, string(incTarget), "org_a"); res != service.OwnerConfirmed {
+			t.Errorf("account = %v, want confirmed", res)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_it' AND revoked_at IS NOT NULL`); n != 1 {
+			t.Errorf("the contained account's delegation is still live")
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_unreadable' AND revoked_at IS NULL AND expires_at='not-a-time'`); n != 1 {
+			t.Errorf("another person's delegation changed")
+		}
+	})
+}
+
 // The incident closes between the caller's ledger read and the owner's
 // transaction: the owner refuses with a conflict and acts on nothing.
 func TestIncidentOwnersRefuseAnIncidentClosedUnderThem(t *testing.T) {

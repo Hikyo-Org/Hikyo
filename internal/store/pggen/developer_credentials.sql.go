@@ -77,7 +77,7 @@ type GetDeveloperCredentialInScopeParams struct {
 // The incident revoke looks one delegation up by id at its exact placement, live
 // or not, so an item outside the incident is told apart from one already gone and
 // the cost does not depend on the table size.
-// hikyo:reason Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered.
+// hikyo:reason Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered.
 // hikyo:authn-resolution
 func (q *Queries) GetDeveloperCredentialInScope(ctx context.Context, arg GetDeveloperCredentialInScopeParams) (DeveloperCredential, error) {
 	row := q.db.QueryRow(ctx, getDeveloperCredentialInScope,
@@ -141,7 +141,7 @@ type GetLiveDeveloperCredentialInOrgParams struct {
 
 // Incident confirmation looks one delegation up by id inside its org, so its cost
 // does not depend on how many live delegations the org holds.
-// hikyo:reason Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org; no bearer can be recovered.
+// hikyo:reason Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered.
 // hikyo:authn-resolution
 func (q *Queries) GetLiveDeveloperCredentialInOrg(ctx context.Context, arg GetLiveDeveloperCredentialInOrgParams) (DeveloperCredential, error) {
 	row := q.db.QueryRow(ctx, getLiveDeveloperCredentialInOrg,
@@ -275,6 +275,55 @@ func (q *Queries) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCred
 	return items, nil
 }
 
+const listDeveloperCredentialsByAuthority = `-- name: ListDeveloperCredentialsByAuthority :many
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials WHERE authority_principal_id = $1 ORDER BY created_at,id
+`
+
+// A terminal invalidation of one person's delegations reads only that person's
+// rows (developer_credentials_authority), so its cost does not depend on the
+// table size and another person's row is never decoded.
+// hikyo:reason Terminal security invalidation reads one authority's delegation metadata atomically with its authorizing mutation; no bearer can be recovered.
+// hikyo:authn-resolution
+func (q *Queries) ListDeveloperCredentialsByAuthority(ctx context.Context, authority string) ([]DeveloperCredential, error) {
+	rows, err := q.db.Query(ctx, listDeveloperCredentialsByAuthority, authority)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeveloperCredential
+	for rows.Next() {
+		var i DeveloperCredential
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.AuthorityPrincipalID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.Verifier,
+			&i.PrefixHint,
+			&i.ParentSessionID,
+			&i.ProviderID,
+			&i.Oauth2ProviderID,
+			&i.SamlProviderID,
+			&i.AuthMethod,
+			&i.AuthorityGeneration,
+			&i.CredentialEpoch,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+			&i.PersonalConsent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLiveDeveloperCredentialsInOrg = `-- name: ListLiveDeveloperCredentialsInOrg :many
 SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
 WHERE org_id = $1 AND revoked_at IS NULL AND expires_at > $2 AND credential_epoch = $3 AND id > $4
@@ -293,7 +342,7 @@ type ListLiveDeveloperCredentialsInOrgParams struct {
 
 // Incident enumeration lists the live delegations minted inside one org, in id
 // order and bounded by the limit. A non-empty authority narrows it to one human.
-// hikyo:reason Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded.
+// hikyo:reason Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident; no bearer can be recovered and the page is bounded.
 // hikyo:authn-resolution
 func (q *Queries) ListLiveDeveloperCredentialsInOrg(ctx context.Context, arg ListLiveDeveloperCredentialsInOrgParams) ([]DeveloperCredential, error) {
 	rows, err := q.db.Query(ctx, listLiveDeveloperCredentialsInOrg,

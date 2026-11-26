@@ -1149,3 +1149,16 @@ func (r *Resolver) MachineCredentialInProject(ctx context.Context, scope domain.
 	}
 	return credentialFromPG(pggen.ListMachineCredentialsRow(row)), nil
 }
+
+// MachineCredentialExistsInOrg reports whether a credential id is held by any
+// service account of the org, revoked or not.
+func (r *Resolver) MachineCredentialExistsInOrg(ctx context.Context, org domain.OrgID, id string) (bool, error) {
+	var n int64
+	var err error
+	if r.sq != nil {
+		n, err = r.sq.MachineCredentialExistsInOrg(ctx, sqlitegen.MachineCredentialExistsInOrgParams{OrgID: string(org), ID: id})
+	} else {
+		n, err = r.pg.MachineCredentialExistsInOrg(ctx, pggen.MachineCredentialExistsInOrgParams{OrgID: string(org), ID: id})
+	}
+	return n > 0, err
+}

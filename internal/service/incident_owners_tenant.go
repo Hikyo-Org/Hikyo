@@ -93,7 +93,8 @@ func (o *incidentOwners) machineCredentialRevoke(ctx context.Context, actor Acto
 
 // machineCredentialState finds the credential's service account in the project
 // and whether the credential is still live. An empty account id means no service
-// account of the project holds it.
+// account of the org holds it; one held in another project of the org is
+// ErrNotFound.
 func (o *incidentOwners) machineCredentialState(ctx context.Context, scope domain.Scope, id string) (saID string, live bool, err error) {
 	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		saID, live = "", false
@@ -103,7 +104,13 @@ func (o *incidentOwners) machineCredentialState(ctx context.Context, scope domai
 		}
 		c, err := az.MachineCredentialInProject(ctx, scope, id)
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil // absent in this project: no account of it holds the credential
+			// Absent in this project. Gone from the org, it holds no authority; held by
+			// another project's account, it is outside the item and stays live.
+			elsewhere, err := az.MachineCredentialExistsInOrg(ctx, scope.Org, id)
+			if err == nil && elsewhere {
+				err = domain.ErrNotFound
+			}
+			return err
 		}
 		if err != nil {
 			return err

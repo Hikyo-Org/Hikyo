@@ -62,8 +62,17 @@ func (a *TxAuthorizer) CreateDeveloperCredential(ctx context.Context, c Develope
 func (a *TxAuthorizer) ClampDeveloperCredentialExpiry(ctx context.Context, id string, at time.Time) error {
 	return a.r.ClampDeveloperCredentialExpiry(ctx, id, at)
 }
+
+// developerCredentialsFor reads one authority's delegations by its index, or
+// every delegation when no authority is given.
+func (a *TxAuthorizer) developerCredentialsFor(ctx context.Context, authority domain.PrincipalID) ([]DeveloperCredential, error) {
+	if authority == "" {
+		return a.r.ListDeveloperCredentials(ctx)
+	}
+	return a.r.DeveloperCredentialsByAuthority(ctx, authority)
+}
 func (a *TxAuthorizer) RevokeDeveloperCredentials(ctx context.Context, authority domain.PrincipalID, scope domain.Scope, id string, at time.Time) ([]DeveloperCredential, error) {
-	rows, err := a.r.ListDeveloperCredentials(ctx)
+	rows, err := a.developerCredentialsFor(ctx, authority)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +145,7 @@ func (a *TxAuthorizer) RevokeDeveloperCredentialsByProvenance(ctx context.Contex
 // providers. A directory lifecycle event uses it: it ends exactly the OIDC-born
 // delegation of one account, never a credential minted from a password session.
 func (a *TxAuthorizer) RevokeDeveloperCredentialsForSessions(ctx context.Context, authority domain.PrincipalID, sessionIDs, providerIDs []string, at time.Time) ([]DeveloperCredential, error) {
-	rows, err := a.r.ListDeveloperCredentials(ctx)
+	rows, err := a.developerCredentialsFor(ctx, authority)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +166,7 @@ func (a *TxAuthorizer) RevokeDeveloperCredentialsForSessions(ctx context.Context
 	return out, nil
 }
 func (a *TxAuthorizer) RevokeInvalidDeveloperCredentials(ctx context.Context, authority domain.PrincipalID, org domain.OrgID, at time.Time) ([]DeveloperCredential, error) {
-	rows, err := a.r.ListDeveloperCredentials(ctx)
+	rows, err := a.developerCredentialsFor(ctx, authority)
 	if err != nil {
 		return nil, err
 	}

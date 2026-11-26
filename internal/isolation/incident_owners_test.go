@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -481,10 +482,17 @@ func TestIncidentOwnerMachineCredential(t *testing.T) {
 		if res := call(incResponder, inc, "mcr_it"); res != service.OwnerConfirmed {
 			t.Errorf("retry = %v, want confirmed", res)
 		}
-		// A credential of another project is not this project's: it is not found here
-		// and stays live.
-		if res := call(incResponder, inc, "mcr_other_project"); res != service.OwnerConfirmed || liveOthers() != 2 {
-			t.Errorf("a credential of another project = %v, live others = %d, want it left alone", res, liveOthers())
+		// A credential of another project of the org is not this project's: it is not
+		// found here, is not confirmed, and stays live.
+		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerMachineCredential, domain.ObjectKindMachineCredential, "mcr_other_project", scope)
+		if liveOthers() != 2 {
+			t.Errorf("a credential of another project changed: live others = %d", liveOthers())
+		}
+		// A credential deleted from the org holds no authority and is confirmed.
+		execRaw(t, db, `INSERT INTO machine_credentials (id, service_account_id, kind, verifier, prefix_hint, lifetime, credential_epoch, created_at, created_by) VALUES ('mcr_deleted', 'sa_it', 'hikyo-token', `+blobLit(db, []byte("verifier-mcr-deleted"))+`, 'hk', 'indefinite', (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`, 'usr_itarget')`)
+		execRaw(t, db, `DELETE FROM machine_credentials WHERE id='mcr_deleted'`)
+		if res := call(incResponder, inc, "mcr_deleted"); res != service.OwnerConfirmed {
+			t.Errorf("a deleted credential = %v, want confirmed", res)
 		}
 	})
 }
@@ -848,4 +856,61 @@ func TestIncidentLeaseOwnerBlocksWhenTheGrantIsLostAtEachStep(t *testing.T) {
 			})
 		})
 	}
+}
+
+// The delegation revoke records exactly one revocation event per row it revokes,
+// whether it is called once or by several responders at the same time, and a
+// repeat on the already revoked row confirms without a second event.
+func TestIncidentDeveloperRevokeRecordsOneEventPerRow(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		insertDeveloperCredential(t, db, "devc_conc", "devp_conc", string(incTarget), "org_a", "prj_a1", "env_a1", "2099-01-01T00:00:00.000000Z")
+		inc := w.openOrg(t, incResponder)
+		revocations := func(id string) int64 {
+			return queryInt(t, db, `SELECT (SELECT COUNT(*) FROM audit_tenant_events WHERE type='identity.developer_credential_revoked' AND object_id='`+id+`') + (SELECT COUNT(*) FROM audit_instance_events WHERE type='identity.developer_credential_revoked' AND object_id='`+id+`')`)
+		}
+		revoke := func(id string) (service.IncidentOwnerResult, error) {
+			return w.svc.Owners[domain.OwnerDeveloperRevoke](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: inc, OwnerFunction: domain.OwnerDeveloperRevoke, ObjectKind: domain.ObjectKindDeveloperCred, ObjectID: id, Scope: "org_a/prj_a1/env_a1"})
+		}
+
+		// Sequential: one call, then a repeat.
+		for i := range 2 {
+			if res, err := revoke("devc_it"); err != nil || res != service.OwnerConfirmed {
+				t.Errorf("sequential call %d = %v, %v, want confirmed", i, res, err)
+			}
+		}
+		if n := revocations("devc_it"); n != 1 {
+			t.Errorf("sequential revocation events = %d, want exactly 1", n)
+		}
+
+		// Concurrent: eight calls at once, then a repeat.
+		const n = 8
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		res := make([]service.IncidentOwnerResult, n)
+		errs := make([]error, n)
+		for i := range n {
+			wg.Go(func() {
+				<-start
+				res[i], errs[i] = revoke("devc_conc")
+			})
+		}
+		close(start)
+		wg.Wait()
+		for i := range n {
+			if errs[i] != nil || res[i] != service.OwnerConfirmed {
+				t.Errorf("concurrent call %d = %v, %v, want confirmed", i, res[i], errs[i])
+			}
+		}
+		if r, err := revoke("devc_conc"); err != nil || r != service.OwnerConfirmed {
+			t.Errorf("repeat = %v, %v, want confirmed", r, err)
+		}
+		if got := revocations("devc_conc"); got != 1 {
+			t.Errorf("concurrent revocation events = %d, want exactly 1", got)
+		}
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id IN ('devc_it','devc_conc') AND revoked_at IS NULL`); got != 0 {
+			t.Errorf("%d delegations still live", got)
+		}
+	})
 }
