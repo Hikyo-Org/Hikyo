@@ -260,7 +260,7 @@ func (q accessQuestion) sources(ctx context.Context, out *AccessAnswer, grants [
 // candidate reports whether a rule could take part in this question at all
 // and may be named: a rule outside the caller's view never is.
 func (q accessQuestion) candidate(r domain.Rule) bool {
-	return q.visible[r.ID] && r.Org == q.chain.Org && r.Capability == q.capability && r.Validate() == nil && slices.Contains(r.Where.Projects, q.chain.Project)
+	return q.visible[r.ID] && r.Org == q.chain.Org && r.Capability == q.capability && r.Validate() == nil && r.Where.Names(q.chain.Project)
 }
 
 // excepted reports whether the rule is held back only by its own excepts in
@@ -271,6 +271,11 @@ func (q accessQuestion) excepted(ctx context.Context, r domain.Rule) (AccessExce
 		return out, false, nil
 	}
 	project := q.chain.Project
+	// An all-projects rule holds its folder items under AnyProject (#1446).
+	keyOwner := project
+	if r.Where.AllProjects {
+		keyOwner = domain.AnyProject
+	}
 	relaxed := r
 	relaxed.Where.Envs = maps.Clone(r.Where.Envs)
 	relaxed.Where.Keys = maps.Clone(r.Where.Keys)
@@ -287,8 +292,8 @@ func (q accessQuestion) excepted(ctx context.Context, r domain.Rule) (AccessExce
 			out.KeyLimited = true
 			relaxed.Where.KeyMode, relaxed.Where.Keys = domain.AxisAll, nil
 		case r.Where.KeyMode == domain.AxisAll:
-			keys = r.Where.Keys[project]
-			delete(relaxed.Where.Keys, project)
+			keys = r.Where.KeysIn(project)
+			delete(relaxed.Where.Keys, keyOwner)
 		}
 	}
 	if len(envs) == 0 && len(keys) == 0 && !out.KeyLimited {
@@ -311,7 +316,7 @@ func (q accessQuestion) excepted(ctx context.Context, r domain.Rule) (AccessExce
 	for _, item := range keys {
 		probe := relaxed
 		probe.Where.Keys = maps.Clone(relaxed.Where.Keys)
-		probe.Where.Keys[project] = []domain.RuleKeyItem{item}
+		probe.Where.Keys[keyOwner] = []domain.RuleKeyItem{item}
 		if held, err := q.holds(ctx, q.capability, nil, []domain.Rule{probe}); err != nil {
 			return out, false, err
 		} else if !held {

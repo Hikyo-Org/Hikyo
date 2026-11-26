@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -27,6 +28,75 @@ type RuleService interface {
 // errRuleKeyItem refuses a key item that names neither or both of a folder
 // and a key; it is decided from the body alone, before any tenant lookup.
 var errRuleKeyItem = fmt.Errorf("%w: a rule key item names exactly one of folder or key", domain.ErrInvalid)
+
+// errRuleAllProjectsFolders refuses an all-projects create whose folder items
+// differ between the listed projects: the rule stores one folder list that
+// applies in every project, so the request must repeat it under each.
+var errRuleAllProjectsFolders = fmt.Errorf("%w: a rule over all projects repeats the same folder items under every listed project", domain.ErrInvalid)
+
+// ruleRequest reads a create request's `where`. With project_mode `all` the
+// client lists the org's current projects, which the service compares with
+// the org's project set inside the create transaction (owner decision R2,
+// #1446); the stored rule keeps only the mode.
+func ruleRequest(org string, req apigen.CreateRuleRequest) (service.RuleSpec, error) {
+	where, err := ruleWhere(req.Where)
+	if err != nil {
+		return service.RuleSpec{}, err
+	}
+	spec := service.RuleSpec{
+		Target: domain.PrincipalID(req.Principal), Capability: domain.Capability(req.Capability),
+		Org: domain.OrgID(org), Where: where,
+	}
+	if req.Where.ProjectMode == nil || *req.Where.ProjectMode == apigen.RuleProjectModeOnly {
+		return spec, nil
+	}
+	if *req.Where.ProjectMode != apigen.RuleProjectModeAll {
+		return service.RuleSpec{}, fmt.Errorf("%w: project mode %q", domain.ErrInvalid, *req.Where.ProjectMode)
+	}
+	folders, err := allProjectsFolders(where)
+	if err != nil {
+		return service.RuleSpec{}, err
+	}
+	spec.ClaimedProjects = where.Projects
+	spec.Where.AllProjects, spec.Where.Projects = true, nil
+	spec.Where.Keys = map[domain.ProjectID][]domain.RuleKeyItem{}
+	if len(folders) > 0 {
+		spec.Where.Keys[domain.AnyProject] = folders
+	}
+	return spec, nil
+}
+
+// allProjectsFolders collapses an all-projects request's key items, repeated
+// under every listed project, into the one folder list the rule stores.
+// Environment items are left in place for the domain's refusal (#1447).
+func allProjectsFolders(w domain.Where) ([]domain.RuleKeyItem, error) {
+	var first []domain.RuleKeyItem
+	for i, p := range w.Projects {
+		items := w.Keys[p]
+		for j, it := range items {
+			if !it.IsFolder {
+				return nil, domain.ErrRuleAllProjectsKeys
+			}
+			if slices.Contains(items[:j], it) {
+				return nil, errRuleAllProjectsFolders
+			}
+		}
+		if i == 0 {
+			first = items
+			continue
+		}
+		// Same length, no duplicates and every item in first: the same set.
+		if len(items) != len(first) || slices.ContainsFunc(items, func(it domain.RuleKeyItem) bool { return !slices.Contains(first, it) }) {
+			return nil, errRuleAllProjectsFolders
+		}
+	}
+	for p := range w.Keys {
+		if !slices.Contains(w.Projects, p) {
+			return nil, fmt.Errorf("%w: a key item names a project the rule does not list", domain.ErrInvalid)
+		}
+	}
+	return first, nil
+}
 
 // ruleWhere turns the wire `where` into the domain's per-project form.
 func ruleWhere(w apigen.RuleWhere) (domain.Where, error) {
@@ -55,8 +125,21 @@ func ruleWhere(w apigen.RuleWhere) (domain.Where, error) {
 	return out, nil
 }
 
-func wireRuleWhere(w domain.Where) apigen.RuleWhere {
+// wireRuleWhere renders a rule's `where`. An all-projects rule is expanded at
+// read time over covers, the projects it reaches now, with its folder items
+// repeated under each, so `projects` keeps its v1 meaning (#1446).
+func wireRuleWhere(w domain.Where, covers []domain.ProjectID) apigen.RuleWhere {
+	mode := apigen.RuleProjectModeOnly
+	if w.AllProjects {
+		mode = apigen.RuleProjectModeAll
+		keys := w.Keys[domain.AnyProject]
+		w.Projects, w.Keys = covers, map[domain.ProjectID][]domain.RuleKeyItem{}
+		for _, p := range covers {
+			w.Keys[p] = keys
+		}
+	}
 	out := apigen.RuleWhere{
+		ProjectMode:  &mode,
 		Projects:     []apigen.ID{},
 		Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisMode(w.EnvMode), Items: []apigen.RuleEnvironmentItem{}},
 		Keys:         apigen.RuleKeyAxis{Mode: apigen.RuleAxisMode(w.KeyMode), Items: []apigen.RuleKeyItem{}},
@@ -88,7 +171,7 @@ func wireRuleKeyItem(project domain.ProjectID, k domain.RuleKeyItem) apigen.Rule
 func wireAccessRule(v service.RuleView) apigen.Rule {
 	return apigen.Rule{
 		Id: v.ID, PrincipalId: string(v.Principal), PrincipalName: optStr(v.PrincipalName),
-		Capability: apigen.RuleCapability(v.Capability), Where: wireRuleWhere(v.Where),
+		Capability: apigen.RuleCapability(v.Capability), Where: wireRuleWhere(v.Where, v.Covers),
 		OtherProjects: v.OtherProjects, CreatedBy: string(v.CreatedBy), CreatedAt: v.CreatedAt,
 	}
 }
@@ -187,14 +270,11 @@ func wireAccessPrincipal(project domain.ProjectID, v service.AccessView) (apigen
 }
 
 func (a *API) CreateRule(ctx context.Context, req apigen.CreateRuleRequestObject) (apigen.CreateRuleResponseObject, error) {
-	where, err := ruleWhere(req.Body.Where)
+	spec, err := ruleRequest(req.Org, *req.Body)
 	if err != nil {
 		return nil, err
 	}
-	view, err := a.Rules.Create(ctx, service.Bearer(bearer(ctx)), service.RuleSpec{
-		Target: domain.PrincipalID(req.Body.Principal), Capability: domain.Capability(req.Body.Capability),
-		Org: domain.OrgID(req.Org), Where: where,
-	})
+	view, err := a.Rules.Create(ctx, service.Bearer(bearer(ctx)), spec)
 	if err != nil {
 		return nil, err
 	}
@@ -251,11 +331,11 @@ func (a *API) ReplaceRules(ctx context.Context, req apigen.ReplaceRulesRequestOb
 		creates = *req.Body.Create
 	}
 	for _, add := range creates {
-		where, err := ruleWhere(add.Where)
+		one, err := ruleRequest(req.Org, add)
 		if err != nil {
 			return nil, err
 		}
-		spec.Create = append(spec.Create, service.RuleSpec{Org: spec.Org, Target: domain.PrincipalID(add.Principal), Capability: domain.Capability(add.Capability), Where: where})
+		spec.Create = append(spec.Create, one)
 	}
 	views, err := a.Rules.Replace(ctx, service.Bearer(bearer(ctx)), spec)
 	if err != nil {

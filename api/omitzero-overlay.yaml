@@ -664,6 +664,10 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['components']['schemas']['RuleWhere']['properties']['project_mode']
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['components']['schemas']['RuleKeyItem']['properties']['folder','key']
     update:
       x-omitempty: false

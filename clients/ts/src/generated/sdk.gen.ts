@@ -610,7 +610,10 @@ export const listProjects = <ThrowOnError extends boolean = false>(options: Opti
  * Not idempotent: each call creates a distinct project. The name must be
  * unused among the organisation's live projects; a collision is a
  * `conflict`, decided after authorization so it discloses nothing a
- * caller could not already read.
+ * caller could not already read. A project that would list one of the
+ * organisation's rules over all projects past the 500-item bound of a
+ * rule's `where` is a `conflict` too; its detail names the blocking rules
+ * to a member manager of the organisation.
  *
  */
 export const createProject = <ThrowOnError extends boolean = false>(options: Options<CreateProjectData, ThrowOnError>): RequestResult<CreateProjectResponses, CreateProjectErrors, ThrowOnError> => (options.client ?? client).post<CreateProjectResponses, CreateProjectErrors, ThrowOnError>({

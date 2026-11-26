@@ -1549,7 +1549,7 @@
     "engine": "postgres",
     "name": "GetRule",
     "annotation": "authn-resolution",
-    "hash": "67b8c7e2cb430b7e417d6baf68ed71740a47c9a7650053814467b27c0bcbce98"
+    "hash": "3df024c6855eb9acc58f78a3c88897c95158dbbd767456c29b0e0d1fde7e5d4a"
   },
   {
     "engine": "postgres",
@@ -1886,7 +1886,7 @@
     "engine": "postgres",
     "name": "InsertRule",
     "annotation": "authn-resolution",
-    "hash": "b272fe58b908f8fd65814b188d831c8cdd09aefd9cb27b2a7203a5d298928b96"
+    "hash": "ce660c5dd208fb47f78448bfd8d89b1132b89525741e12c737dc337cfc2d29a2"
   },
   {
     "engine": "postgres",
@@ -2027,6 +2027,13 @@
     "name": "ListAllProjects",
     "annotation": "instance-scoped",
     "hash": "1e878a508c3989d9a174e05b1295f9aa416e8669410a4b3e73217225b8eb8b14"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListAllProjectsRuleItemCountsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "3a94ffd9eb13d8332ee33091ea504db794697cb90335c4b32f2f6ae271d885ee",
+    "reason": "Project deletion and creation read the org's all-projects rules only after OpProjectDelete or OpProjectCreate authorized the caller in that org; ids and counts only, scoped to the org."
   },
   {
     "engine": "postgres",
@@ -2181,7 +2188,7 @@
     "engine": "postgres",
     "name": "ListMachineRulesForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "ba5d775ec8370046b22966c16c10edc7ffd52c1ad894108117a55199b2c6687f",
+    "hash": "e09d6a686099b6a7a1be865914a59f2cd4d03d962ee0f071be5e8ea77809518a",
     "reason": "Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
   },
   {
@@ -2384,25 +2391,32 @@
     "engine": "postgres",
     "name": "ListRuleLinesInOrg",
     "annotation": "authn-resolution",
-    "hash": "2c8223177c240320342cf043350de309400276cd306c75438d5091c1ce5efe91"
+    "hash": "f5cbc3b650aa42e08171d11fcd290f2d234520658dba9787416053832d99c20b"
   },
   {
     "engine": "postgres",
     "name": "ListRuleLinesInProject",
     "annotation": "authn-resolution",
-    "hash": "fbb168ff53754466cd588db559f44d9fc6f309036d3522e022c6ca1b179fa257"
+    "hash": "9df4df724418011ff0e2e0337d51c9b1a37a2bbfc72c500e4a1a9c9ce0273241"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleOrgProjectIDs",
+    "annotation": "authn-resolution",
+    "hash": "e2d528f9ee4653930d2e05563032025cd9998a17437b9541839f467de1a89dd0",
+    "reason": "A member access rule over all projects is authorized per current org project, so its create and revoke read these ids to choose the scopes to authorize, never returning them before that authorization; listings read them after it. Ids only."
   },
   {
     "engine": "postgres",
     "name": "ListRulesForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "01117d46d133479be63210f6253e20fd3485807b2a65e515a323a11444e81ba4"
+    "hash": "963d5126982c28cff147f55815313e55eaa105d6db6a4d5ba53f3dbd4cf78eed"
   },
   {
     "engine": "postgres",
     "name": "ListRulesForProject",
     "annotation": "authn-resolution",
-    "hash": "8aa560265efb552e536f94368e27c092e7fa8f44dafa05d19302690f777f73f0"
+    "hash": "684db0451ae2f1a7a8f28288c0796348add8d563b848bd258e45f87d78bc20d9"
   },
   {
     "engine": "postgres",
@@ -2528,9 +2542,23 @@
   },
   {
     "engine": "postgres",
+    "name": "LockOrgProjectIDsForDelete",
+    "annotation": "authn-resolution",
+    "hash": "8b234949272e7298d4596d85fc694015fe758a775ccc4d5e649def328bd2527b",
+    "reason": "Project deletion and creation lock the org's project ids to keep an all-projects rule from outliving the last project or outgrowing the v1 listing bound; runs after OpProjectDelete or OpProjectCreate authorized the caller, ids only."
+  },
+  {
+    "engine": "postgres",
     "name": "LockPrincipalRow",
     "annotation": "authn-resolution",
     "hash": "dc379a18027f0fc520065a13023ee7b1ccd38935199770bc8143d1ca39859a6a"
+  },
+  {
+    "engine": "postgres",
+    "name": "LockRuleOrgProjectIDs",
+    "annotation": "authn-resolution",
+    "hash": "6e9ed4e376c7464791c6d27fd616b94bbea8c3badc8c71bfd8cb685c671b26b8",
+    "reason": "An all-projects rule create locks the org's current project ids it is proved against; runs after rule.create authorized the caller in each of them, ids only, scoped to the org."
   },
   {
     "engine": "postgres",
@@ -3159,10 +3187,31 @@
   },
   {
     "engine": "postgres",
+    "name": "RecoveryListMachineRulesBeforeAllProjects",
+    "annotation": "authn-resolution",
+    "hash": "c566829006ade05d23693bdf62cb80239d92d372151402d64e9e629040977281",
+    "reason": "Historical recovery of source schema 89 through 98 reads a machine principal's member access rules without rules.project_mode, which that schema does not have; the machine kind, privacy, containment and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
+  },
+  {
+    "engine": "postgres",
+    "name": "RecoveryListRulesBeforeAllProjects",
+    "annotation": "authn-resolution",
+    "hash": "c2b25e8831a96e960b236a6b08992d17b23a33fad572cc29f998835544e5e74f",
+    "reason": "Historical recovery of source schema 89 through 98 reads the principal's member access rules without rules.project_mode, which that schema does not have; the human kind, privacy, containment and restore-epoch gates stay."
+  },
+  {
+    "engine": "postgres",
     "name": "RecoveryListRulesBeforeContainment",
     "annotation": "authn-resolution",
-    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927",
+    "hash": "67ecb1d989cf3848e2407b91986c341f9730cca93f3a3621dc8b79d45acc56fd",
     "reason": "Historical recovery of a source schema older than 89 reads the principal's member access rules without the containment condition, which that schema cannot hold; the privacy gate and restore epoch stay."
+  },
+  {
+    "engine": "postgres",
+    "name": "RecoveryListRulesForProjectBeforeAllProjects",
+    "annotation": "authn-resolution",
+    "hash": "32d60dc10824f5a35c10accb6ae38c28217470ec0599715e6cca5e4f14a8d93a",
+    "reason": "Historical recovery of source schema 89 through 98 reads the folder-move census without rules.project_mode, which that schema does not have; like ListRulesForProject it is deliberately ungated beyond human kind so the census stays a superset."
   },
   {
     "engine": "postgres",
@@ -5390,7 +5439,7 @@
     "engine": "sqlite",
     "name": "GetRule",
     "annotation": "authn-resolution",
-    "hash": "67b8c7e2cb430b7e417d6baf68ed71740a47c9a7650053814467b27c0bcbce98"
+    "hash": "3df024c6855eb9acc58f78a3c88897c95158dbbd767456c29b0e0d1fde7e5d4a"
   },
   {
     "engine": "sqlite",
@@ -5727,7 +5776,7 @@
     "engine": "sqlite",
     "name": "InsertRule",
     "annotation": "authn-resolution",
-    "hash": "b272fe58b908f8fd65814b188d831c8cdd09aefd9cb27b2a7203a5d298928b96"
+    "hash": "ce660c5dd208fb47f78448bfd8d89b1132b89525741e12c737dc337cfc2d29a2"
   },
   {
     "engine": "sqlite",
@@ -5868,6 +5917,13 @@
     "name": "ListAllProjects",
     "annotation": "instance-scoped",
     "hash": "1e878a508c3989d9a174e05b1295f9aa416e8669410a4b3e73217225b8eb8b14"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListAllProjectsRuleItemCountsInOrg",
+    "annotation": "authn-resolution",
+    "hash": "3a94ffd9eb13d8332ee33091ea504db794697cb90335c4b32f2f6ae271d885ee",
+    "reason": "Project deletion and creation read the org's all-projects rules only after OpProjectDelete or OpProjectCreate authorized the caller in that org; ids and counts only, scoped to the org."
   },
   {
     "engine": "sqlite",
@@ -6022,7 +6078,7 @@
     "engine": "sqlite",
     "name": "ListMachineRulesForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "ba5d775ec8370046b22966c16c10edc7ffd52c1ad894108117a55199b2c6687f",
+    "hash": "e09d6a686099b6a7a1be865914a59f2cd4d03d962ee0f071be5e8ea77809518a",
     "reason": "Machine access rules resolve the principal's own rule rows during authentication, before an authorization proof exists; the machine kind, privacy state, containment state and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
   },
   {
@@ -6225,25 +6281,32 @@
     "engine": "sqlite",
     "name": "ListRuleLinesInOrg",
     "annotation": "authn-resolution",
-    "hash": "2c8223177c240320342cf043350de309400276cd306c75438d5091c1ce5efe91"
+    "hash": "f5cbc3b650aa42e08171d11fcd290f2d234520658dba9787416053832d99c20b"
   },
   {
     "engine": "sqlite",
     "name": "ListRuleLinesInProject",
     "annotation": "authn-resolution",
-    "hash": "fbb168ff53754466cd588db559f44d9fc6f309036d3522e022c6ca1b179fa257"
+    "hash": "9df4df724418011ff0e2e0337d51c9b1a37a2bbfc72c500e4a1a9c9ce0273241"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleOrgProjectIDs",
+    "annotation": "authn-resolution",
+    "hash": "e2d528f9ee4653930d2e05563032025cd9998a17437b9541839f467de1a89dd0",
+    "reason": "A member access rule over all projects is authorized per current org project, so its create and revoke read these ids to choose the scopes to authorize, never returning them before that authorization; listings read them after it. Ids only."
   },
   {
     "engine": "sqlite",
     "name": "ListRulesForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "01117d46d133479be63210f6253e20fd3485807b2a65e515a323a11444e81ba4"
+    "hash": "963d5126982c28cff147f55815313e55eaa105d6db6a4d5ba53f3dbd4cf78eed"
   },
   {
     "engine": "sqlite",
     "name": "ListRulesForProject",
     "annotation": "authn-resolution",
-    "hash": "8aa560265efb552e536f94368e27c092e7fa8f44dafa05d19302690f777f73f0"
+    "hash": "684db0451ae2f1a7a8f28288c0796348add8d563b848bd258e45f87d78bc20d9"
   },
   {
     "engine": "sqlite",
@@ -6369,9 +6432,23 @@
   },
   {
     "engine": "sqlite",
+    "name": "LockOrgProjectIDsForDelete",
+    "annotation": "authn-resolution",
+    "hash": "e2d528f9ee4653930d2e05563032025cd9998a17437b9541839f467de1a89dd0",
+    "reason": "Project deletion and creation lock the org's project ids to keep an all-projects rule from outliving the last project or outgrowing the v1 listing bound; runs after OpProjectDelete or OpProjectCreate authorized the caller, ids only."
+  },
+  {
+    "engine": "sqlite",
     "name": "LockPrincipalRow",
     "annotation": "authn-resolution",
     "hash": "3da3cb65ce3abc134c0d6e2914b5f9566a9e3a445da14b4e5bebf32088eb2a28"
+  },
+  {
+    "engine": "sqlite",
+    "name": "LockRuleOrgProjectIDs",
+    "annotation": "authn-resolution",
+    "hash": "e2d528f9ee4653930d2e05563032025cd9998a17437b9541839f467de1a89dd0",
+    "reason": "An all-projects rule create locks the org's current project ids it is proved against; runs after rule.create authorized the caller in each of them, ids only, scoped to the org."
   },
   {
     "engine": "sqlite",
@@ -7000,10 +7077,31 @@
   },
   {
     "engine": "sqlite",
+    "name": "RecoveryListMachineRulesBeforeAllProjects",
+    "annotation": "authn-resolution",
+    "hash": "c566829006ade05d23693bdf62cb80239d92d372151402d64e9e629040977281",
+    "reason": "Historical recovery of source schema 89 through 98 reads a machine principal's member access rules without rules.project_mode, which that schema does not have; the machine kind, privacy, containment and restore-epoch gates stay and the caller applies the machine class's live rule check to every row."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryListRulesBeforeAllProjects",
+    "annotation": "authn-resolution",
+    "hash": "c2b25e8831a96e960b236a6b08992d17b23a33fad572cc29f998835544e5e74f",
+    "reason": "Historical recovery of source schema 89 through 98 reads the principal's member access rules without rules.project_mode, which that schema does not have; the human kind, privacy, containment and restore-epoch gates stay."
+  },
+  {
+    "engine": "sqlite",
     "name": "RecoveryListRulesBeforeContainment",
     "annotation": "authn-resolution",
-    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927",
+    "hash": "67ecb1d989cf3848e2407b91986c341f9730cca93f3a3621dc8b79d45acc56fd",
     "reason": "Historical recovery of a source schema older than 89 reads the principal's member access rules without the containment condition, which that schema cannot hold; the privacy gate and restore epoch stay."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryListRulesForProjectBeforeAllProjects",
+    "annotation": "authn-resolution",
+    "hash": "32d60dc10824f5a35c10accb6ae38c28217470ec0599715e6cca5e4f14a8d93a",
+    "reason": "Historical recovery of source schema 89 through 98 reads the folder-move census without rules.project_mode, which that schema does not have; like ListRulesForProject it is deliberately ungated beyond human kind so the census stays a superset."
   },
   {
     "engine": "sqlite",

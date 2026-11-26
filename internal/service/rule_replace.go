@@ -112,7 +112,7 @@ func (s *Rules) Replace(ctx context.Context, actor Actor, spec ReplaceRulesSpec)
 			if err := insertRuleCreated(ctx, r, add.proof, add.caller.Principal, add.rule, add.unheld, widened[i]); err != nil {
 				return err
 			}
-			out = append(out, RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: add.rule.Capability, Org: spec.Org, Where: add.rule.Where, CreatedBy: add.caller.Principal, CreatedAt: now})
+			out = append(out, RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: add.rule.Capability, Org: spec.Org, Where: add.rule.Where, Covers: add.covers, CreatedBy: add.caller.Principal, CreatedAt: now})
 		}
 		if len(adds) > 0 {
 			return invalidateGrantChange(ctx, az, spec.Target)

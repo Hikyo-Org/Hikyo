@@ -3079,6 +3079,17 @@ export const zRuleCapability = z.enum([
  */
 export const zRuleAxisMode = z.enum(['all', 'only']);
 
+/**
+ * `only` reaches the listed `projects`. `all` reaches every project of
+ * the organisation, including projects created later; such a rule covers
+ * every environment and narrows keys by folder only. Omitted, a rule's
+ * project mode is `only`. The default is stated here rather than as a
+ * schema `default`, so generated clients never add the property to a
+ * request: a server before revision 21 refuses it.
+ *
+ */
+export const zRuleProjectMode = z.enum(['all', 'only']);
+
 export const zRuleEnvironmentItem = z.object({
     project: zId,
     environment: zId
@@ -3749,8 +3760,26 @@ export const zRuleKeyAxis = z.object({
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * With `project_mode` `all` the rule reaches every project of the
+ * organisation, including projects created later. A response lists the
+ * organisation's current projects (a project listing: only that
+ * project), with the rule's folder items repeated under each, so
+ * `projects` is never empty; an organisation listing's or a create's
+ * `where` is a valid create request. A create lists exactly the organisation's current
+ * projects (otherwise 409), keeps the environment axis `all` without
+ * items, and repeats the same folder items, never single keys, under
+ * every project.
+ *
+ * The 500 bound counts the rule as it is listed: every current project
+ * plus its folder items repeated under each. A create that would list
+ * more is refused with 409 `limit_exceeded`. A project creation that
+ * would list an existing rule over all projects past it is refused with
+ * 409 `conflict`, whose detail names the blocking rules to a member
+ * manager. A listing is never truncated.
+ *
  */
 export const zRuleWhere = z.object({
+    project_mode: zRuleProjectMode.optional(),
     projects: z.array(zId).min(1).max(500),
     environments: zRuleEnvironmentAxis,
     keys: zRuleKeyAxis

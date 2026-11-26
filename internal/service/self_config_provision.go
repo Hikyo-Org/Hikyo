@@ -249,6 +249,11 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	if err != nil {
 		return store.SelfConfigBinding{}, err
 	}
+	// The org is new in this transaction, so no rule can block; checked anyway
+	// so every project creation passes the same gate.
+	if err := refuseProjectAboveAllProjectsRules(ctx, az, caller.Principal, domain.OrgID(orgID)); err != nil {
+		return store.SelfConfigBinding{}, err
+	}
 	projectName := "Hikyo " + seed.owner
 	if err := r.Projects().Create(ctx, projectProof, store.NewProject{ID: projectID, Name: projectName, CreatedAt: store.CanonTime(now)}); err != nil {
 		return store.SelfConfigBinding{}, err

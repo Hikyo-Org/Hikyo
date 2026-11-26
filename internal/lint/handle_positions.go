@@ -192,6 +192,7 @@ var driverFiles = map[string]bool{
 	"internal/isolation/rotation_summary_review_test.go":                 true, // binds generated rotation list/summary queries to the raw pools to prove owed-drop counts stay inside their chain
 	"internal/isolation/rotation_summary_test.go":                        true, // binds generated rotation summary queries to the raw pools to prove last-run bounds and owed-drop counts
 	"internal/isolation/rule_refusal_querywork_test.go":                  true, // read-only transactions through PG()/SQLiteRead measure the query work of rule-management refusals
+	"internal/isolation/rules_historical_test.go":                        true, // raw SQLite/pgx handles build a schema-98 archive to prove recovery reads rules before rules.project_mode
 	"internal/isolation/scim_page_bound_test.go":                         true, // pins Postgres pool connections and a nil-checked PG() to measure SCIM page materialization bounds
 	"internal/isolation/scim_retirement_generated_scope_test.go":         true, // binds generated SCIM retirement queries to the raw pools to prove they preserve live owners within scope
 	"internal/isolation/secret_occurrence_batch_test.go":                 true, // read-only transactions through PG()/SQLiteRead measure secret-occurrence batch query behavior
