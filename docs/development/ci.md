@@ -300,20 +300,43 @@ to 16:59 on a rotation day with the lint seed three minutes later (361 minutes; 
 ended 11:25 to 14:57), and the Sunday `ci-main` after a go.sum change saves at every minute from 10:59 to
 22:59 (721 minutes; cron 13:23, observed 20:31). The test samples every hour (rotation, at :59) and
 every two hours (Sunday) by default, because each replay runs the prune's jq about thirty times and
-the package has the hosted 600 s budget (default-mode `TestCacheBudgetModel`: DEFAULT_TIME); `HIKYO_CACHE_SWEEP_FULL=1 go
+the package has the hosted 600 s budget (default-mode `TestCacheBudgetModel`: 6.1 s measured inside the full package run, about 4.7 s on a quiet host; 50cf94d5d took 23.9 s against 7.5 s for this code in an A/B at equal host load); `HIKYO_CACHE_SWEEP_FULL=1 go
 test -run TestCacheBudgetModel ./scripts/ci/` runs every minute (several minutes on a loaded host) and
 is how the table below was measured.
 
 | Sweep (adopted plan, live seeds) | Limit | Minutes with a newest seed lost | Worst peak | Most live entries evicted |
 | --- | --- | --- | --- | --- |
-| Rotation day, race then lint (shared group) | 10.00 GB | 0 of 361 | 10.77 GB | 18 |
-| Rotation day, race then lint (shared group) | 10 GiB | 0 of 361 | 11.10 GB | 11 |
+| Rotation day, race then lint (shared group), **no headroom** | 10.00 GB | 0 of 361 | 10.77 GB | 18 |
+| Rotation day, race then lint (shared group), **no headroom** | 10 GiB | 0 of 361 | 11.10 GB | 11 |
 | Rotation day, both saves in one minute (no shared group) | 10.00 GB | 0 of 361 | 11.35 GB | 18 |
 | Rotation day, both saves in one minute (no shared group) | 10 GiB | 0 of 361 | 12.09 GB | 12 |
 | Sunday after a go.sum week | 10.00 GB | 0 of 721 | 12.27 GB | 9 |
 | Sunday after a go.sum week | 10 GiB | 0 of 721 | 12.27 GB | 8 |
 | Sunday after a go.sum week, main key by commit alone | 10.00 GB | 721 of 721 | 12.27 GB | 8 |
 | Sunday after a go.sum week, main key by commit alone | 10 GiB | 721 of 721 | 12.27 GB | 7 |
+
+With the headroom jobs (measured per minute, `HIKYO_CACHE_SWEEP_FULL=1`, merged tree b87310eac; all with the
+headroom lead times of the seed jobs, 20 minutes, and of ci-main, 45 minutes):
+
+| Case (with headroom) | Limit | Minutes with a newest seed lost | Worst peak | Most live entries evicted |
+| --- | --- | --- | --- | --- |
+| Rotation day, observed traffic (main 4, dev 10 restores a day) | 10.00 GB | 0 of 361 | 10.41 GB | 1 |
+| Rotation day, observed traffic | 10 GiB | 0 of 361 | 10.41 GB | 0 |
+| Rotation day, sparse traffic: no restore between the daily saves | 10.00 GB | 0 of 361 | 10.41 GB | 1 |
+| Rotation day, sparse traffic | 10 GiB | 0 of 361 | 10.41 GB | 0 |
+| Monday rollover, no restore between saves | 10.00 GB | 0 | 9.74 GB | 0 (headroom freed 3) |
+| Sunday ci-main after a go.sum week | 10.00 GB | 0 of 721 | 9.74 GB | 0 |
+| Sunday ci-main after a go.sum week | 10 GiB | 0 of 721 | 9.74 GB | 0 |
+| Manual ci-main on a weekday after a go.sum change (headroom workflow dispatched) | 10.00 GB | 0 of 721 | 10.66 GB | 1 |
+| Manual ci-main on a weekday after a go.sum change | 10 GiB | 0 of 721 | 10.66 GB | 0 |
+
+The same cases without the headroom, which is what the headroom is for: sparse traffic on a rotation day
+loses a newest seed at 311 of 361 minutes at 10.00 GB (peak 10.77 GB, 10 evicted); a manual ci-main run
+on a weekday after a go.sum change at 687 of 721 minutes at both limits (peak 12.54 GB, 11 and 9
+evicted, because every entry but the saved ones is touched hourly). Two mutations of the script the model
+must see: a selection that may delete a newest seed loses it at 361 of 361 minutes, and one that frees
+nothing at 311. The cost: at 10 GiB the manual weekday case shows the headroom freeing entries GitHub
+would not have evicted; the Monday rollover frees 3 live entries.
 
 Sensitivity (review finding L1): if a weekday run touched a seed no more often than any other busy entry
 (the hour mark, a tie going against the seeds), the rotation day with the serialised saves loses a seed
@@ -323,7 +346,7 @@ at these minutes of 361:
 | --- | --- | --- |
 | main only | 162 | 0 |
 | dev only | 166 | 4 |
-| both | 166 | 0 |
+| both | 166 | 0 (earlier revision; the sampled sweep of this case was dropped for test time) |
 
 Before the daily key and the shared group the same case lost a seed at 327 of 361 minutes at 10.00 GB and
 326 at 10 GiB. What remains is at 10.00 GB only, when the day's peak (up to 10.77 GB) passes the limit
