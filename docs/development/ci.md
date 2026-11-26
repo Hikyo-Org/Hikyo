@@ -264,10 +264,15 @@ fourth (the headroom delete, below), which is what makes survival independent of
      writers are jobs of `ci.yml`, which runs pull-request code, so none of them can hold the token;
      and `ci-main.yml` is a promotion-proof producer whose job inventory `scripts/ci/source-proof`
      checks, so a job added there would fail the next proof. Option (b) was taken: a separate workflow,
-     `ci-main-headroom.yml` (one job, same permissions and checkout, all six lanes, skip key the exact
-     `go-test-v2` key of the current `go.mod`/`go.sum`), scheduled 45 minutes before ci-main's cron
-     (12:38 on Sunday). `source-proof` is untouched, and `ci-main.yml` is byte-identical to before, which a
-     test pins (one job, read-only permissions). A manual ci-main run is covered by a `workflow_run`
+     `ci-main-headroom.yml` (one job, same permissions and checkout, all six Go lanes, skip key the exact
+     `go-test-v2` key of the current `go.mod`/`go.sum`, then a second step for the two pnpm stores, below),
+     scheduled 45 minutes before ci-main's cron (12:38 on Sunday). `source-proof` is untouched, and
+     `ci-main.yml` is byte-identical to before, which a test pins (one job, read-only permissions).
+     **`ci.yml` is a policy file of the source proof** (`policyPaths` in
+     `scripts/ci/source-proof/resolve.go`), and this change edits it (the module-cache paths, the
+     k8s-e2e `GOFLAGS` and its `-nodwarf` key). It is main-first, so main itself is fine, but the dev
+     source proof and the nightly promotion stay blocked until a main-to-dev backmerge carries the change;
+     that backmerge is a landing step, not a side effect. A manual ci-main run is covered by a `workflow_run`
      trigger of the same workflow (`workflows: [ci-main]`, `types: [requested]`, `branches: [main]`):
      `requested` is the earliest event GitHub offers, before any job of the run. The trigger runs the file
      as it is on main, at main's latest commit, with a write-capable token, so the job carries the guard of
@@ -280,6 +285,16 @@ fourth (the headroom delete, below), which is what makes survival independent of
      therefore **unverified until the first manual run after the merge**; the landing steps check it, and
      until then dispatching `ci-main-headroom` first is the fallback. The race between the headroom job
      and the writers' first saves is modelled below.
+   * Weekly pnpm stores (`pnpm-store-v2-host-` and `-playwright-`, 0.41 GB together): the validation job
+     saves them when a lockfile or the Node pin changed, which `go.mod` and `go.sum` do not show, so the
+     go-lanes skip key would never size them. A second step of the same job names `pnpm-store-v2-` and
+     skips only when both stores for the current lockfile hash already exist on main. Their keys carry
+     the Node ABI, which needs Node and so repository tooling the job must not run, so the skip keys end
+     in the lockfile hash and leave the ABI as a star (the script matches one `*` as a start and an
+     end, and skips only when every key hits a main entry). Residual: a Node ABI bump alone, with
+     no lockfile change, is not seen by that skip and sizes the stores (a conservative 0.41 GB). The
+     model keeps the pnpm stores out of the default ci-main saves (a go.sum change alone leaves them a
+     hit) and runs one sensitivity case with a lockfile change on the same day (below).
    * Margin 0.25 GB (budget 9.75 GB): it equals the largest single CodeQL overlay (0.268 GB), so one
      concurrent CodeQL save between the delete and the save still fits.
    * Incoming size: the sum, over the lanes named, of the size of the newest main entry of that lane
@@ -330,7 +345,8 @@ budget. The headroom sweeps (rotation day with headroom at 10.00 GB) also replay
 event the sweep moves (the seed saves, the headroom before them) passes an event it does not (the day's
 other saves and deletes), derived from the model's own event list (`sweepMinutes`). The outcome of a
 replay is constant between two such crossings, so a seed lost over ten minutes is found at the crossing
-that opens them, wherever the coarse samples fall; the hourly prune and touch recur every hour and are
+that opens them and the minute after it (events that tie at the crossing sort either way), wherever the
+coarse samples fall; the hourly prune and touch recur every hour and are
 left to the coarse samples and the full sweep. This is what makes the default run see the failure that
 the first version of this move had: with `go-feedback-v1-` removed from the model's race and lint
 headroom lanes (the mutation of the review) the default run loses the seed at 20 of 65 sampled minutes

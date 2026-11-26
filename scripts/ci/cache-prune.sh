@@ -3,8 +3,9 @@
 # step (a test pins the two equal): that workflow checks nothing out, so it cannot run this file. The seed
 # writers' headroom jobs and ci-main-headroom.yml run it from their trusted checkout, before a save.
 #   without HEADROOM_PREFIXES: delete what is superseded or idle (the hourly prune).
-#   with it: also free room for the save that follows, unless an entry with exactly HEADROOM_SKIP_KEY exists
-#   on main (the save will be a hit). The incoming size is the newest main entry of each lane that starts with
+#   with it: also free room for the save that follows, unless every key of HEADROOM_SKIP_KEY (space separated)
+#   exists on main (the save will be a hit). A key may hold one `*` for a part the caller cannot compute (the pnpm
+#   store's Node ABI, which needs Node): it then matches any entry with that start and that end. The incoming size is the newest main entry of each lane that starts with
 #   one of the space-separated prefixes. A prefix names the lane without the runner image or the ABI (the
 #   lane key drops the image, so an image bump must not make the lane look absent). Deletion goes on until
 #   the total plus the incoming save fits in 10 GB less a 0.25 GB margin, in this order: older feedback seeds,
@@ -20,6 +21,7 @@ gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
     def stem: sub("-[0-9a-f]{64}(-.*)?$"; "") | sub("-[0-9a-f]{40}(-[0-9]+-[0-9]+)?$"; "");
     def lane: stem | gsub("-ubuntu[0-9]+"; "") | gsub("-[0-9]+(\\.[0-9]+)+"; "") | gsub("-[0-9a-f]{16}(?=-)"; "");
     def regenerable: test("^(go-mod-v2|go-test-v2|go-race-v2|go-lint(driver)?-v2|go-generated-v2|go-k8s-e2e-v2|go-fuzz-v2|go-feedback-v1|pinned-tool-v1|pnpm-store-v2|codeql-overlay-base-database|codeql-dependencies|codeql-trap)-");
+    def matches($k): ($k | split("*")) as $p | if ($p | length) == 1 then . == $k else (startswith($p[0]) and endswith($p[-1]) and (length >= (($p[0] | length) + ($p[-1] | length)))) end;
     def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def feedbackfam: test("^go-feedback-v2-.*-(main|dev)-(application|cli|tooling)-");
     def untouchable: test("^go-feedback-v2-") and (feedbackfam | not);
@@ -36,7 +38,8 @@ gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
     | ([$prefixes | split(" ")[] | select(. != "")] as $wanted
         | [$all[] | select(.ref == "refs/heads/main" and (.key as $k | any($wanted[]; . as $p | $k | startswith($p))))]
         | group_by(.key | lane) | map(sort_by([.created_at, .id]) | last | .size_in_bytes) | add // 0) as $planned
-    | (if $skip != "" and any($all[]; .ref == "refs/heads/main" and .key == $skip) then 0 else $planned end) as $incoming
+    | [$skip | split(" ")[] | select(. != "")] as $keys
+    | (if ($keys | length) > 0 and all($keys[]; . as $k | any($all[]; .ref == "refs/heads/main" and (.key | matches($k)))) then 0 else $planned end) as $incoming
     | (if $incoming == 0 then [] else
         ((($all | map(.size_in_bytes) | add // 0) - ($regular | map(.size_in_bytes) | add // 0)) + $incoming - $budget) as $over
         | if $over <= 0 then [] else

@@ -414,7 +414,10 @@ type plan struct {
 	// requested: ci-main-headroom.yml runs on the request of a manual ci-main run (workflow_run, requested),
 	// requestLag after the request, and the writers save one after the other at the offsets measured in
 	// ciMainOffsets, instead of the Sunday cron's headroom 45 minutes ahead of one instant of saves.
-	requested  bool
+	requested bool
+	// pnpm: a pnpm lockfile changed together with go.sum, so the weekly run saves the two pnpm stores (0.41 GB)
+	// too, and the second step of ci-main-headroom.yml makes room for them (its skip key does not hit).
+	pnpm       bool
 	requestLag time.Duration
 	// mainBySha is the main seed key as it was, <sha> alone: nothing is saved on a day main did not move,
 	// so a quiet weekend leaves the main seed where Friday left it.
@@ -627,7 +630,10 @@ func ciMainWeekday(t *testing.T, p plan, limit int64) *cacheModel {
 // at the start of the run, about 45 minutes before the saves of ci.yml's jobs; the new generation is what the
 // writers compile whatever the cache still holds, so it is read before the job deletes anything.
 func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent {
-	prefixes := []string{"go-mod-v2-", "go-test-v2-", "go-lint-v2-", "go-generated-v2-", "go-k8s-e2e-v2-", "go-fuzz-v2-"}
+	prefixes := strings.Fields(modelCIMainGoLanes)
+	if p.pnpm {
+		prefixes = append(prefixes, strings.Fields(modelCIMainPnpmLanes)...)
+	}
 	generations := map[string][]*modelEntry{}
 	var events []modelEvent
 	lead := 45 * time.Minute
@@ -641,7 +647,11 @@ func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent 
 					generations[prefix] = m.generation(prefix)
 				}
 			}
-			m.headroom(strings.Join(prefixes, " "))
+			// Two steps of ci-main-headroom.yml, one after the other.
+			m.headroom(modelCIMainGoLanes)
+			if p.pnpm {
+				m.headroom(modelCIMainPnpmLanes)
+			}
 		}})
 	}
 	if p.requested {
@@ -680,6 +690,8 @@ func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent 
 var ciMainOffsets = map[string]time.Duration{
 	"go-lint-v2-": 2 * time.Minute, "go-generated-v2-": 150 * time.Second, "go-fuzz-v2-": 7 * time.Minute,
 	"go-test-v2-": 14 * time.Minute, "go-mod-v2-": 16 * time.Minute, "go-k8s-e2e-v2-": 24 * time.Minute,
+	// The pnpm stores are saved by the validation job; the time is an estimate, not measured.
+	"pnpm-store-v2-": 10 * time.Minute,
 }
 
 // sundayGoSum is the weekly ci-main run after a go.sum change landed since the daily seeds
@@ -879,7 +891,10 @@ func sweepMinutes(t *testing.T, p plan, limit int64, from, to, step int, at func
 					continue
 				}
 				// m sits at M when the sweep starts, so the sweep puts it on f at from+(f-M).
-				add(from + int(f.Sub(m)/time.Minute))
+				// The next minute too: events that tie at the crossing sort either way around it.
+				cross := from + int(f.Sub(m)/time.Minute)
+				add(cross)
+				add(cross + 1)
 			}
 		}
 	}
@@ -1234,6 +1249,19 @@ func TestCacheBudgetModel(t *testing.T) {
 					t.Fatalf("without the headroom job a manual ci-main run on a weekday no longer loses a seed at %s; update docs/development/ci.md", l.name)
 				}
 			})
+			// Sensitivity, not a claim: a pnpm lockfile changing on the same day as go.sum adds the two pnpm stores
+			// (0.41 GB) to the saves; the run is logged for docs/development/ci.md and asserts nothing.
+			t.Run("ci-main on a weekday with a pnpm lockfile change/"+l.name, func(t *testing.T) {
+				t.Parallel()
+				p := planAdopted
+				p.rate = map[string]int{"main": 0, "dev": 0}
+				p.headroom, p.pnpm = true, true
+				at := func(p plan, minute int) plan {
+					p.times.ciMain = [2]int{minute / 60, minute % 60}
+					return p
+				}
+				logSweep(t, "headroom, ci-main on a weekday with a pnpm lockfile change", l, sweepSeeds(t, p, l.bytes, 10*60+59, 22*60+59, sweepStep(360), at, ciMainWeekday))
+			})
 			// The same manual run with the headroom started by its request (ci-main-headroom.yml, workflow_run
 			// requested) instead of 45 minutes ahead: the writers save while the headroom job queues, runs its
 			// checkout and lists the cache, so the saves of the first minutes (lint, generated, fuzz) can land
@@ -1297,11 +1325,14 @@ func TestCacheBudgetModel(t *testing.T) {
 const (
 	modelRaceLanes = "go-race-v2- go-mod-v2- go-feedback-v1-"
 	modelLintLanes = "go-lintdriver-v2- go-feedback-v1-"
+	// ci-main-headroom.yml's two steps, and the lanes of ciMainSaves.
+	modelCIMainGoLanes   = "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-"
+	modelCIMainPnpmLanes = "pnpm-store-v2-"
 )
 
 func TestCacheModelNamesTheWorkflowLanes(t *testing.T) {
 	templates := regexp.MustCompile(`\$\{\{[^}]*\}\}-`)
-	for file, want := range map[string]string{"ci-race-cache.yml": modelRaceLanes, "ci-lint-cache.yml": modelLintLanes} {
+	for file, want := range map[string]string{"ci-race-cache.yml": modelRaceLanes, "ci-lint-cache.yml": modelLintLanes, "ci-main-headroom.yml": modelCIMainGoLanes + " " + modelCIMainPnpmLanes} {
 		workflow, _ := readWorkflowFile(t, file)
 		job, _ := workflow["jobs"].(map[string]any)["headroom"].(map[string]any)
 		var lanes []string

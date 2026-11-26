@@ -482,6 +482,22 @@ func requireHeadroomBehavior(script string) error {
 	if got, _, err := runCachePrune(script, bumped, "", "", race); err != nil || !reflect.DeepEqual(got, []int{1, 3, 7}) {
 		return fmt.Errorf("a lane of the old runner image must still size the save: %v %w", got, err)
 	}
+	// A skip key may hold one star for a part the caller cannot compute, and several keys skip only together.
+	for _, tc := range []struct {
+		name string
+		skip string
+		want []int
+	}{
+		{"star key that exists", "go-race-v2-Linux-X64-*-" + strings.Repeat("b", 64), []int{1}},
+		{"star key of another hash", "go-race-v2-Linux-X64-*-" + strings.Repeat("d", 64), []int{1, 3, 7}},
+		{"star key of another lane", "go-test-v2-Linux-X64-*-" + strings.Repeat("b", 64), []int{1, 3, 7}},
+		{"every key exists", "go-race-v2-Linux-X64-*-" + strings.Repeat("b", 64) + " go-lintdriver-v2-Linux-X64-ubuntu26-" + strings.Repeat("a", 64) + "-2026-W48", []int{1}},
+		{"one key missing", "go-race-v2-Linux-X64-*-" + strings.Repeat("b", 64) + " go-lintdriver-v2-Linux-X64-ubuntu26-" + strings.Repeat("d", 64) + "-2026-W48", []int{1, 3, 7}},
+	} {
+		if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_SKIP_KEY="+tc.skip); err != nil || !reflect.DeepEqual(got, tc.want) {
+			return fmt.Errorf("skip keys, %s: deleted %v, want %v: %w", tc.name, got, tc.want, err)
+		}
+	}
 	// A save that will be a hit needs no room: the exact key exists on main (id 2's key), so nothing beyond the dead goes.
 	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_SKIP_KEY=go-race-v2-Linux-X64-ubuntu26-"+strings.Repeat("b", 64)); err != nil || !reflect.DeepEqual(got, []int{1}) {
 		return fmt.Errorf("an existing exact key must skip the headroom: %v %w", got, err)
@@ -542,10 +558,15 @@ func TestCachePruneHeadroom(t *testing.T) {
 			return strings.Replace(s, "| add // 0) as $planned", "| length) as $planned", 1)
 		},
 		"skip key ignored": func(s string) string {
-			return strings.Replace(s, "if $skip != \"\" and any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "if false", 1)
+			return strings.Replace(s, "if ($keys | length) > 0 and all(", "if false and all(", 1)
 		},
 		"skip key on any ref": func(s string) string {
-			return strings.Replace(s, "any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "any($all[]; .key == $skip)", 1)
+			return strings.Replace(s, ".ref == \"refs/heads/main\" and (.key | matches($k))", "(.key | matches($k))", 1)
+		},
+		"skip star ignored":  func(s string) string { return strings.Replace(s, `($k | split("*"))`, "[$k]", 1) },
+		"skip needs one key": func(s string) string { return strings.Replace(s, "all($keys[];", "any($keys[];", 1) },
+		"skip star too loose": func(s string) string {
+			return strings.Replace(s, "startswith($p[0]) and endswith($p[-1])", "startswith($p[0])", 1)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -564,6 +585,9 @@ func TestCachePruneHeadroom(t *testing.T) {
 // Their saves run in ci.yml's jobs, which run PR code in the pull-request workflows and so can never hold
 // actions: write; and ci-main.yml is a promotion-proof producer whose job inventory the source proof checks, so
 // the step lives in a workflow of its own that runs 45 minutes before ci-main's cron.
+// pnpmLockHash is ci.yml's key hash of the pnpm stores: the files whose change makes the weekly run save new ones.
+const pnpmLockHash = "${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}"
+
 func requireCIMainHeadroom(workflow map[string]any) error {
 	jobs, _ := workflow["jobs"].(map[string]any)
 	if len(jobs) != 1 {
@@ -622,12 +646,22 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 				},
 				"run": "./scripts/ci/cache-prune.sh",
 			},
+			map[string]any{
+				"name": "Make room in the Actions cache for the weekly pnpm stores",
+				"env": map[string]any{
+					"GH_TOKEN":          "${{ github.token }}",
+					"GH_REPO":           "${{ github.repository }}",
+					"HEADROOM_PREFIXES": "pnpm-store-v2-",
+					"HEADROOM_SKIP_KEY": "pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-*-" + pnpmLockHash + " pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-*-" + pnpmLockHash,
+				},
+				"run": "./scripts/ci/cache-prune.sh",
+			},
 		},
 	}
 	got, _ := jobs["headroom"].(map[string]any)
 	// The pinned checkout action carries its version comment, which yaml drops; compare the rest exactly.
-	if steps, ok := got["steps"].([]any); !ok || len(steps) != 3 {
-		return fmt.Errorf("headroom is a checkout, the ABI and the script")
+	if steps, ok := got["steps"].([]any); !ok || len(steps) != 4 {
+		return fmt.Errorf("headroom is a checkout, the ABI, the go lanes' script and the pnpm lane's")
 	}
 	if !reflect.DeepEqual(got, want) {
 		return fmt.Errorf("the ci-main headroom job differs from the reviewed one: %v", got)
@@ -709,6 +743,17 @@ func TestCIMainHeadroomWorkflow(t *testing.T) {
 		"runs every week":           func(w map[string]any) { delete(step(w, 2)["env"].(map[string]any), "HEADROOM_SKIP_KEY") },
 		"another lane":              func(w map[string]any) { step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2-" },
 		"another script":            func(w map[string]any) { step(w, 2)["run"] = "./scripts/ci/cache-prune.sh && true" },
+		"k8s-e2e lane dropped": func(w map[string]any) {
+			step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-fuzz-v2-"
+		},
+		"pnpm lane dropped":    func(w map[string]any) { job(w)["steps"] = job(w)["steps"].([]any)[:3] },
+		"pnpm runs every week": func(w map[string]any) { delete(step(w, 3)["env"].(map[string]any), "HEADROOM_SKIP_KEY") },
+		"pnpm skip ignores the locks": func(w map[string]any) {
+			step(w, 3)["env"].(map[string]any)["HEADROOM_SKIP_KEY"] = step(w, 2)["env"].(map[string]any)["HEADROOM_SKIP_KEY"]
+		},
+		"pnpm skip on the host store only": func(w map[string]any) {
+			step(w, 3)["env"].(map[string]any)["HEADROOM_SKIP_KEY"] = "pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-*-" + pnpmLockHash
+		},
 		"repository code": func(w map[string]any) {
 			job(w)["steps"] = append(job(w)["steps"].([]any), map[string]any{"run": "go run ./scripts/ci/prepare-lint-cache"})
 		},

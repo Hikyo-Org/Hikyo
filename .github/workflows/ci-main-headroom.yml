@@ -3,7 +3,8 @@
 # hold actions: write; and ci-main.yml is a promotion-proof producer whose job inventory the source proof
 # checks, so the step cannot live there either. This workflow is the separate trusted producer: it runs 45
 # minutes before ci-main's cron (13:23 on Sunday), holds actions: write, checks out only the immutable main
-# commit and runs only scripts/ci/cache-prune.sh, never repository dependencies or Go code. Best effort: ci-main
+# commit and runs only the runner ABI selector and scripts/ci/cache-prune.sh, never repository dependencies or Go
+# code. Best effort: ci-main
 # does not wait for it, and a failure here changes nothing for it.
 # A manual ci-main run is covered by the workflow_run trigger on its request (type requested: it fires when the
 # run is queued, before any job, which is the earliest event GitHub offers). The trigger runs this file as it is
@@ -60,4 +61,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
           HEADROOM_PREFIXES: go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-
           HEADROOM_SKIP_KEY: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+        run: ./scripts/ci/cache-prune.sh
+      # The pnpm stores (host and Playwright, 0.2 GB each) are saved by the same weekly run when a lockfile or the
+      # Node pin changed, which go.mod and go.sum do not show. Their keys carry the Node ABI, which this job cannot
+      # compute (no Node, no repository code), so the skip keys stand for it with a star.
+      - name: Make room in the Actions cache for the weekly pnpm stores
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEADROOM_PREFIXES: pnpm-store-v2-
+          HEADROOM_SKIP_KEY: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-*-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }} pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-*-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
         run: ./scripts/ci/cache-prune.sh
