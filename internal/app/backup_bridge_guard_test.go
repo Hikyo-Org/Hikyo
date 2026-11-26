@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -191,7 +192,7 @@ func TestRouteDerivationsForAdmissionResumeAndRollback(t *testing.T) {
 				t.Fatal(err)
 			}
 			// The route an admission one hour before not_after journaled.
-			journaledPlan, err := bundle.PlanAt(source, target, c.notAfter.Add(-time.Hour))
+			journaledPlan, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAt(source, target, c.notAfter.Add(-time.Hour))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -258,7 +259,7 @@ func TestSecurityRollbackRouteCheckIgnoresExpiryAndRevocation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			plan, err := bundle.PlanAt(source, target, notAfter.Add(-time.Hour))
+			plan, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAt(source, target, notAfter.Add(-time.Hour))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -316,7 +317,7 @@ func TestAbsentRevocationListFallsBackToExpiryWithAWarning(t *testing.T) {
 		}))
 		t.Cleanup(server.Close)
 		previous := newRevocationFetcher
-		newRevocationFetcher = func(string) (bridgerevocation.Fetcher, error) {
+		newRevocationFetcher = func(string, func(*http.Request) (*url.URL, error)) (bridgerevocation.Fetcher, error) {
 			return bridgerevocation.HTTPFetcher{BaseURL: server.URL + "/recovery-revocations", Client: server.Client()}, nil
 		}
 		t.Cleanup(func() { newRevocationFetcher = previous })
@@ -455,20 +456,45 @@ func TestGuardedBundleRefusesARevokedBridgeAndBackupCodeUsesNothingElse(t *testi
 	if _, err := bundle.Plan(source, target); err == nil || !strings.Contains(err.Error(), "recovery bridge revoked") {
 		t.Fatalf("a guarded bundle must refuse a revoked bridge: %v", err)
 	}
-	for _, file := range []string{"backup_admission.go", "backup_upgrade.go"} {
+	// The two backup files never load a bundle themselves. Every other non-test file of this
+	// package may load one directly only where it does not also plan a route in the same
+	// function: a function that loads and plans must use loadGuardedBundle. (A bundle loaded
+	// here and planned elsewhere is still refused at runtime for a bridge route: a bundle with
+	// no revocation lookup has none.)
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") || file == "bridge_revocation.go" {
+			continue
+		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ast.Inspect(parsed, func(node ast.Node) bool {
-			if call, ok := node.(*ast.CallExpr); ok {
-				if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "Load" {
-					if pkg, ok := selector.X.(*ast.Ident); ok && pkg.Name == "upgradebundle" {
-						t.Errorf("%s loads a bundle without the revocation guard; use loadGuardedBundle", file)
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Body == nil {
+				continue
+			}
+			loads, plans := false, false
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				if call, ok := node.(*ast.CallExpr); ok {
+					if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+						if pkg, ok := selector.X.(*ast.Ident); ok && pkg.Name == "upgradebundle" && selector.Sel.Name == "Load" {
+							loads = true
+						}
+						if selector.Sel.Name == "Plan" || selector.Sel.Name == "PlanAt" || selector.Sel.Name == "PlanAdmitted" {
+							plans = true
+						}
 					}
 				}
+				return true
+			})
+			if loads && (plans || file == "backup_admission.go" || file == "backup_upgrade.go") {
+				t.Errorf("%s: %s loads a bundle without the revocation guard; use loadGuardedBundle", file, function.Name.Name)
 			}
-			return true
-		})
+		}
 	}
 }

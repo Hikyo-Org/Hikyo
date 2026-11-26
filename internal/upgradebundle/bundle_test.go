@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -134,7 +135,7 @@ func TestOfflineBundleCannotOmitCurrentCatalogBridge(t *testing.T) {
 	target := f.release.Identity
 	target.Version = "1.1.0"
 	target.Sequence++
-	f.signer.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", Source: f.release.Identity, Target: target, SourcePolicySHA256: releaseidentity.Hash([]byte("source policy")), TargetPolicySHA256: releaseidentity.Hash([]byte("target policy")), SourceMigrations: f.source.Migrations, TargetMigrations: f.source.Migrations, SourceSchemaSHA256: f.source.SchemaSHA256, TargetSchemaSHA256: f.source.SchemaSHA256, Mode: "maintenance"})
+	f.signer.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), Source: f.release.Identity, Target: target, SourcePolicySHA256: releaseidentity.Hash([]byte("source policy")), TargetPolicySHA256: releaseidentity.Hash([]byte("target policy")), SourceMigrations: f.source.Migrations, TargetMigrations: f.source.Migrations, SourceSchemaSHA256: f.source.SchemaSHA256, TargetSchemaSHA256: f.source.SchemaSHA256, Mode: "maintenance"})
 	material := f.signer.Material(t)
 	for name, raw := range map[string][]byte{"metadata.json": material.Metadata, "metadata.sigstore.json": material.MetadataSignature, "catalog.json": material.Catalog, "catalog.sigstore.json": material.CatalogSignature} {
 		writeFixture(t, f.directory, name, raw)

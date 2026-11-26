@@ -108,13 +108,18 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if _, err := bundle.Plan(source, node.Identity()); err == nil {
 				t.Fatal("legacy route admitted without recovery bridge")
 			}
-			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
 			bridgeDigest := releaseidentity.Hash(bridge.Statement)
-			index.Bridges = []releaseidentity.Digest{bridgeDigest}
+			// The catalog also lists an expiry-free legacy v1 statement for the same pair, as
+			// the production catalog does: the bundle must still load, and it is never a route.
+			legacy := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+			legacyDigest := releaseidentity.Hash(legacy.Statement)
+			index.Bridges = []releaseidentity.Digest{bridgeDigest, legacyDigest}
 			fixture.Catalog.Sequence++
 			material = fixture.Material(t)
 			for name, raw := range map[string][]byte{"index.json": testfixture.JSON(t, index), "catalog.json": material.Catalog, "catalog.sigstore.json": material.CatalogSignature,
-				"bridges/" + string(bridgeDigest) + "/statement.json": bridge.Statement, "bridges/" + string(bridgeDigest) + "/statement.sigstore.json": bridge.Signature} {
+				"bridges/" + string(bridgeDigest) + "/statement.json": bridge.Statement, "bridges/" + string(bridgeDigest) + "/statement.sigstore.json": bridge.Signature,
+				"bridges/" + string(legacyDigest) + "/statement.json": legacy.Statement, "bridges/" + string(legacyDigest) + "/statement.sigstore.json": legacy.Signature} {
 				writeFixture(t, directory, name, raw)
 			}
 			bundle, err = Load(t.Context(), directory, fixture.Pinned, bundle.Snapshot().Floor())
@@ -136,9 +141,23 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if candidates := bridgeOnly.Sources(releaseidentity.Postgres); len(candidates) != 0 {
 				t.Fatal("bridge source leaked across engines")
 			}
-			plan, err := bundle.Plan(source, node.Identity())
+			if len(bundle.bridges) != 2 {
+				t.Fatalf("both catalogued bridges load, the expiry-free one included: %d", len(bundle.bridges))
+			}
+			if _, err := bundle.Plan(source, node.Identity()); err == nil || !strings.Contains(err.Error(), "no revocation lookup") {
+				t.Fatalf("a bridge route on a bundle with no revocation lookup must be refused: %v", err)
+			}
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return []releaseidentity.Digest{bridgeDigest}, nil }).Plan(source, node.Identity()); err == nil {
+				t.Fatal("with the v2 bridge revoked, the expiry-free v1 bridge on the same pair must not become the route")
+			}
+			plan, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).Plan(source, node.Identity())
 			if err != nil || !plan.Valid() || !plan.RequiresOperatorAttestation() {
 				t.Fatal("recovery-authorized nightly route refused or lost operator proof", err)
+			}
+			// A rollback to the journaled route is never blocked by the inventory, the
+			// expiry-free statement included, with no revocation lookup at all.
+			if rolled, err := bundle.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
+				t.Fatalf("rollback of the journaled route must not be blocked: %v", err)
 			}
 			// The legacy nightly bridge expires at its signed not_after like every bridge. An
 			// absent list (404) or an unreachable endpoint falls back to that expiry; a present
@@ -180,7 +199,7 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			expired := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) {
 				checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: unreachable(errors.New("status 404")), Directory: t.TempDir()}
 				return checker.Revoked(t.Context(), bundle.Snapshot())
-			}).WithClock(func() time.Time { return time.Date(2099, 1, 1, 0, 0, 1, 0, time.UTC) })
+			}).WithClock(func() time.Time { return time.Now().Add(48 * time.Hour) })
 			if _, err := expired.Plan(source, node.Identity()); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
 				t.Fatalf("an expired legacy bridge must have no route even with the list absent: %v", err)
 			}

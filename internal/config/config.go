@@ -68,8 +68,16 @@ type UpgradeConfiguration struct {
 	TargetManifestSHA256  string
 	RevocationCheck       string
 	RevocationURL         string
-	LegacyWritersStopped  bool
+	// RevocationProxy, when set, supplies the proxy settings the revocation fetcher honours
+	// instead of the process environment. The native security service runs without the
+	// operator's environment, so it passes the host's own file here. It is never read from
+	// the environment itself.
+	RevocationProxy      *ProxySettings
+	LegacyWritersStopped bool
 }
+
+// ProxySettings are the HTTP_PROXY, HTTPS_PROXY and NO_PROXY values of one environment.
+type ProxySettings struct{ HTTP, HTTPS, None string }
 
 type Config struct {
 	// ManagedInputs are unvalidated one-time seed inputs. The owning service
@@ -109,12 +117,14 @@ type Config struct {
 	// It is EXPLICIT CONFIGURATION and nothing else for fleet traffic:
 	// http.ProxyFromEnvironment is deliberately not consulted by the directory,
 	// pairing or operator clients, because ambient HTTP_PROXY discovery would let
-	// a process's environment redirect authenticated fleet traffic. The one
-	// exception is the recovery bridge revocation fetcher (internal/bridgerevocation):
-	// it carries no credentials, and a proxy-only host would otherwise see the
-	// endpoint as unreachable and fall back to the bridge's not_after. Whatever a
-	// proxy returns is still verified against the pinned recovery key. https only — the CONNECT request names the remote host, so a
-	// plaintext proxy publishes the fleet topology to the path.
+	// a process's environment redirect authenticated fleet traffic. Clients that
+	// carry no fleet credentials do honour the proxy environment: the recovery
+	// bridge revocation fetcher (internal/bridgerevocation), because a proxy-only
+	// host would otherwise see the endpoint as unreachable and fall back to the
+	// bridge's not_after, and the CLI and desktop shell transports. Whatever a
+	// proxy returns is still verified against the pinned recovery key. https only:
+	// the CONNECT request names the remote host, so a plaintext proxy publishes the
+	// fleet topology to the path.
 	DirectoryProxy string
 	// PairingSPKIPin optionally states the externally served TLS public key.
 	// Managed owner configuration is its authority after adoption.

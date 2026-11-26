@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/url"
 
 	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
 	"github.com/Hikyo-Org/hikyo/internal/config"
@@ -15,13 +17,6 @@ import (
 
 // revocationLookup is the gate's lazy revocation hook.
 type revocationLookup = func(context.Context, releasetrust.Snapshot) ([]releaseidentity.Digest, error)
-
-// guardBridges makes a bundle's plans consult the revocation list when the route
-// uses a recovery bridge, so an export or drill cannot mint evidence for a
-// revoked bridge.
-func guardBridges(ctx context.Context, cfg *config.Config, bundle upgradebundle.Bundle) upgradebundle.Bundle {
-	return guardBridgesWith(ctx, bridgeRevocation(cfg), bundle)
-}
 
 func guardBridgesWith(ctx context.Context, lookup revocationLookup, bundle upgradebundle.Bundle) upgradebundle.Bundle {
 	snapshot := bundle.Snapshot()
@@ -62,8 +57,8 @@ func onceRevocation(lookup revocationLookup) revocationLookup {
 
 // newRevocationFetcher is the production https client; tests replace it to reach a
 // local server the production client would not trust.
-var newRevocationFetcher = func(address string) (bridgerevocation.Fetcher, error) {
-	return bridgerevocation.NewHTTPFetcher(address)
+var newRevocationFetcher = func(address string, proxy func(*http.Request) (*url.URL, error)) (bridgerevocation.Fetcher, error) {
+	return bridgerevocation.NewHTTPFetcherWithProxy(address, proxy)
 }
 
 // bridgeRevocation builds the gate's lazy revocation lookup from configuration.
@@ -84,7 +79,11 @@ func bridgeRevocation(cfg *config.Config) revocationLookup {
 			if address == "" {
 				address = bridgerevocation.DefaultURL
 			}
-			fetcher, err := newRevocationFetcher(address)
+			proxy := http.ProxyFromEnvironment
+			if settings := cfg.Upgrade.RevocationProxy; settings != nil {
+				proxy = bridgerevocation.ProxyFrom(settings.HTTP, settings.HTTPS, settings.None)
+			}
+			fetcher, err := newRevocationFetcher(address, proxy)
 			if err != nil {
 				return nil, err
 			}

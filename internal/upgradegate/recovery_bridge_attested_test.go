@@ -106,7 +106,7 @@ func newBridgedFixture(t *testing.T, engine releaseidentity.Engine, notAfter tim
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := bundle.Plan(upgradecompat.InstalledSource{Identity: booted.State.Applied, Migrations: manifest, SchemaSHA256: schema}, b.Identity)
+	plan, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).Plan(upgradecompat.InstalledSource{Identity: booted.State.Applied, Migrations: manifest, SchemaSHA256: schema}, b.Identity)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -122,7 +123,7 @@ func TestWithdrawalNeedsExactCurrentRecoveryBridge(t *testing.T) {
 		t.Fatal("ordinary edge revived withdrawn source")
 	}
 	policy := releaseidentity.Hash(f.Pinned.Root)
-	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
+	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
 	snapshot = f.Snapshot(t)
 	targetNodes = nodes(t, snapshot, b)
 	bridge, err := releasetrust.VerifyBridge(snapshot, raw)
@@ -204,7 +205,7 @@ func TestBridgeCannotBeOmittedToBypassMaintenancePrecedence(t *testing.T) {
 	ordinary.Mode = upgradecompat.Restart
 	b := add(t, f, 2, m, ordinary)
 	policy := releaseidentity.Hash(f.Pinned.Root)
-	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
+	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
 	snapshot := f.Snapshot(t)
 	ns := nodes(t, snapshot, a, b)
 	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: a.Identity}, Migrations: m, SchemaSHA256: catalog(m)}

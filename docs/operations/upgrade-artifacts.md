@@ -258,7 +258,8 @@ nonce consumption remain required at admission.
 pre-ledger installation. It names `source_genesis: "legacy/v1"`, exact source
 schema/migrations, an independently authenticated nightly target and policy, and a
 signed canonical-UTC `not_after` (the owner's choice, at most 30 days after
-signing). The expiry-free `v1` form is refused at runtime.
+signing). The expiry-free `v1` form loads as an always-expired bridge: it counts in the
+inventory and is never a route.
 It carries no invented `source` release or `source_policy_sha256`. Only recovery
 signatures and the current catalog authorize it. An ordinary nightly legacy
 edge is an inspection candidate and cannot create an executable route. Fresh

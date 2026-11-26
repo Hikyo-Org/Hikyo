@@ -23,7 +23,8 @@ type BridgeStatement struct {
 	Mode               string                            `json:"mode"`
 	// NotAfter is the canonical UTC instant (RFC 3339, "Z") after which a bridge is
 	// no longer usable. Every runtime-valid bridge carries one: the recovery v2 and
-	// legacy nightly v2 schemas require it, and the expiry-free v1 forms are refused.
+	// legacy nightly v2 schemas require it; the expiry-free legacy nightly v1 form
+	// verifies as an always-expired bridge that only counts in the inventory.
 	NotAfter string `json:"not_after,omitempty"`
 }
 
@@ -31,8 +32,9 @@ type BridgeStatement struct {
 const BridgeSchemaV2 = "hikyo.dev/recovery-bridge/v2"
 
 // LegacyNightlyBridgeSchemaV2 adds the same signed expiry to the legacy nightly
-// bridge. Its v1 form (no expiry) is refused at runtime: the owner re-signs a v2
-// statement offline at the ceremony, choosing not_after; agents never sign one.
+// bridge. Its v1 form (no expiry) verifies as an expired bridge that never routes:
+// the owner re-signs a v2 statement offline at the ceremony, choosing not_after;
+// agents never sign one.
 const LegacyNightlyBridgeSchemaV2 = "hikyo.dev/legacy-nightly-bridge/v2"
 
 // notAfter parses the canonical expiry; only the exact "Z" form is accepted so
@@ -45,15 +47,26 @@ func notAfter(value string) (time.Time, error) {
 	return at, nil
 }
 
-// Expired reports whether the bridge may no longer be used at now. The host clock
-// is the only clock consulted. A statement without a valid expiry (which
-// VerifyBridge never returns) counts as expired.
+// MaxBridgeWindow is the longest a bridge may stay usable after it is signed.
+// BridgeWindowSkew is the slack granted to the host clock when the runtime checks
+// that bound at admission, so a statement signed with a full window on a slightly
+// fast signing machine is not refused.
+const (
+	MaxBridgeWindow  = 30 * 24 * time.Hour
+	BridgeWindowSkew = time.Hour
+)
+
+// Expired reports whether the bridge may not be used for a new route at now: it is
+// at or past its not_after, it carries none (the expiry-free legacy v1 form), or its
+// not_after lies further ahead than MaxBridgeWindow plus BridgeWindowSkew, so a
+// statement signed with a longer window than policy allows is bounded at admission,
+// not only where it is signed. The host clock is the only clock consulted.
 func (b VerifiedBridge) Expired(now time.Time) bool {
 	if b.state == nil {
 		return true
 	}
 	at, err := notAfter(b.state.statement.NotAfter)
-	return err != nil || !now.Before(at)
+	return err != nil || !now.Before(at) || at.Sub(now) > MaxBridgeWindow+BridgeWindowSkew
 }
 
 // SourceIdentity preserves the inspected legacy genesis without inventing a
@@ -131,7 +144,13 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 			}
 		}
 	case "hikyo.dev/legacy-nightly-bridge/v1":
-		return VerifiedBridge{}, errors.New("legacy nightly bridge v1 has no expiry and is refused; it needs a v2 statement signed by the owner")
+		// The expiry-free v1 form verifies (the catalog and the bundle inventory list it,
+		// and every bridge in the catalog must load) but it is born expired: no
+		// not_after is kept, so Expired is always true and no route ever uses it.
+		if statement.SourceGenesis != releaseidentity.LegacyGenesisV1 || statement.Source != (releaseidentity.Identity{}) || statement.SourcePolicySHA256 != "" || statement.Target.Profile != releaseidentity.NightlyV1 || len(statement.SourceMigrations.Entries) == 0 {
+			return VerifiedBridge{}, errors.New("invalid legacy nightly bridge source or target")
+		}
+		statement.NotAfter = ""
 	case LegacyNightlyBridgeSchemaV2:
 		if _, err := notAfter(statement.NotAfter); err != nil {
 			return VerifiedBridge{}, err

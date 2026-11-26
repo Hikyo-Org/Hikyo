@@ -97,21 +97,23 @@ workflow (full `check-compatibility-unchanged.sh`).
 ## Remaining work
 
 - Owner decision (#1561): the legacy nightly bridge now carries a signed `not_after`
-  (schema `legacy-nightly-bridge/v2`, at most 30 days; v1 is refused at runtime), and
+  (schema `legacy-nightly-bridge/v2`, at most 30 days; the expiry-free v1 verifies as an
+  always-expired bridge that counts in the inventory and never routes), and
   a 404 for the revocation list counts as no answer (route plans with a warning, expiry
   is the limit). The two legacy v1 statements in the committed catalog
   (`release/trust/BRIDGES.md`) therefore plan no route until the owner re-signs v2
   statements offline (`scripts/release/nightly legacy-bridges --not-after ...`) and
   catalogues them. The v1 digests are policy-listed, so they cannot leave the catalog
-  without a policy rotation; the runtime refuses v1, so they stay inert. Agents never
-  sign or publish this. The rehearsal does not yet exercise a legacy statement.
+  without a policy rotation, which is an owner tidy-up and not a merge blocker: the
+  runtime loads them as expired, so they stay inert and every bundle still loads. Agents
+  never sign or publish this. The rehearsal does not yet exercise a legacy statement.
 - Revocation state (#1561 review): the accepted list and signature are one file
   (`bridge-revocations-store.json`, fsync plus one rename); unusable stored state refuses
   bridge routes (off, unreachable, stale) until a fresh verified list at or above the
   recorded floor replaces it or the operator removes the named files (runbook and
   `manual-upgrades.md`; a rollback is never blocked). The
   native security maintenance service reads the revocation policy from the host's
-  `hikyo.env`. The fetcher honors `HTTPS_PROXY`.
+  `hikyo.env`, proxy variables included. The fetcher honors the proxy environment.
 
 - Bridge for v1.0.0 (option B): tooling, independent verifier, rehearsal and
   ceremony runbook are in the bridge PR (`docs/operations/recovery-bridge-ceremony.md`).

@@ -114,9 +114,11 @@ apply-time revocation list (options (a) and (c) on
   30 days after signing. The gate compares it with the host clock at plan time,
   offline and without a grace period. An expired bridge drops out of route
   planning, not out of snapshot loading, so ordinary routes and the complete
-  bridge inventory check are unaffected. The runtime refuses every
-  expiry-free statement: the recovery v1 form and the legacy nightly bridge v1
-  form (see the legacy nightly bridge decision below). A lapsed bridge is replaced by authoring
+  bridge inventory check are unaffected. The runtime never routes an
+  expiry-free statement: the recovery v1 form is refused, and the legacy nightly bridge v1
+  form verifies as an always-expired bridge (see the legacy nightly bridge decision below).
+  Admission also rejects a `not_after` more than 30 days plus one hour of clock skew
+  ahead of the host clock, so the bound holds at runtime and not only where it is signed. A lapsed bridge is replaced by authoring
   and signing a new statement with `recovery-2` and removing the old digest from
   the catalog in the same step (the re-sign path in the runbook; the verifier
   refuses a new bridge whose engine, source and target pair is still catalogued).
@@ -178,8 +180,12 @@ apply-time revocation list (options (a) and (c) on
   from the outcome log; a different list at the floor's sequence is equivocation). A
   host from before the floor record is seeded once from the earlier outcome log's
   sequence; with neither record it is a first run, and an unreadable record refuses. A list that is
-  correctly signed by the current recovery key but bound to another (older) root is
-  tolerated as nothing stored, as after a root rotation. The way out is operator
+  correctly signed by the current recovery key but bound to another (older) root was never
+  issued for this root, so it is unusable too (neither its revocations nor their absence can
+  be applied) until a fresh list for this root replaces it. The floor is bound to the trust
+  root and enforced whenever it exists: a removed store, a store behind the floor (a crash
+  between the two writes) and a list that differs from the floor at its sequence are
+  unusable. The persistence lock is an operating system file lock, not a lock file. The way out is operator
   action, never automatic: reach the endpoint so a valid list replaces it, or stop the
   service and remove the named files (including the floor record), accepting that revocations known only to that
   list are lost. A security rollback is never blocked.
@@ -205,8 +211,9 @@ apply-time revocation list (options (a) and (c) on
 - **Legacy nightly bridge (owner decision, #1561).** The legacy nightly bridge carries
   a signed `not_after` like every other bridge, at most 30 days after signing, so
   expiry bounds it. Its schema is `hikyo.dev/legacy-nightly-bridge/v2`, which
-  requires a canonical UTC `not_after`; the expiry-free `.../v1` form is refused at
-  runtime. Migration path: the two `v1` statements in the committed catalog stay
+  requires a canonical UTC `not_after`; the expiry-free `.../v1` form verifies as an
+  always-expired bridge, because the catalog and every bundle list it and must load.
+  Migration path: the two `v1` statements in the committed catalog stay
   until the owner re-signs `v2` statements offline at the ceremony and replaces
   their digests in a new catalog; until then the runtime plans no legacy-nightly
   route through them. The owner chooses `not_after` when signing
@@ -223,8 +230,8 @@ apply-time revocation list (options (a) and (c) on
   the host's `hikyo.env` (it loads no `EnvironmentFile`), so `off` or a mirror URL
   set there is honored at discovery too.
   The two committed `v1` digests are policy-listed, so they cannot leave the catalog
-  without a policy rotation; the runtime refuses `v1`, so they stay inert and cannot
-  admit a route, whatever they once allowed.
+  without a policy rotation, an owner tidy-up and not a merge blocker; the runtime loads
+  `v1` as expired, so they stay inert and cannot admit a route, whatever they once allowed.
   Ordinary upgrades never contact the endpoint. The snapshot revocation
   (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
   re-signs the policy) remains and binds instances whose floor advanced.

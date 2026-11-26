@@ -90,11 +90,16 @@ func TestLegacyNightlyBridgeRequiresASignedNotAfter(t *testing.T) {
 	for name, statement := range map[string]releasetrust.BridgeStatement{
 		"v2 without not_after":        legacy(releasetrust.LegacyNightlyBridgeSchemaV2, ""),
 		"v2 with a non-canonical one": legacy(releasetrust.LegacyNightlyBridgeSchemaV2, "2026-12-24T01:00:00+01:00"),
-		"v1 without not_after":        legacy("hikyo.dev/legacy-nightly-bridge/v1", ""),
-		"v1 with not_after":           legacy("hikyo.dev/legacy-nightly-bridge/v1", edge.Format(time.RFC3339)),
 	} {
 		if _, err := verify(statement); err == nil {
 			t.Fatalf("%s must be refused", name)
+		}
+	}
+	// The expiry-free v1 form verifies (it is catalogued) but never usable: expired at any time.
+	for name, notAfter := range map[string]string{"without not_after": "", "with a not_after": edge.Format(time.RFC3339)} {
+		v1, err := verify(legacy("hikyo.dev/legacy-nightly-bridge/v1", notAfter))
+		if err != nil || !v1.Valid() || !v1.Expired(edge.Add(-100*365*24*time.Hour)) || !v1.Expired(edge.Add(-time.Second)) {
+			t.Fatalf("v1 %s verifies as an always-expired bridge: %v", name, err)
 		}
 	}
 }

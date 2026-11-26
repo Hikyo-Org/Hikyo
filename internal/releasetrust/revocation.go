@@ -76,6 +76,15 @@ func (v VerifiedRevocations) Revoked() []releaseidentity.Digest {
 // It is returned only after the signature and schema checks passed.
 var ErrRevocationRoot = errors.New("revocation list is bound to a different trust root")
 
+// RevocationRoot is the trust root digest a revocation list must be bound to under
+// this snapshot, so stored state can record which root it belongs to.
+func (s Snapshot) RevocationRoot() releaseidentity.Digest {
+	if !s.Valid() {
+		return ""
+	}
+	return s.state.legacyStablePolicy
+}
+
 func (s Snapshot) VerifyRevocations(raw, signature []byte) (VerifiedRevocations, error) {
 	if !s.Valid() {
 		return VerifiedRevocations{}, errors.New("unverified trust snapshot")

@@ -24,7 +24,7 @@ const Schema = releasetrust.BridgeSchemaV2
 
 // MaxWindow is the longest a new bridge may stay usable after it is derived.
 // A later upgrade needs a re-sign ceremony, which is the point of the bound.
-const MaxWindow = 30 * 24 * time.Hour
+const MaxWindow = releasetrust.MaxBridgeWindow
 
 // Evidence is one authenticated stable release and its parsed declaration.
 type Evidence struct {

@@ -71,7 +71,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		// The expiry is the owner's decision at signing; the tool only refuses one outside the window.
 		notAfter, err := time.Parse(time.RFC3339, *notAfterFlag)
 		now := time.Now()
-		if err != nil || notAfter.UTC().Format(time.RFC3339) != *notAfterFlag || !notAfter.After(now) || notAfter.Sub(now) > 30*24*time.Hour {
+		if err != nil || notAfter.UTC().Format(time.RFC3339) != *notAfterFlag || !notAfter.After(now) || notAfter.Sub(now) > releasetrust.MaxBridgeWindow {
 			return errors.New("legacy-bridges requires --not-after as canonical UTC RFC 3339, in the future and at most 30 days out")
 		}
 		release, err := upgradebundle.VerifyNightlyDirectory(ctx, directory, snapshot)

@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,6 +26,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+	"github.com/gofrs/flock"
+	"golang.org/x/net/http/httpproxy"
 )
 
 // DefaultURL is the pinned list location: the two assets (".json" and
@@ -113,6 +114,19 @@ type HTTPFetcher struct {
 // request carries no credentials, a proxy-only host would otherwise see the endpoint as
 // unreachable, and the signed content, not the path, is the authority.
 func NewHTTPFetcher(base string) (HTTPFetcher, error) {
+	return NewHTTPFetcherWithProxy(base, http.ProxyFromEnvironment)
+}
+
+// ProxyFrom resolves a proxy the way net/http does for the process environment, from the
+// three values of any environment. A service that does not run with the operator's
+// environment passes the operator's own file here.
+func ProxyFrom(httpProxy, httpsProxy, noProxy string) func(*http.Request) (*url.URL, error) {
+	resolve := (&httpproxy.Config{HTTPProxy: httpProxy, HTTPSProxy: httpsProxy, NoProxy: noProxy}).ProxyFunc()
+	return func(request *http.Request) (*url.URL, error) { return resolve(request.URL) }
+}
+
+// NewHTTPFetcherWithProxy is NewHTTPFetcher with an explicit proxy resolver.
+func NewHTTPFetcherWithProxy(base string, proxy func(*http.Request) (*url.URL, error)) (HTTPFetcher, error) {
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return HTTPFetcher{}, errors.New("revocation endpoint must be an https URL")
@@ -120,7 +134,7 @@ func NewHTTPFetcher(base string) (HTTPFetcher, error) {
 	dialer := &net.Dialer{Timeout: connectTimeout}
 	client := &http.Client{
 		Timeout:       requestTimeout,
-		Transport:     &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: connectTimeout, Proxy: http.ProxyFromEnvironment},
+		Transport:     &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: connectTimeout, Proxy: proxy},
 		CheckRedirect: followRelease,
 	}
 	return HTTPFetcher{BaseURL: base, Client: client}, nil
@@ -243,17 +257,21 @@ type checkRecord struct {
 // Check verifies the last list this installation accepted, then (unless the
 // operator turned it off) asks the endpoint for a newer one. Any error means the
 // bridge must be refused; only an unreachable endpoint or an explicit opt-out
-// returns a result without a fresh list.
+// returns a result without a fresh list, and neither does while stored state is
+// unusable.
 func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Result, error) {
-	known, haveKnown, err := c.loadKnown(snapshot)
-	unusable := errors.Is(err, ErrUnusableState)
-	if err != nil && (!unusable || c.Mode == Off) {
+	st, err := c.load(snapshot)
+	if err != nil {
 		return Result{}, err
 	}
+	unusable := st.unusable != nil
+	if unusable && c.Mode == Off {
+		return Result{}, c.unusable(st.unusable)
+	}
 	result := Result{Outcome: Disabled}
-	if haveKnown {
-		result.Sequence, result.Revoked = known.Sequence(), known.Revoked()
-		if err := c.ensureFloor(known); err != nil {
+	if st.have && !unusable {
+		result.Sequence, result.Revoked = st.known.Sequence(), st.known.Revoked()
+		if err := c.ensureFloor(snapshot, st.known); err != nil {
 			return Result{}, err
 		}
 	}
@@ -264,7 +282,7 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	if unusable && err != nil {
 		// Only a fresh, verified online answer may replace unusable state.
 		if errors.Is(err, ErrUnreachable) {
-			return Result{}, fmt.Errorf("%w: the endpoint is unreachable, so nothing can replace it: %w", ErrUnusableState, err)
+			return Result{}, c.unusable(fmt.Errorf("%w; the endpoint is unreachable, so nothing can replace it: %w", st.unusable, err))
 		}
 		return Result{}, err
 	}
@@ -284,20 +302,18 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	if age < -maxFutureSkew {
 		return Result{}, errors.New("revocation list is issued in the future")
 	}
-	if unusable {
-		if age > MaxListAge {
-			return Result{}, fmt.Errorf("%w: the fetched list is stale and cannot replace it", ErrUnusableState)
-		}
+	if unusable && age > MaxListAge {
+		return Result{}, c.unusable(fmt.Errorf("%w; the fetched list is stale and cannot replace it", st.unusable))
 	}
-	if haveKnown {
-		if fresh.Sequence() < known.Sequence() {
+	if st.have && !unusable {
+		if fresh.Sequence() < st.known.Sequence() {
 			return Result{}, errors.New("revocation list rollback refused")
 		}
-		if fresh.Sequence() == known.Sequence() && fresh.Digest() != known.Digest() {
+		if fresh.Sequence() == st.known.Sequence() && fresh.Digest() != st.known.Digest() {
 			return Result{}, errors.New("revocation list equivocation refused")
 		}
 	}
-	if !haveKnown || fresh.Sequence() > known.Sequence() {
+	if unusable || !st.have || fresh.Sequence() > st.known.Sequence() {
 		if err := c.persist(snapshot, fresh, list, signature); err != nil {
 			return Result{}, err
 		}
@@ -316,34 +332,70 @@ func (c Checker) Revoked(ctx context.Context, snapshot releasetrust.Snapshot) ([
 	return result.Revoked, err
 }
 
-// ErrUnusableState marks stored revocation state that exists but does not verify. It is
-// never a quiet "nothing stored": losing known revocations must not widen admission, so
-// bridge routes refuse until a fresh verified online list replaces the state or the
-// operator removes it explicitly.
-var ErrUnusableState = errors.New("stored recovery bridge revocation list is unusable")
+// ErrUnusableState marks stored revocation state that cannot be relied on: it exists but
+// does not verify, it is bound to another trust root, it is behind the sequence floor, or the
+// floor is unreadable. It is never a quiet "nothing stored": losing known revocations must
+// not widen admission, so bridge routes refuse until a fresh verified online list replaces
+// the state or the operator removes it explicitly.
+var ErrUnusableState = errors.New("stored recovery bridge revocation state is unusable")
 
 func (c Checker) unusable(cause error) error {
-	return fmt.Errorf("%w (%w); bridge routes are refused. Restore access to the revocation endpoint so a valid list replaces it, or, as an explicit operator action, stop the service and remove %s (and any older %s and %s), accepting that revocations known only to that list are lost",
-		ErrUnusableState, cause, filepath.Join(c.Directory, storeFile), listFile, signatureFile)
+	return fmt.Errorf("%w (%w); bridge routes are refused. Restore access to the revocation endpoint so a valid list replaces it, or, as an explicit operator action, stop the service and remove %s, %s (and any older %s and %s), accepting that revocations known only to that state are lost",
+		ErrUnusableState, cause, filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile), listFile, signatureFile)
 }
 
-// loadKnown returns the stored list when it verifies against this snapshot. Nothing
-// stored, or a list correctly signed but bound to another (rotated) root, is "none". Stored
-// state that does not verify is ErrUnusableState.
-func (c Checker) loadKnown(snapshot releasetrust.Snapshot) (releasetrust.VerifiedRevocations, bool, error) {
+// state is what the directory holds. The floor applies only when it is bound to this
+// snapshot's trust root. unusable is non-nil when the stored list cannot be relied on.
+type state struct {
+	known     releasetrust.VerifiedRevocations
+	have      bool
+	floor     floorRecord
+	haveFloor bool
+	unusable  error
+}
+
+// load reads the stored list and the floor and decides whether they agree. A floor with no
+// matching stored list (removed store, a list bound to another root), a list behind the floor
+// (a crash between the two writes) and a list that differs from the floor at its sequence
+// are all unusable: the floor proves a higher list was accepted, so its revocations can no
+// longer be honoured. Only a genuine first run (neither file) is "nothing stored".
+func (c Checker) load(snapshot releasetrust.Snapshot) (state, error) {
+	var st state
 	list, signature, found, err := c.readStored()
-	if err != nil || !found {
-		return releasetrust.VerifiedRevocations{}, false, err
-	}
-	verified, err := snapshot.VerifyRevocations(list, signature)
-	if errors.Is(err, releasetrust.ErrRevocationRoot) {
-		slog.Warn("stored recovery bridge revocation list is bound to another trust root and is not applied", "error", err)
-		return releasetrust.VerifiedRevocations{}, false, nil
-	}
 	if err != nil {
-		return releasetrust.VerifiedRevocations{}, false, c.unusable(err)
+		return st, err
 	}
-	return verified, true, nil
+	if found {
+		verified, verr := snapshot.VerifyRevocations(list, signature)
+		if verr != nil {
+			// A list correctly signed but bound to another root (ErrRevocationRoot) was never
+			// issued for this root: neither its revocations nor their absence can be applied.
+			st.unusable = verr
+		} else {
+			st.known, st.have = verified, true
+		}
+	}
+	floor, haveFloor, floorErr := c.readFloor()
+	switch {
+	case floorErr != nil:
+		if st.unusable == nil {
+			st.unusable = fmt.Errorf("the sequence floor record is unreadable: %w", floorErr)
+		}
+	case haveFloor && floor.Root == snapshot.RevocationRoot():
+		st.floor, st.haveFloor = floor, true
+	}
+	if st.unusable != nil || !st.haveFloor {
+		return st, nil
+	}
+	switch {
+	case !st.have:
+		st.unusable = fmt.Errorf("no stored list for this trust root, but the floor records sequence %d", st.floor.Sequence)
+	case st.have && st.known.Sequence() < st.floor.Sequence:
+		st.unusable = fmt.Errorf("the stored list (sequence %d) is behind the floor (sequence %d)", st.known.Sequence(), st.floor.Sequence)
+	case st.have && st.known.Sequence() == st.floor.Sequence && st.known.Digest() != st.floor.Digest:
+		st.unusable = fmt.Errorf("the stored list differs from the one the floor recorded at sequence %d", st.floor.Sequence)
+	}
+	return st, nil
 }
 
 func parseStored(raw []byte) (list, signature []byte) {
@@ -391,42 +443,41 @@ func (c Checker) readStored() (list, signature []byte, found bool, err error) {
 
 // persist replaces the stored list under an exclusive lock and only ever raises the
 // stored sequence: Check compared against the list it read before the lock, so a
-// concurrent run may have stored a higher one since. The list and its signature are
-// one file, written by a single rename.
+// concurrent run may have stored a higher or a different one since. The list and its
+// signature are one file, written by a single rename.
 func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.VerifiedRevocations, list, signature []byte) error {
 	release, err := c.lock()
 	if err != nil {
 		return err
 	}
 	defer release()
-	known, haveKnown, err := c.loadKnown(snapshot)
-	unusable := errors.Is(err, ErrUnusableState)
-	if err != nil && !unusable {
+	st, err := c.load(snapshot)
+	if err != nil {
 		return err
 	}
-	if haveKnown {
-		if known.Sequence() == fresh.Sequence() && known.Digest() != fresh.Digest() {
+	if st.unusable == nil && st.have {
+		if st.known.Sequence() == fresh.Sequence() && st.known.Digest() != fresh.Digest() {
 			return errors.New("revocation list equivocation refused")
 		}
-		if known.Sequence() >= fresh.Sequence() {
+		if st.known.Sequence() >= fresh.Sequence() {
 			return nil
 		}
 	}
-	if unusable {
-		// The stored list is gone, so the high-water floor is the only memory left. A
-		// missing floor is a first run; an unreadable one is as unusable as the list.
-		floor, found, floorErr := c.readFloor()
-		if floorErr != nil {
-			return fmt.Errorf("%w: the sequence floor record is unreadable: %w", ErrUnusableState, floorErr)
-		}
+	if st.unusable != nil {
+		// The stored list cannot be relied on, so the floor is the memory left. A missing floor
+		// is a first run; an unreadable one is as unusable as the list.
+		floor, found := st.floor, st.haveFloor
 		if !found {
+			if _, _, floorErr := c.readFloor(); floorErr != nil {
+				return c.unusable(fmt.Errorf("%w; the sequence floor record is unreadable: %w", st.unusable, floorErr))
+			}
 			// One-time migration: a host from before the floor record has only the outcome
 			// log's sequence. Unreadable, it is as unusable as the list.
 			if _, recorded, _, recordErr := LastCheck(c.Directory); recordErr == nil {
 				// No digest was recorded, so the same sequence cannot be compared.
 				floor, found = floorRecord{Sequence: recorded, Digest: fresh.Digest()}, true
 			} else if !errors.Is(recordErr, os.ErrNotExist) {
-				return fmt.Errorf("%w: the legacy check record is unreadable: %w", ErrUnusableState, recordErr)
+				return c.unusable(fmt.Errorf("%w; the legacy check record is unreadable: %w", st.unusable, recordErr))
 			}
 		}
 		if found && fresh.Sequence() < floor.Sequence {
@@ -435,9 +486,12 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 		if found && fresh.Sequence() == floor.Sequence && fresh.Digest() != floor.Digest {
 			return errors.New("revocation list equivocation refused")
 		}
+		if st.have && fresh.Sequence() < st.known.Sequence() {
+			return errors.New("revocation list rollback refused")
+		}
 	}
 	// The floor lands first: a crash between the two leaves a floor at or above the store.
-	if err := c.raiseFloor(fresh.Sequence(), fresh.Digest()); err != nil {
+	if err := c.raiseFloor(snapshot, fresh.Sequence(), fresh.Digest()); err != nil {
 		return err
 	}
 	raw, err := json.Marshal(storedList{List: list, Signature: signature}, jsonwire.Stable)
@@ -455,11 +509,13 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 
 const floorFile = "bridge-revocations-floor.json"
 
-// floorRecord is the highest list this installation accepted. Only persist and ensureFloor
-// write it, under the persistence lock, and never lower it; the outcome log is separate.
+// floorRecord is the highest list this installation accepted under one trust root. Only
+// persist and ensureFloor write it, under the persistence lock, and never lower it within a
+// root; the outcome log is separate. A floor bound to another root does not apply.
 type floorRecord struct {
 	Sequence int64                  `json:"sequence"`
 	Digest   releaseidentity.Digest `json:"digest"`
+	Root     releaseidentity.Digest `json:"root"`
 }
 
 func (c Checker) readFloor() (floorRecord, bool, error) {
@@ -471,19 +527,21 @@ func (c Checker) readFloor() (floorRecord, bool, error) {
 		return floorRecord{}, false, err
 	}
 	var floor floorRecord
-	if err := definitions.DecodeStrict(raw, &floor); err != nil || floor.Sequence < 1 || floor.Digest.Validate() != nil {
+	if err := definitions.DecodeStrict(raw, &floor); err != nil || floor.Sequence < 1 || floor.Digest.Validate() != nil || floor.Root.Validate() != nil {
 		return floorRecord{}, false, errors.New("sequence floor record is malformed")
 	}
 	return floor, true, nil
 }
 
-// raiseFloor stores max(existing, new). The caller holds the lock. An unreadable existing
-// record is replaced: the list being stored is verified and the old record is already lost.
-func (c Checker) raiseFloor(sequence int64, digest releaseidentity.Digest) error {
-	if existing, found, err := c.readFloor(); err == nil && found && existing.Sequence >= sequence {
+// raiseFloor stores max(existing, new) within the snapshot's root; a floor bound to another
+// root is replaced. The caller holds the lock. An unreadable existing record is replaced: the
+// list being stored is verified and the old record is already lost.
+func (c Checker) raiseFloor(snapshot releasetrust.Snapshot, sequence int64, digest releaseidentity.Digest) error {
+	root := snapshot.RevocationRoot()
+	if existing, found, err := c.readFloor(); err == nil && found && existing.Root == root && existing.Sequence >= sequence {
 		return nil
 	}
-	raw, err := json.Marshal(floorRecord{Sequence: sequence, Digest: digest}, jsonwire.Stable)
+	raw, err := json.Marshal(floorRecord{Sequence: sequence, Digest: digest, Root: root}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -492,8 +550,8 @@ func (c Checker) raiseFloor(sequence int64, digest releaseidentity.Digest) error
 
 // ensureFloor gives an installation that stored its list before the floor existed a floor
 // at that list's sequence, so losing the list later cannot lower it.
-func (c Checker) ensureFloor(known releasetrust.VerifiedRevocations) error {
-	if existing, found, err := c.readFloor(); err == nil && found && existing.Sequence >= known.Sequence() {
+func (c Checker) ensureFloor(snapshot releasetrust.Snapshot, known releasetrust.VerifiedRevocations) error {
+	if existing, found, err := c.readFloor(); err == nil && found && existing.Root == snapshot.RevocationRoot() && existing.Sequence >= known.Sequence() {
 		return nil
 	}
 	release, err := c.lock()
@@ -501,40 +559,30 @@ func (c Checker) ensureFloor(known releasetrust.VerifiedRevocations) error {
 		return err
 	}
 	defer release()
-	return c.raiseFloor(known.Sequence(), known.Digest())
+	return c.raiseFloor(snapshot, known.Sequence(), known.Digest())
 }
 
 const (
 	lockFile     = ".bridge-revocations.lock"
-	lockStale    = 30 * time.Second
 	lockWait     = 10 * time.Second
 	lockInterval = 5 * time.Millisecond
 )
 
-// lock takes the state directory's persistence lock by exclusive create, which is
-// atomic on every supported platform. A lock older than lockStale belongs to a run
-// that died and is taken over.
+// lock takes the state directory's persistence lock with an operating system file lock.
+// The system releases it when its holder exits or dies, so there is no stale lock to take
+// over, and no path on which two runs both believe they hold it.
 func (c Checker) lock() (func(), error) {
-	path := filepath.Join(c.Directory, lockFile)
-	deadline := time.Now().Add(lockWait)
-	for {
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_ = file.Close()
-			return func() { _ = os.Remove(path) }, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > lockStale {
-			_ = os.Remove(path)
-			continue
-		}
-		if time.Now().After(deadline) {
-			return nil, errors.New("revocation list state is locked by another run")
-		}
-		time.Sleep(lockInterval)
+	file := flock.New(filepath.Join(c.Directory, lockFile))
+	ctx, cancel := context.WithTimeout(context.Background(), lockWait)
+	defer cancel()
+	locked, err := file.TryLockContext(ctx, lockInterval)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
 	}
+	if !locked {
+		return nil, errors.New("revocation list state is locked by another run")
+	}
+	return func() { _ = file.Unlock() }, nil
 }
 
 func (c Checker) clock() time.Time {

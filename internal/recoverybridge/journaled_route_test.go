@@ -110,7 +110,7 @@ func TestJournaledRouteSurvivesALapsedBridgeThatSortsFirst(t *testing.T) {
 	if err != nil || len(admitted.BridgeDigests()) != 1 || admitted.BridgeDigests()[0] != y.Digest {
 		t.Fatalf("admission must take the live bridge Y: %v %v", admitted.BridgeDigests(), err)
 	}
-	if fresh, err := r.at(time.Time{}); err != nil || fresh.Digest() == admitted.Digest() {
+	if fresh, err := r.at(base.Add(-2 * time.Hour)); err != nil || fresh.Digest() == admitted.Digest() {
 		t.Fatalf("the zero-time search must pick the other route, or this test does not reproduce P01: %v", err)
 	}
 	for name, revoked := range map[string][]releaseidentity.Digest{"rollback": nil, "resume": {x.Digest}} {
@@ -150,7 +150,7 @@ func TestJournaledRouteSurvivesALapsedBridgeShadowingItsPair(t *testing.T) {
 	if err != nil || len(admitted.BridgeDigests()) != 0 {
 		t.Fatalf("with both bridges out the ordinary edge is the route: %v %v", admitted.BridgeDigests(), err)
 	}
-	if fresh, err := r.at(time.Time{}); err == nil && fresh.Digest() == admitted.Digest() {
+	if fresh, err := r.at(base.Add(-2 * time.Hour)); err == nil && fresh.Digest() == admitted.Digest() {
 		t.Fatal("the zero-time search must not pick the ordinary edge, or this test does not reproduce P02")
 	}
 	if plan, err := r.match(admitted.Digest()); err != nil || plan.Digest() != admitted.Digest() {

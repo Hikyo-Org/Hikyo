@@ -61,6 +61,10 @@ func (b Bundle) MaterialDigest() releaseidentity.Digest { return b.materialDiges
 func (b Bundle) Valid() bool                     { return b.snapshot.Valid() }
 func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
 
+// errMissingRevocationLookup refuses a bridge route on a bundle that was never given
+// a revocation lookup: an unconfigured hook must not mean "nothing is revoked".
+var errMissingRevocationLookup = errors.New("recovery bridge revocation check: no revocation lookup is configured, so no bridge route is usable")
+
 // Plan is the route for a new admission: expired and revoked bridges are not used.
 func (b Bundle) Plan(source upgradecompat.InstalledSource, target releaseidentity.Identity) (upgradecompat.Plan, error) {
 	now := time.Now
@@ -83,8 +87,11 @@ func (b Bundle) PlanAt(source upgradecompat.InstalledSource, target releaseident
 		}
 		plan, err = upgradecompat.PlanRouteAt(b.snapshot, source, target, b.nodes, b.bridges, now, revoked)
 	}
-	if err != nil || b.revocations == nil || len(plan.BridgeDigests()) == 0 {
+	if err != nil || len(plan.BridgeDigests()) == 0 {
 		return plan, err
+	}
+	if b.revocations == nil {
+		return upgradecompat.Plan{}, errMissingRevocationLookup
 	}
 	// Only a route that actually uses a recovery bridge consults the revocation
 	// list, so ordinary upgrades never touch the endpoint.
@@ -110,8 +117,11 @@ func (b Bundle) PlanAt(source upgradecompat.InstalledSource, target releaseident
 // authenticated graph with exactly the journaled digest.
 func (b Bundle) PlanAdmitted(source upgradecompat.InstalledSource, target releaseidentity.Identity, journaled releaseidentity.Digest) (upgradecompat.Plan, error) {
 	plan, err := upgradecompat.PlanRouteMatching(b.snapshot, source, target, b.nodes, b.bridges, nil, journaled)
-	if err != nil || b.revocations == nil || len(plan.BridgeDigests()) == 0 {
+	if err != nil || len(plan.BridgeDigests()) == 0 {
 		return plan, err
+	}
+	if b.revocations == nil {
+		return upgradecompat.Plan{}, errMissingRevocationLookup
 	}
 	revoked, err := b.revocations.lookup()
 	if err != nil {

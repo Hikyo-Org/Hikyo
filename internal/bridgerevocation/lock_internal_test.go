@@ -1,0 +1,67 @@
+package bridgerevocation
+
+import (
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// No two runs hold the persistence lock at once, including when a lock file is left behind
+// by a run that died long ago: the file is not the lock, the operating system's lock on it is.
+func TestPersistenceLockIsExclusiveAndIgnoresALeftoverFile(t *testing.T) {
+	directory := t.TempDir()
+	leftover := filepath.Join(directory, lockFile)
+	if err := os.WriteFile(leftover, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	long := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(leftover, long, long); err != nil {
+		t.Fatal(err)
+	}
+	checker := Checker{Directory: directory}
+	var inside, overlaps, entries atomic.Int32
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			release, err := checker.lock()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			entries.Add(1)
+			if inside.Add(1) > 1 {
+				overlaps.Add(1)
+			}
+			time.Sleep(2 * time.Millisecond)
+			inside.Add(-1)
+			release()
+		})
+	}
+	wg.Wait()
+	if entries.Load() != 16 || overlaps.Load() != 0 {
+		t.Fatalf("every run must get the lock in turn: entries %d, overlaps %d", entries.Load(), overlaps.Load())
+	}
+}
+
+// While one run holds the lock the next waits; it does not take it over.
+func TestPersistenceLockHeldByAnotherRunMakesTheNextRunWait(t *testing.T) {
+	checker := Checker{Directory: t.TempDir()}
+	release, err := checker.lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	done := make(chan error, 1)
+	go func() {
+		_, err := checker.lock()
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("a second run must wait for the holder, got %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+}

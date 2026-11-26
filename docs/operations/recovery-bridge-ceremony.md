@@ -261,13 +261,13 @@ Operator recovery for stored state: an installation keeps the last accepted list
 `HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, fsynced and replaced by one
 rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
 unreachable endpoint and with a stale list (a security rollback is never blocked); only a fresh,
-non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list; an unreadable one refuses), replaces it. Either reach the
+non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list and bound to the trust root; an unreadable one refuses), replaces it. The floor is enforced whenever it exists: a removed store, or a store behind the floor, is unusable too. Either reach the
 endpoint, or stop the service and remove that file and the floor record (and any older `bridge-revocations.json` and
 `bridge-revocations.sigstore.json`) as an explicit operator action, accepting that revocations known
 only to that list are lost and that until the next list is stored an older validly signed list is
-bounded only by its 7-day `issued_at`. A list correctly signed but bound to an older root is tolerated
-as nothing stored. The fetcher honors `HTTPS_PROXY` and `NO_PROXY`; the signature, not the path,
-is the authority.
+bounded only by its 7-day `issued_at`. A list bound to another (older) trust root is unusable too until a fresh
+list for this root replaces it. The fetcher honors `HTTPS_PROXY` and `NO_PROXY` (on the native security path, from
+the host's `hikyo.env`); the signature, not the path, is the authority.
 
 Expiry and revocation govern admission, not an upgrade already admitted. An
 upgrade admitted before `not_after` can resume and finish after it: a resume
@@ -293,12 +293,14 @@ lapsed legacy bridge is re-authored with a new `--not-after` and re-signed the s
 way; the new statement is a new digest on the same pair, and the old one is dropped
 from the catalog in the same step (a revoked or lapsed statement and its replacement
 may share a pair only while the revocation list names the old one). The committed `v1`
-digests are policy-listed, so they cannot be dropped without a policy rotation; the
-runtime refuses `v1`, so they stay inert. The rehearsal does not yet cover this
-path with a legacy statement; the generator and the verifier's age selector do. Agents
-never sign or publish; repository fixtures use throwaway keys. The expiry-free
-`legacy-nightly-bridge/v1` statements in the committed catalog stay refused by the
-runtime until this step replaces them. The revocation-list verifier counts these
+digests are policy-listed, so they cannot be dropped without a policy rotation. Rotating
+the policy is an owner step (a tidy-up, not a merge or release blocker): until then the runtime
+loads the `v1` statements as verified but always expired, so they count in the inventory,
+every bundle still loads, and no legacy-nightly route plans through them. The rehearsal does
+not yet cover this path with a legacy statement; the generator and the verifier's age
+selector do. Agents never sign or publish; repository fixtures use throwaway keys. The
+expiry-free `legacy-nightly-bridge/v1` statements in the committed catalog stay unusable
+until the owner re-signs `v2` statements and rotates the policy. The revocation-list verifier counts these
 statements' `not_after` toward its freshness bound, but it does not re-derive them
 (the generator and the signer's review do).
 

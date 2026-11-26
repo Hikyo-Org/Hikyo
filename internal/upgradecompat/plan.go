@@ -257,10 +257,13 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 		// A lapsed or revoked bridge is out of the route graph before the pair check, so
 		// its re-signed replacement (same pair, new digest) and every other plan survive.
 		// It still counted toward the complete inventory above.
-		if bridge.Expired(now) || slices.Contains(revoked, bridge.Digest()) {
+		statement := bridge.Statement()
+		// Matching a journaled route (parallel) ignores the clock: expiry limits only new
+		// admissions, and a legacy v1 statement (no not_after, always expired) can never have
+		// been admitted, so it cannot be journaled.
+		if (!options.parallel && bridge.Expired(now)) || slices.Contains(revoked, bridge.Digest()) {
 			continue
 		}
-		statement := bridge.Statement()
 		pair := nodeKey(statement.SourceIdentity()) + ">" + nodeKey(releaseidentity.Source{Release: statement.Target}) + ":" + string(statement.SourceMigrations.Engine)
 		if seenBridgePairs[pair] && !options.parallel {
 			return Plan{}, ErrDuplicateBridgePair

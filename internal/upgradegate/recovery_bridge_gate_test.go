@@ -124,7 +124,7 @@ func TestRecoveryBridgeRefusalsLeaveTheInstallationUnchanged(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			statement := releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", Source: a.Identity, Target: b.Identity,
+			statement := releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), Source: a.Identity, Target: b.Identity,
 				SourcePolicySHA256: verifiedA.PolicyDigest(), TargetPolicySHA256: verifiedB.PolicyDigest(),
 				SourceMigrations: manifest.Clone(), TargetMigrations: manifest.Clone(), SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"}
 

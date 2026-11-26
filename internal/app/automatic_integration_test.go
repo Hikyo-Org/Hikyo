@@ -199,7 +199,7 @@ func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticR
 	if err != nil {
 		t.Fatal(err)
 	}
-	bridge := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: previous.Identity(), TargetPolicySHA256: previous.PolicyDigest(), SourceMigrations: legacyManifest, TargetMigrations: sqlite.Migrations, SourceSchemaSHA256: source.source.SchemaDigest, TargetSchemaSHA256: sqlite.SchemaSHA256, Mode: "maintenance"})
+	bridge := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: previous.Identity(), TargetPolicySHA256: previous.PolicyDigest(), SourceMigrations: legacyManifest, TargetMigrations: sqlite.Migrations, SourceSchemaSHA256: source.source.SchemaDigest, TargetSchemaSHA256: sqlite.SchemaSHA256, Mode: "maintenance"})
 	for i, engine := range declaration.Engines {
 		declaration.Engines[i].Sources = append(engine.Sources, upgradecompat.SourceEdge{Source: releaseidentity.Source{Release: previous.Identity()}, Migrations: engine.Migrations, SchemaSHA256: engine.SchemaSHA256, Mode: upgradecompat.Maintenance})
 	}
