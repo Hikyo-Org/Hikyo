@@ -87,7 +87,7 @@ After real contribution commits exist:
 
 ```sh
 git log --format='%h %G? %s' hikyo-upstream/main..HEAD
-scripts/ci/check-dco.sh hikyo-upstream/main HEAD
+DCO_MAIN_SHA=$(git rev-parse --verify --quiet 'hikyo-upstream/main^{commit}') DCO_DEV_SHA=$(git rev-parse --verify --quiet 'hikyo-upstream/dev^{commit}') scripts/ci/check-dco.sh hikyo-upstream/main HEAD
 scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
 ```
 
