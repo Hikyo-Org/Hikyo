@@ -637,9 +637,20 @@ func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent 
 	if p.headroom {
 		events = append(events, modelEvent{save.Add(-lead), func() {
 			for _, prefix := range prefixes {
-				generations[prefix] = m.generation(prefix)
+				if generations[prefix] == nil {
+					generations[prefix] = m.generation(prefix)
+				}
 			}
 			m.headroom(strings.Join(prefixes, " "))
+		}})
+	}
+	if p.requested {
+		// Each writer restores its old generation when its job starts, with the request, before the headroom
+		// job's listing and before any entry a save of this run pushes out.
+		events = append(events, modelEvent{save, func() {
+			for _, prefix := range prefixes {
+				generations[prefix] = m.generation(prefix)
+			}
 		}})
 	}
 	saveOne := func(prefix string) {
