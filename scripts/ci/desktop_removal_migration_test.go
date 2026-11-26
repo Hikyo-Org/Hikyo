@@ -60,9 +60,18 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 		return data
 	}
 	for _, baseKind := range []string{"base-has-desktop", "base-lacks-desktop", "base-desktop-always", "base-desktop-extra-plan"} {
-		for _, scenario := range []string{"full-success", "docs-only", "test_core failed", "test_core cancelled", "test_core skipped", "test_core missing", "desktop ran and passed", "desktop ran and failed", "docs-only desktop ran"} {
+		for _, scenario := range []string{"full-success", "docs-only", "test_core failed", "test_core cancelled", "test_core skipped", "test_core missing", "desktop ran and passed", "desktop ran and failed", "docs-only desktop ran", "full-success (pull_request)", "docs-only (pull_request)"} {
 			t.Run(baseKind+"/"+scenario, func(t *testing.T) {
 				base := cloneRegistry(t, current)
+				// The queue runs the trusted planner twice, once in changes and again in
+				// ci-required, and both read the base registry, so a docs-only plan carries
+				// the base planner's desktop key in either flavour. The pull_request
+				// flavour skips the second comparison and goes straight to the checker.
+				event := "merge_group"
+				if strings.HasSuffix(scenario, " (pull_request)") {
+					event = "pull_request"
+					scenario = strings.TrimSuffix(scenario, " (pull_request)")
+				}
 				plan := make(map[string]bool)
 				docsOnly := strings.HasPrefix(scenario, "docs-only")
 				for _, key := range current.PathClasses["full"] {
@@ -148,7 +157,7 @@ func TestDesktopRemovalTrustedBaseMigration(t *testing.T) {
 				write("ci-job-registry.json", []byte("{}"))
 				cmd := exec.CommandContext(t.Context(), "bash", "-e", "-o", "pipefail", "-c", gate)
 				cmd.Dir = work
-				cmd.Env = append(os.Environ(), "RUNNER_TEMP="+t.TempDir(), "GITHUB_EVENT_NAME=merge_group",
+				cmd.Env = append(os.Environ(), "RUNNER_TEMP="+t.TempDir(), "GITHUB_EVENT_NAME="+event,
 					"BASE_SHA="+baseTree, "NEEDS_JSON="+string(encode(results)), "PLAN_JSON="+string(encode(plan)))
 				out, err := cmd.CombinedOutput()
 				accept := scenario == "full-success" || scenario == "docs-only"
