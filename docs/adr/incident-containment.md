@@ -539,11 +539,13 @@ principal is contained, so a contained account would still have a scheduler acti
   linked-identity condition reads the target's own identities and needs an attested item for each
   in the containing incident; an org incident lists every member's identities for that purpose.
   An org incident that cuts a member's identities records one truncation row keyed to that
-  member: unattested it holds that member's release only. Attesting it records an attested
-  item for each identity the member holds at that moment and the ledger does not list, so
-  coverage is database state and never a comparison of clocks; an identity linked afterwards
-  has no item and holds the release until the incident is reopened, lists it and an operator
-  attests it. A member with an identity and no password is released once its identities are
+  member: unattested it holds that member's release only. Attesting it lists each
+  identity the member holds at that moment and the ledger does not list as its own open
+  `unknown` item, and never attests one: every identity needs its own explicit attestation.
+  Coverage is database state, never a comparison of clocks. An identity linked after the
+  listing has no item and holds the release; the refused release lists it as an open item
+  (in a transaction of its own, after the refusal), and an operator attests it before the
+  next attempt. A member with an identity and no password is released once its identities are
   attested. Release is also refused while another open incident recorded the principal as
   contained (its ledger item reads done though the state belongs to the first incident); the
   refusal names that incident to a caller who can read it, and gives a generic reason to one who

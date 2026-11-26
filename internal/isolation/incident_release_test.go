@@ -312,15 +312,32 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_target"); err != nil {
 			t.Fatal(err)
 		}
-		if got := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_unlisted' AND outcome='attested'`); got != 1 {
-			t.Fatalf("attesting the cut recorded %d attested items for the unlisted identity, want 1", got)
+		// Attesting the cut lists the unlisted identity as an open item and attests nothing.
+		if got := queryString(t, db, `SELECT outcome FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_unlisted'`); got != "unknown" {
+			t.Fatalf("attesting the cut left the unlisted identity %q, want an open unknown item", got)
 		}
-		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_slow','acc_itarget','oidc','https://idp.example.test','subject-slow','',`+acctEpoch(t, db)+`,'2000-01-01T00:00:00.000000Z')`)
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
-			t.Fatalf("release with an identity linked after the cut was attested = %v, want ErrReleaseNotReady", err)
+			t.Fatalf("release with the listed identity unattested = %v, want ErrReleaseNotReady", err)
 		}
-		// The late identity needs its own attested item (a reopen lists it, an operator attests it).
-		execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at, attested_by, attested_at) VALUES ('itm_slow', '`+id+`', 'external_identity.remove', 'external_identity', 'xid_slow', 'org/org_a', 'attested', '', 2, `+ts+`, `+ts+`, 'usr_irsp', `+ts+`)`)
+		// An identity linked after the listing, on a node whose clock ran slow, has no
+		// item and holds the release whatever its created_at says.
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_slow','acc_itarget','oidc','https://idp.example.test','subject-slow','',`+acctEpoch(t, db)+`,'2000-01-01T00:00:00.000000Z')`)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_unlisted")); err != nil {
+			t.Fatal(err)
+		}
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with an identity linked after the listing = %v, want ErrReleaseNotReady", err)
+		}
+		// The refused release listed it as an open item; it still needs its own attestation.
+		if got := queryString(t, db, `SELECT outcome FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_slow'`); got == "attested" || got == "" {
+			t.Fatalf("a refused release left the late identity %q, want an open item", got)
+		}
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with the late identity listed but unattested = %v, want ErrReleaseNotReady", err)
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_slow")); err != nil {
+			t.Fatal(err)
+		}
 		if err := release(); err != nil {
 			t.Fatalf("release with every identity attested: %v", err)
 		}

@@ -309,14 +309,14 @@ func countsPayload(counts map[domain.ItemOutcome]int64) audit.Payload {
 	}
 }
 
-// vouchForUnlistedIdentities gives each identity the member holds now, and the
-// ledger does not list, its own attested item. Attesting an enumeration cut says the
-// operator has dealt with the identities it left unlisted; recording them as items
-// makes that a fact in the ledger, so release reads coverage from database state
-// alone: an identity linked after this moment has no item and still holds release,
-// whatever any node's clock read when it was created.
-func vouchForUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, by domain.PrincipalID, incidentID string, cut authz.IncidentItem, now time.Time) error {
-	accountID, err := az.ContainedAccountID(ctx, domain.PrincipalID(cut.ObjectID))
+// listUnlistedIdentities lists each identity the member holds now and the ledger does
+// not list as its own open item. Attesting an enumeration cut never attests an
+// identity: each one the cut left out becomes an unknown item the operator must
+// attest explicitly, and an identity linked after this moment has no item at all
+// until a release attempt lists it. Release reads coverage from those items alone, so
+// no clock decides it and nothing the operator was not shown is covered.
+func listUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, incidentID string, member domain.PrincipalID, scope string, now time.Time) error {
+	accountID, err := az.ContainedAccountID(ctx, member)
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil // a scope-level cut names no member
 	}
@@ -332,40 +332,11 @@ func vouchForUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, by 
 		if err != nil {
 			return err
 		}
-		added, err := az.AddIncidentItem(ctx, authz.NewIncidentItem{
+		// An identity already listed keeps its item (the insert is a no-op).
+		if _, err := az.AddIncidentItem(ctx, authz.NewIncidentItem{
 			ID: itemID, IncidentID: incidentID, OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindExternalIdentity,
-			ObjectID: x.ID, Scope: cut.Scope, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner, At: now,
-		})
-		if err != nil {
-			return err
-		}
-		if !added {
-			continue // listed already: it needs its own attestation
-		}
-		item := authz.IncidentItem{ID: itemID, OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindExternalIdentity, ObjectID: x.ID}
-		intent, err := incidentEvent(ctx, audit.EventIncidentItemIntent, by, incidentID, audit.OutcomeIntent, itemPayload(item))
-		if err != nil {
-			return err
-		}
-		if err := az.RecordAuthEvent(ctx, intent); err != nil {
-			return err
-		}
-		ok, err := az.TransitionIncidentItem(ctx, authz.ItemTransition{
-			ID: itemID, IncidentID: incidentID, ExpectedVersion: 1, Outcome: domain.ItemAttested, Reason: domain.ReasonNone, AttestedBy: by, At: now,
-		})
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return fmt.Errorf("%w: a vouched identity item changed while attesting", domain.ErrConflict)
-		}
-		payload := itemPayload(item)
-		payload["result"], payload["reason"] = "attested", reasonPayload(domain.ReasonNone)
-		oe, err := incidentEvent(ctx, audit.EventIncidentItemOutcome, by, incidentID, audit.OutcomeSuccess, payload)
-		if err != nil {
-			return err
-		}
-		if err := az.RecordAuthEvent(ctx, oe); err != nil {
+			ObjectID: x.ID, Scope: scope, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner, At: now,
+		}); err != nil {
 			return err
 		}
 	}
@@ -974,7 +945,7 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 			return nil
 		}
 		if item.ObjectKind == domain.ObjectKindEnumeration && item.OwnerFunction == domain.OwnerExternalIdentity {
-			return vouchForUnlistedIdentities(ctx, az, caller.Principal, inc.ID, item, now)
+			return listUnlistedIdentities(ctx, az, inc.ID, domain.PrincipalID(item.ObjectID), item.Scope, now)
 		}
 		return nil
 	})

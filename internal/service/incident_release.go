@@ -43,7 +43,9 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 	if err != nil {
 		return err
 	}
-	return tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	var relist string
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		relist = ""
 		now := s.now()
 		caller, inc, err := s.incidentByID(ctx, az, actor, incidentID, now)
 		if err != nil {
@@ -88,7 +90,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 				return fmt.Errorf("%w: no credential establishment has completed during this incident's containment", ErrReleaseNotReady)
 			}
 		}
-		pending, total, containOpen, err := identitiesNotAttested(ctx, az, inc.ID, target)
+		pending, total, containOpen, scope, err := identitiesNotAttested(ctx, az, inc.ID, target)
 		if err != nil {
 			return err
 		}
@@ -98,6 +100,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 			// account again, so release waits until the item is terminal.
 			return fmt.Errorf("%w: the incident's account containment item is still open; resume it first", ErrReleaseNotReady)
 		case pending > 0:
+			relist = scope
 			return fmt.Errorf("%w: %d linked identity item(s) are not attested", ErrReleaseNotReady, pending)
 		case !hasPassword && total == 0:
 			// No password and no linked identity to attest: nothing records that a
@@ -114,6 +117,18 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 		}
 		return az.RecordAuthEvent(ctx, e)
 	})
+	if relist == "" || !errors.Is(err, ErrReleaseNotReady) {
+		return err
+	}
+	// The refusal rolled its transaction back. An identity the ledger never listed
+	// (linked after the enumeration) is given an open item in a transaction of its
+	// own, so the operator can attest it and release again; it is never attested here.
+	if lerr := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		return listUnlistedIdentities(ctx, az, incidentID, target, relist, s.now())
+	}); lerr != nil {
+		return lerr
+	}
+	return err
 }
 
 // authorizeReleaseTarget applies containment's own classification to a release:
@@ -176,28 +191,29 @@ func otherHolderRefusal(ctx context.Context, az *authz.TxAuthorizer, caller auth
 // keyed to the target counts too (the cut means identities went unlisted), and
 // an attested one clears the hold but never covers an identity: coverage is decided
 // from the ledger alone, with no clock, so an identity with no item is always pending
-// (reopen the incident to list it, then attest it). total is how many identities the
+// (a refused release lists it as an open item, then it needs its own attestation). total is how many identities the
 // account holds. containOpen reports an account.contain item for the target that is
 // still open.
-func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, containOpen bool, err error) {
+func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, containOpen bool, scope string, err error) {
 	accountID, err := az.ContainedAccountID(ctx, target)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, false, "", err
 	}
 	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, false, "", err
 	}
 	attested, listed, cutPending := map[string]bool{}, map[string]bool{}, false
 	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, releasePageSize, false)
 		if err != nil {
-			return 0, 0, false, err
+			return 0, 0, false, "", err
 		}
 		for _, it := range page {
-			if it.OwnerFunction == domain.OwnerAccountContain && it.ObjectID == string(target) && it.Outcome.Open() {
-				containOpen = true
+			if it.OwnerFunction == domain.OwnerAccountContain && it.ObjectID == string(target) {
+				scope = it.Scope
+				containOpen = containOpen || it.Outcome.Open()
 			}
 			if it.ObjectKind != domain.ObjectKindExternalIdentity && it.OwnerFunction != domain.OwnerExternalIdentity {
 				continue
@@ -231,5 +247,5 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 	if cutPending {
 		pending++
 	}
-	return pending, len(identities), containOpen, nil
+	return pending, len(identities), containOpen, scope, nil
 }
