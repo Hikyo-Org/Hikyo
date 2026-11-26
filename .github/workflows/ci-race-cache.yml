@@ -37,6 +37,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Restore shared Go module cache
+        id: go-module-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/pkg/mod/cache/download
@@ -71,3 +72,25 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.race-seed.outputs.cache-primary-key }}
+      # Second writer for the shared module cache. ci-main saves it weekly, so a
+      # Monday eviction would otherwise miss all restores for about six days.
+      - name: Populate shared Go module cache
+        if: steps.go-module-cache.outputs.cache-hit != 'true'
+        run: |
+          go mod download
+          tool_module_dir="$RUNNER_TEMP/go-tool-modules"
+          mkdir -p "$tool_module_dir"
+          cd "$tool_module_dir"
+          go mod init ci-tools
+          while IFS= read -r module; do
+            go mod edit -require="$module"
+          done < "$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt"
+          go mod download all
+      - name: Save shared Go module cache from trusted main only
+        if: >-
+          success() && steps.go-module-cache.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod/cache/download
+          key: ${{ steps.go-module-cache.outputs.cache-primary-key }}

@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The repository's Actions cache has a 10 GB limit that cannot be raised, and GitHub evicts by last
+// The repository's Actions cache has a 10 GB limit that is not raised, by owner decision, and GitHub evicts by last
 // access once it is passed. ci-cache-prune.yml removes the dead entries first: superseded entries of
 // the listed regenerable families on main and dev, and idle pull-request entries. These tests pin its
 // trust boundary and run the real script, with the real jq, against a fake `gh` that serves realistic
@@ -37,15 +37,15 @@ func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	if !reflect.DeepEqual(workflow["on"], map[string]any{
 		"workflow_dispatch": nil,
 		"schedule":          []any{map[string]any{"cron": "47 * * * *"}},
-		"workflow_run":      map[string]any{"workflows": cachePruneWriters, "types": []any{"completed"}},
+		"workflow_run":      map[string]any{"workflows": cachePruneWriters, "types": []any{"completed"}, "branches": []any{"main"}},
 	}) {
 		return "", fmt.Errorf("the prune runs only on a schedule, by hand or after a named cache writer finished, never on a pull request or a push")
 	}
 	if !reflect.DeepEqual(workflow["permissions"], map[string]any{}) {
 		return "", fmt.Errorf("the workflow grants nothing by default")
 	}
-	if !reflect.DeepEqual(workflow["concurrency"], map[string]any{"group": "ci-cache-prune", "cancel-in-progress": false}) {
-		return "", fmt.Errorf("runs must queue behind each other, not cancel a half-done prune")
+	if workflow["concurrency"] != nil {
+		return "", fmt.Errorf("concurrency belongs to the job, after its guard, so skipped runs cannot replace a pending prune")
 	}
 	jobs, _ := workflow["jobs"].(map[string]any)
 	if len(jobs) != 1 {
@@ -54,6 +54,9 @@ func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	job, _ := jobs["prune"].(map[string]any)
 	if job == nil || job["if"] != cachePruneGuard {
 		return "", fmt.Errorf("prune must run only from a schedule or a manual run on main")
+	}
+	if !reflect.DeepEqual(job["concurrency"], map[string]any{"group": "ci-cache-prune", "cancel-in-progress": false}) {
+		return "", fmt.Errorf("runs must queue behind each other, not cancel a half-done prune")
 	}
 	if !reflect.DeepEqual(job["permissions"], map[string]any{"actions": "write"}) {
 		return "", fmt.Errorf("prune must hold actions: write and nothing else")
@@ -300,7 +303,17 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 		"a second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["other"] = map[string]any{"runs-on": "ubuntu-latest", "steps": []any{}}
 		},
-		"cancels a half-done prune": func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"cancels a half-done prune": func(w map[string]any) { job(w)["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"concurrency before the guard": func(w map[string]any) {
+			w["concurrency"] = job(w)["concurrency"]
+			delete(job(w), "concurrency")
+		},
+		"fires for runs on any branch": func(w map[string]any) {
+			delete(w["on"].(map[string]any)["workflow_run"].(map[string]any), "branches")
+		},
+		"fires for runs on dev": func(w map[string]any) {
+			w["on"].(map[string]any)["workflow_run"].(map[string]any)["branches"] = []any{"main", "dev"}
+		},
 	}
 	for name, mutate := range structural {
 		t.Run("structure/"+name, func(t *testing.T) {

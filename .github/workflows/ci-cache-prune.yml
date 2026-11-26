@@ -1,4 +1,4 @@
-# Keeps the repository's Actions cache under its 10 GB limit (the limit cannot be raised). GitHub
+# Keeps the repository's Actions cache under its 10 GB limit (the limit is not raised, by owner decision). GitHub
 # evicts by last access once the total passes it, which would take live entries with the dead ones.
 # This scheduled job removes the dead ones first, from the trusted default branch only:
 #   superseded: of the regenerable families listed below, every entry on main or dev except the
@@ -29,15 +29,17 @@ on:
   workflow_run:
     workflows: [CodeQL, ci-main, cache-seed-lint, cache-seed-race, cache-seed-tools, cache-seed-feedback]
     types: [completed]
+    branches: [main]
 
 permissions: {}
 
-concurrency:
-  group: ci-cache-prune
-  cancel-in-progress: false
-
 jobs:
   prune:
+    # Job level, not workflow level: the group is taken only after the guard below passes, so a
+    # skipped run (a fork's, say) can never replace a pending real prune.
+    concurrency:
+      group: ci-cache-prune
+      cancel-in-progress: false
     if: >-
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' &&

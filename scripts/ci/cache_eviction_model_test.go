@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -355,7 +356,10 @@ func (p plan) afterWriter(m *cacheModel, at time.Time) []modelEvent {
 // weekday replays 24 hours from the listing: the measured per-push CodeQL churn (the listing's overlay
 // entries, one day later), the main seed at 03:32 (saved by 03:42), the dev seed refreshed at 03:44
 // (saved by 03:55) or else saved by a dev push at 09:10, and the prune every hour at :47.
-func weekday(t *testing.T, p plan, limit int64) *cacheModel {
+func weekday(t *testing.T, p plan, limit int64) *cacheModel { return weekdayWith(t, p, limit, nil) }
+
+// weekdayWith is weekday plus the events of the day's own saves.
+func weekdayWith(t *testing.T, p plan, limit int64, extra func(*cacheModel) []modelEvent) *cacheModel {
 	m, before, listedAt := newCacheModel(t, modelOpts{scales: p.scales, limit: limit})
 	m.low, m.peak = 0, 0
 	start, end := listedAt, listedAt.Add(24*time.Hour)
@@ -385,6 +389,97 @@ func weekday(t *testing.T, p plan, limit int64) *cacheModel {
 	} else {
 		events = append(events, modelEvent{time.Date(2026, 11, 26, 9, 10, 0, 0, time.UTC), func() { m.replaceSeed("dev", seedSizesDev) }})
 	}
+	if extra != nil {
+		events = append(events, extra(m)...)
+	}
+	m.play(events)
+	return m
+}
+
+var hash64 = regexp.MustCompile(`[0-9a-f]{64}`)
+
+// rotate saves a new generation of every main entry whose key starts with prefix, as a go.mod or
+// go.sum change does: the same lane with a new content hash, next to the old entry until the prune.
+func (m *cacheModel) rotate(prefix string, busy bool) {
+	var old []*modelEntry
+	for _, e := range m.entries {
+		if strings.HasPrefix(e.Key, prefix) && e.Ref == "refs/heads/main" {
+			old = append(old, e)
+		}
+	}
+	if len(old) == 0 {
+		m.t.Fatalf("no %s entry to rotate", prefix)
+	}
+	for _, e := range old {
+		m.add(hash64.ReplaceAllString(e.Key, strings.Repeat("f", 64)), e.Ref, e.Size, "", busy)
+	}
+}
+
+// touch marks every entry whose key starts with prefix as restored now, as a run that restores the
+// old generation before it saves the new one does.
+func (m *cacheModel) touch(prefix string) {
+	for _, e := range m.entries {
+		if strings.HasPrefix(e.Key, prefix) {
+			e.accessed = m.now
+		}
+	}
+}
+
+// rotationDay is an ordinary weekday on which go.mod or go.sum changed on main. Everything keyed on
+// them rotates at its next save: the daily race seed (03:41, which also saves go-mod-v2 on a miss),
+// the daily go-feedback-v1 save (04:00 assumed; the time is not in the listing) and the lint driver
+// seed (04:11), each next to its old generation until the prune two minutes later.
+func rotationDay(t *testing.T, p plan, limit int64) *cacheModel {
+	return weekdayWith(t, p, limit, func(m *cacheModel) []modelEvent {
+		day := func(h, min int) time.Time { return time.Date(2026, 11, 26, h, min, 0, 0, time.UTC) }
+		var events []modelEvent
+		for _, w := range []struct {
+			at       time.Time
+			prefixes []string
+		}{
+			{day(3, 41), []string{"go-race-v2-", "go-mod-v2-"}},
+			{day(4, 0), []string{"go-feedback-v1-"}},
+			{day(4, 11), []string{"go-lintdriver-v2-"}},
+		} {
+			events = append(events, modelEvent{w.at, func() {
+				for _, prefix := range w.prefixes {
+					m.rotate(prefix, true)
+				}
+			}})
+			events = append(events, p.afterWriter(m, w.at)...)
+		}
+		return events
+	})
+}
+
+// sundayGoSum is the weekly ci-main run (13:23) after a go.sum change landed since the daily seeds
+// ran: it restores the old generation of the module, test, lint, generated, k8s-e2e and fuzz entries
+// and saves the new one of each, about 3.3 GB at once, on a quiet weekend.
+func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
+	m, _, _ := newCacheModel(t, modelOpts{quiet: true, scales: p.scales, limit: limit})
+	friday := time.Date(2026, 11, 27, 20, 30, 0, 0, time.UTC)
+	for _, e := range m.entries {
+		e.accessed, e.created = friday, friday
+		switch e.seed {
+		case "main":
+			e.accessed = time.Date(2026, 11, 29, 3, 42, 0, 0, time.UTC)
+		case "dev":
+			if p.devRefresh {
+				e.accessed = time.Date(2026, 11, 29, 3, 55, 0, 0, time.UTC)
+			}
+		}
+	}
+	m.now = time.Date(2026, 11, 29, 13, 0, 0, 0, time.UTC)
+	m.low, m.peak = 0, 0
+	save := time.Date(2026, 11, 29, 13, 23, 0, 0, time.UTC)
+	events := []modelEvent{{save, func() {
+		for _, prefix := range []string{"go-mod-v2-", "go-test-v2-", "go-lint-v2-", "go-generated-v2-", "go-k8s-e2e-v2-", "go-fuzz-v2-"} {
+			m.touch(prefix)
+			m.rotate(prefix, false)
+		}
+	}}}
+	events = append(events, p.afterWriter(m, save)...)
+	events = append(events, hourly(m.now, m.now.Add(8*time.Hour), 47, m.prune)...)
 	m.play(events)
 	return m
 }
@@ -514,6 +609,43 @@ func TestCacheBudgetModel(t *testing.T) {
 					t.Fatalf("%s at %s loses a newest seed: %v", s.name, l.name, m.seedLost)
 				}
 			}
+		}
+	})
+
+	// Days that rotate keys. go.mod or go.sum changed on main on 7 of the last 30 days (committer
+	// date, origin/main at 2026-11-25), one of them a Sunday. The rotated entries coexist with the old
+	// generation until the prune, so these days peak above an ordinary weekday and, at 10.00 GB, take
+	// idle entries (never a seed); at 10 GiB they take two. The Sunday case is the worst: the weekly
+	// ci-main run saves about 3.3 GB at once.
+	t.Run("go.mod and go.sum change days", func(t *testing.T) {
+		days := []struct {
+			name string
+			run  func(*testing.T, plan, int64) *cacheModel
+			peak [2]float64
+			live [2]int
+		}{
+			{"rotation day", rotationDay, [2]float64{10.66, 10.95}, [2]int{7, 2}},
+			{"sunday go.sum", sundayGoSum, [2]float64{12.27, 12.27}, [2]int{8, 7}},
+		}
+		for i, l := range limits {
+			for _, d := range days {
+				m := d.run(t, planAdopted, l.bytes)
+				t.Log(m.report("adopted, " + d.name))
+				m.requireDemand(t, 8.97)
+				m.requirePeak(t, d.peak[i])
+				if len(m.evicted) != d.live[i] {
+					t.Fatalf("%s evicts %d live entries at %s, documented %d: %v", d.name, len(m.evicted), l.name, d.live[i], m.evicted)
+				}
+				if len(m.seedLost) != 0 {
+					t.Fatalf("%s at %s loses a newest seed: %v", d.name, l.name, m.seedLost)
+				}
+			}
+		}
+		// The module cache is a casualty of the Monday instant at 10.00 GB; the daily race seed saves
+		// it again at 03:41 on Tuesday, where before only the Sunday ci-main run did.
+		m := monday(t, planAdopted, 10_000_000_000)
+		if !slices.ContainsFunc(m.evicted, func(k string) bool { return strings.HasPrefix(k, "go-mod-v2-") }) {
+			t.Fatalf("the Monday instant no longer evicts go-mod-v2; update the budget section of docs/development/ci.md: %v", m.evicted)
 		}
 	})
 

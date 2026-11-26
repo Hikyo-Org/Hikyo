@@ -146,6 +146,19 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 			seedStep(w, 6)["with"].(map[string]any)["path"] = "~/go/pkg/mod"
 		},
 		"save fail open": func(w map[string]any) { seedStep(w, 6)["continue-on-error"] = true },
+		"module save loses the main guard": func(w map[string]any) {
+			seedStep(w, 8)["if"] = "success() && steps.go-module-cache.outputs.cache-hit != 'true'"
+		},
+		"module save on a hit": func(w map[string]any) {
+			seedStep(w, 8)["if"] = strings.Replace(seedStep(w, 8)["if"].(string), " && steps.go-module-cache.outputs.cache-hit != 'true'", "", 1)
+		},
+		"module save fail open":  func(w map[string]any) { seedStep(w, 8)["continue-on-error"] = true },
+		"module save wrong path": func(w map[string]any) { seedStep(w, 8)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
+		"module save wrong key": func(w map[string]any) {
+			seedStep(w, 8)["with"].(map[string]any)["key"] = "${{ steps.race-seed.outputs.cache-primary-key }}"
+		},
+		"module populate skipped tools": func(w map[string]any) { seedStep(w, 7)["run"] = "go mod download\n" },
+		"module restore unnamed":        func(w map[string]any) { delete(seedStep(w, 2), "id") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed map[string]any
@@ -168,6 +181,9 @@ type reuseSeedSpec struct {
 	// the lookup whose output rotates the key.
 	generationID, generation string
 	maxTimeout               int
+	// moduleWriter pins the daily trusted-main save of the shared module cache
+	// after the build-cache save, so an evicted go-mod-v2 refills within a day.
+	moduleWriter bool
 }
 
 var raceSeedSpec = reuseSeedSpec{
@@ -179,7 +195,11 @@ var raceSeedSpec = reuseSeedSpec{
 	restoreKeys: sharedRaceReuseRestoreKeys,
 	compile:     "cache=\"$HOME/.cache/go-build\"\ntest ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\ngo list -deps -test -export -race ./... >/dev/null\ndu -sh \"$cache\"\n",
 	maxTimeout:  30,
+
+	moduleWriter: true,
 }
+
+const moduleWriterPopulate = "go mod download\ntool_module_dir=\"$RUNNER_TEMP/go-tool-modules\"\nmkdir -p \"$tool_module_dir\"\ncd \"$tool_module_dir\"\ngo mod init ci-tools\nwhile IFS= read -r module; do\n  go mod edit -require=\"$module\"\ndone < \"$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt\"\ngo mod download all\n"
 
 func requireRaceSeed(workflow map[string]any) error { return requireReuseSeed(workflow, raceSeedSpec) }
 
@@ -238,7 +258,11 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		next = 5
 	}
 	steps, ok := job["steps"].([]any)
-	if !ok || len(steps) != next+3 {
+	want := next + 3
+	if spec.moduleWriter {
+		want += 2
+	}
+	if !ok || len(steps) != want {
 		return fmt.Errorf("unexpected %s preparation or publication", spec.label)
 	}
 	step := func(i int) map[string]any {
@@ -259,6 +283,9 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		return fmt.Errorf("%s must select pinned Go without implicit caches", spec.label)
 	}
 	modules := step(2)
+	if spec.moduleWriter && modules["id"] != "go-module-cache" {
+		return fmt.Errorf("%s must name its module restore so it can save a miss", spec.label)
+	}
 	if modules["uses"] != reuseRestoreAction || !reflect.DeepEqual(modules["with"], map[string]any{
 		"path":         moduleDownloadCachePath,
 		"key":          "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
@@ -296,6 +323,19 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		save["if"] != "success() && "+miss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
 		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps." + spec.lookupID + ".outputs.cache-primary-key }}"}) {
 		return fmt.Errorf("only a successful main seed may publish, once per exact key")
+	}
+	if spec.moduleWriter {
+		moduleMiss := "steps.go-module-cache.outputs.cache-hit != 'true'"
+		populate := step(next + 3)
+		if populate["run"] != moduleWriterPopulate || populate["if"] != moduleMiss || populate["continue-on-error"] != nil || populate["env"] != nil {
+			return fmt.Errorf("%s must fully populate a missed module cache before saving it", spec.label)
+		}
+		moduleSave := step(next + 4)
+		if moduleSave["uses"] != reuseSaveAction || moduleSave["continue-on-error"] != nil ||
+			moduleSave["if"] != "success() && "+moduleMiss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
+			!reflect.DeepEqual(moduleSave["with"], map[string]any{"path": moduleDownloadCachePath, "key": "${{ steps.go-module-cache.outputs.cache-primary-key }}"}) {
+			return fmt.Errorf("only a successful main seed may publish the module cache, once per exact key")
+		}
 	}
 	return nil
 }
@@ -430,9 +470,16 @@ func TestRaceSeedGuardRequiresFreshDefaultDirectory(t *testing.T) {
 func testSeedGuardRequiresFreshDefaultDirectory(t *testing.T, file, guardEnd string) {
 	workflow, _ := readWorkflowFile(t, file)
 	steps := workflowJobSteps(t, workflow, "seed")
-	// The compile step sits right before the save, after any generation step.
-	compile := steps[len(steps)-2].(map[string]any)["run"].(string)
-	prefix, _, found := strings.Cut(compile, guardEnd)
+	// The compile step is the one run step holding the guard's end marker.
+	var prefix string
+	found := false
+	for _, raw := range steps {
+		if run, ok := raw.(map[string]any)["run"].(string); ok {
+			if before, _, ok := strings.Cut(run, guardEnd); ok {
+				prefix, found = before, true
+			}
+		}
+	}
 	if !found {
 		t.Fatal("actual compile guard missing")
 	}

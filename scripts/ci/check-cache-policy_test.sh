@@ -294,6 +294,16 @@ for file in "$@"; do
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
 			if (index(block, "path: ~/go/pkg/mod") > 0) {
+				# Whole-line match: a prefix or a trailing slash is a different path,
+				# hence a different cache version, hence a silent miss on every restore.
+				path_ok = 0
+				path_lines = split(block, path_rows, "\n")
+				for (row = 1; row <= path_lines; row++) {
+					path_row = path_rows[row]
+					sub(/^[[:space:]]+/, "", path_row)
+					if (path_row == "path: ~/go/pkg/mod/cache/download") path_ok = 1
+				}
+				if (!path_ok) bad = 1
 				module_key = "key: go-mod-v2-${{ runner.os }}-${{ hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047) }}"
                 if (feedback_cache == "true") {
                     # Feedback tools run from a separate immutable merge checkout.

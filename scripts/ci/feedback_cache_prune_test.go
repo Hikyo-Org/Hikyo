@@ -328,6 +328,40 @@ func TestSeedPrunesSupersededEntriesOnly(t *testing.T) {
 // The cache-policy fixture compares each writer's whole `if:` guard. A guard that merely contains
 // the trusted one, or a dev ref outside the seed workflow, fails it.
 func TestCachePolicyWriterGuardIsExact(t *testing.T) {
+	root, run := cachePolicyFixture(t)
+	const mainGuard = "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
+	for _, tc := range []struct{ name, file, from, to string }{
+		{"seed guard widened with an alternative", "ci-feedback-backend-cache.yml", "github.ref == 'refs/heads/dev')\n        uses:", "github.ref == 'refs/heads/dev' || github.event_name == 'pull_request')\n        uses:"},
+		{"main guard widened with an alternative", "ci-lint-cache.yml", mainGuard + "\n        uses:", mainGuard + " || github.event_name == 'pull_request'\n        uses:"},
+		{"main guard with a trailing alternative", "ci-race-cache.yml", "github.ref == 'refs/heads/main'\n        uses:", "github.ref == 'refs/heads/main' || true\n        uses:"},
+		{"dev ref outside the seed", "ci-tool-cache.yml", mainGuard + "\n        uses:", "(" + mainGuard + " || (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev')\n        uses:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(root, ".github/workflows", tc.file)
+			original, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = os.WriteFile(path, original, 0o644) }()
+			changed := strings.Replace(string(original), tc.from, tc.to, 1)
+			if changed == string(original) {
+				t.Fatal("mutation changed nothing; the guard text it targets moved")
+			}
+			if err := os.WriteFile(path, []byte(changed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, err := run()
+			if err == nil || !strings.Contains(out, "cache writer without trusted-main exact-miss guard in "+tc.file) {
+				t.Fatalf("accepted a cache writer guard that is not the exact trusted one: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+// cachePolicyFixture copies what the cache-policy script reads into a temporary tree and returns
+// its root with a runner for the script; the unmodified tree must pass.
+func cachePolicyFixture(t *testing.T) (string, func() (string, error)) {
+	t.Helper()
 	repo := repositoryRoot(t)
 	root := t.TempDir()
 	files := []string{"scripts/ci/check-cache-policy_test.sh", "scripts/ci/go-tool-modules.txt", "scripts/ci/verify-docs.sh", "web/package.json", "docs/site/package.json"}
@@ -353,7 +387,6 @@ func TestCachePolicyWriterGuardIsExact(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	const mainGuard = "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
 	run := func() (string, error) {
 		out, err := exec.CommandContext(context.Background(), "sh", filepath.Join(root, "scripts/ci/check-cache-policy_test.sh")).CombinedOutput()
 		return string(out), err
@@ -361,29 +394,42 @@ func TestCachePolicyWriterGuardIsExact(t *testing.T) {
 	if out, err := run(); err != nil {
 		t.Fatalf("unmodified workflows refused: %v\n%s", err, out)
 	}
-	for _, tc := range []struct{ name, file, from, to string }{
-		{"seed guard widened with an alternative", "ci-feedback-backend-cache.yml", "github.ref == 'refs/heads/dev')\n        uses:", "github.ref == 'refs/heads/dev' || github.event_name == 'pull_request')\n        uses:"},
-		{"main guard widened with an alternative", "ci-lint-cache.yml", mainGuard + "\n        uses:", mainGuard + " || github.event_name == 'pull_request'\n        uses:"},
-		{"main guard with a trailing alternative", "ci-race-cache.yml", "github.ref == 'refs/heads/main'\n        uses:", "github.ref == 'refs/heads/main' || true\n        uses:"},
-		{"dev ref outside the seed", "ci-tool-cache.yml", mainGuard + "\n        uses:", "(" + mainGuard + " || (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev')\n        uses:"},
+	return root, run
+}
+
+// The module cache path is part of the cache version: a drifted spelling is a silent miss on every
+// restore, so each module reader must carry the exact path line.
+func TestCachePolicyModuleCachePathIsExact(t *testing.T) {
+	root, run := cachePolicyFixture(t)
+	const exact = "path: ~/go/pkg/mod/cache/download\n"
+	for name, drifted := range map[string]string{
+		"parent directory":   "path: ~/go/pkg/mod/cache\n",
+		"trailing slash":     "path: ~/go/pkg/mod/cache/download/\n",
+		"extracted tree":     "path: ~/go/pkg/mod\n",
+		"different sub-path": "path: ~/go/pkg/mod/cache/download-v2\n",
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(root, ".github/workflows", tc.file)
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(root, ".github/workflows/ci-golangci.yml")
 			original, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = os.WriteFile(path, original, 0o644) }()
-			changed := strings.Replace(string(original), tc.from, tc.to, 1)
+			changed := strings.Replace(string(original), exact, drifted, 1)
 			if changed == string(original) {
-				t.Fatal("mutation changed nothing; the guard text it targets moved")
+				t.Fatal("mutation changed nothing; ci-golangci.yml no longer restores the module cache this way")
 			}
 			if err := os.WriteFile(path, []byte(changed), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			out, err := run()
-			if err == nil || !strings.Contains(out, "cache writer without trusted-main exact-miss guard in "+tc.file) {
-				t.Fatalf("accepted a cache writer guard that is not the exact trusted one: %v\n%s", err, out)
+			// The whole-tree spelling is refused by its own earlier check, the rest by the reader check.
+			want := "incompatible Go cache reader in ci-golangci.yml"
+			if name == "extracted tree" {
+				want = "archives the whole module tree"
+			}
+			if err == nil || !strings.Contains(out, want) {
+				t.Fatalf("accepted a drifted module cache path: %v\n%s", err, out)
 			}
 		})
 	}
