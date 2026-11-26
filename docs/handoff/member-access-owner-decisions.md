@@ -10,6 +10,7 @@ under "Owner decisions, 2026-11-20"; they change no D1 to D11 clause.
 | --- | --- | --- |
 | Key narrowing on all-projects rules | Folder selectors only; single-key items refused; project creation needs no notice | #1446 |
 | Environment rename/create under name binding | Confirmation naming who gains through the name match, as for folder moves; audited. Inclusion in an *all*/*all, except* rule is intended reach | #1447 |
+| Environment delete an *all, except* rule names (2026-11-27) | Fails closed: refused like a widening rename until the gainers are confirmed; audited. The rule keeps the name, so a later environment of it is excepted again | #1447 |
 | Machine rules | Environment axis only, no key narrowing, inside the owning project and the class's scope depth (workload: explicit environments) | #1473 (new) |
 | Server-side resolver | Additive `/api/v1` operation and CLI spelling, declared as an api-cli-surface amendment in the implementing PR | #1474 (new) |
 

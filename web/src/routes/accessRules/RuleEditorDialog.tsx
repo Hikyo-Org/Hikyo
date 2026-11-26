@@ -10,7 +10,10 @@ import { ToggleChip } from '../../ui/ToggleChip.tsx';
 import {
   availability,
   effective,
+  bindEnvNames,
   envChoices,
+  pickEnvs,
+  unmatchedEnvNames,
   folderChoices,
   hasWhere,
   keyChoices,
@@ -87,7 +90,8 @@ export function RuleEditorDialog({
 }) {
   const [seed, setDraft] = useState(rule);
   // An all-projects draft follows the current project list (see overProjects).
-  const draft = overProjects(seed, projects);
+  // Environment items follow the rule's names over its projects (D3, #1447).
+  const draft = bindEnvNames(world, overProjects(seed, projects));
   const all = draft.projects === '*';
   const chosen = all ? projects : draft.projects;
   const eff = effective(draft, machine);
@@ -165,26 +169,29 @@ export function RuleEditorDialog({
         </AxisBox>
         {chosen.length > 0 ? (
           <>
-            {all ? (
-              <AxisBox title="Environments" hint="All projects covers every environment, including those of projects created later." />
-            ) : (
-              <AxisEditor<EnvItem>
-                title="Environments"
-                modes={machine === 'workload' ? ['only'] : undefined}
-                axis={draft.envs}
-                onChange={(envs) => setDraft({ ...draft, envs })}
-                choices={envChoices(world, chosen).map((c) => ({
-                  id: c.name,
-                  items: c.items,
-                  label: (
-                    <>
-                      {c.name}
-                      {c.protected ? <Lock word="protected" /> : null}
-                    </>
-                  ),
-                }))}
-              />
-            )}
+            <AxisEditor<EnvItem>
+              title="Environments"
+              hint="Environments match by name in every project the rule covers, including ones added later. All, except… leaves a name out; Only… covers just the names you tap."
+              modes={machine === 'workload' ? ['only'] : undefined}
+              axis={draft.envs}
+              onChange={(envs) => setDraft(pickEnvs(world, draft, envs))}
+              choices={envChoices(world, chosen).map((c) => ({
+                id: c.name,
+                items: c.items,
+                label: (
+                  <>
+                    {c.name}
+                    {c.protected ? <Lock word="protected" /> : null}
+                  </>
+                ),
+              }))}
+            >
+              {unmatchedEnvNames(world, draft).length > 0 ? (
+                <p className="access-hint">
+                  Also names, matching no environment yet: <bdi>{unmatchedEnvNames(world, draft).join(', ')}</bdi>
+                </p>
+              ) : null}
+            </AxisEditor>
             {machine !== undefined ? (
               <AxisBox title="Keys" hint="A machine rule covers every key of its environments: key limits are for people." />
             ) : (
@@ -281,6 +288,7 @@ function AxisChip<T extends EnvItem | KeyItem>({ axis, items, onChange, children
 
 function AxisEditor<T extends EnvItem | KeyItem>({
   title,
+  hint,
   modes = ['all', 'only'],
   axis,
   choices,
@@ -288,6 +296,8 @@ function AxisEditor<T extends EnvItem | KeyItem>({
   children,
 }: {
   title: string;
+  /** Replaces the default hint on how picking reads. */
+  hint?: string;
   /** The ways this axis may be picked; one mode offers no choice. */
   modes?: readonly Axis<T>['mode'][];
   axis: Axis<T>;
@@ -300,9 +310,10 @@ function AxisEditor<T extends EnvItem | KeyItem>({
     <AxisBox
       title={title}
       hint={
-        modes.includes('all')
+        hint ??
+        (modes.includes('all')
           ? 'All, except… covers ones added later: tap to leave one out. Only… covers just what you tap.'
-          : 'Only… covers just what you tap: ones added later are not covered.'
+          : 'Only… covers just what you tap: ones added later are not covered.')
       }
       mode={
         modes.length > 1 ? (

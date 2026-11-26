@@ -82,7 +82,7 @@ func currentCapabilityFixture(t *testing.T) capabilityFixture {
 			}
 			rule := Rule{Capability: capability, Where: Where{
 				Projects: []ProjectID{"prj_fixture"},
-				EnvMode:  AxisOnly, Envs: map[ProjectID][]EnvID{"prj_fixture": {"env_fixture"}},
+				EnvMode:  AxisOnly, EnvNames: []string{"env_fixture"},
 				KeyMode: AxisAll,
 			}}
 			if CheckMachineRule(class, rule) == MachineRuleOK {

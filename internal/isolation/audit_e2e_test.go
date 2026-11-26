@@ -650,6 +650,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
 		personal := runPersonalAuditLifecycle(t, db.Engine())
 		rotated := runRotationExecutorAuditLifecycle(t, db.Engine())
+		// Migration 00102 (#1447) is the only emitter of rule.split and
+		// rule.disabled.
+		envNames := envNamesMigrationDB(t, db.Engine())
+		testRuleEnvNamesMigration(t, envNames)
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -660,6 +664,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, personal, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, rotated, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += int64(envNames.count("SELECT COUNT(*) FROM audit_tenant_events WHERE type = '" + string(typ) + "'"))
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")

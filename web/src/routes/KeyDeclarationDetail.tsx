@@ -48,7 +48,7 @@ import { Select } from '../ui/Select.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
-import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import { WideningConfirmDialog, type WideningRefusal } from './accessRules/WideningConfirmDialog.tsx';
 import { JsonSchemaBuilder } from './JsonSchemaBuilder.tsx';
 import { PersonalMembers } from './PersonalMembers.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
@@ -709,7 +709,7 @@ function MetadataEditor({
       )}
 
       {widening === null ? null : (
-        <KeyMoveConfirmDialog
+        <WideningConfirmDialog
           widening={widening.refusal}
           change={widening.change}
           envName={environmentName}

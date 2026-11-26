@@ -124,10 +124,22 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 			return err
 		}
 
-		if err := s.confirmMoves(ctx, r, az, caller, p, scope, res, opts.ConfirmWidening); err != nil {
+		moves, err := s.moveGains(ctx, r, az, p, scope, res)
+		if err != nil {
 			return err
 		}
+		// Rules select environments by name (#1447): read who the plan's
+		// environment renames, creates and deletes reach before they are written.
+		var envs envChange
+		if len(res.EnvCreates)+len(res.EnvRenames)+len(res.EnvDeletes) > 0 {
+			if envs, err = readEnvChange(ctx, az, scope, "", "", ""); err != nil {
+				return err
+			}
+		}
 		if err := s.executeResolution(ctx, r, az, caller, p, scope, res, cur, compiledBundle, cur.SchemaRevision+1); err != nil {
+			return err
+		}
+		if err := s.confirmWidenings(ctx, r, az, caller, p, scope, res, moves, envs, opts.ConfirmWidening); err != nil {
 			return err
 		}
 		// § 151 schema-revision rate: charged only for a non-empty plan (the
@@ -633,18 +645,18 @@ func insertDefinitionEvent(ctx context.Context, r store.Repos, p authz.Proof, ca
 	return r.Audit().InsertTenant(ctx, p, event)
 }
 
-// confirmMoves is ADR D9 for the git flow: every key whose folder the plan
-// moves is checked for people it newly admits through their rules. The
-// confirmation must name exactly the union across all moved keys; each moved
-// key that widens is then audited with its own set.
-func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
-	p authz.Proof, scope domain.Scope, res definitions.Resolution, confirmed []domain.PrincipalID) error {
-	type move struct {
-		id, from, to string
-		gains        []WideningGain
-	}
-	var moves []move
-	var union []WideningGain
+// planMove is one key folder move of a plan with what it gives people.
+type planMove struct {
+	id, from, to string
+	gains        []WideningGain
+}
+
+// moveGains is ADR D9 for the git flow: every key whose folder the plan
+// moves is checked for people it newly admits through their rules, before
+// the plan executes.
+func (s *Definitions) moveGains(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
+	p authz.Proof, scope domain.Scope, res definitions.Resolution) ([]planMove, error) {
+	var moves []planMove
 	var envIDs []string
 	for _, upd := range res.KeyUpdates {
 		if !upd.MetaChanged {
@@ -652,7 +664,7 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 		}
 		before, err := r.Catalogue().Get(ctx, p, upd.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if before.FolderPath == upd.Desired.FolderPath {
 			continue
@@ -660,7 +672,7 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 		if envIDs == nil {
 			envs, err := r.Environments().List(ctx, p)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			envIDs = []string{}
 			for _, e := range envs {
@@ -669,29 +681,93 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 		}
 		gains, err := moveWidening(ctx, az, scope, envIDs, upd.ID, before.FolderPath, upd.Desired.FolderPath)
 		if err != nil {
+			return nil, err
+		}
+		if len(gains) > 0 {
+			moves = append(moves, planMove{id: upd.ID, from: before.FolderPath, to: upd.Desired.FolderPath, gains: gains})
+		}
+	}
+	return moves, nil
+}
+
+// confirmWidenings checks, once the plan has executed in its transaction,
+// one confirmation against the union of what its key folder moves (D9) and
+// its environment renames and creates (#1447) give principals through their
+// rules, then audits each widening change with its own set and sends gaining
+// machines through the machine widening gate. A refusal rolls the plan back.
+func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
+	p authz.Proof, scope domain.Scope, res definitions.Resolution, moves []planMove, envs envChange, confirmed []domain.PrincipalID) error {
+	var union []WideningGain
+	for _, m := range moves {
+		union = mergeGains(union, m.gains)
+	}
+	var changes []envChange
+	if envs.read {
+		after, err := az.RuleEnvRefs(ctx, scope.Org, scope.Project)
+		if err != nil {
 			return err
 		}
-		if len(gains) == 0 {
-			continue
+		for _, rn := range res.EnvRenames {
+			changes = append(changes, envs.with(after, domain.EnvID(rn.ID), rn.From, rn.To))
 		}
-		moves = append(moves, move{id: upd.ID, from: before.FolderPath, to: upd.Desired.FolderPath, gains: gains})
-		union = mergeGains(union, gains)
+		for _, del := range res.EnvDeletes {
+			changes = append(changes, envs.with(after, domain.EnvID(del.ID), del.Name, ""))
+		}
+		for _, name := range res.EnvCreates {
+			for _, e := range after {
+				if e.Name == name {
+					changes = append(changes, envs.with(after, e.ID, "", name))
+				}
+			}
+		}
 	}
+	var envGains []WideningGain
+	for i := range changes {
+		changes[i].gained = changes[i].gains()
+		envGains = mergeGains(envGains, changes[i].gained)
+	}
+	union = mergeGains(union, envGains)
 	if len(union) == 0 {
 		return nil
+	}
+	refuse := func() error {
+		if len(moves) > 0 {
+			return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
+		}
+		// Name the first change that widens on its own: every change is
+		// evaluated against the whole plan's environments, so a project-wide
+		// gain shows on a harmless change beside the one that causes it.
+		first := changes[0]
+		for _, c := range changes {
+			solo := c
+			solo.afterRefs = nil
+			if len(solo.gains()) > 0 {
+				first = c
+				break
+			}
+		}
+		return first.refusal(ctx, az, caller.Principal, union)
 	}
 	want := slices.Clone(confirmed)
 	slices.Sort(want)
 	if !slices.Equal(slices.Compact(want), gainedPrincipals(union)) {
-		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
+		return refuse()
 	}
 	if ok, err := mayConfirmWidening(ctx, az, caller.Principal, scope); err != nil {
 		return err
 	} else if !ok {
-		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
+		return refuse()
 	}
 	for _, m := range moves {
 		if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, m.id, m.from, m.to, m.gains, gainedPrincipals(m.gains)); err != nil {
+			return err
+		}
+	}
+	for _, c := range changes {
+		if len(c.gained) == 0 {
+			continue
+		}
+		if err := c.confirm(ctx, r, az, p, s.Auth, caller, gainedPrincipals(c.gained), s.now()); err != nil {
 			return err
 		}
 	}

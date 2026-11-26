@@ -5,8 +5,9 @@ import { topLayerDocs } from '../../../.storybook/topLayerDocs.ts';
 import { Panel } from '../Sections.tsx';
 import { AccessGlossary } from './AccessGlossary.tsx';
 import { IDS, makeWorld } from './fixture.ts';
-import { KeyMoveConfirmDialog } from './KeyMoveConfirmDialog.tsx';
+import { ENV_WIDENING_COPY, WideningConfirmDialog } from './WideningConfirmDialog.tsx';
 import { envName, newRule, type Rule, type World } from './model.ts';
+import { RuleSummary } from './parts.tsx';
 import { RuleEditorDialog } from './RuleEditorDialog.tsx';
 import { RulesPanel } from './RulesPanel.tsx';
 import { WhoCan as WhoCanForm } from './WhoCan.tsx';
@@ -196,15 +197,15 @@ export const EditorNewRule: Story = {
   },
 };
 
-// Org-wide, the editor offers All projects (#1446): the rule covers every
-// environment, including later projects', and narrows keys by folder only.
+// Org-wide, the editor offers All projects (#1446): environments are picked by
+// name in every project, including later ones (#1447), and keys by folder only.
 const saveAllProjects = fn<(rule: Rule) => void>();
 export const EditorAllProjects: Story = {
   render: () => <RuleEditorDialog world={makeWorld()} rule={newRule(IDS.chen)} projects={PROJECTS} allProjects onSave={saveAllProjects} onCancel={fn()} />,
   play: async ({ canvas }) => {
     const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Chen Li' }));
     await userEvent.click(dialog.getByRole('button', { name: /^All projects/ }));
-    await expect(dialog.getByText(/All projects covers every environment/)).toBeVisible();
+    await expect(dialog.getByText(/Environments match by name in every project/)).toBeVisible();
     await expect(dialog.queryByText(/Pick single keys/)).toBeNull();
     await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
     await expect(saveAllProjects).toHaveBeenCalledWith(expect.objectContaining({ projects: '*' }));
@@ -322,7 +323,7 @@ export const KeyMoveConfirmation: Story = {
   render: () => {
     const world = makeWorld();
     return (
-      <KeyMoveConfirmDialog
+      <WideningConfirmDialog
         widening={widening}
         change="Move DB_PASSWORD from db/ to app/"
         envName={(id) => envName(world, id)}
@@ -345,7 +346,7 @@ export const KeyMoveConfirmation: Story = {
 // gain, and cannot confirm: there is no confirm action, and the dialog says why.
 export const KeyMoveCountOnly: Story = {
   name: 'Key move, count only',
-  render: () => <KeyMoveConfirmDialog widening={{ count: 3 }} change="Move DB_PASSWORD from db/ to app/" envName={(id) => id} onCancel={fn()} onConfirm={fn()} />,
+  render: () => <WideningConfirmDialog widening={{ count: 3 }} change="Move DB_PASSWORD from db/ to app/" envName={(id) => id} onCancel={fn()} onConfirm={fn()} />,
   play: async ({ canvas }) => {
     const dialogElement = await canvas.findByRole('dialog', { name: 'This move gives people new access' });
     const dialog = within(dialogElement);
@@ -375,5 +376,74 @@ export const Glossary: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Presets' }));
     const admin = canvas.getByText('Admin', { selector: 'dt' });
     await expect(admin.nextElementSibling).not.toHaveTextContent('Reveal');
+  },
+};
+
+// An environment rename that widens rules selecting environments by name
+// (#1447): a machine whose rule picks `staging` gains the renamed dev. The
+// same confirmation as a key move, in the environment's words.
+const onEnvConfirm = fn();
+const envWidening = {
+  count: 2,
+  gainers: [
+    { principal_id: IDS.dana, principal_name: 'Dana Ruiz', capability: 'read' as const, environments: [IDS.payDev] },
+    { principal_id: IDS.ci, principal_name: 'ci-deploy', capability: 'read' as const, environments: [IDS.payDev] },
+  ],
+};
+
+export const EnvironmentRenameConfirmation: Story = {
+  name: 'Environment rename confirmation',
+  render: () => (
+    <WideningConfirmDialog widening={envWidening} change="Rename dev to staging" copy={ENV_WIDENING_COPY} envName={() => 'staging'} onCancel={fn()} onConfirm={onEnvConfirm} />
+  ),
+  play: async ({ canvas }) => {
+    onEnvConfirm.mockClear();
+    const dialog = within(await canvas.findByRole('dialog', { name: 'This gives people and machines new access' }));
+    await expect(dialog.getByText('Gains access: 2 people and machines')).toBeVisible();
+    await expect(dialog.getByText((_, el) => el?.tagName === 'LI' && /^ci-deploy ID ending …\S{6}: See \(staging\)$/.test(el.textContent))).toBeVisible();
+    await userEvent.click(dialog.getByRole('button', { name: 'Continue and give access' }));
+    await expect(onEnvConfirm).toHaveBeenCalledWith([IDS.dana, IDS.ci]);
+  },
+};
+
+// Without manage-members on the project, only the count: no confirm action.
+export const EnvironmentRenameCountOnly: Story = {
+  name: 'Environment rename, count only',
+  render: () => <WideningConfirmDialog widening={{ count: 1 }} change="Create staging" copy={ENV_WIDENING_COPY} envName={(id) => id} onCancel={fn()} onConfirm={fn()} />,
+  play: async ({ canvas }) => {
+    const dialog = within(await canvas.findByRole('dialog', { name: 'This gives people and machines new access' }));
+    await expect(dialog.getByText('Gains access: 1 person or machine')).toBeVisible();
+    await expect(dialog.getByText(/ask one of them to make this change/)).toBeVisible();
+    await expect(dialog.queryByRole('button', { name: 'Continue and give access' })).toBeNull();
+  },
+};
+
+// A rule over all projects selecting environments by name (#1447): except
+// prod, in every project, and a name no environment carries yet.
+export const AllProjectsByName: Story = {
+  name: 'All projects, environments by name',
+  render: () => (
+    <RuleSummary
+      world={makeWorld()}
+      rule={{ ...newRule(IDS.chen), perms: ['read', 'edit'], projects: '*', envs: { mode: 'all', names: ['prod', 'qa'], items: [{ project: IDS.payments, environment: IDS.payProd }, { project: IDS.web, environment: IDS.webProd }] } }}
+    />
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByTitle(/^all except prod.*qa/)).toBeVisible();
+  },
+};
+
+// A rule the upgrade to environment names could not keep exactly is disabled
+// and says why: it reaches nothing until revoked and created again.
+export const DisabledByUpgrade: Story = {
+  name: 'Rule disabled by the upgrade',
+  render: () => (
+    <RuleSummary
+      world={makeWorld()}
+      rule={{ ...newRule(IDS.chen), perms: ['read'], projects: [IDS.payments], envs: { mode: 'only', names: [], items: [] }, fault: 'Disabled by the upgrade to environment names: it names an environment that no longer exists, so its reach cannot be kept exactly. It reaches no environment; revoke it and create it again.' }}
+    />
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('status')).toHaveTextContent(/Disabled by the upgrade to environment names: .*revoke it and create it again\./);
   },
 };

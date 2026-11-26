@@ -12,7 +12,7 @@ import (
 func revealQuestion(key *domain.RuleKey, visible ...string) accessQuestion {
 	q := accessQuestion{
 		chain:      domain.Scope{Org: "org_a", Project: "prj_a", Env: "env_dev"},
-		capability: domain.CapReveal, at: domain.LevelEnv, key: key, visible: map[string]bool{},
+		capability: domain.CapReveal, at: domain.LevelEnv, key: key, visible: map[string]bool{}, envs: &questionEnvs{},
 	}
 	for _, id := range visible {
 		q.visible[id] = true
@@ -61,9 +61,10 @@ func TestRuleResolveExceptedNamesEnvironmentAndKeyExcepts(t *testing.T) {
 	rule := domain.Rule{ID: "rul_both", Principal: "usr_dave", Capability: domain.CapReveal, Org: "org_a",
 		Where: domain.Where{
 			Projects: []domain.ProjectID{"prj_a"},
-			EnvMode:  domain.AxisAll, Envs: map[domain.ProjectID][]domain.EnvID{"prj_a": {"env_dev"}},
+			EnvMode:  domain.AxisAll, EnvNames: []string{"dev"},
 			KeyMode: domain.AxisAll, Keys: map[domain.ProjectID][]domain.RuleKeyItem{"prj_a": {item}},
 		}}
+	rule.Where = rule.Where.BindEnvs([]domain.EnvRef{{Project: "prj_a", ID: "env_dev", Name: "dev"}})
 	if err := rule.Validate(); err != nil {
 		t.Fatalf("fixture rule is invalid: %v", err)
 	}

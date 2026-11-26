@@ -96,7 +96,8 @@ human-auth ADR require.
 - **Environments:** *all, except* named environments (including environments
   created later) or *only* named environments. Names match across the chosen
   projects: "all environments except `prod`" on `payments, web` excludes both
-  `prod` environments.
+  `prod` environments. Rules store the names, so they also match
+  environments created or renamed later (owner decisions, 2026-11-26).
 - **Keys:** *all, except* folders or single keys (including keys added later)
   or *only* folders or single keys.
 
@@ -301,6 +302,113 @@ request merges.
   all current projects and the future-project witness (D7).
 - **Key moves and pruning.** The D9 move-widening census includes all-projects rules. Deleting a
   project, environment or key never revokes an all-projects rule, which names none of them.
+
+## Owner decisions, 2026-11-26
+
+Environment selectors bind by name ([#1447](https://github.com/Hikyo-Org/Hikyo/issues/1447)). These
+apply when the implementing pull request merges.
+
+- **Names are stored and matched.** A rule's environment axis stores names, not environment ids. A
+  name matches in every project the rule covers, including environments created or renamed to it
+  later. Matching happens only in the `authorize()` chokepoint, reading the current environments
+  in the same transaction, with no cache. An API response still lists, under each listed project,
+  the environments the names match at read time.
+- **Option A lifted.** A rule over all projects may carry environment names, *only* or *except*, as
+  any rule may. Single-key items stay refused on such a rule, and machines never hold one. The 500
+  bound counts the rule as a v1 response can list it: projects × (1 + folders + names), names
+  being a revision-22 field with their own bound. A rule over named projects counts
+  projects × (1 + names) + key items, and the upgrade splits any rule it would convert above
+  500, so every listed rule can be saved again.
+- **D7 with names.** Only an organization- or instance-scope grant, or another all-projects rule
+  whose selector holds the names, covers a future project. A manager holding Manage access only
+  through project-bound rules, or holding an all-projects rule over other names, is refused.
+- **Widening renames and creates (2026-11-20 decision).** An environment rename, create or clone,
+  or a definitions apply that renames or creates environments, is refused with a conflict while it
+  gives any principal, person or machine, a permission through a name match. It commits only when
+  `confirm_widening` names exactly those principals and the caller holds legacy `manage-members`
+  on the project. It is audited as `rule.env_widening_confirmed`, with the environment, its old
+  and new names and the confirmed set. Self-configuration provisioning carries no confirmation, so
+  a widening refuses it. A new environment that an *all* or *all, except* rule reaches because it
+  does not name it needs no confirmation, and nor does a change that only narrows.
+- **Machines that gain (#1473, #1480).** Each confirmed machine gainer also passes the machine
+  widening gate: `manage-identities` on the project, disclosure authority, and a live
+  reauthentication window over every environment it newly reaches in plaintext, audited as
+  `identity.grant_widened`. This settles the 2026-11-20 question: the reauthentication conjunct
+  applies to a later rename. **Limitation, disclosed:** a create or clone that makes the *new*
+  environment plaintext-reachable for a machine always fails closed. The window must name the new
+  environment's id, and no session can hold one before the environment exists. The way through is
+  to create the environment under another name and rename it. A gain without plaintext, such as a
+  machine's read without reveal, passes the gate with nothing to reauthenticate. One option for a
+  later decision: exempt a plain create, since an empty environment holds no plaintext. A clone
+  copies values and cannot take that exemption.
+- **Deleting an environment** no longer touches rules: a name stays the rule's. An *only* list
+  whose environment is deleted keeps the name and reaches nothing there, where id binding revoked
+  an emptied list. A recreated environment of that name is a create, confirmed as above.
+  Deleting an environment an *all, except* rule names fails closed: see the owner decision of
+  2026-11-27, which replaces the limitation first disclosed here.
+- **Migration, option (c) (owner, 2026-11-26).** The upgrade (schema 102, both engines) keeps
+  the reach of every rule it converts or splits exactly, and fails closed on the rest, which can
+  remove access:
+  - A rule whose names, in every project it covers, match only its own items is converted in place,
+    with one name per distinct name.
+  - Any other rule is split into one rule per project, as is a consistent rule that would list
+    more than `MaxRuleItems` once its names match in every project. A project where it reached
+    nothing gets no rule. Each split is audited as `rule.split`, with the old rule id and the new rule ids.
+  - A rule that cannot be split deterministically fails closed. It loses its environment items and
+    reaches no environment. It carries a manager-facing `fault` naming the reason, and is audited as
+    `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or
+    the same name twice in a project, and an all-projects rule with environment items. Only a
+    corrupted database holds such a rule.
+
+  The id columns and the id-matching code are removed. A historical recovery below schema 102
+  drops id-bound environment rules rather than read them by name, which fails closed.
+- **API.** Additive under the v1.0.0 freeze, revision 22, with no schema `default:` on a new field:
+  - `names` on the environment axis;
+  - `fault` on a rule;
+  - `confirm_widening` on environment create, rename and clone, with `widening` on their refusal;
+    on environment deletion it is a query parameter (2026-11-27).
+
+  A client before revision 22 still creates by `items`; their names become the rule's. Such a
+  create is refused (`ErrRuleEnvItemsStale`) when the items are not exactly the environments their
+  names match in the rule's projects, and an `all` create or replacement sent without names is
+  refused (`ErrRuleUnmatchedNamesDropped`) while the principal's `all` rules except a name no
+  environment of the project carries, which the old client cannot show.
+
+## Owner decisions, 2026-11-27
+
+Deleting an environment an *all, except* rule names
+([#1447](https://github.com/Hikyo-Org/Hikyo/issues/1447)). This applies when the implementing pull
+request merges. It replaces the limitation the 2026-11-26 decisions disclosed. Deleting an
+environment must fail closed: it must never widen a rule silently.
+
+- **Refuse unless confirmed (option a).** A delete is refused with a conflict while it gives any
+  principal, person or machine, a permission through its rules. Once no environment of the
+  project carries a name the rule excepts, the rule reaches the project-wide atoms. The refusal is
+  the rename's widening refusal, worded for a delete. It names the principals who gain only to a
+  caller holding legacy `manage-members` on the project, and gives anyone else only their count.
+  The delete commits only when `confirm_widening` names exactly those principals and the caller
+  holds `manage-members`. It is audited as `rule.env_widening_confirmed`, with the environment, its
+  name as `from_name` and an empty `to_name`. Each machine gainer also passes the machine widening
+  gate (#1473, #1480). A delete makes no remaining environment newly plaintext-reachable, so the
+  gate asks for no reauthentication, but a machine must still be confirmed. The rule identifiers are not listed: the principals are what the manager
+  confirms, as for a rename. This covers the single delete (`DELETE …/environments/{env}`, with
+  `confirm_widening` as a query parameter), the CLI (`hikyo env delete --confirm-widening`), the
+  web settings page, and a definitions apply that deletes environments (its `confirm_widening`).
+- **Why not disable the rules (option b).** Disabling would remove every permission the rule
+  gives across all its projects in order to stop a gain in one project. It would also discard the
+  intent the rule states. A confirmation keeps both, and it is the mechanism a widening rename
+  already uses, so delete and rename behave the same.
+- **A later environment with the same name.** A confirmed delete changes no rule: the rule keeps
+  the name it excepts. An environment later created, cloned or renamed to that name is excepted
+  again. That change only narrows, so it needs no confirmation. This is the reason to confirm
+  rather than to make the manager remove the exception first: removing it would let the later
+  environment be reached.
+- **Sibling paths.** Only an environment delete removes an `environments` row: the service delete
+  and the definitions apply delete, through the one store query on each engine. Both are covered.
+  A project or organization deletion never cascades. It is refused while the project holds
+  environments, so each environment goes first through a covered delete. A backup restore
+  replaces rules and environments together and changes no binding. A rename was already
+  confirmed.
 
 ## First implementation slice (2026-09-29, historical)
 

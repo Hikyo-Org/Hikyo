@@ -75,6 +75,19 @@ func runRuleResolve(t *testing.T, db *store.DB) {
 		t.Fatalf("carol without a key = %+v, want key-limited", v)
 	}
 
+	// An environment except is by name (#1447): erin's "all, except dev"
+	// excepts env_a1, named in the answer by its id.
+	byName := func(capability domain.Capability) service.RuleSpec {
+		return service.RuleSpec{Target: erin, Capability: capability, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisAll, EnvNames: []string{"dev"}, KeyMode: domain.AxisAll}}
+	}
+	f.create(t, orgAdmin, byName(domain.CapRead))
+	erinReveal := f.create(t, orgAdmin, byName(domain.CapReveal))
+	if v := state(resolve(f.dbKeyID), erin); v.State != authz.AccessExcepted || len(v.Excepts) != 1 || v.Excepts[0].RuleID != erinReveal ||
+		!slices.Equal(v.Excepts[0].Envs, []domain.EnvID{envA1}) {
+		t.Fatalf("erin on dev = %+v, want excepted by name through %s", v, erinReveal)
+	}
+
 	// A machine is answered from its own class-checked rules, exactly as the
 	// chokepoint admits it, not from the human rule read.
 	execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) `+

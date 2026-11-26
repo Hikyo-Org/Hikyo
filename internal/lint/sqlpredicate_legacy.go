@@ -251,7 +251,6 @@ var legacyAnnotationNames = map[string]bool{
 	"ListRemoteSnapshots":                          true,
 	"ListRemotes":                                  true,
 	"ListRemotesForReencrypt":                      true,
-	"ListRuleIDsForEnvironment":                    true,
 	"ListRuleIDsForKey":                            true,
 	"ListRuleIDsForOrg":                            true,
 	"ListRuleIDsForProject":                        true,

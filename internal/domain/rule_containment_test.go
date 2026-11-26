@@ -36,9 +36,18 @@ func TestRuleSelectorContainment(t *testing.T) {
 	t.Run("future environments", func(t *testing.T) {
 		outer := selector(AxisAll)
 		outer.EnvMode = AxisOnly
-		outer.Envs = map[ProjectID][]EnvID{project: {"dev"}}
+		outer.EnvNames = []string{"dev"}
 		if outer.ContainsWhereInProject(selector(AxisAll), project, folders) {
 			t.Fatal("finite environment selection contains all future environments")
+		}
+		// Names compare by name, never by today's environments: "only qa"
+		// before any qa exists is not contained in "only staging" (D7).
+		qa := selector(AxisAll)
+		qa.EnvMode, qa.EnvNames = AxisOnly, []string{"qa"}
+		staging := selector(AxisAll)
+		staging.EnvMode, staging.EnvNames = AxisOnly, []string{"staging"}
+		if staging.ContainsWhereInProject(qa, project, folders) || WhereUnionContainsInProject([]Where{staging}, qa, project, folders) {
+			t.Fatal("only staging contains only qa")
 		}
 	})
 }
@@ -46,8 +55,8 @@ func TestRuleSelectorContainment(t *testing.T) {
 func TestRuleSelectorUnionContainment(t *testing.T) {
 	const project ProjectID = "project"
 	all := Where{Projects: []ProjectID{project}, EnvMode: AxisAll, KeyMode: AxisAll}
-	only := func(env EnvID, folder string) Where {
-		return Where{Projects: []ProjectID{project}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{project: {env}}, KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{project: {{IsFolder: true, Folder: folder}}}}
+	only := func(env string, folder string) Where {
+		return Where{Projects: []ProjectID{project}, EnvMode: AxisOnly, EnvNames: []string{env}, KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{project: {{IsFolder: true, Folder: folder}}}}
 	}
 	t.Run("root exception cannot replace named folder exception", func(t *testing.T) {
 		outer, target := all, all
@@ -67,9 +76,9 @@ func TestRuleSelectorUnionContainment(t *testing.T) {
 	})
 	t.Run("complementary environment exceptions include future environments", func(t *testing.T) {
 		a, b := all, all
-		a.Envs = map[ProjectID][]EnvID{project: {"dev"}}
+		a.EnvNames = []string{"dev"}
 		b.EnvMode = AxisOnly
-		b.Envs = map[ProjectID][]EnvID{project: {"dev"}}
+		b.EnvNames = []string{"dev"}
 		if !WhereUnionContainsInProject([]Where{a, b}, all, project, nil) {
 			t.Fatal("complementary env rules fail to cover universe")
 		}
@@ -85,7 +94,7 @@ func TestRuleSelectorUnionContainment(t *testing.T) {
 	})
 	t.Run("axes must not be independently unioned", func(t *testing.T) {
 		target := only("dev", "db")
-		target.Envs[project] = []EnvID{"dev", "prod"}
+		target.EnvNames = []string{"dev", "prod"}
 		target.Keys[project] = append(target.Keys[project], RuleKeyItem{IsFolder: true, Folder: "payments"})
 		if WhereUnionContainsInProject([]Where{only("dev", "db"), only("prod", "payments")}, target, project, nil) {
 			t.Fatal("diagonal rules incorrectly cover cross product")
@@ -122,11 +131,12 @@ func TestRuleContainmentAgreesWithRuntimeReach(t *testing.T) {
 				continue
 			}
 			for _, envMode := range []AxisMode{AxisAll, AxisOnly} {
-				selectors = append(selectors, Where{Projects: []ProjectID{project}, EnvMode: envMode, Envs: map[ProjectID][]EnvID{project: {"dev"}}, KeyMode: mode, Keys: map[ProjectID][]RuleKeyItem{project: selected}})
+				selectors = append(selectors, Where{Projects: []ProjectID{project}, EnvMode: envMode, EnvNames: []string{"dev"}, KeyMode: mode, Keys: map[ProjectID][]RuleKeyItem{project: selected}})
 			}
 		}
 	}
 	reaches := func(where Where, env EnvID, key RuleKey) bool {
+		where = where.BindEnvs([]EnvRef{{project, "dev", "dev"}, {project, "prod", "prod"}, {project, "future", "future"}})
 		return (Rule{Org: "org", Capability: CapEdit, Where: where}).Reaches(CapEdit, LevelEnv, Scope{Org: "org", Project: project, Env: env}, &key)
 	}
 	for i, outer := range selectors {

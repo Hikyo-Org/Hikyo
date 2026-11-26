@@ -170,12 +170,19 @@ func runAllProjectsRules(t *testing.T, db *store.DB) {
 		}
 	})
 
-	t.Run("environment_items_and_single_keys_are_refused", func(t *testing.T) {
+	t.Run("environment_names_are_held_and_single_keys_are_refused", func(t *testing.T) {
+		// ADR D3 (#1447) lifts restriction A: an all-projects rule names
+		// environments by name, matched in every project.
 		w := allProjectsWhere(domain.AxisAll)
 		w.EnvMode = domain.AxisOnly
-		w.Envs = map[domain.ProjectID][]domain.EnvID{domain.AnyProject: {"env_x"}}
-		if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), read(w)); !errors.Is(err, domain.ErrRuleAllProjectsEnvironments) {
-			t.Fatalf("environment items = %v, want ErrRuleAllProjectsEnvironments", err)
+		w.EnvNames = []string{"prod"}
+		named := read(w)
+		view, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), named)
+		if err != nil {
+			t.Fatalf("environment names on an all-projects rule = %v, want held", err)
+		}
+		if err := f.rules.Revoke(ctx, service.LocalPrincipal(apAdmin), orgAP, view.ID); err != nil {
+			t.Fatal(err)
 		}
 		w = allProjectsWhere(domain.AxisOnly)
 		w.Keys = map[domain.ProjectID][]domain.RuleKeyItem{domain.AnyProject: {{KeyID: "key_x"}}}

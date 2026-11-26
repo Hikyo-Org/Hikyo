@@ -53,15 +53,18 @@ type ProjectService interface {
 type EnvironmentService interface {
 	Parameters(context.Context, service.Actor, domain.Scope) (map[string]string, error)
 	SetParameter(context.Context, service.Actor, domain.Scope, string, string, bool) error
-	Create(ctx context.Context, actor service.Actor, scope domain.Scope, name string, acks []string) (service.Environment, error)
-	// Clone is create-with-clone-at-creation (#50). It is a separate method
-	// because its RESULT is different: a clone reports what it could not take.
-	Clone(ctx context.Context, actor service.Actor, scope domain.Scope, name, sourceEnvID string, acks []string) (service.Environment, service.CloneResult, error)
 	Get(ctx context.Context, actor service.Actor, scope domain.Scope) (service.Environment, error)
 	List(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.Environment, error)
-	Rename(ctx context.Context, actor service.Actor, scope domain.Scope, name string, acks []string) (service.Environment, error)
+	// The Confirming methods carry a request's confirm_widening: the
+	// principals a create or rename gives access through member access rules
+	// selecting environments by name (#1447). CloneConfirming is
+	// create-with-clone-at-creation (#50), separate because a clone reports
+	// what it could not take.
+	CreateConfirming(ctx context.Context, actor service.Actor, scope domain.Scope, name string, acks []string, confirm []domain.PrincipalID) (service.Environment, error)
+	CloneConfirming(ctx context.Context, actor service.Actor, scope domain.Scope, name, sourceEnvID string, acks []string, confirm []domain.PrincipalID) (service.Environment, service.CloneResult, error)
+	RenameConfirming(ctx context.Context, actor service.Actor, scope domain.Scope, name string, acks []string, confirm []domain.PrincipalID) (service.Environment, error)
 	Reorder(ctx context.Context, actor service.Actor, scope domain.Scope, ordered []string) ([]service.Environment, error)
-	Delete(ctx context.Context, actor service.Actor, scope domain.Scope) error
+	DeleteConfirming(ctx context.Context, actor service.Actor, scope domain.Scope, confirm []domain.PrincipalID) error
 }
 
 type FolderService interface {
@@ -262,7 +265,7 @@ func (a *API) ListEnvironments(ctx context.Context, req apigen.ListEnvironmentsR
 }
 
 func (a *API) CreateEnvironment(ctx context.Context, req apigen.CreateEnvironmentRequestObject) (apigen.CreateEnvironmentResponseObject, error) {
-	env, err := a.Environments.Create(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), req.Body.Name, derefAcks(req.Body.Acknowledgements))
+	env, err := a.Environments.CreateConfirming(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), req.Body.Name, derefAcks(req.Body.Acknowledgements), confirmWidening(req.Body.ConfirmWidening))
 	if err != nil {
 		return nil, err
 	}
@@ -287,8 +290,8 @@ func (a *API) GetEnvironment(ctx context.Context, req apigen.GetEnvironmentReque
 }
 
 func (a *API) RenameEnvironment(ctx context.Context, req apigen.RenameEnvironmentRequestObject) (apigen.RenameEnvironmentResponseObject, error) {
-	env, err := a.Environments.Rename(ctx, service.Bearer(bearer(ctx)),
-		envScope(req.Org, req.Project, req.Environment), req.Body.Name, derefAcks(req.Body.Acknowledgements))
+	env, err := a.Environments.RenameConfirming(ctx, service.Bearer(bearer(ctx)),
+		envScope(req.Org, req.Project, req.Environment), req.Body.Name, derefAcks(req.Body.Acknowledgements), confirmWidening(req.Body.ConfirmWidening))
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +299,8 @@ func (a *API) RenameEnvironment(ctx context.Context, req apigen.RenameEnvironmen
 }
 
 func (a *API) DeleteEnvironment(ctx context.Context, req apigen.DeleteEnvironmentRequestObject) (apigen.DeleteEnvironmentResponseObject, error) {
-	err := a.Environments.Delete(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment))
+	err := a.Environments.DeleteConfirming(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment),
+		confirmWidening(req.Params.ConfirmWidening))
 	if err != nil {
 		return nil, err
 	}

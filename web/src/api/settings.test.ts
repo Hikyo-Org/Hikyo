@@ -1,3 +1,4 @@
+import { cloneEnvironmentOp, createEnvironmentOp } from '@hikyo/operations';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
@@ -256,6 +257,14 @@ describe('authoring refusals', () => {
   it('quotes a caller-safe conflict detail and falls back when there is none', () => {
     expect(createProjectRefusalText(new ApiError(409, 'x', 'name taken'))).toBe('name taken');
     expect(createEnvironmentRefusalText(new ApiError(409, 'x'))).toContain('already in use');
+  });
+
+  it('names the rename workaround when a new environment needs reauthentication no ceremony can give (#1447)', () => {
+    const detail = 'reauthenticate over the environments this operation makes reachable, then retry (env_new)';
+    const refusal = (operation: object) => new ApiError(409, 'x', detail, undefined, [], undefined, operation);
+    expect(createEnvironmentRefusalText(refusal(createEnvironmentOp))).toContain('then rename it to this one');
+    expect(cloneEnvironmentRefusalText(refusal(cloneEnvironmentOp))).toContain('then rename it to this one');
+    expect(createEnvironmentRefusalText(new ApiError(409, 'x', 'name taken'))).toBe('name taken');
   });
 
   it('does not claim an unknown failure created anything', () => {

@@ -48,7 +48,7 @@ let listingRefused = false;
 const json = (data: object, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const row = (id: string, capability: z.infer<typeof zRule>['capability']): z.infer<typeof zRule> => ({
   id, principal_id: member, principal_name: 'Dana', capability,
-  where: { projects: [project], environments: { mode: 'all', items: [] }, keys: { mode: 'all', items: [] } },
+  where: { projects: [project], environments: { mode: 'all', names: [], items: [] }, keys: { mode: 'all', items: [] } },
   other_projects: false, created_by: manager, created_at: '2026-10-01T12:00:00Z',
 });
 

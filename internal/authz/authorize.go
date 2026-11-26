@@ -415,6 +415,15 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 		if _, err := a.callerRules(ctx, caller); err != nil {
 			return err
 		}
+		// A rule target binds its environment names against the project's
+		// environments (#1447): the decoy read over an empty scope, which
+		// holds none, so a missing project costs what a refused one does
+		// and runs the same per-project statement.
+		if targetRule != nil {
+			if _, err := a.r.RuleEnvRefs(ctx, "", decoyProject); err != nil {
+				return err
+			}
+		}
 		if key != nil {
 			_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key, caller.Principal)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -430,6 +439,10 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 	}
 	return nil
 }
+
+// decoyProject is a project id no org holds, for decoy reads that must run
+// the per-project statement a resolvable refusal runs.
+const decoyProject = "-"
 
 // personalOwnerFallback names the two operations an owner may perform on
 // their own personal values without the formula: list masked and delete.

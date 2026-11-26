@@ -195,13 +195,37 @@ type (
 
 // RulesForProject is the folder-move widening census: every rule of a human
 // principal naming this project, a superset of what the chokepoint honours
-// (a currently restricted principal is still named).
+// (a currently restricted principal is still named), bound to the project's
+// environments.
 func (a *TxAuthorizer) RulesForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
+	census, err := a.r.RulesForProject(ctx, string(org), string(project))
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.Rule
+	for _, c := range census {
+		if !c.Machine {
+			out = append(out, c.Rule)
+		}
+	}
+	return out, nil
+}
+
+// CensusRule is re-exported for the environment widening census.
+type CensusRule = authn.CensusRule
+
+// RuleCensusForProject is the environment rename and create census (#1447):
+// every rule naming this project, people's and machines', with the same
+// superset gates as RulesForProject. The caller applies the machine class's
+// live rule check to a machine's rules.
+func (a *TxAuthorizer) RuleCensusForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]CensusRule, error) {
 	return a.r.RulesForProject(ctx, string(org), string(project))
 }
 
-func (a *TxAuthorizer) RuleIDsForEnvironment(ctx context.Context, s domain.Scope) ([]string, error) {
-	return a.r.RuleIDsForEnvironment(ctx, string(s.Org), string(s.Project), string(s.Env))
+// RuleEnvRefs reads the environments rule names bind to in one project (or
+// the whole org when project is empty), in the caller's transaction.
+func (a *TxAuthorizer) RuleEnvRefs(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.EnvRef, error) {
+	return a.r.RuleEnvRefs(ctx, string(org), string(project))
 }
 
 func (a *TxAuthorizer) RuleIDsForKey(ctx context.Context, s domain.Scope, keyID string) ([]string, error) {
@@ -230,7 +254,7 @@ func (a *TxAuthorizer) LockOrgProjectsForDelete(ctx context.Context, org domain.
 }
 
 // AllProjectsRulesInOrg lists the org's all-projects rules with their stored
-// item counts; the org's last project cannot be deleted while one exists, and
+// folder and environment-name item counts; the org's last project cannot be deleted while one exists, and
 // no project may be created that lists one past the v1 bounds.
 func (a *TxAuthorizer) AllProjectsRulesInOrg(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error) {
 	return a.r.AllProjectsRulesInOrg(ctx, string(org))

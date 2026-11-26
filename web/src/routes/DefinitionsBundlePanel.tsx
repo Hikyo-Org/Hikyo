@@ -24,7 +24,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import { WideningConfirmDialog, type WideningRefusal } from './accessRules/WideningConfirmDialog.tsx';
 import { DownloadLink } from '../app/DownloadLink.tsx';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
@@ -440,13 +440,13 @@ function WideningConfirm({
   org,
   project,
   ...props
-}: Omit<Parameters<typeof KeyMoveConfirmDialog>[0], 'change' | 'envName'> & {
+}: Omit<Parameters<typeof WideningConfirmDialog>[0], 'change' | 'envName'> & {
   org: string;
   project: string;
 }) {
   const environments = useEnvironments(org, project);
   return (
-    <KeyMoveConfirmDialog
+    <WideningConfirmDialog
       {...props}
       change="Apply this definitions plan"
       envName={(id) => environments.data?.items.find((environment) => environment.id === id)?.name ?? id}

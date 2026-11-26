@@ -9,7 +9,7 @@ import { ApiError } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { DefinitionsBundlePanel, LastApplyProvenance, monoCommands } from './DefinitionsBundlePanel.tsx';
-import type { WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import type { WideningRefusal } from './accessRules/WideningConfirmDialog.tsx';
 
 const mocks = vi.hoisted(() => ({ apply: vi.fn() }));
 

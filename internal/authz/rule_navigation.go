@@ -32,8 +32,12 @@ func ruleNavigationReach(op Operation, chain domain.Scope, rules []domain.Rule, 
 		}
 		where := domain.Where{Projects: []domain.ProjectID{grant.Scope.Project}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}
 		if grant.Scope.Env != "" {
+			// Bound directly over the grant's environment; the id stands in
+			// for its name, which nothing here compares.
 			where.EnvMode = domain.AxisOnly
+			where.EnvNames = []string{string(grant.Scope.Env)}
 			where.Envs = map[domain.ProjectID][]domain.EnvID{grant.Scope.Project: {grant.Scope.Env}}
+			where = where.BoundEnvs()
 		}
 		rules = append(rules, domain.Rule{Org: chain.Org, Capability: domain.CapRead, Where: where})
 	}
@@ -49,6 +53,11 @@ func ruleNavigationReach(op Operation, chain domain.Scope, rules []domain.Rule, 
 		// environments in only some of them. Project metadata follows actual
 		// environment reach, rather than the unfiltered project axis.
 		if rule.Where.EnvMode == domain.AxisOnly {
+			// An all-projects rule's names match environments in only some
+			// projects (#1447): it reaches exactly the projects holding one.
+			if rule.Where.AllProjects {
+				rule.Where.AllProjects, rule.Where.Projects = false, slices.Sorted(maps.Keys(rule.Where.Envs))
+			}
 			rule.Where.Projects = slices.DeleteFunc(slices.Clone(rule.Where.Projects), func(project domain.ProjectID) bool {
 				return len(rule.Where.Envs[project]) == 0
 			})
@@ -65,8 +74,8 @@ func ruleNavigationReach(op Operation, chain domain.Scope, rules []domain.Rule, 
 				}
 			}
 		}
-		// An all-projects rule names every project of its org, including one
-		// created after the rule (#1446); its environment axis is always all.
+		// An all-projects rule reaching every environment names every project
+		// of its org, including one created after the rule (#1446).
 		if !rule.Where.AllProjects && len(rule.Where.Projects) == 0 || chain.Project != "" && !rule.Where.Names(chain.Project) {
 			continue
 		}

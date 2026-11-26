@@ -1,5 +1,5 @@
 import { useIsMutating } from '@tanstack/react-query';
-import { useContext, useId, useState } from 'react';
+import { useContext, useId, useState, type Dispatch, type SetStateAction } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import {
@@ -40,12 +40,20 @@ import {
   type RetentionPolicy,
   type SettingsOperation,
 } from '../api/settings.ts';
+import { ApiError } from '../api/client.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
+import {
+  ENV_DELETE_WIDENING_COPY,
+  ENV_WIDENING_COPY,
+  WideningConfirmDialog,
+  type WideningCopy,
+  type WideningRefusal,
+} from './accessRules/WideningConfirmDialog.tsx';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ProjectDeveloperCredentials } from './ProjectDeveloperCredentials.tsx';
 import { ProjectCapacityPolicy } from './ProjectCapacityPolicy.tsx';
@@ -188,6 +196,7 @@ export function ProjectSettings() {
                 </ul>
               ) : null}
               <NewEnvironment
+                key={`${org}/${project}`}
                 org={org}
                 project={project}
                 disabled={current === undefined}
@@ -528,6 +537,72 @@ function DefinitionsPolicy({
  * so it lands beside the input that produced it; success is reported through
  * the page feedback the query invalidation then fills with the new row.
  */
+/**
+ * An environment create, rename, clone or delete refused because access rules select
+ * environments by name (#1447): people or machines would gain access. Its
+ * confirmation resends the same change naming exactly them.
+ */
+type EnvWidening = {
+  readonly refusal: WideningRefusal;
+  readonly change: string;
+  readonly failure: string | null;
+  readonly confirm: (principals: readonly string[]) => void;
+  readonly copy: WideningCopy;
+};
+
+
+/** The widening refusal an environment lifecycle error carries, if any. */
+const wideningOf = (error: unknown) =>
+  error instanceof ApiError && error.status === 409 ? error.widening : undefined;
+
+/**
+ * A widening refusal opens the confirmation; a refusal of the confirmed
+ * resend shows in it. Returns whether the error was handled.
+ */
+function routeWidening(
+  setWidening: Dispatch<SetStateAction<EnvWidening | null>>,
+  error: unknown,
+  change: string,
+  confirmed: boolean,
+  confirm: EnvWidening['confirm'],
+  text: string,
+  copy: WideningCopy = ENV_WIDENING_COPY,
+): boolean {
+  const refusal = wideningOf(error);
+  if (refusal !== undefined) {
+    setWidening({ refusal, change, failure: null, confirm, copy });
+    return true;
+  }
+  if (!confirmed) return false;
+  setWidening((current) => (current === null ? null : { ...current, failure: text }));
+  return true;
+}
+
+function EnvWideningDialog({
+  widening,
+  busy,
+  envName,
+  onCancel,
+}: {
+  widening: EnvWidening;
+  busy: boolean;
+  envName: (id: string) => string;
+  onCancel: () => void;
+}) {
+  return (
+    <WideningConfirmDialog
+      widening={widening.refusal}
+      change={widening.change}
+      copy={widening.copy}
+      envName={envName}
+      busy={busy}
+      failure={widening.failure}
+      onCancel={onCancel}
+      onConfirm={widening.confirm}
+    />
+  );
+}
+
 function NewEnvironment({
   org,
   project,
@@ -548,19 +623,24 @@ function NewEnvironment({
   const nameId = useId();
   const [name, setName] = useState('');
   const [failure, setFailure] = useState<string | null>(null);
+  const [widening, setWidening] = useState<EnvWidening | null>(null);
   const trimmed = name.trim();
 
-  const submit = () => {
+  const submit = (confirmWidening: readonly string[] = []) => {
     if (trimmed === '') return;
     setFailure(null);
     create.mutate(
-      { name: trimmed },
+      { name: trimmed, confirmWidening },
       {
         onSuccess: (result) => {
+          setWidening(null);
           setName('');
           onDone(`Environment ${result.name} created.`);
         },
-        onError: (error) => setFailure(createEnvironmentRefusalText(error)),
+        onError: (error) => {
+          const text = createEnvironmentRefusalText(error);
+          if (!routeWidening(setWidening, error, `Create ${trimmed}`, confirmWidening.length > 0, submit, text)) setFailure(text);
+        },
       },
     );
   };
@@ -602,6 +682,10 @@ function NewEnvironment({
         </Button>
       </form>
       {failure === null ? null : <Alert>{failure}</Alert>}
+      {widening === null ? null : (
+        // The refusal names the environment the rolled-back create would have had.
+        <EnvWideningDialog widening={widening} busy={create.isPending} envName={() => trimmed} onCancel={() => setWidening(null)} />
+      )}
     </>
   );
 }
@@ -652,6 +736,69 @@ export function EnvironmentLifecycleActions({
   const [renameName, setRenameName] = useState('');
   const [cloneName, setCloneName] = useState('');
   const [failure, setFailure] = useState<LifecycleFailure | null>(null);
+  const [widening, setWidening] = useState<EnvWidening | null>(null);
+
+  const sendRename = (name: string, confirmWidening: readonly string[] = []) => {
+    setFailure(null);
+    rename.mutate(
+      { environment: environment.id, name, confirmWidening },
+      {
+        onSuccess: (renamed) => {
+          setWidening(null);
+          setRenameName('');
+          onDone(`Environment ${environment.name} renamed to ${renamed.name}.`);
+        },
+        onError: (error) => {
+          const text = renameEnvironmentRefusalText(error);
+          if (!routeWidening(setWidening, error, `Rename ${environment.name} to ${name}`, confirmWidening.length > 0, (principals) => sendRename(name, principals), text)) {
+            setFailure({ scope: 'rename', text });
+          }
+        },
+      },
+    );
+  };
+
+  // Deleting the environment an `all` rule excepts widens that rule (#1447):
+  // the refusal routes through the same confirmation as a rename.
+  const sendDelete = (confirmWidening: readonly string[] = []) => {
+    setFailure(null);
+    remove.mutate(
+      { environment: environment.id, confirmWidening },
+      {
+        onSuccess: () => setWidening(null),
+        onError: (error) => {
+          const text = deleteEnvironmentRefusalText(error);
+          if (!routeWidening(setWidening, error, `Delete ${environment.name}`, confirmWidening.length > 0, (principals) => sendDelete(principals), text, ENV_DELETE_WIDENING_COPY)) {
+            setFailure({ scope: 'delete', text });
+          }
+        },
+      },
+    );
+  };
+
+  const sendClone = (name: string, confirmWidening: readonly string[] = []) => {
+    setFailure(null);
+    clone.mutate(
+      { sourceEnvironment: environment.id, name, confirmWidening },
+      {
+        onSuccess: (result) => {
+          setWidening(null);
+          setCloneName('');
+          const copied = result.copied.length;
+          const omitted = result.uncopied_secrets.length;
+          onDone(
+            `Environment ${environment.name} cloned to ${result.environment.name}. Copied ${copied} ${copied === 1 ? 'value' : 'values'}; ${omitted} ${omitted === 1 ? 'secret' : 'secrets'} could not be copied.`,
+          );
+        },
+        onError: (error) => {
+          const text = cloneEnvironmentRefusalText(error);
+          if (!routeWidening(setWidening, error, `Clone ${environment.name} into ${name}`, confirmWidening.length > 0, (principals) => sendClone(name, principals), text)) {
+            setFailure({ scope: 'clone', text });
+          }
+        },
+      },
+    );
+  };
 
   const index = environments.findIndex((candidate) => candidate.id === environment.id);
   if (index === -1) {
@@ -697,18 +844,7 @@ export function EnvironmentLifecycleActions({
           event.preventDefault();
           const name = renameName.trim();
           if (name === '' || name === environment.name) return;
-          setFailure(null);
-          rename.mutate(
-            { environment: environment.id, name },
-            {
-              onSuccess: (renamed) => {
-                setRenameName('');
-                onDone(`Environment ${environment.name} renamed to ${renamed.name}.`);
-              },
-              onError: (error) =>
-                setFailure({ scope: 'rename', text: renameEnvironmentRefusalText(error) }),
-            },
-          );
+          sendRename(name);
         }}
       >
         <div className="settings-row__copy">
@@ -770,22 +906,7 @@ export function EnvironmentLifecycleActions({
           event.preventDefault();
           const name = cloneName.trim();
           if (name === '') return;
-          setFailure(null);
-          clone.mutate(
-            { sourceEnvironment: environment.id, name },
-            {
-              onSuccess: (result) => {
-                setCloneName('');
-                const copied = result.copied.length;
-                const omitted = result.uncopied_secrets.length;
-                onDone(
-                  `Environment ${environment.name} cloned to ${result.environment.name}. Copied ${copied} ${copied === 1 ? 'value' : 'values'}; ${omitted} ${omitted === 1 ? 'secret' : 'secrets'} could not be copied.`,
-                );
-              },
-              onError: (error) =>
-                setFailure({ scope: 'clone', text: cloneEnvironmentRefusalText(error) }),
-            },
-          );
+          sendClone(name);
         }}
       >
         <div className="settings-row__copy">
@@ -824,18 +945,20 @@ export function EnvironmentLifecycleActions({
             pins, and snapshots. Type its name exactly to continue.
           </>
         }
-        onConfirm={() => {
-          setFailure(null);
-          remove.mutate(
-            { environment: environment.id },
-            {
-              onError: (error) =>
-                setFailure({ scope: 'delete', text: deleteEnvironmentRefusalText(error) }),
-            },
-          );
-        }}
+        onConfirm={() => sendDelete()}
       />
       {failure?.scope === 'delete' ? <Alert>{failure.text}</Alert> : null}
+      {widening === null ? null : (
+        <EnvWideningDialog
+          widening={widening}
+          busy={busy}
+          // A gain over the environment being renamed reads by its new name; a clone's, by the one it would have had.
+          envName={(id) =>
+            id === environment.id ? renameName.trim() : (environments.find((e) => e.id === id)?.name ?? cloneName.trim())
+          }
+          onCancel={() => setWidening(null)}
+        />
+      )}
     </details>
   );
 }

@@ -12,6 +12,10 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}']['delete']['parameters'][0]
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access']['get']['parameters'][1]
     update:
       x-omitempty: false
@@ -368,7 +372,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['RenameRequest']['properties']['acknowledgements']
+  - target: $['components']['schemas']['RenameRequest']['properties']['acknowledgements','confirm_widening']
     update:
       x-omitempty: false
       x-omitzero: true
@@ -380,11 +384,11 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['CreateEnvironmentRequest']['properties']['acknowledgements']
+  - target: $['components']['schemas']['CreateEnvironmentRequest']['properties']['acknowledgements','confirm_widening']
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['CloneEnvironmentRequest']['properties']['acknowledgements']
+  - target: $['components']['schemas']['CloneEnvironmentRequest']['properties']['acknowledgements','confirm_widening']
     update:
       x-omitempty: false
       x-omitzero: true
@@ -668,6 +672,10 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['components']['schemas']['RuleEnvironmentAxis']['properties']['names']
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['components']['schemas']['RuleKeyItem']['properties']['folder','key']
     update:
       x-omitempty: false
@@ -680,7 +688,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['Rule']['properties']['principal_name']
+  - target: $['components']['schemas']['Rule']['properties']['principal_name','fault']
     update:
       x-omitempty: false
       x-omitzero: true

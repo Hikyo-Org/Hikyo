@@ -39,8 +39,10 @@ func TestRuleManagementRefusalQueryWork(t *testing.T) {
 				_, err := authz.NewTxAuthorizer(resolver, token).AuthorizeRule(t.Context(), authz.Identity{Principal: bob}, op, scope, rule)
 				token.Invalidate()
 				rollback()
-				if !errors.Is(err, domain.ErrNotFound) || count != 3 {
-					t.Fatalf("%s scope %+v: count=%d err=%v; want chain+grants+rules and uniformnotfound", op, scope, count, err)
+				// Rules bind their environment names in the same
+				// transaction (#1447): one more read.
+				if !errors.Is(err, domain.ErrNotFound) || count != 4 {
+					t.Fatalf("%s scope %+v: count=%d err=%v; want chain+grants+rules+environment names and uniform not found", op, scope, count, err)
 				}
 			}
 		}
@@ -85,8 +87,58 @@ func TestRulesManageableSharesCallerAndKeyMetadata(t *testing.T) {
 				t.Fatalf("target %d held=%v", i, want)
 			}
 		}
-		if count != 4 {
-			t.Fatalf("%d queries for 101 rows, want grants+rules+2 unique key metadata lookups", count)
+		// Environment names (#1447) add one read binding the caller's rules
+		// and one shared by every target, not one per row.
+		if count != 6 {
+			t.Fatalf("%d queries for 101 rows, want grants+rules+rule environment names+target environment names+2 unique key metadata lookups", count)
+		}
+	})
+}
+
+// A caller refused rule management learns nothing from the environment ids it
+// sends (#1447): an id no environment has is refused exactly as one that
+// exists, and only a proved caller hears that it names nothing.
+func TestRuleCreateRefusalDoesNotProbeEnvironmentIDs(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		spec := func(env domain.EnvID) service.RuleSpec {
+			return service.RuleSpec{Target: frank, Capability: domain.CapRead, Org: orgA, Where: domain.Where{
+				Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly,
+				Envs: map[domain.ProjectID][]domain.EnvID{prjA1: {env}}, KeyMode: domain.AxisAll}}
+		}
+		for _, env := range []domain.EnvID{envA1, "env_no_such"} {
+			if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(bob), spec(env)); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("refused caller sending %s: %v, want the uniform not found", env, err)
+			}
+		}
+		if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), spec("env_no_such")); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("proved caller sending an unknown environment id: %v, want invalid", err)
+		}
+		// A manager narrowed to dev answers an unknown id as it answers prod,
+		// which it does not manage: neither says whether the id exists.
+		dev := whereIn(domain.AxisOnly, map[domain.ProjectID][]domain.EnvID{prjA1: {envA1}}, domain.AxisAll)
+		dev.EnvNames = []string{"dev"}
+		for _, c := range []domain.Capability{domain.CapManageMembers, domain.CapRead} {
+			f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: c, Org: orgA, Where: dev})
+		}
+		narrowed := func(envs ...domain.EnvID) error {
+			s := spec(envs[0])
+			s.Where.Envs[prjA1] = envs
+			s.Target = gina
+			_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), s)
+			return err
+		}
+		if err := narrowed(envA1); err != nil {
+			t.Fatalf("narrowed manager delegating dev: %v", err)
+		}
+		// Alone or beside dev, which it does manage.
+		for _, env := range []domain.EnvID{envProd, "env_no_such", envB1} {
+			if err := narrowed(env); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("narrowed manager sending %s: %v, want the uniform not found", env, err)
+			}
+			if err := narrowed(envA1, env); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("narrowed manager sending dev and %s: %v, want the uniform not found", env, err)
+			}
 		}
 	})
 }

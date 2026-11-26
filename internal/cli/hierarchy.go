@@ -193,11 +193,16 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 	}
 
 	var format, name, cloneFrom, acknowledge string
+	var confirmWidening stringList
 	st, flags, err := parseCommon("env "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "rename" {
 			fs.StringVar(&name, "name", "", "environment name")
 			ackFlag(fs, &acknowledge)
+		}
+		if sub == "create" || sub == "rename" || sub == "delete" {
+			fs.Var(&confirmWidening, "confirm-widening",
+				"repeatable: a principal id the change gives access through their access rules; name exactly the refusal's set")
 		}
 		if sub == "create" {
 			fs.StringVar(&cloneFrom, "clone-from", "",
@@ -238,7 +243,7 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 	case sub == "rename" && name == "":
 		return failf(ExitUsage, "usage: hikyo env rename <env> --name <new-name>")
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
@@ -277,7 +282,7 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 		if cloneFrom != "" {
 			var cloned apigen.ClonedEnvironment
 			if err := client.Do(ctx, http.MethodPost, base+"/clone",
-				apigen.CloneEnvironmentRequest{Name: name, SourceEnvironmentId: cloneFrom, Acknowledgements: acksPtr(acknowledge)}, &cloned); err != nil {
+				apigen.CloneEnvironmentRequest{Name: name, SourceEnvironmentId: cloneFrom, Acknowledgements: acksPtr(acknowledge), ConfirmWidening: confirmPtr(confirmWidening)}, &cloned); err != nil {
 				return err
 			}
 			if len(cloned.UncopiedSecrets) > 0 {
@@ -289,7 +294,7 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 			})
 		}
 		var env apigen.Environment
-		if err := client.Do(ctx, http.MethodPost, base, apigen.CreateEnvironmentRequest{Name: name, Acknowledgements: acksPtr(acknowledge)}, &env); err != nil {
+		if err := client.Do(ctx, http.MethodPost, base, apigen.CreateEnvironmentRequest{Name: name, Acknowledgements: acksPtr(acknowledge), ConfirmWidening: confirmPtr(confirmWidening)}, &env); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, Table{Columns: envColumns, Rows: [][]string{envRow(env)}, JSON: env})
@@ -299,9 +304,16 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		// A rename that gives a machine's rule the environment needs a live
+		// reauthentication window over it; the ceremony opens one and retries.
+		// A create or clone has no environment to reauthenticate over yet, so
+		// the server refuses that widening outright.
 		var env apigen.Environment
-		if err := client.Do(ctx, http.MethodPatch, base+"/"+url.PathEscape(id),
-			apigen.RenameRequest{Name: name, Acknowledgements: acksPtr(acknowledge)}, &env); err != nil {
+		attempt := func() error {
+			return client.Do(ctx, http.MethodPatch, base+"/"+url.PathEscape(id),
+				apigen.RenameRequest{Name: name, Acknowledgements: acksPtr(acknowledge), ConfirmWidening: confirmPtr(confirmWidening)}, &env)
+		}
+		if err := withWideningCeremony(ctx, client, st, ios, artifact, project, disclosure{authorized: true}, attempt); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, Table{Columns: envColumns, Rows: [][]string{envRow(env)}, JSON: env})
@@ -325,7 +337,14 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 		}
 		// Read the name before the delete: afterwards there is nothing to ask.
 		label := environmentLabeler(ctx, client, project, f)(id)
-		if err := client.Do(ctx, http.MethodDelete, base+"/"+url.PathEscape(id), nil, nil); err != nil {
+		target := base + "/" + url.PathEscape(id)
+		if len(confirmWidening) > 0 {
+			target += "?" + url.Values{"confirm_widening": {strings.Join(confirmWidening, ",")}}.Encode()
+		}
+		// Deleting the environment an `all` rule excepts widens it and needs
+		// --confirm-widening; the ceremony runs only if the server asks.
+		attempt := func() error { return client.Do(ctx, http.MethodDelete, target, nil, nil) }
+		if err := withWideningCeremony(ctx, client, st, ios, artifact, project, disclosure{authorized: true}, attempt); err != nil {
 			return err
 		}
 		fmt.Fprintf(ios.Stderr, "deleted environment %s\n", label)
@@ -505,4 +524,14 @@ func environmentTable(list apigen.EnvironmentList) Table {
 		rows = append(rows, envRow(e))
 	}
 	return Table{Columns: envColumns, Rows: rows, JSON: list}
+}
+
+// confirmPtr is a request's confirm_widening, omitted when empty so an older
+// server never sees the field.
+func confirmPtr(principals stringList) *apigen.ConfirmWidening {
+	if len(principals) == 0 {
+		return nil
+	}
+	confirm := apigen.ConfirmWidening(principals)
+	return &confirm
 }

@@ -196,7 +196,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		ID: "adapter-worker-" + uuid.Must(uuid.NewV7()).String(), Poll: time.Second, Log: log,
 	}
 	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleFactory}
-	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset, MaxKeysPerProject: cfg.MaxKeysPerProject, DefaultKeysPerProject: cfg.DefaultKeysPerProject}
+	definitionsService := &service.Definitions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget, Scan: ruleset, MaxKeysPerProject: cfg.MaxKeysPerProject, DefaultKeysPerProject: cfg.DefaultKeysPerProject}
 	dynamicRuntime := store.NewDynamicRuntime(db)
 	dynamicService := &service.Dynamic{
 		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,

@@ -1,9 +1,10 @@
 import { Fragment, type ReactNode } from 'react';
 
+import { Alert } from '../../ui/Alert.tsx';
 import { Badge } from '../../ui/Badge.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { dotted } from '../dotted.tsx';
-import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
+import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, unmatchedEnvNames, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
 
 /** The icon on each Values permission's tag. */
 const VALUE_ICON: Partial<Record<PermId, GlyphName>> = { read: 'reveal', edit: 'edit', publish: 'arrow-up', pin: 'pin' };
@@ -121,50 +122,59 @@ function WherePart({ label, title, children }: { label: string; title: string; c
 export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   const { envs, keys } = rule;
   const projects = rule.projects === '*' ? 'all' : rule.projects.map((p) => projectName(world, p)).join(', ');
-  const envList = envLabels(world, rule, envs.items);
+  // A name no environment carries yet still selects (D3, #1447): list it too.
+  const envList = [...envLabels(world, rule, envs.items), ...unmatchedEnvNames(world, rule).map((name) => ({ label: name, flag: false }))];
   const keyList = keyLabels(world, rule, keys.items);
   const envText = labelsText(envList, 'protected');
   const keyText = labelsText(keyList, 'secret');
   return (
-    <p className="access-where">
-      <WherePart label="Projects" title={projects}>{projects}</WherePart>
-      <WherePart
-        label="Environments"
-        title={envs.mode === 'all' ? (envList.length > 0 ? `all except ${envText}` : 'all') : envText}
-      >
-        {envs.mode === 'all' ? (
-          <>
-            all{envList.length > 0 ? ' ' : null}
-            {envList.length > 0 ? (
-              <Except>
-                <LabelList labels={envList} word="protected" />
-              </Except>
-            ) : null}
-          </>
-        ) : (
-          <LabelList labels={envList} word="protected" />
-        )}
-      </WherePart>
-      <WherePart
-        label="Keys"
-        title={keys.mode === 'all' ? (keyList.length > 0 ? `all except ${keyText}` : 'all') : `only ${keyText}`}
-      >
-        {keys.mode === 'all' ? (
-          <>
-            all{keyList.length > 0 ? ' ' : null}
-            {keyList.length > 0 ? (
-              <Except>
-                <LabelList labels={keyList} word="secret" />
-              </Except>
-            ) : null}
-          </>
-        ) : (
-          <>
-            only <LabelList labels={keyList} word="secret" />
-          </>
-        )}
-      </WherePart>
-    </p>
+    <>
+      {rule.fault === undefined ? null : (
+        // A standing fact, not an interruption: the server's reason already says what to do.
+        <Alert tone="warn">
+          <bdi>{rule.fault}</bdi>
+        </Alert>
+      )}
+      <p className="access-where">
+        <WherePart label="Projects" title={projects}>{projects}</WherePart>
+        <WherePart
+          label="Environments"
+          title={envs.mode === 'all' ? (envList.length > 0 ? `all except ${envText}` : 'all') : envText}
+        >
+          {envs.mode === 'all' ? (
+            <>
+              all{envList.length > 0 ? ' ' : null}
+              {envList.length > 0 ? (
+                <Except>
+                  <LabelList labels={envList} word="protected" />
+                </Except>
+              ) : null}
+            </>
+          ) : (
+            <LabelList labels={envList} word="protected" />
+          )}
+        </WherePart>
+        <WherePart
+          label="Keys"
+          title={keys.mode === 'all' ? (keyList.length > 0 ? `all except ${keyText}` : 'all') : `only ${keyText}`}
+        >
+          {keys.mode === 'all' ? (
+            <>
+              all{keyList.length > 0 ? ' ' : null}
+              {keyList.length > 0 ? (
+                <Except>
+                  <LabelList labels={keyList} word="secret" />
+                </Except>
+              ) : null}
+            </>
+          ) : (
+            <>
+              only <LabelList labels={keyList} word="secret" />
+            </>
+          )}
+        </WherePart>
+      </p>
+    </>
   );
 }
 

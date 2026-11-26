@@ -5,7 +5,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
-import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import { WideningConfirmDialog, type WideningRefusal } from './accessRules/WideningConfirmDialog.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
 
 type Row = FolderProposal & {
@@ -178,7 +178,7 @@ export function FolderCleanupDialog({
       )}
 
       {reviewing === null || reviewed === undefined || reviewed.widening === null ? null : (
-        <KeyMoveConfirmDialog
+        <WideningConfirmDialog
           widening={reviewed.widening}
           change={<>Move {reviewed.name} from (no folder) to <bdi>{reviewed.folder.trim()}/</bdi></>}
           envName={envName}

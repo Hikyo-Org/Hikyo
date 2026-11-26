@@ -49,7 +49,7 @@ beforeEach(() => {
       if (ruleListingRefused) return json({ error: 'not_found' }, 404);
       return json({ items: [{
         id: ruleID, principal_id: member, principal_name: 'Dana', capability: 'edit',
-        where: { projects: [project], environments: mocks.metadataRefused ? { mode: 'only', items: [{ project, environment }] } : { mode: 'all', items: [] }, keys: { mode: 'only', items: mocks.metadataRefused ? [{ project, key: keyID }] : [{ project, folder: 'db' }] } },
+        where: { projects: [project], environments: mocks.metadataRefused ? { mode: 'only', names: ['dev'], items: [{ project, environment }] } : { mode: 'all', items: [] }, keys: { mode: 'only', items: mocks.metadataRefused ? [{ project, key: keyID }] : [{ project, folder: 'db' }] } },
         other_projects: false, created_by: manager, created_at: '2026-10-01T12:00:00Z',
       }], count: 1 });
     }
@@ -142,7 +142,7 @@ it('edits a disclosed rule using stable selector IDs when See and directory meta
     await settleTask();
     expect(savedReplacement).toEqual({ principal: member, revoke: [], create: [{
       principal: member, capability: 'publish', where: {
-        projects: [project], environments: { mode: 'only', items: [{ project, environment }] },
+        projects: [project], environments: { mode: 'only', names: ['dev'], items: [] },
         keys: { mode: 'only', items: [{ project, key: keyID }] },
       },
     }] });

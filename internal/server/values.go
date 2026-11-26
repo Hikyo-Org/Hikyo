@@ -284,8 +284,8 @@ func wireDiff(left, right string, rows []service.DiffRow) apigen.ValueDiff {
 }
 
 func (a *API) CloneEnvironment(ctx context.Context, req apigen.CloneEnvironmentRequestObject) (apigen.CloneEnvironmentResponseObject, error) {
-	env, result, err := a.Environments.Clone(ctx, service.Bearer(bearer(ctx)),
-		projectScope(req.Org, req.Project), req.Body.Name, req.Body.SourceEnvironmentId, derefAcks(req.Body.Acknowledgements))
+	env, result, err := a.Environments.CloneConfirming(ctx, service.Bearer(bearer(ctx)),
+		projectScope(req.Org, req.Project), req.Body.Name, req.Body.SourceEnvironmentId, derefAcks(req.Body.Acknowledgements), confirmWidening(req.Body.ConfirmWidening))
 	if err != nil {
 		return nil, err
 	}

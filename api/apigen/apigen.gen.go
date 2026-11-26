@@ -5602,9 +5602,10 @@ type ApplyDefinitionsPlanRequest struct {
 	AllowDelete      bool              `json:"allow_delete"`
 	Commit           *string           `json:"commit,omitzero"`
 
-	// ConfirmWidening The principal ids a key folder move gives access through their member
-	// access rules, confirming it (member-access-rules ADR D9). It must name
-	// exactly the people the refusal's `widening` names.
+	// ConfirmWidening The principal ids a key folder move, or an environment rename,
+	// creation or deletion, gives access through their member access rules, confirming
+	// it (member-access-rules ADR D9). It must name exactly the principals
+	// the refusal's `widening` names.
 	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
 	Digest          *string          `json:"digest,omitzero"`
 	Ref             *string          `json:"ref,omitzero"`
@@ -6461,6 +6462,11 @@ type CloneEnvironmentRequest struct {
 	// surplus token is rejected by name. There is no blanket ignore-all input.
 	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
+	// ConfirmWidening Confirms the principals the new environment gives access through
+	// member access rules whose `only` list names its name (revision
+	// 22). Omitted, no widening is confirmed.
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
+
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
 	// reference. The 128-byte bound is the one the organisation contract has
@@ -6509,9 +6515,10 @@ type ConfigureTransitKeyRequest struct {
 	RotationPeriodSeconds *int64           `json:"rotation_period_seconds,omitzero"`
 }
 
-// ConfirmWidening The principal ids a key folder move gives access through their member
-// access rules, confirming it (member-access-rules ADR D9). It must name
-// exactly the people the refusal's `widening` names.
+// ConfirmWidening The principal ids a key folder move, or an environment rename,
+// creation or deletion, gives access through their member access rules, confirming
+// it (member-access-rules ADR D9). It must name exactly the principals
+// the refusal's `widening` names.
 type ConfirmWidening = []ID
 
 // CopyValuesRequest defines model for CopyValuesRequest.
@@ -6634,6 +6641,11 @@ type CreateEnvironmentRequest struct {
 	// re-scanned against the current content; a stale, version-skewed, or
 	// surplus token is rejected by name. There is no blanket ignore-all input.
 	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
+
+	// ConfirmWidening Confirms the principals the new environment gives access through
+	// member access rules whose `only` list names its name (revision
+	// 22). Omitted, no widening is confirmed.
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
 
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
@@ -6885,19 +6897,25 @@ type CreateRuleRequest struct {
 	// one of `projects`. A rule names at most 500 projects, environments and
 	// keys together.
 	//
+	// Environments are selected by name (revision 22): see
+	// `RuleEnvironmentAxis`.
+	//
 	// With `project_mode` `all` the rule reaches every project of the
 	// organisation, including projects created later. A response lists the
 	// organisation's current projects (a project listing: only that
 	// project), with the rule's folder items repeated under each, so
 	// `projects` is never empty; an organisation listing's or a create's
 	// `where` is a valid create request. A create lists exactly the organisation's current
-	// projects (otherwise 409), keeps the environment axis `all` without
-	// items, and repeats the same folder items, never single keys, under
-	// every project.
+	// projects (otherwise 409), and repeats the same folder items, never
+	// single keys, under every project. Its environment axis selects by
+	// name like any rule's.
 	//
-	// The 500 bound counts the rule as it is listed: every current project
-	// plus its folder items repeated under each. A create that would list
-	// more is refused with 409 `limit_exceeded`. A project creation that
+	// The 500 bound counts the rule as it can be listed: its projects (for
+	// `project_mode` `all`, every current project), its environment
+	// `names`, one environment item per name under each project, and its
+	// key items (for `project_mode` `all`, its folder items repeated under
+	// each project). A create that would list more is refused with 409
+	// `limit_exceeded`. A project creation that
 	// would list an existing rule over all projects past it is refused with
 	// 409 `conflict`, whose detail names the blocking rules to a member
 	// manager. A listing is never truncated.
@@ -7961,8 +7979,9 @@ type Error struct {
 
 		// Detail Present on `bad_request` and `unprocessable`, where it names
 		// the offending request member, and on a `conflict` whose refusal
-		// names the caller's own state or, for a key folder move that
-		// widens access, what `widening` carries. On
+		// names the caller's own state or, for a key folder move or an
+		// environment rename or creation that widens access, what
+		// `widening` carries. On
 		// `cli_login_factor_required`, it carries sign-in guidance.
 		// `null` and absent are
 		// equivalent; every other error code omits the member entirely.
@@ -7980,9 +7999,10 @@ type Error struct {
 		// refusals of the same class are byte-identical.
 		Message string `json:"message"`
 
-		// Widening A key folder move that gives people access through their member access
-		// rules (member-access-rules ADR D9). `count` is always present; the
-		// people and what they gain are named only to a caller holding
+		// Widening A key folder move (member-access-rules ADR D9), or an environment
+		// rename or creation (revision 22), that gives principals access through
+		// their member access rules. `count` is always present; the people and
+		// machines and what they gain are named only to a caller holding
 		// `manage-members` on the project, who confirms by resending the request
 		// with `confirm_widening` listing exactly those principal ids.
 		Widening *WideningRefusal `json:"widening,omitzero"`
@@ -10657,6 +10677,12 @@ type RenameRequest struct {
 	// surplus token is rejected by name. There is no blanket ignore-all input.
 	Acknowledgements *Acknowledgements `json:"acknowledgements,omitzero"`
 
+	// ConfirmWidening Read only by an environment rename (revision 22): confirms the
+	// principals the rename gives access through member access rules,
+	// an `only` list naming the new name or an `all` list excepting the
+	// old one. Omitted, no widening is confirmed. Other renames ignore it.
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
+
 	// Name A display name for an organisation, project or environment. Identity is
 	// the immutable id, so this is a label and a rename never breaks a
 	// reference. The 128-byte bound is the one the organisation contract has
@@ -11215,6 +11241,11 @@ type Rule struct {
 	// CreatedBy A prefixed UUIDv7, e.g. `org_0198…`.
 	CreatedBy ID `json:"created_by"`
 
+	// Fault Present only on a rule the upgrade to environment names
+	// (revision 22) could not keep exactly: why it was disabled. Such a
+	// rule reaches no environment; revoke it and create it again.
+	Fault *string `json:"fault,omitzero"`
+
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
 
@@ -11233,19 +11264,25 @@ type Rule struct {
 	// one of `projects`. A rule names at most 500 projects, environments and
 	// keys together.
 	//
+	// Environments are selected by name (revision 22): see
+	// `RuleEnvironmentAxis`.
+	//
 	// With `project_mode` `all` the rule reaches every project of the
 	// organisation, including projects created later. A response lists the
 	// organisation's current projects (a project listing: only that
 	// project), with the rule's folder items repeated under each, so
 	// `projects` is never empty; an organisation listing's or a create's
 	// `where` is a valid create request. A create lists exactly the organisation's current
-	// projects (otherwise 409), keeps the environment axis `all` without
-	// items, and repeats the same folder items, never single keys, under
-	// every project.
+	// projects (otherwise 409), and repeats the same folder items, never
+	// single keys, under every project. Its environment axis selects by
+	// name like any rule's.
 	//
-	// The 500 bound counts the rule as it is listed: every current project
-	// plus its folder items repeated under each. A create that would list
-	// more is refused with 409 `limit_exceeded`. A project creation that
+	// The 500 bound counts the rule as it can be listed: its projects (for
+	// `project_mode` `all`, every current project), its environment
+	// `names`, one environment item per name under each project, and its
+	// key items (for `project_mode` `all`, its folder items repeated under
+	// each project). A create that would list more is refused with 409
+	// `limit_exceeded`. A project creation that
 	// would list an existing rule over all projects past it is refused with
 	// 409 `conflict`, whose detail names the blocking rules to a member
 	// manager. A listing is never truncated.
@@ -11263,12 +11300,32 @@ type RuleAxisMode string
 // whole project.
 type RuleCapability string
 
-// RuleEnvironmentAxis defines model for RuleEnvironmentAxis.
+// RuleEnvironmentAxis Environments are selected by name (member-access-rules ADR D3,
+// revision 22): `names` match in every project the rule covers,
+// including environments created or renamed to a name later. A
+// response carries `names` and, in `items`, the environments they match
+// now in each listed project.
+//
+// A create may send `names` with `items` empty, or with `items` exactly
+// the environments those names match now in the rule's projects
+// (otherwise 409 `conflict` naming the difference). A create without
+// `names` (a client before revision 22) names environments by `items`
+// alone: their names become the rule's, and it is refused with 409
+// `conflict` unless those names match exactly `items` in the rule's
+// projects. An `all` create without `names`, for a principal whose
+// `all` rules except a name no environment of one of the create's
+// projects carries yet, is refused with 409 `conflict` naming them, so
+// a client before revision 22 cannot drop an exception silently.
 type RuleEnvironmentAxis struct {
 	Items []RuleEnvironmentItem `json:"items"`
 
 	// Mode `all` reads the axis's items as exceptions, `only` as the complete list.
 	Mode RuleAxisMode `json:"mode"`
+
+	// Names The environment names the axis lists (revision 22). Omitted on a
+	// create, the names of `items` (see above); a server before
+	// revision 22 refuses the property.
+	Names *[]EntityName `json:"names,omitzero"`
 }
 
 // RuleEnvironmentItem defines model for RuleEnvironmentItem.
@@ -11312,8 +11369,8 @@ type RuleList struct {
 }
 
 // RuleProjectMode `only` reaches the listed `projects`. `all` reaches every project of
-// the organisation, including projects created later; such a rule covers
-// every environment and narrows keys by folder only. Omitted, a rule's
+// the organisation, including projects created later; such a rule
+// narrows environments by name and keys by folder only. Omitted, a rule's
 // project mode is `only`. The default is stated here rather than as a
 // schema `default`, so generated clients never add the property to a
 // request: a server before revision 21 refuses it.
@@ -11324,23 +11381,45 @@ type RuleProjectMode string
 // one of `projects`. A rule names at most 500 projects, environments and
 // keys together.
 //
+// Environments are selected by name (revision 22): see
+// `RuleEnvironmentAxis`.
+//
 // With `project_mode` `all` the rule reaches every project of the
 // organisation, including projects created later. A response lists the
 // organisation's current projects (a project listing: only that
 // project), with the rule's folder items repeated under each, so
 // `projects` is never empty; an organisation listing's or a create's
 // `where` is a valid create request. A create lists exactly the organisation's current
-// projects (otherwise 409), keeps the environment axis `all` without
-// items, and repeats the same folder items, never single keys, under
-// every project.
+// projects (otherwise 409), and repeats the same folder items, never
+// single keys, under every project. Its environment axis selects by
+// name like any rule's.
 //
-// The 500 bound counts the rule as it is listed: every current project
-// plus its folder items repeated under each. A create that would list
-// more is refused with 409 `limit_exceeded`. A project creation that
+// The 500 bound counts the rule as it can be listed: its projects (for
+// `project_mode` `all`, every current project), its environment
+// `names`, one environment item per name under each project, and its
+// key items (for `project_mode` `all`, its folder items repeated under
+// each project). A create that would list more is refused with 409
+// `limit_exceeded`. A project creation that
 // would list an existing rule over all projects past it is refused with
 // 409 `conflict`, whose detail names the blocking rules to a member
 // manager. A listing is never truncated.
 type RuleWhere struct {
+	// Environments Environments are selected by name (member-access-rules ADR D3,
+	// revision 22): `names` match in every project the rule covers,
+	// including environments created or renamed to a name later. A
+	// response carries `names` and, in `items`, the environments they match
+	// now in each listed project.
+	//
+	// A create may send `names` with `items` empty, or with `items` exactly
+	// the environments those names match now in the rule's projects
+	// (otherwise 409 `conflict` naming the difference). A create without
+	// `names` (a client before revision 22) names environments by `items`
+	// alone: their names become the rule's, and it is refused with 409
+	// `conflict` unless those names match exactly `items` in the rule's
+	// projects. An `all` create without `names`, for a principal whose
+	// `all` rules except a name no environment of one of the create's
+	// projects carries yet, is refused with 409 `conflict` naming them, so
+	// a client before revision 22 cannot drop an exception silently.
 	Environments RuleEnvironmentAxis `json:"environments"`
 	Keys         RuleKeyAxis         `json:"keys"`
 
@@ -12826,9 +12905,10 @@ type UpdateKeyMetadataRequest struct {
 	// disclosure regime.
 	Classification *KeyClassification `json:"classification,omitzero"`
 
-	// ConfirmWidening The principal ids a key folder move gives access through their member
-	// access rules, confirming it (member-access-rules ADR D9). It must name
-	// exactly the people the refusal's `widening` names.
+	// ConfirmWidening The principal ids a key folder move, or an environment rename,
+	// creation or deletion, gives access through their member access rules, confirming
+	// it (member-access-rules ADR D9). It must name exactly the principals
+	// the refusal's `widening` names.
 	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitzero"`
 	Deprecated      *bool            `json:"deprecated,omitzero"`
 	DeprecationNote *string          `json:"deprecation_note,omitzero"`
@@ -13167,9 +13247,10 @@ type WideningGainer struct {
 	PrincipalName *string `json:"principal_name,omitzero"`
 }
 
-// WideningRefusal A key folder move that gives people access through their member access
-// rules (member-access-rules ADR D9). `count` is always present; the
-// people and what they gain are named only to a caller holding
+// WideningRefusal A key folder move (member-access-rules ADR D9), or an environment
+// rename or creation (revision 22), that gives principals access through
+// their member access rules. `count` is always present; the people and
+// machines and what they gain are named only to a caller holding
 // `manage-members` on the project, who confirms by resending the request
 // with `confirm_widening` listing exactly those principal ids.
 type WideningRefusal struct {
@@ -14046,6 +14127,15 @@ type CreateDefinitionsPlanParams struct {
 type DeleteDynamicProviderParams struct {
 	// RevokeAll Revoke every live lease of this provider before deleting it.
 	RevokeAll *bool `form:"revoke_all" json:"revoke_all,omitzero"`
+}
+
+// DeleteEnvironmentParams defines parameters for DeleteEnvironment.
+type DeleteEnvironmentParams struct {
+	// ConfirmWidening Revision 22: the principal ids the delete gives access through
+	// member access rules, comma-separated, confirming it
+	// (member-access-rules ADR D9). It must name exactly the principals
+	// the refusal's `widening` names. Omitted, no widening is confirmed.
+	ConfirmWidening *[]ID `form:"confirm_widening" json:"confirm_widening,omitzero"`
 }
 
 // ResolveAccessParams defines parameters for ResolveAccess.
@@ -16689,7 +16779,7 @@ type ServerInterface interface {
 	ReorderEnvironments(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
 	// DeleteEnvironment Delete an environment.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment})
-	DeleteEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	DeleteEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params DeleteEnvironmentParams)
 	// GetEnvironment Read one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	GetEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -18711,7 +18801,7 @@ func (_ Unimplemented) ReorderEnvironments(w http.ResponseWriter, r *http.Reques
 
 // DeleteEnvironment Delete an environment.
 // (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment})
-func (_ Unimplemented) DeleteEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+func (_ Unimplemented) DeleteEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params DeleteEnvironmentParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -26885,8 +26975,24 @@ func (siw *ServerInterfaceWrapper) DeleteEnvironment(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteEnvironmentParams
+
+	// ------------- Optional query parameter "confirm_widening" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "confirm_widening", r.URL.Query(), &params.ConfirmWidening, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "confirm_widening"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "confirm_widening", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteEnvironment(w, r, org, project, environment)
+		siw.Handler.DeleteEnvironment(w, r, org, project, environment, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -64783,6 +64889,7 @@ type DeleteEnvironmentRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
 	Environment EnvironmentID `json:"environment"`
+	Params      DeleteEnvironmentParams
 }
 
 type DeleteEnvironmentResponseObject interface {
@@ -95931,12 +96038,13 @@ func (sh *strictHandler) ReorderEnvironments(w http.ResponseWriter, r *http.Requ
 }
 
 // DeleteEnvironment operation middleware
-func (sh *strictHandler) DeleteEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+func (sh *strictHandler) DeleteEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params DeleteEnvironmentParams) {
 	var request DeleteEnvironmentRequestObject
 
 	request.Org = org
 	request.Project = project
 	request.Environment = environment
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteEnvironment(ctx, request.(DeleteEnvironmentRequestObject))

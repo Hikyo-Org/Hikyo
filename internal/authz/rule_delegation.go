@@ -71,6 +71,9 @@ func (a *TxAuthorizer) RulesManageable(ctx context.Context, caller Identity, tar
 		id  string
 	}
 	folders := map[keyAddress]domain.RuleKey{}
+	// One environment read per org and project for every target, as for key metadata:
+	// the same transaction, so no row can change between targets.
+	envRefs := map[domain.Scope][]domain.EnvRef{}
 	held := make([]bool, len(targets))
 	for i, target := range targets {
 		if target.Capability == domain.CapRead {
@@ -87,7 +90,18 @@ func (a *TxAuthorizer) RulesManageable(ctx context.Context, caller Identity, tar
 			}
 			return key, err
 		}
-		held[i], err = a.ruleSelectorHeldResolving(ctx, domain.Scope{Org: target.Org, Project: project}, grants, rules, domain.CapManageMembers, target.Where, resolve)
+		refs := func() ([]domain.EnvRef, error) {
+			at := domain.Scope{Org: target.Org, Project: project}
+			if got, ok := envRefs[at]; ok {
+				return got, nil
+			}
+			got, err := a.r.RuleEnvRefs(ctx, string(target.Org), string(project))
+			if err == nil {
+				envRefs[at] = got
+			}
+			return got, err
+		}
+		held[i], err = a.ruleSelectorHeldResolving(ctx, domain.Scope{Org: target.Org, Project: project}, grants, rules, domain.CapManageMembers, target.Where, resolve, refs)
 		if err != nil {
 			return nil, err
 		}
@@ -177,16 +191,35 @@ func (a *TxAuthorizer) ruleSelectorHeld(ctx context.Context, chain domain.Scope,
 	resolve := func(id string) (domain.RuleKey, error) {
 		return a.r.ResolveRuleKey(ctx, string(chain.Org), string(chain.Project), id, "")
 	}
-	return a.ruleSelectorHeldResolving(ctx, chain, grants, rules, capability, target, resolve)
+	refs := func() ([]domain.EnvRef, error) {
+		return a.r.RuleEnvRefs(ctx, string(chain.Org), string(chain.Project))
+	}
+	return a.ruleSelectorHeldResolving(ctx, chain, grants, rules, capability, target, resolve, refs)
 }
 
-func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain domain.Scope, grants []domain.Grant, rules []domain.Rule, capability domain.Capability, target domain.Where, resolve func(string) (domain.RuleKey, error)) (bool, error) {
+func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain domain.Scope, grants []domain.Grant, rules []domain.Rule, capability domain.Capability, target domain.Where, resolve func(string) (domain.RuleKey, error), envRefs func() ([]domain.EnvRef, error)) (bool, error) {
 	// Legacy grants still satisfy the same atom. Environment grants can cover
 	// an only-environments selector, but never an all/future selector.
 	if evaluate(Formula{{Cap: capability, At: domain.LevelProject}}, chain, grants) {
 		return true, nil
 	}
-	if target.EnvMode == domain.AxisOnly && len(target.Envs[chain.Project]) > 0 {
+	// Environments compare by name (#1447): bind the target and name the
+	// environment grants against the project's environments now.
+	refs, err := envRefs()
+	if err != nil {
+		return false, err
+	}
+	target = target.BindEnvs(refs)
+	// An only list naming nothing is no rule (Validate refuses it). It is
+	// left when sent ids match no environment, so refusing it here keeps an
+	// unknown id answering as a known one outside the caller's authority.
+	if target.EnvMode == domain.AxisOnly && len(target.EnvNames) == 0 {
+		return false, nil
+	}
+	// Environment grants hold an only-list whose every name matches an
+	// environment now; a name matching none stands for an environment that
+	// does not exist yet, which no grant covers.
+	if target.EnvMode == domain.AxisOnly && len(target.EnvNames) > 0 && len(target.Envs[chain.Project]) == len(target.EnvNames) {
 		all := true
 		for _, env := range target.Envs[chain.Project] {
 			s := chain
@@ -208,8 +241,9 @@ func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain doma
 		}
 		s := chain
 		s.Env = grant.Scope.Env
-		if evaluate(Formula{{Cap: capability, At: domain.LevelEnv}}, s, []domain.Grant{grant}) {
-			selectors = append(selectors, domain.Where{Projects: []domain.ProjectID{chain.Project}, EnvMode: domain.AxisOnly, Envs: map[domain.ProjectID][]domain.EnvID{chain.Project: {grant.Scope.Env}}, KeyMode: domain.AxisAll})
+		name, ok := domain.EnvRefName(refs, chain.Project, grant.Scope.Env)
+		if ok && evaluate(Formula{{Cap: capability, At: domain.LevelEnv}}, s, []domain.Grant{grant}) {
+			selectors = append(selectors, domain.Where{Projects: []domain.ProjectID{chain.Project}, EnvMode: domain.AxisOnly, EnvNames: []string{name}, KeyMode: domain.AxisAll}.BindEnvs(refs))
 		}
 	}
 	for _, rule := range rules {

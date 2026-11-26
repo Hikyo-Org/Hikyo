@@ -28,6 +28,10 @@ import {
   savePlan,
   toggleAllProjects,
   toggleProject,
+  bindEnvNames,
+  envNamesOf,
+  pickEnvs,
+  unmatchedEnvNames,
   type Key,
   type PermId,
   type Rule,
@@ -181,19 +185,22 @@ describe('all-projects rules from the listings (#1446)', () => {
       [PAY, IDS.web],
     );
     expect(picked.projects).toBe('*');
-    expect(picked.envs).toEqual(ALL);
-    expect(createBody(picked, 'edit', [PAY, IDS.web])).toEqual({
+    // Its environments stay, by name (#1447): bound, they cover staging wherever it exists.
+    expect(() => createBody(picked, 'edit', [PAY, IDS.web])).toThrow('by name');
+    const bound = bindEnvNames(makeWorld(), picked);
+    expect(bound.envs).toEqual({ mode: 'only', names: ['staging'], items: [{ project: PAY, environment: STAGING }] });
+    expect(createBody(bound, 'edit', [PAY, IDS.web])).toEqual({
       principal: IDS.chen,
       capability: 'edit',
       where: {
         project_mode: 'all',
         projects: [PAY, IDS.web],
-        environments: { mode: 'all', items: [] },
+        environments: { mode: 'only', names: ['staging'], items: [] },
         keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
       },
     });
     // Without the listed projects there is nothing to send.
-    expect(() => createBody(picked, 'edit')).toThrow();
+    expect(() => createBody(bound, 'edit')).toThrow();
   });
 
   it('round-trips: a listed all-projects rule saves back as the same create', () => {
@@ -215,12 +222,13 @@ describe('all-projects rules from the listings (#1446)', () => {
     expect(createBody(rule, 'edit', [PAY, IDS.web]).where).toEqual({
       project_mode: 'all',
       projects: [PAY, IDS.web],
-      environments: { mode: 'all', items: [] },
+      environments: { mode: 'all', names: [], items: [] },
       keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
     });
   });
 
   it('leaving all projects starts the Where afresh', () => {
+    // (the environment names go with it, as every other part of the Where)
     const all = toggleAllProjects({ ...newRule(IDS.chen), keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } }, [PAY, IDS.web]);
     expect(toggleAllProjects(all, [PAY, IDS.web])).toMatchObject({ projects: [], envs: ALL, keys: ALL });
     expect(toggleProject(all, IDS.web)).toMatchObject({ projects: [IDS.web], envs: ALL, keys: ALL });
@@ -390,6 +398,8 @@ describe('reach and saving', () => {
         keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: PAY, key: IDS.stripeSecret }] },
       },
     });
+    // Every environment goes as no names, not as an old client's empty items (#1447).
+    expect(createBody({ ...draft, envs: { mode: 'all', items: [] } }, 'edit').where.environments).toEqual({ mode: 'all', names: [], items: [] });
   });
 });
 
@@ -502,5 +512,58 @@ describe("an all-projects rule from a project's listing (#1446)", () => {
     // The same rule does answer a project scope, so the empty org answer is the scope's.
     const project = { ...org, scope: { kind: 'project', org: IDS.org, project: IDS.web } } as const;
     expect(ruleHolders(all, 'edit', project)).toHaveLength(1);
+  });
+});
+
+describe('environments by name (#1447)', () => {
+  const world = makeWorld();
+  const server = (envs: { mode: 'all' | 'only'; names?: string[]; items: { project: string; environment: string }[] }, fault?: string) => ({
+    id: `rul_${fault === undefined ? 'ok' : 'off'}`,
+    principal_id: IDS.chen,
+    capability: 'edit' as const,
+    other_projects: false,
+    ...(fault === undefined ? {} : { fault }),
+    where: { projects: [PAY, IDS.web], environments: envs, keys: { mode: 'all' as const, items: [] } },
+  });
+
+  it('reads the names and saves them back, a name no environment carries included', () => {
+    const [rule] = rulesFromServer([server({ mode: 'only', names: ['prod', 'qa'], items: [{ project: PAY, environment: PROD }, { project: IDS.web, environment: IDS.webProd }] })]);
+    if (rule === undefined) throw new Error('no rule');
+    expect(unmatchedEnvNames(world, rule)).toEqual(['qa']);
+    expect(createBody(bindEnvNames(world, rule), 'edit').where.environments).toEqual({ mode: 'only', names: ['prod', 'qa'], items: [] });
+    // Unpicking prod drops it; qa, picked by no chip, stays.
+    expect(pickEnvs(world, rule, { mode: 'only', items: [] }).envs.names).toEqual(['qa']);
+  });
+
+  it('never drops an except name through a project change or turns it into an only name', () => {
+    // except staging over web, which has no staging: the name matches nothing yet.
+    const rule: Rule = { ...newRule(IDS.chen), projects: [IDS.web], envs: { mode: 'all', items: [], names: ['staging'] } };
+    // Adding payments, which has staging, keeps it out there.
+    const added = bindEnvNames(world, toggleProject(rule, PAY));
+    expect(added.envs).toEqual({ mode: 'all', names: ['staging'], items: [{ project: PAY, environment: STAGING }] });
+    // Removing payments again keeps the name.
+    expect(bindEnvNames(world, toggleProject(added, PAY)).envs).toEqual({ mode: 'all', names: ['staging'], items: [] });
+    // Over all projects it stays as well.
+    expect(envNamesOf(world, toggleAllProjects(rule, [PAY, IDS.web]))).toEqual(['staging']);
+    // Switching to Only… starts afresh: the except name does not become an only one.
+    expect(pickEnvs(world, rule, { mode: 'only', items: [] }).envs).toEqual({ mode: 'only', names: [], items: [] });
+  });
+
+  it('a project added to the rule brings its same-named environments', () => {
+    const rule: Rule = { ...newRule(IDS.chen), projects: [PAY], envs: { mode: 'all', items: [{ project: PAY, environment: PROD }] } };
+    const bound = bindEnvNames(world, toggleProject(rule, IDS.web));
+    expect(bound.envs).toEqual({ mode: 'all', names: ['prod'], items: [{ project: PAY, environment: PROD }, { project: IDS.web, environment: IDS.webProd }] });
+  });
+
+  it('a rule without names (a legacy grant) still sends its items', () => {
+    const rule: Rule = { ...newRule(IDS.chen), projects: [PAY], envs: { mode: 'only', items: [{ project: PAY, environment: PROD }] } };
+    expect(createBody(rule, 'edit').where.environments).toEqual({ mode: 'only', items: [{ project: PAY, environment: PROD }] });
+  });
+
+  it('a rule the upgrade disabled keeps its reason and never merges with a working one', () => {
+    const envs = { mode: 'only' as const, names: [], items: [] };
+    const rules = rulesFromServer([server(envs), server(envs, 'Disabled by the upgrade to environment names: prod is named differently across projects.')]);
+    expect(rules).toHaveLength(2);
+    expect(rules.map((r) => r.fault)).toEqual([undefined, 'Disabled by the upgrade to environment names: prod is named differently across projects.']);
   });
 });

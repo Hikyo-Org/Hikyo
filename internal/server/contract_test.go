@@ -1529,11 +1529,11 @@ func (s stubHierarchy) Delete(context.Context, service.Actor, domain.Scope) erro
 // them apart by signature, so the compiler still checks each interface.
 type stubEnvs struct{ stubHierarchy }
 
-func (s stubEnvs) Create(context.Context, service.Actor, domain.Scope, string, []string) (service.Environment, error) {
+func (s stubEnvs) CreateConfirming(context.Context, service.Actor, domain.Scope, string, []string, []domain.PrincipalID) (service.Environment, error) {
 	return service.Environment{}, s.outcome()
 }
 
-func (s stubEnvs) Clone(context.Context, service.Actor, domain.Scope, string, string, []string) (service.Environment, service.CloneResult, error) {
+func (s stubEnvs) CloneConfirming(context.Context, service.Actor, domain.Scope, string, string, []string, []domain.PrincipalID) (service.Environment, service.CloneResult, error) {
 	return service.Environment{}, service.CloneResult{}, s.outcome()
 }
 
@@ -1545,12 +1545,16 @@ func (s stubEnvs) List(context.Context, service.Actor, domain.Scope) ([]service.
 	return nil, s.outcome()
 }
 
-func (s stubEnvs) Rename(context.Context, service.Actor, domain.Scope, string, []string) (service.Environment, error) {
+func (s stubEnvs) RenameConfirming(context.Context, service.Actor, domain.Scope, string, []string, []domain.PrincipalID) (service.Environment, error) {
 	return service.Environment{}, s.outcome()
 }
 
 func (s stubEnvs) Reorder(context.Context, service.Actor, domain.Scope, []string) ([]service.Environment, error) {
 	return nil, s.outcome()
+}
+
+func (s stubEnvs) DeleteConfirming(context.Context, service.Actor, domain.Scope, []domain.PrincipalID) error {
+	return s.outcome()
 }
 
 // stubValues is the value surface's uniformity fixture (#50): every method

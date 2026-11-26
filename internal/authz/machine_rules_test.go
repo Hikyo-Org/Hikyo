@@ -11,12 +11,11 @@ func TestRuleGrantsProjectsReachPerEnvironment(t *testing.T) {
 	const org, p1, p2 = domain.OrgID("org"), domain.ProjectID("p1"), domain.ProjectID("p2")
 	project := domain.Scope{Org: org, Project: p1}
 	envs := []domain.EnvID{"dev", "prod"}
-	rule := func(c domain.Capability, envMode domain.AxisMode, envItems ...domain.EnvID) domain.Rule {
-		w := domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: envMode, KeyMode: domain.AxisAll}
-		if len(envItems) > 0 {
-			w.Envs = map[domain.ProjectID][]domain.EnvID{p1: envItems}
-		}
-		return domain.Rule{Capability: c, Org: org, Where: w}
+	// Each environment's name is its id; rules arrive bound, as the store reads them.
+	refs := []domain.EnvRef{{Project: p1, ID: "dev", Name: "dev"}, {Project: p1, ID: "prod", Name: "prod"}}
+	rule := func(c domain.Capability, envMode domain.AxisMode, envNames ...string) domain.Rule {
+		w := domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: envMode, EnvNames: envNames, KeyMode: domain.AxisAll}
+		return domain.Rule{Capability: c, Org: org, Where: w.BindEnvs(refs)}
 	}
 	env := func(e domain.EnvID) domain.Scope { return domain.Scope{Org: org, Project: p1, Env: e} }
 	other := rule(domain.CapRead, domain.AxisAll)

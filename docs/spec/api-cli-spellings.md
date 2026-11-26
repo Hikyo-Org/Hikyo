@@ -632,7 +632,7 @@ capability for one person; every verb is human-session only and needs
 
 - `access rule list [--org O] [--project P]`: the org's rules, or the rules
   naming the resolved project.
-- `access rule add --principal ID --capability C [--in-project P... | --all-projects] [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
+- `access rule add --principal ID --capability C [--in-project P... | --all-projects] [--only-env E | --except-env E | --only-env-name N | --except-env-name N]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
   `--org/--project/--env` stay the shared scope flags, so the rule's axes take
   distinct names. `--in-project` is repeatable and defaults to the resolved
   project. An environment or key id is qualified `PROJECT:ID` when the rule
@@ -641,7 +641,14 @@ capability for one person; every verb is human-session only and needs
   `--all-projects` (#1446) covers every project of the org, including later
   ones: the CLI lists the org's projects and sends exactly them with
   `where.project_mode: all`; a stale list is refused with a conflict. It takes
-  unqualified folders only, never `--in-project`, environments or keys.
+  unqualified folders only, never `--in-project`, environment ids or keys.
+- `--only-env-name` and `--except-env-name` (#1447, revision 22) select
+  environments by name in every project the rule covers, including later
+  ones, sent as `where.environments.names`. They do not mix with
+  `--only-env`/`--except-env`, whose ids the server turns into their names.
+  Against a server before revision 22 the CLI refuses them without sending.
+  `access rule list` shows names as `name:N`, and a rule the upgrade disabled
+  as `disabled: <reason>`.
 - `access rule remove <rule>`.
 - An all-projects rule (#1446) reads back with `where.project_mode: all` and
   `projects` listing the org's current projects (a project listing: that
@@ -652,6 +659,10 @@ capability for one person; every verb is human-session only and needs
 - `key update <key> --folder P --confirm-widening <principal>...` and
   `definitions apply --plan ID --confirm-widening <principal>...` confirm a
   widening move.
+- `env create --name N [--clone-from E] --confirm-widening <principal>...` and
+  `env rename <env> --name N --confirm-widening <principal>...` (#1447)
+  confirm an environment name that gives principals access through their
+  rules, sent as `confirm_widening`.
 
 ## Local repository and CI secret scanning ([secret-scanning.md](../adr/secret-scanning.md) and [api-cli-surface.md](../adr/api-cli-surface.md) amendments 2026-09-26, [#153](https://github.com/Hikyo-Org/Hikyo/issues/153))
 

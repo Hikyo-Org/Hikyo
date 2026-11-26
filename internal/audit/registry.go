@@ -233,9 +233,18 @@ const (
 	// deletion path removing a rule whose only-list lost its last item.
 	// rule.move_widening_confirmed records the confirmed set of principals a
 	// key's folder move admitted through their rules (D9).
+	// rule.env_widening_confirmed records the confirmed set of principals an
+	// environment rename or create admitted through name-bound rules (#1447).
+	// rule.split and rule.disabled are written only by the upgrade to
+	// environment names (migration 00102): a split records the old rule id
+	// and the per-project rules replacing it; a disabled rule failed closed
+	// with a manager-facing reason.
 	EventRuleCreated               EventType = "rule.created"
 	EventRuleRevoked               EventType = "rule.revoked"
 	EventRuleMoveWideningConfirmed EventType = "rule.move_widening_confirmed"
+	EventRuleEnvWideningConfirmed  EventType = "rule.env_widening_confirmed"
+	EventRuleSplit                 EventType = "rule.split"
+	EventRuleDisabled              EventType = "rule.disabled"
 	// grant.membership_read is the membership surface's read event. It is not
 	// `audited: none`: that permit covers tenant-class bare-`read` operations,
 	// and "who can reveal production secrets" is administrative information
@@ -2202,6 +2211,50 @@ var registry = map[EventType]TypeSpec{
 			"from_folder": {Kind: KindFreeText, Required: true},
 			"to_folder":   {Kind: KindFreeText, Required: true},
 			"principals":  {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+		},
+	},
+	EventRuleEnvWideningConfirmed: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"env_id": {Kind: KindString, Required: true},
+			// from_name is empty for a created environment, to_name for a
+			// deleted one.
+			"from_name":  {Kind: KindFreeText, Required: true},
+			"to_name":    {Kind: KindFreeText, Required: true},
+			"principals": {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+		},
+	},
+	EventRuleSplit: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"rule_id":          {Kind: KindString, Required: true},
+			"target_principal": {Kind: KindString, Required: true},
+			"capability":       {Kind: KindString, Required: true},
+			"rule_ids":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+		},
+	},
+	EventRuleDisabled: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"rule_id":          {Kind: KindString, Required: true},
+			"target_principal": {Kind: KindString, Required: true},
+			"capability":       {Kind: KindString, Required: true},
+			"reason":           {Kind: KindFreeText, Required: true},
+			// The environment selection the upgrade removed, so a manager can
+			// rebuild the rule: its mode, its items as "<project>/<env id>"
+			// and the names of those that still existed.
+			"env_mode":  {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+			"env_ids":   {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+			"env_names": {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
 		},
 	},
 	EventMemberInvited: {
@@ -4216,7 +4269,8 @@ func adapterLifecycleEvent(schema Schema) TypeSpec {
 // event's own chain columns already carry the tenant address; this field
 // answers "at which level was it granted", which the chain cannot.
 // ruleSchema is the common payload of the rule lifecycle events: who holds
-// what where. The Where is rendered as stable ids, never names.
+// what where. Projects and keys are stable ids; environments, which rules
+// select by name since #1447, are "name:<name>" (earlier events hold ids).
 var ruleSchema = Schema{
 	"target_principal": {Kind: KindString, Required: true},
 	"capability":       {Kind: KindString, Required: true},

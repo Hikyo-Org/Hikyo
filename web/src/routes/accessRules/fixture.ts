@@ -77,6 +77,10 @@ const NAMES: Record<string, string> = {
 
 const env = (project: string, environment: string) => ({ project, environment });
 
+// A server at revision 22 lists a rule's environments by name (#1447).
+const envNames = (items: readonly { environment: string }[]) =>
+  [...new Set(items.flatMap((item) => TOPOLOGY.flatMap((p) => p.envs).filter((e) => e.id === item.environment).map((e) => e.name)))].sort();
+
 let seq = 0;
 function rule(principal: string, capabilities: RuleRow['capability'][], where: RuleRow['where']): RuleRow[] {
   return capabilities.map((capability) => {
@@ -86,7 +90,7 @@ function rule(principal: string, capabilities: RuleRow['capability'][], where: R
       principal_id: principal,
       principal_name: NAMES[principal],
       capability,
-      where,
+      where: { ...where, environments: { ...where.environments, names: envNames(where.environments.items) } },
       other_projects: false,
       created_by: IDS.sam,
       created_at: '2026-09-29T08:00:00Z',

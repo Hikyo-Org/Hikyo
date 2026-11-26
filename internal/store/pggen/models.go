@@ -1482,6 +1482,7 @@ type Rule struct {
 	CreatedBy   string
 	CreatedAt   pgtype.Timestamptz
 	ProjectMode string
+	EnvFault    pgtype.Text
 }
 
 type RuleItem struct {
@@ -1490,9 +1491,9 @@ type RuleItem struct {
 	OrgID      string
 	Axis       string
 	ProjectID  pgtype.Text
-	EnvID      pgtype.Text
 	KeyID      pgtype.Text
 	FolderPath pgtype.Text
+	EnvName    pgtype.Text
 }
 
 type SamlProvider struct {

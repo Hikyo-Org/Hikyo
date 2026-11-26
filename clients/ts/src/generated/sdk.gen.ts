@@ -865,6 +865,14 @@ export const listEnvironments = <ThrowOnError extends boolean = false>(options: 
  * with `limit_exceeded`, decided against a count read inside the creating
  * transaction.
  *
+ * Member access rules select environments by name, so a new environment
+ * is reached by every rule whose `only` list names its name. Such a
+ * creation is refused with 409 `conflict` carrying `widening` until it
+ * is resent with `confirm_widening` naming exactly those principals; a
+ * machine gaining access also needs the caller's fresh
+ * reauthentication. A rule reaching every environment, or every one
+ * except other names, reaches the new one without confirmation.
+ *
  */
 export const createEnvironment = <ThrowOnError extends boolean = false>(options: Options<CreateEnvironmentData, ThrowOnError>): RequestResult<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -943,8 +951,18 @@ export const reorderEnvironments = <ThrowOnError extends boolean = false>(option
  * a protected environment. Deletion removes values, drafts, pins and
  * revision payloads; audit events remain subject to audit retention.
  *
+ * Member access rules select environments by name, so deleting the
+ * environment an `all` list excepts lets those rules reach the rest of
+ * the project. Such a delete is refused with 409 `conflict` carrying
+ * `widening` until it is resent with `confirm_widening` naming exactly
+ * those principals, machines included. A delete reveals no plaintext
+ * over the remaining environments that was hidden before, so it asks
+ * for no reauthentication. The rules keep the name, so a later
+ * environment of that name is excepted again.
+ *
  */
 export const deleteEnvironment = <ThrowOnError extends boolean = false>(options: Options<DeleteEnvironmentData, ThrowOnError>): RequestResult<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError> => (options.client ?? client).delete<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError>({
+    querySerializer: { parameters: { confirm_widening: { array: { explode: false } } } },
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}',
     ...options
@@ -964,6 +982,14 @@ export const getEnvironment = <ThrowOnError extends boolean = false>(options: Op
  *
  * Environment topology, so it carries `definitions-edit` rather than
  * `edit`: renaming is a change to the project's shape, not to a value.
+ *
+ * Member access rules select environments by name, so a rename can give
+ * people or machines access through their rules: renamed out of an
+ * `all` list's exceptions, or into an `only` list. Such a rename is
+ * refused with 409 `conflict` carrying `widening` until it is resent
+ * with `confirm_widening` naming exactly those principals; a machine
+ * gaining access also needs the caller's fresh reauthentication. A
+ * rename that only narrows access needs no confirmation.
  *
  */
 export const renameEnvironment = <ThrowOnError extends boolean = false>(options: Options<RenameEnvironmentData, ThrowOnError>): RequestResult<RenameEnvironmentResponses, RenameEnvironmentErrors, ThrowOnError> => (options.client ?? client).patch<RenameEnvironmentResponses, RenameEnvironmentErrors, ThrowOnError>({

@@ -741,7 +741,7 @@ func refuseProjectAboveAllProjectsRules(ctx context.Context, az *authz.TxAuthori
 	}
 	var blocking []string
 	for _, r := range rules {
-		if domain.AllProjectsExpansion(len(projects)+1, r.Items) > domain.MaxRuleItems {
+		if domain.AllProjectsExpansion(len(projects)+1, r.Folders, r.Names) > domain.MaxRuleItems {
 			blocking = append(blocking, r.ID)
 		}
 	}
@@ -754,7 +754,7 @@ func refuseProjectAboveAllProjectsRules(ctx context.Context, az *authz.TxAuthori
 	if err != nil {
 		return err
 	}
-	head := fmt.Sprintf("another project would list rules over all projects past the %d projects and folder items a rule carries", domain.MaxRuleItems)
+	head := fmt.Sprintf("another project would list rules over all projects past the %d selector items a rule carries", domain.MaxRuleItems)
 	detail := head + "; a member manager of the organization must narrow or revoke them first"
 	if holds(rows, domain.CapManageMembers, domain.Scope{Org: org}) {
 		detail = head + "; narrow or revoke rules " + strings.Join(blocking, ", ") + " first"
@@ -810,7 +810,12 @@ type Environments struct {
 	// Scan: secret-scanning Surface-2 seam (#74). Environment names and notes
 	// are author-controlled declaration text.
 	Scan *scanning.Ruleset
+	// Now is the clock for the machine widening gate's reauthentication
+	// window; nil is the wall clock.
+	Now func() time.Time
 }
+
+func (s *Environments) now() time.Time { return nowOr(s.Now) }
 
 // Environment methods address scope as a domain.Scope — the same shape
 // authorize() takes; a wrong-depth scope is refused there (loud error).
@@ -822,7 +827,14 @@ type Environments struct {
 // transaction as the insert, so the cap cannot be walked past by two
 // concurrent creates.
 func (s *Environments) Create(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string) (Environment, error) {
-	env, _, err := s.create(ctx, actor, scope, name, "", acks)
+	return s.CreateConfirming(ctx, actor, scope, name, acks, nil)
+}
+
+// CreateConfirming is Create with confirm, the principals the caller confirms
+// the new environment gives access through member access rules naming its
+// name (#1447); see envChange.
+func (s *Environments) CreateConfirming(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string, confirm []domain.PrincipalID) (Environment, error) {
+	env, _, err := s.create(ctx, actor, scope, name, "", acks, confirm)
 	return env, err
 }
 
@@ -838,13 +850,18 @@ func (s *Environments) Create(ctx context.Context, actor Actor, scope domain.Sco
 // cloneInto. What could not be copied comes back enumerated by name, never
 // silently absent.
 func (s *Environments) Clone(ctx context.Context, actor Actor, scope domain.Scope, name, sourceEnvID string, acks []string) (Environment, CloneResult, error) {
+	return s.CloneConfirming(ctx, actor, scope, name, sourceEnvID, acks, nil)
+}
+
+// CloneConfirming is Clone with a widening confirmation, as CreateConfirming.
+func (s *Environments) CloneConfirming(ctx context.Context, actor Actor, scope domain.Scope, name, sourceEnvID string, acks []string, confirm []domain.PrincipalID) (Environment, CloneResult, error) {
 	if sourceEnvID == "" {
 		return Environment{}, CloneResult{}, fmt.Errorf("%w: clone names a source environment", domain.ErrInvalid)
 	}
-	return s.create(ctx, actor, scope, name, sourceEnvID, acks)
+	return s.create(ctx, actor, scope, name, sourceEnvID, acks, confirm)
 }
 
-func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Scope, name, sourceEnvID string, acks []string) (Environment, CloneResult, error) {
+func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Scope, name, sourceEnvID string, acks []string, confirm []domain.PrincipalID) (Environment, CloneResult, error) {
 	if err := checkName("environment name", name); err != nil {
 		return Environment{}, CloneResult{}, err
 	}
@@ -929,6 +946,12 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return err
 		}
+		// Rules select environments by name (#1447): read who the new name
+		// reaches before the row exists.
+		change, err := readEnvChange(ctx, az, scope, domain.EnvID(id), "", name)
+		if err != nil {
+			return err
+		}
 		created = store.NewEnvironment{
 			ID: id, Name: name, Note: "",
 			// Reorder is what moves an environment; creation does not guess
@@ -937,6 +960,9 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 			CreatedAt:    store.CanonTime(time.Now()),
 		}
 		if err := r.Environments().Create(ctx, p, created); err != nil {
+			return err
+		}
+		if err := change.confirm(ctx, r, az, p, s.Auth, caller, confirm, s.now()); err != nil {
 			return err
 		}
 		// § 151 schema-revision rate: an environment create advances the project's
@@ -1035,6 +1061,12 @@ func (s *Environments) List(ctx context.Context, actor Actor, scope domain.Scope
 }
 
 func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string) (Environment, error) {
+	return s.RenameConfirming(ctx, actor, scope, name, acks, nil)
+}
+
+// RenameConfirming is Rename with confirm, the principals the caller confirms
+// the rename gives access through member access rules (#1447); see envChange.
+func (s *Environments) RenameConfirming(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string, confirm []domain.PrincipalID) (Environment, error) {
 	if err := checkName("environment name", name); err != nil {
 		return Environment{}, err
 	}
@@ -1060,7 +1092,15 @@ func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Sco
 			scope, nonEmptyLeaf(locEnvironmentName, name), newAckSet(acks), ingressEdit); err != nil {
 			return err
 		}
+		project := domain.Scope{Org: scope.Org, Project: scope.Project}
+		change, err := readEnvChange(ctx, az, project, domain.EnvID(before.ID), before.Name, name)
+		if err != nil {
+			return err
+		}
 		if err := r.Environments().Rename(ctx, p, name); err != nil {
+			return err
+		}
+		if err := change.confirm(ctx, r, az, p, s.Auth, caller, confirm, s.now()); err != nil {
 			return err
 		}
 		// § 151 schema-revision rate: a rename advances the project's schema
@@ -1177,6 +1217,14 @@ func (s *Environments) Reorder(ctx context.Context, actor Actor, scope domain.Sc
 // the set, so a gap is not a defect and closing it would be an unrequested
 // write to rows the operator did not name.
 func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Scope) error {
+	return s.DeleteConfirming(ctx, actor, scope, nil)
+}
+
+// DeleteConfirming is Delete with confirm, the principals the caller confirms
+// the delete gives access through member access rules (#1447): deleting the
+// environment an `all, except` rule names lets the rule reach the project's
+// other atoms, so it fails closed unless confirmed; see envChange.
+func (s *Environments) DeleteConfirming(ctx context.Context, actor Actor, scope domain.Scope, confirm []domain.PrincipalID) error {
 	var rateCharged bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpEnvDelete, scope, time.Now().UTC())
@@ -1195,6 +1243,11 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 			return err
 		}
 		before, err := r.Environments().Get(ctx, p)
+		if err != nil {
+			return err
+		}
+		project := domain.Scope{Org: scope.Org, Project: scope.Project}
+		change, err := readEnvChange(ctx, az, project, domain.EnvID(before.ID), before.Name, "")
 		if err != nil {
 			return err
 		}
@@ -1247,6 +1300,9 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 			return err
 		}
 		if err := r.Environments().Delete(ctx, p); err != nil {
+			return err
+		}
+		if err := change.confirm(ctx, r, az, p, s.Auth, caller, confirm, s.now()); err != nil {
 			return err
 		}
 		// § 151 schema-revision rate: a delete advances the project's schema

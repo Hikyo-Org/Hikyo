@@ -24,14 +24,16 @@ import (
 // --only-env or --except-env, keys --only-folder/--only-key or
 // --except-folder/--except-key; one axis takes only-items or except-items,
 // never both. An environment or key id belongs to one project: qualify it as
-// PROJECT:ID when the rule names several. A folder applies to every project
+// PROJECT:ID when the rule names several. --only-env-name/--except-env-name
+// select environments by name in every project of the rule, including ones
+// created or renamed to that name later (#1447, API revision 22). A folder applies to every project
 // of the rule unless qualified the same way.
 //
 // --all-projects makes the rule cover every project of the org, including
 // projects created later (#1446). The CLI first lists the org's projects and
 // sends them with project_mode all; the server refuses the rule if that list
-// is stale. Such a rule covers every environment and narrows keys by
-// unqualified folders only.
+// is stale. Such a rule selects environments by name only and narrows keys
+// by unqualified folders only.
 
 // ruleAxisFlags collects one axis's only- and except-items.
 type ruleAxisFlags struct{ only, except stringList }
@@ -51,7 +53,7 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 	var format, principal, capability string
 	var allProjects bool
 	var projects stringList
-	var envs, folders, keys ruleAxisFlags
+	var envs, envNames, folders, keys ruleAxisFlags
 	st, flags, err := parseCommon("access rule "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "add" {
@@ -61,6 +63,8 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&allProjects, "all-projects", false, "cover every project of the org, including projects created later")
 			fs.Var(&envs.only, "only-env", "repeatable: cover only this environment ([PROJECT:]ENV)")
 			fs.Var(&envs.except, "except-env", "repeatable: cover every environment except this one ([PROJECT:]ENV)")
+			fs.Var(&envNames.only, "only-env-name", "repeatable: cover only environments with this name, in every project of the rule")
+			fs.Var(&envNames.except, "except-env-name", "repeatable: cover every environment except those with this name, in every project of the rule")
 			fs.Var(&folders.only, "only-folder", "repeatable: cover only keys in this folder ([PROJECT:]PATH)")
 			fs.Var(&folders.except, "except-folder", "repeatable: cover every key except this folder and its subfolders ([PROJECT:]PATH)")
 			fs.Var(&keys.only, "only-key", "repeatable: cover only this key ([PROJECT:]KEY)")
@@ -86,14 +90,16 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 		switch {
 		case principal == "" || capability == "":
 			return failf(ExitUsage, "usage: hikyo access rule add --principal <id> --capability <atom> [--in-project P... | --all-projects] [--only-env|--except-env E]... [--only-folder|--except-folder F]... [--only-key|--except-key K]...")
-		case len(envs.only) > 0 && len(envs.except) > 0:
-			return failf(ExitUsage, "hikyo access rule add: --only-env and --except-env are two readings of one axis; choose one")
+		case len(envs.only)+len(envNames.only) > 0 && len(envs.except)+len(envNames.except) > 0:
+			return failf(ExitUsage, "hikyo access rule add: --only-env/--only-env-name and --except-env/--except-env-name are two readings of one axis; choose one")
 		case (len(folders.only) > 0 || len(keys.only) > 0) && (len(folders.except) > 0 || len(keys.except) > 0):
 			return failf(ExitUsage, "hikyo access rule add: --only-folder/--only-key and --except-folder/--except-key are two readings of one axis; choose one")
+		case len(envs.only)+len(envs.except) > 0 && len(envNames.only)+len(envNames.except) > 0:
+			return failf(ExitUsage, "hikyo access rule add: select environments by id (--only-env/--except-env) or by name (--only-env-name/--except-env-name), not both")
 		case allProjects && len(projects) > 0:
 			return failf(ExitUsage, "hikyo access rule add: --all-projects and --in-project are two readings of the project axis; choose one")
 		case allProjects && len(envs.only)+len(envs.except) > 0:
-			return failf(ExitUsage, "hikyo access rule add: a rule over all projects covers every environment; drop --only-env/--except-env")
+			return failf(ExitUsage, "hikyo access rule add: a rule over all projects selects environments by name; use --only-env-name/--except-env-name")
 		case allProjects && len(keys.only)+len(keys.except) > 0:
 			return failf(ExitUsage, "hikyo access rule add: a rule over all projects narrows keys by folder only; a key belongs to one project")
 		case allProjects && slices.ContainsFunc(append(slices.Clone(folders.only), folders.except...), func(v string) bool { return strings.HasPrefix(v, "prj_") && strings.Contains(v, ":") }):
@@ -132,6 +138,23 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 	if sub == "add" && allProjects {
 		if body, err = allProjectsRuleRequest(ctx, client, base, principal, capability, folders); err != nil {
 			return err
+		}
+	}
+	// Without --only-env/--except-env the rule is sent by name (an empty list
+	// for every environment), so the server can tell it from an old client
+	// that cannot show hidden exceptions (#1447).
+	if sub == "add" && len(envs.only)+len(envs.except) == 0 {
+		meta, err := client.Meta(ctx)
+		if err != nil {
+			return err
+		}
+		named := len(envNames.only)+len(envNames.except) > 0
+		if named && meta.ApiRevision < envNamesRevision {
+			return failf(ExitRefused, "this instance is running %s (API revision %d) and does not select environments by name, which needs revision %d. Upgrade the server, or use --only-env/--except-env.",
+				meta.ServerVersion, meta.ApiRevision, envNamesRevision)
+		}
+		if meta.ApiRevision >= envNamesRevision {
+			withEnvNames(&body, envNames)
 		}
 	}
 
@@ -211,6 +234,20 @@ func wideningEnv(err error) string {
 		return ""
 	}
 	return env
+}
+
+// envNamesRevision is the API revision that selects environments by name.
+const envNamesRevision = 22
+
+// withEnvNames selects a create body's environments by rule-wide names.
+func withEnvNames(body *apigen.CreateRuleRequest, names ruleAxisFlags) {
+	mode, items := names.mode()
+	body.Where.Environments.Mode = mode
+	list := make([]apigen.EntityName, 0, len(items))
+	for _, v := range items {
+		list = append(list, apigen.EntityName(v))
+	}
+	body.Where.Environments.Names = &list
 }
 
 // ruleRequest builds the create body from the flags, binding every item to
@@ -332,6 +369,13 @@ func ruleTable(list apigen.RuleList) Table {
 		for _, it := range w.Environments.Items {
 			envItems = append(envItems, qualify(it.Project, it.Environment))
 		}
+		if w.Environments.Names != nil {
+			// Names are the rule's selector (revision 22); ids are what they match now.
+			envItems = envItems[:0]
+			for _, name := range *w.Environments.Names {
+				envItems = append(envItems, "name:"+string(name))
+			}
+		}
 		keyItems := make([]string, 0, len(w.Keys.Items))
 		for _, it := range w.Keys.Items {
 			if all && len(w.Projects) > 0 && it.Project != w.Projects[0] {
@@ -346,9 +390,13 @@ func ruleTable(list apigen.RuleList) Table {
 				keyItems = append(keyItems, qualify(it.Project, "key:"+*it.Key))
 			}
 		}
+		envText := ruleAxisText(w.Environments.Mode, envItems)
+		if r.Fault != nil {
+			envText = "disabled: " + *r.Fault
+		}
 		rows = append(rows, []string{
 			r.Id, idWithName(r.PrincipalId, r.PrincipalName), string(r.Capability), projects,
-			ruleAxisText(w.Environments.Mode, envItems), ruleAxisText(w.Keys.Mode, keyItems),
+			envText, ruleAxisText(w.Keys.Mode, keyItems),
 		})
 	}
 	return Table{Columns: ruleColumns, Rows: rows, JSON: list}

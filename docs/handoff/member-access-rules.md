@@ -242,3 +242,88 @@ Branch `feat/1446-all-projects-rules`. The decision is recorded in the ADR's
   "All projects" choice list the projects first.
 - **Tests.** `internal/isolation/member_access_rules_all_projects_test.go`
   (both engines; the concurrent-deletion test is PostgreSQL only).
+
+## Environments by name (#1447, owner decision of 2026-11-26)
+
+Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
+[Owner decisions, 2026-11-26](../adr/member-access-rules.md#owner-decisions-2026-11-26).
+
+- **Storage (migration 00102, both engines).** `rule_items.env_name` replaces
+  `env_id`; name items carry no project. `rules.env_fault` holds the
+  manager-facing reason of a rule the upgrade disabled. The id columns and
+  every id-matching query are gone.
+- **Migration, option (c).** Consistent rules convert in place. Others split
+  into one rule per project that reached something, audited as `rule.split`
+  with the old and new ids. Undecidable rules (an item naming a missing
+  environment, a project outside the rule, a repeated name, or an all-projects
+  rule holding environment items) keep their row, reach no environment and
+  carry `env_fault`, audited as `rule.disabled` with the removed `env_mode`,
+  `env_ids` and `env_names`. Tests:
+  `TestRuleEnvNamesMigrationSQLite` and `TestRuleEnvNamesMigrationPostgres`,
+  including the 99/102 recovery boundary.
+- **Domain.** `Where.EnvNames` is authoritative; `BindEnvs(refs)` derives the
+  environment ids inside `authorize()` on every check, with no cache.
+  All-projects rules take names (restriction A lifted); single keys stay
+  refused there. The item bound counts names once per rule. Sent names take
+  the environment name grammar. Rule lifecycle audit events record
+  environments as `name:<name>`.
+- **Widening (like D9).** `internal/service/rule_env_widening.go`. Environment
+  rename, create, clone and definitions apply compute who gains through their
+  rules and refuse a 409 unless `confirm_widening` names exactly them; the
+  confirmation is audited as `rule.env_widening_confirmed`. Self-config
+  provisioning carries no confirmation, so it refuses a widening. A created
+  environment that an `all` rule does not except needs no confirmation. The
+  census covers every environment- and key-shaped capability (derived from
+  the rule shapes, so Pin is included).
+- **Old clients.** A pre-revision-22 create naming ids is refused when the ids
+  are not every environment their names match (`ErrRuleEnvItemsStale`). An
+  `all` create or replacement without names is refused when the principal's
+  `all` rules except a name no environment of one of its projects carries
+  (`ErrRuleUnmatchedNamesDropped`), since that client cannot show the name.
+  The web and CLI therefore always send names to a revision-22 server (`[]`
+  for every environment). Two explicit steps (revoke, then create) still drop
+  such an exception; each is a proved manager's own action.
+- **Machines.** A gaining machine passes the #1473/#1480 gate. A create or
+  clone that makes the new environment plaintext-reachable for a machine fails
+  closed with reauthentication required, because no window can name the new
+  id; the workaround is to create it under another name and rename it.
+- **Deletion (owner decision 2026-11-27).** Deleting an environment an `all`
+  rule excepts widens that rule to the project's other atoms, so it fails
+  closed: the service delete and a definitions apply delete are refused like a
+  widening rename until `confirm_widening` names exactly the gainers, audited
+  as `rule.env_widening_confirmed` with an empty `to_name`. The rule keeps the
+  name, so a later environment of it is excepted again without confirmation.
+  Project and organization deletions never cascade into environments.
+- **Wire.** API revision 22, additive: `where.environments.names` and
+  `fault`, `confirm_widening` on environment create, rename and clone, and as a
+  query parameter on environment delete. CLI:
+  `--only-env-name`/`--except-env-name`, refused before revision 22;
+  `env delete --confirm-widening`.
+- **Web.** The rule editor selects environments by name in every project,
+  including all-projects rules; Project settings confirm a widening rename,
+  create, clone or delete and run the reauthentication ceremony for a rename
+  or delete.
+  `KeyMoveConfirmDialog` is now `WideningConfirmDialog`, shared by key moves
+  and environment changes.
+- **Tests.** `internal/isolation/rule_env_widening_test.go` (both engines):
+  `TestEnvironmentNamesWidenRules`, `TestEnvironmentNameWideningGatesMachines`,
+  `TestAllProjectsRulesFutureProjectsHoldNames`,
+  `TestAllProjectsRulesBoundCountsNames`,
+  `TestDefinitionsApplyEnvironmentNameWidening`,
+  `TestEnvironmentDeleteWideningExceptRules`,
+  `TestDefinitionsApplyEnvironmentDeleteWidening`,
+  `TestEnvironmentDeleteWideningShapes`,
+  `TestDefinitionsApplyEnvironmentDeleteAndRenameNarrows`, and the machine
+  delete case in `TestEnvironmentNameWideningGatesMachines`; web
+  `ProjectSettings.test.tsx` "confirms a delete that widens access", web `model.test.ts`
+  "environments by name (#1447)" and the AccessRules stories.
+- **Open.** An owner may later exempt machine create and clone from the
+  fail-closed reauthentication (ADR option). #1474 remains. Found in review, older than #1447:
+  a delegation check resolves each key item of a held manage rule in an
+  existing project, which the missing-project decoy does not, so a caller
+  holding such a rule can tell the two apart by query work.
+- **Refusal uniformity.** Checks before the caller is proved read only the
+  request (one stand-in name per sent environment id); a refused caller gets
+  the same not-found whatever ids exist
+  (`TestRuleCreateRefusalDoesNotProbeEnvironmentIDs`). The missing-scope decoy
+  runs the same per-project environment read a refusal does.

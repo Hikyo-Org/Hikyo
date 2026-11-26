@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { FolderCleanupDialog } from './FolderCleanupDialog.tsx';
-import type { WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import type { WideningRefusal } from './accessRules/WideningConfirmDialog.tsx';
 
 const proposals = [
   { id: 'id_HIKYO_ARGON2_TIME', name: 'HIKYO_ARGON2_TIME', folder: 'Argon2' },
