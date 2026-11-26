@@ -284,8 +284,9 @@ request merges.
   `where` (`domain.MaxRuleItems`, projects, environments and keys together). An all-projects rule is
   listed as the organization's current projects plus its folder items repeated under each, so its
   listing counts projects × (1 + folders). A create that would list more than 500 is refused with
-  `limit_exceeded`; so is a project creation that would list any existing all-projects rule past
-  500, naming the blocking rule ids to a member manager. The project creation takes the same
+  `limit_exceeded`. A project creation that would list any existing all-projects rule past 500 is
+  refused with a conflict naming the blocking rule ids to a member manager, as the last-project
+  deletion is (a `limit_exceeded` body carries no detail). The project creation takes the same
   project-row lock as a deletion, within the same serializable transaction, so it cannot race a rule
   create. A listing is never truncated and never leaves a rule out.
 - **Authority (D7).** Creating or revoking an all-projects rule needs Manage access over the

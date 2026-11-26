@@ -719,8 +719,10 @@ func refuseLastProjectUnderAllProjectsRules(ctx context.Context, az *authz.TxAut
 
 // ErrProjectAboveAllProjectsRules refuses a project creation that would list
 // an all-projects rule past the v1 selector bound (#1446): the rule's folders
-// are repeated under every project.
-var ErrProjectAboveAllProjectsRules = fmt.Errorf("%w: service: another project would list a rule over all projects past its bound", domain.ErrLimitExceeded)
+// are repeated under every project. A conflict with the org's rules, like the
+// last-project deletion, so its detail can name them (a limit_exceeded body
+// is fixed).
+var ErrProjectAboveAllProjectsRules = fmt.Errorf("%w: service: another project would list a rule over all projects past its bound", domain.ErrConflict)
 
 // refuseProjectAboveAllProjectsRules runs before a project insert. It locks
 // the org's projects FOR UPDATE, as a deletion does, so it serializes with an

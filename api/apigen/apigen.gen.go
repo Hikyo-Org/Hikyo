@@ -6897,10 +6897,10 @@ type CreateRuleRequest struct {
 	//
 	// The 500 bound counts the rule as it is listed: every current project
 	// plus its folder items repeated under each. A create that would list
-	// more is refused with 409 `limit_exceeded`, and so is a project creation
-	// that would list an existing rule over all projects past it; the
-	// refusal names the blocking rules to a member manager. A listing is
-	// never truncated.
+	// more is refused with 409 `limit_exceeded`. A project creation that
+	// would list an existing rule over all projects past it is refused with
+	// 409 `conflict`, whose detail names the blocking rules to a member
+	// manager. A listing is never truncated.
 	Where RuleWhere `json:"where"`
 }
 
@@ -11245,10 +11245,10 @@ type Rule struct {
 	//
 	// The 500 bound counts the rule as it is listed: every current project
 	// plus its folder items repeated under each. A create that would list
-	// more is refused with 409 `limit_exceeded`, and so is a project creation
-	// that would list an existing rule over all projects past it; the
-	// refusal names the blocking rules to a member manager. A listing is
-	// never truncated.
+	// more is refused with 409 `limit_exceeded`. A project creation that
+	// would list an existing rule over all projects past it is refused with
+	// 409 `conflict`, whose detail names the blocking rules to a member
+	// manager. A listing is never truncated.
 	Where RuleWhere `json:"where"`
 }
 
@@ -11336,10 +11336,10 @@ type RuleProjectMode string
 //
 // The 500 bound counts the rule as it is listed: every current project
 // plus its folder items repeated under each. A create that would list
-// more is refused with 409 `limit_exceeded`, and so is a project creation
-// that would list an existing rule over all projects past it; the
-// refusal names the blocking rules to a member manager. A listing is
-// never truncated.
+// more is refused with 409 `limit_exceeded`. A project creation that
+// would list an existing rule over all projects past it is refused with
+// 409 `conflict`, whose detail names the blocking rules to a member
+// manager. A listing is never truncated.
 type RuleWhere struct {
 	Environments RuleEnvironmentAxis `json:"environments"`
 	Keys         RuleKeyAxis         `json:"keys"`

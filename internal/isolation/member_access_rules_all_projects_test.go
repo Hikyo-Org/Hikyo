@@ -576,7 +576,7 @@ func TestAllProjectsRulesBound(t *testing.T) {
 		// One more project would list the rule past the bound.
 		before := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE org_id = 'org_ap'")
 		_, err = f.projects.Create(ctx, service.LocalPrincipal(apAdmin), orgAP, "one-too-many")
-		if !errors.Is(err, service.ErrProjectAboveAllProjectsRules) || !errors.Is(err, domain.ErrLimitExceeded) || !errors.As(err, &detail) ||
+		if !errors.Is(err, service.ErrProjectAboveAllProjectsRules) || !errors.Is(err, domain.ErrConflict) || !errors.As(err, &detail) ||
 			!strings.Contains(detail.SafeDetail(), atBound.ID) {
 			t.Fatalf("project past the bound = %v, want ErrProjectAboveAllProjectsRules naming %s", err, atBound.ID)
 		}
@@ -771,6 +771,45 @@ func TestAllProjectsRulesWire(t *testing.T) {
 		var gone apigen.Error
 		if code != http.StatusConflict || json.Unmarshal(raw, &gone) != nil || gone.Error.Detail == nil || !strings.Contains(*gone.Error.Detail, created.Id) {
 			t.Fatalf("delete the last project = %d %s, want 409 naming %s", code, raw, created.Id)
+		}
+	})
+}
+
+// The wire of the listing bound: a project create that would list an
+// all-projects rule past it is a 409 conflict whose detail names the rule (a
+// limit_exceeded body is fixed, so it could not).
+func TestAllProjectsRulesBoundWire(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := newAccessWireEnv(t, db)
+		const holder = "usr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f91"
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO principals (id, kind, created_at) VALUES ('%s', 'human', %s)`, holder, ts))
+		var rows []string
+		for i := 1; i < domain.MaxRuleItems; i++ {
+			rows = append(rows, fmt.Sprintf("('prj_0193f0b4-1f2a-7c31-9c1e-%012d', '%s', 'wire bound %d', %s)", i, e.org, i, ts))
+		}
+		execRaw(t, db, "INSERT INTO projects (id, org_id, name, created_at) VALUES "+strings.Join(rows, ", "))
+		org := api.PathPrefix + "/orgs/" + e.org
+		all := apigen.RuleProjectModeAll
+		var projects []apigen.ID
+		for id := range strings.SplitSeq(queryStrings(t, db, "SELECT id || ',' FROM projects WHERE org_id = '"+e.org+"' ORDER BY id"), ",") {
+			if id != "" {
+				projects = append(projects, id)
+			}
+		}
+		code, raw := e.call(t, http.MethodPost, org+"/rules", apigen.CreateRuleRequest{Principal: holder, Capability: apigen.RuleCapabilityRead, Where: apigen.RuleWhere{
+			ProjectMode: &all, Projects: projects,
+			Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleEnvironmentItem{}},
+			Keys:         apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleKeyItem{}},
+		}})
+		var created apigen.Rule
+		if code != http.StatusCreated || json.Unmarshal(raw, &created) != nil {
+			t.Fatalf("rule over %d projects = %d %s", len(projects), code, raw)
+		}
+		code, raw = e.call(t, http.MethodPost, org+"/projects", apigen.CreateProjectRequest{Name: "one-too-many"})
+		var refusal apigen.Error
+		if code != http.StatusConflict || json.Unmarshal(raw, &refusal) != nil || refusal.Error.Code != apigen.ErrorCodeConflict ||
+			refusal.Error.Detail == nil || !strings.Contains(*refusal.Error.Detail, created.Id) {
+			t.Fatalf("project past the bound = %d %s, want 409 conflict naming %s", code, raw, created.Id)
 		}
 	})
 }
