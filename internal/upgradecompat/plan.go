@@ -247,6 +247,18 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 			}
 		}
 	}
+	// A verified bridge controls its exact pair whether it is live, lapsed or revoked: the
+	// ordinary edge is removed first, so losing a bridge to expiry or revocation can never
+	// route around the maintenance mode and attestation it demands. Only live bridges are
+	// added back below. Several bridges on one pair stay allowed when matching a journal.
+	for _, bridge := range bridges {
+		if !bridge.Valid() || bridge.Statement().SourceMigrations.Engine != engine {
+			continue
+		}
+		statement := bridge.Statement()
+		key := nodeKey(statement.SourceIdentity())
+		adjacency[key] = slices.DeleteFunc(adjacency[key], func(existing Step) bool { return existing.Target == statement.Target })
+	}
 	seenBridges := map[releaseidentity.Digest]bool{}
 	seenBridgePairs := map[string]bool{}
 	for _, bridge := range bridges {
@@ -314,11 +326,6 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 		}
 		step := Step{Source: fromSource, Target: statement.Target, Mode: Maintenance, SourceMigrations: statement.SourceMigrations.Clone(), TargetMigrations: statement.TargetMigrations.Clone(), SourceSchemaSHA256: statement.SourceSchemaSHA256, TargetSchemaSHA256: statement.TargetSchemaSHA256, SourcePolicySHA256: statement.SourcePolicySHA256, TargetPolicySHA256: statement.TargetPolicySHA256, BridgeSHA256: bridge.Digest(), Artifacts: to.state.release.Artifacts()}
 		key := nodeKey(fromSource)
-		// An explicit root-authorized bridge controls this exact exceptional
-		// pair even if an ordinary declaration also names it.
-		if !options.parallel {
-			adjacency[key] = slices.DeleteFunc(adjacency[key], func(existing Step) bool { return existing.Target == step.Target })
-		}
 		adjacency[key] = append(adjacency[key], step)
 	}
 	if source.Identity.IsRelease() && source.Identity.Release == target {

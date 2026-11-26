@@ -54,7 +54,7 @@ func bridgesBetween(t *testing.T, f *testfixture.Fixture, a, b testfixture.Signe
 
 func assemble(t *testing.T, f *testfixture.Fixture, releases []testfixture.SignedRelease, statements []recoverybridge.Statement, source upgradecompat.InstalledSource, target releaseidentity.Identity) routeFixture {
 	t.Helper()
-	f.Catalog.Bridges = nil
+	f.Catalog.Bridges = []releaseidentity.Digest{}
 	for _, s := range statements {
 		f.Catalog.Bridges = append(f.Catalog.Bridges, s.Digest)
 	}
@@ -129,12 +129,13 @@ func TestJournaledRouteSurvivesALapsedBridgeThatSortsFirst(t *testing.T) {
 	}
 }
 
-// P02: a bridge shadows the ordinary edge on its own pair and then lapses. An
-// admission after the lapse takes the ordinary edge; a zero-time search would take
-// the bridge again, so the journaled route must still be accepted. Item 4 as well:
-// the lapsed bridge and its re-signed replacement share the pair, which must not be
-// an error when matching a journaled route.
-func TestJournaledRouteSurvivesALapsedBridgeShadowingItsPair(t *testing.T) {
+// P02: a bridge controls its pair for as long as it is verified. Once it lapses or is
+// revoked the pair has no route at all: the ordinary edge it overrode must not come
+// back, or the maintenance mode and attestation the root demanded could be bypassed.
+// The lapsed bridge and its re-signed replacement share the pair, which must not be an
+// error when matching a journaled route, and the journal can never accept the
+// overridden ordinary edge.
+func TestALapsedOrRevokedBridgeKeepsControllingItsPair(t *testing.T) {
 	f := testfixture.New(t)
 	a, da := release(t, f, 1, 2, "x", nil)
 	c, dc := release(t, f, 2, 3, "x", map[releaseidentity.Engine][]upgradecompat.SourceEdge{releaseidentity.SQLite: {ordinaryEdge(a, da)}})
@@ -145,20 +146,26 @@ func TestJournaledRouteSurvivesALapsedBridgeShadowingItsPair(t *testing.T) {
 	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: a.Identity}, Migrations: ea.Migrations, SchemaSHA256: ea.SchemaSHA256}
 	r := assemble(t, f, []testfixture.SignedRelease{a, c}, []recoverybridge.Statement{lapsed, replacement}, source, c.Identity)
 
-	// Admission after the lapse, with the replacement revoked: the ordinary edge.
-	admitted, err := r.at(base, replacement.Digest)
-	if err != nil || len(admitted.BridgeDigests()) != 0 {
-		t.Fatalf("with both bridges out the ordinary edge is the route: %v %v", admitted.BridgeDigests(), err)
+	// Both bridges out: no route, and in particular not the overridden ordinary edge.
+	if plan, err := r.at(base, replacement.Digest); err == nil {
+		t.Fatalf("with every bridge on the pair lapsed or revoked the ordinary edge came back: %v", plan.BridgeDigests())
 	}
-	if fresh, err := r.at(base.Add(-2 * time.Hour)); err == nil && fresh.Digest() == admitted.Digest() {
-		t.Fatal("the zero-time search must not pick the ordinary edge, or this test does not reproduce P02")
+	// The lapsed statement and its re-signed replacement plan at admission as before.
+	admitted, err := r.at(base)
+	if err != nil || len(admitted.BridgeDigests()) != 1 || admitted.BridgeDigests()[0] != replacement.Digest || !admitted.RequiresOperatorAttestation() {
+		t.Fatalf("the replacement plans after the old bridge lapsed: %v %v", admitted.BridgeDigests(), err)
 	}
 	if plan, err := r.match(admitted.Digest()); err != nil || plan.Digest() != admitted.Digest() {
-		t.Fatalf("the journaled ordinary route must be accepted: %v", err)
+		t.Fatalf("the journaled bridge route must be accepted: %v", err)
 	}
-	// A lapsed statement and its re-signed replacement plan at admission as before.
-	if plan, err := r.at(base); err != nil || len(plan.BridgeDigests()) != 1 || plan.BridgeDigests()[0] != replacement.Digest {
-		t.Fatalf("the replacement plans after the old bridge lapsed: %v %v", plan.BridgeDigests(), err)
+	// The ordinary route the bridge overrides can never be a journaled route.
+	ordinary := assemble(t, f, []testfixture.SignedRelease{a, c}, nil, source, c.Identity)
+	overridden, err := ordinary.at(base)
+	if err != nil || len(overridden.BridgeDigests()) != 0 {
+		t.Fatalf("without bridges the ordinary edge is the route, or this test does not reproduce the bypass: %v", err)
+	}
+	if _, err := r.match(overridden.Digest()); !errors.Is(err, upgradecompat.ErrJournaledRoute) {
+		t.Fatalf("a journaled digest through the overridden ordinary edge must be refused while the bridge is verified: %v", err)
 	}
 }
 
