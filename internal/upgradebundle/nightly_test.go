@@ -178,6 +178,11 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if rolled, err := retired.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
 				t.Fatalf("security rollback must not be affected by the recovery-1 denial: %v", err)
 			}
+			// A resume is not a rollback: the journal is an unauthenticated file, so a journaled route
+			// through a bridge under the recovery-1 root is refused with the same operator message.
+			if _, err := retired.PlanAdmitted(source, node.Identity(), plan.Digest()); !errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || !strings.Contains(err.Error(), "recovery-2") || !strings.Contains(err.Error(), "recovery-bridge-ceremony.md") {
+				t.Fatalf("a resume through a recovery-1 bridge must be refused naming the owner prerequisite: %v", err)
+			}
 			// The legacy nightly bridge expires at its signed not_after like every bridge. An
 			// absent list (404) or an unreachable endpoint falls back to that expiry; a present
 			// but invalid list refuses; a revocation withdraws the bridge.

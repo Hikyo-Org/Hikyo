@@ -16,7 +16,8 @@ Owner only, before any bridge can be used. It is not a merge blocker, and agents
 of it. The code enforces the order: while the trust root a binary embeds still pins
 `recovery-1`, every routable bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`)
 still verifies and counts in the inventory, so every bundle loads and a security rollback
-works, but it never routes a new admission. The refusal says "the trust root pins recovery-1,
+works, but it never routes a new admission and never resumes one (the journal is an
+unauthenticated file). The refusal says "the trust root pins recovery-1,
 and recovery bridges need the rotated recovery-2 root" and points here. The expiry-free
 `legacy-nightly-bridge/v1` statements stay inert either way.
 

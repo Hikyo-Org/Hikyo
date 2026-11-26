@@ -121,7 +121,7 @@ workflow (full `check-compatibility-unchanged.sh`).
   agents do none of it): (1) rotate the root to `recovery-2`; (2) sign the legacy-nightly
   v2 and recovery-bridge statements with `recovery-2`; (3) publish the trust asset. Until
   then the code refuses to route any bridge under the `recovery-1` root and says so
-  (runbook section "Owner prerequisite: rotate to recovery-2"); load and rollback are unaffected.
+  (runbook section "Owner prerequisite: rotate to recovery-2"); load and security rollback are unaffected, resume is refused too.
   The ceremony itself (owner, #1560) is not done. The owner chose
   `recovery-2` as the signing key (ADR R2). Open: a real-signature database upgrade
   with operator attestation, and restore through `VerifyEmbeddedUpgradeSource` are untested.

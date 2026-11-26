@@ -120,7 +120,7 @@ func (b VerifiedBridge) Statement() BridgeStatement {
 // bridge is signed by a rotated key that the running binary's root pins, so a build whose
 // root still pins recovery-1 admits no routable bridge. Such a bridge still verifies and
 // counts in the inventory, so every bundle loads and a security rollback is unaffected,
-// but it never routes a new admission.
+// but it never routes a new admission or resumes one (only a security rollback ignores it).
 var bridgeDeniedSigners = []string{"1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"}
 
 // DenyBridgeSignerForTest adds a recovery key digest to the denied set, for tests that

@@ -112,13 +112,20 @@ func (b Bundle) PlanAt(source upgradecompat.InstalledSource, target releaseident
 
 // PlanAdmitted validates the route an earlier admission journaled by digest, for
 // resuming that upgrade. A bridge's not_after limits new admissions, so expiry is
-// not consulted; a revoked bridge on the route still refuses it. The route need
+// not consulted; a revoked bridge, or one under a root that still pins recovery-1, refuses it. The route need
 // not be the one a fresh search would pick today: it must be a valid path in the
 // authenticated graph with exactly the journaled digest.
 func (b Bundle) PlanAdmitted(source upgradecompat.InstalledSource, target releaseidentity.Identity, journaled releaseidentity.Digest) (upgradecompat.Plan, error) {
 	plan, err := upgradecompat.PlanRouteMatching(b.snapshot, source, target, b.nodes, b.bridges, nil, journaled)
 	if err != nil || len(plan.BridgeDigests()) == 0 {
 		return plan, err
+	}
+	// R2: a bridge under a root that still pins recovery-1 never authorizes a resume (the
+	// journal is an unauthenticated file); only a security rollback ignores that.
+	if slices.ContainsFunc(b.bridges, func(bridge releasetrust.VerifiedBridge) bool {
+		return bridge.RetiredSigner() && slices.Contains(plan.BridgeDigests(), bridge.Digest())
+	}) {
+		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge on the journaled route: %w", releasetrust.ErrRetiredBridgeSigner)
 	}
 	if b.revocations == nil {
 		return upgradecompat.Plan{}, errMissingRevocationLookup

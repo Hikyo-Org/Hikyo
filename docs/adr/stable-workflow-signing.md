@@ -103,7 +103,7 @@ apply-time revocation list (options (a) and (c) on
   bridges, and the verifier enforces it: under a root that pins `recovery-1` every routable
   bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`) verifies and counts, so
   bundles load and a security rollback is unaffected, but it never routes a new
-  admission, and the refusal names the owner prerequisite in the runbook (rotate to
+  admission or resumes one, and the refusal names the owner prerequisite in the runbook (rotate to
   `recovery-2`, sign with it, publish). The inert expiry-free
   `legacy-nightly-bridge/v1` statements load, always expired. The owner holds the key alone and every signing is witnessed and logged
   ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
