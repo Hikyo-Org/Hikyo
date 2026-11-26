@@ -512,83 +512,122 @@ func seedRetentionCLICorpus(t *testing.T, db *store.DB, principal domain.Princip
 // to, keyed by test, so waits fail at once instead of outliving it.
 var retentionServerExits sync.Map
 
+// schedulerJobBound caps one wait for a startup job; a job still pending then
+// is named in the failure instead of leaving the test to the go test timeout.
+const schedulerJobBound = 5 * time.Minute
+
 // schedulerLog is the app logger for these tests. The scheduler logs "scheduler
 // job failed" with the error when a job errors, then one health record per job
 // that has a LastSuccess probe, so those records are the completion signal.
 type schedulerLog struct {
 	mu   sync.Mutex
-	jobs map[string]string // job name -> failure text, empty on success
+	jobs map[string]*schedulerJob
 }
 
-func newSchedulerLog() *schedulerLog { return &schedulerLog{jobs: map[string]string{}} }
+// schedulerJob is closed (done) by the first completion record for the job.
+type schedulerJob struct {
+	done   chan struct{}
+	failed bool // separate from text: an error with empty text is still a failure
+	text   string
+}
+
+func newSchedulerLog() *schedulerLog { return &schedulerLog{jobs: map[string]*schedulerJob{}} }
+
+// job returns the entry for name; the caller holds l.mu.
+func (l *schedulerLog) job(name string) *schedulerJob {
+	j := l.jobs[name]
+	if j == nil {
+		j = &schedulerJob{done: make(chan struct{})}
+		l.jobs[name] = j
+	}
+	return j
+}
 
 func (*schedulerLog) Enabled(context.Context, slog.Level) bool { return true }
 func (l *schedulerLog) WithAttrs([]slog.Attr) slog.Handler     { return l }
 func (l *schedulerLog) WithGroup(string) slog.Handler          { return l }
 
 func (l *schedulerLog) Handle(_ context.Context, r slog.Record) error {
+	var failed bool
 	switch r.Message {
-	case "scheduler job failed", "scheduler job health", "scheduler job health check failed", "last_prune_success has never been recorded":
+	case "scheduler job health":
+	case "scheduler job failed", "scheduler job health check failed", "last_prune_success has never been recorded":
+		failed = true
 	default:
 		return nil
 	}
-	var job, failure string
+	var name, text string
 	r.Attrs(func(a slog.Attr) bool {
 		switch a.Key {
 		case "job":
-			job = a.Value.String()
+			name = a.Value.String()
 		case "err":
-			failure = a.Value.String()
+			text = a.Value.String()
 		}
 		return true
 	})
+	if failed && text == "" {
+		text = r.Message
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// The health record follows "scheduler job failed"; keep the first, real error.
-	if _, seen := l.jobs[job]; seen {
+	j := l.job(name)
+	select {
+	case <-j.done:
+		// The health record follows "scheduler job failed"; keep the first, real one.
 		return nil
-	}
-	switch r.Message {
-	case "scheduler job health":
-		l.jobs[job] = ""
-	case "last_prune_success has never been recorded":
-		l.jobs[job] = r.Message
 	default:
-		l.jobs[job] = failure
 	}
+	j.failed, j.text = failed, text
+	close(j.done)
 	return nil
 }
 
-// wait blocks until the startup run of job has finished, with no wall-clock
-// deadline: a backup takes as long as the host needs. It fails promptly when
-// the job errors or the served app dies, and is otherwise bounded by the test
-// context and the go test timeout.
+// wait blocks until the startup run of job has finished. It fails promptly
+// when the job errors or the served app dies, and names the pending job when
+// schedulerJobBound or the test context ends first.
 func (l *schedulerLog) wait(t *testing.T, job string) {
 	t.Helper()
 	start := time.Now()
+	l.mu.Lock()
+	j := l.job(job)
+	exportJob := l.job("backup_export")
+	l.mu.Unlock()
+	bound := time.NewTimer(schedulerJobBound)
+	defer bound.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
 	for {
 		l.mu.Lock()
-		failure, done := l.jobs[job]
 		// backup_prune cannot succeed after a failed export; surface that cause.
-		if exportFailure := l.jobs["backup_export"]; job == "backup_prune" && exportFailure != "" {
-			l.mu.Unlock()
-			t.Fatalf("scheduler job backup_export failed: %s", exportFailure)
+		exportDone, exportFailed, exportText := false, exportJob.failed, exportJob.text
+		select {
+		case <-exportJob.done:
+			exportDone = true
+		default:
 		}
 		l.mu.Unlock()
-		if done && failure != "" {
-			t.Fatalf("scheduler job %s failed: %s", job, failure)
-		}
-		if done {
-			t.Logf("scheduler job %s finished after %s", job, time.Since(start).Round(time.Millisecond))
-			return
-		}
-		if err, ok := retentionServerExits.Load(t); ok {
-			t.Fatalf("server exited while waiting for scheduler job %s: %v", job, err)
+		if job == "backup_prune" && exportDone && exportFailed {
+			t.Fatalf("scheduler job backup_export failed: %s", exportText)
 		}
 		select {
+		case <-j.done:
+			l.mu.Lock()
+			failed, text := j.failed, j.text
+			l.mu.Unlock()
+			if failed {
+				t.Fatalf("scheduler job %s failed: %s", job, text)
+			}
+			t.Logf("scheduler job %s finished after %s", job, time.Since(start).Round(time.Millisecond))
+			return
+		case <-bound.C:
+			t.Fatalf("scheduler job %s still pending after %s", job, schedulerJobBound)
 		case <-t.Context().Done():
-			t.Fatalf("test ended while waiting for scheduler job %s", job)
-		case <-time.After(20 * time.Millisecond):
+			t.Fatalf("test ended while scheduler job %s was pending", job)
+		case <-poll.C:
+			if err, ok := retentionServerExits.Load(t); ok {
+				t.Fatalf("server exited while scheduler job %s was pending: %v", job, err)
+			}
 		}
 	}
 }

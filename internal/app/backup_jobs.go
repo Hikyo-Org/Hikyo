@@ -59,6 +59,9 @@ func backupJobs(cfg *config.Config, log *slog.Logger, svc *service.Backup) []Sch
 			return nil
 		},
 		LastSuccess: svc.LastExportSuccess,
+		OnRefused: func(ctx context.Context, err error) error {
+			return svc.RecordFailure(ctx, service.TriggerScheduled, err)
+		},
 	}, {
 		Name: "backup_prune",
 		Run: func(ctx context.Context) error {

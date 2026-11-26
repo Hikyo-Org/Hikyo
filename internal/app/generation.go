@@ -540,16 +540,10 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		srv.scheduler.Jobs = append(srv.scheduler.Jobs, backupJobs(cfg, log, backupSvc)...)
 	}
 	for i := range srv.scheduler.Jobs {
-		run := srv.scheduler.Jobs[i].Run
-		srv.scheduler.Jobs[i].Run = func(ctx context.Context) error {
-			if err := captureWithRetry(ctx, func(ctx context.Context) error {
-				_, err := selfConfig.Capture(ctx)
-				return err
-			}); err != nil {
-				return err
-			}
-			return run(ctx)
-		}
+		srv.scheduler.Jobs[i] = gateOnRuntimeConfig(srv.scheduler.Jobs[i], func(ctx context.Context) error {
+			_, err := selfConfig.Capture(ctx)
+			return err
+		})
 	}
 	if owner.haCoord != nil {
 		srv.scheduler.Lease = owner.haCoord

@@ -47,6 +47,9 @@ type ScheduledJob struct {
 	Name        string
 	Run         func(context.Context) error
 	LastSuccess func(context.Context) (time.Time, bool, error)
+	// OnRefused, when set, is called with the runtime-configuration gate's
+	// refusal instead of Run, and returns the job's error.
+	OnRefused func(context.Context, error) error
 }
 
 // Scheduler runs every registered job once on startup and then hourly. Jobs
@@ -368,4 +371,21 @@ func (s *Scheduler) checkHealth(ctx context.Context, job ScheduledJob) {
 	if age > pruneStaleAfter {
 		s.logger().Warn("last_prune_success is stale", "job", job.Name, "last_prune_success", at, "age", age)
 	}
+}
+
+// gateOnRuntimeConfig runs capture before every job run. A refused run never
+// reaches job.Run; a job with OnRefused records its own failure there so the
+// refusal is durable, not just a scheduler log line.
+func gateOnRuntimeConfig(job ScheduledJob, capture func(context.Context) error) ScheduledJob {
+	run, refused := job.Run, job.OnRefused
+	job.Run = func(ctx context.Context) error {
+		if err := capture(ctx); err != nil {
+			if refused != nil {
+				return refused(ctx, err)
+			}
+			return err
+		}
+		return run(ctx)
+	}
+	return job
 }

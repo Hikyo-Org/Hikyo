@@ -369,7 +369,7 @@ func retryPostgresSerialization(ctx context.Context, attempt func() error) error
 			return err
 		}
 	}
-	return fmt.Errorf("store: export snapshot retries exhausted after %d attempts: %w", len(postgresRetryBackoff)+1, err)
+	return fmt.Errorf("store: postgres serialization retries exhausted after %d attempts: %w", len(postgresRetryBackoff)+1, err)
 }
 
 // pgTableOrder returns every table in the current schema, parents before

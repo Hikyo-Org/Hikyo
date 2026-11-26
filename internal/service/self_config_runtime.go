@@ -40,7 +40,7 @@ type selfConfigActive struct {
 func (s *SelfConfig) Capture(ctx context.Context) (*runtimeconfig.Bundle, error) {
 	metadata, err := s.DB.Coordination().CurrentSelfConfigGeneration(ctx)
 	if err != nil {
-		return nil, ErrSelfConfigUnavailable
+		return nil, errors.Join(ErrSelfConfigUnavailable, err)
 	}
 	active := s.active.Load()
 	if active == nil {

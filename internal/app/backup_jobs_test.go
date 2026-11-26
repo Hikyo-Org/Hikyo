@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,5 +165,36 @@ func TestBackupScheduledGuardsJobRegistration(t *testing.T) {
 	cfg := &config.Config{Store: config.Datastore{Engine: config.EngineSQLite, Path: filepath.Join(t.TempDir(), "hikyo.db")}}
 	if cfg.BackupScheduled() {
 		t.Fatal("an unconfigured instance reports a schedule")
+	}
+}
+
+// A job refused by the runtime-configuration gate never reaches Run, so the
+// refusal must still land on the health row and the instance trail.
+func TestRefusedBackupExportRecordsFailure(t *testing.T) {
+	cfg, svc, backupDir := scheduleFixture(t)
+	refusal := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: could not serialize access"))
+	jobs := backupJobs(cfg, quietLogger(), svc)
+	gated := gateOnRuntimeConfig(jobs[0], func(context.Context) error { return refusal })
+
+	err := gated.Run(t.Context())
+	if !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		t.Fatalf("refused run error = %v, want the refusal", err)
+	}
+	if n := countInstanceEvents(t, storeConfig(cfg), "backup.export_failed"); n != 1 {
+		t.Fatalf("backup.export_failed events = %d, want 1", n)
+	}
+	st, serr := svc.State(t.Context())
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	if st.LastFailureAt.IsZero() || !strings.Contains(st.LastFailureReason, "could not serialize access") {
+		t.Fatalf("refusal not recorded with its cause: %+v", st)
+	}
+	if n := archiveCount(t, backupDir); n != 0 {
+		t.Fatalf("a refused export published %d archives", n)
+	}
+	// A job without OnRefused (prune) just returns the refusal.
+	if err := gateOnRuntimeConfig(jobs[1], func(context.Context) error { return refusal }).Run(t.Context()); !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		t.Fatalf("gated prune error = %v", err)
 	}
 }
