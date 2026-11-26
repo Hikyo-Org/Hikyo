@@ -135,6 +135,17 @@ not prove DNS, TLS, or reverse-proxy routing.
 
 ## PostgreSQL boundary
 
+Hikyo requires PostgreSQL 18 or later. It reads `server_version_num` when it
+connects and refuses an older server before it migrates, serves, restores or
+writes anything:
+
+```text
+unsupported PostgreSQL server version 17.9 (server_version_num 170009); Hikyo requires PostgreSQL 18 or later (server_version_num 180000)
+```
+
+Upgrade the server to PostgreSQL 18 or later, or restore into a new PostgreSQL 18
+server, then start Hikyo again.
+
 Remote PostgreSQL DSNs must name the host explicitly and use `sslmode=verify-full`
 for certificate and hostname verification. CA-only `sslmode=verify-ca` and
 plaintext connections to a non-loopback database host are refused.

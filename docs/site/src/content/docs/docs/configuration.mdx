@@ -40,7 +40,7 @@ Do not use `--dev` for real secret material or any non-loopback deployment.
 | `HIKYO_ADAPTER_EGRESS_POLICY_FILE` | Optional startup-only adapter origin-to-CIDR exception policy, for any provider. |
 | `HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY` | `allow` lets AWS Secrets Manager adapters use this node's own AWS identity (`ambient`, `assume-role`, `web-identity`). Default `deny`: only static access keys are accepted. |
 | `HIKYO_DIRECTORY_PROXY` | Optional HTTPS forward proxy for outbound traffic to connected instances (directory-tier remotes and pairing). Must be an `https` URL naming a host; default is direct egress. Treated as a secret because the URL may carry credentials. The process environment's `HTTP_PROXY` is never consulted. |
-| `HIKYO_SEALED_WEBHOOK_FILE` | Optional startup-only registry of sealed webhook receivers; see below. |
+| `HIKYO_SEALED_WEBHOOK_FILE` | Optional startup-only registry of encrypted webhook receivers; see below. |
 
 The server's public origin must use a hostname. WebAuthn 0.18 rejects IP-address
 relying-party IDs, so an explicit IP-address `HIKYO_EXTERNAL_ORIGIN` now stops
@@ -240,14 +240,14 @@ Under `--dev` the server also emits a per-request access log (method, surface
 class, status, duration) at debug level. The production handler starts at Info,
 so these Debug request lines are absent unless debug logging is enabled.
 
-Sealed webhook receivers are listed in the JSON file named by
+Encrypted webhook receivers are listed in the JSON file named by
 `HIKYO_SEALED_WEBHOOK_FILE`. Only origins listed here can be bound by a
-project's `sealed-webhook` adapter:
+project's encrypted webhook adapter (provider type `sealed-webhook`):
 
 ```json
 {
   "instance_id": "hikyo-prod",
-  "signing_key_file": "sealed-webhook-signing.pem",
+  "signing_key_file": "encrypted-webhook-signing.pem",
   "targets": [{
     "id": "payments-receiver",
     "origin": "https://recv.example",
