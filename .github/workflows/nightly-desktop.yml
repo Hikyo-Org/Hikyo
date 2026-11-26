@@ -140,21 +140,25 @@ jobs:
         run: |
           set -euo pipefail
           fetch() { gh api -H 'Accept: application/vnd.github.raw' "repos/$GH_REPO/contents/$1?ref=$2"; }
+          # A registry without a jobs object is unreadable policy, not "desktop is gone".
+          has_desktop() { jq 'if (.jobs | type) == "object" then .jobs | has("desktop") else error("the registry has no jobs") end' <<<"$1"; }
           state=gone
           ci=$(fetch .github/workflows/ci.yml "$MAIN_SHA")
           if grep -qF ci-job-registry.without-desktop.json <<<"$ci"; then
             main_registry=$(fetch scripts/ci/ci-job-registry.json "$MAIN_SHA")
             dev_registry=$(fetch scripts/ci/ci-job-registry.json "$DEV_SHA")
-            main_has=$(jq '.jobs | has("desktop")' <<<"$main_registry")
-            dev_has=$(jq '.jobs | has("desktop")' <<<"$dev_registry")
+            main_has=$(has_desktop "$main_registry")
+            dev_has=$(has_desktop "$dev_registry")
             if [ "$main_has" = true ] || [ "$dev_has" = true ]; then state=needed; else state=dead; fi
           fi
           echo "state=$state" >>"$GITHUB_OUTPUT"
 
   # Holds the only write permission and runs no repository code: no checkout, and
   # every value reaches the script through env. GitHub reports a runner that was
-  # never acquired as cancelled, so anything but success counts as failing. It
-  # fails the run itself so the run stays red, even when a leg was cancelled.
+  # never acquired as cancelled, so anything but success counts as failing. It keeps
+  # two independent tracking issues, so a dead shim can never hide a desktop failure:
+  # the desktop one follows only the legs, the shim one only the shim check. It fails
+  # the run itself so the run stays red, even when a leg was cancelled.
   report:
     needs: [heads, desktop-dev, desktop-main, shim]
     # A manual run from another ref skips the heads job and both legs; that is not a failure.
@@ -164,7 +168,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Open, update or close the tracking issue
+      - name: Open, update or close the tracking issues
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -177,38 +181,44 @@ jobs:
           SHIM_STATE: ${{ needs.shim.outputs.state }}
         run: |
           set -euo pipefail
-          export TITLE='ci: nightly desktop validation failing'
-          export MARKER='<!-- hikyo-nightly-desktop -->'
-          label='ci-nightly-desktop'
-          # The label narrows the list on the server; the exact match below stays the check.
-          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
-            --json number,title,author,body \
-            --jq '.[] | select(.title == env.TITLE and (.author.login == "github-actions[bot]" or .author.login == "app/github-actions") and (.body | contains(env.MARKER))) | .number' | head -n 1)
-          if [ "$DEV_RESULT" = success ] && [ "$MAIN_RESULT" = success ] && [ "$SHIM_RESULT" = success ] && [ "$SHIM_STATE" != dead ]; then
-            if [ -n "$issue_number" ]; then
-              gh issue close "$issue_number" \
-                --comment "Nightly desktop validation passed on dev (\`$DEV_SHA\`) and main (\`$MAIN_SHA\`): $RUN_URL"
+          # sync_issue TITLE MARKER LABEL FAILING DETAIL CLOSING_COMMENT: keeps one open
+          # issue per title while FAILING is true and closes it once it is false.
+          sync_issue() {
+            local title=$1 marker=$2 label=$3 failing=$4 detail=$5 closing=$6 issue_number
+            export TITLE=$title MARKER=$marker
+            # The label narrows the list on the server; the exact match below stays the check.
+            issue_number=$(gh issue list --state open --label "$label" --limit 100 \
+              --json number,title,author,body \
+              --jq '.[] | select(.title == env.TITLE and (.author.login == "github-actions[bot]" or .author.login == "app/github-actions") and (.body | contains(env.MARKER))) | .number' | head -n 1)
+            if [ "$failing" = false ]; then
+              if [ -n "$issue_number" ]; then
+                gh issue close "$issue_number" --comment "$closing"
+              fi
+            elif [ -n "$issue_number" ]; then
+              gh issue comment "$issue_number" --body "$detail"
+            else
+              gh label create "$label" --force --color B60205 \
+                --description 'Automation-owned nightly desktop validation failure'
+              gh issue create --title "$title" --label "$label" --body "$(printf '%s\n\n%s' "$marker" "$detail")"
             fi
-            exit 0
-          fi
+          }
+          desktop_failing=true
+          if [ "$DEV_RESULT" = success ] && [ "$MAIN_RESULT" = success ]; then desktop_failing=false; fi
+          shim_failing=true
+          if [ "$SHIM_RESULT" = success ] && [ "$SHIM_STATE" != dead ]; then shim_failing=false; fi
+          sync_issue 'ci: nightly desktop validation failing' '<!-- hikyo-nightly-desktop -->' ci-nightly-desktop "$desktop_failing" \
+            "$(printf '%s\n' \
+              "Nightly desktop validation did not pass: $RUN_URL" \
+              "" \
+              "- branch dev, head \`$DEV_SHA\`: ${DEV_RESULT:-not run}" \
+              "- branch main, head \`$MAIN_SHA\`: ${MAIN_RESULT:-not run}")" \
+            "Nightly desktop validation passed on dev (\`$DEV_SHA\`) and main (\`$MAIN_SHA\`): $RUN_URL"
           if [ "$SHIM_STATE" = dead ]; then
-            shim_line='- the desktop-removal shim in ci.yml is dead, neither head registers desktop any more: remove it and its tests (#1595)'
+            shim_detail="The desktop-removal shim in ci.yml is dead: neither head registers desktop any more. Remove the shim and its migration tests (#1595). Seen: $RUN_URL"
           else
-            shim_line="- desktop-removal shim check: ${SHIM_RESULT:-not run}"
+            shim_detail="The desktop-removal shim check did not complete (${SHIM_RESULT:-not run}): $RUN_URL"
           fi
-          detail=$(printf '%s\n' \
-            "Nightly desktop validation did not pass: $RUN_URL" \
-            "" \
-            "- branch dev, head \`$DEV_SHA\`: ${DEV_RESULT:-not run}" \
-            "- branch main, head \`$MAIN_SHA\`: ${MAIN_RESULT:-not run}" \
-            "$shim_line")
-          if [ -n "$issue_number" ]; then
-            gh issue comment "$issue_number" --body "$detail"
-          else
-            gh label create "$label" --force --color B60205 \
-              --description 'Automation-owned nightly desktop validation failure'
-            gh issue create --title "$TITLE" --label "$label" --body "$MARKER
-
-          $detail"
-          fi
+          sync_issue 'ci: remove the dead desktop-removal shim (#1595)' '<!-- hikyo-nightly-desktop-shim -->' ci-desktop-removal-shim "$shim_failing" \
+            "$shim_detail" "The desktop-removal shim check is healthy again: $RUN_URL"
+          [ "$desktop_failing$shim_failing" = falsefalse ] && exit 0
           exit 1

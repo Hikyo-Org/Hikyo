@@ -162,18 +162,21 @@ dispatch on main:
    Main before the shell lands runs only step 2, on Linux, so until promotion brings
    the module to main, the main leg covers only the boundary check.
 4. A `report` job runs with `issues: write` only, no checkout and no repository code.
-   When either leg or the shim check is not `success` (a runner that is never acquired is reported as
+   When either leg is not `success` (a runner that is never acquired is reported as
    `cancelled`), it looks the issue up by the `ci-nightly-desktop` label plus an exact title, marker and
    bot-author match, then opens or comments on the one issue titled `ci: nightly desktop
    validation failing` with the run link and each branch's head SHA and result, then
    fails, so the run stays red. It runs only on main; a manual run from another ref skips
    it. A later green night closes the issue with a comment.
-   A `shim` job (no checkout, API reads only) also reports when the desktop-removal
-   shim in `ci.yml` is dead: once neither head's job registry lists `desktop`, the shim
-   and its migration tests are dead code, and the report names issue #1595, which tracks
-   their removal. The issue stays open until they are removed.
-   Each night costs one issue-list call, plus one write when the state changes or the
-   failure repeats.
+   A `shim` job (no checkout, API reads only) checks whether the desktop-removal shim
+   in `ci.yml` is dead: once neither head's job registry lists `desktop`, the shim and
+   its migration tests are dead code (tracked in #1595). The report keeps that in its
+   own issue, `ci: remove the dead desktop-removal shim (#1595)` (label
+   `ci-desktop-removal-shim`), opened when the shim is dead or its check cannot read a
+   file, and closed once it is healthy. The desktop issue follows only the two legs, so
+   a dead shim never hides a desktop failure; either failing keeps the run red.
+   Each night costs two issue-list calls, plus one write per issue when its state changes
+   or its failure repeats.
 5. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from

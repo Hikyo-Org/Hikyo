@@ -22,7 +22,8 @@ All three decided on 2026-11-25.
    on Linux and covers only the boundary check until promotion brings the module to
    main. Until the main to dev backmerge lets both branches drop `desktop` from the job
    registry, a shim in `ci-required` tolerates the missing job; removing it is tracked
-   in #1595, and the nightly reports when it is dead.
+   in #1595, and the nightly reports when it is dead in its own tracking issue, apart
+   from the desktop one.
    - *Why:* the `macos-15` job was never acquired in 5 of 21 `ci-dev` attempts (24%).
      GitHub cancelled each after 15 to 46 minutes. Run 45653285809 needed a third
      attempt, so dev stayed red. When a runner was acquired it started within 8
