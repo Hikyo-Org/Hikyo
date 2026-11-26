@@ -397,7 +397,8 @@ pins that, the sparse checkout, its packages and the scripts it runs by name; it
 see a direct file read outside the tree.
 
 A changed `ci-dev-gate.yml` lands on `main` first, and the publisher contract then refuses
-every open dev PR until `main` is merged back into `dev` and `dev` into each PR. That is a
+every open dev PR until `main` is merged back into `dev` and `dev` into each PR, or `main` is
+merged directly into the PR (a head that contains main's current head and whose copy equals main's is admitted over dev's older copy). That is a
 verdict, not a failed run: the record says what to merge, and another attempt would find
 the same bytes.
 
@@ -554,17 +555,17 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 R = 480 is below 923. With 662 allowed to gated work (1000 - 522 + 184), the pinned
 worst case at the lower bound is 662 + 739 = 1,401 requests, 40.1% over the window. That is
 above the 25% over-window the owner accepted for the exception (Q2), by 15.1 points. The
-owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. That acceptance was of 1,396 (39.6%); the dev-publisher backmerge admission hotfix adds 5 requests (1 ancestry read in each of 4 lanes, 1 in the attempt-3 bypass), which the dated acceptance has not covered separately. The post-write
+coordinator accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. Marc accepted 1,396 (39.6%) for the #1598 interim; on 2026-11-26 the coordinator accepted figures up to a ceiling of about 1,420 requests an hour (42%). The dev-publisher backmerge admission hotfix adds 5 requests (1 ancestry read in each of 4 lanes, 1 in the attempt-3 bypass), within that ceiling. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
-the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
+the margin (45 per pass, 46 on the backmerge path) and not an ungated row: a created-record pass that confirms costs 41 + 2
 requests (42 + 2 when it takes the backmerge exception) and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
 never catches up costs 87 (88 with the backmerge ancestry read) on every attempt, ungated at attempt 3 (counted on the fixture), and a lane that lags costs
 that, not 45, in the margin as well. Attempts 1 and 2 of such a pass are gated like any pass;
 under sustained listing lag on a fan-out, each of N heads can spend 87 ungated at attempt 3
-(N x 87), and N lagging lanes cost 87 each in the margin. That is disclosed here, not counted:
+(N x 87, or 88 each on the backmerge path), and N lagging lanes cost 87 (88) each in the margin. That is disclosed here, not counted:
 it needs a sustained GitHub listing outage at the same time. A listing is only needed when the
 pass created its record with a POST (a PATCH in place keeps a lower ID than any later
-revocation), so 45 is a ceiling for the normal case, not the usual cost. The
+revocation), so 45 (46 on the backmerge path) is a ceiling for the normal case, not the usual cost. The
 retirement fan-outs of `ci-check-retirement.yml` are not capped and not counted (hourly
 discovery, small). Expected drop frequency (an estimate): ungated spend near the incident
 level while a merge group is in flight. Over the last seven days 25 of 168 hours (15%) had
@@ -629,7 +630,7 @@ The revocation sticks. The record carries the title `PR validation revoked`.
   record was completed or absent, or created its pending barrier) can end with a record whose ID
   is above a revocation written between its listing and the creation. After a success write the
   pass therefore lists the head's checks once more (the suite-aware listing and bounded waits every
-  other write confirmation uses, 3 reads, counted in the 45 per pass of the sizing table) and acts
+  other write confirmation uses, 3 reads, counted in the 45 per pass of the sizing table, 46 on the backmerge path) and acts
   only on a listing that shows the exact success it wrote as completed; a listing with the right
   ID in another status is not a confirmation. If the listing is absent, older, in another status or
   an error, the pass fails closed: a blocking record is written over the success it cannot
@@ -733,8 +734,8 @@ verification belongs to the GitHub ruleset, not to this gate.
 
 Discovery lists every open PR and selects those whose base or stack base is `dev`.
 The `gate-dev` `discover` job still skips `pull_request_target` events for these
-PRs, because the publisher contract requires that workflow file to be identical on
-main, the base and the head, so it cannot change in a PR. The `ci-feedback`
+PRs, because the publisher contract requires the head's copy of that workflow file to equal
+main's (the base's copy may differ only for a backmerge head), so a PR cannot change it. The `ci-feedback`
 callback, the hourly schedule and manual dispatch run main's tooling and assess the
 stacked heads. A stacked PR that shares its head with another PR is ambiguous,
 exactly as two dev PRs would be.

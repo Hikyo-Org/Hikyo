@@ -97,8 +97,9 @@ func maxParallelLanes(t *testing.T) int {
 }
 
 // TestReserveSizingIsPinnedAndDocumented pins the sizing behind the interim exception of
-// 2026-11-26 (#1598). The owner accepted the pinned worst case of 1,401 requests an hour (40.1% over
-// the window, above the 25% of Q2) on 2026-11-26 for the interim only: it ends when #1598 lands.
+// 2026-11-26 (#1598). The pinned worst case is 1,401 requests an hour (40.1% over
+// the window, above the 25% of Q2). Marc accepted 1,396 (39.6%) for the #1598 interim; on 2026-11-26
+// the coordinator accepted figures up to a ceiling of about 1,420 an hour (42%). The exception ends when #1598 lands.
 // R = 480 is below the honest bound, so ungated spend can exceed it in a
 // busy hour while a group is in flight and a merge group can then be dequeued and
 // re-queued. Every figure is measured (M) or estimated (E); docs/development/ci.md must
