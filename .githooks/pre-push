@@ -164,6 +164,11 @@ require_gotest() {
 		runner=scripts/ci/go-affected-test.sh
 	else
 		runner=$repo_root/scripts/ci/go-affected-test.sh
+		# Checked here: under macOS sh a missing command in the subshell exits 1, not 127.
+		[ -x "$runner" ] || {
+			printf 'pre-push: %s neither commits scripts/ci/go-affected-test.sh nor has an executable copy at %s\n' "$1" "$runner" >&2
+			return 1
+		}
 	fi
 	status=0
 	(

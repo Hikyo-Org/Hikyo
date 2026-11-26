@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+# The hook reads these opt-outs; a developer's exported values must not leak in.
+unset HIKYO_PREPUSH_STORYBOOK HIKYO_PREPUSH_GOLANGCI HIKYO_PREPUSH_GOTEST
 
 repo=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-signature-fixture.XXXXXX")
 trap 'rm -rf "$repo"' EXIT HUP INT TERM
