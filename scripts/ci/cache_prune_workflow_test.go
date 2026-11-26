@@ -641,7 +641,7 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 				"env": map[string]any{
 					"GH_TOKEN":          "${{ github.token }}",
 					"GH_REPO":           "${{ github.repository }}",
-					"HEADROOM_PREFIXES": "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-",
+					"HEADROOM_PREFIXES": "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2- pnpm-store-v2-",
 					"HEADROOM_SKIP_KEY": "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
 				},
 				"run": "./scripts/ci/cache-prune.sh",
@@ -744,7 +744,10 @@ func TestCIMainHeadroomWorkflow(t *testing.T) {
 		"another lane":              func(w map[string]any) { step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2-" },
 		"another script":            func(w map[string]any) { step(w, 2)["run"] = "./scripts/ci/cache-prune.sh && true" },
 		"k8s-e2e lane dropped": func(w map[string]any) {
-			step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-fuzz-v2-"
+			step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-fuzz-v2- pnpm-store-v2-"
+		},
+		"go step ignores the pnpm stores": func(w map[string]any) {
+			step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-"
 		},
 		"pnpm lane dropped":    func(w map[string]any) { job(w)["steps"] = job(w)["steps"].([]any)[:3] },
 		"pnpm runs every week": func(w map[string]any) { delete(step(w, 3)["env"].(map[string]any), "HEADROOM_SKIP_KEY") },

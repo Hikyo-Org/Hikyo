@@ -417,8 +417,10 @@ type plan struct {
 	requested bool
 	// pnpm: a pnpm lockfile changed together with go.sum, so the weekly run saves the two pnpm stores (0.41 GB)
 	// too, and the second step of ci-main-headroom.yml makes room for them (its skip key does not hit).
-	pnpm       bool
-	requestLag time.Duration
+	// pnpmApart is the first design, mutation only: the go step does not count the pnpm stores, so each of the
+	// two steps sizes only its own save and together they leave the room short by the smaller one.
+	pnpm, pnpmApart bool
+	requestLag      time.Duration
 	// mainBySha is the main seed key as it was, <sha> alone: nothing is saved on a day main did not move,
 	// so a quiet weekend leaves the main seed where Friday left it.
 	mainBySha bool
@@ -648,7 +650,11 @@ func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent 
 				}
 			}
 			// Two steps of ci-main-headroom.yml, one after the other.
-			m.headroom(modelCIMainGoLanes)
+			if p.pnpmApart {
+				m.headroom(modelCIMainGoLanes)
+			} else {
+				m.headroom(modelCIMainGoLanes + " " + modelCIMainPnpmLanes)
+			}
 			if p.pnpm {
 				m.headroom(modelCIMainPnpmLanes)
 			}
@@ -1249,8 +1255,8 @@ func TestCacheBudgetModel(t *testing.T) {
 					t.Fatalf("without the headroom job a manual ci-main run on a weekday no longer loses a seed at %s; update docs/development/ci.md", l.name)
 				}
 			})
-			// Sensitivity, not a claim: a pnpm lockfile changing on the same day as go.sum adds the two pnpm stores
-			// (0.41 GB) to the saves; the run is logged for docs/development/ci.md and asserts nothing.
+			// A pnpm lockfile changing on the same day as go.sum adds the two pnpm stores (0.41 GB) to the saves.
+			// The newest seeds survive it, and the first design (the go step not counting the stores) does not.
 			t.Run("ci-main on a weekday with a pnpm lockfile change/"+l.name, func(t *testing.T) {
 				t.Parallel()
 				p := planAdopted
@@ -1260,7 +1266,17 @@ func TestCacheBudgetModel(t *testing.T) {
 					p.times.ciMain = [2]int{minute / 60, minute % 60}
 					return p
 				}
-				logSweep(t, "headroom, ci-main on a weekday with a pnpm lockfile change", l, sweepSeeds(t, p, l.bytes, 10*60+59, 22*60+59, sweepStep(360), at, ciMainWeekday))
+				with := sweepSeeds(t, p, l.bytes, 10*60+59, 22*60+59, sweepStep(360), at, ciMainWeekday)
+				logSweep(t, "headroom, ci-main on a weekday with a pnpm lockfile change", l, with)
+				if len(with.lost) != 0 {
+					t.Fatalf("a ci-main run with a pnpm lockfile change loses a newest seed at %v with the headroom job (%s)", with.lost, l.name)
+				}
+				p.pnpmApart = true
+				apart := sweepSeeds(t, p, l.bytes, 10*60+59, 22*60+59, sweepStep(360), at, ciMainWeekday)
+				logSweep(t, "headroom steps sized apart, ci-main on a weekday with a pnpm lockfile change", l, apart)
+				if l.bytes == 10_000_000_000 && len(apart.lost) == 0 {
+					t.Fatalf("sizing the pnpm stores apart no longer loses a seed at %s; update docs/development/ci.md", l.name)
+				}
 			})
 			// The same manual run with the headroom started by its request (ci-main-headroom.yml, workflow_run
 			// requested) instead of 45 minutes ahead: the writers save while the headroom job queues, runs its
@@ -1343,6 +1359,7 @@ func TestCacheModelNamesTheWorkflowLanes(t *testing.T) {
 			}
 		}
 		slices.Sort(lanes)
+		lanes = slices.Compact(lanes)
 		model := strings.Fields(want)
 		slices.Sort(model)
 		if !slices.Equal(lanes, model) {

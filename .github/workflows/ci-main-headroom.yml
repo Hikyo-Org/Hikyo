@@ -59,11 +59,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          HEADROOM_PREFIXES: go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-
+          HEADROOM_PREFIXES: go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2- pnpm-store-v2-
           HEADROOM_SKIP_KEY: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
         run: ./scripts/ci/cache-prune.sh
       # The pnpm stores (host and Playwright, 0.2 GB each) are saved by the same weekly run when a lockfile or the
-      # Node pin changed, which go.mod and go.sum do not show. Their keys carry the Node ABI, which this job cannot
+      # Node pin changed, which go.mod and go.sum do not show. The step above already counts them (a
+      # conservative 0.41 GB on a day they are not saved): a step that sized only the stores would not know of
+      # the 3.3 GB the go lanes are about to save, and the two steps together would leave the room short. Their keys carry the Node ABI, which this job cannot
       # compute (no Node, no repository code), so the skip keys stand for it with a star.
       - name: Make room in the Actions cache for the weekly pnpm stores
         env:

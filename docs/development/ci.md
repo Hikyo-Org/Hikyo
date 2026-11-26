@@ -287,15 +287,19 @@ fourth (the headroom delete, below), which is what makes survival independent of
      and the writers' first saves is modelled below.
    * Weekly pnpm stores (`pnpm-store-v2-host-` and `-playwright-`, 0.41 GB together): the validation job
      saves them when a lockfile or the Node pin changed, which `go.mod` and `go.sum` do not show, so the
-     go-lanes skip key would never size them. A second step of the same job names `pnpm-store-v2-` and
-     skips only when both stores for the current lockfile hash already exist on main. Their keys carry
-     the Node ABI, which needs Node and so repository tooling the job must not run, so the skip keys end
-     in the lockfile hash and leave the ABI as a star (the script matches one `*` as a start and an
-     end, and skips only when every key hits a main entry). Residual: a Node ABI bump alone, with
-     no lockfile change, is not seen by that skip and sizes the stores (a conservative 0.41 GB). The
-     model keeps the pnpm stores out of the default ci-main saves (a go.sum change alone leaves them a
-     hit) and runs one sensitivity case with a lockfile change on the same day: at 10.00 GB the sampled
-     weekday minutes lose a newest seed once (peak 10.31 GB), at 10 GiB none (sampled, not asserted).
+     go-lanes skip key never sizes them on its own. The headroom must count them together with the go
+     lanes: the first design gave them a step of their own that sized only the stores, so on a day with
+     both changes each step left room for its own save and not for the other's, short by the smaller one
+     (0.41 GB). The model lost the newest seed at 10.00 GB with it (peak 10.31 GB; kept as a mutation, the
+     test asserts the loss). The go step now names `pnpm-store-v2-` as well, so the room covers 3.7 GB at
+     once; the second step stays for a day on which only a lockfile changed (the go skip key hits and the
+     first step does nothing). Cost: on a go.sum-only day the go step counts 0.41 GB that is not saved, a
+     conservative extra deletion (the model includes it). The stores' keys carry the Node ABI, which needs
+     Node and so repository tooling the job must not run, so the second step's skip keys end in the
+     lockfile hash and leave the ABI as a star (the script matches one `*` as a start and an end, and skips
+     only when every key hits a main entry). Residual: a Node ABI bump alone, with no lockfile change, is
+     not seen by that skip and sizes the stores (conservative, 0.41 GB). The model asserts that a lockfile
+     change on the same day as go.sum loses no newest seed at either limit (sampled by default, every minute in the full sweep).
    * Margin 0.25 GB (budget 9.75 GB): it equals the largest single CodeQL overlay (0.268 GB), so one
      concurrent CodeQL save between the delete and the save still fits.
    * Incoming size: the sum, over the lanes named, of the size of the newest main entry of that lane
