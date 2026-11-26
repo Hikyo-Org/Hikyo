@@ -12,12 +12,14 @@ permissions:
   contents: read
 jobs:
   publish:
-    name: publish-${{ matrix.work.head }}
+    name: ${{ matrix.work.kind == 'group' && 'group' || 'publish' }}-${{ matrix.work.head }}
     if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.work.kind == 'group' && 10 || 1 }}
     strategy:
       fail-fast: false
+      # At most two heads past the reserve check at once: the check reads rate_limit before any job spends, so an unbounded fan-out (a publisher change reassesses every open PR) could all pass it together (#1553, #1598).
+      max-parallel: 2
       matrix:
         work: ${{ fromJSON(inputs.work) }}
     permissions:
@@ -26,9 +28,9 @@ jobs:
       contents: read
       pull-requests: read
     concurrency:
+      # No queue: max. One running and the newest pending reconcile per head: every reconcile rereads live GitHub state, so a replaced pending one loses nothing when one open PR has this head, and duplicates stop spending the shared token budget (#1553). A replaced pull_request_target reassesses only its own PR: another open PR on the same head waits for a later callback or worker, which can be replaced too (accepted residual).
       group: queue-check-${{ github.repository_id }}-${{ matrix.work.head }}
       cancel-in-progress: false
-      queue: max
     steps:
       - name: Capture the authenticated setup-inclusive admission budget
         if: matrix.work.kind != 'group'
@@ -90,6 +92,12 @@ jobs:
           PR_GATE_CHECK_NAME: ci-queue-required
           HEAD: ${{ matrix.work.head }}
           KIND: ${{ matrix.work.kind }}
+        # The job's ten-minute timeout bounds the group proof, which has no admission clock.
+        # Let a rate-limit reset that arrives within five minutes be waited out (#1553).
         run: |
           test -x "$RUNNER_TEMP/queue-publisher"
+          if [ "$KIND" = group ]; then
+            PR_GATE_DEADLINE=$(($(date +%s) + 300))
+            export PR_GATE_DEADLINE
+          fi
           "$RUNNER_TEMP/queue-publisher" --queue --expected-head "$HEAD" --head-worker "$KIND"

@@ -179,6 +179,7 @@ type check struct {
 	Status      string `json:"status"`
 	Conclusion  string `json:"conclusion"`
 	CompletedAt string `json:"completed_at"`
+	StartedAt   string `json:"started_at"`
 	App         struct {
 		ID   int64  `json:"id"`
 		Slug string `json:"slug"`
@@ -450,6 +451,8 @@ type githubReadError struct {
 	// GraphQL answered with an error payload. The server decided, so a retry
 	// cannot help even though gh exited nonzero.
 	rejected bool
+	// A 403/429 whose gh stderr names the rate limit. Only the flag is kept.
+	rateLimited bool
 }
 
 func (e *githubReadError) Error() string {
@@ -546,9 +549,80 @@ func stderrHTTPStatus(stderr []byte) int {
 // and the check retirement commands keep their single attempt.
 type retryingAPI struct{ api api }
 
+var rateLimitNow = time.Now
+
+// Slack past the reported reset so the retry lands in the new window.
+const rateLimitSkew = 5 * time.Second
+
+var errNoRateLimitWait = errors.New("no exhausted core rate limit to wait for")
+
+// The reset time fits only if the job's own budget outlasts it: the context
+// deadline when set, otherwise PR_GATE_DEADLINE (unix seconds).
+func readBudgetEnd(ctx context.Context) (time.Time, bool) {
+	if d, ok := ctx.Deadline(); ok {
+		return d, true
+	}
+	n, err := strconv.ParseInt(os.Getenv("PR_GATE_DEADLINE"), 10, 64)
+	return time.Unix(n, 0), err == nil && n > 0
+}
+
+// awaitRateLimitReset waits out an exhausted core limit when the reset fits the
+// job's budget. The rate_limit read does not count against the limit. It returns
+// nil after waiting, errNoRateLimitWait when this is not an exhausted core limit
+// (a secondary limit), and a visible failure naming the reset when it cannot wait.
+func (a retryingAPI) awaitRateLimitReset(ctx context.Context, failure *githubReadError) error {
+	type bucket struct {
+		Remaining int   `json:"remaining"`
+		Reset     int64 `json:"reset"`
+	}
+	var limits struct {
+		Resources struct {
+			Core    bucket `json:"core"`
+			GraphQL bucket `json:"graphql"`
+		} `json:"resources"`
+	}
+	if a.api.read(ctx, "rate_limit", &limits) != nil {
+		return errNoRateLimitWait
+	}
+	// GraphQL reads draw on their own bucket.
+	spent := limits.Resources.Core
+	if strings.HasPrefix(failure.path, "graphql:") {
+		spent = limits.Resources.GraphQL
+	}
+	// A reset more than a day out is not a window GitHub reports; refuse it
+	// before it can overflow the wait arithmetic.
+	if spent.Remaining > 0 || spent.Reset <= 0 || spent.Reset > rateLimitNow().Add(24*time.Hour).Unix() {
+		return errNoRateLimitWait
+	}
+	reset := time.Unix(spent.Reset, 0)
+	now := rateLimitNow()
+	wait := max(reset.Sub(now), 0) + rateLimitSkew
+	if end, ok := readBudgetEnd(ctx); !ok || now.Add(wait).After(end) {
+		return fmt.Errorf("GitHub API rate limit exhausted until %s, which is beyond this job's remaining budget: %w", reset.UTC().Format(time.RFC3339), failure)
+	}
+	fmt.Fprintf(os.Stderr, "trusted PR gate: GitHub API rate limit exhausted; waiting %s for the reset at %s\n", wait.Round(time.Second), reset.UTC().Format(time.RFC3339))
+	if err := readRetryWait(ctx, wait); err != nil {
+		return &githubReadError{path: failure.path, cause: err}
+	}
+	return nil
+}
+
 func (a retryingAPI) read(ctx context.Context, path string, result any) error {
+	waitedForReset := false
 	for attempt := 0; ; attempt++ {
 		err := a.api.read(ctx, path, result)
+		var limited *githubReadError
+		if err != nil && !waitedForReset && errors.As(err, &limited) && limited.rateLimited {
+			// One reset wait per read: a second rate limit is reported as it is.
+			waitedForReset = true
+			switch waitErr := a.awaitRateLimitReset(ctx, limited); {
+			case waitErr == nil:
+				attempt--
+				continue
+			case !errors.Is(waitErr, errNoRateLimitWait):
+				return waitErr
+			}
+		}
 		if err == nil || attempt >= len(readRetryBackoff) || !transientGitHubRead(err) {
 			return err
 		}
@@ -594,7 +668,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				Errors []jsontext.Value `json:"errors"`
 			}
 			if decode(data, &response) == nil && len(response.Errors) > 0 {
-				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true})
+				return fmt.Errorf("%w: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true, rateLimited: graphQLRateLimited(response.Errors)})
 			}
 		}
 		var failure struct {
@@ -608,14 +682,36 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 		}
 		// Output fills ExitError.Stderr (bounded) because gateCommand leaves
 		// Stderr unset. Only the parsed status is kept, never the text.
+		// gh also puts the JSON body (with its status) on stdout, so the status can
+		// come from there while the rate-limit wording is only on stderr.
 		var exit *exec.ExitError
-		if status == 0 && errors.As(err, &exit) {
+		hasStderr := errors.As(err, &exit)
+		if status == 0 && hasStderr {
 			status = stderrHTTPStatus(exit.Stderr)
 		}
-		return &githubReadError{path: path, status: status, cause: err}
+		limited := (status == 403 || status == 429) && hasStderr && bytes.Contains(bytes.ToLower(exit.Stderr), []byte("rate limit"))
+		return &githubReadError{path: path, status: status, cause: err, rateLimited: limited}
 	}
 	return decode(data, result)
 }
+
+// graphQLRateLimited reports an error payload that GitHub sends for an exhausted
+// GraphQL limit. A primary limit answers HTTP 200 with an errors entry (the docs say
+// 200 but name no type; GitHub sends type RATE_LIMITED), and a secondary limit is
+// 200 or 403 with a message naming the rate limit. Only the flag is kept.
+func graphQLRateLimited(raw []jsontext.Value) bool {
+	for _, entry := range raw {
+		var e struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		}
+		if decode(entry, &e) == nil && (e.Type == "RATE_LIMITED" || strings.Contains(strings.ToLower(e.Message), "rate limit")) {
+			return true
+		}
+	}
+	return false
+}
+
 func (ghAPI) write(ctx context.Context, method, path string, payload, result any) error {
 	data, err := json.Marshal(payload, stableJSON)
 	if err != nil {
@@ -1015,10 +1111,19 @@ func (s snapshot) binding(repoID int64) binding {
 	return b
 }
 
-type outcome struct{ Status, Conclusion, Title, Summary string }
+type outcome struct{ Status, Conclusion, Title, Summary, StartedAt string }
 
 func pending(summary string) outcome {
 	return outcome{Status: "queued", Title: "PR validation pending", Summary: summary}
+}
+
+// revocationTitle marks a record written by the dev-revoke first pass. A pass that
+// began before such a record must not turn it green: its inputs predate the event
+// that revoked the head.
+const revocationTitle = "PR validation revoked"
+
+func revoked(summary string) outcome {
+	return outcome{Status: "queued", Title: revocationTitle, Summary: summary}
 }
 func refused(summary string) outcome {
 	return outcome{Status: "completed", Conclusion: "failure", Title: "PR validation refused", Summary: summary}
@@ -1189,6 +1294,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	devMode := flag.Bool("dev", false, "publish trusted fast admission for the dev integration branch")
 	devPR := flag.Int("dev-pr", 0, "current dev PR routing hint under an exact head lease")
+	devRevoke := flag.Bool("dev-revoke", false, "publish blocking pending records for every routed dev head before the throttled publishers run (work JSON in DEV_REVOKE_WORK)")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
 	targeted := flag.Bool("targeted", false, "bound only a targeted queue admission invocation")
 	repairOnly := flag.Bool("repair-groups-only", false, "repair queue groups only on authenticated manual dispatch")
@@ -1196,9 +1302,25 @@ func main() {
 	dispatch := flag.Bool("dispatch-workers", false, "discover complete work and dispatch only fixed default-branch head workers")
 	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
+	if *devRevoke {
+		if !*devMode || *devPR != 0 || *discoverRetirement || *retire || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "" || flag.NArg() != 0 {
+			fmt.Fprintln(os.Stderr, "dev revocation takes only --dev and its work list")
+			os.Exit(1)
+		}
+		// No reserve check: revocation is never deferred.
+		if err := runDevRevoke(os.Getenv("DEV_REVOKE_WORK"), *dryRun); err != nil {
+			fmt.Fprintln(os.Stderr, "trusted dev revocation:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *devMode || *devPR != 0 {
 		if !*devMode || *devPR <= 0 || *discoverRetirement || *retire || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || flag.NArg() != 0 || !shaPattern.MatchString(*expectedHead) {
 			fmt.Fprintln(os.Stderr, "dev admission requires one PR and exact held head and cannot mix producer roles")
+			os.Exit(1)
+		}
+		if err := enforceReserve(context.Background(), ghAPI{}, true, false, false, false, ""); err != nil {
+			fmt.Fprintln(os.Stderr, "trusted dev gate:", err)
 			os.Exit(1)
 		}
 		if err := runDevCommand(*devPR, *expectedHead, *dryRun); err != nil {
@@ -1242,6 +1364,11 @@ func main() {
 	boundedAdmission := *targeted || *headWorker != "" && *headWorker != "group"
 	if boundedAdmission && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		fmt.Fprintln(os.Stderr, "targeted publisher requires supported Unix process-group cancellation")
+		os.Exit(1)
+	}
+	// Only a group job (plain --queue, --head-worker group, repair, dispatch) may spend the reserve.
+	if err := enforceReserve(context.Background(), ghAPI{}, false, *discoverRetirement, *retire, *targeted, *headWorker); err != nil {
+		fmt.Fprintln(os.Stderr, "trusted PR gate:", err)
 		os.Exit(1)
 	}
 	checkName := os.Getenv("PR_GATE_CHECK_NAME")

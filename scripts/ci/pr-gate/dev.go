@@ -26,17 +26,24 @@ func (c *controller) admissionBranch() string {
 	return c.repo.DefaultBranch
 }
 
-func runDevCommand(number int, head string, dryRun bool) error {
+func newDevController(head string, dryRun bool) (*queueController, event, error) {
+	var e event
 	data, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
+	if err != nil {
+		return nil, e, err
+	}
+	if err := decode(data, &e); err != nil {
+		return nil, e, err
+	}
+	c := &controller{api: controllerAPI(true, false), verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: devCheckName, expectedHead: head, dryRun: dryRun, output: os.Stdout, diagnostics: os.Stderr}
+	return &queueController{controller: c, targeted: true}, e, nil
+}
+
+func runDevCommand(number int, head string, dryRun bool) error {
+	q, e, err := newDevController(head, dryRun)
 	if err != nil {
 		return err
 	}
-	var e event
-	if err := decode(data, &e); err != nil {
-		return err
-	}
-	c := &controller{api: controllerAPI(true, false), verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: devCheckName, expectedHead: head, dryRun: dryRun, output: os.Stdout, diagnostics: os.Stderr}
-	q := &queueController{controller: c, targeted: true}
 	budget, err := parseAdmissionBudget(os.Getenv("PR_GATE_STARTED_AT"), os.Getenv("PR_GATE_DEADLINE"), time.Now())
 	if err != nil {
 		return err
@@ -46,6 +53,110 @@ func runDevCommand(number int, head string, dryRun bool) error {
 	})
 }
 
+// devRevokeWindow bounds the whole first pass: one POST per head, at most 256 heads.
+const devRevokeWindow = 2 * time.Minute
+
+type devWork struct {
+	PR   int    `json:"pr"`
+	Head string `json:"head"`
+}
+
+// runDevRevoke is the first pass of a fan-out event (a push to main or dev, a
+// dispatch for every PR). It publishes a blocking pending record on every routed
+// head before the throttled per-head publishers start, so no stale success waits
+// behind max-parallel. It never defers on the rate limit: revocation is the
+// cheap, safety-critical half. Cost: repository read, open PR list, dev tip, and
+// one create per head (3 + heads for a hundred or fewer open PRs).
+func runDevRevoke(workJSON string, dryRun bool) error {
+	var work []devWork
+	if err := decode([]byte(workJSON), &work); err != nil {
+		return err
+	}
+	q, e, err := newDevController("", dryRun)
+	if err != nil {
+		return err
+	}
+	ctx, stop := context.WithTimeout(context.Background(), devRevokeWindow)
+	defer stop()
+	return q.revokeDev(ctx, os.Getenv("GITHUB_EVENT_NAME"), e, work)
+}
+
+func (q *queueController) revokeDev(ctx context.Context, name string, e event, work []devWork) error {
+	if q.checkName != devCheckName || len(work) > 256 {
+		return errors.New("dev revocation requires its distinct context and at most 256 heads")
+	}
+	for _, w := range work {
+		if w.PR <= 0 || !shaPattern.MatchString(w.Head) {
+			return errors.New("dev revocation work has an invalid PR or head")
+		}
+	}
+	if err := q.initRepository(ctx); err != nil {
+		return err
+	}
+	if err := q.devRepoIdentity(e); err != nil {
+		return err
+	}
+	switch name {
+	case "push":
+		if e.Ref != "refs/heads/main" && e.Ref != "refs/heads/dev" {
+			return errors.New("dev revocation requires a protected branch push")
+		}
+	case "workflow_dispatch":
+		if os.Getenv("GITHUB_REF") != "refs/heads/main" {
+			return errors.New("dev revocation must execute from trusted main")
+		}
+	default:
+		return errors.New("only a fan-out event revokes before reconciling")
+	}
+	if len(work) == 0 {
+		return nil
+	}
+	pulls, err := q.openPRs(ctx)
+	if err != nil {
+		return err
+	}
+	var ref struct {
+		Ref    string `json:"ref"`
+		Object struct {
+			Type string `json:"type"`
+			SHA  string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := q.api.read(ctx, q.endpoint("git/ref/heads/dev"), &ref); err != nil {
+		return err
+	}
+	if ref.Ref != "refs/heads/dev" || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
+		return errors.New("invalid live dev ref")
+	}
+	live := make(map[int]pull, len(pulls))
+	for _, p := range pulls {
+		live[p.Number] = p
+	}
+	var failures []error
+	for _, w := range work {
+		p, ok := live[w.PR]
+		// A head that moved or left dev has its own publisher run or retirement.
+		if !ok || p.Head.SHA != w.Head || p.StackInvalid || p.admission().Ref != "dev" {
+			continue
+		}
+		p.setLiveBase(ref.Object.SHA)
+		q.expectedHead = w.Head
+		b := newBinding(q.repo.ID, p, nil)
+		if err := q.publish(ctx, p, b, nil, revoked("The dev publisher or main changed; this head is blocked until its exact-head reconciliation finishes.")); err != nil {
+			failures = append(failures, fmt.Errorf("PR #%d: %w", w.PR, err))
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// devRepoIdentity is the authority check every dev publisher run starts with.
+func (q *queueController) devRepoIdentity(e event) error {
+	if q.repo.DefaultBranch != "main" || e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) || e.Repository.DefaultBranch != q.repo.DefaultBranch {
+		return errors.New("dev publisher requires the authenticated main default branch")
+	}
+	return nil
+}
+
 func (q *queueController) executeDev(ctx context.Context, name string, e event, number int) error {
 	if q.checkName != devCheckName || number <= 0 || !shaPattern.MatchString(q.expectedHead) {
 		return errors.New("dev admission requires its distinct context, PR and held head")
@@ -53,8 +164,8 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 	if err := q.initRepository(ctx); err != nil {
 		return q.initializedFailure(ctx, e.Repository.ID, e.Repository.FullName, err)
 	}
-	if q.repo.DefaultBranch != "main" || e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) || e.Repository.DefaultBranch != q.repo.DefaultBranch {
-		return errors.New("dev publisher requires the authenticated main default branch")
+	if err := q.devRepoIdentity(e); err != nil {
+		return err
 	}
 	switch name {
 	case "pull_request_target":

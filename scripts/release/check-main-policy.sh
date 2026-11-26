@@ -35,7 +35,7 @@ jq -se '
 		(.required_status_checks | type == "array" and length == 1 and
 			(.[0] | check("ci-queue-required")))) and
 	one("merge_queue").parameters == {
-		check_response_timeout_minutes:60, grouping_strategy:"ALLGREEN",
+		check_response_timeout_minutes:120, grouping_strategy:"ALLGREEN",
 		max_entries_to_build:1, max_entries_to_merge:1, merge_method:"MERGE",
 		min_entries_to_merge:1, min_entries_to_merge_wait_minutes:0}
 ' "$1" >/dev/null || {
