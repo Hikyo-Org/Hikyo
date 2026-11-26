@@ -41,7 +41,7 @@ func readRevokeWorkflow(t *testing.T, file string) map[string]revokeWorkflowJob 
 	return workflow.Jobs
 }
 
-func needsOf(t *testing.T, j revokeWorkflowJob) []string {
+func revokeNeedsOf(t *testing.T, j revokeWorkflowJob) []string {
 	t.Helper()
 	var list []string
 	switch j.Needs.Kind {
@@ -66,7 +66,7 @@ func rerunClosure(t *testing.T, jobs map[string]revokeWorkflowJob, id string) []
 			if slices.Contains(closure, other) {
 				continue
 			}
-			for _, n := range needsOf(t, j) {
+			for _, n := range revokeNeedsOf(t, j) {
 				if slices.Contains(closure, n) {
 					closure = append(closure, other)
 					grew = true
@@ -90,11 +90,11 @@ func TestDevGateRevokesEveryRoutedHeadBeforeThrottledWork(t *testing.T) {
 	if revoke.Strategy != nil {
 		t.Fatal("the revocation first pass must not sit behind a throttle: no matrix, no max-parallel")
 	}
-	if !reflect.DeepEqual(needsOf(t, revoke), []string{"discover"}) {
-		t.Fatalf("revoke must need only discovery, got %v", needsOf(t, revoke))
+	if !reflect.DeepEqual(revokeNeedsOf(t, revoke), []string{"discover"}) {
+		t.Fatalf("revoke must need only discovery, got %v", revokeNeedsOf(t, revoke))
 	}
-	if !reflect.DeepEqual(needsOf(t, publish), []string{"discover", "revoke"}) {
-		t.Fatalf("no throttled reconcile may start before the first pass finishes: needs %v", needsOf(t, publish))
+	if !reflect.DeepEqual(revokeNeedsOf(t, publish), []string{"discover", "revoke"}) {
+		t.Fatalf("no throttled reconcile may start before the first pass finishes: needs %v", revokeNeedsOf(t, publish))
 	}
 	// The first pass is an addition, not a gate: its failure or skip must not stop the reconcile.
 	if !strings.Contains(publish.If, "!cancelled()") || strings.Contains(publish.If, "needs.revoke") || !strings.Contains(publish.If, "needs.discover.result == 'success'") {
