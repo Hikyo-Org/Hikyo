@@ -85,6 +85,16 @@ but it is not a substitute for this signature.
   not), and type errors are always reported in full. Reproduce with
   `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP pushes only, set
   `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci` check still runs it.
+- Last, the hook runs `scripts/ci/go-affected-test.sh <merge base>`: the Go tests
+  of the packages the pushed changes can affect (changed or embedded files and
+  every package whose tests depend on them; all on `go.mod`/`go.sum`). A test
+  that reads a changed repository file without embedding it is missed unless the
+  selector has an explicit path rule for it, so CI stays the gate. It runs in a
+  locked worktree kept in the git directory. `internal/isolation` and `scripts/ci`
+  are never run by the hook, so only CI catches breaks in them. A cold run of a
+  widely depended-on change takes about 25 minutes. PostgreSQL tests need
+  `HIKYO_TEST_POSTGRES_DSN`. For WIP pushes only, set
+  `HIKYO_PREPUSH_GOTEST=skip`; CI still runs the suites.
 - For `web/` changes, also run the affected flow specs before requesting review and
   list them in the PR Evidence:
   `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`
