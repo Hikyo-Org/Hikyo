@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -286,18 +287,18 @@ func TestUnrecordableStateRefuses(t *testing.T) {
 	if _, err := checker.Check(t.Context(), snapshot); err != nil {
 		t.Fatal(err)
 	}
-	// A state directory that cannot record the outcome refuses.
-	readOnly := t.TempDir()
-	if err := os.Chmod(readOnly, 0o500); err != nil {
+	// A run that can take the lock but cannot record its outcome refuses: the check record
+	// is a non-empty directory, so the atomic rename onto it fails.
+	record := filepath.Join(directory, "bridge-revocations-check.json")
+	if err := os.Remove(record); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Chmod(readOnly, 0o700) }()
-	off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: readOnly}
-	if os.Geteuid() == 0 {
-		t.Skip("root writes through mode 0500")
+	if err := os.MkdirAll(filepath.Join(record, "occupied"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := off.Check(t.Context(), snapshot); err == nil {
-		t.Fatal("a state directory that cannot record the outcome must refuse")
+	off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: directory, Now: func() time.Time { return testNow }}
+	if _, err := off.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "bridge-revocations-check.json") {
+		t.Fatalf("a run that cannot record the outcome must refuse with the record error: %v", err)
 	}
 }
 

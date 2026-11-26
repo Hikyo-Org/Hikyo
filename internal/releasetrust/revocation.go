@@ -69,8 +69,6 @@ func (v VerifiedRevocations) Revoked() []releaseidentity.Digest {
 	return slices.Clone(v.state.revoked)
 }
 
-// VerifyRevocations authenticates a revocation list under the recovery key the
-// snapshot was verified with and the root the binary pins.
 // ErrRevocationRoot marks a list whose signature verified under the recovery key but
 // that is bound to another trust root (for instance one from before a root rotation).
 // It is returned only after the signature and schema checks passed.
@@ -85,6 +83,8 @@ func (s Snapshot) RevocationRoot() releaseidentity.Digest {
 	return s.state.legacyStablePolicy
 }
 
+// VerifyRevocations authenticates a revocation list under the recovery key the
+// snapshot was verified with and the root the binary pins.
 func (s Snapshot) VerifyRevocations(raw, signature []byte) (VerifiedRevocations, error) {
 	if !s.Valid() {
 		return VerifiedRevocations{}, errors.New("unverified trust snapshot")

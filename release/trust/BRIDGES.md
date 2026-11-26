@@ -4,11 +4,11 @@ Note (#1561): the statements below are `hikyo.dev/legacy-nightly-bridge/v1`
 (no expiry). The runtime loads that form as a verified but always-expired bridge: it
 counts in the bridge inventory, so every snapshot and bundle still loads, and it is
 never a route, so no legacy-nightly route plans until the owner replaces it. The owner
-steps, in order: re-sign `legacy-nightly-bridge/v2` statements with a `not_after`
-offline, publish a new catalog listing them, and rotate the stable policy, because these
-two digests are policy-listed and cannot leave the catalog without a rotation. The
-rotation is an owner tidy-up, not a merge or release blocker. Routable bridges also
-need the rotated `recovery-2` root first; the order is in
+steps, in order: rotate the trust root to `recovery-2`, re-sign
+`legacy-nightly-bridge/v2` statements with a `not_after` offline, signed with
+`recovery-2`, publish a new catalog listing them, and rotate the stable policy, because
+these two digests are policy-listed and cannot leave the catalog without a rotation.
+These steps are owner tidy-up, not a merge or release blocker. The full list is in
 [the ceremony runbook](../../docs/operations/recovery-bridge-ceremony.md), section
 "Owner prerequisite: rotate to recovery-2".
 

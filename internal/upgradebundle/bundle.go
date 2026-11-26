@@ -61,12 +61,12 @@ func (b Bundle) MaterialDigest() releaseidentity.Digest { return b.materialDiges
 func (b Bundle) Valid() bool                     { return b.snapshot.Valid() }
 func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
 
-// errMissingRevocationLookup refuses a bridge route on a bundle that was never given
-// a revocation lookup: an unconfigured hook must not mean "nothing is revoked".
 // ErrLegacyBridgeCannotResume refuses a resume through an expiry-free legacy v1 bridge. It is
 // not the retired-signer refusal: no rotation makes such a route resumable.
 var ErrLegacyBridgeCannotResume = errors.New("a journaled route through an expiry-free legacy v1 recovery bridge can never resume; only a security rollback may use it")
 
+// errMissingRevocationLookup refuses a bridge route on a bundle that was never given
+// a revocation lookup: an unconfigured hook must not mean "nothing is revoked".
 var errMissingRevocationLookup = errors.New("recovery bridge revocation check: no revocation lookup is configured, so no bridge route is usable")
 
 // Plan is the route for a new admission: expired and revoked bridges are not used.

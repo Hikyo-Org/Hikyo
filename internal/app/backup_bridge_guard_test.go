@@ -303,8 +303,8 @@ func (noReleases) AssembleNightlyRoute(context.Context, selfupdate.PreparedNight
 }
 
 // With the revocation list not published yet (404), the signed not_after is the only
-// limit: an unexpired bridge plans with a warning, an expired one has no route. A list
-// that is present but invalid still refuses.
+// limit: an unexpired bridge plans with a warning, an expired one has no route. A
+// reachable but unusable answer (403) still refuses.
 func TestAbsentRevocationListFallsBackToExpiryWithAWarning(t *testing.T) {
 	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
 	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
