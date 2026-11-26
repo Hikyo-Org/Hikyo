@@ -272,7 +272,9 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 			t.Fatalf("doctor retention contract: %v (exit %d)", err, exit)
 		}
 	}
-	runDoctor("ok", "last_prune_success is 0s old")
+	// The age is wall clock since the startup prune, so it grows under load; the
+	// unit test in internal/cli pins the exact "0s old" rendering with a fixed now.
+	runDoctor("ok", "last_prune_success is ")
 	staleAt := time.Now().UTC().Add(-25 * time.Hour).Format(time.RFC3339Nano)
 	execRaw(t, db, "UPDATE retention_runtime SET last_prune_success = '"+staleAt+"' WHERE id = 1")
 	runDoctor("warn", "old (> 24h)")
@@ -567,6 +569,11 @@ func (l *schedulerLog) wait(t *testing.T, job string) {
 	for {
 		l.mu.Lock()
 		failure, done := l.jobs[job]
+		// backup_prune cannot succeed after a failed export; surface that cause.
+		if exportFailure := l.jobs["backup_export"]; job == "backup_prune" && exportFailure != "" {
+			l.mu.Unlock()
+			t.Fatalf("scheduler job backup_export failed: %s", exportFailure)
+		}
 		l.mu.Unlock()
 		if done && failure != "" {
 			t.Fatalf("scheduler job %s failed: %s", job, failure)

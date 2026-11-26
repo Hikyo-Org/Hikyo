@@ -542,7 +542,10 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	for i := range srv.scheduler.Jobs {
 		run := srv.scheduler.Jobs[i].Run
 		srv.scheduler.Jobs[i].Run = func(ctx context.Context) error {
-			if _, err := selfConfig.Capture(ctx); err != nil {
+			if err := captureWithRetry(ctx, func(ctx context.Context) error {
+				_, err := selfConfig.Capture(ctx)
+				return err
+			}); err != nil {
 				return err
 			}
 			return run(ctx)

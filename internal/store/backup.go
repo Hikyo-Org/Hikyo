@@ -36,6 +36,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -54,6 +55,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"modernc.org/sqlite"
 )
 
@@ -232,8 +234,11 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 }
 
 // exportPostgres owns admission in the same serializable snapshot as COPY.
-// The shared control lock is acquired before READ ONLY. Serialization failure
-// remains a loud failed export; no DEFERRABLE safe-snapshot claim is made.
+// The shared control lock is acquired before READ ONLY. The snapshot setup
+// (admission guard, schema version, table and sequence listing) writes nothing
+// to the archive, so a serialization failure there is retried on a fresh
+// transaction; once COPY streams into the archive a failure stays loud. No
+// DEFERRABLE safe-snapshot claim is made.
 func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, workDir string, upgrade *UpgradeExportRequest) error {
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
@@ -241,47 +246,17 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 	}
 	defer conn.Release()
 
-	tx, err := conn.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.Serializable,
-		AccessMode: pgx.ReadWrite,
+	var tx pgx.Tx
+	var tables []string
+	err = retryPostgresSerialization(ctx, func() error {
+		var err error
+		tx, tables, err = beginPostgresExportSnapshot(ctx, conn, db, m, upgrade)
+		return err
 	})
 	if err != nil {
-		return fmt.Errorf("store: begin export snapshot: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	if upgrade != nil && upgrade.preparation.Valid() {
-		err = upgrade.preparation.GuardPostgres(ctx, tx)
-	} else {
-		err = db.admission.GuardPostgres(ctx, tx)
-	}
-	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
-		return err
-	}
-
-	var version int64
-	scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
-	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
-	if err != nil {
-		return err
-	}
-
-	tables, err := pgTableOrder(ctx, tx)
-	if err != nil {
-		return err
-	}
-	sequences, err := pgSequencePositions(ctx, tx)
-	if err != nil {
-		return err
-	}
-	m.Tables, m.Sequences = tables, sequences
-	if upgrade != nil {
-		if err := upgrade.bindPostgres(ctx, tx, m); err != nil {
-			return err
-		}
-	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	if err := writeManifest(tw, *m); err != nil {
 		return err
 	}
@@ -309,6 +284,92 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		}
 	}
 	return nil
+}
+
+// beginPostgresExportSnapshot opens the export transaction and reads everything
+// the archive manifest needs. On error the transaction is already rolled back.
+func beginPostgresExportSnapshot(ctx context.Context, conn *pgxpool.Conn, db *DB, m *Manifest, upgrade *UpgradeExportRequest) (pgx.Tx, []string, error) {
+	opened, err := conn.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("store: begin export snapshot: %w", err)
+	}
+	tables, err := readPostgresExportSnapshot(ctx, opened, db, m, upgrade)
+	if err != nil {
+		// opened is a local, so the rollback target survives the error returns.
+		_ = opened.Rollback(ctx)
+		return nil, nil, err
+	}
+	return opened, tables, nil
+}
+
+func readPostgresExportSnapshot(ctx context.Context, tx pgx.Tx, db *DB, m *Manifest, upgrade *UpgradeExportRequest) ([]string, error) {
+	var err error
+	if upgrade != nil && upgrade.preparation.Valid() {
+		err = upgrade.preparation.GuardPostgres(ctx, tx)
+	} else {
+		err = db.admission.GuardPostgres(ctx, tx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
+		return nil, err
+	}
+	var version int64
+	scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
+	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
+	if err != nil {
+		return nil, err
+	}
+	tables, err := pgTableOrder(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	sequences, err := pgSequencePositions(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	m.Tables, m.Sequences = tables, sequences
+	if upgrade != nil {
+		if err := upgrade.bindPostgres(ctx, tx, m); err != nil {
+			return nil, err
+		}
+	}
+	return tables, nil
+}
+
+// IsPostgresSerializationFailure reports SQLSTATE 40001 (serialization_failure)
+// or 40P01 (deadlock_detected): transient conflicts that succeed on a new transaction.
+func IsPostgresSerializationFailure(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (pgErr.Code == "40001" || pgErr.Code == "40P01")
+}
+
+// postgresRetryBackoff is one jittered delay per retry: an initial try plus 3 retries.
+var postgresRetryBackoff = [...]time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 250 * time.Millisecond}
+
+// retryPostgresSerialization runs attempt, retrying only transient Postgres
+// serialization failures a bounded number of times with jittered backoff.
+// attempt must leave no side effects when it fails.
+func retryPostgresSerialization(ctx context.Context, attempt func() error) error {
+	var err error
+	for i := 0; i <= len(postgresRetryBackoff); i++ {
+		if i > 0 {
+			d := postgresRetryBackoff[i-1]
+			select {
+			case <-time.After(d/2 + rand.N(d/2)):
+			case <-ctx.Done():
+				return errors.Join(ctx.Err(), err)
+			}
+		}
+		if err = attempt(); err == nil || !IsPostgresSerializationFailure(err) {
+			return err
+		}
+	}
+	return fmt.Errorf("store: export snapshot retries exhausted after %d attempts: %w", len(postgresRetryBackoff)+1, err)
 }
 
 // pgTableOrder returns every table in the current schema, parents before
