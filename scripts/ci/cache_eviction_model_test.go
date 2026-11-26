@@ -560,18 +560,25 @@ func (m *cacheModel) touch(prefix string) {
 func rotationDay(t *testing.T, p plan, limit int64) *cacheModel {
 	return weekdayWith(t, p, limit, func(m *cacheModel) []modelEvent {
 		day := func(hm [2]int) time.Time { return p.times.at(26, hm) }
+		// The lint seed's headroom job starts with its run, which lasted 2 to 11 minutes on the observed days
+		// (the model takes 11). Behind the race run in the shared concurrency group it cannot start before that
+		// run, its prune included (two minutes after the save), has ended; saves in one minute have no group.
+		lintLead := 11 * time.Minute
+		if gap := day(p.times.lint).Sub(day(p.times.race)) - 2*time.Minute; gap > 0 && gap < lintLead {
+			lintLead = gap
+		}
 		var events []modelEvent
 		for _, w := range []struct {
 			at       time.Time
 			prefixes []string
 			headroom string
-			// lead is how long before the save the headroom job ran: the seed jobs compile after it (the race
-			// seed about 20 minutes; the lint seed starts when the race run, its prune included, has ended).
+			// lead is how long before the save the headroom job ran: the seed jobs compile after it. The race
+			// seed ran 1 to 7 minutes on the observed days; its job limit is 30, and the model takes 20.
 			lead time.Duration
 		}{
-			{day(p.times.race), []string{"go-race-v2-", "go-mod-v2-"}, "go-race-v2- go-mod-v2- go-feedback-v1-", 20 * time.Minute},
+			{day(p.times.race), []string{"go-race-v2-", "go-mod-v2-"}, modelRaceLanes, 20 * time.Minute},
 			{day(p.times.feedbackV1), []string{"go-feedback-v1-"}, "", 0},
-			{day(p.times.lint), []string{"go-lintdriver-v2-"}, "go-lintdriver-v2- go-feedback-v1-", 2 * time.Minute},
+			{day(p.times.lint), []string{"go-lintdriver-v2-"}, modelLintLanes, lintLead},
 		} {
 			// The generations are read when the headroom job runs, before it deletes anything: the new one is
 			// what the writer compiles whatever the cache holds.
@@ -780,7 +787,7 @@ func coincideAt(p plan, minute int) plan {
 
 // sweepStep is the sampling step in minutes: coarse by default, because every replay runs the prune's jq
 // about thirty times (about 0.25 s) and the package has a 600 s budget in hosted CI (the default run of this
-// test takes about 10 s); one minute when HIKYO_CACHE_SWEEP_FULL is set, which is how the documented
+// test takes about 15 s with the crossing samples of the headroom sweeps); one minute when HIKYO_CACHE_SWEEP_FULL is set, which is how the documented
 // per-minute figures were measured (several minutes).
 func sweepStep(coarse int) int {
 	if os.Getenv("HIKYO_CACHE_SWEEP_FULL") != "" {
@@ -998,8 +1005,8 @@ func TestCacheBudgetModel(t *testing.T) {
 		}
 	})
 
-	// The observed day window, every minute with HIKYO_CACHE_SWEEP_FULL=1 and every hour (at :59)
-	// otherwise. On a rotation day the race seed saves at any minute from 10:59 to 16:59 (the observed
+	// The observed day window, every minute with HIKYO_CACHE_SWEEP_FULL=1 and otherwise every third hour (at :59;
+	// the headroom sweeps add the crossings of sweepMinutes). On a rotation day the race seed saves at any minute from 10:59 to 16:59 (the observed
 	// seed runs ended 11:25 to 14:57) and the lint seed three minutes later, because the two share one
 	// concurrency group: the second run starts when the first, its prune job included, has finished.
 	// The Sunday ci-main run after a go.sum change saves at any time from 10:59 to 22:59 (cron 13:23,
@@ -1083,7 +1090,7 @@ func TestCacheBudgetModel(t *testing.T) {
 						t.Fatalf("with the %s seed touched like any other entry no minute loses a seed at %s; the live-seed assumption is no longer load-bearing, update docs/development/ci.md", family, l.name)
 					}
 					// The dev seed alone loses at 4 of 361 minutes at 10 GiB (per-minute run, docs/development/ci.md),
-					// which the hourly sample does not see, so it is not pinned here.
+					// which the coarse sample does not see, so it is not pinned here.
 					if l.bytes != 10_000_000_000 && family != "dev" && len(sweep.lost) != 0 {
 						t.Fatalf("with the %s seed touched like any other entry a seed is lost at %v (%s); update docs/development/ci.md", family, sweep.lost, l.name)
 					}
@@ -1271,4 +1278,33 @@ func TestCacheBudgetModel(t *testing.T) {
 			}
 		}
 	})
+}
+
+// The lanes the model's headroom steps name, which TestCacheModelNamesTheWorkflowLanes ties to the workflows': a
+// lane dropped from a workflow's step must fail the model, and a lane dropped from the model here must fail it
+// too (the daily go-feedback-v1 save lands between the headroom job and the seed's save).
+const (
+	modelRaceLanes = "go-race-v2- go-mod-v2- go-feedback-v1-"
+	modelLintLanes = "go-lintdriver-v2- go-feedback-v1-"
+)
+
+func TestCacheModelNamesTheWorkflowLanes(t *testing.T) {
+	templates := regexp.MustCompile(`\$\{\{[^}]*\}\}-`)
+	for file, want := range map[string]string{"ci-race-cache.yml": modelRaceLanes, "ci-lint-cache.yml": modelLintLanes} {
+		workflow, _ := readWorkflowFile(t, file)
+		job, _ := workflow["jobs"].(map[string]any)["headroom"].(map[string]any)
+		var lanes []string
+		for _, step := range job["steps"].([]any) {
+			env, _ := step.(map[string]any)["env"].(map[string]any)
+			if prefixes, ok := env["HEADROOM_PREFIXES"].(string); ok {
+				lanes = append(lanes, strings.Fields(templates.ReplaceAllString(prefixes, ""))...)
+			}
+		}
+		slices.Sort(lanes)
+		model := strings.Fields(want)
+		slices.Sort(model)
+		if !slices.Equal(lanes, model) {
+			t.Fatalf("%s makes room for %v, the model for %v", file, lanes, model)
+		}
+	}
 }

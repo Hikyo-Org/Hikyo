@@ -26,12 +26,13 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-main-headroom
-  cancel-in-progress: false
-
 jobs:
   headroom:
+    # Job level, not workflow level: the group is taken only after the guard below passes, so a run the guard
+    # skips (a workflow_run of another head, say) can never replace a pending trusted one.
+    concurrency:
+      group: ci-main-headroom
+      cancel-in-progress: false
     if: >-
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' &&

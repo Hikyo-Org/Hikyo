@@ -538,7 +538,9 @@ func TestCachePruneHeadroom(t *testing.T) {
 		},
 		"seeds are not seeds": func(s string) string { return strings.Replace(s, `select(.key | seed | not)`, `select(true)`, 1) },
 		"incoming ignored":    func(s string) string { return strings.Replace(s, "+ $incoming - $budget", "- $budget", 1) },
-		"lane size ignored": func(s string) string { return strings.Replace(s, "| add // 0) as $planned", "| length) as $planned", 1) },
+		"lane size ignored": func(s string) string {
+			return strings.Replace(s, "| add // 0) as $planned", "| length) as $planned", 1)
+		},
 		"skip key ignored": func(s string) string {
 			return strings.Replace(s, "if $skip != \"\" and any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "if false", 1)
 		},
@@ -572,14 +574,14 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 		top = append(top, key)
 	}
 	sort.Strings(top)
-	if !reflect.DeepEqual(top, []string{"concurrency", "jobs", "name", "on", "permissions"}) {
-		return fmt.Errorf("ci-main-headroom sets only name, triggers, permissions, concurrency and jobs (got %v)", top)
+	if !reflect.DeepEqual(top, []string{"jobs", "name", "on", "permissions"}) {
+		return fmt.Errorf("ci-main-headroom sets only name, triggers, permissions and jobs (got %v)", top)
 	}
 	if !reflect.DeepEqual(workflow["permissions"], map[string]any{"contents": "read"}) {
 		return fmt.Errorf("ci-main-headroom grants read only by default")
 	}
-	if !reflect.DeepEqual(workflow["concurrency"], map[string]any{"group": "ci-main-headroom", "cancel-in-progress": false}) {
-		return fmt.Errorf("ci-main-headroom runs queue behind each other and are never cancelled mid-delete")
+	if workflow["concurrency"] != nil {
+		return fmt.Errorf("concurrency belongs to the job, after its guard, so a skipped run cannot replace a pending trusted one")
 	}
 	triggers, _ := workflow["on"].(map[string]any)
 	if len(triggers) != 3 {
@@ -602,6 +604,7 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 		"runs-on":         "ubuntu-latest",
 		"timeout-minutes": 10,
 		"permissions":     map[string]any{"contents": "read", "actions": "write"},
+		"concurrency":     map[string]any{"group": "ci-main-headroom", "cancel-in-progress": false},
 		"steps": []any{
 			map[string]any{
 				"name": "Check out immutable trusted main without credentials",
@@ -691,7 +694,13 @@ func TestCIMainHeadroomWorkflow(t *testing.T) {
 		"another cron": func(w map[string]any) {
 			w["on"].(map[string]any)["schedule"] = []any{map[string]any{"cron": "0 14 * * 0"}}
 		},
-		"cancelling group": func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"cancelling group": func(w map[string]any) { job(w)["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"workflow-level group": func(w map[string]any) {
+			w["concurrency"] = job(w)["concurrency"]
+			delete(job(w), "concurrency")
+		},
+		"workflow-level group besides the job's": func(w map[string]any) { w["concurrency"] = job(w)["concurrency"] },
+		"no group":                               func(w map[string]any) { delete(job(w), "concurrency") },
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},
