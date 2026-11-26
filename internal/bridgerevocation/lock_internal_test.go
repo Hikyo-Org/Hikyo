@@ -53,16 +53,25 @@ func TestPersistenceLockHeldByAnotherRunMakesTheNextRunWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
 	done := make(chan error, 1)
 	go func() {
-		_, err := checker.lock()
+		next, err := checker.lock()
+		if err == nil {
+			next()
+		}
 		done <- err
 	}()
 	select {
 	case err := <-done:
+		release()
 		t.Fatalf("a second run must wait for the holder, got %v", err)
 	case <-time.After(100 * time.Millisecond):
+	}
+	// The waiter gets the lock once the holder releases it, and is finished before the test's
+	// directory is removed (a still-polling waiter would recreate the lock file in it).
+	release()
+	if err := <-done; err != nil {
+		t.Fatalf("the waiting run must get the lock after the holder releases it: %v", err)
 	}
 }
 

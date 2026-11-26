@@ -146,7 +146,7 @@ func Checks() []Check {
 		{Analyzer: RedactSurfaces, Targets: []string{sensitiveOwner}},
 		{Analyzer: RedactFormat},
 		{Analyzer: TxResult},
-		{Analyzer: TestObservers, Targets: []string{Module + "/internal/store/authn", Module + "/internal/service"}},
+		{Analyzer: TestObservers, Targets: []string{Module + "/internal/store/authn", Module + "/internal/service", Module + "/internal/releasetrust"}},
 		{Analyzer: UpgradeBuild},
 		{Analyzer: RecoveryLookup, Targets: ruleTargets(RecoveryLookupRules)},
 		{Analyzer: ContainmentSetters, Targets: ruleTargets(ContainmentSetterRules)},

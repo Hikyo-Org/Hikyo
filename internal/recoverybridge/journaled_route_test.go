@@ -2,6 +2,7 @@ package recoverybridge_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -202,5 +203,33 @@ func TestJournaledRouteRefusesAnEmptyOrForeignDigest(t *testing.T) {
 	}
 	if _, err := same.match(admitted.Digest()); !errors.Is(err, upgradecompat.ErrJournaledRoute) {
 		t.Fatalf("a journaled route with steps does not match the zero-step route: %v", err)
+	}
+}
+
+// Matching a journaled digest walks simple paths, and their number grows exponentially with
+// the graph: the walk stops at its bound with its own refusal instead of running on. Every
+// release here accepts every earlier one, so 17 releases give 2^15 paths from the first to
+// the last, more than the bound, and a digest no path has makes the walk examine them all.
+func TestJournaledRouteSearchStopsAtItsPathBound(t *testing.T) {
+	f := testfixture.New(t)
+	var releases []testfixture.SignedRelease
+	var declarations []upgradecompat.Declaration
+	for sequence := 1; sequence <= 17; sequence++ {
+		var edges []upgradecompat.SourceEdge
+		for i, earlier := range releases {
+			edges = append(edges, ordinaryEdge(earlier, declarations[i]))
+		}
+		signed, d := release(t, f, sequence, sequence+1, "x", map[releaseidentity.Engine][]upgradecompat.SourceEdge{releaseidentity.SQLite: edges})
+		releases, declarations = append(releases, signed), append(declarations, d)
+	}
+	first := sqliteOf(declarations[0])
+	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: releases[0].Identity}, Migrations: first.Migrations, SchemaSHA256: first.SchemaSHA256}
+	r := assemble(t, f, releases, nil, source, releases[16].Identity)
+	if _, err := r.at(time.Now()); err != nil {
+		t.Fatalf("the graph must hold a route, or the bound is not what refuses: %v", err)
+	}
+	_, err := r.match(releaseidentity.Hash([]byte("no path has this digest")))
+	if err == nil || errors.Is(err, upgradecompat.ErrJournaledRoute) || !strings.Contains(err.Error(), "path bound") {
+		t.Fatalf("the walk must stop at its path bound, not examine every path: %v", err)
 	}
 }

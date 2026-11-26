@@ -167,8 +167,10 @@ func TestUnusableStoredStateRefusesUntilAFreshVerifiedListReplacesIt(t *testing.
 			}
 			fetcher.err = nil
 			fetcher.list, fetcher.signature = signedListAt(t, f, testNow.Add(-bridgerevocation.MaxListAge-time.Hour), 8)
-			if _, err := online.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) {
-				t.Fatalf("a stale list must not replace unusable state: %v", err)
+			// The endpoint answered, and lists are not re-signed on a schedule, so the advice is to
+			// wait for a newer list or remove the files, never to restore access.
+			if _, err := online.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) || strings.Contains(err.Error(), "Restore access") || !strings.Contains(err.Error(), "wait for the release owner to sign and publish a newer list") || !strings.Contains(err.Error(), filepath.Join(directory, "bridge-revocations-floor.json")) || !strings.Contains(err.Error(), "accepts any validly signed list the endpoint serves, even an older one") {
+				t.Fatalf("a stale list must not replace unusable state, with advice that can work: %v", err)
 			}
 			fetcher.list, fetcher.signature = signedList(t, f, 2)
 			result, err := online.Check(t.Context(), snapshot)

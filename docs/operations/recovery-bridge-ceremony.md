@@ -281,10 +281,12 @@ Operator recovery for stored state: an installation keeps the last accepted list
 `HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, fsynced and replaced by one
 rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
 unreachable endpoint and with a stale list (a security rollback is never blocked); only a fresh,
-non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list and bound to the trust root; an unreadable one refuses), replaces it. The floor is enforced whenever it exists: a removed store, or a store behind the floor, is unusable too. Either reach the
-endpoint, or stop the service and remove that file and the floor record as an explicit operator action, accepting that revocations known
-only to that list are lost and that until the next list is stored an older validly signed list is
-bounded only by its 7-day `issued_at`. A list bound to another (older) trust root is unusable too until a fresh
+non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list and bound to the trust root; an unreadable one refuses), replaces it. The floor is enforced whenever it exists: a removed store, or a store behind the floor, is unusable too. When the
+endpoint is unreachable, reach it again. When it serves a stale list, reaching it cannot help, because lists are
+not re-signed on a schedule: wait for the owner to sign and publish a newer list. Otherwise stop the service and
+remove that file and the floor record as an explicit operator action, accepting that revocations known only to
+that state are lost and that, without the floor, the next check accepts any validly signed list the endpoint
+serves, even an older one (an old list is only reported `stale`). A list bound to another (older) trust root is unusable too until a fresh
 list for this root replaces it. The fetcher honors `HTTPS_PROXY` and `NO_PROXY` (on the native security path, from
 the host's `hikyo.env`); the signature, not the path, is the authority.
 

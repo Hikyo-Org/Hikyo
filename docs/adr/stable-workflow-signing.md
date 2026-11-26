@@ -178,7 +178,11 @@ apply-time revocation list (options (a) and (c) on
   revocations must never widen admission, so stored state that exists but does not
   verify (a damaged file, a list signed by another
   key) is unusable: bridge routes refuse under `off`, when the endpoint is unreachable
-  and when the fetched list is stale, with a message naming the files. Only a fresh,
+  and when the fetched list is stale, with a message naming the files and the way out.
+  An unreachable endpoint needs reaching again. A stale list cannot be fixed that way,
+  because lists are not re-signed on a schedule, so the operator waits for a newer signed
+  list. Either way the operator may instead remove both files, losing the revocations only
+  they held and the floor. Only a fresh,
   non-stale, verified online list replaces it, and its sequence must be at or above
   the high-water floor (`bridge-revocations-floor.json`: the highest sequence and its
   digest, raised only when a list is stored, under the lock, never lowered and kept apart

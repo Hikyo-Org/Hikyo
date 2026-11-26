@@ -258,35 +258,28 @@ type checkRecord struct {
 // returns a result without a fresh list, and neither does while stored state is
 // unusable.
 func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Result, error) {
+	// This read is unlocked, so it can land between a concurrent persist's floor and store
+	// writes and see the store behind the floor. It only seeds the result: whether the
+	// state is unusable is decided by the locked re-read in newest or persist.
 	st, err := c.load(snapshot)
 	if err != nil {
 		return Result{}, err
 	}
-	unusable := st.unusable != nil
-	if unusable && c.Mode == Off {
-		return Result{}, c.unusable(st.unusable)
-	}
+	usable := st.have && st.unusable == nil
 	result := Result{Outcome: Disabled}
-	if st.have && !unusable {
+	if usable {
 		result.Sequence, result.Revoked = st.known.Sequence(), st.known.Revoked()
 		if err := c.ensureFloor(snapshot, st.known); err != nil {
 			return Result{}, err
 		}
 	}
 	if c.Mode == Off {
-		return c.newest(snapshot, result)
+		return c.newest(snapshot, result, nil)
 	}
 	list, signature, err := c.Fetcher.Fetch(ctx)
-	if unusable && err != nil {
-		// Only a fresh, verified online answer may replace unusable state.
-		if errors.Is(err, ErrUnreachable) {
-			return Result{}, c.unusable(fmt.Errorf("%w; the endpoint is unreachable, so nothing can replace it: %w", st.unusable, err))
-		}
-		return Result{}, err
-	}
 	if errors.Is(err, ErrUnreachable) {
 		result.Outcome = Unreachable
-		return c.newest(snapshot, result)
+		return c.newest(snapshot, result, err)
 	}
 	if err != nil {
 		return Result{}, err
@@ -300,10 +293,7 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	if age < -maxFutureSkew {
 		return Result{}, errors.New("revocation list is issued in the future")
 	}
-	if unusable && age > MaxListAge {
-		return Result{}, c.unusable(fmt.Errorf("%w; the fetched list is stale and cannot replace it", st.unusable))
-	}
-	if st.have && !unusable {
+	if usable {
 		if fresh.Sequence() < st.known.Sequence() {
 			return Result{}, errors.New("revocation list rollback refused")
 		}
@@ -315,7 +305,7 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	// may have stored a newer one since this run read the directory, and only that list's
 	// revocations may be reported, never an older list's. persist stores nothing when the
 	// directory already holds this list or a newer one.
-	stored, err := c.persist(snapshot, fresh, list, signature)
+	stored, err := c.persist(snapshot, fresh, list, signature, age > MaxListAge)
 	if err != nil {
 		return Result{}, err
 	}
@@ -326,10 +316,10 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	return Result{Outcome: outcome, Sequence: stored.Sequence(), Revoked: stored.Revoked()}, c.record(Result{Outcome: outcome, Sequence: stored.Sequence()})
 }
 
-// newest finishes a result that carries no fresh list (opt-out, unreachable endpoint): a
-// concurrent run may have stored a newer list since this run read the directory, so the
-// verified store is read again under the lock and the higher list is the one reported.
-func (c Checker) newest(snapshot releasetrust.Snapshot, result Result) (Result, error) {
+// newest finishes a result that carries no fresh list (opt-out, or unreachable, the fetch
+// error): the store is read again under the lock, which alone decides whether it is unusable,
+// and a newer list a concurrent run stored since this run read the directory is reported.
+func (c Checker) newest(snapshot releasetrust.Snapshot, result Result, unreachable error) (Result, error) {
 	release, err := c.lock()
 	if err != nil {
 		return Result{}, err
@@ -340,6 +330,10 @@ func (c Checker) newest(snapshot releasetrust.Snapshot, result Result) (Result, 
 		return Result{}, err
 	}
 	if st.unusable != nil {
+		if unreachable != nil {
+			// Only a fresh, verified online answer may replace unusable state.
+			return Result{}, c.unusable(fmt.Errorf("%w; the endpoint is unreachable, so nothing can replace it: %w", st.unusable, unreachable))
+		}
 		return Result{}, c.unusable(st.unusable)
 	}
 	if st.have && st.known.Sequence() > result.Sequence {
@@ -366,17 +360,27 @@ var ErrUnusableState = errors.New("stored recovery bridge revocation state is un
 // that state, because storing one first needs the floor.
 var errFloorUnreadable = errors.New("the sequence floor record is unreadable")
 
+// errStaleReplacement marks unusable state that the fetched list cannot replace because it
+// is older than MaxListAge. Lists are signed only when something is revoked, so the endpoint
+// keeps serving that list: reaching it again cannot help.
+var errStaleReplacement = errors.New("the fetched list is stale and cannot replace it")
+
 func (c Checker) unusable(cause error) error {
+	store, floor := filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile)
 	if errors.Is(cause, errFloorUnreadable) {
-		return fmt.Errorf("%w (%w); bridge routes are refused, and no fetched list can replace this while the floor record cannot be read. As an explicit operator action, stop the service and repair or remove %s (the next verified list recreates it), accepting that the recorded sequence floor is lost and an older validly signed list is then bounded only by its issued_at",
-			ErrUnusableState, cause, filepath.Join(c.Directory, floorFile))
+		return fmt.Errorf("%w (%w); bridge routes are refused, and no fetched list can replace this while the floor record cannot be read. As an explicit operator action, stop the service and repair or remove %s (the next verified list recreates it), accepting that the recorded sequence floor is lost, so the next check accepts any validly signed list the endpoint serves, even an older one",
+			ErrUnusableState, cause, floor)
+	}
+	if errors.Is(cause, errStaleReplacement) {
+		return fmt.Errorf("%w (%w); bridge routes are refused. Lists are signed only when something is revoked, never on a schedule, so retrying or restoring access cannot help: wait for the release owner to sign and publish a newer list, which then replaces it, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state and the sequence floor are lost, so the next check accepts any validly signed list the endpoint serves, even an older one",
+			ErrUnusableState, cause, store, floor)
 	}
 	way := "Restore access to the revocation endpoint so a valid list replaces it"
 	if c.Mode == Off {
 		way = "The check is off, so nothing is fetched: set HIKYO_UPGRADE_REVOCATION_CHECK to online so a valid list replaces it"
 	}
 	return fmt.Errorf("%w (%w); bridge routes are refused. %s, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state are lost",
-		ErrUnusableState, cause, way, filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile))
+		ErrUnusableState, cause, way, store, floor)
 }
 
 // state is what the directory holds. The floor applies only when it is bound to this
@@ -462,8 +466,9 @@ func (c Checker) readStored() (list, signature []byte, found bool, err error) {
 // stored sequence, and returns the list the directory holds afterwards (a newer one stored by
 // a concurrent run is returned as it is): Check compared against the list it read before the lock, so a
 // concurrent run may have stored a higher or a different one since. The list and its
-// signature are one file, written by a single rename.
-func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.VerifiedRevocations, list, signature []byte) (releasetrust.VerifiedRevocations, error) {
+// signature are one file, written by a single rename. A stale list never replaces unusable
+// state; that is decided here, from the read under the lock.
+func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.VerifiedRevocations, list, signature []byte, stale bool) (releasetrust.VerifiedRevocations, error) {
 	release, err := c.lock()
 	if err != nil {
 		return releasetrust.VerifiedRevocations{}, err
@@ -482,6 +487,9 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 		}
 	}
 	if st.unusable != nil {
+		if stale {
+			return releasetrust.VerifiedRevocations{}, c.unusable(fmt.Errorf("%w; %w", st.unusable, errStaleReplacement))
+		}
 		// The stored list cannot be relied on, so the floor is the memory left. A missing floor
 		// is a first run; an unreadable one is as unusable as the list.
 		floor, found := st.floor, st.haveFloor
