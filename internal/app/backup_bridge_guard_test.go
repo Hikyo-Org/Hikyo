@@ -409,7 +409,7 @@ func TestAutomaticResumeKeepsTheJournaledRouteAfterNotAfter(t *testing.T) {
 	if _, err := bundle.Plan(installed, target); err == nil {
 		t.Fatal("the bridge is expired, so a new admission must have no route")
 	}
-	plan, err := bundle.PlanAt(installed, target, time.Now().Add(-48*time.Hour))
+	plan, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAt(installed, target, time.Now().Add(-48*time.Hour))
 	if err != nil || len(plan.BridgeDigests()) != 1 {
 		t.Fatalf("the journaled route goes through the bridge: %v", err)
 	}
@@ -498,3 +498,6 @@ func TestGuardedBundleRefusesARevokedBridgeAndBackupCodeUsesNothingElse(t *testi
 		}
 	}
 }
+
+// noRevokedBridges is a revocation lookup reporting nothing revoked, for fixtures that plan bridge routes.
+func noRevokedBridges() ([]releaseidentity.Digest, error) { return nil, nil }

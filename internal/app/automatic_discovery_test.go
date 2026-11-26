@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -98,7 +99,7 @@ func newAutomaticDiscoveryGraph(t *testing.T, predecessors [][]int) *automaticDi
 		materials = append(materials, material)
 		f.identities = append(f.identities, releaseidentity.Identity{Profile: declaration.Profile, Version: declaration.Version, Sequence: declaration.Sequence, Commit: declaration.Commit, CompatibilitySHA256: releaseidentity.Hash(claim), ManifestSHA256: releaseidentity.Hash(material.Manifest)})
 	}
-	bridge := f.trust.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: "2099-01-01T00:00:00Z", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: f.identities[0], TargetPolicySHA256: releaseidentity.Hash(materials[0].Policy), SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+	bridge := f.trust.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: f.identities[0], TargetPolicySHA256: releaseidentity.Hash(materials[0].Policy), SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
 	write := func(path string, raw []byte) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -185,6 +186,7 @@ func TestAutomaticDiscoveryLegacyAndInterruptedRouteKeepExactBridge(t *testing.T
 				if err != nil {
 					t.Fatal(err)
 				}
+				bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 				plan, err := bundle.Plan(f.source, target.Identity)
 				if err != nil {
 					t.Fatal(err)
@@ -256,6 +258,7 @@ func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(
 			if err != nil {
 				t.Fatal(err)
 			}
+			bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 			plan, err := bundle.Plan(f.source, target.Identity)
 			if err != nil {
 				t.Fatal(err)

@@ -218,6 +218,7 @@ func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticR
 	if err != nil {
 		t.Fatal(err)
 	}
+	bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 	plan, err := bundle.Plan(upgradecompat.InstalledSource{Identity: source.source.Source, Migrations: legacyManifest, SchemaSHA256: source.source.SchemaDigest}, target.Identity())
 	if err != nil {
 		t.Fatal(err)

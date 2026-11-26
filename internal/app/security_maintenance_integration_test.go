@@ -284,6 +284,7 @@ func (d *securityProcessDriver) Prepare(ctx context.Context, target securitymain
 	if err != nil {
 		return securitymaintenance.Preparation{}, err
 	}
+	bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 	manifest, err := d.route.Plan.SourceManifest(releaseidentity.SQLite)
 	if err != nil {
 		return securitymaintenance.Preparation{}, err

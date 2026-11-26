@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 package app
 
 import (
@@ -25,7 +27,7 @@ func TestNativeSecurityRevocationFetcherUsesTheHostProxyNotTheProcessEnvironment
 	var resolved *url.URL
 	previous := newRevocationFetcher
 	newRevocationFetcher = func(_ string, proxy func(*http.Request) (*url.URL, error)) (bridgerevocation.Fetcher, error) {
-		request, err := http.NewRequest(http.MethodGet, "https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations.json", nil)
+		request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations.json", nil)
 		if err != nil {
 			return nil, err
 		}
