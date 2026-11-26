@@ -59,6 +59,58 @@ func (q *Queries) DeveloperCredentialByVerifier(ctx context.Context, verifier []
 	return i, err
 }
 
+const getDeveloperCredentialInScope = `-- name: GetDeveloperCredentialInScope :one
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
+WHERE id = ?1 AND org_id = ?2 AND project_id = ?3 AND env_id = ?4
+  AND (CAST(?5 AS TEXT) = '' OR authority_principal_id = ?5)
+`
+
+type GetDeveloperCredentialInScopeParams struct {
+	ID        string
+	OrgID     string
+	ProjectID string
+	EnvID     string
+	Authority string
+}
+
+// The incident revoke looks one delegation up by id at its exact placement, live
+// or not, so an item outside the incident is told apart from one already gone and
+// the cost does not depend on the table size.
+// hikyo:reason Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered.
+// hikyo:authn-resolution
+func (q *Queries) GetDeveloperCredentialInScope(ctx context.Context, arg GetDeveloperCredentialInScopeParams) (DeveloperCredential, error) {
+	row := q.db.QueryRowContext(ctx, getDeveloperCredentialInScope,
+		arg.ID,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvID,
+		arg.Authority,
+	)
+	var i DeveloperCredential
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.AuthorityPrincipalID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.EnvID,
+		&i.Verifier,
+		&i.PrefixHint,
+		&i.ParentSessionID,
+		&i.ProviderID,
+		&i.Oauth2ProviderID,
+		&i.SamlProviderID,
+		&i.AuthMethod,
+		&i.AuthorityGeneration,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.PersonalConsent,
+	)
+	return i, err
+}
+
 const getDeveloperCredentialPolicy = `-- name: GetDeveloperCredentialPolicy :one
 SELECT max_lifetime_seconds FROM developer_credential_policy WHERE id=1
 `

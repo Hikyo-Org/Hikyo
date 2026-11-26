@@ -62,3 +62,13 @@ ORDER BY id LIMIT sqlc.arg(row_limit);
 SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
 WHERE org_id = sqlc.arg(org_id) AND id = sqlc.arg(id) AND revoked_at IS NULL AND expires_at > sqlc.arg(now) AND credential_epoch = sqlc.arg(epoch)
   AND (sqlc.arg(authority)::text = '' OR authority_principal_id = sqlc.arg(authority));
+
+-- The incident revoke looks one delegation up by id at its exact placement, live
+-- or not, so an item outside the incident is told apart from one already gone and
+-- the cost does not depend on the table size.
+-- hikyo:reason Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered.
+-- hikyo:authn-resolution
+-- name: GetDeveloperCredentialInScope :one
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
+WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) AND env_id = sqlc.arg(env_id)
+  AND (sqlc.arg(authority)::text = '' OR authority_principal_id = sqlc.arg(authority));

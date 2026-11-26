@@ -1314,6 +1314,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GetDeveloperCredentialInScope",
+    "annotation": "authn-resolution",
+    "hash": "4c58dd0f67f561bd218687c854e2e49332f22c66f338aaf50aca3dd1ae9d4321",
+    "reason": "Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered."
+  },
+  {
+    "engine": "postgres",
     "name": "GetDeveloperCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "6c9480b90e1fb715fd7f1ef3505061ff71d5304efa16abf195531c7f685666eb",
@@ -5187,6 +5194,13 @@
     "name": "GetCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "f659262a1cea753762f8a7f29ff45a3e6729d191db815d491a42f40b07d6b270"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetDeveloperCredentialInScope",
+    "annotation": "authn-resolution",
+    "hash": "f45b532a243ae75d72eef20744f83d66783aad891c14ed44543fbf3cfb10229d",
+    "reason": "Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org; no bearer can be recovered."
   },
   {
     "engine": "sqlite",
