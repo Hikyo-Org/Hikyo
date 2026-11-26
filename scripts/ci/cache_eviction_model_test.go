@@ -61,6 +61,8 @@ type cacheModel struct {
 	low      int64
 	evicted  []string
 	seedLost []string
+	// eventTimes are the times of the events the replay ran, for the sampled sweeps (sweepMinutes).
+	eventTimes []time.Time
 	// freed is what the headroom step deleted beyond what the prune would have: live entries, chosen by the
 	// script instead of by GitHub's eviction.
 	freed []string
@@ -228,17 +230,20 @@ func (m *cacheModel) replaceSeed(family string, sizes [3]int64) {
 // mark, the same instant for all of them (a fixed, stated offset, not a function of the key, so the
 // outcome cannot hinge on a hash); ties go against the seeds. A seed is the exception when seedsLive
 // holds: feedback runs restore it at any time of the day, so play touches it at every event.
+// bumpLag is how long before the hour mark the busy entries' last access falls: a restore during the hour.
+const bumpLag = 25 * time.Minute
+
 func (m *cacheModel) bump() {
 	h := m.now.Hour()
 	for _, e := range m.entries {
 		if r, sparse := m.rate[e.seed]; e.seed != "" && sparse {
 			if (h+1)*r/24 != h*r/24 {
-				e.accessed = m.now.Add(-25 * time.Minute)
+				e.accessed = m.now.Add(-bumpLag)
 			}
 			continue
 		}
 		if e.busy {
-			e.accessed = m.now.Add(-25 * time.Minute)
+			e.accessed = m.now.Add(-bumpLag)
 		}
 		if e.seed != "" && m.seedsLive && !m.ordinary[e.seed] {
 			e.accessed = m.now
@@ -254,6 +259,7 @@ type modelEvent struct {
 func (m *cacheModel) play(events []modelEvent) {
 	sort.SliceStable(events, func(i, j int) bool { return events[i].at.Before(events[j].at) })
 	for _, ev := range events {
+		m.eventTimes = append(m.eventTimes, ev.at)
 		m.now = ev.at
 		ev.run()
 		if m.seedsLive {
@@ -403,6 +409,8 @@ type plan struct {
 	// headroom: the seed writers free room right before their saves (scripts/ci/cache-prune.sh with the lanes
 	// of the save), as ci-race-cache.yml and ci-lint-cache.yml do.
 	headroom bool
+	// crossings: the sampled sweeps also replay every minute at which an event the sweep moves passes one it does not (sweepMinutes).
+	crossings bool
 	// mainBySha is the main seed key as it was, <sha> alone: nothing is saved on a day main did not move,
 	// so a quiet weekend leaves the main seed where Friday left it.
 	mainBySha bool
@@ -758,6 +766,82 @@ func followAt(p plan, minute int) plan {
 	return p
 }
 
+// sweepMinutes are the minutes a sweep replays. With step 1 every minute. Otherwise the coarse samples (every
+// step-th minute) and, for a plan with crossings set, every minute at which an event the sweep moves passes an
+// event it does not.
+//
+// The sweep moves some of the model's own events with the swept minute (the seed saves, the headroom before
+// them and the prunes after them) while the rest stay put (the day's other saves and deletes). A replay's
+// outcome is constant between two minutes at which a moved event passes a fixed one, so a seed lost over ten
+// minutes between coarse samples is found at the crossing that opens that stretch, however the coarse samples
+// fall. The hourly prune and the hourly touch are fixed events too but recur every hour: crossing them all
+// samples nearly every minute (the cost of a replay is the prune's jq), so they are left to the coarse samples
+// and to the full sweep. Moved and fixed events are told apart from the model's own event times in two
+// replays a few minutes apart.
+func sweepMinutes(t *testing.T, p plan, limit int64, from, to, step int, at func(plan, int) plan, run func(*testing.T, plan, int64) *cacheModel) []int {
+	t.Helper()
+	var minutes []int
+	if step <= 1 {
+		for minute := from; minute <= to; minute++ {
+			minutes = append(minutes, minute)
+		}
+		return minutes
+	}
+	seen := map[int]bool{}
+	add := func(minute int) {
+		if minute >= from && minute <= to && !seen[minute] {
+			seen[minute] = true
+			minutes = append(minutes, minute)
+		}
+	}
+	for minute := from; minute <= to; minute += step {
+		add(minute)
+	}
+	if p.crossings {
+		const shift = 7
+		first := run(t, at(p, from), limit).eventTimes
+		second := run(t, at(p, from+shift), limit).eventTimes
+		count := map[time.Time]int{}
+		for _, e := range first {
+			count[e]++
+		}
+		inSecond := map[time.Time]int{}
+		for _, e := range second {
+			inSecond[e]++
+		}
+		perMinute := map[int]int{}
+		var moved, fixed []time.Time
+		for e, n := range count {
+			for i := 0; i < n; i++ {
+				if i < inSecond[e] {
+					fixed = append(fixed, e)
+					perMinute[e.Minute()]++
+				} else {
+					moved = append(moved, e)
+				}
+			}
+		}
+		if len(moved) == 0 {
+			t.Fatal("the sweep moves no event of the model: there are no crossings to sample")
+		}
+		for _, m := range moved {
+			for _, f := range fixed {
+				if perMinute[f.Minute()] >= hourlyEvents {
+					continue
+				}
+				// m sits at M when the sweep starts, so the sweep puts it on f at from+(f-M).
+				add(from + int(f.Sub(m)/time.Minute))
+			}
+		}
+	}
+	sort.Ints(minutes)
+	return minutes
+}
+
+// hourlyEvents is how many fixed events share a minute of the hour before they count as the hourly prune or
+// touch: the day has 24 of each, the other saves and deletes at most a few.
+const hourlyEvents = 12
+
 type seedSweep struct {
 	minutes, evicted int
 	peak             float64
@@ -769,7 +853,7 @@ type seedSweep struct {
 func sweepSeeds(t *testing.T, p plan, limit int64, from, to, step int, at func(plan, int) plan, run func(*testing.T, plan, int64) *cacheModel) seedSweep {
 	t.Helper()
 	var out seedSweep
-	for minute := from; minute <= to; minute += step {
+	for _, minute := range sweepMinutes(t, p, limit, from, to, step, at, run) {
 		m := run(t, at(p, minute), limit)
 		out.minutes++
 		out.peak = max(out.peak, float64(m.peak)/1e9)
@@ -1015,6 +1099,7 @@ func TestCacheBudgetModel(t *testing.T) {
 					p := planAdopted
 					p.rate = tr.rate
 					p.headroom = true
+					p.crossings = l.bytes == 10_000_000_000
 					with := sweepSeeds(t, p, l.bytes, 10*60+59, 16*60+59, sweepStep(180), followAt, rotationDay)
 					logSweep(t, "headroom, "+tr.name, l, with)
 					// The acceptance test is that the newest seeds survive; a short peak that evicts one idle entry (a
@@ -1026,6 +1111,7 @@ func TestCacheBudgetModel(t *testing.T) {
 					// used entries of the repository and go first.
 					if i == 1 && l.bytes == 10_000_000_000 {
 						p.headroom = false
+						p.crossings = false
 						without := sweepSeeds(t, p, l.bytes, 10*60+59, 16*60+59, sweepStep(180), followAt, rotationDay)
 						logSweep(t, "no headroom, "+tr.name, l, without)
 						if len(without.lost) == 0 {
