@@ -459,7 +459,7 @@ func (q *queueController) admissionFiles(ctx context.Context, p pull) ([]pullFil
 // A PR may carry a policy path only when it already matches main, as a backmerge
 // does. The PR's file list starts at the merge base, so feature branches can lag a
 // CI change on main.
-func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string, error) {
+func (q *queueController) devPolicyRefusal(ctx context.Context, p pull, fixturesSkipped bool) (string, error) {
 	files, complete, err := q.admissionFiles(ctx, p)
 	if err != nil {
 		return "", err
@@ -502,6 +502,9 @@ func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string,
 		if !bytes.Equal(trusted, candidate) {
 			return refusal(file.Name), nil
 		}
+	}
+	if fixturesSkipped {
+		return q.supplyChainRefusal(ctx, p, files)
 	}
 	return "", nil
 }

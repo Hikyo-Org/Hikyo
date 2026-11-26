@@ -1,6 +1,14 @@
 # Per-commit feedback is separate from the mandatory full merge-queue gate.
 # The four-minute runner deadline includes setup; queue time is measured
 # separately and is not guaranteed by GitHub's shared hosted runner pool.
+# Exception (2026-11-26, #1587): the supply-chain fixtures run for minutes, not
+# seconds (runtime pending measurement from this workflow's own hosted run), so
+# they run as their own job beside the lanes, only when the PR changes one of
+# their inputs. The gate requires that job and its selection job by name
+# (scripts/ci/pr-gate) and recomputes the selection itself. The exact inputs
+# select about 45% of dev merges (171 of 382) and 58% of main merges (130 of
+# 226) over the 60 days to 2026-11-26, accepted by the owner that day; #1608
+# narrows the fixtures to read fewer files. The trigger stays exact.
 name: ci-feedback
 
 on:
@@ -175,3 +183,74 @@ jobs:
           FEEDBACK_LANE: ${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].lane }}
           FEEDBACK_GO_SCOPE: ${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane="$FEEDBACK_LANE" --go-scope="$FEEDBACK_GO_SCOPE"
+
+  # Whether the fixtures run is decided by the BASE commit's selector and input
+  # list (scripts/ci/supply-chain-fixture-inputs.txt) over the PR's diff: an exact
+  # fixture input, or a change to the steps of ci.yml's supply-chain-checks job.
+  # The PR cannot rewrite the rule that judges it. Scheduling only: scripts/ci/pr-gate
+  # recomputes the selection from trusted inputs before accepting a skipped
+  # fixtures job. TestSupplyChainInputListCoversEveryInput
+  # (scripts/ci/supply_chain_guards_test.go) derives the inputs from the job and
+  # fails when the list misses one.
+  select-supply-chain:
+    name: select supply-chain fixtures
+    if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      run: ${{ steps.select.outputs.run }}
+    env:
+      PR_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out the merge commit and its parents without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Select the supply-chain fixtures
+        id: select
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^2)" = "$PR_HEAD"
+          git show HEAD^1:scripts/ci/select-supply-chain-fixtures.sh > "$RUNNER_TEMP/select-supply-chain-fixtures.sh"
+          sh "$RUNNER_TEMP/select-supply-chain-fixtures.sh" | tee -a "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"
+
+  supply-chain-fixtures:
+    name: supply-chain fixtures
+    needs: select-supply-chain
+    if: (github.event.action != 'edited' || github.event.changes.base.ref.from != '') && needs.select-supply-chain.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact PR head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The module cache follows the feedback cache policy: restore only, keyed
+      # over the immutable feedback-tools checkout like the lanes. No Go build
+      # cache is restored. Cosign and Helm are fetched by the replayed steps
+      # (checksum-pinned, bounded retry).
+      - name: Check out immutable feedback tooling without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: feedback-tools
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 2
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Replay the supply-chain-checks job steps
+        run: go run ./scripts/ci/run-job-steps .github/workflows/ci.yml supply-chain-checks

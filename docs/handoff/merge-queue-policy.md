@@ -195,6 +195,15 @@ Maintenance and full-group jobs retain their separate ten-minute budgets. No
 selected feedback command, full-suite test, domain, baseline or registry entry
 is removed. Bot review duration is separate from the CI-only eligibility metric.
 
+Exception (2026-11-26, #1587): the `supply-chain fixtures` job in `ci-feedback`
+is outside the four-minute bound. It runs only when a PR touches one of the
+fixtures' exact inputs, with its own 20-minute timeout, and dev admission
+requires it (see `docs/development/ci.md`). The lanes keep the four-minute limit.
+Over the 60 days to 2026-11-26 the exact inputs select about 45% of dev merges
+(171 of 382) and 58% of main merges (130 of 226); the owner accepted these rates
+on 2026-11-26. Follow-up #1608 narrows the fixtures to read fewer files,
+measured per fixture; the trigger stays exact.
+
 The four-minute feedback job plus the one-minute targeted publisher allowance
 bounds controlled execution, not all GitHub elapsed time. Runner queues, API
 outages and time waiting for authority can delay eligibility. Setup/compilation
@@ -304,7 +313,8 @@ Earlier c95 feedback passed in 82 seconds while the deployed global publisher
 took 6m 59s to complete admission. A historical group took 40m 39s; a later full
 group 38288765434 passed in 24m 03s. These historical runs do not prove the newly enabled
 per-head pipeline meets the requested timing on each commit. The four-minute
-feedback and one-minute targeted publisher bound controlled execution; provider
+feedback lanes (the 2026-11-26 supply-chain fixtures job excepted, #1587) and
+one-minute targeted publisher bound controlled execution; provider
 queue and API delays remain outside that bound. Fresh full-group and activated
 per-commit acceptance are still required.
 

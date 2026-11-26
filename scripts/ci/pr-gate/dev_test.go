@@ -39,11 +39,11 @@ func newDevFixture(t *testing.T) *queueFixture {
 	f.feedbackRun.Pulls = []pull{f.pr}
 	f.feedbackRefresh()
 	r := f.feedbackRun
-	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", r.ID, r.Attempt))] = map[string]any{"total_count": 3, "jobs": []job{
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", r.ID, r.Attempt))] = map[string]any{"total_count": 5, "jobs": append([]job{
 		{ID: 201, RunID: r.ID, Attempt: r.Attempt, HeadSHA: r.HeadSHA, Name: "feedback (go)", Status: "completed", Conclusion: "success"},
 		{ID: 202, RunID: r.ID, Attempt: r.Attempt, HeadSHA: r.HeadSHA, Name: "feedback (frontend)", Status: "completed", Conclusion: "success"},
 		{ID: 203, RunID: r.ID, Attempt: r.Attempt, HeadSHA: r.HeadSHA, Name: "feedback (tooling)", Status: "completed", Conclusion: "success"},
-	}}
+	}, supplyChainJobs(r, "success", "success")...)}
 	return f
 }
 
@@ -333,7 +333,7 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 			if tc.head != "" {
 				f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Head.SHA)] = content(tc.head)
 			}
-			refusal, err := f.q.devPolicyRefusal(context.Background(), f.pr)
+			refusal, err := f.q.devPolicyRefusal(context.Background(), f.pr, false)
 			if err != nil || (refusal != "") != tc.refuse {
 				t.Fatalf("refusal %q/%v, want refuse=%t", refusal, err, tc.refuse)
 			}
@@ -348,13 +348,13 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 	for page := 1; page <= pullFilePages; page++ {
 		wide.api.responses[wide.c.endpoint(devFilesPage(wide, page))] = full
 	}
-	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr); err != nil || refusal == "" {
+	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr, false); err != nil || refusal == "" {
 		t.Fatalf("unlistable PR was not refused: %q/%v", refusal, err)
 	}
 	wide.api.responses[wide.c.endpoint(devFilesPage(wide, 7))] = []map[string]string{{"filename": path}}
 	wide.api.responses[wide.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
 	wide.api.responses[wide.c.endpoint("contents/"+path+"?ref="+wide.pr.Head.SHA)] = content("main bytes")
-	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr); err != nil || refusal != "" {
+	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr, false); err != nil || refusal != "" {
 		t.Fatalf("wide backmerge was refused: %q/%v", refusal, err)
 	}
 	// Admission must publish this refusal instead of only failing the job.

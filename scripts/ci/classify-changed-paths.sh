@@ -55,6 +55,14 @@ else
 			select_class chart-runtime
 			;;
 		esac
+		# Data the supply-chain-checks fixtures read from the real tree. Their own
+		# classes (api, floor-bench) do not run that job, so select
+		# it here in addition.
+		case "$path" in
+		api/openapi.yaml | api/parity.yaml | docs/release/measurements/derate.json)
+			select_class supply-chain-data
+			;;
+		esac
 		case "$path" in
 		# Only the nightly-desktop workflow builds this nested module; no root lane can.
 		desktop/*)

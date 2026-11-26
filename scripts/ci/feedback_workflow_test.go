@@ -69,8 +69,11 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if job.If != "github.event.action != 'edited' || github.event.changes.base.ref.from != ''" {
 		return fmt.Errorf("push/open/reopen and genuine base edits must run; metadata-only edits must skip")
 	}
-	if len(got.Jobs) != 1 || job.Timeout != 4 {
-		return fmt.Errorf("all feedback runners include setup in their four-minute budgets")
+	if len(got.Jobs) != 3 || job.Timeout != 4 {
+		return fmt.Errorf("all feedback runners include setup in their four-minute budgets; only the supply-chain selection and fixtures jobs sit beside them")
+	}
+	if err := requireSupplyChainFeedbackJobs(raw); err != nil {
+		return err
 	}
 	expectedStrategy := map[string]any{"fail-fast": false, "matrix": map[string]any{"lane": []any{"go", "tooling", "frontend"}}}
 	if job.Continue || !reflect.DeepEqual(job.Strategy, expectedStrategy) {

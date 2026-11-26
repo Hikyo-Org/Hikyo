@@ -491,7 +491,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 				if q.checkName == devCheckName {
 					settle(ctx,
 						func(ctx context.Context) { code, err = canonicalDCOResult(ctx, p, dcoVerifier) },
-						func(ctx context.Context) { refusal, refusalErr = q.devPolicyRefusal(ctx, p) },
+						func(ctx context.Context) { refusal, refusalErr = q.devPolicyRefusal(ctx, p, r.FixturesSkipped) },
 					)
 				} else {
 					code, err = canonicalDCOResult(ctx, p, dcoVerifier)
@@ -725,7 +725,11 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 				// still verifies an authenticated blocking barrier before return.
 				return nil, err
 			}
+			jobs, supply := splitSupplyChainJobs(jobs)
 			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedFeedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
+				if err := ignoredSupplyChain(supply); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			admitted, ignored := 0, 0
@@ -763,10 +767,23 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 				return true
 			}
 			if ignored == len(ignoredLanes) && admitted == 0 && completeLanes(ignoredLanes) {
+				if err := ignoredSupplyChain(supply); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			if r.Status == "completed" && (admitted != len(usefulLanes) || !completeLanes(usefulLanes)) {
 				return nil, errors.New("missing or duplicated useful feedback lane")
+			}
+			if r.Status == "completed" && q.checkName == devCheckName {
+				failed, skipped, err := judgeSupplyChain(supply, r.HeadSHA)
+				if err != nil {
+					return nil, err
+				}
+				r.FixturesSkipped = skipped
+				if failed {
+					r.Conclusion = "failure"
+				}
 			}
 			return &r, nil
 		}
