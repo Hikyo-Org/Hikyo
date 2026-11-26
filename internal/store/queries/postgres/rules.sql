@@ -258,18 +258,19 @@ SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
 -- and a last-project deletion (each reads what the other writes); the locks
 -- make them queue instead of failing late: a deletion takes every org project
 -- FOR UPDATE (LockOrgProjectIDsForDelete) before it counts the org's
--- all-projects rules. A project inserted concurrently is not locked out and
--- needs not be: an all-projects rule covers later projects by design.
+-- all-projects rules. A project create takes the same FOR UPDATE lock, so it
+-- queues behind a rule create whose expansion bound it could break.
 -- hikyo:reason An all-projects rule create locks the org's current project ids it is proved against; runs after rule.create authorized the caller in each of them, ids only, scoped to the org.
 -- hikyo:authn-resolution
 -- name: LockRuleOrgProjectIDs :many
 SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id FOR SHARE;
 
--- The org's projects for a project deletion. FOR UPDATE, not FOR SHARE: two
--- deletions of an org's last two projects queue on each other rather than
+-- The org's projects for a project deletion or creation. FOR UPDATE, not FOR
+-- SHARE: two deletions of an org's last two projects, or two creations at an
+-- all-projects rule's expansion bound, queue on each other rather than
 -- relying on a serialization failure, and it conflicts with a rule create's
 -- FOR SHARE.
--- hikyo:reason Project deletion locks the org's project ids to keep an all-projects rule from outliving the last project; runs after OpProjectDelete authorized the caller, ids only.
+-- hikyo:reason Project deletion and creation lock the org's project ids to keep an all-projects rule from outliving the last project or outgrowing the v1 listing bound; runs after OpProjectDelete or OpProjectCreate authorized the caller, ids only.
 -- hikyo:authn-resolution
 -- name: LockOrgProjectIDsForDelete :many
 SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id FOR UPDATE;

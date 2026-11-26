@@ -330,8 +330,9 @@ func (r *Resolver) RuleOrgProjects(ctx context.Context, org string, lock bool) (
 }
 
 // LockOrgProjectsForDelete lists the org's project ids for a project
-// deletion, FOR UPDATE on postgres, so concurrent deletions of the org's last
-// projects and an all-projects rule create serialize with it.
+// deletion or creation, FOR UPDATE on postgres, so concurrent deletions of the
+// org's last projects, creations at an all-projects rule's expansion bound and
+// an all-projects rule create serialize with it.
 func (r *Resolver) LockOrgProjectsForDelete(ctx context.Context, org string) ([]domain.ProjectID, error) {
 	var ids []string
 	var err error

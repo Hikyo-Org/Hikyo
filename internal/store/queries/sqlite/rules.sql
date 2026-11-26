@@ -261,9 +261,9 @@ SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
 -- name: LockRuleOrgProjectIDs :many
 SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
 
--- The same list for a project deletion; postgres takes FOR UPDATE (see its
--- copy), sqlite serializes write transactions.
--- hikyo:reason Project deletion locks the org's project ids to keep an all-projects rule from outliving the last project; runs after OpProjectDelete authorized the caller, ids only.
+-- The same list for a project deletion or creation; postgres takes FOR UPDATE
+-- (see its copy), sqlite serializes write transactions.
+-- hikyo:reason Project deletion and creation lock the org's project ids to keep an all-projects rule from outliving the last project or outgrowing the v1 listing bound; runs after OpProjectDelete or OpProjectCreate authorized the caller, ids only.
 -- hikyo:authn-resolution
 -- name: LockOrgProjectIDsForDelete :many
 SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
