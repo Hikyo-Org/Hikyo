@@ -32,6 +32,10 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['paths']['/api/v1/incidents/{incident}/items']['get']['parameters'][0,1,2]
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters']['post']['requestBody']['content']['application/json']['schema']['properties']['pattern']
     update:
       x-omitempty: false
@@ -221,6 +225,26 @@ actions:
       x-omitempty: false
       x-omitzero: true
   - target: $['components']['schemas']['RotationRunList']['properties']['next_after']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['IncidentOpenRequest']['properties']['principal','org','project','adapter']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['IncidentCloseRequest']['properties']['with_residuals']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['Incident']['properties']['org','closed_by','closed_at','reopened','added']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['IncidentItem']['properties']['reason','object_state','attested_by','attested_at']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['IncidentItemList']['properties']['next_after']
     update:
       x-omitempty: false
       x-omitzero: true

@@ -252,6 +252,14 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	return nil
 }
 
+// noProofCredentialDetail is the wire detail of a refused incident resume for an
+// account with neither a password nor an authenticator; the text is the web
+// dialog's sentence (web/src/api/incidents.ts).
+const (
+	noProofCredentialDetail = "no_proof_credential"
+	noProofCredentialText   = "Your account has no password or authenticator to confirm this. Ask another responder with one to resume the incident."
+)
+
 // errorFromResponse maps the contract's closed error enum onto the closed
 // exit-code set. The status is the fallback, not the mechanism: a server that
 // grows a new status without a code the client knows is a skew problem the
@@ -270,7 +278,12 @@ func errorFromResponse(status int, header http.Header, payload []byte) error {
 	code := body.Error.Code
 	message := body.Error.Message
 	if body.Error.Detail != nil && *body.Error.Detail != "" {
-		message += " (" + *body.Error.Detail + ")"
+		if code == apigen.ErrorCodeBadRequest && *body.Error.Detail == noProofCredentialDetail {
+			// A federated-only responder: no proof the CLI could ask for would help.
+			message = noProofCredentialText
+		} else {
+			message += " (" + *body.Error.Detail + ")"
+		}
 	}
 	// A Surface-2 secret-scanning refusal (#74) carries a typed findings array.
 	// Render each finding's rule id, locator and fresh acknowledgement token so

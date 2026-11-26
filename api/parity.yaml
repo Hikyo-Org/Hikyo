@@ -208,6 +208,13 @@ operations:
   voteAccessRequest:           {webui: temporary-access}
   cancelAccessRequest:         {webui: temporary-access}
   revokeAccessRequest:         {webui: temporary-access}
+  # incident containment (#1039)
+  openIncident:                {webui: incidents}
+  getIncident:                 {webui: incidents}
+  listIncidentItems:           {webui: incidents}
+  resumeIncident:              {webui: incidents}
+  attestIncidentItem:          {webui: incidents}
+  closeIncident:               {webui: incidents}
 
   # definitions
   # Browser bundle workflow uses each operation directly (#575).

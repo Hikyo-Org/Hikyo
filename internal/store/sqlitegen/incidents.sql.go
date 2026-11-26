@@ -74,6 +74,19 @@ func (q *Queries) CountIncidentItemsByOutcome(ctx context.Context, incidentID st
 	return items, nil
 }
 
+const countRefusedIncidentItems = `-- name: CountRefusedIncidentItems :one
+SELECT COUNT(*) AS refused_count FROM incident_items WHERE incident_id = ?1 AND outcome = 'pending' AND reason = 'owner_failed'
+`
+
+// hikyo:reason The opened, read and closed views count the open items an owner refused (pending with the owner_failed reason) after the operation authorized credential-reset at the incident scope.
+// hikyo:authn-resolution
+func (q *Queries) CountRefusedIncidentItems(ctx context.Context, incidentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRefusedIncidentItems, incidentID)
+	var refused_count int64
+	err := row.Scan(&refused_count)
+	return refused_count, err
+}
+
 const getIncident = `-- name: GetIncident :one
 SELECT id, scope_kind, scope_id, org_id, status, opened_by, opened_at, closed_by, closed_at, row_version
 FROM incidents WHERE id = ?1

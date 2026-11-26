@@ -204,6 +204,19 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Incident containment (#1039). Org-scoped like audit: the org is route data
+  // filled by the rail's active circle, and the incident under work is an
+  // `?incident=` id, never a secret, so a reload and a shared link open the same
+  // ledger. It sits beside audit because its capability (`credential-reset@org`)
+  // addresses the organisation.
+  {
+    id: 'incidents',
+    path: '/orgs/:org/incidents',
+    label: 'Incidents',
+    section: 'organisation',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Remote instances are instance-wide (`/api/v1/instance/remotes`, the
   // `instance-directory` capability), so they live in the instance section,
   // first so the tier's rows do not jump when it expands. The legacy

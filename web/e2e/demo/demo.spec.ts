@@ -297,6 +297,7 @@ const surfaceChecks = {
   'change-approvals': { mode: 'read-only', heading: 'Change approvals', sample: 'Sample review: rotate the payment provider credential.', tab: 'Review queue', environment: DEMO_IDS.staging },
   'temporary-access': { mode: 'read-only', heading: 'Temporary access', sample: 'Sample request: investigate a checkout error.', environment: DEMO_IDS.staging },
   adapters: { mode: 'read-only', heading: 'Deployment adapters', sample: 'acme/payments' },
+  incidents: { mode: 'excluded', result: 'unavailable' },
   'transit-keys': { mode: 'excluded', result: 'unavailable' },
   'project-audit': { mode: 'read-only', heading: 'Project audit', sample: 'revision.published' },
   'project-settings': { mode: 'read-only', heading: /^Project settings\s*·?\s*Payments$/, sample: 'Identity' },

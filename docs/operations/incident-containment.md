@@ -356,6 +356,45 @@ compromise using independent evidence, because restore does not establish that f
    enhanced review for a period chosen from the exposure window and log coverage.
    Keep `HOLD` for any scope you could not verify.
 
+## The incident ledger commands
+
+`hikyo incident` and the `/api/v1/incidents` routes record an incident and work its
+items through the owner functions. They need a human session that passed
+multi-factor sign-in, with `credential-reset` at the incident's organisation, or at
+the instance for an incident that spans several organisations or none (an account
+whose grants reach more than one organisation, or none, is such an incident). A
+session that did not pass multi-factor sign-in reads every incident as one that does
+not exist: run `hikyo account factor step-up` and retry.
+
+- `hikyo incident open --scope account|org|project|adapter ...` only enumerates what
+  the scope leaves behind, as items, and performs nothing. Opening a scope that
+  already has an open incident adds only the missing objects.
+- `hikyo incident show <incident>` and `hikyo incident items <incident>` read the
+  ledger. An item its owner refused reads apart from one that has not yet run, and a
+  rotation shows its own state as the server read it just now.
+- `hikyo incident resume <incident> --yes` does the work. It lists the open items and
+  stops unless you pass `--yes`, then asks for your authenticator code (or your
+  password if you have no authenticator) and runs each open item through its owner
+  function once. It cannot be undone. A one-time authenticator code is spent by that
+  call; a password is checked again on each call. The call names exactly the items its own
+  listing printed: `resume --yes` lists again, prints the list before the authenticator or
+  password prompt, and sends the digest of that list. If another operator reopens, adds or
+  settles items between that listing and the resume (even keeping the same number), the call
+  is refused with a conflict and spends nothing: list again and confirm the new set. Nothing
+  binds an earlier `resume` listing to a later `resume --yes` run, so check the list printed
+  before the prompt. It never runs an item you did not see. In the web dialog, a conflict
+  replaces the list with the current one and asks you to confirm again. An account that has
+  neither a password nor an authenticator (it signs in only through a linked identity) cannot
+  resume, and the server refuses with a `400` whose detail is `no_proof_credential`. Hand
+  the incident to another responder who has a password or an authenticator; federated
+  step-up is tracked in #1590.
+- `hikyo incident attest <incident> <item>` records your statement that an open item
+  was dealt with outside this system. It is a statement, not a confirmation.
+- `hikyo incident close <incident>` needs `--with-residuals` while items are open.
+
+An unknown incident and one outside your authority answer the same way. A machine
+credential or a developer credential is refused on every one of these routes.
+
 ## What the ADR would change
 
 None of the following exists yet. They are listed so the owner can see which manual

@@ -50,3 +50,25 @@ func TestJSON429WithoutErrorFieldsNamesTheStatus(t *testing.T) {
 		t.Fatalf("err=%v, want exit %d naming the status", err, ExitRateLimited)
 	}
 }
+
+// A refused incident resume for an account with no proof credential reads as the
+// web dialog does, not as the generic contract refusal with a detail suffix.
+func TestNoProofCredentialDetailHasItsOwnWording(t *testing.T) {
+	payload := []byte(`{"error":{"code":"bad_request","message":"the request does not satisfy the API contract","detail":"no_proof_credential"}}`)
+	err := errorFromResponse(http.StatusBadRequest, http.Header{}, payload)
+	var ce *Error
+	if !errors.As(err, &ce) || ce.Code != ExitRefused || ce.Detail != "no_proof_credential" {
+		t.Fatalf("err=%v, want a refusal carrying the detail", err)
+	}
+	if got := err.Error(); got != noProofCredentialText {
+		t.Fatalf("message = %q, want %q", got, noProofCredentialText)
+	}
+	other := errorFromResponse(http.StatusBadRequest, http.Header{}, []byte(`{"error":{"code":"bad_request","message":"bad","detail":"other"}}`))
+	if other.Error() != "bad (other)" {
+		t.Fatalf("another detail = %q, want the generic form", other.Error())
+	}
+	conflict := errorFromResponse(http.StatusConflict, http.Header{}, []byte(`{"error":{"code":"conflict","message":"busy","detail":"no_proof_credential"}}`))
+	if conflict.Error() != "busy (no_proof_credential)" {
+		t.Fatalf("the detail on another code = %q, want the generic form", conflict.Error())
+	}
+}

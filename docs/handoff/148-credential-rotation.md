@@ -1518,8 +1518,10 @@ account's live rotations by authority principal (object kind `rotation`) and the
 `rotation.halt` owner function halts each with the dedicated reason `incident_contained`
 (an open-enum word; `authority_lost` stays the executor's own). Org scope inherits through the
 accounts it selects; project and adapter scopes select no account and list no rotation. Release
-never resumes a halt. A refused containment item reads `pending/` in the ledger, with
-`owner_failed` only in the audit outcome event; slice 4 must show refused versus not yet run.
+never resumes a halt. A pending item whose owner refused reads `pending/owner_failed` in the ledger
+(slice 4; no migration, the reason vocabulary already held it), and a not yet run item reads
+`pending/`. An unknown or blocked item keeps its own reason when the owner refuses. The operator
+surface shows a rotation item's live state, read at presentation time and never stored.
 See the amendment in the [incident-containment ADR](../adr/incident-containment.md).
 
 ### Run-level hold (`revoke_refused` with `published_versions_changed`)

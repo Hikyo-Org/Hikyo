@@ -23,6 +23,7 @@ describe('the route policy registry', () => {
       'Organisation settings',
       'SCIM provisioning',
       'Audit',
+      'Incidents',
     ]);
     expect(sectionsFor('project').map((s) => s.id)).toEqual([
       'matrix',

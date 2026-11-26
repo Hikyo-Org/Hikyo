@@ -33,6 +33,7 @@ describe('sidebarModel', () => {
       'Organisation settings',
       'SCIM provisioning',
       'Audit',
+      'Incidents',
     ]);
     expect(model.organisation?.links.map((l) => l.to)).toEqual([
       '/',
@@ -41,6 +42,7 @@ describe('sidebarModel', () => {
       '/orgs/org_1/settings',
       '/orgs/org_1/scim',
       '/orgs/org_1/audit',
+      '/orgs/org_1/incidents',
     ]);
     expect(model.account.links.map((l) => l.to)).toEqual(['/settings']);
   });
@@ -111,7 +113,7 @@ describe('sidebarModel', () => {
     expect(model.context?.qualifiers).toEqual(['on edge', 'prj_1']);
     expect(model.organisation?.qualifiers).toEqual(['on edge']);
     const links = model.organisation?.links;
-    for (const id of ['members', 'org-settings', 'scim', 'audit']) {
+    for (const id of ['members', 'org-settings', 'scim', 'audit', 'incidents']) {
       const row = mustFind(links, id);
       expect(row.disabledReason).toBe(`${row.label} is local-instance only`);
     }
@@ -295,6 +297,7 @@ describe('sidebarModel in the Hikyo system scope', () => {
       'members',
       'org-settings',
       'audit',
+      'incidents',
     ]);
   });
 

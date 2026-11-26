@@ -30,9 +30,25 @@ func (w *incidentWorld) realOwners() {
 	})
 }
 
+// rotationView reads the one rotation item of an incident through ItemViews.
+func (w *incidentWorld) rotationView(t *testing.T, actor domain.PrincipalID, incident, rotation string) service.IncidentItemView {
+	t.Helper()
+	views, err := w.svc.ItemViews(t.Context(), w.as(actor), incident, "", 500, false)
+	if err != nil {
+		t.Fatalf("item views: %v", err)
+	}
+	for _, v := range views {
+		if v.ObjectKind == "rotation" && v.ObjectID == rotation {
+			return v
+		}
+	}
+	t.Fatalf("no rotation item %s in the incident", rotation)
+	return service.IncidentItemView{}
+}
+
 func (w *incidentWorld) resume(t *testing.T, actor domain.PrincipalID, id string) service.ResumeResult {
 	t.Helper()
-	res, err := w.svc.Resume(t.Context(), w.as(actor), id)
+	res, err := w.svc.Resume(t.Context(), w.as(actor), id, "", nil)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
@@ -164,8 +180,22 @@ func TestIncidentOwnerRefusesSelfContainment(t *testing.T) {
 		if s := w.containmentState(t, incResponder); s == "contained" {
 			t.Fatal("an operator contained their own account")
 		}
-		if got := w.itemMap(t, incResponder, v.Incident.ID)["account.contain|account|"+string(incResponder)]; got != "pending/" {
-			t.Errorf("self-containment item = %q, want pending", got)
+		if got := w.itemMap(t, incResponder, v.Incident.ID)["account.contain|account|"+string(incResponder)]; got != "pending/owner_failed" {
+			t.Errorf("self-containment item = %q, want pending/owner_failed", got)
+		}
+		// A refused item reads as refused, apart from one that has not run yet.
+		views, err := w.svc.ItemViews(t.Context(), w.as(incResponder), v.Incident.ID, "", 500, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		refused := 0
+		for _, view := range views {
+			if view.Refused {
+				refused++
+			}
+		}
+		if refused != 1 {
+			t.Errorf("refused items = %d, want the one containment", refused)
 		}
 		// The refusal is the contain owner's alone: session and delegation items are
 		// independent owners and run on their own (ADR, Concurrency and fencing).
@@ -194,7 +224,7 @@ func TestIncidentOwnerRefusesLastManager(t *testing.T) {
 		got := w.itemMap(t, incResponder, v.Incident.ID)
 		// Only the contain owner refuses: the session and delegation items are
 		// independent owners, so they complete and the grants stay (ADR, Concurrency).
-		wantItems(t, got, map[string]string{keyContain: "pending/", keySession: "done/", keyDevCred: "done/"})
+		wantItems(t, got, map[string]string{keyContain: "pending/owner_failed", keySession: "done/", keyDevCred: "done/"})
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM grants WHERE principal_id='`+string(incTarget)+`'`); n == 0 {
 			t.Errorf("a refused containment removed the target's grants")
 		}
@@ -241,9 +271,16 @@ func TestIncidentOwnerHaltsRotationsAndReleaseNeverResumes(t *testing.T) {
 		if got := r.w.itemMap(t, incResponder, id)[r.key()]; got != "pending/" {
 			t.Fatalf("rotation item = %q, want pending", got)
 		}
+		// The item view reads the rotation's own state live; nothing is stored.
+		if got := r.w.rotationView(t, incResponder, id, r.rot.ID); got.ObjectState != store.RotationStateActive || got.Refused {
+			t.Fatalf("before resume the view = state %q refused %v, want active and not refused", got.ObjectState, got.Refused)
+		}
 		r.w.resume(t, incResponder, id)
 		if got := r.w.itemMap(t, incResponder, id)[r.key()]; got != "done/" {
 			t.Fatalf("rotation item = %q, want done", got)
+		}
+		if got := r.w.rotationView(t, incResponder, id, r.rot.ID); got.ObjectState != store.RotationStateHalted {
+			t.Fatalf("after resume the view state = %q, want halted", got.ObjectState)
 		}
 		if r.state(t) != store.RotationStateHalted {
 			t.Fatalf("rotation state = %q, want halted", r.state(t))
@@ -332,6 +369,44 @@ func TestIncidentProjectScopeListsNoRotation(t *testing.T) {
 			if strings.HasPrefix(k, "rotation.halt|") {
 				t.Errorf("a project incident lists a rotation item %q", k)
 			}
+		}
+	})
+}
+
+// The live state is read under the caller's own authority over the rotation's
+// scope. A rotation the ledger names that no longer exists reads "gone"; one
+// whose scope the caller cannot reach reads nothing at all, so the presentation
+// read never tells a caller whether a rotation outside their reach exists
+// (#1471 m8). The ledger row is edited directly: the scope and id columns are the
+// only inputs the read takes from it.
+func TestIncidentRotationViewGoneAndUnreadable(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		v, err := r.w.svc.Open(t.Context(), r.w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: alice})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := v.Incident.ID
+		if got := r.w.rotationView(t, incResponder, id, r.rot.ID); got.ObjectState != store.RotationStateActive {
+			t.Fatalf("a live rotation read %q, want active", got.ObjectState)
+		}
+		// Gone: the rotation row no longer exists.
+		execRaw(t, db, `UPDATE incident_items SET object_id='rot_gone' WHERE incident_id='`+id+`' AND object_id='`+r.rot.ID+`'`)
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.ObjectState != "gone" {
+			t.Errorf("a rotation that no longer exists read %q, want gone", got.ObjectState)
+		}
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.Attestable {
+			t.Errorf("a halt item must not be offered for attestation")
+		}
+		// Unreadable: the item's scope is an environment the caller holds nothing on.
+		execRaw(t, db, `UPDATE incident_items SET scope='`+string(orgB)+`/`+string(prjB1)+`/`+string(envB1)+`' WHERE incident_id='`+id+`' AND object_id='rot_gone'`)
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.ObjectState != "" {
+			t.Errorf("a rotation outside the caller's reach read %q, want nothing", got.ObjectState)
+		}
+		// A scope that does not parse reads nothing either.
+		execRaw(t, db, `UPDATE incident_items SET scope='not-a-scope' WHERE incident_id='`+id+`' AND object_id='rot_gone'`)
+		if got := r.w.rotationView(t, incResponder, id, "rot_gone"); got.ObjectState != "" {
+			t.Errorf("a malformed scope read %q, want nothing", got.ObjectState)
 		}
 	})
 }

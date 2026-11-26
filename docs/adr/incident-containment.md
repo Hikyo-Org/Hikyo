@@ -430,6 +430,63 @@ principal is contained, so a contained account would still have a scheduler acti
 - Audit: the halt event joins the incident through the incident id as its correlation id,
   like every other owner event.
 
+### Operator surface (slice 4)
+
+- An owner that refuses a pending item records the closed reason `owner_failed` on the row, so
+  `pending/owner_failed` (refused) differs from `pending/` (not yet run). An unknown or blocked
+  item keeps the reason it has. Resume still runs a refused item again and a later confirmation
+  writes `done` with no reason. The reason vocabulary already held the word, so there is no
+  migration.
+- A rotation item's state is read from the live rotation when the page is built and is never
+  stored, so it cannot go stale. A rotation the caller cannot read shows no state, and one that
+  no longer exists shows `gone`.
+- The API adds six operations (revision 22): open, show, list items, resume, attest and close.
+  Each dispatches between the org and instance incident operations inside the service, like
+  credential reset, so the routes are human-session only and carry no single contract operation.
+  The CLI verb is `hikyo incident` and the web surface is Incidents at `/orgs/:org/incidents`.
+- Probe class: the routes carry `x-hikyo-class: unauthenticated` with
+  `x-hikyo-artifacts: [human-session]`, the credential-reset precedent. Only part of the surface is
+  dynamic. Opening an org, project or adapter incident names its `org` in the body, and every
+  `{incident}` route authorizes on the organisation stored on the incident, so those paths could
+  be classed like any tenant route. What no path or body field names is the authority for an
+  account incident (credential-reset at the account's single org, or at the instance when its
+  footprint spans several orgs or none) and for an instance incident, which has no org at all;
+  only the service can resolve those from the target. One class per route cannot differ by
+  request, so all six routes carry the dynamic class. It is a declaration that authority is
+  dynamic, not that the routes are open: every route needs a human session that passed
+  multi-factor sign-in, and each service call authorizes inside its own transaction. Because the harness does not reach them, `TestIncidentWireRefusalsAreUniformAcrossTenants`
+  is their probe: an operator of another org and a caller with no capability get a byte-identical
+  `404` for a foreign incident and a nonexistent one on get, items, resume, attest, close and open,
+  and the ledger does not move. `TestIncidentAuthorizationRefusals` covers the same at the service,
+  including the item views.
+- Resume is the one operation here that acts on the incident's objects, so it needs a fresh
+  account-security proof of its own, bound to that call and checked in its first write
+  transaction: the operator's TOTP code, or the password for an account with no confirmed factor
+  (the account-security reauth `proof` field, declared as `x-hikyo-reauth` on the operation). A
+  one-time code is spent by that call, so it cannot open a second resume; a password is not
+  spent and is checked fresh on each call. The CLI lists the open items and stops unless `--yes`
+  confirms them; the web asks the same in a dialog that lists them. The request also carries
+  `items_digest`, the SHA-256 of the sorted ids of the open items the operator listed and
+  confirmed. In the transaction that spends the proof the server reads every open item id and
+  compares the digest; when another operator has reopened, added or settled items since, the set
+  differs (even at the same size) and the call is a `409` that spends no proof. A matching call
+  runs exactly the ids it checked, never an item added after, and an item settled meanwhile is
+  skipped. A set the CLI cannot list in full (over 40 pages) is refused before the call. Open only enumerates and performs nothing. A
+  caller who cannot see the incident gets the uniform not-found before any proof is asked for.
+- Limitation: an account with neither a password nor a confirmed factor (for example one that
+  only signs in through a linked identity) has no pre-existing credential to prove with and
+  cannot resume (`ErrNoProofCredential`, a `400`). The browser-approval reauthentication of #1539
+  is a closed set of operations and does not include resume. Owner decision: the refusal stays,
+  with no proof-less path. A federated-only responder cannot resume and must hand the incident
+  to another responder who has a password or a confirmed authenticator; federated step-up is
+  tracked in #1590. The refusal carries the `400` detail `no_proof_credential`, which the web
+  dialog words as such.
+- The incident and item views carry `refused`, the count (and per-item flag) of pending items
+  whose owner refused, apart from pending items that have not run.
+- `attestable` on an item is the server's own verdict (open item, open incident, a kind Hikyo
+  cannot observe, not the caller's own containment), so a surface offers Attest only where the
+  server would accept it.
+
 ## Not decided here
 
 - Alert-driven or automatic containment. F3 ([#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038))
@@ -508,4 +565,12 @@ done (claude-opus-5-5), findings repaired; not CLEAN for cross-model.
 Independent Spec review ran in two rounds against issue #1039; its findings were
 addressed in the text. Independent Standards review is recorded on the pull request.
 Cross-provider review did not run and is not CLEAN. Maintainer security review and the
+human merge gate remain required.
+
+Accepted owner decision (slice 4, #1549): keep the six `/api/v1/incidents` routes on
+`x-hikyo-class: unauthenticated` with `x-hikyo-artifacts: [human-session]`, the credential-reset
+precedent recorded under the tenant-isolation ADR's dynamic-authority exception. The follow-up to
+class the routes that name an org (org, project and adapter opens and every `{incident}` route)
+with the tenant probe harness, leaving the dynamic class to account and instance incidents, is
+[#1569](https://github.com/Hikyo-Org/Hikyo/issues/1569). The maintainer security review and the
 human merge gate remain required.

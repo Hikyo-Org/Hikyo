@@ -83,6 +83,7 @@ type txForwarded interface {
 	IncidentItems(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error)
 	IncidentItemByID(ctx context.Context, incidentID, id string) (IncidentItem, error)
 	IncidentItemCounts(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error)
+	IncidentRefusedCount(ctx context.Context, incidentID string) (int64, error)
 	TransitionIncidentItem(ctx context.Context, t ItemTransition) (bool, error)
 	// LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
 	// expired, current credential epoch) minted inside one org, in id order; a

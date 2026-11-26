@@ -1967,6 +1967,36 @@ func (e ImpactChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for IncidentItemOutcome.
+const (
+	IncidentItemOutcomeAttested   IncidentItemOutcome = "attested"
+	IncidentItemOutcomeBlocked    IncidentItemOutcome = "blocked"
+	IncidentItemOutcomeDone       IncidentItemOutcome = "done"
+	IncidentItemOutcomeOutOfScope IncidentItemOutcome = "out_of_scope"
+	IncidentItemOutcomePending    IncidentItemOutcome = "pending"
+	IncidentItemOutcomeUnknown    IncidentItemOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the IncidentItemOutcome enum.
+func (e IncidentItemOutcome) Valid() bool {
+	switch e {
+	case IncidentItemOutcomeAttested:
+		return true
+	case IncidentItemOutcomeBlocked:
+		return true
+	case IncidentItemOutcomeDone:
+		return true
+	case IncidentItemOutcomeOutOfScope:
+		return true
+	case IncidentItemOutcomePending:
+		return true
+	case IncidentItemOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InstanceConfigJobState.
 const (
 	InstanceConfigJobStateCompleted InstanceConfigJobState = "completed"
@@ -8532,6 +8562,147 @@ type ImportValuesResult struct {
 	Skipped []KeyName `json:"skipped"`
 }
 
+// Incident defines model for Incident.
+type Incident struct {
+	// Added Items this open added to the ledger.
+	Added *int32 `json:"added,omitzero"`
+
+	// ClosedAt RFC 3339 UTC, microsecond precision.
+	ClosedAt *Timestamp `json:"closed_at,omitzero"`
+
+	// ClosedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	ClosedBy *ID `json:"closed_by,omitzero"`
+
+	// Counts How many items sit in each ledger outcome.
+	Counts IncidentOutcomeCounts `json:"counts"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// OpenedAt RFC 3339 UTC, microsecond precision.
+	OpenedAt Timestamp `json:"opened_at"`
+
+	// OpenedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	OpenedBy ID `json:"opened_by"`
+
+	// Org A prefixed UUIDv7, e.g. `org_0198…`.
+	Org *ID `json:"org,omitzero"`
+
+	// Reopened True when the scope already had an open incident and this open added only the missing objects.
+	Reopened  *bool  `json:"reopened,omitzero"`
+	ScopeId   string `json:"scope_id"`
+	ScopeKind string `json:"scope_kind"`
+
+	// Status OPEN enum.
+	Status string `json:"status"`
+}
+
+// IncidentCloseRequest defines model for IncidentCloseRequest.
+type IncidentCloseRequest struct {
+	// WithResiduals Close although items are still open, recording the residuals.
+	WithResiduals *bool `json:"with_residuals,omitzero"`
+}
+
+// IncidentItem defines model for IncidentItem.
+type IncidentItem struct {
+	// Attestable True when attesting this item would be accepted now: it is open, in an open
+	// incident, of a kind Hikyo cannot observe, and not the caller's own containment.
+	Attestable bool `json:"attestable"`
+
+	// AttestedAt RFC 3339 UTC, microsecond precision.
+	AttestedAt *Timestamp `json:"attested_at,omitzero"`
+
+	// AttestedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	AttestedBy *ID `json:"attested_by,omitzero"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id         ID     `json:"id"`
+	ObjectId   string `json:"object_id"`
+	ObjectKind string `json:"object_kind"`
+
+	// ObjectState A rotation item's own state, read live when the page is built and never
+	// stored: `active`, `paused`, `halted`, `disabled`, or `gone` when the
+	// rotation no longer exists. Absent for other kinds and for a rotation the
+	// caller cannot read. OPEN enum.
+	ObjectState *string `json:"object_state,omitzero"`
+
+	// Outcome The ledger's closed outcome set. Pending, unknown and blocked are open.
+	Outcome       IncidentItemOutcome `json:"outcome"`
+	OwnerFunction string              `json:"owner_function"`
+
+	// Reason Why the item sits in its outcome, as a fixed word; absent when there is none.
+	// `owner_failed` on a pending item means its owner refused it. OPEN enum.
+	Reason *string `json:"reason,omitzero"`
+
+	// Refused An open item whose owner refused it, as opposed to one that has not run yet.
+	Refused bool `json:"refused"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+}
+
+// IncidentItemOutcome The ledger's closed outcome set. Pending, unknown and blocked are open.
+type IncidentItemOutcome string
+
+// IncidentItemList defines model for IncidentItemList.
+type IncidentItemList struct {
+	Items []IncidentItem `json:"items"`
+
+	// NextAfter Pass as `after` to read the next page. Present after a full page, and that next page may be empty.
+	NextAfter *string `json:"next_after,omitzero"`
+}
+
+// IncidentOpenRequest What the incident is opened on. `principal` names an account; `org`, `project` and `adapter` name the other scopes.
+type IncidentOpenRequest struct {
+	// Adapter A prefixed UUIDv7, e.g. `org_0198…`.
+	Adapter *ID `json:"adapter,omitzero"`
+
+	// Org A prefixed UUIDv7, e.g. `org_0198…`.
+	Org *ID `json:"org,omitzero"`
+
+	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
+	Principal *ID `json:"principal,omitzero"`
+
+	// Project A prefixed UUIDv7, e.g. `org_0198…`.
+	Project *ID `json:"project,omitzero"`
+
+	// ScopeKind What the incident is opened on. OPEN enum.
+	ScopeKind string `json:"scope_kind"`
+}
+
+// IncidentOutcomeCounts How many items sit in each ledger outcome.
+type IncidentOutcomeCounts struct {
+	Attested   int32 `json:"attested"`
+	Blocked    int32 `json:"blocked"`
+	Done       int32 `json:"done"`
+	OutOfScope int32 `json:"out_of_scope"`
+	Pending    int32 `json:"pending"`
+
+	// Refused Of the open items, how many an owner refused (the pending items that carry the `owner_failed` reason). They are counted in `pending` too, which also holds the items that have not run yet.
+	Refused int32 `json:"refused"`
+	Unknown int32 `json:"unknown"`
+}
+
+// IncidentResumeRequest defines model for IncidentResumeRequest.
+type IncidentResumeRequest struct {
+	// ItemsDigest The open items you listed and confirmed: the lowercase hex SHA-256 of their ids sorted bytewise and joined by a newline. The call is a 409, and spends no proof, when the incident's open items are not exactly this set. It runs only the items of the set it checked.
+	ItemsDigest string `json:"items_digest"`
+
+	// Proof Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
+	Proof string `json:"proof"`
+}
+
+// IncidentResumeResult What one resume pass did, in items.
+type IncidentResumeResult struct {
+	Blocked     int32 `json:"blocked"`
+	Confirmed   int32 `json:"confirmed"`
+	Examined    int32 `json:"examined"`
+	Failed      int32 `json:"failed"`
+	Skipped     int32 `json:"skipped"`
+	Stale       int32 `json:"stale"`
+	Unconfirmed int32 `json:"unconfirmed"`
+}
+
 // InstanceConfigAdoptRequest defines model for InstanceConfigAdoptRequest.
 type InstanceConfigAdoptRequest struct {
 	IdempotencyKey string `json:"idempotency_key"`
@@ -13353,6 +13524,12 @@ type IdentityID = ID
 // IdentityImageVersion defines model for IdentityImageVersion.
 type IdentityImageVersion = string
 
+// IncidentID A prefixed UUIDv7, e.g. `org_0198…`.
+type IncidentID = ID
+
+// IncidentItemID A prefixed UUIDv7, e.g. `org_0198…`.
+type IncidentItemID = ID
+
 // InstanceUpdateJobID A prefixed UUIDv7, e.g. `org_0198…`.
 type InstanceUpdateJobID = ID
 
@@ -13532,6 +13709,18 @@ type OidcCallbackParams struct {
 	State *string `form:"state" json:"state,omitzero"`
 	Iss   *string `form:"iss" json:"iss,omitzero"`
 	Error *string `form:"error" json:"error,omitzero"`
+}
+
+// ListIncidentItemsParams defines parameters for ListIncidentItems.
+type ListIncidentItemsParams struct {
+	// Limit Maximum items on this page.
+	Limit *int `form:"limit" json:"limit,omitzero"`
+
+	// After The `next_after` a previous page returned. Absent reads the first page.
+	After *string `form:"after" json:"after,omitzero"`
+
+	// OpenOnly Keep only the items that still need work (pending, unknown or blocked).
+	OpenOnly *bool `form:"open_only" json:"open_only,omitzero"`
 }
 
 // QueryInstanceAuditParams defines parameters for QueryInstanceAudit.
@@ -14441,6 +14630,15 @@ type RedeemWorkspaceHandoffJSONRequestBody = RedeemWorkspaceHandoffRequest
 
 // StartWorkspaceHandoffJSONRequestBody defines body for StartWorkspaceHandoff for application/json ContentType.
 type StartWorkspaceHandoffJSONRequestBody = StartWorkspaceHandoffRequest
+
+// OpenIncidentJSONRequestBody defines body for OpenIncident for application/json ContentType.
+type OpenIncidentJSONRequestBody = IncidentOpenRequest
+
+// CloseIncidentJSONRequestBody defines body for CloseIncident for application/json ContentType.
+type CloseIncidentJSONRequestBody = IncidentCloseRequest
+
+// ResumeIncidentJSONRequestBody defines body for ResumeIncident for application/json ContentType.
+type ResumeIncidentJSONRequestBody = IncidentResumeRequest
 
 // AdoptInstanceConfigJSONRequestBody defines body for AdoptInstanceConfig for application/json ContentType.
 type AdoptInstanceConfigJSONRequestBody = InstanceConfigAdoptRequest
@@ -16092,6 +16290,24 @@ type ServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string)
+	// OpenIncident Open an incident on an account, org, project or adapter, or reopen the open one.
+	// (POST /api/v1/incidents)
+	OpenIncident(w http.ResponseWriter, r *http.Request)
+	// GetIncident One incident with its outcome counts.
+	// (GET /api/v1/incidents/{incident})
+	GetIncident(w http.ResponseWriter, r *http.Request, incident IncidentID)
+	// CloseIncident Close the incident, with its residual items named when any are open.
+	// (POST /api/v1/incidents/{incident}/close)
+	CloseIncident(w http.ResponseWriter, r *http.Request, incident IncidentID)
+	// ListIncidentItems The incident's ledger items, in id order.
+	// (GET /api/v1/incidents/{incident}/items)
+	ListIncidentItems(w http.ResponseWriter, r *http.Request, incident IncidentID, params ListIncidentItemsParams)
+	// AttestIncidentItem State that an open item was resolved outside this system.
+	// (POST /api/v1/incidents/{incident}/items/{item}/attest)
+	AttestIncidentItem(w http.ResponseWriter, r *http.Request, incident IncidentID, item IncidentItemID)
+	// ResumeIncident Run the open items and report what the pass did.
+	// (POST /api/v1/incidents/{incident}/resume)
+	ResumeIncident(w http.ResponseWriter, r *http.Request, incident IncidentID)
 	// QueryInstanceAudit One bounded page of the instance audit trail.
 	// (GET /api/v1/instance/audit)
 	QueryInstanceAudit(w http.ResponseWriter, r *http.Request, params QueryInstanceAuditParams)
@@ -17592,6 +17808,42 @@ func (_ Unimplemented) StartWorkspaceHandoff(w http.ResponseWriter, r *http.Requ
 // ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 // (GET /api/v1/auth/workspace/transactions/{state})
 func (_ Unimplemented) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// OpenIncident Open an incident on an account, org, project or adapter, or reopen the open one.
+// (POST /api/v1/incidents)
+func (_ Unimplemented) OpenIncident(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetIncident One incident with its outcome counts.
+// (GET /api/v1/incidents/{incident})
+func (_ Unimplemented) GetIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CloseIncident Close the incident, with its residual items named when any are open.
+// (POST /api/v1/incidents/{incident}/close)
+func (_ Unimplemented) CloseIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListIncidentItems The incident's ledger items, in id order.
+// (GET /api/v1/incidents/{incident}/items)
+func (_ Unimplemented) ListIncidentItems(w http.ResponseWriter, r *http.Request, incident IncidentID, params ListIncidentItemsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AttestIncidentItem State that an open item was resolved outside this system.
+// (POST /api/v1/incidents/{incident}/items/{item}/attest)
+func (_ Unimplemented) AttestIncidentItem(w http.ResponseWriter, r *http.Request, incident IncidentID, item IncidentItemID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResumeIncident Run the open items and report what the pass did.
+// (POST /api/v1/incidents/{incident}/resume)
+func (_ Unimplemented) ResumeIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -21054,6 +21306,201 @@ func (siw *ServerInterfaceWrapper) ShowWorkspaceHandoff(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ShowWorkspaceHandoff(w, r, state)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenIncident operation middleware
+func (siw *ServerInterfaceWrapper) OpenIncident(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenIncident(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIncident operation middleware
+func (siw *ServerInterfaceWrapper) GetIncident(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "incident" -------------
+	var incident IncidentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident", chi.URLParam(r, "incident"), &incident, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIncident(w, r, incident)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseIncident operation middleware
+func (siw *ServerInterfaceWrapper) CloseIncident(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "incident" -------------
+	var incident IncidentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident", chi.URLParam(r, "incident"), &incident, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseIncident(w, r, incident)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIncidentItems operation middleware
+func (siw *ServerInterfaceWrapper) ListIncidentItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "incident" -------------
+	var incident IncidentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident", chi.URLParam(r, "incident"), &incident, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIncidentItemsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "open_only" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "open_only", r.URL.Query(), &params.OpenOnly, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "open_only"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "open_only", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIncidentItems(w, r, incident, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AttestIncidentItem operation middleware
+func (siw *ServerInterfaceWrapper) AttestIncidentItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "incident" -------------
+	var incident IncidentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident", chi.URLParam(r, "incident"), &incident, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "item" -------------
+	var item IncidentItemID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "item", chi.URLParam(r, "item"), &item, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AttestIncidentItem(w, r, incident, item)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeIncident operation middleware
+func (siw *ServerInterfaceWrapper) ResumeIncident(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "incident" -------------
+	var incident IncidentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident", chi.URLParam(r, "incident"), &incident, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeIncident(w, r, incident)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -36855,6 +37302,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/auth/workspace/transactions/{state}", wrapper.ShowWorkspaceHandoff)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/incidents", wrapper.OpenIncident)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/incidents/{incident}", wrapper.GetIncident)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/incidents/{incident}/close", wrapper.CloseIncident)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/incidents/{incident}/items", wrapper.ListIncidentItems)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/incidents/{incident}/items/{item}/attest", wrapper.AttestIncidentItem)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/incidents/{incident}/resume", wrapper.ResumeIncident)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/audit", wrapper.QueryInstanceAudit)
 	})
 	r.Group(func(r chi.Router) {
@@ -44583,6 +45048,694 @@ func (response ShowWorkspaceHandoff500JSONResponse) VisitShowWorkspaceHandoffRes
 type ShowWorkspaceHandoff503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ShowWorkspaceHandoff503JSONResponse) VisitShowWorkspaceHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncidentRequestObject struct {
+	Body *OpenIncidentJSONRequestBody
+}
+
+type OpenIncidentResponseObject interface {
+	VisitOpenIncidentResponse(w http.ResponseWriter) error
+}
+
+type OpenIncident200JSONResponse Incident
+
+func (response OpenIncident200JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response OpenIncident400JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response OpenIncident401JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response OpenIncident403JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response OpenIncident404JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident409JSONResponse struct{ ConflictJSONResponse }
+
+func (response OpenIncident409JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response OpenIncident429JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident500JSONResponse struct{ InternalJSONResponse }
+
+func (response OpenIncident500JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenIncident503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response OpenIncident503JSONResponse) VisitOpenIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIncidentRequestObject struct {
+	Incident IncidentID `json:"incident"`
+}
+
+type GetIncidentResponseObject interface {
+	VisitGetIncidentResponse(w http.ResponseWriter) error
+}
+
+type GetIncident200JSONResponse Incident
+
+func (response GetIncident200JSONResponse) VisitGetIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIncident401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetIncident401JSONResponse) VisitGetIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIncident404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetIncident404JSONResponse) VisitGetIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIncident429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetIncident429JSONResponse) VisitGetIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIncident500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetIncident500JSONResponse) VisitGetIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIncident503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetIncident503JSONResponse) VisitGetIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncidentRequestObject struct {
+	Incident IncidentID `json:"incident"`
+	Body     *CloseIncidentJSONRequestBody
+}
+
+type CloseIncidentResponseObject interface {
+	VisitCloseIncidentResponse(w http.ResponseWriter) error
+}
+
+type CloseIncident200JSONResponse Incident
+
+func (response CloseIncident200JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CloseIncident400JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CloseIncident401JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CloseIncident404JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CloseIncident409JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CloseIncident429JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident500JSONResponse struct{ InternalJSONResponse }
+
+func (response CloseIncident500JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseIncident503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CloseIncident503JSONResponse) VisitCloseIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItemsRequestObject struct {
+	Incident IncidentID `json:"incident"`
+	Params   ListIncidentItemsParams
+}
+
+type ListIncidentItemsResponseObject interface {
+	VisitListIncidentItemsResponse(w http.ResponseWriter) error
+}
+
+type ListIncidentItems200JSONResponse IncidentItemList
+
+func (response ListIncidentItems200JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItems400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListIncidentItems400JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItems401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListIncidentItems401JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItems404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListIncidentItems404JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItems429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListIncidentItems429JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItems500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListIncidentItems500JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIncidentItems503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListIncidentItems503JSONResponse) VisitListIncidentItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttestIncidentItemRequestObject struct {
+	Incident IncidentID     `json:"incident"`
+	Item     IncidentItemID `json:"item"`
+}
+
+type AttestIncidentItemResponseObject interface {
+	VisitAttestIncidentItemResponse(w http.ResponseWriter) error
+}
+
+type AttestIncidentItem204Response struct {
+}
+
+func (response AttestIncidentItem204Response) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AttestIncidentItem401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AttestIncidentItem401JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttestIncidentItem404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AttestIncidentItem404JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttestIncidentItem409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AttestIncidentItem409JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttestIncidentItem429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response AttestIncidentItem429JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttestIncidentItem500JSONResponse struct{ InternalJSONResponse }
+
+func (response AttestIncidentItem500JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttestIncidentItem503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AttestIncidentItem503JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncidentRequestObject struct {
+	Incident IncidentID `json:"incident"`
+	Body     *ResumeIncidentJSONRequestBody
+}
+
+type ResumeIncidentResponseObject interface {
+	VisitResumeIncidentResponse(w http.ResponseWriter) error
+}
+
+type ResumeIncident200JSONResponse IncidentResumeResult
+
+func (response ResumeIncident200JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResumeIncident400JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResumeIncident401JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResumeIncident404JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ResumeIncident409JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ResumeIncident429JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident500JSONResponse struct{ InternalJSONResponse }
+
+func (response ResumeIncident500JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeIncident503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResumeIncident503JSONResponse) VisitResumeIncidentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -87936,6 +89089,24 @@ type StrictServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(ctx context.Context, request ShowWorkspaceHandoffRequestObject) (ShowWorkspaceHandoffResponseObject, error)
+	// OpenIncident Open an incident on an account, org, project or adapter, or reopen the open one.
+	// (POST /api/v1/incidents)
+	OpenIncident(ctx context.Context, request OpenIncidentRequestObject) (OpenIncidentResponseObject, error)
+	// GetIncident One incident with its outcome counts.
+	// (GET /api/v1/incidents/{incident})
+	GetIncident(ctx context.Context, request GetIncidentRequestObject) (GetIncidentResponseObject, error)
+	// CloseIncident Close the incident, with its residual items named when any are open.
+	// (POST /api/v1/incidents/{incident}/close)
+	CloseIncident(ctx context.Context, request CloseIncidentRequestObject) (CloseIncidentResponseObject, error)
+	// ListIncidentItems The incident's ledger items, in id order.
+	// (GET /api/v1/incidents/{incident}/items)
+	ListIncidentItems(ctx context.Context, request ListIncidentItemsRequestObject) (ListIncidentItemsResponseObject, error)
+	// AttestIncidentItem State that an open item was resolved outside this system.
+	// (POST /api/v1/incidents/{incident}/items/{item}/attest)
+	AttestIncidentItem(ctx context.Context, request AttestIncidentItemRequestObject) (AttestIncidentItemResponseObject, error)
+	// ResumeIncident Run the open items and report what the pass did.
+	// (POST /api/v1/incidents/{incident}/resume)
+	ResumeIncident(ctx context.Context, request ResumeIncidentRequestObject) (ResumeIncidentResponseObject, error)
 	// QueryInstanceAudit One bounded page of the instance audit trail.
 	// (GET /api/v1/instance/audit)
 	QueryInstanceAudit(ctx context.Context, request QueryInstanceAuditRequestObject) (QueryInstanceAuditResponseObject, error)
@@ -90882,6 +92053,186 @@ func (sh *strictHandler) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ShowWorkspaceHandoffResponseObject); ok {
 		if err := validResponse.VisitShowWorkspaceHandoffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OpenIncident operation middleware
+func (sh *strictHandler) OpenIncident(w http.ResponseWriter, r *http.Request) {
+	var request OpenIncidentRequestObject
+
+	var body OpenIncidentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenIncident(ctx, request.(OpenIncidentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenIncident")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenIncidentResponseObject); ok {
+		if err := validResponse.VisitOpenIncidentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIncident operation middleware
+func (sh *strictHandler) GetIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
+	var request GetIncidentRequestObject
+
+	request.Incident = incident
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIncident(ctx, request.(GetIncidentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIncident")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIncidentResponseObject); ok {
+		if err := validResponse.VisitGetIncidentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CloseIncident operation middleware
+func (sh *strictHandler) CloseIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
+	var request CloseIncidentRequestObject
+
+	request.Incident = incident
+
+	var body CloseIncidentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseIncident(ctx, request.(CloseIncidentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseIncident")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CloseIncidentResponseObject); ok {
+		if err := validResponse.VisitCloseIncidentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListIncidentItems operation middleware
+func (sh *strictHandler) ListIncidentItems(w http.ResponseWriter, r *http.Request, incident IncidentID, params ListIncidentItemsParams) {
+	var request ListIncidentItemsRequestObject
+
+	request.Incident = incident
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIncidentItems(ctx, request.(ListIncidentItemsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIncidentItems")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIncidentItemsResponseObject); ok {
+		if err := validResponse.VisitListIncidentItemsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AttestIncidentItem operation middleware
+func (sh *strictHandler) AttestIncidentItem(w http.ResponseWriter, r *http.Request, incident IncidentID, item IncidentItemID) {
+	var request AttestIncidentItemRequestObject
+
+	request.Incident = incident
+	request.Item = item
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AttestIncidentItem(ctx, request.(AttestIncidentItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttestIncidentItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AttestIncidentItemResponseObject); ok {
+		if err := validResponse.VisitAttestIncidentItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeIncident operation middleware
+func (sh *strictHandler) ResumeIncident(w http.ResponseWriter, r *http.Request, incident IncidentID) {
+	var request ResumeIncidentRequestObject
+
+	request.Incident = incident
+
+	var body ResumeIncidentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeIncident(ctx, request.(ResumeIncidentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeIncident")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeIncidentResponseObject); ok {
+		if err := validResponse.VisitResumeIncidentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -727,6 +727,10 @@ func (a *TxAuthorizer) IncidentItems(ctx context.Context, incidentID, afterID st
 	return a.r.IncidentItems(ctx, incidentID, afterID, limit, openOnly)
 }
 
+func (a *TxAuthorizer) IncidentRefusedCount(ctx context.Context, incidentID string) (int64, error) {
+	return a.r.IncidentRefusedCount(ctx, incidentID)
+}
+
 // IncompatiblePasswordKDFCount is for startup/configuration admission, not a
 // public authentication route. It exposes only aggregate parameter metadata.
 func (a *TxAuthorizer) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {

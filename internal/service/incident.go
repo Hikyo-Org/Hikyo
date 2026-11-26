@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -38,8 +39,9 @@ const (
 	// OwnerConfirmed means the owner confirmed the object is in its target
 	// state. Only this result writes done.
 	OwnerConfirmed
-	// OwnerFailed means the owner reported a definite failure. The ledger row
-	// keeps its open state and the failure is recorded in the trail.
+	// OwnerFailed means the owner reported a definite refusal. The ledger row
+	// keeps its open outcome and records the reason owner_failed, and the failure
+	// is recorded in the trail.
 	OwnerFailed
 	// OwnerBlocked means the caller lacks the owner's capability. The item is
 	// blocked: another operator must act, and nothing is performed on the
@@ -67,6 +69,9 @@ type IncidentTarget struct {
 type IncidentView struct {
 	Incident authz.Incident
 	Counts   map[domain.ItemOutcome]int64
+	// Refused counts the open items an owner refused. The outcome counts include
+	// them under pending, which also holds the items that have not run yet.
+	Refused int64
 	// Reopened is true when the scope already had an open incident, so the
 	// enumeration ran again and added only the objects the ledger lacked.
 	Reopened bool
@@ -101,6 +106,9 @@ type Incidents struct {
 	Adapters *Adapters
 	Dynamic  *Dynamic
 	SCIM     *SCIM
+	// Auth verifies the fresh account-security proof Resume requires and spends a
+	// one-time code.
+	Auth *Auth
 	// Owners maps an owner function to the code that performs and confirms it.
 	// S2 registers none: the revocations arrive with the slices that own them.
 	Owners map[string]IncidentOwner
@@ -111,6 +119,10 @@ type Incidents struct {
 	// the default. Tests lower it to reach the truncation path.
 	MaxLookups int
 	Now        func() time.Time
+	// AfterSnapshot, when set, runs once Resume has checked and snapshotted the
+	// open set and before it runs the first item. Tests use it to change the ledger
+	// at exactly that point; production leaves it nil.
+	AfterSnapshot func()
 }
 
 func (s *Incidents) now() time.Time { return nowOr(s.Now) }
@@ -264,6 +276,14 @@ func (s *Incidents) incidentByID(ctx context.Context, az *authz.TxAuthorizer, ac
 	}
 	az.SetClock(now)
 	inc, err := az.IncidentByID(ctx, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		// A missing id authorizes like an instance-scope incident, so it records
+		// the same refusal a foreign one does: equal reads, equal security trail.
+		if _, aerr := authorizeIncidentOp(ctx, az, caller, ""); aerr != nil && !errors.Is(aerr, domain.ErrUnauthorized) {
+			return authz.Identity{}, authz.Incident{}, aerr
+		}
+		return authz.Identity{}, authz.Incident{}, domain.ErrNotFound
+	}
 	if err != nil {
 		return authz.Identity{}, authz.Incident{}, err
 	}
@@ -388,7 +408,11 @@ func (s *Incidents) Open(ctx context.Context, actor Actor, target IncidentTarget
 		if err := az.RecordAuthEvent(ctx, e); err != nil {
 			return err
 		}
-		out = IncidentView{Incident: inc, Counts: counts, Reopened: !created, Added: added, Census: found.census}
+		refused, err := az.IncidentRefusedCount(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		out = IncidentView{Incident: inc, Counts: counts, Refused: refused, Reopened: !created, Added: added, Census: found.census}
 		return nil
 	})
 	return out, err
@@ -425,7 +449,11 @@ func (s *Incidents) Get(ctx context.Context, actor Actor, id string) (IncidentVi
 		if err != nil {
 			return err
 		}
-		out = IncidentView{Incident: inc, Counts: counts}
+		refused, err := az.IncidentRefusedCount(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		out = IncidentView{Incident: inc, Counts: counts, Refused: refused}
 		return nil
 	})
 	return out, err
@@ -447,39 +475,199 @@ func (s *Incidents) Items(ctx context.Context, actor Actor, id, afterID string, 
 	return out, err
 }
 
+// IncidentItemView is a ledger item with what a surface needs beyond the row.
+type IncidentItemView struct {
+	authz.IncidentItem
+	// ObjectState is the rotation's own state read live at presentation time, for
+	// a rotation item only: active, paused, halted, disabled, or "gone" when the
+	// rotation no longer exists. It is empty for every other kind and for a
+	// rotation the caller cannot read. The ledger stores no copy of it.
+	ObjectState string
+	// Refused is true for an open item whose owner refused it (reason
+	// owner_failed), as opposed to one that has not run yet.
+	Refused bool
+	// Attestable is true when Attest would accept this item now: it is open, in an
+	// open incident, of a kind Hikyo cannot observe, and not the caller's own
+	// containment. A surface offers the attest action only when it is true.
+	Attestable bool
+}
+
+// ItemViews pages one incident's items like Items and adds each rotation item's
+// live state (#1471), so the surface shows what the rotation is now rather than
+// what it was when the incident was opened.
+func (s *Incidents) ItemViews(ctx context.Context, actor Actor, id, afterID string, limit int, openOnly bool) ([]IncidentItemView, error) {
+	now := s.now()
+	var out []IncidentItemView
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, inc, err := s.incidentByID(ctx, az, actor, id, now)
+		if err != nil {
+			return err
+		}
+		items, err := az.IncidentItems(ctx, inc.ID, afterID, limit, openOnly)
+		if err != nil {
+			return err
+		}
+		out = make([]IncidentItemView, 0, len(items))
+		reads := map[string]rotationRead{}
+		for _, it := range items {
+			// owner_failed pairs only with a pending outcome (ValidItemState).
+			v := IncidentItemView{
+				IncidentItem: it, Refused: it.Reason == domain.ReasonOwnerFailed,
+				Attestable: attestable(it) && it.Outcome.Open() && inc.Status == domain.IncidentOpen && !ownIncident(caller, inc),
+			}
+			if it.ObjectKind == domain.ObjectKindRotation {
+				v.ObjectState = rotationLiveState(ctx, r, az, caller, it, reads)
+			}
+			out = append(out, v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// rotationRead is the authority to read rotations in one scope, decided once per
+// scope for a page: a page of rotation items shares few scopes, and authorizing
+// each item separately repeats the same checks inside the one transaction.
+type rotationRead struct {
+	proof authz.Proof
+	ok    bool
+}
+
+// rotationLiveState reads a rotation item's current state under the incident's own
+// authority. A rotation the caller cannot read, or whose scope does not parse, has
+// no state to show. The capability is probed first so a presentation read never
+// records a denial.
+func rotationLiveState(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, it authz.IncidentItem, reads map[string]rotationRead) string {
+	access, seen := reads[it.Scope]
+	if !seen {
+		access = rotationReadAccess(ctx, az, caller, it.Scope)
+		reads[it.Scope] = access
+	}
+	if !access.ok {
+		return ""
+	}
+	cur, err := r.Rotations().Get(ctx, access.proof, it.ObjectID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return "gone"
+	}
+	if err != nil {
+		return ""
+	}
+	return cur.State
+}
+
+func rotationReadAccess(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, itemScope string) rotationRead {
+	scope, err := parseIncidentScope(itemScope)
+	if err != nil || scope.Env == "" {
+		return rotationRead{}
+	}
+	if holds, err := az.CallerHolds(ctx, caller, authz.OpIncidentRotationHalt, scope); err != nil || !holds {
+		return rotationRead{}
+	}
+	proof, err := az.Authorize(ctx, caller, authz.OpIncidentRotationHalt, scope)
+	if err != nil {
+		return rotationRead{}
+	}
+	return rotationRead{proof: proof, ok: true}
+}
+
 const resumePage = 100
+
+// errResumeNoProofCredential is ErrNoProofCredential with a stable wire detail, so
+// the operator surface can tell a responder with neither a password nor a
+// confirmed authenticator (a federated-only account: it cannot resume and must hand
+// the incident to a responder who can, #1590) from any other refused request.
+var errResumeNoProofCredential = &detailErr{err: ErrNoProofCredential, detail: "no_proof_credential"}
 
 // Resume re-reads the ledger and re-runs only the open items through their
 // registered owners. Each item records its intent before the owner runs and its
 // outcome after, in separate transactions, so a crash between the owner's own
 // commit and the ledger update leaves the item open: the next resume asks the
 // owner again, and the owner's own confirmation is what writes done.
-func (s *Incidents) Resume(ctx context.Context, actor Actor, id string) (ResumeResult, error) {
+//
+// confirmed is the digest (api.IncidentItemsDigest) of the open item ids the
+// operator listed and confirmed. When it is set and the incident's open items
+// are not exactly that set, the call is a conflict that spends no proof: the
+// set is read and compared in the transaction that spends the proof. The call
+// then runs only the items of that snapshot, so an item reopened or added later
+// never runs unseen. A nil digest is for in-process callers with no operator.
+func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, confirmed *string) (ResumeResult, error) {
 	var res ResumeResult
-	after := ""
-	for {
-		var page []authz.IncidentItem
-		err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-			_, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
-			if err != nil {
-				return err
+	// Resume performs the containment the ledger enumerated, so it needs a fresh
+	// account-security proof of its own (ADR O2), checked after the caller is
+	// known to hold the incident: a caller who cannot see it gets the uniform
+	// answer, never a request for a proof. A one-time code is spent in the write
+	// below, so one code covers one resume call and no other operation; a
+	// password is checked fresh on each call.
+	evidence := ReauthEvidence{kind: reauthEvidenceExempt}
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, _, err := s.incidentByID(ctx, az, actor, id, s.now())
+		return err
+	}); err != nil {
+		return res, err
+	}
+	if actor.bearer != "" {
+		if s.Auth == nil {
+			return res, ErrReauthProofRequired
+		}
+		var err error
+		if evidence, err = s.Auth.VerifyReauthProofNamingNoCredential(ctx, actor.bearer, proof); err != nil {
+			if errors.Is(err, ErrNoProofCredential) {
+				return res, errResumeNoProofCredential
 			}
-			if inc.Status != domain.IncidentOpen {
-				return fmt.Errorf("%w: incident is closed", domain.ErrConflict)
-			}
-			page, err = az.IncidentItems(ctx, inc.ID, after, resumePage, true)
-			return err
-		})
-		if err != nil {
 			return res, err
 		}
-		for _, it := range page {
-			if err := s.runItem(ctx, actor, id, it.ID, &res); err != nil {
-				return res, err
+	}
+	var ids []string
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		caller, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
+		if err != nil {
+			return err
+		}
+		if inc.Status != domain.IncidentOpen {
+			return fmt.Errorf("%w: incident is closed", domain.ErrConflict)
+		}
+		if evidence.kind != reauthEvidenceExempt {
+			if err := s.Auth.ConsumeReauthEvidence(ctx, az, evidence, caller.Principal); err != nil {
+				return err
 			}
 		}
+		if ids, err = openItemIDs(ctx, az, inc.ID); err != nil {
+			return err
+		}
+		if confirmed != nil && api.IncidentItemsDigest(ids) != *confirmed {
+			return fmt.Errorf("%w: the incident's open items are not the set you confirmed (it has %d now); list them again", domain.ErrConflict, len(ids))
+		}
+		return nil
+	})
+	if err != nil {
+		return res, err
+	}
+	if s.AfterSnapshot != nil {
+		s.AfterSnapshot()
+	}
+	for _, itemID := range ids {
+		if err := s.runItem(ctx, actor, id, itemID, &res); err != nil {
+			return res, err
+		}
+	}
+	return res, nil
+}
+
+// openItemIDs reads the ids of every open item of the incident, page by page.
+func openItemIDs(ctx context.Context, az *authz.TxAuthorizer, incidentID string) ([]string, error) {
+	var ids []string
+	after := ""
+	for {
+		page, err := az.IncidentItems(ctx, incidentID, after, resumePage, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			ids = append(ids, it.ID)
+		}
 		if len(page) < resumePage {
-			return res, nil
+			return ids, nil
 		}
 		after = page[len(page)-1].ID
 	}
@@ -553,20 +741,23 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 		case OwnerBlocked:
 			next, reason, outcome, resultName = domain.ItemBlocked, domain.ReasonNeedsAnotherOperator, audit.OutcomeDenied, "blocked"
 		case OwnerFailed:
-			// A definite failure leaves the ledger row as it is (pending, unknown or
-			// blocked, all open, so resume runs it again). The event reports the
-			// row's actual state and the failure as its reason, so the trail never
-			// claims a state the ledger does not hold.
-			next, reason, outcome, resultName = domain.ItemPending, domain.ReasonOwnerFailed, audit.OutcomeFailure, string(item.Outcome)
+			// A definite refusal keeps the item's open outcome and records the closed
+			// reason owner_failed on the row, so a surface can tell a refused item from
+			// one that has not run yet. Resume still runs it again, and a later
+			// confirmation writes done with no reason.
+			// Only a pending item pairs with owner_failed; an unknown or blocked item
+			// keeps the reason it already has.
+			next, reason, outcome, resultName = item.Outcome, domain.ReasonOwnerFailed, audit.OutcomeFailure, string(item.Outcome)
 		}
-		applied := true
-		if next != domain.ItemPending {
-			applied, err = az.TransitionIncidentItem(ctx, authz.ItemTransition{
-				ID: item.ID, IncidentID: inc.ID, ExpectedVersion: item.RowVersion, Outcome: next, Reason: reason, At: now,
-			})
-			if err != nil {
-				return err
-			}
+		rowReason := reason
+		if result == OwnerFailed && item.Outcome != domain.ItemPending {
+			rowReason = item.Reason
+		}
+		applied, err := az.TransitionIncidentItem(ctx, authz.ItemTransition{
+			ID: item.ID, IncidentID: inc.ID, ExpectedVersion: item.RowVersion, Outcome: next, Reason: rowReason, At: now,
+		})
+		if err != nil {
+			return err
 		}
 		switch {
 		case !applied:
@@ -780,7 +971,11 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			return err
 		}
 		inc.Status, inc.ClosedBy, inc.ClosedAt = status, caller.Principal, now
-		out = IncidentView{Incident: inc, Counts: counts}
+		refused, err := az.IncidentRefusedCount(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		out = IncidentView{Incident: inc, Counts: counts, Refused: refused}
 		return nil
 	})
 	if err != nil {

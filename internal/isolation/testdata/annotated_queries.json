@@ -691,6 +691,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CountRefusedIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "db38cebe57dad6df4a853e28d636c96c6b99ab1978d5d4b5e405eea3bcacb65c",
+    "reason": "The opened, read and closed views count the open items an owner refused (pending with the owner_failed reason) after the operation authorized credential-reset at the incident scope."
+  },
+  {
+    "engine": "postgres",
     "name": "CountRegistrationPolicyOrgs",
     "annotation": "authn-resolution",
     "hash": "018a36bad45e957cd9930702110b890a8a4f58b1aa03ddab29ea7ee7cf14665e"
@@ -4564,6 +4571,13 @@
     "name": "CountRecentSelfConfigJobs",
     "annotation": "instance-scoped",
     "hash": "3509874cb10071447071f9a86f8036b6198ed23e092cb3f7545448408efaf683"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountRefusedIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "db38cebe57dad6df4a853e28d636c96c6b99ab1978d5d4b5e405eea3bcacb65c",
+    "reason": "The opened, read and closed views count the open items an owner refused (pending with the owner_failed reason) after the operation authorized credential-reset at the incident scope."
   },
   {
     "engine": "sqlite",
