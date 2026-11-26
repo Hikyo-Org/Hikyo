@@ -367,3 +367,59 @@ func TestPrepareReportsAFailedResetPatch(t *testing.T) {
 		t.Fatalf("a 502 on the reset PATCH must fail prepare, got %v", err)
 	}
 }
+
+func TestPrepareRetriesTheResetOnlyOnceAfter404s(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{
+		encode(t, [][]comment{{botCopy(t, 20, old)}}),
+		encode(t, [][]comment{{botCopy(t, 21, old)}}),
+		encode(t, [][]comment{{botCopy(t, 22, old)}}),
+	}, "none")
+	failPatch(t, log, 20, "Not Found (HTTP 404)")
+	gh := filepath.Join(filepath.Dir(log), "gh")
+	script, err := os.ReadFile(gh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail := "case \"$*\" in\n*\"--method PATCH\"*comments/21\\ *) echo 'gh: Not Found (HTTP 404)' >&2; exit 1;;\n"
+	if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "case \"$*\" in\n", fail, 1)), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if patchLine(recorded(t, log), 22) != "" {
+		t.Fatalf("a second 404 must not trigger a third reset:\n%s", recorded(t, log))
+	}
+}
+
+func TestPrepareReportsAFailedRelistAfterA404Reset(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{encode(t, [][]comment{{botCopy(t, 20, old)}})}, "none")
+	failPatch(t, log, 20, "Not Found (HTTP 404)")
+	gh := filepath.Join(filepath.Dir(log), "gh")
+	script, err := os.ReadFile(gh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first listing succeeds; every later one fails.
+	fail := fmt.Sprintf("case \"$*\" in *issues/7/comments?per_page=100*) if [ -f '%[1]s.listed' ]; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi; : >'%[1]s.listed';; esac\n", log)
+	if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "case \"$*\" in\n", fail+"case \"$*\" in\n", 1)), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare("o/r", controlEvent{Number: 7}); err == nil || errors.Is(err, errNotFound) {
+		t.Fatalf("a failed re-list after a 404 reset must fail prepare, got %v", err)
+	}
+}
+
+func TestPrepareReconcilesTheSurvivorAfterItsOwnPost(t *testing.T) {
+	live, old := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	log := sequenceGH(t, live, []string{`[[]]`, encode(t, [][]comment{{botCopy(t, 20, old)}}), encode(t, [][]comment{{botCopy(t, 21, old)}})}, "none")
+	failPatch(t, log, 20, "Not Found (HTTP 404)")
+	if err := prepare("o/r", controlEvent{Number: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(patchLine(recorded(t, log), 21), "head="+live) {
+		t.Fatalf("a survivor found after the POST must get its one retry:\n%s", recorded(t, log))
+	}
+}

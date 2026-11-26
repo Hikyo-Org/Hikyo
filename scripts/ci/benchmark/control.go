@@ -573,19 +573,29 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	// shortcut: GitHub has no compare-and-swap on comments, so a comment job
 	// PATCH landing after the live-head read below, before the rerun, can still
 	// clobber the claim; upgrade if that is seen in practice (e.g. a lease or ETag).
+	release := func() error {
+		return updateComment(repository, c, commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed."))
+	}
+	// resetMoved reconciles the comment to the live head after the PR moved off
+	// the claimed one, so no old-head claim stays over a newer head's reset.
+	resetMoved := func() error {
+		if err := prepare(repository, controlEvent{Number: pr.Number}); err != nil {
+			return fmt.Errorf("reset benchmark comment after the PR moved off %s: %w", pr.Head.SHA[:12], err)
+		}
+		return nil
+	}
 	if after, err := botComment(repository, pr.Number); err != nil {
-		// Release the claim so admission can retry this head, unless a
-		// successful read shows the PR moved on: a newer head's comment job
-		// owns the comment then. A failed read still releases, since a stranded
-		// claim blocks automatic retry for the head.
+		// Never leave the claim: reset to the live head if the PR moved, else
+		// release it (a stranded claim blocks automatic retry, also after a
+		// reopen at this head).
+		// shortcut: when the PR read fails the head is unknown, so the release is
+		// written blind and can overwrite a newer head's reset with an old-head
+		// body; the next prepare heals it. Upgrade if that is seen in practice.
 		latest, lerr := currentPull(repository, pr.Number)
 		if lerr == nil && latest.Head.SHA != pr.Head.SHA {
-			return err
+			return errors.Join(err, resetMoved())
 		}
-		// A PR closed at the same head is released too: a stranded claim would
-		// block automatic retry if it is reopened.
-		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
-		return errors.Join(err, lerr, updateComment(repository, c, release))
+		return errors.Join(err, lerr, release())
 	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {
 		// Compare the claim identity, not bytes: GitHub may normalize whitespace.
 		return nil // A concurrent writer replaced the claim; do not spend.
@@ -594,18 +604,13 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	// overwrote it, which the comment re-read cannot see. Re-check the PR.
 	latest, lerr := currentPull(repository, pr.Number)
 	if lerr != nil {
-		release := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed.")
-		return errors.Join(lerr, updateComment(repository, c, release))
+		return errors.Join(lerr, release()) // Blind release; see the shortcut above.
 	}
 	if latest.Head.SHA != pr.Head.SHA {
-		if err := prepare(repository, controlEvent{Number: pr.Number}); err != nil { // Reconcile the comment to the live head.
-			return fmt.Errorf("reset benchmark comment after the PR moved off %s: %w", pr.Head.SHA[:12], err)
-		}
-		return nil
+		return resetMoved()
 	}
 	if latest.State != "open" {
-		// Closed at the same head: release so a reopen can be benchmarked.
-		return updateComment(repository, c, commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed."))
+		return release() // Closed at the same head: a reopen must be benchmarkable.
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/actions/runs/%d/rerun", repository, run.ID), ""); err != nil {
 		return decline(err)
