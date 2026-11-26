@@ -267,19 +267,45 @@ fourth (the headroom delete, below), which is what makes survival independent of
      `ci-main-headroom.yml` (one job, same permissions and checkout, all six lanes, skip key the exact
      `go-test-v2` key of the current `go.mod`/`go.sum`), scheduled 45 minutes before ci-main's cron
      (12:38 on Sunday). `source-proof` is untouched, and `ci-main.yml` is byte-identical to before, which a
-     test pins (one job, read-only permissions). A manual ci-main run is covered by dispatching
-     `ci-main-headroom` first; if nobody does, only GitHub's own eviction applies (the model shows the
-     seed can then be lost).
+     test pins (one job, read-only permissions). A manual ci-main run is covered by a `workflow_run`
+     trigger of the same workflow (`workflows: [ci-main]`, `types: [requested]`, `branches: [main]`):
+     `requested` is the earliest event GitHub offers, before any job of the run. The trigger runs the file
+     as it is on main, at main's latest commit, with a write-capable token, so the job carries the guard of
+     `ci-cache-prune.yml` (event branch and repository, `github.ref`) and takes its concurrency group at
+     job level, after that guard, so a run the guard skips cannot replace a pending trusted one. What the
+     documentation says: `workflow_run` supports `requested`, `in_progress` and `completed`, and
+     `requested` does not occur on a re-run; it does not say whether `requested` fires for a run started
+     by `workflow_dispatch`. Observed for `completed`: `fuzz-report` ran two seconds after each of five
+     dispatched ci-main runs on 2026-10-31. Whether `requested` fires for a dispatched ci-main run is
+     therefore **unverified until the first manual run after the merge**; the landing steps check it, and
+     until then dispatching `ci-main-headroom` first is the fallback. The race between the headroom job
+     and the writers' first saves is modelled below.
    * Margin 0.25 GB (budget 9.75 GB): it equals the largest single CodeQL overlay (0.268 GB), so one
      concurrent CodeQL save between the delete and the save still fits.
    * Incoming size: the sum, over the lanes named, of the size of the newest main entry of that lane
      (compressed archive bytes, which is what the new generation will be about the size of). `du` is not
      used: the headroom job has no build cache, and `du` of the uncompressed tree overestimates the
      archive by about 2 to 3 times, which would delete live entries every day. A lane with no entry
-     contributes nothing (`HEADROOM_FALLBACK` exists in the script and is unset), because a lane with no
-     main entry has already been evicted and the room is there.
-   * Window: the headroom job runs before the seed's compile, so the room is made about 20 minutes (race
-     and lint) or 45 minutes (`ci-main`) before the save, not seconds. The model plays these leads. The
+     contributes nothing, because a lane with no main entry has already been evicted and the room is
+     there. A lane prefix names the lane without the runner image or the ABI (`go-race-v2-<os>-<arch>-`):
+     a prefix that named the image (`...-ubuntu26-`) would match no entry on the first run after an image
+     bump, whose entries carry the old image, so the lane would look empty and the save would be sized as
+     nothing; the exact-key skip, which must match, keeps the image. A test runs the script on entries of
+     an older image.
+   * Module cache (`go-mod-v2`, race seed): the module headroom step has no skip key. Its save is a hit
+     only when key and cache version match, and the version includes the cached path, which this change
+     alters (`cache/download` only), so an exact-key listing hit says nothing about the save and the
+     version of the new save cannot be computed in the headroom job (the listing exposes `version`, but
+     only for entries that exist). The step therefore sizes the module save every day. The cost is
+     conservative: the newest `go-mod-v2` entry is 0.44 GB (estimated for the new path, measured 0.79 GB
+     for the old), so on a day with no save the step may delete up to that much idle material that
+     GitHub would not have evicted yet. The first save under the new path is also the one that rolls the
+     old entry (0.79 GB) out, which the model plays as part of the rotation-day sweeps.
+   * Window: the headroom job runs before the seed's compile, so the room is made minutes before the
+     save, not seconds: the race seed ran 1 to 7 minutes on the observed days (its job limit is 30; the
+     model takes 20), the lint seed 2 to 11 (the model takes 11, and less behind the race run in the
+     shared group, which it cannot precede), and `ci-main` 45 minutes on the Sunday cron. The model plays
+     these leads, and a test ties the lanes it names to the workflows' own. The
      per-minute sweep of the first version of this move showed what the window costs: the daily
      `go-feedback-v1` save (observed 12:58, between the race and lint saves) landed unsized and the seed
      was lost at 30 of 361 minutes at 10.00 GB. Both seed headroom jobs therefore also reserve the
@@ -298,11 +324,19 @@ fourth (the headroom delete, below), which is what makes survival independent of
 Sweep, every minute (`seed survival at every minute`): the race seed saves at every minute from 10:59
 to 16:59 on a rotation day with the lint seed three minutes later (361 minutes; the observed seed runs
 ended 11:25 to 14:57), and the Sunday `ci-main` after a go.sum change saves at every minute from 10:59 to
-22:59 (721 minutes; cron 13:23, observed 20:31). The test samples every hour (rotation, at :59) and
-every two hours (Sunday) by default, because each replay runs the prune's jq about thirty times and
-the package has the hosted 600 s budget (default-mode `TestCacheBudgetModel`: 6.1 s measured inside the full package run, about 4.7 s on a quiet host; 50cf94d5d took 23.9 s against 7.5 s for this code in an A/B at equal host load); `HIKYO_CACHE_SWEEP_FULL=1 go
-test -run TestCacheBudgetModel ./scripts/ci/` runs every minute (several minutes on a loaded host) and
-is how the table below was measured.
+22:59 (721 minutes; cron 13:23, observed 20:31). By default the test samples every third hour (rotation, from 10:59) and every sixth hour
+(Sunday), because each replay runs the prune's jq about thirty times and the package has the hosted 600 s
+budget. The headroom sweeps (rotation day with headroom at 10.00 GB) also replay every minute at which an
+event the sweep moves (the seed saves, the headroom before them) passes an event it does not (the day's
+other saves and deletes), derived from the model's own event list (`sweepMinutes`). The outcome of a
+replay is constant between two such crossings, so a seed lost over ten minutes is found at the crossing
+that opens them, wherever the coarse samples fall; the hourly prune and touch recur every hour and are
+left to the coarse samples and the full sweep. This is what makes the default run see the failure that
+the first version of this move had: with `go-feedback-v1-` removed from the model's race and lint
+headroom lanes (the mutation of the review) the default run loses the seed at 20 of 65 sampled minutes
+and fails, where the three-minute sample passed. Default-mode `TestCacheBudgetModel`: about 13 s (measured,
+quiet host, 4 cores); `HIKYO_CACHE_SWEEP_FULL=1 go test -run TestCacheBudgetModel ./scripts/ci/` runs
+every minute (several minutes) and is how the tables below were measured.
 
 | Sweep (adopted plan, live seeds) | Limit | Minutes with a newest seed lost | Worst peak | Most live entries evicted |
 | --- | --- | --- | --- | --- |
@@ -352,14 +386,18 @@ Before the daily key and the shared group the same case lost a seed at 327 of 36
 326 at 10 GiB. What remains is at 10.00 GB only, when the day's peak (up to 10.77 GB) passes the limit
 and the hourly-touched entries tie with a seed; short peaks that evict other entries are ordinary LRU
 behaviour and accepted, the acceptance test being that the newest main and dev seeds survive under the
-stated assumption. If the assumption is wrong for main, a rotation day at exactly 10.00 GB can lose it.
+stated assumption. If the assumption is wrong for main, a rotation day at exactly 10.00 GB can lose it, when no headroom
+job runs; the with-headroom rows above show the sparse-traffic case, which is what the headroom is for, losing none.
 The cost is below. An earlier revision of this section said the seeds are lost only when the saves
 coincide at 11:59; that was an artefact of per-key offsets in the model and a labelling slip (the case
 named 14:14 had actually moved the lint save to 13:36), both removed.
 
 **Restated steady state after M1.** Demand once the prune has run (the low point) is 8.98 GB: margin
 +1.02 GB at 10.00 GB and +1.76 GB at 10 GiB. Peaks at 10.00 GB / 10 GiB: weekday 9.74 / 9.74, Monday
-10.34 / 10.34 (4 / 0 live entries evicted), Sunday fuzz 9.42 / 9.42, rotation day 10.26 / 10.34 at the
+10.34 / 10.34 (4 / 0 live entries evicted), Sunday fuzz 9.42 / 9.42 (the weekly fuzz rollover, 0.44 GB, is not sized by any headroom job on a Sunday
+without a go.sum change, where the exact `go-test-v2` key exists and the step skips; its peak stays under
+the 9.75 GB budget in the model, with no eviction at either limit, which `adopted/sunday fuzz rollover`
+pins), rotation day 10.26 / 10.34 at the
 observed times and at most 10.77 / 11.10 with the saves serialised, Sunday after a go.sum week 12.27 /
 12.27. The daily main save of M1 is already inside the 8.98 GB demand.
 
