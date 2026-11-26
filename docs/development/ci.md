@@ -547,22 +547,22 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Gated concurrency margin | 180 | E: 4 lanes x 45 (a dev pass is the gate's 42 plus the 3 reads of its post-write confirmation listing); `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
 | **Measured total** | **639** | |
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
-| Attempt-3 bypass of a pass with an unconfirmable success | 87 per job | M: counted on the dev fixture, 82 reads and 5 writes: the pass 38 + 2, the confirmation listing 12, the fail-closed POST with its fail-safe re-list and re-POST (`queue_refresh.go`) 6 + 2, and the admission-reserve refusal phase (`withAdmissionBudget`, `refuseAdmission`) 26 + 1. The last attempt spends instead of deferring, which is why it is ungated there; the 87 is what such a pass costs on every attempt, not only attempt 3 |
+| Attempt-3 bypass of a pass with an unconfirmable success | 88 per job | M: counted on the dev fixture with the supply-chain fixtures skipped, 83 reads and 5 writes: the pass 39 (including the one read of the base supply-chain input list that a skipped fixtures job costs) + 2, the confirmation listing 12, the fail-closed POST with its fail-safe re-list and re-POST (`queue_refresh.go`) 6 + 2, and the admission-reserve refusal phase (`withAdmissionBudget`, `refuseAdmission`) 26 + 1. The last attempt spends instead of deferring, which is why it is ungated there; the 87 is what such a pass costs on every attempt, not only attempt 3 |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
 | First revocation pass (`dev-revoke`) | 70 | E: 7 events x (3 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
-| **Honest lower bound** | **918** | measured plus the lower estimates |
+| **Honest lower bound** | **919** | measured plus the lower estimates |
 
-R = 480 is below 918. With 658 allowed to gated work (1000 - 522 + 180), the pinned
-worst case at the lower bound is 658 + 738 = 1,396 requests, 39.6% over the window. That is
-above the 25% over-window the owner accepted for the exception (Q2), by 14.6 points. The
-owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. The post-write
+R = 480 is below 919. With 658 allowed to gated work (1000 - 522 + 180), the pinned
+worst case at the lower bound is 658 + 739 = 1,397 requests, 39.7% over the window. That is
+above the 25% over-window the owner accepted for the exception (Q2), by 14.7 points. The
+owner accepted the earlier figure of 1,396 (39.6%) on 2026-11-26; the one extra read of the supply-chain input list moves it to 1,397. The owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
 the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
 requests and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
-never catches up costs 87 on every attempt, ungated at attempt 3 (counted on the fixture), and a lane that lags costs
+never catches up costs 88 on every attempt, ungated at attempt 3 (counted on the fixture), and a lane that lags costs
 that, not 45, in the margin as well. Attempts 1 and 2 of such a pass are gated like any pass;
-under sustained listing lag on a fan-out, each of N heads can spend 87 ungated at attempt 3
-(N x 87), and N lagging lanes cost 87 each in the margin. That is disclosed here, not counted:
+under sustained listing lag on a fan-out, each of N heads can spend 88 ungated at attempt 3
+(N x 88), and N lagging lanes cost 88 each in the margin. That is disclosed here, not counted:
 it needs a sustained GitHub listing outage at the same time. A listing is only needed when the
 pass created its record with a POST (a PATCH in place keeps a lower ID than any later
 revocation), so 45 is a ceiling for the normal case, not the usual cost. The

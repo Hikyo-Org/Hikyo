@@ -66,6 +66,7 @@ var supplyChainSampleSources = map[string]bool{
 	"scripts/ci/golangci-lint-new_test.sh":      true,
 	// Comments and fixture payloads, not reads of the repository's own files.
 	"scripts/ci/check-doc-status_test.sh":        true,
+	"scripts/ci/discover-dev-prs.sh":             true,
 	"scripts/ci/security-compose-rehearsal.sh":   true,
 	"scripts/ci/security-pi-rehearsal.sh":        true,
 	"scripts/release/prepare-image-root_test.sh": true,

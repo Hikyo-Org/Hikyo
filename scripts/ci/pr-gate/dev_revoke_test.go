@@ -572,10 +572,10 @@ func (a *countingAPI) write(ctx context.Context, method, path string, payload, r
 }
 
 // attempt3PassRequests is what scripts/ci/queue_hourly_spend_test.go pins as the attempt-3 bypass.
-const attempt3PassRequests = 87
+const attempt3PassRequests = 88
 
-// The worst pass a final-attempt bypass can spend: the confirmation never catches up. It costs 87 on
-// every attempt (82 reads, 5 writes): the pass 38 reads + 2 writes, the confirmation listing 12 reads,
+// The worst pass a final-attempt bypass can spend: the confirmation never catches up. It costs 88 on
+// every attempt (83 reads, 5 writes): the pass 39 reads + 2 writes, the confirmation listing 12 reads,
 // the fail-closed POST with the fail-safe re-list and re-POST (queue_refresh.go) 6 + 2, and the
 // admission-reserve refusal phase (withAdmissionBudget, refuseAdmission) 26 + 1.
 func TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing(t *testing.T) {
@@ -583,6 +583,9 @@ func TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing(t *testing.T) {
 	t.Setenv("GITHUB_RUN_ATTEMPT", "3")
 	recordReadWaits(t)
 	f := newDevFixture(t)
+	// The dearest pass: the fixtures were skipped, so the gate also reads the base list.
+	setSupplyChainBase(f, testSupplyChainList)
+	setDevJobs(f, supplyChainJobs(f.feedbackRun, "success", "skipped"))
 	f.c.repo = f.pr.Base.Repo
 	f.c.repo.DefaultBranch = "main"
 	counter := &countingAPI{inner: &laggingListAPI{inner: f.api, lag: 1 << 20}}
