@@ -24,6 +24,7 @@ name: cache-prune
 
 on:
   workflow_dispatch:
+  workflow_call:
   schedule:
     - cron: '47 * * * *'
   workflow_run:

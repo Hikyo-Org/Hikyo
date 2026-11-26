@@ -83,6 +83,18 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"job env redirects cache": func(w map[string]any) {
 			job(w)["env"] = map[string]any{"GOCACHE": "${{ github.workspace }}/.ci-cache/go-race"}
 		},
+		"no prune after the save": func(w map[string]any) { delete(w["jobs"].(map[string]any), "prune") },
+		"prune widened": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["permissions"].(map[string]any)["contents"] = "write"
+		},
+		"prune without needs": func(w map[string]any) { delete(w["jobs"].(map[string]any)["prune"].(map[string]any), "needs") },
+		"prune of another workflow": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["uses"] = "./.github/workflows/ci.yml"
+		},
+		"prune runs on a cancelled seed": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["if"] = "${{ always() }}"
+		},
+		"seed job holds the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},
@@ -231,8 +243,19 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		return fmt.Errorf("%s runs must queue behind each other, never cancel a publisher", spec.label)
 	}
 	jobs, ok := workflow["jobs"].(map[string]any)
-	if !ok || len(jobs) != 1 {
-		return fmt.Errorf("%s must have exactly one job", spec.label)
+	if !ok || len(jobs) != 2 {
+		return fmt.Errorf("%s must have exactly its seed job and its prune job", spec.label)
+	}
+	// The prune is the shared ci-cache-prune.yml run as a called workflow right after the save, so a
+	// rotation never coexists with its predecessor for longer than a job takes to start. Its token is
+	// actions: write and nothing else, in a job of its own; the seed job holds none.
+	if !reflect.DeepEqual(jobs["prune"], map[string]any{
+		"needs":       "seed",
+		"if":          "${{ !cancelled() && needs.seed.result != 'skipped' }}",
+		"permissions": map[string]any{"actions": "write"},
+		"uses":        "./.github/workflows/ci-cache-prune.yml",
+	}) {
+		return fmt.Errorf("%s must prune right after its save through the shared prune workflow, with actions: write only", spec.label)
 	}
 	job, ok := jobs["seed"].(map[string]any)
 	if !ok {

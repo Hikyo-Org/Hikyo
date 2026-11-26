@@ -36,6 +36,7 @@ var cachePruneWriters = []any{"CodeQL", "ci-main", "cache-seed-lint", "cache-see
 func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	if !reflect.DeepEqual(workflow["on"], map[string]any{
 		"workflow_dispatch": nil,
+		"workflow_call":     nil,
 		"schedule":          []any{map[string]any{"cron": "47 * * * *"}},
 		"workflow_run":      map[string]any{"workflows": cachePruneWriters, "types": []any{"completed"}, "branches": []any{"main"}},
 	}) {

@@ -60,19 +60,31 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		}
 	}
 	for name, mutation := range map[string]func(map[string]any){
-		"top-level env":      func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-tags=ui"} },
-		"top-level defaults": func(w map[string]any) { w["defaults"] = map[string]any{"run": map[string]any{"shell": "sh"}} },
-		"PR trigger":         func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
-		"push trigger":       func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
-		"missing schedule":   func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
-		"write token":        func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
-		"job write token":    func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
-		"cancelling group":   func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
-		"shared group":       func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
-		"untrusted ref":      func(w map[string]any) { job(w)["if"] = "true" },
-		"any ref":            func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
-		"unbounded job":      func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
-		"no timeout":         func(w map[string]any) { delete(job(w), "timeout-minutes") },
+		"top-level env":           func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-tags=ui"} },
+		"top-level defaults":      func(w map[string]any) { w["defaults"] = map[string]any{"run": map[string]any{"shell": "sh"}} },
+		"PR trigger":              func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
+		"push trigger":            func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
+		"missing schedule":        func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
+		"write token":             func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
+		"job write token":         func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"cancelling group":        func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"shared group":            func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
+		"untrusted ref":           func(w map[string]any) { job(w)["if"] = "true" },
+		"any ref":                 func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
+		"unbounded job":           func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
+		"no timeout":              func(w map[string]any) { delete(job(w), "timeout-minutes") },
+		"no prune after the save": func(w map[string]any) { delete(w["jobs"].(map[string]any), "prune") },
+		"prune widened": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["permissions"].(map[string]any)["contents"] = "write"
+		},
+		"prune without needs": func(w map[string]any) { delete(w["jobs"].(map[string]any)["prune"].(map[string]any), "needs") },
+		"prune of another workflow": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["uses"] = "./.github/workflows/ci.yml"
+		},
+		"prune runs on a cancelled seed": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["if"] = "${{ always() }}"
+		},
+		"seed job holds the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},

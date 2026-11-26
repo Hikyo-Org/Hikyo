@@ -39,18 +39,20 @@ type modelEntry struct {
 }
 
 type cacheModel struct {
-	t        *testing.T
-	limit    int64
-	program  string
-	entries  []*modelEntry
-	now      time.Time
-	nextID   int
-	start    int64
-	demand   int64
-	peak     int64
-	low      int64
-	evicted  []string
-	seedLost []string
+	t       *testing.T
+	limit   int64
+	program string
+	entries []*modelEntry
+	now     time.Time
+	nextID  int
+	// seedsLive: on a weekday every feedback run restores a seed, so its last access is always now.
+	seedsLive bool
+	start     int64
+	demand    int64
+	peak      int64
+	low       int64
+	evicted   []string
+	seedLost  []string
 }
 
 type modelListing struct {
@@ -175,21 +177,19 @@ func (m *cacheModel) replaceSeed(family string, sizes [3]int64) {
 	}
 }
 
+// bump is the hourly touch of a weekday. Every busy entry is last accessed 25 minutes before the hour
+// mark, the same instant for all of them (a fixed, stated offset, not a function of the key, so the
+// outcome cannot hinge on a hash); ties go against the seeds. A seed is the exception when seedsLive
+// holds: feedback runs restore it at any time of the day, so play touches it at every event.
 func (m *cacheModel) bump() {
 	for _, e := range m.entries {
 		if e.busy {
-			// Runs restore an entry at some point in the hour, not all at the same second.
-			e.accessed = m.now.Add(-time.Duration(fnv32(e.Key)%50) * time.Minute)
+			e.accessed = m.now.Add(-25 * time.Minute)
+		}
+		if e.seed != "" && m.seedsLive {
+			e.accessed = m.now
 		}
 	}
-}
-
-func fnv32(s string) uint32 {
-	h := uint32(2166136261)
-	for i := 0; i < len(s); i++ {
-		h = (h ^ uint32(s[i])) * 16777619
-	}
-	return h
 }
 
 type modelEvent struct {
@@ -202,6 +202,13 @@ func (m *cacheModel) play(events []modelEvent) {
 	for _, ev := range events {
 		m.now = ev.at
 		ev.run()
+		if m.seedsLive {
+			for _, e := range m.entries {
+				if e.seed != "" {
+					e.accessed = m.now
+				}
+			}
+		}
 		m.settle()
 	}
 }
@@ -229,6 +236,9 @@ type modelOpts struct {
 	quiet  bool
 	scales map[string]float64
 	limit  int64
+	// seedsAsBusy is the sensitivity case in which a weekday run touches a seed no more often than any
+	// other busy entry.
+	seedsAsBusy bool
 }
 
 // newCacheModel loads the listing, applies the prune once and the by-hand deletion of the unfamilied
@@ -253,7 +263,7 @@ func newCacheModel(t *testing.T, o modelOpts) (*cacheModel, []apiCacheEntry, tim
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &cacheModel{t: t, program: program, now: listedAt, nextID: 1 << 20, limit: o.limit}
+	m := &cacheModel{t: t, program: program, now: listedAt, nextID: 1 << 20, limit: o.limit, seedsLive: !o.quiet && !o.seedsAsBusy}
 	for _, c := range listing.Caches {
 		created, err := time.Parse(time.RFC3339Nano, c.Created)
 		if err != nil {
@@ -326,6 +336,8 @@ type plan struct {
 	writerPrune bool
 	devRefresh  bool
 	times       runTimes
+	// seedsAsBusy: see modelOpts.
+	seedsAsBusy bool
 }
 
 // runTimes are when the daily writers finish and save, as UTC {hour, minute}. A cron time is not a
@@ -387,7 +399,7 @@ func weekday(t *testing.T, p plan, limit int64) *cacheModel { return weekdayWith
 
 // weekdayWith is weekday plus the events of the day's own saves.
 func weekdayWith(t *testing.T, p plan, limit int64, extra func(*cacheModel) []modelEvent) *cacheModel {
-	m, before, listedAt := newCacheModel(t, modelOpts{scales: p.scales, limit: limit})
+	m, before, listedAt := newCacheModel(t, modelOpts{scales: p.scales, limit: limit, seedsAsBusy: p.seedsAsBusy})
 	m.low, m.peak = 0, 0
 	start, end := listedAt, listedAt.Add(24*time.Hour)
 	m.now = start
@@ -487,26 +499,32 @@ func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
 	friday := time.Date(2026, 11, 27, 20, 30, 0, 0, time.UTC)
 	for _, e := range m.entries {
 		e.accessed, e.created = friday, friday
+		// The seeds were last saved on Saturday (the daily runs include weekends); today's save is
+		// an event below, so a ci-main run before it meets yesterday's seeds.
 		switch e.seed {
 		case "main":
-			e.accessed = p.times.at(29, p.times.mainSeed)
+			e.accessed = p.times.at(28, p.times.mainSeed)
 		case "dev":
 			if p.devRefresh {
-				e.accessed = p.times.at(29, p.times.devSeed)
+				e.accessed = p.times.at(28, p.times.devSeed)
 			}
 		}
 	}
 	save := p.times.at(29, p.times.ciMain)
-	m.now = save.Add(-time.Hour)
+	m.now = time.Date(2026, 11, 29, 10, 0, 0, 0, time.UTC)
 	m.low, m.peak = 0, 0
-	events := []modelEvent{{save, func() {
+	events := []modelEvent{{p.times.at(29, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }}}
+	if p.devRefresh {
+		events = append(events, modelEvent{p.times.at(29, p.times.devSeed), func() { m.replaceSeed("dev", seedSizesDev) }})
+	}
+	events = append(events, modelEvent{save, func() {
 		for _, prefix := range []string{"go-mod-v2-", "go-test-v2-", "go-lint-v2-", "go-generated-v2-", "go-k8s-e2e-v2-", "go-fuzz-v2-"} {
 			m.touch(prefix)
 			m.rotate(prefix, false)
 		}
-	}}}
+	}})
 	events = append(events, p.afterWriter(m, save)...)
-	events = append(events, hourly(m.now, m.now.Add(8*time.Hour), 47, m.prune)...)
+	events = append(events, hourly(m.now, save.Add(3*time.Hour), 47, m.prune)...)
 	m.play(events)
 	return m
 }
@@ -573,6 +591,36 @@ func sunday(t *testing.T, p plan, limit int64) *cacheModel {
 	return m
 }
 
+// coincideAt makes the race and lint saves land in the same minute (minutes after 00:00 UTC).
+func coincideAt(p plan, minute int) plan {
+	p.times.race = [2]int{minute / 60, minute % 60}
+	p.times.lint = p.times.race
+	return p
+}
+
+type seedSweep struct {
+	minutes, evicted int
+	peak             float64
+	lost             []string
+}
+
+// sweepSeeds replays a scenario for every step-th minute from..to (minutes after 00:00 UTC), with at(p,
+// minute) placing the saves, and collects the minutes at which a newest seed was lost.
+func sweepSeeds(t *testing.T, p plan, limit int64, from, to, step int, at func(plan, int) plan, run func(*testing.T, plan, int64) *cacheModel) seedSweep {
+	t.Helper()
+	var out seedSweep
+	for minute := from; minute <= to; minute += step {
+		m := run(t, at(p, minute), limit)
+		out.minutes++
+		out.peak = max(out.peak, float64(m.peak)/1e9)
+		out.evicted = max(out.evicted, len(m.evicted))
+		if len(m.seedLost) != 0 {
+			out.lost = append(out.lost, fmt.Sprintf("%02d:%02d", minute/60, minute%60))
+		}
+	}
+	return out
+}
+
 func TestCacheBudgetModel(t *testing.T) {
 	scenarios := []struct {
 		name string
@@ -634,32 +682,22 @@ func TestCacheBudgetModel(t *testing.T) {
 	// Days that rotate keys. go.mod or go.sum changed on main on 7 of the last 30 days (committer
 	// date, origin/main at 2026-11-25), one of them a Sunday. The rotated entries coexist with the old
 	// generation until the prune, so these days peak above an ordinary weekday and, at 10.00 GB, take
-	// idle entries (never a seed); at 10 GiB they take two. The Sunday case is the worst: the weekly
-	// ci-main run saves about 3.3 GB at once.
-	// Days that rotate keys. go.mod or go.sum changed on main on 7 of the last 30 days (committer
-	// date, origin/main at 2026-11-25), one of them a Sunday. The rotated entries coexist with the old
-	// generation until the prune, so these days peak above an ordinary weekday and, at 10.00 GB, take
-	// idle entries. Whether a seed survives depends on when the saves land: scheduled runs start hours
-	// after their cron minute, and when the race and lint saves coincide there is no prune between
-	// them. The Sunday case is the worst, and the usual one after any go.mod/go.sum week: only the
-	// weekly ci-main writes the test, lint, generated, k8s-e2e and fuzz entries, about 3.3 GB at once.
+	// idle entries. Scheduled runs start hours after their cron minute, and when the race and lint
+	// saves coincide no prune can run between them. The Sunday case is the usual one after any
+	// go.mod/go.sum week: only the weekly ci-main writes the test, lint, generated, k8s-e2e and fuzz
+	// entries, about 3.3 GB at once. Whether the newest seeds survive is pinned below for every minute.
 	t.Run("go.mod and go.sum change days", func(t *testing.T) {
-		coincide := planAdopted
-		coincide.times.lint = coincide.times.race
-		early := planAdopted
-		early.times.race, early.times.lint = [2]int{11, 59}, [2]int{11, 59}
 		days := []struct {
-			name      string
-			p         plan
-			run       func(*testing.T, plan, int64) *cacheModel
-			peak      [2]float64
-			live      [2]int
-			seedsLost bool
+			name string
+			p    plan
+			run  func(*testing.T, plan, int64) *cacheModel
+			peak [2]float64
+			live [2]int
 		}{
-			{"rotation day, observed times", planAdopted, rotationDay, [2]float64{10.26, 10.34}, [2]int{7, 0}, false},
-			{"rotation day, race and lint saves coincide at 14:14", coincide, rotationDay, [2]float64{11.32, 11.63}, [2]int{14, 12}, false},
-			{"rotation day, race and lint saves coincide at 11:59, before the day's seeds", early, rotationDay, [2]float64{11.20, 11.63}, [2]int{12, 9}, true},
-			{"sunday go.sum", planAdopted, sundayGoSum, [2]float64{12.27, 12.27}, [2]int{8, 7}, false},
+			{"rotation day, observed times", planAdopted, rotationDay, [2]float64{10.26, 10.34}, [2]int{8, 0}},
+			{"rotation day, race and lint saves both at 14:14", coincideAt(planAdopted, 14*60+14), rotationDay, [2]float64{11.35, 11.63}, [2]int{12, 9}},
+			{"rotation day, race and lint saves both at 11:59", coincideAt(planAdopted, 11*60+59), rotationDay, [2]float64{10.95, 11.63}, [2]int{11, 9}},
+			{"sunday go.sum", planAdopted, sundayGoSum, [2]float64{12.27, 12.27}, [2]int{8, 7}},
 		}
 		for i, l := range limits {
 			for _, d := range days {
@@ -670,8 +708,8 @@ func TestCacheBudgetModel(t *testing.T) {
 				if len(m.evicted) != d.live[i] {
 					t.Fatalf("%s evicts %d live entries at %s, documented %d: %v", d.name, len(m.evicted), l.name, d.live[i], m.evicted)
 				}
-				if (len(m.seedLost) != 0) != d.seedsLost {
-					t.Fatalf("%s at %s: seeds lost %v, documented lost=%v", d.name, l.name, m.seedLost, d.seedsLost)
+				if len(m.seedLost) != 0 {
+					t.Fatalf("%s at %s loses a newest seed: %v", d.name, l.name, m.seedLost)
 				}
 			}
 		}
@@ -680,6 +718,51 @@ func TestCacheBudgetModel(t *testing.T) {
 		m := monday(t, planAdopted, 10_000_000_000)
 		if !slices.ContainsFunc(m.evicted, func(k string) bool { return strings.HasPrefix(k, "go-mod-v2-") }) {
 			t.Fatalf("the Monday instant no longer evicts go-mod-v2; update the budget section of docs/development/ci.md: %v", m.evicted)
+		}
+	})
+
+	// Every minute of the observed day window: the race and lint saves coincide on a rotation day
+	// (10:59 to 16:59, the observed seed runs ended 11:25 to 14:57), and the Sunday ci-main run after a
+	// go.sum change saves at any time from 10:59 to 22:59 (cron 13:23, observed 20:31). The newest
+	// main and dev seeds must survive all of them at both limits. The survival rests on one stated
+	// assumption, the live seed (bump): the sensitivity below drops it and shows what is left.
+	t.Run("seed survival at every minute", func(t *testing.T) {
+		for _, l := range limits {
+			t.Run("rotation day/"+l.name, func(t *testing.T) {
+				t.Parallel()
+				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 16*60+59, 1, func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
+				t.Logf("%s: %d minutes, seed lost at %d, worst peak %.2f GB, most live entries evicted %d", l.name, sweep.minutes, len(sweep.lost), sweep.peak, sweep.evicted)
+				if len(sweep.lost) != 0 {
+					t.Fatalf("a rotation day loses a newest seed at %v (%s)", sweep.lost, l.name)
+				}
+			})
+			t.Run("sunday go.sum/"+l.name, func(t *testing.T) {
+				t.Parallel()
+				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 22*60+59, 1, func(p plan, minute int) plan {
+					p.times.ciMain = [2]int{minute / 60, minute % 60}
+					return p
+				}, sundayGoSum)
+				t.Logf("%s: %d minutes, seed lost at %d, worst peak %.2f GB, most live entries evicted %d", l.name, sweep.minutes, len(sweep.lost), sweep.peak, sweep.evicted)
+				if len(sweep.lost) != 0 {
+					t.Fatalf("the Sunday ci-main run loses a newest seed at %v (%s)", sweep.lost, l.name)
+				}
+			})
+		}
+		// Sensitivity: if a weekday run touched a seed no more often than any other busy entry (the
+		// hour mark, a tie going against the seeds), the same rotation day loses them at nearly every
+		// minute. Sampled every ten minutes here; the full sweep lost a seed at 327 of 361 minutes at
+		// 10.00 GB and 326 at 10 GiB (docs/development/ci.md).
+		for _, l := range limits {
+			t.Run("sensitivity, seeds as ordinary entries/"+l.name, func(t *testing.T) {
+				t.Parallel()
+				p := planAdopted
+				p.seedsAsBusy = true
+				sweep := sweepSeeds(t, p, l.bytes, 10*60+59, 16*60+59, 10, func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
+				if len(sweep.lost) == 0 {
+					t.Fatalf("with seeds touched like any other entry no minute loses a seed at %s; the live-seed assumption is no longer load-bearing, update docs/development/ci.md", l.name)
+				}
+				t.Logf("%s: seed lost at %d of %d sampled minutes", l.name, len(sweep.lost), sweep.minutes)
+			})
 		}
 	})
 

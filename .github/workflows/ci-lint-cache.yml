@@ -87,3 +87,13 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.lint-driver-seed.outputs.cache-primary-key }}
+
+  # Right after the save, in a job of its own so that actions: write never sits next to the compile:
+  # the same prune as ci-cache-prune.yml, so this seed's superseded generation does not outlive the
+  # save by more than the time a job takes to start.
+  prune:
+    needs: seed
+    if: ${{ !cancelled() && needs.seed.result != 'skipped' }}
+    permissions:
+      actions: write
+    uses: ./.github/workflows/ci-cache-prune.yml
