@@ -86,7 +86,7 @@ func TestQueueWorkerThrottleIsDocumentedAsNotRevocationCritical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"##### Revocation is not queued behind the throttle", "dev-revoke", "ci-queue-worker.yml", "ci-queue-retry.yml"} {
+	for _, want := range []string{"##### Revocation is not queued behind the throttle", "dev-revoke", "ci-queue-worker.yml", "ci-queue-retry.yml", "PR validation revoked"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must record the revocation design and the sibling matrices: missing %q", want)
 		}

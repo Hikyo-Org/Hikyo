@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A push to main or dev, or a dispatch for every PR, fans out to every open dev
@@ -77,6 +78,49 @@ func TestDevRevokeRefusesEventsThatDoNotFanOut(t *testing.T) {
 			tc.e.Repository = f.c.repo
 			if err := f.q.revokeDev(context.Background(), tc.event, tc.e, []devWork{{PR: 7, Head: f.pr.Head.SHA}}); err == nil || len(f.api.writes) != 0 {
 				t.Fatalf("err %v, writes %d: a non-fan-out event revoked", err, len(f.api.writes))
+			}
+		})
+	}
+}
+
+// An older pass can still be running when a push revokes its head. Its terminal
+// success must not rebind the revocation record: its inputs predate the event.
+// The reconcile that follows the revocation starts later and may publish.
+func TestDevRevocationSticksAgainstAnOlderPassSuccessWrite(t *testing.T) {
+	for name, tc := range map[string]struct {
+		before, unreadable, wantSuccess bool
+	}{
+		"older pass, newer revocation":   {},
+		"revocation time unreadable":     {unreadable: true},
+		"reconcile after the revocation": {before: true, wantSuccess: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newDevFixture(t)
+			f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
+			passStart := time.Now().Add(-10 * time.Second)
+			f.q.queueDeadline = passStart.Add(admissionSeconds * time.Second)
+			f.c.expectedHead = f.pr.Head.SHA
+			if err := f.q.publish(context.Background(), f.pr, newBinding(f.c.repo.ID, f.pr, nil), nil, revoked("revoked")); err != nil {
+				t.Fatal(err)
+			}
+			when := passStart.Add(5 * time.Second)
+			if tc.before {
+				when = passStart.Add(-5 * time.Second)
+			}
+			f.api.checks[0].StartedAt = when.UTC().Format(time.RFC3339)
+			if tc.unreadable {
+				f.api.checks[0].StartedAt = ""
+			}
+			err := f.q.admit(context.Background(), f.pr.Number)
+			succeeded := false
+			for _, v := range f.api.checks {
+				succeeded = succeeded || v.Conclusion == "success"
+			}
+			if succeeded != tc.wantSuccess {
+				t.Fatalf("success published = %v, want %v (err %v, checks %+v)", succeeded, tc.wantSuccess, err, f.api.checks)
+			}
+			if !tc.wantSuccess && !onlyStaleHeadWork(err) {
+				t.Fatalf("the superseded pass must end as stale work, got %v", err)
 			}
 		})
 	}

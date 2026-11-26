@@ -549,6 +549,25 @@ the events that fan out, which is the large-fan-out margin the throttle exists f
 was not chosen. The pending record is replaced by the reconcile; a head whose reconcile
 is deferred below the reserve stays blocked, which is the safe direction.
 
+The revocation sticks. The record carries the title `PR validation revoked`. A publisher
+that began before it (its authenticated job start, GitHub's clock, is not after the record's
+`started_at`) refuses to publish a success over it, or over a record whose time cannot be
+read, and ends as stale work; the reconcile the same event queued behind the head's lease
+starts after the record and proves the head from fresh inputs. The check uses the owned
+checks the pass already lists, so it adds no request. A pass already past the policy, dev
+tip, feedback, DCO and role reads of its final phase is covered by the same rule; the one
+window left is the round trip between that listing and the write, closed by the queued
+reconcile. `TestDevRevocationSticksAgainstAnOlderPassSuccessWrite` interleaves an older
+pass's success write after a revocation and asserts the head stays blocked.
+
+The retry workflow knows the job. A failed `dev-revoke` counts in the run's failed total,
+ranks with the group jobs (released ahead of the publishers, never held by the reserve,
+accounted at the group cost of 41 for the rerun) and its rerun reruns its dependent
+publishers, so it can neither be miscounted nor stop the rerun of failed publishers. Its
+retry step is named `Reconcile the first pass, ...` because the filter reruns only a job
+whose `Reconcile` step failed. A rerun adds at most one more first pass of 4 + N requests
+and happens only after a failure, so the sizing table is unchanged.
+
 Sibling matrices. `ci-queue-worker.yml` has the same `max-parallel: 2`. Its `publish`
 workers write PR-head queue admissions, and a stale one only lets a head enter the queue:
 the merge group is judged by its own full proof, which never reuses an earlier success, so

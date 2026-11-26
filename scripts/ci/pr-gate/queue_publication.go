@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 func (c *controller) authenticatedQueueCheck(v *check, head string) bool {
@@ -41,9 +42,29 @@ func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b b
 	if err != nil {
 		return err
 	}
+	newest := newestQueueCheck(own)
+	if result.Conclusion == "success" && s.q.supersededByRevocation(newest) {
+		return &staleHeadWork{expected: s.q.expectedHead}
+	}
 	write, stop := s.q.verdictWriteContext(ctx)
 	defer stop()
-	return s.publishVerified(write, p, b, newestQueueCheck(own), result)
+	return s.publishVerified(write, p, b, newest, result)
+}
+
+// supersededByRevocation reports whether the newest owned record is a revocation
+// created at or after this pass began, or one whose time cannot be read. Both
+// clocks are GitHub's: the pass start is the authenticated job start. The reconcile
+// the same event queued behind the head's lease starts after the revocation and
+// proves the head from fresh inputs.
+func (q *queueController) supersededByRevocation(newest *check) bool {
+	if newest == nil || newest.Output.Title != revocationTitle || q.queueDeadline.IsZero() {
+		return false
+	}
+	created, err := time.Parse(time.RFC3339, newest.StartedAt)
+	if err != nil {
+		return true
+	}
+	return !created.Before(q.queueDeadline.Add(-admissionSeconds * time.Second))
 }
 
 func (s *queueReconciliation) completeGroup(ctx context.Context, p pull, b binding, result outcome) error {

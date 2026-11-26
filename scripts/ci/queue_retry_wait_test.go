@@ -207,6 +207,7 @@ func TestQueueRetryWaitsForTheResetThenRerunsExactlyTheFailedJob(t *testing.T) {
 		{"rate-limited group job", trustedRun("ci-queue-worker.yml", 900, failedGroupJob(11, "group-"+waitHead, groupStep), `{"id":12,"name":"group-`+strings.Repeat("b", 40)+`","conclusion":"success","steps":[]}`), "11"},
 		{"rate-limited queue publish job", trustedRun("ci-queue-gate.yml", 901, failedGroupJob(21, "publish-"+waitHead, "Reconcile one authenticated head")), "21"},
 		{"rate-limited dev publish job", trustedRun("ci-dev-gate.yml", 902, failedGroupJob(31, "dev-publish-"+waitHead, "Reconcile exact-head dev admission")), "31"},
+		{"rate-limited dev revoke job", trustedRun("ci-dev-gate.yml", 903, failedGroupJob(32, "dev-revoke", "Reconcile the first pass, blocking every routed head until its reconciliation finishes")), "32"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// The reset is 30 minutes away: far beyond a group job's 5-minute budget and a publisher's 1-minute one.

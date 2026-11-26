@@ -141,7 +141,7 @@ func (q *queueController) revokeDev(ctx context.Context, name string, e event, w
 		p.setLiveBase(ref.Object.SHA)
 		q.expectedHead = w.Head
 		b := newBinding(q.repo.ID, p, nil)
-		if err := q.publish(ctx, p, b, nil, pending("The dev publisher or main changed; this head is blocked until its exact-head reconciliation finishes.")); err != nil {
+		if err := q.publish(ctx, p, b, nil, revoked("The dev publisher or main changed; this head is blocked until its exact-head reconciliation finishes.")); err != nil {
 			failures = append(failures, fmt.Errorf("PR #%d: %w", w.PR, err))
 		}
 	}

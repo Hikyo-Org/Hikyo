@@ -85,7 +85,7 @@ jobs:
           # counts too. Discovery is left alone. A pending job that a newer one replaced ends
           # cancelled without running a step, so it never qualifies.
           failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end)"')
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(if .name == "dev-revoke" then "revoke" else (.name | split("-")[0]) end) \(if ((.name | test("^(((dev-)?publish|group)-[0-9a-f]{40}|dev-revoke)$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end)"')
           total=0
           groups=()
           others=()
@@ -95,7 +95,9 @@ jobs:
             total=$((total + 1))
             [ "$qualifies" = 1 ] || continue
             [[ "$id" =~ ^[1-9][0-9]*$ ]]
-            if [ "$kind" = group ]; then
+            # The dev-revoke first pass ranks with the group jobs: it is released ahead of the
+            # publishers and is not held by the reserve, and rerunning it reruns its dependents.
+            if [ "$kind" = group ] || [ "$kind" = revoke ]; then
               groups+=("$id")
             elif [ $((remaining - other_cost)) -ge "$reserve" ]; then
               others+=("$id")
@@ -271,7 +273,7 @@ jobs:
           }
           list_jobs() { # $1 run id, $2 attempt: every failed or cancelled job, and whether it qualifies
             gh api --paginate "repos/$GH_REPO/actions/runs/$1/attempts/$2/jobs?per_page=100" \
-              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end) \(.name)"'
+              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(if .name == "dev-revoke" then "revoke" else (.name | split("-")[0]) end) \(if ((.name | test("^(((dev-)?publish|group)-[0-9a-f]{40}|dev-revoke)$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end) \(.name)"'
           }
           # A listing that still fails after its retries is named and skipped, so one bad read
           # cannot cost every other rerun; the job then fails visibly at the end.
@@ -298,8 +300,8 @@ jobs:
               [ -n "$id" ] || continue
               total=$((total + 1))
               [ "$qualifies" = 1 ] || continue
-              [[ "$id" =~ ^[1-9][0-9]*$ && "$name" =~ ^((dev-)?publish|group)-[0-9a-f]{40}$ ]]
-              if [ "$kind" = group ]; then
+              [[ "$id" =~ ^[1-9][0-9]*$ && "$name" =~ ^(((dev-)?publish|group)-[0-9a-f]{40}|dev-revoke)$ ]]
+              if [ "$kind" = group ] || [ "$kind" = revoke ]; then
                 g+=("$id")
                 gh+=("$name")
               else

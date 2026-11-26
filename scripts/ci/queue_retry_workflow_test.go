@@ -147,6 +147,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
 	// The worker names its jobs by kind and runs one step for every kind.
 	const workerReconcile = "Reconcile one authenticated head without borrowing another lease"
+	const revokeStep = "Reconcile the first pass, blocking every routed head until its reconciliation finishes"
 	for _, tc := range []struct {
 		name      string
 		jobs      []string
@@ -187,6 +188,13 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
 		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},
 		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
+		// The dev-revoke first pass ranks with the group jobs: counted in the run total, released ahead of the
+		// publishers, never held by the reserve, and rerunning it reruns its dependent publishers.
+		{"a failed revoke alone is rerun", []string{job(1, "dev-revoke", "failure", revokeStep)}, "1", healthy, []int{1}, false, ""},
+		{"a failed revoke does not stop the rerun of the failed publishers", []string{job(1, "dev-revoke", "failure", revokeStep), job(2, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission"), job(3, "dev-publish-"+strings.Repeat("b", 40), "failure", "Reconcile exact-head dev admission"), job(4, "dev-publish-"+strings.Repeat("c", 40), "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{1}, false, ""},
+		{"a failed revoke is released while the publishers are held", []string{job(1, "dev-revoke", "failure", revokeStep), job(2, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", []int{1}, false, "Held for the group reserve"},
+		{"a cancelled revoke is rerun", []string{job(1, "dev-revoke", "cancelled", revokeStep)}, "1", healthy, []int{1}, false, ""},
+		{"a revoke that failed before its first pass step is not rerun", []string{job(1, "dev-revoke", "failure", "Check out trusted default-branch admission tooling")}, "1", healthy, nil, false, ""},
 		// Worker group jobs are named group-<sha> in the worker run and may spend the reserve.
 		{"a worker group job at 270 of 1000 is rerun", []string{job(1, "group-"+head, "failure", workerReconcile)}, "1", "270 1000 1795475603", []int{1}, false, ""},
 		{"a worker publisher at 270 of 1000 is held while its group job runs", []string{job(1, "publish-"+head, "failure", workerReconcile), job(2, "group-"+strings.Repeat("c", 40), "failure", workerReconcile)}, "1", "270 1000 1795475603", []int{2}, false, "Held for the group reserve (270 of 1000"},

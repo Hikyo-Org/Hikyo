@@ -165,6 +165,7 @@ type check struct {
 	Status      string `json:"status"`
 	Conclusion  string `json:"conclusion"`
 	CompletedAt string `json:"completed_at"`
+	StartedAt   string `json:"started_at"`
 	App         struct {
 		ID   int64  `json:"id"`
 		Slug string `json:"slug"`
@@ -1085,6 +1086,15 @@ type outcome struct{ Status, Conclusion, Title, Summary string }
 
 func pending(summary string) outcome {
 	return outcome{Status: "queued", Title: "PR validation pending", Summary: summary}
+}
+
+// revocationTitle marks a record written by the dev-revoke first pass. A pass that
+// began before such a record must not turn it green: its inputs predate the event
+// that revoked the head.
+const revocationTitle = "PR validation revoked"
+
+func revoked(summary string) outcome {
+	return outcome{Status: "queued", Title: revocationTitle, Summary: summary}
 }
 func refused(summary string) outcome {
 	return outcome{Status: "completed", Conclusion: "failure", Title: "PR validation refused", Summary: summary}
