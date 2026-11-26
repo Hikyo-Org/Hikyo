@@ -297,6 +297,8 @@ func TestDevPublisherRepairRequiresExactMainBackmerge(t *testing.T) {
 			if route != "feature" {
 				f.pr.Head.SHA = main
 			}
+			// The feature head holds only an older main, which main has moved past.
+			f.api.responses[f.c.endpoint(compareRange(main, f.pr.Head.SHA))] = map[string]any{"status": "diverged", "base_commit": map[string]string{"sha": main}, "merge_base_commit": map[string]string{"sha": strings.Repeat("d", 40)}}
 			if route == "fork" {
 				f.pr.Head.Repo.ID, f.pr.Head.Repo.FullName = 11, "contributor/Hikyo"
 			}

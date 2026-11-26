@@ -544,6 +544,20 @@ func (q *queueController) mainRouteRefusal(ctx context.Context, p pull) (string,
 // A verdict, not a failed read: another attempt would find the same bytes.
 var errDevPublisherDiffers = errors.New("dev publisher differs from main")
 
+// headContainsMain reports whether head has main's current head as an ancestor, read
+// from the trusted base repository. A failed or malformed read is an error, not a verdict.
+func (q *queueController) headContainsMain(ctx context.Context, main, head string) (bool, error) {
+	if main == head {
+		return true, nil
+	}
+	err := q.proveCurrentBase(ctx, main, head)
+	var stale *staleQueueGroup
+	if errors.As(err, &stale) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (q *queueController) devPublisherContract(ctx context.Context, p pull) error {
 	if q.checkName != devCheckName {
 		return nil
@@ -582,11 +596,31 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 		}
 		candidate := copies[i+1]
 		if !bytes.Equal(trusted, candidate) {
-			// A main-side publisher repair must be able to flow back into
-			// dev. Only the exact authenticated main head can restore an
-			// older base definition; the proposed head must still match main.
-			if revision == base && p.Head.SHA == mainRef.Object.SHA && p.Head.Repo.ID == q.repo.ID && strings.EqualFold(p.Head.Repo.FullName, q.repoName) {
-				continue
+			// A main-side publisher repair must be able to flow back into dev
+			// while dev still holds the older copy. Only a base copy may differ,
+			// and only for a head that is main's exact head or contains it (a
+			// backmerge, whose merge commit carries conflict fixes) with a copy
+			// equal to main's, so the PR never brings its own publisher: the
+			// head copy is compared unconditionally below. Main is the
+			// authenticated ref read above, never PR-supplied data. A head that
+			// holds only an older main is refused; the dev-revoke and
+			// re-evaluation path (revokeDev, queue_publication.go) re-judges every
+			// open head when main moves. The same-repository conditions stay: a
+			// fork cannot be a backmerge, and its objects are not main's history.
+			if revision == base && p.Head.Repo.ID == q.repo.ID && strings.EqualFold(p.Head.Repo.FullName, q.repoName) {
+				if failures[2] != nil {
+					return failures[2]
+				}
+				if bytes.Equal(trusted, copies[2]) {
+					// The one added read, spent only where the base copy differs.
+					contains, err := q.headContainsMain(ctx, mainRef.Object.SHA, p.Head.SHA)
+					if err != nil {
+						return err
+					}
+					if contains {
+						continue
+					}
+				}
 			}
 			return errDevPublisherDiffers
 		}
