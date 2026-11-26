@@ -543,22 +543,22 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Retry first pass | 75 | M: 75 executed retry runs x at least one jobs listing |
 | Two groups, three attempts | 246 | M: 2 x 3 x 41 |
 | `requested` passes of two groups | 36 | M: about 18 each (fixtures) |
-| Gated concurrency margin | 180 | E: 4 lanes x 45 (a dev pass is the gate's 42 plus the 3 reads of its post-write confirmation listing); `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
-| **Measured total** | **639** | |
+| Gated concurrency margin | 184 | E: 4 lanes x 46 (a dev pass is the gate's 42 plus the 3 reads of its post-write confirmation listing plus the 1 ancestry read of the backmerge exception, spent only where dev's publisher copy differs from main's); `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
+| **Measured total** | **643** | |
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
-| Attempt-3 bypass of a pass with an unconfirmable success | 87 per job | M: counted on the dev fixture, 82 reads and 5 writes: the pass 38 + 2, the confirmation listing 12, the fail-closed POST with its fail-safe re-list and re-POST (`queue_refresh.go`) 6 + 2, and the admission-reserve refusal phase (`withAdmissionBudget`, `refuseAdmission`) 26 + 1. The last attempt spends instead of deferring, which is why it is ungated there; the 87 is what such a pass costs on every attempt, not only attempt 3 |
+| Attempt-3 bypass of a pass with an unconfirmable success | 88 per job | M: counted on the dev fixture of a backmerge pass (87 on a pass without the ancestry read), 83 reads and 5 writes: the pass 38 + 2, the confirmation listing 12, the fail-closed POST with its fail-safe re-list and re-POST (`queue_refresh.go`) 6 + 2, and the admission-reserve refusal phase (`withAdmissionBudget`, `refuseAdmission`) 26 + 1, plus the 1 ancestry read. The last attempt spends instead of deferring, which is why it is ungated there; the 88 is what such a pass costs on every attempt, not only attempt 3 |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
 | First revocation pass (`dev-revoke`) | 70 | E: 7 events x (3 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
-| **Honest lower bound** | **918** | measured plus the lower estimates |
+| **Honest lower bound** | **923** | measured plus the lower estimates |
 
-R = 480 is below 918. With 658 allowed to gated work (1000 - 522 + 180), the pinned
-worst case at the lower bound is 658 + 738 = 1,396 requests, 39.6% over the window. That is
-above the 25% over-window the owner accepted for the exception (Q2), by 14.6 points. The
-owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. The post-write
+R = 480 is below 923. With 662 allowed to gated work (1000 - 522 + 184), the pinned
+worst case at the lower bound is 662 + 739 = 1,401 requests, 40.1% over the window. That is
+above the 25% over-window the owner accepted for the exception (Q2), by 15.1 points. The
+owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. That acceptance was of 1,396 (39.6%); the dev-publisher backmerge admission hotfix adds 5 requests (1 ancestry read in each of 4 lanes, 1 in the attempt-3 bypass), which the dated acceptance has not covered separately. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
 the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
-requests and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
-never catches up costs 87 on every attempt, ungated at attempt 3 (counted on the fixture), and a lane that lags costs
+requests (42 + 2 when it takes the backmerge exception) and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
+never catches up costs 87 (88 with the backmerge ancestry read) on every attempt, ungated at attempt 3 (counted on the fixture), and a lane that lags costs
 that, not 45, in the margin as well. Attempts 1 and 2 of such a pass are gated like any pass;
 under sustained listing lag on a fan-out, each of N heads can spend 87 ungated at attempt 3
 (N x 87), and N lagging lanes cost 87 each in the margin. That is disclosed here, not counted:
@@ -776,7 +776,12 @@ when `dev` moves: the check is not strict about the base, and GitHub itself refu
 a merge that now conflicts. It reassesses every open PR only when the push changed
 `.github/workflows/ci-dev-gate.yml`, since the publisher contract compares the
 base's copy against main's and a backmerge that repairs it must release PRs
-refused earlier. The push's `before` and `after` are compared through the compare
+refused earlier. The head's copy must always equal main's. The base's copy may differ
+only for a same-repository head that is main's current head or contains it, which the
+gate checks through the compare API against the `main` ref it reads from the base
+repository (one extra read, spent only on that path). A head containing only an older
+main is refused, and every push to main revokes and re-judges open heads, so a backmerge
+must contain main's current head. The push's `before` and `after` are compared through the compare
 API. A zero or missing `before`, a force push, an invalid SHA, a failed compare, a
 range that is neither ahead nor identical, an ahead range with no listed files or a
 file list at GitHub's 300-file limit all reassess every PR. A push to `main`, feedback callbacks, manual
