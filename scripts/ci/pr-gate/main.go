@@ -654,6 +654,16 @@ type policyFilesBase struct{}
 // judged over dev-tip...head, the tuple the Go policy reads, passed to the shell
 // verifier as PR_GATE_FILES_BASE.
 func (c *controller) verifyPR(ctx context.Context, p pull) (policyDecision, error) {
+	reason, err := c.stableReleaseAppRefusal(ctx, p)
+	if err != nil {
+		return policyDecision{}, err
+	}
+	if reason != "" {
+		if c.diagnostics != nil {
+			_, _ = fmt.Fprintln(c.diagnostics, "PR gate:", reason)
+		}
+		return policyDecision{Code: 1}, nil
+	}
 	if p.stackedOnDev() {
 		ctx = context.WithValue(ctx, policyFilesBase{}, p.admission().SHA)
 	}

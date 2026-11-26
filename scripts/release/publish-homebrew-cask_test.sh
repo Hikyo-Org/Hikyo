@@ -32,7 +32,7 @@ case "$1 $2" in
 		;;
 	'api repos/Hikyo-Org/homebrew-tap/git/ref/heads/release/hikyo-1.2.3')
 		[ "${GH_BRANCH_EXISTS:-false}" = true ] || { printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; }
-		printf '{"object":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}\n'
+		printf '{"object":{"sha":"%s"}}\n' "${GH_BRANCH_HEAD:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"
 		;;
 	'api repos/Hikyo-Org/homebrew-tap/contents/Casks/hikyo.rb?ref=release%2Fhikyo-1.2.3')
 		if [ "${GH_BRANCH_EXISTS:-false}" = true ]; then
@@ -91,6 +91,29 @@ if grep -F 'pr merge' "$GH_CALLS" >/dev/null; then
 	printf 'homebrew publish fixture: publisher attempted to merge tap PR\n' >&2
 	exit 1
 fi
+if grep -F 'Signed-off-by' "$GH_CALLS" >/dev/null; then
+	printf 'homebrew publish fixture: a person run gained a sign-off trailer\n' >&2
+	exit 1
+fi
+
+# The unattended reconciler passes the bot's DCO trailer through HIKYO_HOMEBREW_SIGNOFF.
+: >"$GH_CALLS"
+HIKYO_HOMEBREW_SIGNOFF='Hikyo bot[bot] <424242+hikyo-bot[bot]@users.noreply.github.com>' \
+	"$(dirname "$0")/publish-homebrew-cask.sh" Hikyo-Org/Hikyo v1.2.3 "$bundle" Hikyo-Org/homebrew-tap >/dev/null
+grep -F -A2 'chore: add hikyo cask 1.2.3' "$GH_CALLS" | grep -F 'Signed-off-by: Hikyo bot[bot] <424242+hikyo-bot[bot]@users.noreply.github.com>' >/dev/null || {
+	printf 'homebrew publish fixture: the tap commit carries no bot sign-off\n' >&2
+	exit 1
+}
+
+# The update path (the branch exists at main with a different cask) signs off as well.
+: >"$GH_CALLS"
+GH_BRANCH_EXISTS=true GH_BRANCH_HEAD=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+	HIKYO_HOMEBREW_SIGNOFF='Hikyo bot[bot] <424242+hikyo-bot[bot]@users.noreply.github.com>' \
+	"$(dirname "$0")/publish-homebrew-cask.sh" Hikyo-Org/Hikyo v1.2.3 "$bundle" Hikyo-Org/homebrew-tap >/dev/null
+grep -F -A2 'chore: update hikyo cask to 1.2.3' "$GH_CALLS" | grep -F 'Signed-off-by: Hikyo bot[bot] <424242+hikyo-bot[bot]@users.noreply.github.com>' >/dev/null || {
+	printf 'homebrew publish fixture: the tap update commit carries no bot sign-off\n' >&2
+	exit 1
+}
 
 : >"$GH_CALLS"
 export GH_BRANCH_EXISTS=true

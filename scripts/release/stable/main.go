@@ -45,6 +45,7 @@ func run(args []string, output io.Writer) error {
 	published := fs.Bool("published", false, "verify publication evidence (does not publish)")
 	trustOnly := fs.Bool("trust-only", false, "authenticate current trust without selecting a release")
 	historical := fs.Bool("historical", false, "verify an authorized older release against current trust")
+	patchOnly := fs.Bool("patch-only", false, "accept only the exact patch successor of the signed latest stable release")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -69,13 +70,13 @@ func run(args []string, output io.Writer) error {
 		_, err := fmt.Fprintln(output, "Authenticated stable keyless release policy")
 		return err
 	case "candidate":
-		candidate, err := nextCandidate(loaded, *version, *commit)
+		candidate, err := nextCandidate(loaded, *version, *commit, *patchOnly)
 		if err != nil {
 			return err
 		}
 		return writeCandidate(*out, candidate)
 	case "prepare":
-		return prepare(loaded, *directory)
+		return prepare(loaded, *directory, *patchOnly)
 	case "verify":
 		if *trustOnly {
 			return verifyTrustOnly(loaded, *state, output)
@@ -225,11 +226,23 @@ func createPolicy(t publicTrust, directory, out string) error {
 	return writeNewJSON(out, policy)
 }
 
-func nextCandidate(t publicTrust, version, commit string) (releasetrust.Candidate, error) {
+// nextCandidate authorizes the next stable version. With patchOnly the version
+// must also be exactly the patch successor of the signed latest stable release:
+// the unattended release app can then never mint a minor, major or first release.
+func nextCandidate(t publicTrust, version, commit string, patchOnly bool) (releasetrust.Candidate, error) {
 	var result releasetrust.Candidate
 	v, err := semver.StrictNewVersion(version)
 	if err != nil || !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(commit) {
 		return result, errors.New("strict version and full source commit required")
+	}
+	if patchOnly {
+		if t.metadata.HighestRelease == nil || t.metadata.HighestReleaseSequence == nil {
+			return result, errors.New("patch-only release needs a signed latest stable release")
+		}
+		latest, err := semver.StrictNewVersion(*t.metadata.HighestRelease)
+		if err != nil || latest.Prerelease() != "" || latest.Metadata() != "" || v.Prerelease() != "" || v.Metadata() != "" || v.String() != latest.IncPatch().String() {
+			return result, errors.New("patch-only release must be the exact patch successor of a stable signed latest")
+		}
 	}
 	sequence := int64(1)
 	if t.metadata.HighestReleaseSequence != nil {
@@ -258,7 +271,7 @@ func nextCandidate(t publicTrust, version, commit string) (releasetrust.Candidat
 	return result, nil
 }
 
-func prepare(t publicTrust, directory string) error {
+func prepare(t publicTrust, directory string, patchOnly bool) error {
 	raw, err := readDocument(directory, "release-manifest.json")
 	if err != nil {
 		return err
@@ -267,7 +280,7 @@ func prepare(t publicTrust, directory string) error {
 	if err := definitions.DecodeStrict(raw, &manifest); err != nil {
 		return err
 	}
-	expected, err := nextCandidate(t, manifest.Version, manifest.SourceCommit)
+	expected, err := nextCandidate(t, manifest.Version, manifest.SourceCommit, patchOnly)
 	if err != nil {
 		return err
 	}

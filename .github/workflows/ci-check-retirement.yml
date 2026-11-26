@@ -46,6 +46,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # The stable-release App is refused here unless it opens a trust-sync pull request.
+          PR_GATE_STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+          PR_GATE_STABLE_RELEASE_APP_CLIENT_ID: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
         run: |
           set -euo pipefail
           go run ./scripts/ci/pr-gate --discover-retirements > "$RUNNER_TEMP/retirement-targets.json"
@@ -133,6 +136,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # The stable-release App is refused here unless it opens a trust-sync pull request.
+          PR_GATE_STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+          PR_GATE_STABLE_RELEASE_APP_CLIENT_ID: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
           PR_GATE_CHECK_NAME: ci-queue-required
           HEAD: ${{ matrix.head }}
           PR_GATE_RETIREMENT_HEAD: ${{ matrix.head }}
@@ -175,6 +181,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # The stable-release App is refused here unless it opens a trust-sync pull request.
+          PR_GATE_STABLE_RELEASE_APP_BOT_ID: ${{ vars.STABLE_RELEASE_APP_BOT_ID }}
+          PR_GATE_STABLE_RELEASE_APP_CLIENT_ID: ${{ vars.STABLE_RELEASE_APP_CLIENT_ID }}
           PR_GATE_CHECK_NAME: ci-required-next
           HEADS: ${{ toJSON(matrix.batch) }}
         run: |

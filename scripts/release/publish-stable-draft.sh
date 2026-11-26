@@ -48,12 +48,25 @@ already_public=$(jq -r '.draft == false' "$scratch/release.json")
 [ "$(sha256_file "$scratch/draft/release-manifest.json")" = "$expected" ] || { printf 'publication: reviewed manifest digest differs\n' >&2; exit 1; }
 commit=$(jq -er '.source_commit' "$scratch/draft/release-manifest.json")
 "$script_dir/require-signed-tag.sh" "$repository" "$tag" "$commit"
-runs=$("$GH_BIN" api "repos/$repository/actions/workflows/release.yml/runs?event=push&head_sha=$commit&per_page=100")
-printf '%s\n' "$runs" | \
-  jq -e --arg tag "$tag" --arg commit "$commit" '
-    [.workflow_runs[] | select(.head_sha == $commit and .head_branch == $tag)] |
+# The build that decides is the run the tag authority judged. HIKYO_RELEASE_RUN_ID
+# names it; without it (the local ceremony) the latest release-build push run of
+# this tag at this commit decides. Both use the one shared run-path rule.
+if [ -n "${HIKYO_RELEASE_RUN_ID:-}" ]; then
+  printf '%s\n' "$HIKYO_RELEASE_RUN_ID" | grep -Eq '^[1-9][0-9]*$' || { printf 'publication: invalid release-build run id\n' >&2; exit 1; }
+  "$GH_BIN" api "repos/$repository/actions/runs/$HIKYO_RELEASE_RUN_ID" >"$scratch/build.json" || { printf 'publication: cannot read the release-build run\n' >&2; exit 1; }
+  # shellcheck disable=SC2154
+  jq -e --arg tag "$tag" --arg commit "$commit" "$release_run_jq"'
+    release_run and .event == "push" and .head_branch == $tag and .head_sha == $commit and
+    .status == "completed" and .conclusion == "success"
+  ' "$scratch/build.json" >/dev/null || { printf 'publication: exact tag build must succeed\n' >&2; exit 1; }
+else
+  "$GH_BIN" api --paginate --slurp "repos/$repository/actions/workflows/release.yml/runs?event=push&head_sha=$commit&per_page=100" >"$scratch/builds.json" ||
+    { printf 'publication: cannot list the release-build runs\n' >&2; exit 1; }
+  jq -e --arg tag "$tag" --arg commit "$commit" "$release_run_jq"'
+    [.[].workflow_runs[] | select(.head_sha == $commit and .head_branch == $tag and .event == "push" and release_run)] |
     sort_by(.run_number,.run_attempt) | last | .status == "completed" and .conclusion == "success"
-  ' >/dev/null || { printf 'publication: exact tag build must succeed\n' >&2; exit 1; }
+  ' "$scratch/builds.json" >/dev/null || { printf 'publication: exact tag build must succeed\n' >&2; exit 1; }
+fi
 go run ./scripts/release/stable verify --trust "$trust" --directory "$scratch/draft" \
   --version "${tag#v}" --commit "$commit" --state "$trust_state" --published --latest
 "$script_dir/verify-stable-oci.sh" "$repository" "$scratch/draft/release-manifest.json"
