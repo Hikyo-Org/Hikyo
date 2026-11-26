@@ -412,7 +412,7 @@ func requireBackendSeed(workflow map[string]any) error {
 	}
 	steps := job["steps"].([]any)
 	names := []string{
-		"Check out the immutable pushed commit without credentials", "", "Select runner cache ABI", "Name the UTC day for dev seeds",
+		"Check out the immutable pushed commit without credentials", "", "Select runner cache ABI", "Name the UTC day of this seed",
 		seedLookupName, "Compile a fresh feedback seed without running tests", "Compile the pinned workflow linter",
 		"Check the seed against its size and file bounds", "Save bounded feedback seed from a trusted branch only",
 	}
@@ -439,7 +439,7 @@ func requireBackendSeed(workflow map[string]any) error {
 		return fmt.Errorf("dev seeds must be named by UTC day, so a push storm cannot evict other caches")
 	}
 	lookup := steps[4].(map[string]any)
-	wantKey := "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.ref == 'refs/heads/dev' && 'dev' || 'main' }}-${{ matrix.entry }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('source/.github/workflows/ci-feedback-backend-cache.yml') }}-${{ github.ref == 'refs/heads/dev' && steps.seed-day.outputs.value || github.sha }}"
+	wantKey := "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.ref == 'refs/heads/dev' && 'dev' || 'main' }}-${{ matrix.entry }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('source/.github/workflows/ci-feedback-backend-cache.yml') }}-${{ github.ref == 'refs/heads/dev' && 'dev' || github.sha }}-${{ steps.seed-day.outputs.value }}"
 	if lookup["id"] != "feedback-reuse" || lookup["uses"] != "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" || !reflect.DeepEqual(lookup["with"], map[string]any{
 		"path":        ".ci-cache/go-feedback-compact",
 		"key":         wantKey,

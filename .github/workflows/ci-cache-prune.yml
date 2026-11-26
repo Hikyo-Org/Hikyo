@@ -10,10 +10,13 @@
 #               family and entry, and the old unfamilied ones are removed by hand.
 #   idle PR:    entries on pull-request refs not accessed for 24 hours. Writers are main-only, so
 #               none exist today; this is the bound if one ever does.
-# It also runs when a writer of those families finishes on main (the lint driver, race, tool and
-# feedback seeds, the weekly main validation that writes the k8s-e2e, fuzz, module and pnpm entries,
+# It also runs when a writer of those families finishes on main (the tool and feedback seeds, the weekly main validation that writes the k8s-e2e, fuzz, module and pnpm entries,
 # and GitHub's CodeQL default setup, whose overlay and dependency entries cannot be pruned from
 # inside its run): what the writer just superseded goes within minutes instead of at the next :47.
+# The race and lint seeds call this workflow themselves, in a job of their own right after their save
+# (workflow_call), so they are not in the workflow_run list: a second prune would only repeat it. The
+# concurrency group carries the calling workflow's name, so a pending prune of the hourly run can
+# never replace the one a seed run is waiting for (which would show that seed run as cancelled).
 # A workflow_run job is the one place that can hold actions: write for those writers, because they
 # either run PR code (ci.yml) or are not ours to edit (CodeQL). Nothing is read from the triggering
 # run except its branch, in the job guard; the script takes no input from the event.
@@ -28,7 +31,7 @@ on:
   schedule:
     - cron: '47 * * * *'
   workflow_run:
-    workflows: [CodeQL, ci-main, cache-seed-lint, cache-seed-race, cache-seed-tools, cache-seed-feedback]
+    workflows: [CodeQL, ci-main, cache-seed-tools, cache-seed-feedback]
     types: [completed]
     branches: [main]
 
@@ -39,7 +42,7 @@ jobs:
     # Job level, not workflow level: the group is taken only after the guard below passes, so a
     # skipped run (a fork's, say) can never replace a pending real prune.
     concurrency:
-      group: ci-cache-prune
+      group: ci-cache-prune-${{ github.workflow }}
       cancel-in-progress: false
     if: >-
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||

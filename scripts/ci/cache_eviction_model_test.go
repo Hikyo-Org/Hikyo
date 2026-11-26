@@ -46,7 +46,10 @@ type cacheModel struct {
 	now     time.Time
 	nextID  int
 	// seedsLive: on a weekday every feedback run restores a seed, so its last access is always now.
+	// ordinary names the families (main, dev) for which that does not hold: their seed is touched like
+	// any other busy entry.
 	seedsLive bool
+	ordinary  map[string]bool
 	start     int64
 	demand    int64
 	peak      int64
@@ -186,7 +189,7 @@ func (m *cacheModel) bump() {
 		if e.busy {
 			e.accessed = m.now.Add(-25 * time.Minute)
 		}
-		if e.seed != "" && m.seedsLive {
+		if e.seed != "" && m.seedsLive && !m.ordinary[e.seed] {
 			e.accessed = m.now
 		}
 	}
@@ -204,7 +207,7 @@ func (m *cacheModel) play(events []modelEvent) {
 		ev.run()
 		if m.seedsLive {
 			for _, e := range m.entries {
-				if e.seed != "" {
+				if e.seed != "" && !m.ordinary[e.seed] {
 					e.accessed = m.now
 				}
 			}
@@ -236,9 +239,9 @@ type modelOpts struct {
 	quiet  bool
 	scales map[string]float64
 	limit  int64
-	// seedsAsBusy is the sensitivity case in which a weekday run touches a seed no more often than any
-	// other busy entry.
-	seedsAsBusy bool
+	// ordinary is the sensitivity case in which a weekday run touches the seed of a family no more often
+	// than any other busy entry.
+	ordinary map[string]bool
 }
 
 // newCacheModel loads the listing, applies the prune once and the by-hand deletion of the unfamilied
@@ -263,7 +266,7 @@ func newCacheModel(t *testing.T, o modelOpts) (*cacheModel, []apiCacheEntry, tim
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &cacheModel{t: t, program: program, now: listedAt, nextID: 1 << 20, limit: o.limit, seedsLive: !o.quiet && !o.seedsAsBusy}
+	m := &cacheModel{t: t, program: program, now: listedAt, nextID: 1 << 20, limit: o.limit, seedsLive: !o.quiet, ordinary: o.ordinary}
 	for _, c := range listing.Caches {
 		created, err := time.Parse(time.RFC3339Nano, c.Created)
 		if err != nil {
@@ -336,8 +339,11 @@ type plan struct {
 	writerPrune bool
 	devRefresh  bool
 	times       runTimes
-	// seedsAsBusy: see modelOpts.
-	seedsAsBusy bool
+	// ordinary: see modelOpts.
+	ordinary map[string]bool
+	// mainBySha is the main seed key as it was, <sha> alone: nothing is saved on a day main did not move,
+	// so a quiet weekend leaves the main seed where Friday left it.
+	mainBySha bool
 }
 
 // runTimes are when the daily writers finish and save, as UTC {hour, minute}. A cron time is not a
@@ -399,7 +405,7 @@ func weekday(t *testing.T, p plan, limit int64) *cacheModel { return weekdayWith
 
 // weekdayWith is weekday plus the events of the day's own saves.
 func weekdayWith(t *testing.T, p plan, limit int64, extra func(*cacheModel) []modelEvent) *cacheModel {
-	m, before, listedAt := newCacheModel(t, modelOpts{scales: p.scales, limit: limit, seedsAsBusy: p.seedsAsBusy})
+	m, before, listedAt := newCacheModel(t, modelOpts{scales: p.scales, limit: limit, ordinary: p.ordinary})
 	m.low, m.peak = 0, 0
 	start, end := listedAt, listedAt.Add(24*time.Hour)
 	m.now = start
@@ -503,7 +509,9 @@ func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
 		// an event below, so a ci-main run before it meets yesterday's seeds.
 		switch e.seed {
 		case "main":
-			e.accessed = p.times.at(28, p.times.mainSeed)
+			if !p.mainBySha {
+				e.accessed = p.times.at(28, p.times.mainSeed)
+			}
 		case "dev":
 			if p.devRefresh {
 				e.accessed = p.times.at(28, p.times.devSeed)
@@ -513,7 +521,10 @@ func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
 	save := p.times.at(29, p.times.ciMain)
 	m.now = time.Date(2026, 11, 29, 10, 0, 0, 0, time.UTC)
 	m.low, m.peak = 0, 0
-	events := []modelEvent{{p.times.at(29, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }}}
+	var events []modelEvent
+	if !p.mainBySha {
+		events = append(events, modelEvent{p.times.at(29, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }})
+	}
 	if p.devRefresh {
 		events = append(events, modelEvent{p.times.at(29, p.times.devSeed), func() { m.replaceSeed("dev", seedSizesDev) }})
 	}
@@ -549,7 +560,10 @@ func monday(t *testing.T, p plan, limit int64) *cacheModel {
 	size := old.Size
 	m.now = start
 	m.low, m.peak = 0, 0
-	events := []modelEvent{{p.times.at(30, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }}}
+	var events []modelEvent
+	if !p.mainBySha {
+		events = append(events, modelEvent{p.times.at(30, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }})
+	}
 	if p.devRefresh {
 		events = append(events, modelEvent{p.times.at(30, p.times.devSeed), func() { m.replaceSeed("dev", seedSizesDev) }})
 	}
@@ -569,7 +583,7 @@ func sunday(t *testing.T, p plan, limit int64) *cacheModel {
 	friday := time.Date(2026, 11, 27, 20, 30, 0, 0, time.UTC)
 	start := time.Date(2026, 11, 29, 20, 0, 0, 0, time.UTC)
 	for _, e := range m.entries {
-		if e.seed != "main" {
+		if e.seed != "main" || p.mainBySha {
 			e.accessed = friday
 		}
 		e.created = friday
@@ -606,6 +620,14 @@ func sweepStep(coarse int) int {
 		return 1
 	}
 	return coarse
+}
+
+// followAt makes the lint seed save three minutes after the race seed: the two workflows share one
+// concurrency group, so the second run starts only when the first, its prune job included, has finished.
+func followAt(p plan, minute int) plan {
+	p.times.race = [2]int{minute / 60, minute % 60}
+	p.times.lint = [2]int{(minute + 3) / 60, (minute + 3) % 60}
+	return p
 }
 
 type seedSweep struct {
@@ -705,8 +727,10 @@ func TestCacheBudgetModel(t *testing.T) {
 			live [2]int
 		}{
 			{"rotation day, observed times", planAdopted, rotationDay, [2]float64{10.26, 10.34}, [2]int{8, 0}},
-			{"rotation day, race and lint saves both at 14:14", coincideAt(planAdopted, 14*60+14), rotationDay, [2]float64{11.35, 11.63}, [2]int{12, 9}},
-			{"rotation day, race and lint saves both at 11:59", coincideAt(planAdopted, 11*60+59), rotationDay, [2]float64{10.95, 11.63}, [2]int{11, 9}},
+			{"rotation day, race at 14:14 and lint three minutes later (shared concurrency group)", followAt(planAdopted, 14*60+14), rotationDay, [2]float64{10.26, 10.34}, [2]int{5, 0}},
+			{"rotation day, race at 11:59 and lint three minutes later", followAt(planAdopted, 11*60+59), rotationDay, [2]float64{10.26, 10.34}, [2]int{7, 0}},
+			{"rotation day without the shared group, both saves at 14:14", coincideAt(planAdopted, 14*60+14), rotationDay, [2]float64{11.35, 11.63}, [2]int{12, 9}},
+			{"rotation day without the shared group, both saves at 11:59", coincideAt(planAdopted, 11*60+59), rotationDay, [2]float64{10.95, 11.63}, [2]int{11, 9}},
 			{"sunday go.sum", planAdopted, sundayGoSum, [2]float64{12.27, 12.27}, [2]int{8, 7}},
 		}
 		for i, l := range limits {
@@ -731,49 +755,108 @@ func TestCacheBudgetModel(t *testing.T) {
 		}
 	})
 
-	// The observed day window, every minute with HIKYO_CACHE_SWEEP_FULL=1 and every hour (at :59) otherwise: the race and lint saves coincide on a rotation day
-	// (10:59 to 16:59, the observed seed runs ended 11:25 to 14:57), and the Sunday ci-main run after a
-	// go.sum change saves at any time from 10:59 to 22:59 (cron 13:23, observed 20:31). The newest
-	// main and dev seeds must survive all of them at both limits. The survival rests on one stated
-	// assumption, the live seed (bump): the sensitivity below drops it and shows what is left.
+	// The observed day window, every minute with HIKYO_CACHE_SWEEP_FULL=1 and every hour (at :59)
+	// otherwise. On a rotation day the race seed saves at any minute from 10:59 to 16:59 (the observed
+	// seed runs ended 11:25 to 14:57) and the lint seed three minutes later, because the two share one
+	// concurrency group: the second run starts when the first, its prune job included, has finished.
+	// The Sunday ci-main run after a go.sum change saves at any time from 10:59 to 22:59 (cron 13:23,
+	// observed 20:31). The newest main and dev seeds must survive all of them at both limits. The
+	// survival rests on stated assumptions, each shown load-bearing below: every weekday feedback run
+	// restores a seed (the live seed, bump), and main is saved every day (the daily key component).
+	sweepRotation := func(t *testing.T, p plan, limit int64, at func(plan, int) plan) seedSweep {
+		return sweepSeeds(t, p, limit, 10*60+59, 16*60+59, sweepStep(60), at, rotationDay)
+	}
+	sweepSunday := func(t *testing.T, p plan, limit int64) seedSweep {
+		return sweepSeeds(t, p, limit, 10*60+59, 22*60+59, sweepStep(120), func(p plan, minute int) plan {
+			p.times.ciMain = [2]int{minute / 60, minute % 60}
+			return p
+		}, sundayGoSum)
+	}
+	logSweep := func(t *testing.T, name string, l struct {
+		name  string
+		bytes int64
+	}, sweep seedSweep) {
+		t.Helper()
+		t.Logf("%s, %s: %d minutes, seed lost at %d, worst peak %.2f GB, most live entries evicted %d", name, l.name, sweep.minutes, len(sweep.lost), sweep.peak, sweep.evicted)
+	}
 	t.Run("seed survival at every minute", func(t *testing.T) {
 		for _, l := range limits {
 			t.Run("rotation day/"+l.name, func(t *testing.T) {
 				t.Parallel()
-				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 16*60+59, sweepStep(60), func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
-				t.Logf("%s: %d minutes, seed lost at %d, worst peak %.2f GB, most live entries evicted %d", l.name, sweep.minutes, len(sweep.lost), sweep.peak, sweep.evicted)
+				sweep := sweepRotation(t, planAdopted, l.bytes, followAt)
+				logSweep(t, "race then lint", l, sweep)
 				if len(sweep.lost) != 0 {
 					t.Fatalf("a rotation day loses a newest seed at %v (%s)", sweep.lost, l.name)
 				}
 			})
+			t.Run("rotation day, saves in one minute/"+l.name, func(t *testing.T) {
+				t.Parallel()
+				// Without the shared concurrency group: the worst the model can show.
+				sweep := sweepRotation(t, planAdopted, l.bytes, coincideAt)
+				logSweep(t, "coincide", l, sweep)
+				serial := sweepRotation(t, planAdopted, l.bytes, followAt)
+				if len(sweep.lost) != 0 || sweep.peak <= serial.peak {
+					t.Fatalf("coincident saves must peak above the serialised ones (%.2f against %.2f GB) and still keep the seeds: lost %v", sweep.peak, serial.peak, sweep.lost)
+				}
+			})
 			t.Run("sunday go.sum/"+l.name, func(t *testing.T) {
 				t.Parallel()
-				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 22*60+59, sweepStep(120), func(p plan, minute int) plan {
-					p.times.ciMain = [2]int{minute / 60, minute % 60}
-					return p
-				}, sundayGoSum)
-				t.Logf("%s: %d minutes, seed lost at %d, worst peak %.2f GB, most live entries evicted %d", l.name, sweep.minutes, len(sweep.lost), sweep.peak, sweep.evicted)
+				sweep := sweepSunday(t, planAdopted, l.bytes)
+				logSweep(t, "sunday", l, sweep)
 				if len(sweep.lost) != 0 {
 					t.Fatalf("the Sunday ci-main run loses a newest seed at %v (%s)", sweep.lost, l.name)
 				}
 			})
-		}
-		// Sensitivity: if a weekday run touched a seed no more often than any other busy entry (the
-		// hour mark, a tie going against the seeds), the same rotation day loses them at nearly every
-		// minute. Sampled every hour here; the full per-minute sweep (HIKYO_CACHE_SWEEP_FULL=1) lost a seed at 327 of 361 minutes at
-		// 10.00 GB and 326 at 10 GiB (docs/development/ci.md).
-		for _, l := range limits {
-			t.Run("sensitivity, seeds as ordinary entries/"+l.name, func(t *testing.T) {
+			// The daily component of the main key: with the key as it was (the commit alone) nothing is
+			// saved on a day main did not move, the main seed keeps its Friday access time over a quiet
+			// weekend, and the Sunday ci-main run after a go.sum week takes it.
+			t.Run("sunday go.sum, main key without the day/"+l.name, func(t *testing.T) {
 				t.Parallel()
 				p := planAdopted
-				p.seedsAsBusy = true
-				sweep := sweepSeeds(t, p, l.bytes, 10*60+59, 16*60+59, sweepStep(60), func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
+				p.mainBySha = true
+				sweep := sweepSunday(t, p, l.bytes)
+				logSweep(t, "sunday, key by sha", l, sweep)
 				if len(sweep.lost) == 0 {
-					t.Fatalf("with seeds touched like any other entry no minute loses a seed at %s; the live-seed assumption is no longer load-bearing, update docs/development/ci.md", l.name)
+					t.Fatalf("with the main key by commit alone the Sunday run no longer loses the main seed at %s; the daily key component is no longer load-bearing, update docs/development/ci.md", l.name)
 				}
-				t.Logf("%s: seed lost at %d of %d sampled minutes", l.name, len(sweep.lost), sweep.minutes)
 			})
+			// Sensitivity: if a weekday run touched the seed of a family no more often than any other
+			// busy entry (the hour mark, a tie going against the seeds), what is lost on a rotation day.
+			for _, family := range []string{"main", "dev", "both"} {
+				t.Run("sensitivity, "+family+" seed as an ordinary entry/"+l.name, func(t *testing.T) {
+					t.Parallel()
+					p := planAdopted
+					p.ordinary = map[string]bool{"main": family != "dev", "dev": family != "main"}
+					sweep := sweepRotation(t, p, l.bytes, followAt)
+					logSweep(t, "ordinary "+family, l, sweep)
+					// At 10.00 GB the seeds then lose to the hourly-touched entries on a rotation day; at
+					// 10 GiB the serialised saves peak at 10.75 GB at most and evict three idle entries, never a seed.
+					if l.bytes == 10_000_000_000 && len(sweep.lost) == 0 {
+						t.Fatalf("with the %s seed touched like any other entry no minute loses a seed at %s; the live-seed assumption is no longer load-bearing, update docs/development/ci.md", family, l.name)
+					}
+					// The dev seed alone loses at 4 of 361 minutes at 10 GiB (per-minute run, docs/development/ci.md),
+					// which the hourly sample does not see, so it is not pinned here.
+					if l.bytes != 10_000_000_000 && family != "dev" && len(sweep.lost) != 0 {
+						t.Fatalf("with the %s seed touched like any other entry a seed is lost at %v (%s); update docs/development/ci.md", family, sweep.lost, l.name)
+					}
+				})
+			}
 		}
+		// A quiet weekend with the key as it was: the Monday rollover loses the main seed at 10.00 GB.
+		t.Run("monday, main key without the day", func(t *testing.T) {
+			p := planAdopted
+			p.mainBySha = true
+			for _, l := range limits {
+				m := monday(t, p, l.bytes)
+				t.Log(m.report("monday, key by sha, " + l.name))
+			}
+			if m := monday(t, p, 10_000_000_000); len(m.seedLost) == 0 {
+				t.Fatalf("with the main key by commit alone the Monday rollover no longer loses the main seed at 10.00 GB: %s", m.report("monday"))
+			}
+			if m := monday(t, planAdopted, 10_000_000_000); len(m.seedLost) != 0 {
+				t.Fatalf("with the daily key the Monday rollover loses a seed: %v", m.seedLost)
+			}
+		})
 	})
 
 	// What each adopted measure does in the model.

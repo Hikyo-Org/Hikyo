@@ -31,7 +31,8 @@ const (
 
 // cachePruneWriters are the workflows whose completion on main triggers a prune: the writers of the
 // listed families that either run PR code (ci-main reuses ci.yml) or are not ours to edit (CodeQL).
-var cachePruneWriters = []any{"CodeQL", "ci-main", "cache-seed-lint", "cache-seed-race", "cache-seed-tools", "cache-seed-feedback"}
+// The race and lint seeds are not here: they call the prune themselves right after their save (workflow_call).
+var cachePruneWriters = []any{"CodeQL", "ci-main", "cache-seed-tools", "cache-seed-feedback"}
 
 func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	if !reflect.DeepEqual(workflow["on"], map[string]any{
@@ -56,7 +57,7 @@ func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	if job == nil || job["if"] != cachePruneGuard {
 		return "", fmt.Errorf("prune must run only from a schedule or a manual run on main")
 	}
-	if !reflect.DeepEqual(job["concurrency"], map[string]any{"group": "ci-cache-prune", "cancel-in-progress": false}) {
+	if !reflect.DeepEqual(job["concurrency"], map[string]any{"group": "ci-cache-prune-${{ github.workflow }}", "cancel-in-progress": false}) {
 		return "", fmt.Errorf("runs must queue behind each other, not cancel a half-done prune")
 	}
 	if !reflect.DeepEqual(job["permissions"], map[string]any{"actions": "write"}) {
@@ -210,6 +211,10 @@ func cachePrunePages() [][]apiCacheEntry {
 		// The family match is anchored: a name that merely contains a listed one is not that family.
 		e(28, main, "xgo-mod-v2-Linux-"+h("a", 64), "2026-11-10T08:00:00Z", "2026-11-10T08:00:00Z"),
 		e(29, main, "xgo-mod-v2-Linux-"+h("b", 64), "2026-11-22T08:00:00Z", live),
+		// The older generation was accessed later than the newer one (a restore of the old key just
+		// before its replacement was saved): the newest is the newest created, not the last accessed.
+		e(30, main, "go-generated-v2-Linux-X64-ubuntu26-"+h("a", 64)+"-2026-W47", "2026-11-10T08:00:00Z", live),
+		e(31, main, "go-generated-v2-Linux-X64-ubuntu26-"+h("b", 64)+"-2026-W47", "2026-11-22T08:00:00Z", "2026-11-12T08:00:00Z"),
 	}
 	return [][]apiCacheEntry{first, second}
 }
@@ -221,15 +226,16 @@ func requireCachePruneBehavior(script string) error {
 	}
 	sort.Ints(deleted)
 	// Superseded: 2 old week, 3 old go-mod, 6 and 24 old overlays (attempts 1 and 2), 17 old tool, 25 old
-	// runner image, 26 old CodeQL CLI, 22 dev's older test entry. 11: idle pull request.
-	if want := []int{2, 3, 6, 11, 17, 22, 24, 25, 26}; !reflect.DeepEqual(deleted, want) {
+	// runner image, 26 old CodeQL CLI, 22 dev's older test entry, 30 the older generation although it was accessed later.
+	// 11: idle pull request.
+	if want := []int{2, 3, 6, 11, 17, 22, 24, 25, 26, 30}; !reflect.DeepEqual(deleted, want) {
 		return fmt.Errorf("deleted %v, want %v", deleted, want)
 	}
 	if len(calls) != 1+len(deleted) || !strings.Contains(calls[0], "repos/o/r/actions/caches?per_page=100") {
 		return fmt.Errorf("api calls %v: want one paged listing and one delete each", calls)
 	}
 	// An entry that is already gone is success; any other failure is not.
-	if got, _, err := runCachePrune(script, cachePrunePages(), "3", ""); err != nil || len(got) != 8 {
+	if got, _, err := runCachePrune(script, cachePrunePages(), "3", ""); err != nil || len(got) != 9 {
 		return fmt.Errorf("a 404 on delete must count as deleted and the rest still go: %v %w", got, err)
 	}
 	if _, _, err := runCachePrune(script, cachePrunePages(), "", "3"); err == nil {
@@ -275,6 +281,13 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 		"runs after a PR workflow": func(w map[string]any) {
 			run := w["on"].(map[string]any)["workflow_run"].(map[string]any)
 			run["workflows"] = append(run["workflows"].([]any), "trusted-ci")
+		},
+		"race seed prunes twice": func(w map[string]any) {
+			run := w["on"].(map[string]any)["workflow_run"].(map[string]any)
+			run["workflows"] = append(run["workflows"].([]any), "cache-seed-race")
+		},
+		"one group for every caller": func(w map[string]any) {
+			job(w)["concurrency"].(map[string]any)["group"] = "ci-cache-prune"
 		},
 		"runs when a writer starts": func(w map[string]any) {
 			w["on"].(map[string]any)["workflow_run"].(map[string]any)["types"] = []any{"requested"}
@@ -329,6 +342,9 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 		})
 	}
 	scriptMutations := map[string]func(string) string{
+		"newest by access, not creation": func(s string) string {
+			return strings.Replace(s, "sort_by([.created_at, .id])", "sort_by([.last_accessed_at])", 1)
+		},
 		"newest of a stem deleted": func(s string) string { return strings.Replace(s, ".[1:][]", ".[]", 1) },
 		"refs not restricted": func(s string) string {
 			return strings.Replace(s, "(.ref == \"refs/heads/main\" or .ref == \"refs/heads/dev\") and ", "", 1)

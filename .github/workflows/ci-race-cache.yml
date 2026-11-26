@@ -15,8 +15,11 @@ on:
 permissions:
   contents: read
 
+# One group for both daily seed writers: the second run waits until the first, its prune job included, has
+# finished, so two rotated generations never coexist (the race seed and the lint driver seed saving in the
+# same minute peaked 1 GB higher in the eviction model, docs/development/ci.md). Never cancelling.
 concurrency:
-  group: ci-race-cache-main
+  group: ci-cache-seed-writers
   cancel-in-progress: false
 
 jobs:

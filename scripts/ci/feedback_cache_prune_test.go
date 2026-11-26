@@ -143,23 +143,31 @@ printf '%s\n' "$id" >>"$FAKE_DIR/deleted"
 func pruneCaches() []fakeCache {
 	const base = "go-feedback-v2-Linux-X64-ubuntu24-"
 	caches := []fakeCache{
-		{"1", base + "main-application-h1-w1-shaNEW", "2026-11-25T03:40:00Z", ""},
-		{"2", base + "main-application-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
-		{"3", base + "main-application-h0-w0-shaOLDER", "2026-11-20T03:40:00Z", ""},
-		{"4", base + "dev-application-h1-w1-2026-11-24", "2026-11-24T12:00:00Z", ""},
-		{"5", base + "main-cli-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
-		{"6", base + "main-tooling-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
-		{"7", "go-feedback-v2-Linux-X64-ubuntu22-main-application-h1-w1-shaOLD", "2026-11-01T03:40:00Z", ""},
+		{"1", base + "main-application-h1-w1-shaNEW-2026-11-25", "2026-11-25T03:40:00Z", ""},
+		{"2", base + "main-application-h1-w1-shaOLD-2026-11-24", "2026-11-24T03:40:00Z", ""},
+		{"3", base + "main-application-h0-w0-shaOLDER-2026-11-20", "2026-11-20T03:40:00Z", ""},
+		{"4", base + "dev-application-h1-w1-dev-2026-11-24", "2026-11-24T12:00:00Z", ""},
+		{"5", base + "main-cli-h1-w1-shaOLD-2026-11-24", "2026-11-24T03:40:00Z", ""},
+		{"6", base + "main-tooling-h1-w1-shaOLD-2026-11-24", "2026-11-24T03:40:00Z", ""},
+		{"7", "go-feedback-v2-Linux-X64-ubuntu22-main-application-h1-w1-shaOLD-2026-11-01", "2026-11-01T03:40:00Z", ""},
 		{"8", "go-test-v2-Linux-X64-ubuntu24-hash", "2026-11-24T03:40:00Z", ""},
-		{"9", base + "main-applicationX-h1-w1-shaOLD", "2026-11-24T03:40:00Z", ""},
-		{"10", base + "main-application-h1-w1-shaOTHER-NEWER", "2026-11-25T05:00:00Z", ""},
-		{"11", base + "dev-application-h1-w1-2026-11-25", "2026-11-25T08:00:00Z", ""},
-		{"12", base + "dev-application-h1-w1-2026-11-23", "2026-11-23T08:00:00Z", ""},
-		{"13", base + "dev-tooling-h1-w1-2026-11-23", "2026-11-23T08:00:00Z", ""},
+		{"9", base + "main-applicationX-h1-w1-shaOLD-2026-11-24", "2026-11-24T03:40:00Z", ""},
+		{"10", base + "main-application-h1-w1-shaOTHER-NEWER-2026-11-25", "2026-11-25T05:00:00Z", ""},
+		{"11", base + "dev-application-h1-w1-dev-2026-11-25", "2026-11-25T08:00:00Z", ""},
+		{"12", base + "dev-application-h1-w1-dev-2026-11-23", "2026-11-23T08:00:00Z", ""},
+		{"13", base + "dev-tooling-h1-w1-dev-2026-11-23", "2026-11-23T08:00:00Z", ""},
 		// The same prefix on a pull request's merge ref: not this run's ref, so never deleted, whatever
 		// the server returns.
-		{"14", base + "main-application-h1-w1-shaPR", "2026-11-23T03:40:00Z", "refs/pull/9/merge"},
-		{"15", base + "dev-application-h1-w1-2026-11-22", "2026-11-22T08:00:00Z", "refs/pull/9/merge"},
+		{"14", base + "main-application-h1-w1-shaPR-2026-11-23", "2026-11-23T03:40:00Z", "refs/pull/9/merge"},
+		{"15", base + "dev-application-h1-w1-dev-2026-11-22", "2026-11-22T08:00:00Z", "refs/pull/9/merge"},
+		// A quiet main: the same commit seeded on two days. The daily component of the key makes the
+		// save happen every day; the older day's entry is superseded though its sha is this run's.
+		{"16", base + "main-cli-h1-w1-shaNEW-2026-11-24", "2026-11-24T13:20:00Z", ""},
+		{"17", base + "main-cli-h1-w1-shaNEW-2026-11-25", "2026-11-25T13:20:00Z", ""},
+		// Another commit seeded earlier the same day is superseded by this run's entry, which the day
+		// alone must not protect.
+		{"18", base + "main-tooling-h1-w1-shaOTHER-2026-11-25", "2026-11-25T02:00:00Z", ""},
+		{"19", base + "main-tooling-h1-w1-shaNEW-2026-11-25", "2026-11-25T13:20:00Z", ""},
 	}
 	for i := range caches {
 		if caches[i].ref != "" {
@@ -190,9 +198,10 @@ func requirePruneBehavior(script string) error {
 		// Main keeps the key it just saved and the newest entry; the older main sets go. Nothing of the
 		// dev family, another entry, another ABI or another cache family is touched.
 		{"main application", "refs/heads/main", "application", "key=go-feedback-v2-Linux-X64-ubuntu24-main-application-", []string{"2", "3"}},
-		{"main cli", "refs/heads/main", "cli", "key=go-feedback-v2-Linux-X64-ubuntu24-main-cli-", nil},
+		{"main cli", "refs/heads/main", "cli", "key=go-feedback-v2-Linux-X64-ubuntu24-main-cli-", []string{"16", "5"}},
 		// Dev keeps today's set and the newest, removes earlier days, and never touches a main entry.
 		{"dev application", "refs/heads/dev", "application", "key=go-feedback-v2-Linux-X64-ubuntu24-dev-application-", []string{"4", "12"}},
+		{"main tooling", "refs/heads/main", "tooling", "key=go-feedback-v2-Linux-X64-ubuntu24-main-tooling-", []string{"18", "6"}},
 		{"dev tooling", "refs/heads/dev", "tooling", "key=go-feedback-v2-Linux-X64-ubuntu24-dev-tooling-", nil},
 	} {
 		deleted, listed, err := runPrune(script, pruneEnv(sc.ref, sc.entry), pruneCaches(), "", "")
@@ -310,7 +319,9 @@ func TestSeedPrunesSupersededEntriesOnly(t *testing.T) {
 		"empty identity tolerated": func(s string) string {
 			return strings.Replace(s, "[ -n \"$ABI\" ] && [ -n \"$SEED_DAY\" ] ||", "true ||", 1)
 		},
-		"deletes by day for main": func(s string) string { return strings.Replace(s, "suffix=$GITHUB_SHA", "suffix=$SEED_DAY", 1) },
+		"keeps any entry of the day for main": func(s string) string {
+			return strings.Replace(s, "suffix=$GITHUB_SHA-$SEED_DAY", "suffix=$SEED_DAY", 1)
+		},
 	}
 	for name, mutate := range scriptMutations {
 		t.Run("script/"+name, func(t *testing.T) {

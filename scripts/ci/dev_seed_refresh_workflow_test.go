@@ -134,7 +134,7 @@ func TestDevSeedRefreshTargetsADevOnlyWriter(t *testing.T) {
 	for _, want := range []string{
 		"(github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'",
 		"github.ref == 'refs/heads/dev' && 'dev' || 'main'",
-		"github.ref == 'refs/heads/dev' && steps.seed-day.outputs.value || github.sha",
+		"github.ref == 'refs/heads/dev' && 'dev' || github.sha }}-${{ steps.seed-day.outputs.value }}",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the seed workflow no longer carries %q", want)

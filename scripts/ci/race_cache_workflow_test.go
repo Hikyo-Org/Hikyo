@@ -76,7 +76,8 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"write token":      func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
 		"job write token":  func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
 		"cancelling group": func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
-		"shared group":     func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-${{ github.ref }}" },
+		"own group":        func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
+		"ref group":        func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-${{ github.ref }}" },
 		"untrusted ref":    func(w map[string]any) { job(w)["if"] = "true" },
 		"any ref":          func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
 		"unbounded job":    func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
@@ -200,7 +201,7 @@ type reuseSeedSpec struct {
 
 var raceSeedSpec = reuseSeedSpec{
 	label:       "race seed",
-	group:       "ci-race-cache-main",
+	group:       "ci-cache-seed-writers",
 	bootstrap:   "${{ runner.temp }}/race-bootstrap",
 	lookupID:    "race-seed",
 	key:         sharedRaceReuseKey,

@@ -27,7 +27,7 @@ const (
 
 var lintDriverSeedSpec = reuseSeedSpec{
 	label:        "lint driver seed",
-	group:        "ci-lint-cache-main",
+	group:        "ci-cache-seed-writers",
 	bootstrap:    "${{ runner.temp }}/lint-bootstrap",
 	lookupID:     "lint-driver-seed",
 	key:          lintDriverSeedKey,
@@ -68,7 +68,7 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		"write token":             func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
 		"job write token":         func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
 		"cancelling group":        func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
-		"shared group":            func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
+		"own group":               func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-lint-cache-main" },
 		"untrusted ref":           func(w map[string]any) { job(w)["if"] = "true" },
 		"any ref":                 func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
 		"unbounded job":           func(w map[string]any) { job(w)["timeout-minutes"] = 360 },

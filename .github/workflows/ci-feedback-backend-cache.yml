@@ -67,7 +67,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
-      - name: Name the UTC day for dev seeds
+      - name: Name the UTC day of this seed
         id: seed-day
         run: echo "value=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - name: Look up this seed without restoring old entries
@@ -75,7 +75,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-cache/go-feedback-compact
-          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.ref == 'refs/heads/dev' && 'dev' || 'main' }}-${{ matrix.entry }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('source/.github/workflows/ci-feedback-backend-cache.yml') }}-${{ github.ref == 'refs/heads/dev' && steps.seed-day.outputs.value || github.sha }}
+          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.ref == 'refs/heads/dev' && 'dev' || 'main' }}-${{ matrix.entry }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('source/.github/workflows/ci-feedback-backend-cache.yml') }}-${{ github.ref == 'refs/heads/dev' && 'dev' || github.sha }}-${{ steps.seed-day.outputs.value }}
           lookup-only: true
       - name: Compile a fresh feedback seed without running tests
         if: steps.feedback-reuse.outputs.cache-hit != 'true'
@@ -130,8 +130,8 @@ jobs:
           set -euo pipefail
           [ -n "$ABI" ] && [ -n "$SEED_DAY" ] || { echo "the seed run did not name its ABI and day" >&2; exit 1; }
           family=main
-          suffix=$GITHUB_SHA
-          if [ "$GITHUB_REF" = refs/heads/dev ]; then family=dev; suffix=$SEED_DAY; fi
+          suffix=$GITHUB_SHA-$SEED_DAY
+          if [ "$GITHUB_REF" = refs/heads/dev ]; then family=dev; suffix=dev-$SEED_DAY; fi
           prefix="go-feedback-v2-${RUNNER_OS}-${RUNNER_ARCH}-${ABI}-${family}-${ENTRY}-"
           rows=$(gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100&ref=${GITHUB_REF}&key=${prefix}" \
             --jq '.actions_caches[] | select(.ref == env.GITHUB_REF) | [.id, .key, .created_at] | @tsv' |
