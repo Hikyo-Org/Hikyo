@@ -181,10 +181,10 @@ jobs:
           SHIM_STATE: ${{ needs.shim.outputs.state }}
         run: |
           set -euo pipefail
-          # sync_issue TITLE MARKER LABEL FAILING DETAIL CLOSING_COMMENT: keeps one open
+          # sync_issue TITLE MARKER LABEL DESCRIPTION FAILING DETAIL CLOSING_COMMENT: keeps one open
           # issue per title while FAILING is true and closes it once it is false.
           sync_issue() {
-            local title=$1 marker=$2 label=$3 failing=$4 detail=$5 closing=$6 issue_number
+            local title=$1 marker=$2 label=$3 description=$4 failing=$5 detail=$6 closing=$7 issue_number
             export TITLE=$title MARKER=$marker
             # The label narrows the list on the server; the exact match below stays the check.
             issue_number=$(gh issue list --state open --label "$label" --limit 100 \
@@ -197,8 +197,7 @@ jobs:
             elif [ -n "$issue_number" ]; then
               gh issue comment "$issue_number" --body "$detail"
             else
-              gh label create "$label" --force --color B60205 \
-                --description 'Automation-owned nightly desktop validation failure'
+              gh label create "$label" --force --color B60205 --description "$description"
               gh issue create --title "$title" --label "$label" --body "$(printf '%s\n\n%s' "$marker" "$detail")"
             fi
           }
@@ -206,7 +205,7 @@ jobs:
           if [ "$DEV_RESULT" = success ] && [ "$MAIN_RESULT" = success ]; then desktop_failing=false; fi
           shim_failing=true
           if [ "$SHIM_RESULT" = success ] && [ "$SHIM_STATE" != dead ]; then shim_failing=false; fi
-          sync_issue 'ci: nightly desktop validation failing' '<!-- hikyo-nightly-desktop -->' ci-nightly-desktop "$desktop_failing" \
+          sync_issue 'ci: nightly desktop validation failing' '<!-- hikyo-nightly-desktop -->' ci-nightly-desktop 'Automation-owned nightly desktop validation failure' "$desktop_failing" \
             "$(printf '%s\n' \
               "Nightly desktop validation did not pass: $RUN_URL" \
               "" \
@@ -218,7 +217,7 @@ jobs:
           else
             shim_detail="The desktop-removal shim check did not complete (${SHIM_RESULT:-not run}): $RUN_URL"
           fi
-          sync_issue 'ci: remove the dead desktop-removal shim (#1595)' '<!-- hikyo-nightly-desktop-shim -->' ci-desktop-removal-shim "$shim_failing" \
+          sync_issue 'ci: desktop-removal shim check (#1595)' '<!-- hikyo-nightly-desktop-shim -->' ci-desktop-removal-shim 'Automation-owned desktop-removal shim check' "$shim_failing" \
             "$shim_detail" "The desktop-removal shim check is healthy again: $RUN_URL"
           [ "$desktop_failing$shim_failing" = falsefalse ] && exit 0
           exit 1

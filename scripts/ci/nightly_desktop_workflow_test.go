@@ -384,7 +384,8 @@ func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
 }
 
 // A stub gh serves everything the workflow scripts ask of it from files in GH_DIR:
-// issues.<label>.json for `issue list --label <label> --jq` ([] when absent), sha.<branch> for a branch head, module.<sha>
+// issues.<label>.json for `issue list --label <label> --jq` ([] when absent; `issue create`
+// appends to it as number 100+), sha.<branch> for a branch head, module.<sha>
 // holding an HTTP status for desktop/go.mod, and content.<ref>.<path, / as _> for raw
 // file contents (404 when absent).
 const stubGH = `#!/bin/bash
@@ -402,6 +403,25 @@ if [ "$1 $2" = "issue list" ]; then
   file="$GH_DIR/issues.$label.json"
   [ -f "$file" ] || { echo "[]" >"$file"; }
   jq -r "$filter" <"$file"
+  exit 0
+fi
+if [ "$1 $2" = "issue create" ]; then
+  shift 2
+  title=""
+  label=""
+  body=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title) title=$2 ;;
+      --label) label=$2 ;;
+      --body) body=$2 ;;
+    esac
+    shift
+  done
+  file="$GH_DIR/issues.$label.json"
+  [ -f "$file" ] || { echo "[]" >"$file"; }
+  jq --arg t "$title" --arg b "$body" '. + [{number: (length + 100), title: $t, author: {login: "app/github-actions"}, body: $b}]' "$file" >"$file.new"
+  mv "$file.new" "$file"
   exit 0
 fi
 if [ "$1" = api ]; then
@@ -439,7 +459,15 @@ type stubRun struct {
 // Run a workflow script against the stub gh with the given GH_DIR files and extra env.
 func runStubbed(t *testing.T, script string, files map[string]string, env ...string) stubRun {
 	t.Helper()
-	dir := t.TempDir()
+	return runStubbedIn(t, t.TempDir(), script, files, env...)
+}
+
+// Like runStubbed, but in a caller-owned directory so a second run sees the first
+// run's created issues. Each run starts with a fresh gh log.
+func runStubbedIn(t *testing.T, dir, script string, files map[string]string, env ...string) stubRun {
+	t.Helper()
+	_ = os.Remove(filepath.Join(dir, "log"))
+	_ = os.Remove(filepath.Join(dir, "out"))
 	write := func(name, content string, mode os.FileMode) {
 		t.Helper()
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), mode); err != nil {
@@ -635,7 +663,7 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 		desktopTitle  = "ci: nightly desktop validation failing"
 		desktopMarker = "<!-- hikyo-nightly-desktop -->"
 		desktopLabel  = "ci-nightly-desktop"
-		shimTitle     = "ci: remove the dead desktop-removal shim (#1595)"
+		shimTitle     = "ci: desktop-removal shim check (#1595)"
 		shimMarker    = "<!-- hikyo-nightly-desktop-shim -->"
 		shimLabel     = "ci-desktop-removal-shim"
 	)
@@ -661,6 +689,14 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 		issue(19, desktopTitle, bot, desktopMarker),
 		issue(17, shimTitle, bot, shimMarker+"\n\nold"),
 	)
+	const runURL = "https://example/run/1"
+	tick := "`"
+	line := func(branch, sha, result string) string {
+		return "branch " + branch + ", head " + tick + sha + tick + ": " + result
+	}
+	desktopFailed := "Nightly desktop validation did not pass: " + runURL
+	desktopHealed := "Nightly desktop validation passed on dev (" + tick + "aaaa" + tick + ") and main (" + tick + "bbbb" + tick + "): " + runURL
+	shimHealed := "The desktop-removal shim check is healthy again: " + runURL
 	var untouched []string
 	for _, n := range []int{5, 6, 8, 9, 15, 16, 18, 19} {
 		untouched = append(untouched, fmt.Sprintf("issue comment %d ", n), fmt.Sprintf("issue close %d ", n))
@@ -673,34 +709,36 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 		want, absent           []string
 	}{
 		{"open a new desktop issue", "[]", "[]", "failure", "success", "success", "needed", 1,
-			[]string{"issue list --state open --label " + desktopLabel, "label create " + desktopLabel, "issue create --title " + desktopTitle + " --label " + desktopLabel},
+			[]string{"issue list --state open --label " + desktopLabel, "label create " + desktopLabel + " --force --color B60205 --description Automation-owned nightly desktop validation failure",
+				"issue create --title " + desktopTitle + " --label " + desktopLabel, desktopMarker, desktopFailed, line("dev", "aaaa", "failure"), line("main", "bbbb", "success")},
 			[]string{"issue close", "issue comment", "issue create --title " + shimTitle, "label create " + shimLabel}},
 		{"comment on the desktop issue and leave the shim issue closed", desktopIssues, shimIssues, "success", "failure", "success", "needed", 1,
-			[]string{"issue comment 7 ", "issue close 17 "}, append([]string{"issue create", "issue comment 17 ", "issue close 7 "}, untouched...)},
+			[]string{"issue comment 7 ", "issue close 17 ", shimHealed, desktopFailed, line("dev", "aaaa", "success"), line("main", "bbbb", "failure")}, append([]string{"issue create", "issue comment 17 ", "issue close 7 "}, untouched...)},
 		{"a cancelled leg counts as failing", desktopIssues, "[]", "cancelled", "success", "success", "needed", 1,
-			[]string{"issue comment 7 "}, []string{"issue close", "issue create"}},
+			[]string{"issue comment 7 ", line("dev", "aaaa", "cancelled"), line("main", "bbbb", "success")}, []string{"issue close", "issue create"}},
 		{"skipped legs count as failing", desktopIssues, "[]", "skipped", "skipped", "success", "needed", 1,
-			[]string{"issue comment 7 "}, []string{"issue close", "issue create"}},
+			[]string{"issue comment 7 ", line("dev", "aaaa", "skipped"), line("main", "bbbb", "skipped")}, []string{"issue close", "issue create"}},
 		{"a dead shim opens its own issue and closes a healed desktop one", desktopIssues, "[]", "success", "success", "success", "dead", 1,
-			[]string{"issue close 7 ", "label create " + shimLabel, "issue create --title " + shimTitle + " --label " + shimLabel, "is dead", "#1595"},
+			[]string{"issue close 7 ", desktopHealed, "label create " + shimLabel + " --force --color B60205 --description Automation-owned desktop-removal shim check",
+				"issue create --title " + shimTitle + " --label " + shimLabel, shimMarker, "is dead", "#1595"},
 			[]string{"issue comment", "issue create --title " + desktopTitle}},
 		{"a dead shim comments on its own issue", desktopIssues, shimIssues, "success", "success", "success", "dead", 1,
 			[]string{"issue close 7 ", "issue comment 17 ", "is dead"}, append([]string{"issue create", "issue comment 7 ", "issue close 17 "}, untouched...)},
 		{"a shim fetch failure goes to the shim issue", "[]", shimIssues, "success", "success", "failure", "", 1,
-			[]string{"issue comment 17 ", "did not complete (failure)"}, []string{"issue create", "issue close", "issue comment 7 "}},
+			[]string{"issue comment 17 ", "did not complete (failure)", runURL}, []string{"issue create", "issue close", "issue comment 7 "}},
 		{"a failing leg and a dead shim are both reported", desktopIssues, shimIssues, "failure", "success", "success", "dead", 1,
 			[]string{"issue comment 7 ", "issue comment 17 "}, append([]string{"issue create", "issue close"}, untouched...)},
 		{"close both on a green night", desktopIssues, shimIssues, "success", "success", "success", "needed", 0,
-			[]string{"issue close 7 ", "issue close 17 "}, append([]string{"issue create", "issue comment"}, untouched...)},
+			[]string{"issue close 7 ", "issue close 17 ", desktopHealed, shimHealed}, append([]string{"issue create", "issue comment"}, untouched...)},
 		{"close once the shim is gone", desktopIssues, shimIssues, "success", "success", "success", "gone", 0,
-			[]string{"issue close 7 ", "issue close 17 "}, []string{"issue create", "issue comment"}},
+			[]string{"issue close 7 ", "issue close 17 ", desktopHealed, shimHealed}, []string{"issue create", "issue comment"}},
 		{"nothing to do on a green night", "[]", "[]", "success", "success", "success", "gone", 0,
 			[]string{"issue list"}, []string{"issue create", "issue comment", "issue close", "label create"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run := runStubbed(t, script, map[string]string{
 				"issues." + desktopLabel + ".json": tc.desktopList, "issues." + shimLabel + ".json": tc.shimList,
-			}, "RUN_URL=https://example/run/1", "DEV_SHA=aaaa", "MAIN_SHA=bbbb",
+			}, "RUN_URL="+runURL, "DEV_SHA=aaaa", "MAIN_SHA=bbbb",
 				"DEV_RESULT="+tc.dev, "MAIN_RESULT="+tc.main, "SHIM_RESULT="+tc.shim, "SHIM_STATE="+tc.state)
 			if run.status != tc.wantStatus {
 				t.Fatalf("exit %d, want %d; gh calls:\n%s", run.status, tc.wantStatus, run.log)
@@ -714,6 +752,35 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 				if strings.Contains(run.log, absent) {
 					t.Fatalf("unexpected gh call %q in:\n%s", absent, run.log)
 				}
+			}
+		})
+	}
+}
+
+// A created issue must be found again the next night: the marker in its body, its
+// title, author and label are what the lookup matches. If any were lost a duplicate
+// would open every red night. Each run here reads what the previous run created.
+func TestNightlyDesktopReportFindsItsOwnIssues(t *testing.T) {
+	steps := stepsOf(asMap(jobsOf(readYAMLMap(t, "nightly-desktop.yml"))["report"]))
+	script, _ := steps[0]["run"].(string)
+	for _, tc := range []struct {
+		name, label, dev, main, shim, state string
+	}{
+		{"desktop issue", "ci-nightly-desktop", "failure", "success", "success", "needed"},
+		{"shim issue", "ci-desktop-removal-shim", "success", "success", "success", "dead"},
+		{"shim check failure", "ci-desktop-removal-shim", "success", "success", "failure", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			env := []string{"RUN_URL=https://example/run/1", "DEV_SHA=aaaa", "MAIN_SHA=bbbb",
+				"DEV_RESULT=" + tc.dev, "MAIN_RESULT=" + tc.main, "SHIM_RESULT=" + tc.shim, "SHIM_STATE=" + tc.state}
+			first := runStubbedIn(t, dir, script, nil, env...)
+			if first.status != 1 || strings.Count(first.log, "issue create") != 1 || !strings.Contains(first.log, "--label "+tc.label) {
+				t.Fatalf("first night, exit %d:\n%s", first.status, first.log)
+			}
+			second := runStubbedIn(t, dir, script, nil, env...)
+			if second.status != 1 || !strings.Contains(second.log, "issue comment 100 ") || strings.Contains(second.log, "issue create") {
+				t.Fatalf("second night did not comment on the issue the first one created, exit %d:\n%s", second.status, second.log)
 			}
 		})
 	}

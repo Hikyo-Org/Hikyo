@@ -171,12 +171,13 @@ dispatch on main:
    A `shim` job (no checkout, API reads only) checks whether the desktop-removal shim
    in `ci.yml` is dead: once neither head's job registry lists `desktop`, the shim and
    its migration tests are dead code (tracked in #1595). The report keeps that in its
-   own issue, `ci: remove the dead desktop-removal shim (#1595)` (label
-   `ci-desktop-removal-shim`), opened when the shim is dead or its check cannot read a
-   file, and closed once it is healthy. The desktop issue follows only the two legs, so
+   own issue, `ci: desktop-removal shim check (#1595)` (label
+   `ci-desktop-removal-shim`), opened, with the actual state in its body, when the shim is dead or its check cannot
+   read a file, and closed once it is healthy. The desktop issue follows only the two legs, so
    a dead shim never hides a desktop failure; either failing keeps the run red.
-   Each night costs two issue-list calls, plus one write per issue when its state changes
-   or its failure repeats.
+   Each night costs two issue-list calls, plus one write per issue when its failure
+   repeats (a comment) or it closes, and two when it is first opened (the label, then
+   the issue).
 5. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
