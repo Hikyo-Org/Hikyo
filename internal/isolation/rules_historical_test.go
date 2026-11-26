@@ -1,12 +1,15 @@
 package isolation
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // Source schemas 89 through 98 hold the containment columns but no
@@ -79,4 +82,58 @@ func wantRule(t *testing.T, what, id string, rules []domain.Rule, err error) {
 		len(rules[0].Where.Projects) != 1 || rules[0].Where.Projects[0] != "prj_hist" {
 		t.Fatalf("historical %s: want %s bound to prj_hist only, got %+v", what, id, rules)
 	}
+}
+
+// The other side of the 98/99 boundary: bound to source schema 99 (the schema
+// that adds rules.project_mode), the historical recovery resolver reads exactly
+// what the ordinary resolver reads, including an all-projects rule, which must
+// stay all-projects rather than be mapped to 'only'.
+func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		f := seedAllProjectsFixture(t, db)
+		p1, _ := f.newProject(t, "hist-a"), f.newProject(t, "hist-b")
+		all, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), claimAll(t, db, service.RuleSpec{Target: apHolder,
+			Capability: domain.CapRead, Org: orgAP, Where: allProjectsWhere(domain.AxisAll, "secret")}))
+		if err != nil {
+			t.Fatalf("create all-projects rule: %v", err)
+		}
+		if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), service.RuleSpec{Target: apHolder, Capability: domain.CapEdit, Org: orgAP,
+			Where: domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}}); err != nil {
+			t.Fatalf("create project-bound rule: %v", err)
+		}
+		execRaw(t, db, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('rul_hist_mch', 'mch_ap', 'read', 'org_ap', 'only', 'all', 'all', 'usr_apadmin', "+ts+")")
+		execRaw(t, db, "INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('rit_hist_mch', 'rul_hist_mch', 'org_ap', 'project', '"+string(p1)+"')")
+
+		current, historical := authn.NewSQLite(db.SQLiteRead()), authn.NewHistoricalRecoverySQLite(db.SQLiteRead(), 99)
+		if db.Engine() == store.EnginePostgres {
+			current, historical = authn.NewPG(db.PG()), authn.NewHistoricalRecoveryPG(db.PG(), 99)
+		}
+		same := func(what string, read func(*authn.Resolver) ([]domain.Rule, error), wantLen int) []domain.Rule {
+			t.Helper()
+			got, err := read(historical)
+			if err != nil {
+				t.Fatalf("historical %s at schema 99: %v", what, err)
+			}
+			want, err := read(current)
+			if err != nil {
+				t.Fatalf("current %s: %v", what, err)
+			}
+			if len(want) != wantLen || !reflectx.Equal(got, want) {
+				t.Fatalf("%s at schema 99 = %+v, want the current resolver's %d rules %+v", what, got, wantLen, want)
+			}
+			return got
+		}
+		human := same("rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.Rules(ctx, apHolder) }, 2)
+		census := same("project census", func(r *authn.Resolver) ([]domain.Rule, error) {
+			return r.RulesForProject(ctx, string(orgAP), string(p1))
+		}, 2)
+		same("machine rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.MachineRules(ctx, "mch_ap") }, 1)
+		for what, rules := range map[string][]domain.Rule{"rules": human, "project census": census} {
+			i := slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == all.ID })
+			if i < 0 || !rules[i].Where.AllProjects || len(rules[i].Where.Keys[domain.AnyProject]) != 1 {
+				t.Fatalf("%s at schema 99: all-projects rule %s read as %+v, want all projects with its folder", what, all.ID, rules)
+			}
+		}
+	})
 }
