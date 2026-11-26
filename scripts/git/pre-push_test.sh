@@ -548,6 +548,12 @@ git rm -q scripts/ci/go-affected-test.sh
 git commit -q -m "drop the runner"
 expect_refused 'nor has an executable copy' gt-norunner
 expect_count gotest "$before"
+git switch -q -c gt-runner-mode gt
+chmod -x scripts/ci/go-affected-test.sh
+git add scripts/ci/go-affected-test.sh
+git commit -q -m 'commit the runner without its executable bit'
+expect_refused 'go-affected-test.sh as an executable file' gt-runner-mode
+expect_count gotest "$before"
 git switch -q gt
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out; the affected Go tests run at the pushed commit and honour theirs\n'
