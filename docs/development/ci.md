@@ -212,7 +212,8 @@ main on 7 of the last 30 days (committer date, `origin/main` at 2026-11-25). The
 generation. With the observed run ends the day peaks at 10.26 GB and takes eight idle entries at
 10.00 GB, none at 10 GiB, and both seeds survive.
 
-Three things keep the newest seeds alive on such a day, and one of them is an assumption.
+Four things keep the newest seeds alive on such a day. The first three are the situation without the
+fourth (the headroom delete, below), which is what makes survival independent of traffic.
 
 1. The race and lint seed workflows prune their own superseded entries in a separate `prune` job
    straight after the save (`ci-cache-prune.yml` called as a reusable workflow, `actions: write` only,
@@ -221,11 +222,15 @@ Three things keep the newest seeds alive on such a day, and one of them is an as
    can never replace a pending prune of a seed run (which would show that seed run as cancelled). In
    reality the old generation lives for seconds. The model does not take that credit: it still evicts at
    the instant of the save, which is the worst case.
-2. The race and lint seeds share one concurrency group (`ci-cache-seed-writers`, never cancelling), so
-   the second run starts only when the first, its prune included, has finished: two rotated generations
-   never coexist. The model replays that as the lint save three minutes after the race save. Saves in
+2. The race and lint seeds share one concurrency group (`ci-cache-seed-writers`, `cancel-in-progress:
+   false`), so a running run is never cancelled and the second run starts only when the first, its prune
+   included, has finished: two rotated generations never coexist. GitHub keeps one pending run per
+   group: a third run queued meanwhile (a manual dispatch, say) replaces the pending one, which is then
+   reported as cancelled. The replaced run's save is not lost for good: the next scheduled run (the
+   cron fires daily) saves what it would have saved. The model replays that as the lint save three minutes after the race save. Saves in
    one minute (the case without the shared group, kept as a contrast) peak 0.6 to 1.0 GB higher.
-3. **Assumption: the newest main and dev seeds are restored by every feedback run on a weekday**, so
+3. **Without the headroom delete (item 4) the survival rests on an assumption: the newest main and dev
+   seeds are restored by every feedback run on a weekday**, so
    their last access is always recent. The listing shows the newest main seed accessed 5 minutes before it
    was taken. The rates differ by base, and they are the weak point for main: the review counted 24 pull
    requests to main against 80 to dev in 8 days (not re-measured here), and the tooling and cli entries
@@ -234,12 +239,50 @@ Three things keep the newest seeds alive on such a day, and one of them is an as
    minutes before the hour), the same for every entry and not a function of the key; ties go against
    the seeds.
 
+4. **Headroom before the save** (review finding F1). The newest seed is an LRU entry like any other, so
+   under the assumption above it is safe only while it is touched more recently than the entries the
+   save pushes out. The writers therefore make room first. `scripts/ci/cache-prune.sh` is the one
+   selector (the hourly prune workflow carries its text verbatim, a test pins them byte-equal, because
+   that workflow has no checkout). Run by a seed writer right before its big save, with
+   `HEADROOM_PREFIXES` naming the lanes it is about to save, it deletes, after the usual superseded and
+   idle entries, whatever is needed until `total + incoming <= 9.75 GB`, in this order: older feedback
+   seeds (not the newest of their ref), entries of pull-request refs, entries idle for more than three
+   days, then the least recently used entries that are not seeds. It never deletes the newest main or
+   dev entry of any seed family (`go-race-v2`, `go-lint(driver)-v2`, `pinned-tool-v1`, the familied
+   `go-feedback-v2`), never touches the two unfamilied `go-feedback-v2` entries, and deletes at most 100
+   entries a run. It runs in the seed job right before each of the three big saves (race, module, lint
+   driver), with the same guard as the save (not a hit, scheduled or dispatched, main only), and only
+   `actions: write` added to that job's `contents: read`; nothing from a pull request is checked out
+   and the script comes from the immutable sha the job already checks out. `ci-main` cannot do this in
+   its saves (they live in `ci.yml` jobs that run pull-request code and so cannot hold `actions: write`),
+   so `ci-main.yml` has a `headroom` job (`continue-on-error: true`, the same permissions and checkout
+   as the seed jobs, all six lanes) and `validation` waits for it with `!cancelled()`: a headroom
+   failure never blocks validation. The job skips when the exact `go-test-v2` key of the current
+   `go.mod`/`go.sum` already exists, because then the saves are hits.
+   * Margin 0.25 GB (budget 9.75 GB): it equals the largest single CodeQL overlay (0.268 GB), so one
+     concurrent CodeQL save between the delete and the save still fits.
+   * Incoming size: the sum, over the lanes named, of the size of the newest main entry of that lane
+     (compressed archive bytes, which is what the new generation will be about the size of). `du` of the
+     directory is only the fallback for a lane with no entry yet: it measures the uncompressed tree and
+     overestimates the archive by about 2 to 3 times, which would delete live entries every day. A
+     pre-job cannot be used instead, because it cannot know that a save follows (the lookup hit).
+   * Cost: the headroom deletes live entries the cache would not yet have evicted. The model shows 3 to 6
+     live least-recently-used entries freed per rotation day and 3 on Monday; they are rebuilt by the
+     next run that needs them.
+   * Residual: the CodeQL saves (`codeql-trap`, `codeql-dependencies` and the overlays, about 12 saves
+     a day) run in `github/codeql-action` and cannot carry the step. A CodeQL save larger than the
+     0.25 GB margin that lands in the minutes between the delete and the seed save (or, for `ci-main`, in
+     the longer window after its headroom job, about 45 minutes in the model) can push the total over the
+     limit. Only `codeql-dependencies` (0.755 GB) exceeds the margin, so the overshoot is at most about
+     0.5 GB and an eviction needs the newest seed to be the least recently used entry, which the order
+     and the daily restore make unlikely. Estimated, not measured: on the order of 1 percent of days.
+
 Sweep, every minute (`seed survival at every minute`): the race seed saves at every minute from 10:59
 to 16:59 on a rotation day with the lint seed three minutes later (361 minutes; the observed seed runs
 ended 11:25 to 14:57), and the Sunday `ci-main` after a go.sum change saves at every minute from 10:59 to
 22:59 (721 minutes; cron 13:23, observed 20:31). The test samples every hour (rotation, at :59) and
 every two hours (Sunday) by default, because each replay runs the prune's jq about thirty times and
-the package has the hosted 600 s budget (the added test time is about 8 s); `HIKYO_CACHE_SWEEP_FULL=1 go
+the package has the hosted 600 s budget (default-mode `TestCacheBudgetModel`: DEFAULT_TIME); `HIKYO_CACHE_SWEEP_FULL=1 go
 test -run TestCacheBudgetModel ./scripts/ci/` runs every minute (several minutes on a loaded host) and
 is how the table below was measured.
 

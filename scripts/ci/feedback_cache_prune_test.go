@@ -22,7 +22,7 @@ import (
 
 const pruneStepName = "Delete the superseded seeds of this family and entry"
 
-const pruneTrustedRefs = "success() && (((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'))"
+const pruneTrustedRefs = "!cancelled() && needs.seed.result != 'skipped' && (((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'))"
 
 func requirePruneJob(workflow map[string]any) (string, error) {
 	jobs, _ := workflow["jobs"].(map[string]any)
@@ -263,7 +263,14 @@ func TestSeedPrunesSupersededEntriesOnly(t *testing.T) {
 		"runs without the seed": func(w map[string]any) { delete(prune(w), "needs") },
 		"runs for any ref":      func(w map[string]any) { prune(w)["if"] = "success()" },
 		"runs after a failed seed": func(w map[string]any) {
-			prune(w)["if"] = strings.Replace(pruneTrustedRefs, "success() && ", "always() && ", 1)
+			prune(w)["if"] = strings.Replace(pruneTrustedRefs, "!cancelled() && needs.seed.result != 'skipped' && ", "always() && ", 1)
+		},
+		// One failing leg must not leave the other legs' daily keys unpruned.
+		"runs only after a clean seed": func(w map[string]any) {
+			prune(w)["if"] = strings.Replace(pruneTrustedRefs, "!cancelled() && needs.seed.result != 'skipped' && ", "success() && ", 1)
+		},
+		"runs after a skipped seed": func(w map[string]any) {
+			prune(w)["if"] = strings.Replace(pruneTrustedRefs, " && needs.seed.result != 'skipped'", "", 1)
 		},
 		"extra entry": func(w map[string]any) {
 			prune(w)["strategy"].(map[string]any)["matrix"].(map[string]any)["entry"] = []any{"application", "cli", "tooling", ""}

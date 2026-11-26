@@ -96,7 +96,7 @@ var cachePruneNow = time.Date(2026, 11, 25, 19, 10, 0, 0, time.UTC)
 
 // runCachePrune serves the pages as the cache listing and records deletes. The fake date is fixed so
 // idle times are exact.
-func runCachePrune(script string, pages [][]apiCacheEntry, missing, broken string) (deleted []int, listed []string, err error) {
+func runCachePrune(script string, pages [][]apiCacheEntry, missing, broken string, extraEnv ...string) (deleted []int, listed []string, err error) {
 	dir, err := os.MkdirTemp("", "cache-prune-test")
 	if err != nil {
 		return nil, nil, err
@@ -138,6 +138,7 @@ printf '%s\n' "$id" >>"$FAKE_DIR/deleted"
 	cmd := exec.CommandContext(context.Background(), "bash", "-c", script)
 	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "FAKE_DIR="+dir, "FAKE_MISSING="+missing, "FAKE_BROKEN="+broken,
 		"FAKE_NOW="+strconv.FormatInt(cachePruneNow.Unix(), 10), "RUNNER_TEMP="+dir, "GH_TOKEN=t", "GH_REPO=o/r")
+	cmd.Env = append(cmd.Env, extraEnv...)
 	out, runErr := cmd.CombinedOutput()
 	if raw, readErr := os.ReadFile(filepath.Join(dir, "deleted")); readErr == nil {
 		for _, field := range strings.Fields(string(raw)) {
@@ -397,6 +398,251 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 			}
 			if requireCachePruneBehavior(changed) == nil {
 				t.Fatal("accepted a prune script that can delete the wrong entries")
+			}
+		})
+	}
+}
+
+// headroomPages is a cache of 10.9 GB around the seeds of one repository: main's race seed (id 2, 0.7 GB, the
+// older generation 1 is superseded), the feedback seeds of both families (3 is older than main's newest 4, dev
+// has only 5, the unfamilied 6 is never deleted), a fresh pull request entry (7), an entry idle for five days
+// (8), two live entries (9 and 10), the lint driver (11), a pinned tool (12) and a branch's race entry (13).
+// Sizes in MB; the old feedback seed is large on purpose, so that the 0.25 GB margin decides whether the pull
+// request entry goes too.
+func headroomPages() [][]apiCacheEntry {
+	h := func(c string, n int) string { return strings.Repeat(c, n) }
+	const (
+		main = "refs/heads/main"
+		dev  = "refs/heads/dev"
+	)
+	e := func(id int, ref, key, created, accessed string, mb int64) apiCacheEntry {
+		return apiCacheEntry{ID: id, Ref: ref, Key: key, Created: created, Accessed: accessed, Size: mb * 1_000_000}
+	}
+	feedback := func(family, entry, tail string) string {
+		return "go-feedback-v2-Linux-X64-ubuntu26-" + family + "-" + entry + "-" + h("c", 64) + "-" + h("d", 64) + "-" + h(tail, 40) + "-2026-11-2"
+	}
+	const live = "2026-11-25T18:50:06Z"
+	return [][]apiCacheEntry{{
+		e(1, main, "go-race-v2-Linux-X64-ubuntu26-"+h("a", 64), "2026-11-24T13:30:00Z", live, 700),
+		e(2, main, "go-race-v2-Linux-X64-ubuntu26-"+h("b", 64), "2026-11-25T13:30:00Z", "2026-11-25T13:30:00Z", 700),
+		e(3, main, feedback("main", "application", "e")+"4", "2026-11-24T13:20:00Z", "2026-11-19T13:20:00Z", 1000),
+		e(4, main, feedback("main", "application", "f")+"5", "2026-11-25T13:20:00Z", "2026-11-19T13:20:00Z", 250),
+		e(5, dev, feedback("dev", "application", "g")+"1", "2026-11-19T13:20:00Z", "2026-11-19T13:20:00Z", 250),
+		e(6, main, "go-feedback-v2-Linux-X64-ubuntu26-"+h("c", 64)+"-"+h("d", 40), "2026-11-10T13:20:00Z", "2020-01-01T00:00:00Z", 300),
+		e(7, "refs/pull/9/merge", "go-test-v2-Linux-X64-ubuntu26-"+h("a", 64), "2026-11-25T08:00:00Z", "2026-11-25T18:00:00Z", 250),
+		e(8, main, "custom-thing-v1-aaa", "2026-11-10T08:00:00Z", "2026-11-20T08:00:00Z", 1000),
+		e(9, main, "custom-thing-v1-bbb", "2026-11-12T08:00:00Z", "2026-11-24T08:00:00Z", 2000),
+		e(10, main, "go-test-v2-Linux-X64-ubuntu26-"+h("a", 64), "2026-11-22T08:00:00Z", live, 3000),
+		e(11, main, "go-lintdriver-v2-Linux-X64-ubuntu26-"+h("a", 64)+"-2026-W48", "2026-11-24T14:00:00Z", "2026-11-24T14:00:00Z", 1400),
+		e(12, main, "pinned-tool-v1-Linux-helm-linux-amd64-"+h("a", 64), "2026-11-10T12:35:20Z", "2026-11-15T12:35:20Z", 50),
+		// A branch's race entry, accessed just now: not a newest main seed, but a seed all the same, so it is not
+		// least recently used material while fresh.
+		e(13, "refs/heads/feature-x", "go-race-v2-Linux-X64-ubuntu26-"+h("c", 64), "2026-11-25T13:30:00Z", live, 90),
+	}}
+}
+
+// requireHeadroomBehavior runs the script as a seed writer does, right before a save.
+func requireHeadroomBehavior(script string) error {
+	race := "HEADROOM_PREFIXES=go-race-v2-Linux-X64-ubuntu26-"
+	// The race seed saves 0.7 GB (the size of the entry it replaces): the superseded generation goes, and the
+	// 1 GB older feedback seed then the pull request entry cover what is still over 9.75 GB (10.29 + 0.7); with
+	// the margin dropped the older seed alone would do.
+	// The order is fixed: older seeds, pull requests, idle for days, least recently used.
+	got, _, err := runCachePrune(script, headroomPages(), "", "", race)
+	if err != nil {
+		return err
+	}
+	if want := []int{1, 3, 7}; !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("headroom for the race seed deleted %v, want %v", got, want)
+	}
+	// Without a save to make room for, only what is dead goes.
+	if got, _, err := runCachePrune(script, headroomPages(), "", ""); err != nil || !reflect.DeepEqual(got, []int{1}) {
+		return fmt.Errorf("without HEADROOM_PREFIXES the prune deletes %v, want [1]: %w", got, err)
+	}
+	// A save larger than everything that may go: the whole order, never a newest seed (2, 4, 5, 11, 12) and
+	// never an unfamilied feedback seed (6).
+	got, _, err = runCachePrune(script, headroomPages(), "", "", "HEADROOM_PREFIXES=none-", "HEADROOM_FALLBACK=50000000000")
+	if err != nil {
+		return err
+	}
+	if want := []int{1, 3, 7, 8, 9, 10}; !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("an oversized save deleted %v, want %v in that order", got, want)
+	}
+	// The incoming size is the lane's newest entry on main, not the fallback: a tiny fallback changes nothing.
+	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_FALLBACK=1"); err != nil || !reflect.DeepEqual(got, []int{1, 3, 7}) {
+		return fmt.Errorf("the fallback size must apply only when the lane has no entry: %v %w", got, err)
+	}
+	// A save that will be a hit needs no room: the exact key exists on main (id 2's key), so nothing beyond the dead goes.
+	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_SKIP_KEY=go-race-v2-Linux-X64-ubuntu26-"+strings.Repeat("b", 64)); err != nil || !reflect.DeepEqual(got, []int{1}) {
+		return fmt.Errorf("an existing exact key must skip the headroom: %v %w", got, err)
+	}
+	// ... but only on main: the same key on a branch is not this save's hit.
+	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_SKIP_KEY=go-race-v2-Linux-X64-ubuntu26-"+strings.Repeat("c", 64)); err != nil || !reflect.DeepEqual(got, []int{1, 3, 7}) {
+		return fmt.Errorf("a key that exists only on a branch must not skip the headroom: %v %w", got, err)
+	}
+	if _, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_FALLBACK=1e3"); err == nil {
+		return fmt.Errorf("a fallback that is not a byte count must fail the job")
+	}
+	return nil
+}
+
+func TestCachePruneHeadroom(t *testing.T) {
+	root := repositoryRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, cachePruneWorkflow))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow map[string]any
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	run, err := requireCachePruneWorkflow(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One selector: the workflow's step is the script the seed writers run, verbatim after the shebang.
+	file, err := os.ReadFile(filepath.Join(root, "scripts/ci/cache-prune.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shebang, body, _ := strings.Cut(string(file), "\n")
+	if shebang != "#!/usr/bin/env bash" || body != run {
+		t.Fatal("the prune workflow's step must be scripts/ci/cache-prune.sh after its shebang line, byte for byte")
+	}
+	info, err := os.Stat(filepath.Join(root, "scripts/ci/cache-prune.sh"))
+	if err != nil || info.Mode()&0o111 == 0 {
+		t.Fatalf("scripts/ci/cache-prune.sh must be executable: %v", err)
+	}
+	if err := requireHeadroomBehavior(run); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(string) string{
+		"headroom dropped": func(s string) string { return strings.Replace(s, "($regular + $headroom)[]", "$regular[]", 1) },
+		"order inverted": func(s string) string {
+			return strings.Replace(s, "$olderFeedback + $pullRequests + $idleDays + $leastRecent", "$leastRecent + $idleDays + $pullRequests + $olderFeedback", 1)
+		},
+		"newest seed deletable": func(s string) string {
+			return strings.Replace(s, "[$left[] | select(.id | IN($newest[]) | not)] as $open", "$left as $open", 1)
+		},
+		"unfamilied deletable":     func(s string) string { return strings.Replace(s, " and (.key | untouchable | not)", "", 1) },
+		"deletes more than needed": func(s string) string { return strings.Replace(s, "take($over)", "take(1e18)", 1) },
+		"margin dropped": func(s string) string {
+			return strings.Replace(s, "--argjson budget 9750000000", "--argjson budget 10000000000", 1)
+		},
+		"seeds are not seeds": func(s string) string { return strings.Replace(s, `select(.key | seed | not)`, `select(true)`, 1) },
+		"incoming ignored":    func(s string) string { return strings.Replace(s, "+ $incoming - $budget", "- $budget", 1) },
+		"lane size ignored": func(s string) string {
+			return strings.Replace(s, "if . == 0 then $fallback else . end", "$fallback", 1)
+		},
+		"skip key ignored": func(s string) string {
+			return strings.Replace(s, "if $skip != \"\" and any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "if false", 1)
+		},
+		"skip key on any ref": func(s string) string {
+			return strings.Replace(s, "any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "any($all[]; .key == $skip)", 1)
+		},
+		"fallback unchecked": func(s string) string { return strings.Replace(s, "case \"$fallback\" in", "case \"0\" in", 1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := mutate(run)
+			if changed == run {
+				t.Fatal("mutation changed nothing; the script text it targets moved")
+			}
+			if requireHeadroomBehavior(changed) == nil {
+				t.Fatal("accepted a headroom selection that can delete the wrong entries or too few")
+			}
+		})
+	}
+}
+
+// requireCIMainHeadroom pins the one job of ci-main.yml that holds actions: write: the weekly writers' saves run in
+// ci.yml's jobs, which run PR code in the pull-request workflows and so can never hold it.
+func requireCIMainHeadroom(workflow map[string]any) error {
+	jobs, _ := workflow["jobs"].(map[string]any)
+	if len(jobs) != 2 {
+		return fmt.Errorf("ci-main is its headroom job and its validation")
+	}
+	validation, _ := jobs["validation"].(map[string]any)
+	if validation["needs"] != "headroom" || validation["if"] != "${{ !cancelled() && github.ref == 'refs/heads/main' }}" {
+		return fmt.Errorf("validation waits for the headroom job but never depends on its success")
+	}
+	if !reflect.DeepEqual(workflow["permissions"], map[string]any{"actions": "read", "contents": "read"}) {
+		return fmt.Errorf("ci-main grants read only by default")
+	}
+	want := map[string]any{
+		"if":                "github.ref == 'refs/heads/main'",
+		"runs-on":           "ubuntu-latest",
+		"timeout-minutes":   10,
+		"continue-on-error": true,
+		"permissions":       map[string]any{"contents": "read", "actions": "write"},
+		"steps": []any{
+			map[string]any{
+				"name": "Check out immutable trusted main without credentials",
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": map[string]any{"ref": "${{ github.sha }}", "persist-credentials": false},
+			},
+			map[string]any{"name": "Select runner cache ABI", "id": "runner-cache-abi", "run": "./scripts/ci/export-runner-cache-abi.sh"},
+			map[string]any{
+				"name": "Make room in the Actions cache for the weekly writers",
+				"env": map[string]any{
+					"GH_TOKEN":          "${{ github.token }}",
+					"GH_REPO":           "${{ github.repository }}",
+					"HEADROOM_PREFIXES": "go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-",
+					"HEADROOM_SKIP_KEY": "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
+				},
+				"run": "./scripts/ci/cache-prune.sh",
+			},
+		},
+	}
+	got, _ := jobs["headroom"].(map[string]any)
+	// The pinned checkout action carries its version comment, which yaml drops; compare the rest exactly.
+	if steps, ok := got["steps"].([]any); !ok || len(steps) != 3 {
+		return fmt.Errorf("headroom is a checkout, the ABI and the script")
+	}
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("the ci-main headroom job differs from the reviewed one: %v", got)
+	}
+	return nil
+}
+
+func TestCIMainHeadroomJob(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-main.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow map[string]any
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCIMainHeadroom(workflow); err != nil {
+		t.Fatal(err)
+	}
+	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["headroom"].(map[string]any) }
+	step := func(w map[string]any, i int) map[string]any { return job(w)["steps"].([]any)[i].(map[string]any) }
+	for name, mutate := range map[string]func(map[string]any){
+		"failure fails the run": func(w map[string]any) { delete(job(w), "continue-on-error") },
+		"token widened": func(w map[string]any) {
+			job(w)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
+		},
+		"no token":                  func(w map[string]any) { job(w)["permissions"] = map[string]any{"contents": "read"} },
+		"any ref":                   func(w map[string]any) { delete(job(w), "if") },
+		"mutable checkout":          func(w map[string]any) { step(w, 0)["with"].(map[string]any)["ref"] = "${{ github.ref }}" },
+		"checkout keeps credential": func(w map[string]any) { step(w, 0)["with"].(map[string]any)["persist-credentials"] = true },
+		"runs every week":           func(w map[string]any) { delete(step(w, 2)["env"].(map[string]any), "HEADROOM_SKIP_KEY") },
+		"another lane":              func(w map[string]any) { step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2-" },
+		"another script":            func(w map[string]any) { step(w, 2)["run"] = "./scripts/ci/cache-prune.sh && true" },
+		"validation needs success": func(w map[string]any) {
+			w["jobs"].(map[string]any)["validation"].(map[string]any)["if"] = "github.ref == 'refs/heads/main'"
+		},
+		"validation does not wait": func(w map[string]any) { delete(w["jobs"].(map[string]any)["validation"].(map[string]any), "needs") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var changed map[string]any
+			if err := yaml.Unmarshal(raw, &changed); err != nil {
+				t.Fatal(err)
+			}
+			mutate(changed)
+			if requireCIMainHeadroom(changed) == nil {
+				t.Fatal("accepted a ci-main headroom job outside its trust boundary")
 			}
 		})
 	}

@@ -106,8 +106,10 @@ jobs:
   # never the one this run named, and treats an already-deleted entry as done.
   prune:
     needs: seed
+    # Not success(): one failing matrix leg must not leave the other legs' superseded daily keys to pile up
+    # (the hourly generic prune does not list go-feedback-v2), so it runs after any outcome but a skip or a cancel.
     if: >-
-      success() &&
+      !cancelled() && needs.seed.result != 'skipped' &&
       (((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') ||
       ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest

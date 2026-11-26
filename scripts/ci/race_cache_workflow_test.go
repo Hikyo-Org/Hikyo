@@ -95,7 +95,29 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"prune runs on a cancelled seed": func(w map[string]any) {
 			w["jobs"].(map[string]any)["prune"].(map[string]any)["if"] = "${{ always() }}"
 		},
-		"seed job holds the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"seed job without the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"contents": "read"} },
+		"seed job widened": func(w map[string]any) {
+			job(w)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
+		},
+		"headroom dropped": func(w map[string]any) {
+			j := job(w)
+			steps := j["steps"].([]any)
+			j["steps"] = append(append([]any{}, steps[:6]...), steps[7:]...)
+		},
+		"headroom after the save": func(w map[string]any) { swapSteps(job(w), 6, 7) },
+		"headroom on a hit":       func(w map[string]any) { delete(seedStep(w, 6), "if") },
+		"headroom from any ref": func(w map[string]any) {
+			seedStep(w, 6)["if"] = strings.Replace(seedStep(w, 6)["if"].(string), " && github.ref == 'refs/heads/main'", "", 1)
+		},
+		"headroom without its lane": func(w map[string]any) { seedStep(w, 6)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "" },
+		"headroom reads the PR head": func(w map[string]any) {
+			seedStep(w, 6)["env"].(map[string]any)["GH_REPO"] = "${{ github.event.pull_request.head.repo.full_name }}"
+		},
+		"module headroom dropped": func(w map[string]any) {
+			j := job(w)
+			steps := j["steps"].([]any)
+			j["steps"] = append(append([]any{}, steps[:9]...), steps[10:]...)
+		},
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},
@@ -146,31 +168,31 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"compile always runs": func(w map[string]any) { delete(seedStep(w, 5), "if") },
 		"compile redirects":   func(w map[string]any) { seedStep(w, 5)["env"] = map[string]any{"GOCACHE": "/tmp/other"} },
 		"save without exact miss": func(w map[string]any) {
-			seedStep(w, 6)["if"] = "success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
+			seedStep(w, 7)["if"] = "success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
 		},
 		"save from any ref": func(w map[string]any) {
-			seedStep(w, 6)["if"] = "success() && steps.race-seed.outputs.cache-hit != 'true'"
+			seedStep(w, 7)["if"] = "success() && steps.race-seed.outputs.cache-hit != 'true'"
 		},
 		"save after failure": func(w map[string]any) {
-			seedStep(w, 6)["if"] = strings.Replace(seedStep(w, 6)["if"].(string), "success() && ", "always() && ", 1)
+			seedStep(w, 7)["if"] = strings.Replace(seedStep(w, 7)["if"].(string), "success() && ", "always() && ", 1)
 		},
-		"save under another key": func(w map[string]any) { seedStep(w, 6)["with"].(map[string]any)["key"] = sharedRaceReuseKey },
+		"save under another key": func(w map[string]any) { seedStep(w, 7)["with"].(map[string]any)["key"] = sharedRaceReuseKey },
 		"save another path": func(w map[string]any) {
-			seedStep(w, 6)["with"].(map[string]any)["path"] = "~/go/pkg/mod"
+			seedStep(w, 7)["with"].(map[string]any)["path"] = "~/go/pkg/mod"
 		},
-		"save fail open": func(w map[string]any) { seedStep(w, 6)["continue-on-error"] = true },
+		"save fail open": func(w map[string]any) { seedStep(w, 7)["continue-on-error"] = true },
 		"module save loses the main guard": func(w map[string]any) {
-			seedStep(w, 8)["if"] = "success() && steps.go-module-cache.outputs.cache-hit != 'true'"
+			seedStep(w, 10)["if"] = "success() && steps.go-module-cache.outputs.cache-hit != 'true'"
 		},
 		"module save on a hit": func(w map[string]any) {
-			seedStep(w, 8)["if"] = strings.Replace(seedStep(w, 8)["if"].(string), " && steps.go-module-cache.outputs.cache-hit != 'true'", "", 1)
+			seedStep(w, 10)["if"] = strings.Replace(seedStep(w, 10)["if"].(string), " && steps.go-module-cache.outputs.cache-hit != 'true'", "", 1)
 		},
-		"module save fail open":  func(w map[string]any) { seedStep(w, 8)["continue-on-error"] = true },
-		"module save wrong path": func(w map[string]any) { seedStep(w, 8)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
+		"module save fail open":  func(w map[string]any) { seedStep(w, 10)["continue-on-error"] = true },
+		"module save wrong path": func(w map[string]any) { seedStep(w, 10)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
 		"module save wrong key": func(w map[string]any) {
-			seedStep(w, 8)["with"].(map[string]any)["key"] = "${{ steps.race-seed.outputs.cache-primary-key }}"
+			seedStep(w, 10)["with"].(map[string]any)["key"] = "${{ steps.race-seed.outputs.cache-primary-key }}"
 		},
-		"module populate is a private copy": func(w map[string]any) { seedStep(w, 7)["run"] = "go mod download\n" },
+		"module populate is a private copy": func(w map[string]any) { seedStep(w, 8)["run"] = "go mod download\n" },
 		"module restore unnamed":            func(w map[string]any) { delete(seedStep(w, 2), "id") },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -197,6 +219,22 @@ type reuseSeedSpec struct {
 	// moduleWriter pins the daily trusted-main save of the shared module cache
 	// after the build-cache save, so an evicted go-mod-v2 refills within a day.
 	moduleWriter bool
+	// headroomPrefix is the key lane of the entry the save replaces, whose size the headroom step takes as the
+	// incoming one (the du of the cache path is only its fallback when no entry exists yet).
+	headroomPrefix, headroomName string
+}
+
+// headroomStep is the one step that frees room in the Actions cache right before a seed's save. The seed job
+// holds actions: write for it alone; the step runs the checked-out script, so its selection is the prune's.
+func headroomStep(miss, path, prefix, name string) map[string]any {
+	return map[string]any{
+		"name": name,
+		"if":   "success() && " + miss + " && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'",
+		"env": map[string]any{
+			"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEADROOM_PREFIXES": prefix,
+		},
+		"run": "HEADROOM_FALLBACK=$(du -sb " + path + " | cut -f1) ./scripts/ci/cache-prune.sh",
+	}
 }
 
 var raceSeedSpec = reuseSeedSpec{
@@ -209,7 +247,9 @@ var raceSeedSpec = reuseSeedSpec{
 	compile:     "cache=\"$HOME/.cache/go-build\"\ntest ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\ngo list -deps -test -export -race ./... >/dev/null\ndu -sh \"$cache\"\n",
 	maxTimeout:  30,
 
-	moduleWriter: true,
+	moduleWriter:   true,
+	headroomPrefix: "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
+	headroomName:   "Make room in the Actions cache for the race seed",
 }
 
 const moduleWriterPopulate = "./scripts/ci/populate-go-module-cache.sh"
@@ -249,7 +289,7 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	}
 	// The prune is the shared ci-cache-prune.yml run as a called workflow right after the save, so a
 	// rotation never coexists with its predecessor for longer than a job takes to start. Its token is
-	// actions: write and nothing else, in a job of its own; the seed job holds none.
+	// actions: write and nothing else, in a job of its own.
 	if !reflect.DeepEqual(jobs["prune"], map[string]any{
 		"needs":       "seed",
 		"if":          "${{ !cancelled() && needs.seed.result != 'skipped' }}",
@@ -265,14 +305,17 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	if job["if"] != "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'" {
 		return fmt.Errorf("only trusted main may populate the %s", spec.label)
 	}
-	// No job-level env, permissions, container, or defaults: the cache location
-	// and token authority stay the runner defaults the steps assert.
+	// No job-level env, container, or defaults: the cache location stays the runner default the steps assert.
 	keys := make([]string, 0, len(job))
 	for key := range job {
 		keys = append(keys, key)
 	}
-	if len(keys) != 4 || job["runs-on"] != "ubuntu-latest" || job["steps"] == nil {
-		return fmt.Errorf("%s job must set only its guard, runner, timeout, and steps (got %v)", spec.label, keys)
+	if len(keys) != 5 || job["runs-on"] != "ubuntu-latest" || job["steps"] == nil {
+		return fmt.Errorf("%s job must set only its guard, runner, permissions, timeout, and steps (got %v)", spec.label, keys)
+	}
+	// actions: write is the headroom step's, and only it uses the token; contents stays read.
+	if !reflect.DeepEqual(job["permissions"], map[string]any{"contents": "read", "actions": "write"}) {
+		return fmt.Errorf("%s job holds contents: read and actions: write for its headroom step, nothing more", spec.label)
 	}
 	if timeout, ok := job["timeout-minutes"].(int); !ok || timeout < 1 || timeout > spec.maxTimeout {
 		return fmt.Errorf("%s needs an explicit bounded timeout", spec.label)
@@ -282,9 +325,9 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		next = 5
 	}
 	steps, ok := job["steps"].([]any)
-	want := next + 3
+	want := next + 4
 	if spec.moduleWriter {
-		want += 2
+		want += 3
 	}
 	if !ok || len(steps) != want {
 		return fmt.Errorf("unexpected %s preparation or publication", spec.label)
@@ -342,7 +385,10 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	if compile["run"] != spec.compile || compile["if"] != miss || compile["continue-on-error"] != nil || compile["env"] != nil {
 		return fmt.Errorf("fresh %s must run exactly its reviewed compile into an empty default cache", spec.label)
 	}
-	save := step(next + 2)
+	if got := step(next + 2); !reflect.DeepEqual(got, headroomStep(miss, `"$HOME/.cache/go-build"`, spec.headroomPrefix, spec.headroomName)) {
+		return fmt.Errorf("%s must free room right before its save with exactly the reviewed headroom step, got %v", spec.label, got)
+	}
+	save := step(next + 3)
 	if save["uses"] != reuseSaveAction || save["continue-on-error"] != nil ||
 		save["if"] != "success() && "+miss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
 		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps." + spec.lookupID + ".outputs.cache-primary-key }}"}) {
@@ -350,11 +396,14 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	}
 	if spec.moduleWriter {
 		moduleMiss := "steps.go-module-cache.outputs.cache-hit != 'true'"
-		populate := step(next + 3)
+		populate := step(next + 4)
 		if populate["run"] != moduleWriterPopulate || populate["if"] != moduleMiss || populate["continue-on-error"] != nil || populate["env"] != nil {
 			return fmt.Errorf("%s must fully populate a missed module cache before saving it", spec.label)
 		}
-		moduleSave := step(next + 4)
+		if got := step(next + 5); !reflect.DeepEqual(got, headroomStep(moduleMiss, `"$HOME/go/pkg/mod/cache/download"`, "go-mod-v2-${{ runner.os }}-", "Make room in the Actions cache for the module cache")) {
+			return fmt.Errorf("%s must free room right before its module cache save with exactly the reviewed headroom step, got %v", spec.label, got)
+		}
+		moduleSave := step(next + 6)
 		if moduleSave["uses"] != reuseSaveAction || moduleSave["continue-on-error"] != nil ||
 			moduleSave["if"] != "success() && "+moduleMiss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
 			!reflect.DeepEqual(moduleSave["with"], map[string]any{"path": moduleDownloadCachePath, "key": "${{ steps.go-module-cache.outputs.cache-primary-key }}"}) {
@@ -569,4 +618,10 @@ func testSeedGuardRequiresFreshDefaultDirectory(t *testing.T, file, guardEnd str
 			}
 		})
 	}
+}
+
+// swapSteps exchanges two steps of a job.
+func swapSteps(job map[string]any, i, j int) {
+	steps := job["steps"].([]any)
+	steps[i], steps[j] = steps[j], steps[i]
 }

@@ -18,7 +18,9 @@ permissions:
 
 # One group for both daily seed writers: the second run waits until the first, its prune job included, has
 # finished, so two rotated generations never coexist (the race seed and the lint driver seed saving in the
-# same minute peaked 1 GB higher in the eviction model, docs/development/ci.md). Never cancelling.
+# same minute peaked 1 GB higher in the eviction model, docs/development/ci.md). A running run is never
+# cancelled, but a group keeps one pending run: a third run (a manual dispatch, say) replaces the pending
+# one, which then shows as cancelled. Its seed is not lost: the next cron run saves it (see docs/development/ci.md).
 concurrency:
   group: ci-cache-seed-writers
   cancel-in-progress: false
@@ -27,6 +29,10 @@ jobs:
   seed:
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # actions: write only for the headroom step below; the checkout is the immutable trusted commit.
+    permissions:
+      contents: read
+      actions: write
     timeout-minutes: 45
     steps:
       - name: Check out immutable trusted main without credentials
@@ -82,6 +88,19 @@ jobs:
           go test -count=1 -timeout=20m ./internal/lint
           du -sh "$cache"
           df -h "$cache"
+      # Right before the save, and only when a save follows: frees room for it (docs/development/ci.md,
+      # "Headroom before the save"). The selection is scripts/ci/cache-prune.sh, the same text as the prune
+      # workflow's step; it never deletes a newest main or dev seed. Trusted main only, the checkout above is
+      # the immutable commit of this run, and the token goes to this one step.
+      - name: Make room in the Actions cache for the lint driver seed
+        if: >-
+          success() && steps.lint-driver-seed.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEADROOM_PREFIXES: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+        run: HEADROOM_FALLBACK=$(du -sb "$HOME/.cache/go-build" | cut -f1) ./scripts/ci/cache-prune.sh
       - name: Save lint driver seed from trusted main only
         if: >-
           success() && steps.lint-driver-seed.outputs.cache-hit != 'true' &&

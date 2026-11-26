@@ -23,6 +23,11 @@
 # It holds actions: write and nothing else, checks nothing out and runs no repository code. Each
 # run costs one to two listing calls plus at most 100 deletes: 24 scheduled runs a day plus a few
 # per writer, so at most 102 calls a run against the shared 1000 an hour.
+# The step below is scripts/ci/cache-prune.sh verbatim (a test pins them equal; this workflow cannot
+# check the file out). The same script, run by the race and lint seeds and by ci-main's headroom job
+# right before their big saves, also frees room for the save and never deletes a newest seed
+# (docs/development/ci.md, "Headroom before the save"); here no HEADROOM_* variable is set, so it only
+# removes what is dead.
 name: cache-prune
 
 on:
@@ -59,20 +64,62 @@ jobs:
     steps:
       - name: Delete superseded and idle pull request caches
         run: |
+          # The one selector of the Actions cache's dead entries. ci-cache-prune.yml carries this text verbatim as its
+          # step (a test pins the two equal): that workflow checks nothing out, so it cannot run this file. The seed
+          # writers and ci-main's headroom job run it from their trusted checkout, right before a save.
+          #   without HEADROOM_PREFIXES: delete what is superseded or idle (the hourly prune).
+          #   with it: also free room for the save that follows, unless an entry with exactly HEADROOM_SKIP_KEY exists
+          #   on main (the save will be a hit). The incoming size is the newest main entry of each lane that starts with
+          #   one of the space-separated prefixes (HEADROOM_FALLBACK bytes when there is none). Deletion goes on until
+          #   the total plus the incoming save fits in 10 GB less a 0.25 GB margin, in this order: older feedback seeds,
+          #   pull-request entries, entries idle for three days, then the least recently used entries that are not seeds.
+          #   Never the newest main or dev entry of a seed lane (race, lint driver, pinned tools, feedback) and never
+          #   an unfamilied feedback seed. At most 100 deletes a run.
           set -euo pipefail
           now=$(date -u +%s)
+          prefixes=${HEADROOM_PREFIXES:-}
+          fallback=${HEADROOM_FALLBACK:-0}
+          skip=${HEADROOM_SKIP_KEY:-}
+          case "$fallback" in '' | *[!0-9]*) echo "HEADROOM_FALLBACK must be a byte count" >&2; exit 1 ;; esac
           gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
-            jq -s -r --argjson now "$now" '
+            jq -s -r --argjson now "$now" --arg prefixes "$prefixes" --arg skip "$skip" --argjson fallback "$fallback" --argjson budget 9750000000 '
               def stem: sub("-[0-9a-f]{64}(-.*)?$"; "") | sub("-[0-9a-f]{40}(-[0-9]+-[0-9]+)?$"; "");
               def lane: stem | gsub("-ubuntu[0-9]+"; "") | gsub("-[0-9]+(\\.[0-9]+)+"; "") | gsub("-[0-9a-f]{16}(?=-)"; "");
               def regenerable: test("^(go-mod-v2|go-test-v2|go-race-v2|go-lint(driver)?-v2|go-generated-v2|go-k8s-e2e-v2|go-fuzz-v2|go-feedback-v1|pinned-tool-v1|pnpm-store-v2|codeql-overlay-base-database|codeql-dependencies|codeql-trap)-");
               def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+              def feedbackfam: test("^go-feedback-v2-.*-(main|dev)-(application|cli|tooling)-");
+              def untouchable: test("^go-feedback-v2-") and (feedbackfam | not);
+              def seed: test("^(go-race-v2|go-lint(driver)-v2|pinned-tool-v1)-") or feedbackfam;
+              def oldest: sort_by([(.last_accessed_at | epoch), .id]);
+              def dedupe: reduce .[] as $e ([]; if any(.[]; .id == $e.id) then . else . + [$e] end);
+              def take($need): reduce .[] as $e ({sum: 0, out: []}; if .sum >= $need then . else {sum: (.sum + $e.size_in_bytes), out: (.out + [$e])} end) | .out;
               [.[].actions_caches[]] as $all
               | ([$all[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | regenerable))]
                   | group_by([.ref, (.key | lane)])
                   | map(sort_by([.created_at, .id]) | reverse | .[1:][])) as $superseded
               | [$all[] | select((.ref | test("^refs/pull/[0-9]+/(merge|head)$")) and ((.last_accessed_at | epoch) < ($now - 86400)))] as $idle
-              | ($superseded + $idle)[] | [.id, .ref, .key] | @tsv' >"${RUNNER_TEMP}/victims.tsv"
+              | ($superseded + $idle) as $regular
+              | ([$prefixes | split(" ")[] | select(. != "")] as $wanted
+                  | [$all[] | select(.ref == "refs/heads/main" and (.key as $k | any($wanted[]; . as $p | $k | startswith($p))))]
+                  | group_by(.key | lane) | map(sort_by([.created_at, .id]) | last | .size_in_bytes) | add // 0
+                  | if . == 0 then $fallback else . end) as $planned
+              | (if $skip != "" and any($all[]; .ref == "refs/heads/main" and .key == $skip) then 0 else $planned end) as $incoming
+              | (if $incoming == 0 then [] else
+                  ((($all | map(.size_in_bytes) | add // 0) - ($regular | map(.size_in_bytes) | add // 0)) + $incoming - $budget) as $over
+                  | if $over <= 0 then [] else
+                      ($regular | map(.id)) as $gone
+                      | [$all[] | select((.id | IN($gone[]) | not) and (.key | untouchable | not))] as $left
+                      | ([$left[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | seed))]
+                          | group_by([.ref, (.key | lane)]) | map(sort_by([.created_at, .id]) | last.id)) as $newest
+                      | [$left[] | select(.id | IN($newest[]) | not)] as $open
+                      | ([$open[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | feedbackfam))] | oldest) as $olderFeedback
+                      | ([$open[] | select(.ref | test("^refs/pull/[0-9]+/(merge|head)$"))] | oldest) as $pullRequests
+                      | ([$open[] | select((.last_accessed_at | epoch) < ($now - 259200))] | oldest) as $idleDays
+                      | ([$open[] | select(.key | seed | not)] | oldest) as $leastRecent
+                      | ($olderFeedback + $pullRequests + $idleDays + $leastRecent | dedupe | take($over))
+                    end
+                end) as $headroom
+              | ($regular + $headroom)[] | [.id, .ref, .key] | @tsv' >"${RUNNER_TEMP}/victims.tsv"
           head -n 100 "${RUNNER_TEMP}/victims.tsv" | while IFS="$(printf '\t')" read -r id ref key; do
             if ! gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>"${RUNNER_TEMP}/delete.err"; then
               grep -q 'HTTP 404' "${RUNNER_TEMP}/delete.err" || { cat "${RUNNER_TEMP}/delete.err" >&2; exit 1; }
