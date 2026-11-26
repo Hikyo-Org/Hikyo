@@ -696,6 +696,7 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 	}
 	desktopFailed := "Nightly desktop validation did not pass: " + runURL
 	desktopHealed := "Nightly desktop validation passed on dev (" + tick + "aaaa" + tick + ") and main (" + tick + "bbbb" + tick + "): " + runURL
+	shimDead := "The desktop-removal shim in ci.yml is dead: neither head registers desktop any more. Remove the shim and its migration tests (#1595). Seen: " + runURL
 	shimHealed := "The desktop-removal shim check is healthy again: " + runURL
 	var untouched []string
 	for _, n := range []int{5, 6, 8, 9, 15, 16, 18, 19} {
@@ -720,10 +721,10 @@ func TestNightlyDesktopReportLifecycle(t *testing.T) {
 			[]string{"issue comment 7 ", line("dev", "aaaa", "skipped"), line("main", "bbbb", "skipped")}, []string{"issue close", "issue create"}},
 		{"a dead shim opens its own issue and closes a healed desktop one", desktopIssues, "[]", "success", "success", "success", "dead", 1,
 			[]string{"issue close 7 ", desktopHealed, "label create " + shimLabel + " --force --color B60205 --description Automation-owned desktop-removal shim check",
-				"issue create --title " + shimTitle + " --label " + shimLabel, shimMarker, "is dead", "#1595"},
+				"issue create --title " + shimTitle + " --label " + shimLabel, shimMarker, shimDead},
 			[]string{"issue comment", "issue create --title " + desktopTitle}},
 		{"a dead shim comments on its own issue", desktopIssues, shimIssues, "success", "success", "success", "dead", 1,
-			[]string{"issue close 7 ", "issue comment 17 ", "is dead"}, append([]string{"issue create", "issue comment 7 ", "issue close 17 "}, untouched...)},
+			[]string{"issue close 7 ", "issue comment 17 ", shimDead}, append([]string{"issue create", "issue comment 7 ", "issue close 17 "}, untouched...)},
 		{"a shim fetch failure goes to the shim issue", "[]", shimIssues, "success", "success", "failure", "", 1,
 			[]string{"issue comment 17 ", "did not complete (failure)", runURL}, []string{"issue create", "issue close", "issue comment 7 "}},
 		{"a failing leg and a dead shim are both reported", desktopIssues, shimIssues, "failure", "success", "success", "dead", 1,
@@ -764,18 +765,18 @@ func TestNightlyDesktopReportFindsItsOwnIssues(t *testing.T) {
 	steps := stepsOf(asMap(jobsOf(readYAMLMap(t, "nightly-desktop.yml"))["report"]))
 	script, _ := steps[0]["run"].(string)
 	for _, tc := range []struct {
-		name, label, dev, main, shim, state string
+		name, title, label, dev, main, shim, state string
 	}{
-		{"desktop issue", "ci-nightly-desktop", "failure", "success", "success", "needed"},
-		{"shim issue", "ci-desktop-removal-shim", "success", "success", "success", "dead"},
-		{"shim check failure", "ci-desktop-removal-shim", "success", "success", "failure", ""},
+		{"desktop issue", "ci: nightly desktop validation failing", "ci-nightly-desktop", "failure", "success", "success", "needed"},
+		{"shim issue", "ci: desktop-removal shim check (#1595)", "ci-desktop-removal-shim", "success", "success", "success", "dead"},
+		{"shim check failure", "ci: desktop-removal shim check (#1595)", "ci-desktop-removal-shim", "success", "success", "failure", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			env := []string{"RUN_URL=https://example/run/1", "DEV_SHA=aaaa", "MAIN_SHA=bbbb",
 				"DEV_RESULT=" + tc.dev, "MAIN_RESULT=" + tc.main, "SHIM_RESULT=" + tc.shim, "SHIM_STATE=" + tc.state}
 			first := runStubbedIn(t, dir, script, nil, env...)
-			if first.status != 1 || strings.Count(first.log, "issue create") != 1 || !strings.Contains(first.log, "--label "+tc.label) {
+			if first.status != 1 || strings.Count(first.log, "issue create") != 1 || !strings.Contains(first.log, "issue create --title "+tc.title+" --label "+tc.label) {
 				t.Fatalf("first night, exit %d:\n%s", first.status, first.log)
 			}
 			second := runStubbedIn(t, dir, script, nil, env...)
