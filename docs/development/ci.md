@@ -294,7 +294,8 @@ fourth (the headroom delete, below), which is what makes survival independent of
      end, and skips only when every key hits a main entry). Residual: a Node ABI bump alone, with
      no lockfile change, is not seen by that skip and sizes the stores (a conservative 0.41 GB). The
      model keeps the pnpm stores out of the default ci-main saves (a go.sum change alone leaves them a
-     hit) and runs one sensitivity case with a lockfile change on the same day (below).
+     hit) and runs one sensitivity case with a lockfile change on the same day: at 10.00 GB the sampled
+     weekday minutes lose a newest seed once (peak 10.31 GB), at 10 GiB none (sampled, not asserted).
    * Margin 0.25 GB (budget 9.75 GB): it equals the largest single CodeQL overlay (0.268 GB), so one
      concurrent CodeQL save between the delete and the save still fits.
    * Incoming size: the sum, over the lanes named, of the size of the newest main entry of that lane
