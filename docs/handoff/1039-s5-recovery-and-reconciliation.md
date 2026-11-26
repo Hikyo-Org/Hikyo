@@ -16,6 +16,13 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   `established_at`) with no backfill: release fails closed for a password account contained
   before the upgrade until it establishes a credential again. Release compares incident ids and
   reads no clock.
+- Release needs the Resume step-up proof (`incidentProof`, shared with Resume): the incident is
+  authorized first, evidence is consumed in the release write transaction, host-local actors
+  are exempt. The service is the only entry point; no route or CLI verb carries a proof yet.
+- Coverage of linked identities reads no clock: attesting an enumeration cut records an
+  attested item per identity held at that moment; later identities hold release. Establishment
+  stamps are cleared by `ContainPrincipal` (a new episode needs a new establishment), and release
+  waits for the `account.contain` item to be terminal.
 - `Restore.Status` lists the contained pending principals and `hikyo restore status` marks
   them; reconcile does not lift containment.
 - ADR section "Slice 5: release and restore (O4 A)".
@@ -35,7 +42,10 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   `TestReleasePrincipalContainmentBindsTheContainingIncident` (the store bind alone),
   `TestInvariantAuditRegistryClosure` (`incident.principal_released` is in the incident
   operations' event lists),
-  `TestIncidentReleaseTruncationIsKeyedPerMember`,
+  `TestIncidentReleaseTruncationIsKeyedPerMember` (including an identity linked on a slow-clock
+  node after the cut was attested), `TestIncidentReleaseNeedsAFreshProof`,
+  `TestIncidentReleaseEvidenceDoesNotSurviveARecontainment`,
+  `TestIncidentReleaseRefusesWhileTheContainmentItemIsOpen`,
   `TestIncidentReleaseWaitsForAnotherOpenIncidentHoldingThePrincipal`,
   `TestIncidentReleaseCutDoesNotStandInForAListedIdentity`, and the negative
   `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment` and `...RefusesFederatedClaim`,
@@ -54,6 +64,10 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   bind alone does not save it), the store bind removed (the store-level test fails; the service
   test alone survives it), and the registry without `incident.principal_released`
   (`TestInvariantAuditRegistryClosure` fails).
+- Mutants of the later security round killed with `go test -overlay` (assertion failures, both
+  engines): no vouching on attest and a "listed only" rule (truncation test), an attested cut
+  covering later identities (slow-clock repro), the proof step dropped (proof test), the stamp
+  clear dropped (re-containment test), the open-item check dropped (open-item test).
 - Full-package results (`./internal/isolation`, `./internal/store/...`, `./internal/service`, `./internal/app`, `./internal/lint` including `TestVetDriverRepo`, both engines) are not claimed here: the implementation ran only the focused tests above, and the full run is the review's. Lint is hosted CI (the local golangci-lint is built with go1.26 and refuses the module's go1.27.4).
 
 ## Not done

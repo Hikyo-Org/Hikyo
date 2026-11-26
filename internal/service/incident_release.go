@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -34,12 +33,26 @@ var ErrReleaseNotReady = fmt.Errorf("%w: release condition not met", domain.ErrC
 // revoked delegation or credential and regrants nothing: the store setter
 // advances the session generation again so nothing minted before containment
 // revives.
-func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentID string, target domain.PrincipalID) error {
+//
+// Release lifts containment, so it needs the same fresh account-security proof as
+// Resume (ADR O2): the incident is authorized first, the proof is verified for a
+// session actor, and the evidence is spent in the release transaction, so a refused
+// release spends nothing. A host-local actor is exempt, as for Resume.
+func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentID string, target domain.PrincipalID, proof string) error {
+	evidence, err := s.incidentProof(ctx, actor, incidentID, proof)
+	if err != nil {
+		return err
+	}
 	return tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		caller, inc, err := s.incidentByID(ctx, az, actor, incidentID, now)
 		if err != nil {
 			return err
+		}
+		if evidence.kind != reauthEvidenceExempt {
+			if err := s.Auth.ConsumeReauthEvidence(ctx, az, evidence, caller.Principal); err != nil {
+				return err
+			}
 		}
 		// One answer for an unknown principal, one this incident did not
 		// contain, and the incident's own account.
@@ -75,11 +88,15 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 				return fmt.Errorf("%w: no credential establishment has completed during this incident's containment", ErrReleaseNotReady)
 			}
 		}
-		pending, total, err := identitiesNotAttested(ctx, az, inc.ID, target)
+		pending, total, containOpen, err := identitiesNotAttested(ctx, az, inc.ID, target)
 		if err != nil {
 			return err
 		}
 		switch {
+		case containOpen:
+			// The ledger still owes this containment: a later resume would contain the
+			// account again, so release waits until the item is terminal.
+			return fmt.Errorf("%w: the incident's account containment item is still open; resume it first", ErrReleaseNotReady)
 		case pending > 0:
 			return fmt.Errorf("%w: %d linked identity item(s) are not attested", ErrReleaseNotReady, pending)
 		case !hasPassword && total == 0:
@@ -157,25 +174,31 @@ func otherHolderRefusal(ctx context.Context, az *authz.TxAuthorizer, caller auth
 // ones the incident has no attested item for, so the condition holds for an org
 // incident as well as an account one. An unattested enumeration-truncated row
 // keyed to the target counts too (the cut means identities went unlisted), and
-// an attested one covers them. total is how many identities the account holds.
-func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, err error) {
+// an attested one clears the hold but never covers an identity: coverage is decided
+// from the ledger alone, with no clock, so an identity with no item is always pending
+// (reopen the incident to list it, then attest it). total is how many identities the
+// account holds. containOpen reports an account.contain item for the target that is
+// still open.
+func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incidentID string, target domain.PrincipalID) (pending, total int, containOpen bool, err error) {
 	accountID, err := az.ContainedAccountID(ctx, target)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
-	attested, listed, cutPending, cutAttested := map[string]bool{}, map[string]bool{}, false, false
-	var cutAt time.Time
+	attested, listed, cutPending := map[string]bool{}, map[string]bool{}, false
 	after := ""
 	for {
 		page, err := az.IncidentItems(ctx, incidentID, after, releasePageSize, false)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 		for _, it := range page {
+			if it.OwnerFunction == domain.OwnerAccountContain && it.ObjectID == string(target) && it.Outcome.Open() {
+				containOpen = true
+			}
 			if it.ObjectKind != domain.ObjectKindExternalIdentity && it.OwnerFunction != domain.OwnerExternalIdentity {
 				continue
 			}
@@ -185,12 +208,7 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 				if it.ObjectID != string(target) {
 					continue
 				}
-				if it.Outcome == domain.ItemAttested {
-					cutAttested = true
-					if it.CreatedAt.After(cutAt) {
-						cutAt = it.CreatedAt
-					}
-				} else {
+				if it.Outcome != domain.ItemAttested {
 					cutPending = true
 				}
 			default:
@@ -203,16 +221,15 @@ func identitiesNotAttested(ctx context.Context, az *authz.TxAuthorizer, incident
 		}
 		after = page[len(page)-1].ID
 	}
-	// An identity with a ledger item needs that item attested; an attested cut row
-	// for this target vouches only for the identities it left unlisted, so one linked
-	// after the enumeration is never covered.
+	// An identity needs its own attested ledger item. One with no item (listed past a
+	// cut, or linked after the enumeration) is pending whatever any clock reads.
 	for _, x := range identities {
-		if listed[x.ID] && !attested[x.ID] || !listed[x.ID] && (!cutAttested || x.CreatedAt.After(cutAt)) {
+		if !listed[x.ID] || !attested[x.ID] {
 			pending++
 		}
 	}
 	if cutPending {
 		pending++
 	}
-	return pending, len(identities), nil
+	return pending, len(identities), containOpen, nil
 }

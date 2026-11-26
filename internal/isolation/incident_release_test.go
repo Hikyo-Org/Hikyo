@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -41,7 +42,7 @@ func TestIncidentReleaseRequiresEstablishmentOrAttestation(t *testing.T) {
 		w := newIncidentWorld(t, db)
 		id := w.containedIncident(t, true)
 		release := func(actor domain.PrincipalID, incident string) error {
-			return w.svc.ReleasePrincipal(ctx, w.as(actor), incident, incTarget)
+			return w.svc.ReleasePrincipal(ctx, w.as(actor), incident, incTarget, "")
 		}
 
 		// An unattested linked identity holds the release.
@@ -99,7 +100,7 @@ func TestIncidentReleaseNeedsEstablishmentForAPasswordAccount(t *testing.T) {
 		w := newIncidentWorld(t, db)
 		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_itarget', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+ts+`)`)
 		id := w.containedIncident(t, false)
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
 
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release before any establishment = %v, want ErrReleaseNotReady", err)
@@ -132,7 +133,7 @@ func TestIncidentReleaseRefusesAnAccountWithNothingToReplace(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		id := w.containedIncident(t, false)
-		if err := w.svc.ReleasePrincipal(t.Context(), w.as(incResponder), id, incTarget); !errors.Is(err, service.ErrReleaseNotReady) {
+		if err := w.svc.ReleasePrincipal(t.Context(), w.as(incResponder), id, incTarget, ""); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release = %v, want ErrReleaseNotReady", err)
 		}
 	})
@@ -147,7 +148,7 @@ func TestIncidentReleaseAcceptsARealResetEstablishment(t *testing.T) {
 		w := newIncidentWorld(t, db)
 		auth := authService(t, db)
 		id := w.containedIncident(t, false)
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
 
 		reset, err := auth.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
 		if err != nil {
@@ -184,7 +185,7 @@ func TestIncidentReleaseOrgIncidentWaitsForIdentityAttestation(t *testing.T) {
 		if s := w.containmentState(t, incTarget); s != "contained" {
 			t.Fatalf("containment_state = %q, want contained", s)
 		}
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with an unattested identity = %v, want ErrReleaseNotReady", err)
 		}
@@ -215,13 +216,13 @@ func TestIncidentReleaseKeepsContainmentsOrgBound(t *testing.T) {
 		if err := w.svc.Attest(ctx, w.as(incInstance), id, w.itemIDByKey(t, incInstance, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); !errors.Is(err, domain.ErrNotFound) {
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("an org-only holder released a two-org target = %v, want not found", err)
 		}
 		if s := w.containmentState(t, incTarget); s != "contained" {
 			t.Fatalf("a refused release changed containment_state to %q", s)
 		}
-		if err := w.svc.ReleasePrincipal(ctx, w.as(incInstance), id, incTarget); err != nil {
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incInstance), id, incTarget, ""); err != nil {
 			t.Fatalf("the instance holder's release: %v", err)
 		}
 	})
@@ -243,7 +244,7 @@ func TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment(t *testing.T) 
 			t.Fatalf("reset before containment: %v", err)
 		}
 		id := w.containedIncident(t, false)
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release after a pre-containment reset was swept = %v, want ErrReleaseNotReady", err)
 		}
@@ -276,7 +277,8 @@ func TestIncidentReleaseCountsOnlyAnEstablishmentAfterContainment(t *testing.T) 
 }
 
 // A cut keyed to one member holds that member only, and an attested cut covers
-// the identities it left unlisted, so release is decidable per target.
+// no identity: each must have its own attested item, so release is decidable per target
+// and never depends on a clock.
 func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
@@ -288,7 +290,7 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
 			t.Fatal(err)
 		}
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
 		cut := func(itemID, member string) {
 			execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at) VALUES ('`+itemID+`', '`+id+`', 'external_identity.remove', 'enumeration', '`+member+`', 'org/org_a', 'unknown', 'enumeration_truncated', 1, `+ts+`, `+ts+`)`)
 		}
@@ -299,8 +301,10 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with an unlisted identity = %v, want ErrReleaseNotReady", err)
 		}
-		// A cut keyed to the target holds it until attested; attested, it covers
-		// the unlisted identity.
+		// A cut keyed to the target holds it until attested. Attesting it records an
+		// attested item for each identity linked at that moment, so coverage is the
+		// ledger's, never a clock's: an identity linked afterwards on a node whose clock
+		// ran slow (created long before the cut) still holds release.
 		cut("itm_cut_target", string(incTarget))
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with the target's cut unattested = %v, want ErrReleaseNotReady", err)
@@ -308,8 +312,17 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_target"); err != nil {
 			t.Fatal(err)
 		}
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_unlisted' AND outcome='attested'`); got != 1 {
+			t.Fatalf("attesting the cut recorded %d attested items for the unlisted identity, want 1", got)
+		}
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_slow','acc_itarget','oidc','https://idp.example.test','subject-slow','',`+acctEpoch(t, db)+`,'2000-01-01T00:00:00.000000Z')`)
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with an identity linked after the cut was attested = %v, want ErrReleaseNotReady", err)
+		}
+		// The late identity needs its own attested item (a reopen lists it, an operator attests it).
+		execRaw(t, db, `INSERT INTO incident_items (id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, row_version, created_at, updated_at, attested_by, attested_at) VALUES ('itm_slow', '`+id+`', 'external_identity.remove', 'external_identity', 'xid_slow', 'org/org_a', 'attested', '', 2, `+ts+`, `+ts+`, 'usr_irsp', `+ts+`)`)
 		if err := release(); err != nil {
-			t.Fatalf("release with the target's cut attested: %v", err)
+			t.Fatalf("release with every identity attested: %v", err)
 		}
 	})
 }
@@ -334,14 +347,14 @@ func TestIncidentReleaseWaitsForAnotherOpenIncidentHoldingThePrincipal(t *testin
 		if got := w.itemMap(t, incResponder, second)["account.contain|account|usr_itarget"]; got != "done/" {
 			t.Fatalf("the second incident's account.contain item = %q, want done/", got)
 		}
-		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), first, incTarget)
+		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), first, incTarget, "")
 		if !errors.Is(err, service.ErrReleaseNotReady) || !strings.Contains(err.Error(), second) {
 			t.Fatalf("release while %s is open = %v, want ErrReleaseNotReady naming it", second, err)
 		}
 		if _, err := w.svc.Close(ctx, w.as(incResponder), second, true); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), first, incTarget); err != nil {
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), first, incTarget, ""); err != nil {
 			t.Fatalf("release after the other incident closed: %v", err)
 		}
 	})
@@ -363,7 +376,7 @@ func TestIncidentReleaseDoesNotNameAnUnreadableOtherIncident(t *testing.T) {
 			return queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'grant.denied'`)
 		}
 		before := denied()
-		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget)
+		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "")
 		if !errors.Is(err, service.ErrReleaseNotReady) || strings.Contains(err.Error(), "inc_foreign_holder") {
 			t.Fatalf("release with an unreadable other holder = %v, want ErrReleaseNotReady without its id", err)
 		}
@@ -391,14 +404,14 @@ func TestIncidentReleaseNamesAnInstanceScopeHolderOnlyToAnInstanceCaller(t *test
 				queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'grant.denied'`)
 		}
 		before := denied()
-		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget)
+		err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "")
 		if !errors.Is(err, service.ErrReleaseNotReady) || strings.Contains(err.Error(), "inc_inst_holder") {
 			t.Fatalf("release by an org caller with an instance-scope holder = %v, want ErrReleaseNotReady without its id", err)
 		}
 		if after := denied(); after != before {
 			t.Fatalf("grant.denied rows %d -> %d, want unchanged", before, after)
 		}
-		err = w.svc.ReleasePrincipal(ctx, w.as(incInstance), id, incTarget)
+		err = w.svc.ReleasePrincipal(ctx, w.as(incInstance), id, incTarget, "")
 		if !errors.Is(err, service.ErrReleaseNotReady) || !strings.Contains(err.Error(), "inc_inst_holder") {
 			t.Fatalf("release by an instance caller = %v, want ErrReleaseNotReady naming inc_inst_holder", err)
 		}
@@ -419,13 +432,13 @@ func TestIncidentReleaseCutDoesNotStandInForAListedIdentity(t *testing.T) {
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_target"); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); !errors.Is(err, service.ErrReleaseNotReady) {
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with only the cut attested = %v, want ErrReleaseNotReady", err)
 		}
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); err != nil {
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); err != nil {
 			t.Fatalf("release with the listed identity and the cut attested: %v", err)
 		}
 	})
@@ -445,7 +458,7 @@ func TestIncidentReleaseCutDoesNotCoverAnIdentityLinkedAfterIt(t *testing.T) {
 			t.Fatal(err)
 		}
 		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_late','acc_itarget','oidc','https://idp.example.test','subject-late','',`+acctEpoch(t, db)+`,`+farFuture+`)`)
-		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget); !errors.Is(err, service.ErrReleaseNotReady) {
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with an identity linked after the cut = %v, want ErrReleaseNotReady", err)
 		}
 	})
@@ -493,7 +506,7 @@ func TestIncidentReleaseIgnoresAClockAheadEstablishmentBeforeContainment(t *test
 		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_itarget', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+farFuture+`)`)
 		execRaw(t, db, `INSERT INTO credential_authorities (id, verifier, account_id, purpose, issued_by, credential_epoch, expires_at, consumed_at, created_at) VALUES ('ca_rel_fast', `+blobLit(db, []byte("ca-fast"))+`, 'acc_itarget', 'establish-credential', 'credential-reset', `+acctEpoch(t, db)+`, `+farFuture+`, `+farFuture+`, `+farFuture+`)`)
 		id := w.containedIncident(t, false)
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with only a clock-ahead establishment before containment = %v, want ErrReleaseNotReady", err)
 		}
@@ -545,7 +558,7 @@ func TestIncidentReleaseRefusesANonContainingIncident(t *testing.T) {
 		if _, err := w.svc.Close(ctx, w.as(incResponder), first, true); err != nil {
 			t.Fatal(err)
 		}
-		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), second, incTarget) }
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), second, incTarget, "") }
 		// Unattested: a missing containing-incident check would answer ErrReleaseNotReady.
 		if err := release(); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("release through a non-containing incident, identity unattested = %v, want not found", err)
@@ -583,6 +596,72 @@ func TestReleasePrincipalContainmentBindsTheContainingIncident(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("store release naming the containing incident: %v", err)
+		}
+	})
+}
+
+// Re-containing a principal in the same incident starts a new episode: the
+// establishment that earned the first release must not count for the second.
+func TestIncidentReleaseEvidenceDoesNotSurviveARecontainment(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		auth := authService(t, db)
+		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_itarget', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+ts+`)`)
+		id := w.containedIncident(t, false)
+		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, "") }
+		establish := func(password string) {
+			r, err := auth.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
+			if err != nil {
+				t.Fatalf("reset: %v", err)
+			}
+			if err := auth.EstablishCredential(ctx, r.Authority, password); err != nil {
+				t.Fatalf("establish: %v", err)
+			}
+		}
+		establish("the first episode's password")
+		if err := release(); err != nil {
+			t.Fatalf("first release: %v", err)
+		}
+		recontain := func() {
+			err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+				return az.ContainPrincipal(ctx, incTarget, time.Now(), id)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		recontain()
+		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release after re-containment with only the old establishment = %v, want ErrReleaseNotReady", err)
+		}
+		if s := w.containmentState(t, incTarget); s != "contained" {
+			t.Fatalf("containment_state = %q, want contained", s)
+		}
+		establish("the second episode's password")
+		if err := release(); err != nil {
+			t.Fatalf("release after a new establishment: %v", err)
+		}
+	})
+}
+
+// A release waits for the ledger's own containment item to be terminal, or a later
+// resume would contain the account again.
+func TestIncidentReleaseRefusesWhileTheContainmentItemIsOpen(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		id := w.containedIncident(t, true)
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, `UPDATE incident_items SET outcome='pending', reason='' WHERE incident_id='`+id+`' AND owner_function='account.contain' AND object_id='usr_itarget'`)
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release with the containment item open = %v, want ErrReleaseNotReady", err)
+		}
+		execRaw(t, db, `UPDATE incident_items SET outcome='done', reason='' WHERE incident_id='`+id+`' AND owner_function='account.contain' AND object_id='usr_itarget'`)
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); err != nil {
+			t.Fatalf("release with the containment item done: %v", err)
 		}
 	})
 }

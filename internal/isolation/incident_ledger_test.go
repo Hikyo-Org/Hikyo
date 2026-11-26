@@ -1090,7 +1090,7 @@ func runIncidentAuditLifecycle(t *testing.T, db *store.DB) {
 	if err := w.svc.Attest(t.Context(), w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.svc.ReleasePrincipal(t.Context(), w.as(incResponder), id, incTarget); err != nil {
+	if err := w.svc.ReleasePrincipal(t.Context(), w.as(incResponder), id, incTarget, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := w.svc.Close(t.Context(), w.as(incResponder), id, true); err != nil {

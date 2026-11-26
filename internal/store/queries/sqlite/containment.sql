@@ -18,6 +18,16 @@ SET containment_state = 'contained',
     contained_incident_id = sqlc.narg(contained_incident_id)
 WHERE id = sqlc.arg(principal_id) AND kind = 'human' AND containment_state = 'none';
 
+-- A containment starts a new episode of release evidence: an establishment stamped
+-- under an earlier containment of the same incident (contain, establish, release,
+-- contain again) must not count for the next release. The sweep that follows
+-- consumes any outstanding authority; this clears the stamps already on consumed ones.
+-- hikyo:reason Containment clears the establishment stamps of the contained principal's own account in the same transaction as the containment, so release evidence never outlives the episode that earned it; it touches no secret and no other account.
+-- hikyo:authn-resolution
+-- name: ClearAuthorityEstablishmentStamps :execrows
+UPDATE credential_authorities SET established_in_incident = NULL
+WHERE account_id = sqlc.arg(account_id) AND established_in_incident IS NOT NULL;
+
 -- The generation advances again on release, so no session or delegation that predates
 -- containment ever becomes valid again: release restores access through a fresh sign-in.
 -- hikyo:reason Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority.

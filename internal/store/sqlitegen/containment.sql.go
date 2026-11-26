@@ -10,6 +10,25 @@ import (
 	"database/sql"
 )
 
+const clearAuthorityEstablishmentStamps = `-- name: ClearAuthorityEstablishmentStamps :execrows
+UPDATE credential_authorities SET established_in_incident = NULL
+WHERE account_id = ?1 AND established_in_incident IS NOT NULL
+`
+
+// A containment starts a new episode of release evidence: an establishment stamped
+// under an earlier containment of the same incident (contain, establish, release,
+// contain again) must not count for the next release. The sweep that follows
+// consumes any outstanding authority; this clears the stamps already on consumed ones.
+// hikyo:reason Containment clears the establishment stamps of the contained principal's own account in the same transaction as the containment, so release evidence never outlives the episode that earned it; it touches no secret and no other account.
+// hikyo:authn-resolution
+func (q *Queries) ClearAuthorityEstablishmentStamps(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearAuthorityEstablishmentStamps, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const clearPersonalSuspensionForOwner = `-- name: ClearPersonalSuspensionForOwner :execrows
 UPDATE personal_values SET suspended_at = NULL
 WHERE owner_principal_id = ?1

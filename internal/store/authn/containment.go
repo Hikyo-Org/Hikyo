@@ -52,6 +52,14 @@ func (r *Resolver) ContainPrincipal(ctx context.Context, p domain.PrincipalID, a
 	if err != nil {
 		return ignoreDomainNotFound(err)
 	}
+	if r.sq != nil {
+		_, err = r.sq.ClearAuthorityEstablishmentStamps(ctx, accountID)
+	} else {
+		_, err = r.pg.ClearAuthorityEstablishmentStamps(ctx, accountID)
+	}
+	if err != nil {
+		return err
+	}
 	return r.ConsumeOutstandingAuthorities(ctx, accountID, at)
 }
 

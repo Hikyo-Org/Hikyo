@@ -522,15 +522,28 @@ principal is contained, so a contained account would still have a scheduler acti
   (The existing recovery lookup's refusal of an authority minted before containment still
   compares the authority's `created_at` with `contained_at`; it only refuses, so a skewed clock
   can at worst refuse an establishment, never admit a release.)
-  Release also binds the containing incident in the same UPDATE that clears the state, and an
-  attested enumeration cut vouches only for identities linked before that enumeration.
+  Release also binds the containing incident in the same UPDATE that clears the state.
+  Evidence belongs to one containment episode: containment clears the establishment stamps of
+  the account in its own transaction (a re-containment inside the same incident otherwise
+  would let the first episode's establishment release the second), and release also waits for
+  the incident's own `account.contain` item to be terminal, so a later resume cannot contain
+  the account again.
+- Release lifts containment, so it needs the same fresh account-security proof as Resume
+  (O2): the incident is authorized first (a caller who cannot see it gets not found, never a
+  request for a proof), a session actor must present a valid proof (`ErrReauthProofRequired`
+  when none, `no_proof_credential` for an account with no proof credential), the evidence
+  is consumed in the release write transaction so a refused release spends no code, and
+  only a host-local actor, which has no session, is exempt.
 - Release is authorized as containment was: the same target classification applies, so a
   target in several orgs needs instance scope and an instance-capability target is refused. The
   linked-identity condition reads the target's own identities and needs an attested item for each
   in the containing incident; an org incident lists every member's identities for that purpose.
   An org incident that cuts a member's identities records one truncation row keyed to that
-  member: unattested it holds that member's release only, attested it covers the unlisted
-  identities. A member with an identity and no password is released once its identities are
+  member: unattested it holds that member's release only. Attesting it records an attested
+  item for each identity the member holds at that moment and the ledger does not list, so
+  coverage is database state and never a comparison of clocks; an identity linked afterwards
+  has no item and holds the release until the incident is reopened, lists it and an operator
+  attests it. A member with an identity and no password is released once its identities are
   attested. Release is also refused while another open incident recorded the principal as
   contained (its ledger item reads done though the state belongs to the first incident); the
   refusal names that incident to a caller who can read it, and gives a generic reason to one who

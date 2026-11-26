@@ -247,6 +247,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ClearAuthorityEstablishmentStamps",
+    "annotation": "authn-resolution",
+    "hash": "76c1f2389ec275f76e6d08d1f8c324a533dbc73715875d4f077489cbeecc44e7",
+    "reason": "Containment clears the establishment stamps of the contained principal's own account in the same transaction as the containment, so release evidence never outlives the episode that earned it; it touches no secret and no other account."
+  },
+  {
+    "engine": "postgres",
     "name": "ClearPersonalSuspensionForOwner",
     "annotation": "authn-resolution",
     "hash": "c1d7f6cd5b19defe34822926e49f38d64a2329316f816e59e40344be56a806fe",
@@ -4183,6 +4190,13 @@
     "name": "ClampIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "04d40c04f5f17d79bda3a4f3da532ad76a8b61eef44aeb116ee61342cb4ce005"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClearAuthorityEstablishmentStamps",
+    "annotation": "authn-resolution",
+    "hash": "76c1f2389ec275f76e6d08d1f8c324a533dbc73715875d4f077489cbeecc44e7",
+    "reason": "Containment clears the establishment stamps of the contained principal's own account in the same transaction as the containment, so release evidence never outlives the episode that earned it; it touches no secret and no other account."
   },
   {
     "engine": "sqlite",
