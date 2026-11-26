@@ -371,5 +371,6 @@
   "WorkspaceOriginAllowed": "func(ctx context.Context, origin string) (bool, error)",
   "WorkspaceOrigins": "func(ctx context.Context) ([]authn.WorkspaceOrigin, error)",
   "WritePasswordCredential": "func(ctx context.Context, c PasswordCredential, at time.Time) error",
-  "WriteRecoveryCodes": "func(ctx context.Context, b RecoveryBatch, at time.Time) error"
+  "WriteRecoveryCodes": "func(ctx context.Context, b RecoveryBatch, at time.Time) error",
+  "CountPrincipalsContainedBy": "func(ctx context.Context, incidentID string) (int64, error)"
 }

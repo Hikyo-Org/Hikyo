@@ -318,6 +318,11 @@ func (a *TxAuthorizer) CountLiveRemotePairingInvites(ctx context.Context, now ti
 	return a.r.CountLiveRemotePairingInvites(ctx, now)
 }
 
+// CountPrincipalsContainedBy counts the principals an incident still holds contained.
+func (a *TxAuthorizer) CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error) {
+	return a.r.CountPrincipalsContainedBy(ctx, incidentID)
+}
+
 // CountRegistrationPolicyOrgs counts the live orgs a policy minted.
 func (a *TxAuthorizer) CountRegistrationPolicyOrgs(ctx context.Context, policyID string) (int64, error) {
 	return a.r.CountRegistrationPolicyOrgs(ctx, policyID)

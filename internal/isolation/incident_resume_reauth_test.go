@@ -387,5 +387,11 @@ func TestIncidentReleaseNeedsAFreshProof(t *testing.T) {
 		if err := f.incidents.ReleasePrincipal(ctx, f.actor, f.id, member, code); err == nil {
 			t.Fatal("a replayed code released again")
 		}
+		// The code was spent by the release itself: the same code presented to
+		// another proof-consuming call is refused as a replay (the spent TOTP step), not only because the
+		// principal is already released.
+		if _, err := f.incidents.Resume(ctx, f.actor, f.id, code, nil); err == nil || !strings.Contains(err.Error(), "time step was already used") {
+			t.Fatalf("resume with the code the release spent = %v, want the spent time step refused", err)
+		}
 	})
 }

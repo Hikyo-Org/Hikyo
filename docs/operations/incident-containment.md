@@ -390,7 +390,9 @@ not exist: run `hikyo account factor step-up` and retry.
   step-up is tracked in #1590.
 - `hikyo incident attest <incident> <item>` records your statement that an open item
   was dealt with outside this system. It is a statement, not a confirmation.
-- `hikyo incident close <incident>` needs `--with-residuals` while items are open.
+- `hikyo incident close <incident>` needs `--with-residuals` while items are open. It is
+  refused while the incident still holds a contained principal, with or without
+  residuals: release that principal first, because a closed incident can no longer release it.
 
 An unknown incident and one outside your authority answer the same way. A machine
 credential or a developer credential is refused on every one of these routes.

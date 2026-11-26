@@ -118,6 +118,8 @@ type txForwarded interface {
 	CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error)
 	PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error)
 	PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error)
+	// CountPrincipalsContainedBy counts the principals an incident still holds contained.
+	CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error)
 	// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.
 	OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error)
 

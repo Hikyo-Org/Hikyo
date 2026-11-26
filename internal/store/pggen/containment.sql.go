@@ -122,6 +122,19 @@ func (q *Queries) CountPasswordCredentialsForPrincipal(ctx context.Context, prin
 	return count, err
 }
 
+const countPrincipalsContainedBy = `-- name: CountPrincipalsContainedBy :one
+SELECT CAST(COUNT(*) AS BIGINT) AS held FROM principals WHERE contained_incident_id = $1 AND containment_state = 'contained'
+`
+
+// hikyo:reason Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else.
+// hikyo:authn-resolution
+func (q *Queries) CountPrincipalsContainedBy(ctx context.Context, incidentID pgtype.Text) (int64, error) {
+	row := q.db.QueryRow(ctx, countPrincipalsContainedBy, incidentID)
+	var held int64
+	err := row.Scan(&held)
+	return held, err
+}
+
 const getAccountForRecovery = `-- name: GetAccountForRecovery :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
 WHERE (accounts.id = $1 OR accounts.principal_id = $2)

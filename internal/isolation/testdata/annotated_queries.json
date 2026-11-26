@@ -706,6 +706,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CountPrincipalsContainedBy",
+    "annotation": "authn-resolution",
+    "hash": "87d93900f668d62efb48fc275c78e10cd3b42df78f872d3c568c04f1a000cb69",
+    "reason": "Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else."
+  },
+  {
+    "engine": "postgres",
     "name": "CountRecentSelfConfigJobs",
     "annotation": "instance-scoped",
     "hash": "3509874cb10071447071f9a86f8036b6198ed23e092cb3f7545448408efaf683"
@@ -4621,6 +4628,13 @@
     "annotation": "authn-resolution",
     "hash": "a2bd7d5bb33242e64f1c51776a8b0ac1f3339fc23f8acd9889ce5ae9aa1564dc",
     "reason": "Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountPrincipalsContainedBy",
+    "annotation": "authn-resolution",
+    "hash": "87d93900f668d62efb48fc275c78e10cd3b42df78f872d3c568c04f1a000cb69",
+    "reason": "Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else."
   },
   {
     "engine": "sqlite",

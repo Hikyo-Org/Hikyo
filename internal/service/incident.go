@@ -986,6 +986,15 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 		if inc.Status != domain.IncidentOpen {
 			return fmt.Errorf("%w: incident is already closed", domain.ErrConflict)
 		}
+		// A contained principal is released through its incident's ledger and nothing
+		// else, so closing (with residuals too) would strand it contained for good.
+		held, err := az.CountPrincipalsContainedBy(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		if held > 0 {
+			return fmt.Errorf("%w: the incident still holds %d contained principal(s); release them first", domain.ErrConflict, held)
+		}
 		counts, err := az.IncidentItemCounts(ctx, inc.ID)
 		if err != nil {
 			return err

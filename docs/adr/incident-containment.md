@@ -509,7 +509,7 @@ principal is contained, so a contained account would still have a scheduler acti
   signed-in session need a session a contained account cannot hold. An establishment stamps
   the id of the incident that holds the principal contained,
   `credential_authorities.established_in_incident`, on the authority it consumes (migration
-  00101, superseding the timestamp of 00100). The establishment transaction reads the principal's
+  00100). The establishment transaction reads the principal's
   containing incident itself, so the stamp is decided by database state under the same
   serialization as containment and release compares incident ids; no clock, whether of the node
   that minted, consumed or contained, is read. A password established before containment carries
@@ -528,6 +528,12 @@ principal is contained, so a contained account would still have a scheduler acti
   would let the first episode's establishment release the second), and release also waits for
   the incident's own `account.contain` item to be terminal, so a later resume cannot contain
   the account again.
+- Closing is refused (a conflict) while the incident still holds a contained principal, with
+  or without residuals: release runs through the incident's ledger and nothing else, so a
+  close would leave the account contained with no way back (attestation needs an open
+  incident, and no other incident or host-local path lifts it). The operator releases first,
+  then closes; a release on an already closed incident answers with its own conflict, not a
+  request to attest.
 - Release lifts containment, so it needs the same fresh account-security proof as Resume
   (O2): the incident is authorized first (a caller who cannot see it gets not found, never a
   request for a proof), a session actor must present a valid proof (`ErrReauthProofRequired`

@@ -223,6 +223,14 @@ func (r *Resolver) PrincipalContainedIncident(ctx context.Context, p domain.Prin
 	return id.String, notFoundOr(err)
 }
 
+// CountPrincipalsContainedBy counts the principals the incident still holds contained.
+func (r *Resolver) CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error) {
+	if r.sq != nil {
+		return r.sq.CountPrincipalsContainedBy(ctx, sql.NullString{String: incidentID, Valid: true})
+	}
+	return r.pg.CountPrincipalsContainedBy(ctx, pgtype.Text{String: incidentID, Valid: true})
+}
+
 // PrincipalHasPassword reports whether the principal's account holds a local password.
 func (r *Resolver) PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error) {
 	var n int64

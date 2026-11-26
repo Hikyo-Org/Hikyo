@@ -157,6 +157,11 @@ WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHER
 -- name: GetPrincipalContainedIncident :one
 SELECT contained_incident_id FROM principals WHERE id = sqlc.arg(principal_id) AND containment_state = 'contained';
 
+-- hikyo:reason Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else.
+-- hikyo:authn-resolution
+-- name: CountPrincipalsContainedBy :one
+SELECT CAST(COUNT(*) AS BIGINT) AS held FROM principals WHERE contained_incident_id = sqlc.arg(incident_id) AND containment_state = 'contained';
+
 -- hikyo:reason Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else.
 -- hikyo:authn-resolution
 -- name: CountPasswordCredentialsForPrincipal :one

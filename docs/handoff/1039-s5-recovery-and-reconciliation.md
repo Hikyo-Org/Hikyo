@@ -10,10 +10,9 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   credential establishment during the containment episode for a password account and every linked-identity
   item attested, refuses an account with neither, revives and regrants nothing.
 - Store evidence: `CredentialEstablishedIn`, `PrincipalHasPassword`,
-  `PrincipalContainedIncident`, `OtherOpenIncidentHolding` (four authn-resolution queries, both
-  engines), and `ContainedAccountID` for the linked-identity read. Migration 00101 stamps
-  `credential_authorities.established_in_incident` (it supersedes 00100's clock-based
-  `established_at`) with no backfill: release fails closed for a password account contained
+  `PrincipalContainedIncident`, `OtherOpenIncidentHolding`, `CountPrincipalsContainedBy` (five authn-resolution queries, both
+  engines), and `ContainedAccountID` for the linked-identity read. Migration 00100 stamps
+  `credential_authorities.established_in_incident` with no backfill: release fails closed for a password account contained
   before the upgrade until it establishes a credential again. Release compares incident ids and
   reads no clock.
 - Release needs the Resume step-up proof (`incidentProof`, shared with Resume): the incident is
@@ -70,6 +69,7 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   engines): no listing on attest and a "listed only" rule, auto-attesting the listed identities, a created_at
   rule (slow-clock repro), no relisting by a refused release, the listing's audit event dropped or given the wrong actor (truncation test), the proof step dropped (proof test), the stamp
   clear dropped (re-containment test), the stamp replaced by a clock comparison (the real clock-ahead establishment test), the open-item check dropped (open-item test).
+- Review-fix round (Close lockout, LOW findings): Close refuses with a conflict while the incident holds a contained principal (`TestIncidentCloseRefusesWhileItHoldsAContainedPrincipal`), release on a closed incident has its own conflict, migrations 00100 and 00101 are folded into one 00100 (neither was ever on dev or in a release). Correction: the earlier claim that the attest-cut-lists-nothing mutant was killed was wrong; the truncation test now links `xid_cutlist` after the last refused release and asserts the cut's attestation lists it with the attester as audit actor. New tests also cover the spent TOTP step on a second proof-consuming call, a rotation-halt enumeration row refusing attestation, and an unattested cut holding release when every identity is attested.
 - `./internal/service` was run whole on the earlier head `2f73e5a8c` (passes); it is not part of the run above.
 
 ## Not done

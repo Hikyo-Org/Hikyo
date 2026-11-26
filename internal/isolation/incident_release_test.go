@@ -309,8 +309,20 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with the target's cut unattested = %v, want ErrReleaseNotReady", err)
 		}
+		// Linked after the last refused release, so only the cut's own attestation can
+		// list it: no item exists until then, and the attester is the audit actor.
+		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_cutlist','acc_itarget','oidc','https://idp.example.test','subject-cutlist','',`+acctEpoch(t, db)+`,`+ts+`)`)
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_cutlist'`); got != 0 {
+			t.Fatalf("xid_cutlist has %d items before the cut is attested, want none", got)
+		}
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, "itm_cut_target"); err != nil {
 			t.Fatal(err)
+		}
+		if got := queryString(t, db, `SELECT outcome FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_cutlist'`); got != "unknown" {
+			t.Fatalf("attesting the cut left xid_cutlist %q, want an open unknown item", got)
+		}
+		if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='incident.item_outcome' AND actor_id='`+string(incResponder)+`' AND correlation_id='`+id+`' AND outcome='unknown' AND payload LIKE '%"object_id":"xid_cutlist"%'`); got != 1 {
+			t.Fatalf("listing xid_cutlist at the cut wrote %d audit events with the attester, want 1", got)
 		}
 		// Attesting the cut lists the unlisted identity as an open item and attests nothing.
 		if got := queryString(t, db, `SELECT outcome FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_unlisted'`); got != "unknown" {
@@ -346,6 +358,9 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 			t.Fatalf("release with the late identity listed but unattested = %v, want ErrReleaseNotReady", err)
 		}
 		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_slow")); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.svc.Attest(ctx, w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_cutlist")); err != nil {
 			t.Fatal(err)
 		}
 		if err := release(); err != nil {

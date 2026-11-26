@@ -57,6 +57,9 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 				return err
 			}
 		}
+		if inc.Status != domain.IncidentOpen {
+			return fmt.Errorf("%w: incident is closed; a closed incident cannot release a principal", domain.ErrConflict)
+		}
 		// One answer for an unknown principal, one this incident did not
 		// contain, and the incident's own account.
 		contained, err := az.PrincipalContainedIncident(ctx, target)
