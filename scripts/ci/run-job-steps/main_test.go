@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunnableRefusesWhatAReplayCannotHonor(t *testing.T) {
@@ -75,5 +76,31 @@ func TestSupplyChainJobIsReplayable(t *testing.T) {
 	}
 	if len(steps) < 30 || !required {
 		t.Fatalf("replay lost steps or the required-Cosign env: %d steps", len(steps))
+	}
+}
+
+// A step's timeout-minutes must stop it, as it does under Actions.
+func TestExecuteEnforcesStepTimeout(t *testing.T) {
+	old := stepTimeoutUnit
+	stepTimeoutUnit = 100 * time.Millisecond
+	defer func() { stepTimeoutUnit = old }()
+	start := time.Now()
+	err := execute([]step{{Name: "slow", Run: "sleep 30", Timeout: 3}})
+	if err == nil || !strings.Contains(err.Error(), "timeout") || time.Since(start) > 10*time.Second {
+		t.Fatalf("got %v after %v, want a timeout error", err, time.Since(start))
+	}
+	if err := execute([]step{{Name: "quick", Run: "true", Timeout: 3}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunnableSkipsCachePreparationByName(t *testing.T) {
+	got, err := runnable([]step{
+		{Name: "Select runner cache ABI", Run: "./scripts/ci/export-runner-cache-abi.sh"},
+		{Name: "Reserve disk for shared Go cache restore", Run: "./scripts/ci/prepare-go-cache-disk.sh", Timeout: 3},
+		{Name: "keep", Run: "true"},
+	})
+	if err != nil || len(got) != 1 || got[0].Name != "keep" {
+		t.Fatalf("got %v, %v; want only the fixture step", got, err)
 	}
 }

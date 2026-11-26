@@ -32,7 +32,7 @@ func supplyChainListEntries(raw string) []string {
 func supplyChainListMisses(entries []string, inputs map[string]string) []string {
 	var misses []string
 	for p, origin := range inputs {
-		if supplyChainGoPackages[p] {
+		if supplyChainGoDomain(p) {
 			continue
 		}
 		covered := false
@@ -210,7 +210,7 @@ func TestSupplyChainSelectionScript(t *testing.T) {
 	}
 	const workflow = ".github/workflows/ci.yml"
 	base := map[string]string{
-		supplyChainInputList: "# comment\nhooks/pre-push\nfixtures/\n",
+		supplyChainInputList: "# comment\nhooks/pre-push\nfixtures/\n" + supplyChainInputList + "\n",
 		workflow:             job("./fixtures/a.sh"),
 		"hooks/pre-push":     "1", "fixtures/a.sh": "1", "unrelated.txt": "1",
 	}
@@ -255,6 +255,7 @@ func TestSupplyChainSelectionScript(t *testing.T) {
 		"unlisted file":               {map[string]string{"unrelated.txt": "2"}, "run=false"},
 		"another job changed":         {map[string]string{workflow: strings.Replace(job("./fixtures/a.sh"), "run: other", "run: changed", 1)}, "run=false"},
 		"job step changed":            {map[string]string{workflow: job("./fixtures/b.sh")}, "run=true"},
+		"list edited by the PR":       {map[string]string{supplyChainInputList: "unrelated.txt\n"}, "run=true"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			out, err := run(t, base, tc.change)

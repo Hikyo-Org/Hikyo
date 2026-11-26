@@ -2,11 +2,16 @@
 # Decide whether a pull request must run the supply-chain-checks fixtures.
 # Run in a checkout of the PR's merge commit, whose first parent is the base:
 #   select-supply-chain-fixtures.sh [<base> [<head>]]   (defaults HEAD^1, HEAD)
-# Prints `run=true` or `run=false`. It selects when the diff touches an exact
-# fixture input listed in scripts/ci/supply-chain-fixture-inputs.txt (an entry
-# ending in `/` is a directory prefix), or changes the steps of ci.yml's
-# supply-chain-checks job. supply_chain_inputs_test.go derives the inputs from
-# that job and fails when the list misses one.
+# ci-feedback runs the base commit's copy of this script, never the PR's, and it
+# reads the base commit's list. Prints `run=true` or `run=false`. It selects when
+# the diff touches an exact fixture input listed in
+# scripts/ci/supply-chain-fixture-inputs.txt (an entry ending in `/` is a
+# directory prefix), or changes the steps of ci.yml's supply-chain-checks job.
+# A PR that adds an input must change the job steps or the list, and either
+# selects it. TestSupplyChainInputListCoversEveryInput (supply_chain_guards_test.go)
+# derives the inputs from that job and fails when the list misses one. The
+# selection is advisory for scheduling: scripts/ci/pr-gate recomputes it from
+# trusted inputs before accepting a skipped fixtures job.
 set -eu
 
 base=${1:-HEAD^1}
@@ -24,8 +29,7 @@ job_block() {
 	'
 }
 
-# The list comes from the merge commit, so a PR that adds an input also selects.
-entries=$(git show "$head:$list")
+entries=$(git show "$base:$list")
 [ -n "$entries" ] || { echo 'supply-chain fixture input list is empty' >&2; exit 1; }
 
 changed=$(git diff --name-only "$base" "$head")

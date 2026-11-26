@@ -26,11 +26,11 @@ import (
 //
 // Inputs are derived from the job itself, not listed: the repository paths each
 // `run:` step names (scripts, directories, requirements), then, through every
-// shell, Python or hook file reached that way, the files it names, resolved
-// from the repository root or from its own directory (`$(dirname "$0")/..`).
-// Data paths that only appear inside test fixtures (classifier sample paths) are
-// not followed: only code files are. Data a script reads indirectly is covered
-// where a step names it, and otherwise by its owning directory's case.
+// shell, Python or hook file reached that way, every tracked file it names,
+// resolved from the repository root or from its own directory
+// (`$(dirname "$0")/..`). Only code files (.sh, .py, .bash, hooks) are read for
+// further names, so a data file is an input but not a source of more. The one
+// exclusion is supplyChainSampleSources: the classifier fixture's sample paths.
 
 const (
 	supplyChainJob          = "supply-chain-checks"
@@ -47,6 +47,45 @@ var supplyChainGoPackages = map[string]bool{
 	"internal/app": true, "internal/releasetrust": true,
 	"scripts/ci": true, "scripts/ci/pr-gate": true, "scripts/ci/queue-report": true,
 	"scripts/ci/checksuites": true, "scripts/release": true,
+}
+
+// These scripts name repository paths as data: classifier patterns, planner
+// samples and lane fixtures, not files they read. Only the code they reach is
+// an input; their data paths are excluded on purpose, so a new script that
+// merely mentions a path does not widen the trigger.
+var supplyChainSampleSources = map[string]bool{
+	"scripts/ci/classify-changed-paths.sh":      true,
+	"scripts/ci/classify-changed-paths_test.sh": true,
+	"scripts/ci/plan-merge-group.sh":            true,
+	"scripts/ci/feedback-plan.sh":               true,
+	"scripts/ci/fast-feedback.sh":               true,
+	"scripts/ci/fast-feedback_test.sh":          true,
+	"scripts/ci/fast-feedback-plan_test.sh":     true,
+	"scripts/ci/fast-feedback-lanes_test.sh":    true,
+	"scripts/ci/fast-feedback-deadline_test.sh": true,
+	"scripts/ci/golangci-lint-new_test.sh":      true,
+	// Comments and fixture payloads, not reads of the repository's own files.
+	"scripts/ci/check-doc-status_test.sh":        true,
+	"scripts/ci/security-compose-rehearsal.sh":   true,
+	"scripts/ci/security-pi-rehearsal.sh":        true,
+	"scripts/release/prepare-image-root_test.sh": true,
+}
+
+// The root documents and LICENSE are read by check-oss-policy.sh, which the
+// docs job also runs on every docs plan (ci.yml, verify-docs.sh). Selecting
+// supply-chain-checks for them would end the docs-only merge-group fast path
+// for no extra coverage, so the classifier guard accepts the docs plan for them.
+// They still have list entries: a PR that edits one runs the fixtures.
+var supplyChainCoveredByDocsJob = map[string]bool{
+	"README.md": true, "CONTRIBUTING.md": true, "GOVERNANCE.md": true, "SECURITY.md": true,
+	"SUPPORT.md": true, "TRADEMARK.md": true, "LICENSE": true,
+}
+
+// supplyChainGoDomain reports whether an input is Go code the feedback lanes
+// already test: a listed package, or a single .go file. These select the job or
+// the test domain in the classifier and have no entry in the input list.
+func supplyChainGoDomain(p string) bool {
+	return supplyChainGoPackages[p] || path.Ext(p) == ".go"
 }
 
 var supplyChainToken = regexp.MustCompile(`[A-Za-z0-9_.@/+-]+`)
@@ -140,9 +179,11 @@ func supplyChainInputs(r supplyChainRepo, runs map[string]string) (map[string]st
 				continue
 			}
 			for _, token := range supplyChainToken.FindAllString(r.files[code], -1) {
-				if q, ok := r.resolve(token, code); ok && isCode(q) && !r.isDir(q) {
-					add(q, code)
+				q, ok := r.resolve(token, code)
+				if !ok || r.isDir(q) || (!isCode(q) && supplyChainSampleSources[code]) {
+					continue
 				}
+				add(q, code)
 			}
 		}
 	}
@@ -213,7 +254,13 @@ func supplyChainUncovered(t *testing.T, classifier, registry string, r supplyCha
 			probe = p + "/probe"
 		}
 		if supplyChainGoPackages[p] {
-			probe, want = p+"/probe.go", []string{supplyChainJob, "test"}
+			probe = p + "/probe.go"
+		}
+		if supplyChainGoDomain(p) {
+			want = []string{supplyChainJob, "test"}
+		}
+		if supplyChainCoveredByDocsJob[p] {
+			want = []string{"docs"}
 		}
 		cmd := exec.Command("sh", classifier, "--files")
 		cmd.Env = append(os.Environ(), "CI_JOB_REGISTRY="+registry)

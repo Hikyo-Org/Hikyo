@@ -61,6 +61,7 @@
     "floor-bench": ["floor-bench"],
     "docs": ["docs"],
     "docs-ci": ["docs", "lint", "supply-chain-checks"],
+    "supply-chain-data": ["supply-chain-checks"],
     "k8s-e2e-script": ["k8s-e2e", "lint", "supply-chain-checks"],
     "license": ["docs", "release-snapshot"],
     "operator": [

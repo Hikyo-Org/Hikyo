@@ -1,20 +1,23 @@
 // Run the `run:` steps of one workflow job in order, on a checkout, outside the
-// workflow that defines them. The advisory supply-chain workflow replays
-// ci.yml's supply-chain-checks job this way, so a fixture added to that job runs
-// on pull requests without a second copy of the step list.
+// workflow that defines them. ci-feedback replays ci.yml's supply-chain-checks
+// job this way, so a fixture added to that job runs on pull requests without a
+// second copy of the step list.
 //
 // Only what the replayed job needs is emulated: step `env`, the default and
 // explicit bash shells, and $GITHUB_PATH appends carried into later steps.
-// Anything else that would change what a step does under Actions (expressions,
-// conditions, fail-open flags, working directories) is refused, never ignored.
+// A step's timeout-minutes is enforced. Anything else that would change what a
+// step does under Actions (expressions, conditions, fail-open flags, working
+// directories) is refused, never ignored.
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,6 +25,17 @@ import (
 // validateRevisionStep binds the caller's immutable revision to the Actions
 // event. That binding does not exist for a pull request replay.
 const validateRevisionStep = "Validate the immutable caller revision"
+
+// cachePreparationSteps only prepare the shared Go cache restores, which a PR
+// replay does not perform, so they are skipped by name rather than run for
+// nothing.
+var cachePreparationSteps = map[string]bool{
+	"Select runner cache ABI":                  true,
+	"Reserve disk for shared Go cache restore": true,
+}
+
+// stepTimeoutUnit scales timeout-minutes; tests shrink it.
+var stepTimeoutUnit = time.Minute
 
 type step struct {
 	Name            string            `yaml:"name"`
@@ -40,7 +54,7 @@ type step struct {
 func runnable(steps []step) ([]step, error) {
 	var out []step
 	for _, s := range steps {
-		if s.Run == "" || s.Name == validateRevisionStep {
+		if s.Run == "" || s.Name == validateRevisionStep || cachePreparationSteps[s.Name] {
 			continue
 		}
 		if s.If != "" || s.WorkingDir != "" || s.ContinueOnError != nil {
@@ -102,14 +116,24 @@ func execute(steps []step) error {
 			args = []string{"--noprofile", "--norc", "-eo", "pipefail"}
 		}
 		fmt.Printf("::group::%s\n", s.Name)
-		cmd := exec.Command("bash", append(args, script)...)
+		ctx, cancel := context.Background(), context.CancelFunc(func() {})
+		if s.Timeout > 0 {
+			ctx, cancel = context.WithTimeout(ctx, time.Duration(s.Timeout)*stepTimeoutUnit)
+		}
+		cmd := exec.CommandContext(ctx, "bash", append(args, script)...)
+		cmd.WaitDelay = time.Second
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		cmd.Env = append(os.Environ(), "PATH="+path, "GITHUB_PATH="+pathFile)
 		for k, v := range s.Env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
 		err := cmd.Run()
+		timedOut := ctx.Err() != nil
+		cancel()
 		fmt.Println("::endgroup::")
+		if timedOut {
+			return fmt.Errorf("step %q exceeded its timeout-minutes: %d", s.Name, s.Timeout)
+		}
 		if err != nil {
 			return fmt.Errorf("step %q: %w", s.Name, err)
 		}

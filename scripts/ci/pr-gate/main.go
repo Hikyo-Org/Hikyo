@@ -142,7 +142,9 @@ type run struct {
 	Repository     repository `json:"repository"`
 	HeadRepository repository `json:"head_repository"`
 	Pulls          []pull     `json:"pull_requests"`
-	References     []struct {
+	// FixturesSkipped is set by feedback() from its jobs, never read from GitHub.
+	FixturesSkipped bool `json:"-"`
+	References      []struct {
 		Path string `json:"path"`
 		Ref  string `json:"ref"`
 		SHA  string `json:"sha"`

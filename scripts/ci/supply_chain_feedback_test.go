@@ -77,8 +77,8 @@ func requireSupplyChainFeedbackJobs(raw []byte) error {
 		return fmt.Errorf("selection must read the merge commit and both parents without credentials")
 	}
 	pick := selection.Steps[1]
-	if pick.ID != "select" || pick.If != "" || pick.Continue || !strings.Contains(pick.Run, `test "$(git rev-parse HEAD^2)" = "$PR_HEAD"`) || !strings.Contains(pick.Run, "./scripts/ci/select-supply-chain-fixtures.sh") || selection.Env["PR_HEAD"] != "${{ github.event.pull_request.head.sha }}" {
-		return fmt.Errorf("selection must bind the merge commit to the PR head and run the selector")
+	if pick.ID != "select" || pick.If != "" || pick.Continue || !strings.Contains(pick.Run, `test "$(git rev-parse HEAD^2)" = "$PR_HEAD"`) || !strings.Contains(pick.Run, "HEAD^1:scripts/ci/select-supply-chain-fixtures.sh") || strings.Contains(pick.Run, "./scripts/ci/select-supply-chain-fixtures.sh") || selection.Env["PR_HEAD"] != "${{ github.event.pull_request.head.sha }}" {
+		return fmt.Errorf("selection must bind the merge commit to the PR head and run the base commit selector, not the PR copy")
 	}
 	if len(fixtures.Steps) < 3 || fixtures.Steps[0].With["ref"] != "${{ github.event.pull_request.head.sha }}" || fixtures.Steps[0].With["persist-credentials"] != "false" {
 		return fmt.Errorf("the fixtures must test the exact PR head without credentials")
@@ -124,6 +124,10 @@ func TestFeedbackSupplyChainJobsAndMutations(t *testing.T) {
 		"fixtures fail open": func(w map[string]any) { job(w, supplyChainFixturesKey)["continue-on-error"] = true },
 		"fixtures turned into a matrix lane": func(w map[string]any) {
 			job(w, supplyChainFixturesKey)["strategy"] = map[string]any{"matrix": map[string]any{"lane": []any{"a"}}}
+		},
+		"selection runs the PR's own selector": func(w map[string]any) {
+			steps := job(w, supplyChainSelectKey)["steps"].([]any)
+			steps[1].(map[string]any)["run"] = "set -eu\ntest \"$(git rev-parse HEAD^2)\" = \"$PR_HEAD\"\n./scripts/ci/select-supply-chain-fixtures.sh | tee -a \"$GITHUB_OUTPUT\""
 		},
 		"selection not bound to the PR head": func(w map[string]any) { job(w, supplyChainSelectKey)["env"] = map[string]any{"PR_HEAD": "x"} },
 		"replay replaced": func(w map[string]any) {

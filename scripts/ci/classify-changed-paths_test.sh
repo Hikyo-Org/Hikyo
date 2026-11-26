@@ -45,7 +45,7 @@ expect_plan 'core' \
 	'["client","floor-bench","fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
 	'internal/service/values.go'
 expect_plan 'API' \
-	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","test","web-go"]' \
+	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","supply-chain-checks","test","web-go"]' \
 	'api/openapi.yaml'
 # The desktop module is built only by nightly-desktop.yml (owner decision 2026-11-25):
 # neither it nor the root packages it imports select any ci.yml job of their own.
@@ -155,6 +155,10 @@ expect_plan 'generated CRD' \
 	'chart/hikyo/crds/hikyo.dev_hikyosecrets.yaml'
 expect_plan 'k8s e2e runner' '["k8s-e2e","lint","supply-chain-checks"]' 'scripts/ci/k8s-e2e.sh'
 expect_plan 'chart kind runner' '["k8s-e2e","lint","supply-chain-checks"]' 'scripts/ci/chart-kind.sh'
+expect_plan 'derate data the floor fixture reads' '["docs","floor-bench","supply-chain-checks"]' 'docs/release/measurements/derate.json'
+expect_plan 'API parity registry the parity fixture reads' \
+	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","supply-chain-checks","test","web-go"]' \
+	'api/parity.yaml'
 expect_plan 'Flux template' '["k8s-e2e","lint","supply-chain-checks"]' 'install/gitops/flux.yaml'
 expect_plan 'Argo CD template' '["k8s-e2e","lint","supply-chain-checks"]' 'install/gitops/argo-cd.yaml'
 expect_plan 'GitOps trust generator' '["k8s-e2e","lint","supply-chain-checks"]' 'scripts/deploy/render_gitops.py'

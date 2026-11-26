@@ -1,18 +1,70 @@
 # Exact inputs of the ci.yml supply-chain-checks fixtures. A PR that touches one
-# runs the fixtures in ci-feedback (scripts/ci/select-supply-chain-fixtures.sh).
+# runs the fixtures in ci-feedback (the base commit's copy of
+# scripts/ci/select-supply-chain-fixtures.sh reads this file at the base).
 # An entry ending in / selects everything under it. Go packages that the job
 # runs (internal/app, scripts/ci, ...) are scoped to the test domain, not listed.
-# supply_chain_inputs_test.go derives the inputs from the job and fails when one
-# has no entry here. This file, ci-feedback.yml and the replay runner are
-# declared extras: a change to them can break the PR job.
-.github/workflows/ci-feedback.yml
+# TestSupplyChainInputListCoversEveryInput (supply_chain_guards_test.go) derives
+# the inputs from the job and fails when one has no entry here. This file,
+# ci-feedback.yml and the replay runner are declared extras: a change to them can
+# break the PR job.
 .githooks/pre-push
+.github/workflows/ci-dev-gate.yml
+.github/workflows/ci-dev.yml
+.github/workflows/ci-feedback.yml
+.github/workflows/ci-main.yml
+.github/workflows/ci-merge-group.yml
+.github/workflows/ci.yml
+.github/workflows/floor-bench.yml
+.github/workflows/nightly.yml
+.github/workflows/release.yml
+.gitignore
+.golangci.yml
+.goreleaser.yaml
+.nvmrc
+CONTRIBUTING.md
+Dockerfile.release
+GOVERNANCE.md
+LICENSE
+README.md
+SECURITY.md
+SUPPORT.md
+TRADEMARK.md
+api/openapi.yaml
+api/parity.yaml
+chart/hikyo/examples/singleton-manual.yaml
 chart/hikyo/values.yaml
+clients/ts/package.json
+docs/design/security-maintenance.md
+docs/handoff/78-docs-governance.md
+docs/operations/security-maintenance.md
+docs/release/measurements/derate.json
+docs/site/package.json
+docs/site/scripts/test-csp.mjs
+docs/spec/open-items.md
+go.mod
+go.sum
+install/security-maintenance/compose.json.example
+install/security-maintenance/compose.yaml
+install/security-maintenance/hikyo.service
 install/security-maintenance/install-systemd.sh
+install/security-maintenance/native.json.example
 install/upgrade-nightly.sh
 install/upgrade-nightly_test.sh
+package.json
+release/repository/dev-ci-gate.json
+release/repository/nightly-promotion-branches.json
+release/repository/nightly-tag-creation.json
+release/trust/metadata.json
+release/trust/metadata.sigstore.json
+release/trust/nightly/policy.json
+release/trust/nightly/trusted-root.json
+release/trust/primary-1.pub
+release/trust/recovery-1.pub
+release/trust/root.json
+release/trust/stable-policy.json
 scripts/bench/floor.sh
 scripts/bench/floor_test.sh
+scripts/ci/assert-doctor-findings.jq
 scripts/ci/build-queue-publisher.sh
 scripts/ci/build-spa.sh
 scripts/ci/chart-kind.sh
@@ -22,6 +74,8 @@ scripts/ci/check-build-artifact-reuse_test.sh
 scripts/ci/check-cache-policy_test.sh
 scripts/ci/check-chart.sh
 scripts/ci/check-chart_test.sh
+scripts/ci/check-client-skew-evidence.mjs
+scripts/ci/check-client-skew-evidence.test.mjs
 scripts/ci/check-codeql-default-setup_test.sh
 scripts/ci/check-commit-signatures.sh
 scripts/ci/check-commit-signatures_test.sh
@@ -43,6 +97,7 @@ scripts/ci/check-required-jobs_test.sh
 scripts/ci/check-security-feed-freshness.sh
 scripts/ci/check-trusted-ci-scripts_test.sh
 scripts/ci/check_gitops_kind.py
+scripts/ci/ci-job-registry.json
 scripts/ci/classify-changed-paths.sh
 scripts/ci/classify-changed-paths_test.sh
 scripts/ci/classify-fuzz-findings_test.sh
@@ -55,7 +110,11 @@ scripts/ci/fetch-pinned-tool.sh
 scripts/ci/fetch-pinned-tool_test.sh
 scripts/ci/fixture_cli_login.py
 scripts/ci/floor-acceptance.sh
+scripts/ci/frozen-client-cleanup.test.mjs
+scripts/ci/go-tool-modules.txt
 scripts/ci/golangci-lint-new.sh
+scripts/ci/golangci-lint-version
+scripts/ci/host-upgrade-systemd.Dockerfile
 scripts/ci/install-corepack.sh
 scripts/ci/k8s-e2e.sh
 scripts/ci/k8s-native-registry.sh
@@ -71,62 +130,7 @@ scripts/ci/ops-floor.sh
 scripts/ci/prepare-go-cache-disk.sh
 scripts/ci/reconcile-fork-gate.sh
 scripts/ci/reconcile-fork-gate_test.sh
-scripts/ci/release-admission/adapters/__init__.py
-scripts/ci/release-admission/adapters/adapter_context.py
-scripts/ci/release-admission/adapters/ancestor_chrome_custody.py
-scripts/ci/release-admission/adapters/child_transport.py
-scripts/ci/release-admission/adapters/chrome_first_prepare.py
-scripts/ci/release-admission/adapters/create_custody.py
-scripts/ci/release-admission/adapters/create_holder.py
-scripts/ci/release-admission/adapters/driver_data.py
-scripts/ci/release-admission/adapters/driver_native_carrier.py
-scripts/ci/release-admission/adapters/k_cleanup_custody.py
-scripts/ci/release-admission/adapters/k_native_carrier.py
-scripts/ci/release-admission/adapters/k_transport_receipt.py
-scripts/ci/release-admission/adapters/local_files.py
-scripts/ci/release-admission/adapters/n_runtime.py
-scripts/ci/release-admission/adapters/native_carrier.py
-scripts/ci/release-admission/adapters/pair_collection.py
-scripts/ci/release-admission/adapters/paired_core.py
-scripts/ci/release-admission/adapters/paired_custody.py
-scripts/ci/release-admission/adapters/persistent_admission.py
-scripts/ci/release-admission/adapters/persistent_custody.py
-scripts/ci/release-admission/adapters/pipe_io.py
-scripts/ci/release-admission/adapters/preflight.py
-scripts/ci/release-admission/adapters/prepare_root.py
-scripts/ci/release-admission/adapters/root_connection.py
-scripts/ci/release-admission/adapters/root_driver.py
-scripts/ci/release-admission/adapters/root_preflight.py
-scripts/ci/release-admission/adapters/runner.py
-scripts/ci/release-admission/adapters/runtime_binding.py
-scripts/ci/release-admission/adapters/source_gate.py
-scripts/ci/release-admission/adapters/stage_custody.py
-scripts/ci/release-admission/adapters/transport_receipt.py
-scripts/ci/release-admission/core/admission_assembly.source-only.py
-scripts/ci/release-admission/core/future_key_guard_deadline.source-only.py
-scripts/ci/release-admission/core/next_fixture_execution.source-only.py
-scripts/ci/release-admission/core/next_fixture_ledger.source-only.py
-scripts/ci/release-admission/core/next_fixture_model.source-only.py
-scripts/ci/release-admission/core/next_fixture_runtime_bridge.source-only.py
-scripts/ci/release-admission/core/next_hosted_result.source-only.py
-scripts/ci/release-admission/core/next_operator_orchestration.source-only.py
-scripts/ci/release-admission/core/next_operator_orchestration_stdout.source-only.py
-scripts/ci/release-admission/core/next_owner_finalization.source-only.py
-scripts/ci/release-admission/core/normalize_key_origin_cleanup_only.source-only.py
-scripts/ci/release-admission/core/normalize_next_inventory.source-only.py
-scripts/ci/release-admission/core/normalize_next_key_custody.source-only.py
-scripts/ci/release-admission/core/normalize_setup_whole_reads.source-only.py
-scripts/ci/release-admission/core/partial_metadata_bridge.source-only.py
-scripts/ci/release-admission/core/partial_setup_cleanup_inventory.source-only.py
-scripts/ci/release-admission/core/project_pending_job.source-only.py
-scripts/ci/release-admission/core/source_prepared_entrypoint.source-only.py
-scripts/ci/release-admission/core/test_next_fixture_model.py
-scripts/ci/release-admission/package_adapters.py
-scripts/ci/release-admission/release_collector.py
-scripts/ci/release-admission/release_policy.py
-scripts/ci/release-admission/run_checks.py
-scripts/ci/release-admission/test_release_records.py
-scripts/ci/release-admission/test_two_release_pipeline.py
+scripts/ci/release-admission/
 scripts/ci/report-dco.sh
 scripts/ci/report-dev-status.sh
 scripts/ci/report-fuzz-finding.sh
@@ -136,6 +140,7 @@ scripts/ci/run-job-steps/
 scripts/ci/security-compose-rehearsal.sh
 scripts/ci/security-pi-rehearsal-render.py
 scripts/ci/security-pi-rehearsal.sh
+scripts/ci/select-supply-chain-fixtures.sh
 scripts/ci/start-aws-emulator.sh
 scripts/ci/start-ci-postgres.sh
 scripts/ci/start-ci-postgres_test.sh
@@ -154,6 +159,7 @@ scripts/compose-demo.sh
 scripts/deploy/
 scripts/deploy/render_gitops.py
 scripts/git/install-hooks.sh
+scripts/mcp-conformance/package.json
 scripts/ops/audit-collector/
 scripts/ops/audit-collector/health.py
 scripts/ops/audit-collector/host_mount.py
@@ -217,4 +223,4 @@ scripts/release/verify-apple-install.sh
 scripts/release/verify-bundle-stable_test.sh
 scripts/release/verify-bundle.sh
 scripts/release/with-apple-ticket-network.sh
-scripts/ci/select-supply-chain-fixtures.sh
+web/package.json

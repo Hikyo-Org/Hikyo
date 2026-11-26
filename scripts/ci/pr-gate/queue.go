@@ -482,7 +482,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 				if q.checkName == devCheckName {
 					settle(ctx,
 						func(ctx context.Context) { code, err = canonicalDCOResult(ctx, p, dcoVerifier) },
-						func(ctx context.Context) { refusal, refusalErr = q.devPolicyRefusal(ctx, p) },
+						func(ctx context.Context) { refusal, refusalErr = q.devPolicyRefusal(ctx, p, r.FixturesSkipped) },
 					)
 				} else {
 					code, err = canonicalDCOResult(ctx, p, dcoVerifier)
@@ -767,10 +767,11 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 				return nil, errors.New("missing or duplicated useful feedback lane")
 			}
 			if r.Status == "completed" && q.checkName == devCheckName {
-				failed, err := judgeSupplyChain(supply, r.HeadSHA)
+				failed, skipped, err := judgeSupplyChain(supply, r.HeadSHA)
 				if err != nil {
 					return nil, err
 				}
+				r.FixturesSkipped = skipped
 				if failed {
 					r.Conclusion = "failure"
 				}

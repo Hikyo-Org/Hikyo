@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -33,6 +34,24 @@ func setDevJobs(f *queueFixture, jobs []job) {
 	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", r.ID, r.Attempt))] = map[string]any{"total_count": len(all), "jobs": all}
 }
 
+const testSupplyChainList = "# list\nhooks/pre-push\nfixtures/\n"
+
+func encodedFile(path, data string) map[string]string {
+	return map[string]string{"type": "file", "path": path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(data))}
+}
+
+// setSupplyChainBase publishes the trusted input list at the base commit.
+func setSupplyChainBase(f *queueFixture, list string) {
+	f.api.responses[f.c.endpoint("contents/"+supplyChainListPath+"?ref="+f.pr.Base.SHA)] = encodedFile(supplyChainListPath, list)
+}
+
+func totalReads(f *queueFixture) (n int) {
+	for _, c := range f.api.reads {
+		n += c
+	}
+	return n
+}
+
 func admitted(f *queueFixture) bool {
 	for _, w := range f.api.writes {
 		if w["conclusion"] == "success" {
@@ -49,6 +68,7 @@ func TestDevAdmissionAllowsOnlyTheTwoSupplyChainOutcomes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newDevFixture(t)
+			setSupplyChainBase(f, testSupplyChainList)
 			for i := range jobs {
 				jobs[i].HeadSHA = f.feedbackRun.HeadSHA
 			}
@@ -168,6 +188,7 @@ func TestDevIgnoresMetadataRunWithSkippedSupplyChainJobs(t *testing.T) {
 			}
 			tc.change(&jobs)
 			f.api.responses[f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": len(jobs), "jobs": jobs}
+			setSupplyChainBase(f, testSupplyChainList)
 			setDevJobs(f, supplyChainJobs(f.feedbackRun, "success", "skipped"))
 			err := f.q.admit(context.Background(), f.pr.Number)
 			if tc.pass {
@@ -186,5 +207,79 @@ func TestSplitSupplyChainJobsLeavesLanesAlone(t *testing.T) {
 	lanes, supply := splitSupplyChainJobs(all)
 	if len(lanes) != 3 || len(supply) != 2 || supply[0].Name != supplyChainSelectName || supply[1].Name != supplyChainFixturesName {
 		t.Fatalf("lanes=%v supply=%v", lanes, supply)
+	}
+}
+
+// The selection job runs the PR's own selector, so it can say "nothing" for a PR
+// that changes a fixture input. The gate recomputes the selection from the base
+// list and the PR's changed files, and refuses a skipped fixtures job then.
+func TestDevAdmissionRecomputesSelectionFromTheBaseList(t *testing.T) {
+	const ci = ".github/workflows/ci.yml"
+	job := func(step string) string {
+		return "jobs:\n  other:\n    steps:\n      - run: other\n  supply-chain-checks:\n    steps:\n      - run: " + step + "\n  later:\n    steps:\n      - run: later\n"
+	}
+	main := strings.Repeat("e", 40)
+	for name, tc := range map[string]struct {
+		files     []map[string]string
+		baseCI    string
+		headCI    string
+		admit     bool
+		extraRead int
+	}{
+		"nothing listed changed":      {[]map[string]string{{"filename": "internal/app/app.go"}}, "", "", true, 0},
+		"listed file changed":         {[]map[string]string{{"filename": "hooks/pre-push"}}, "", "", false, 0},
+		"file under listed directory": {[]map[string]string{{"filename": "fixtures/deep/a.sh"}}, "", "", false, 0},
+		"listed file renamed away":    {[]map[string]string{{"filename": "elsewhere", "previous_filename": "hooks/pre-push"}}, "", "", false, 0},
+		"the PR rewrote the selector": {[]map[string]string{{"filename": supplyChainSelectorPath}}, "", "", false, 0},
+		"the PR rewrote the list":     {[]map[string]string{{"filename": supplyChainListPath}}, "", "", false, 0},
+		"the PR rewrote ci-feedback":  {[]map[string]string{{"filename": supplyChainFeedbackPath}}, "", "", false, 0},
+		"job steps changed in ci.yml": {[]map[string]string{{"filename": ci}}, job("a"), job("b"), false, 2},
+		"other job changed in ci.yml": {[]map[string]string{{"filename": ci}}, job("a"), job("a") + "  extra:\n    steps: []\n", true, 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newDevFixture(t)
+			f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
+			setSupplyChainBase(f, testSupplyChainList)
+			f.api.responses[f.c.endpoint(devFilesPage(f, 1))] = tc.files
+			if tc.baseCI != "" {
+				f.api.responses[f.c.endpoint("contents/"+ci+"?ref="+f.pr.Base.SHA)] = encodedFile(ci, tc.baseCI)
+				f.api.responses[f.c.endpoint("contents/"+ci+"?ref="+f.pr.Head.SHA)] = encodedFile(ci, tc.headCI)
+				f.api.responses[f.c.endpoint("contents/"+ci+"?ref="+main)] = encodedFile(ci, tc.headCI)
+			}
+			// The selection job reports success and the fixtures were skipped.
+			setDevJobs(f, supplyChainJobs(f.feedbackRun, "success", "skipped"))
+			_ = f.q.admit(context.Background(), f.pr.Number)
+			if admitted(f) != tc.admit {
+				t.Fatalf("admitted=%t, want %t: %+v", admitted(f), tc.admit, f.api.writes)
+			}
+			if !tc.admit {
+				f.assertNoSuccess(t)
+			}
+		})
+	}
+}
+
+// Fixtures that ran are never recomputed, so the common case adds no read; a
+// skipped job adds the single read of the base list.
+func TestDevSupplyChainRecomputationReadBudget(t *testing.T) {
+	count := func(fixtures string) int {
+		f := newDevFixture(t)
+		f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
+		setSupplyChainBase(f, testSupplyChainList)
+		setDevJobs(f, supplyChainJobs(f.feedbackRun, "success", fixtures))
+		if err := f.q.admit(context.Background(), f.pr.Number); err != nil || !admitted(f) {
+			t.Fatalf("admit %s: %v", fixtures, err)
+		}
+		return totalReads(f)
+	}
+	if ran, skipped := count("success"), count("skipped"); skipped-ran != 1 {
+		t.Fatalf("a skipped fixtures job added %d reads, want 1", skipped-ran)
+	}
+}
+
+func TestSupplyChainJobBlockMatchesTheSelectorScript(t *testing.T) {
+	workflow := "jobs:\n  a:\n    x: 1\n  supply-chain-checks:\n    steps:\n      - run: one\n\n    env: {}\n  b:\n    y: 2\n"
+	if got, want := supplyChainJobBlock([]byte(workflow)), "    steps:\n      - run: one\n\n    env: {}"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

@@ -333,7 +333,7 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 			if tc.head != "" {
 				f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Head.SHA)] = content(tc.head)
 			}
-			refusal, err := f.q.devPolicyRefusal(context.Background(), f.pr)
+			refusal, err := f.q.devPolicyRefusal(context.Background(), f.pr, false)
 			if err != nil || (refusal != "") != tc.refuse {
 				t.Fatalf("refusal %q/%v, want refuse=%t", refusal, err, tc.refuse)
 			}
@@ -348,13 +348,13 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 	for page := 1; page <= pullFilePages; page++ {
 		wide.api.responses[wide.c.endpoint(devFilesPage(wide, page))] = full
 	}
-	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr); err != nil || refusal == "" {
+	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr, false); err != nil || refusal == "" {
 		t.Fatalf("unlistable PR was not refused: %q/%v", refusal, err)
 	}
 	wide.api.responses[wide.c.endpoint(devFilesPage(wide, 7))] = []map[string]string{{"filename": path}}
 	wide.api.responses[wide.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
 	wide.api.responses[wide.c.endpoint("contents/"+path+"?ref="+wide.pr.Head.SHA)] = content("main bytes")
-	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr); err != nil || refusal != "" {
+	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr, false); err != nil || refusal != "" {
 		t.Fatalf("wide backmerge was refused: %q/%v", refusal, err)
 	}
 	// Admission must publish this refusal instead of only failing the job.
