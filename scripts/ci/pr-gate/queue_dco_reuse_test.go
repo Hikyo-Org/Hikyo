@@ -48,6 +48,9 @@ func newAdmissionDCOFixture(t *testing.T, bot bool) admissionDCOFixture {
 		actor = "dependabot[bot]"
 	}
 	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+identity+" 1700000001 +0000\ncommitter "+identity+" 1700000001 +0000\n\n"+message)
+	if out, err := exec.Command(git, "-C", repo, "update-ref", queueTrustedMainRef, base).CombinedOutput(); err != nil {
+		t.Fatalf("update-ref: %v %s", err, out)
+	}
 	tools := t.TempDir()
 	log := filepath.Join(tools, "calls")
 	fail := filepath.Join(tools, "fail-fetch")

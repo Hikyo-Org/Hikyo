@@ -96,7 +96,7 @@ if [ -n "$operation" ]; then
 fi
 if [ "$operation" = fetch ]; then
  $fetch_filter
- @GIT@ -c protocol.file.allow=always -c remote.origin.url=@ORIGIN@ -c remote.origin.promisor=true -c remote.origin.partialclonefilter=blob:none -C "$target" fetch --quiet --no-tags --filter=blob:none origin "$penultimate" "$previous"
+ @GIT@ -c protocol.file.allow=always -c remote.origin.url=@ORIGIN@ -c remote.origin.promisor=true -c remote.origin.partialclonefilter=blob:none -C "$target" fetch --quiet --no-tags --filter=blob:none origin +refs/heads/main:refs/hikyo/trusted-main "$penultimate" "$previous"
  if @GIT@ -c remote.origin.promisor=false -C "$target" cat-file -e @SHARED@ 2>/dev/null; then exit 92; fi
  printf 'filtered\n' >> @LOG@
  exit 0

@@ -80,4 +80,40 @@ if DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.gi
 	exit 1
 fi
 
-printf 'DCO fixture: signed/behind-base/merge accepted; unsigned, forged-without-opt-in, and look-alike refused; exact identity accepted only on opt-in\n'
+# Main-ancestry exemption: DCO_MAIN_SHA is the trusted tip of main. A Dependabot
+# author is exempt only for commits already reachable from it, so the same
+# forged commit that is refused while off main (as on a release/ branch) passes
+# once main contains it.
+check="$(dirname "$0")/check-dco.sh"
+refuses() {
+	if "$@" >/dev/null 2>&1; then
+		printf 'DCO fixture failed: %s\n' "$label" >&2
+		exit 1
+	fi
+}
+
+git -C "$repo" branch release/1.1.0 "$dependabot"
+label='forged dependabot author off main exempt'
+DCO_MAIN_SHA=$signed refuses "$check" "$signed" "$dependabot" "$repo"
+label='forged dependabot author on a release branch, not on main, exempt'
+DCO_MAIN_SHA=$base refuses "$check" "$signed" release/1.1.0 "$repo"
+
+# A backmerge into dev: main's Dependabot commit plus a signed-off merge commit.
+git -C "$repo" switch -q --detach "$advanced_base"
+git -C "$repo" merge -q --no-ff --signoff -m 'chore: backmerge main into dev' "$dependabot"
+backmerge=$(git -C "$repo" rev-parse HEAD)
+DCO_MAIN_SHA=$dependabot "$check" "$advanced_base" "$backmerge" "$repo" >/dev/null
+label='backmerge carrying a Dependabot commit passed without main'
+refuses "$check" "$advanced_base" "$backmerge" "$repo"
+DCO_MAIN_SHA=$advanced_base refuses "$check" "$advanced_base" "$backmerge" "$repo"
+
+label='unsigned human commit exempted by main ancestry'
+DCO_MAIN_SHA=$unsigned refuses "$check" "$signed" "$unsigned" "$repo"
+label='look-alike author exempted by main ancestry'
+DCO_MAIN_SHA=$lookalike refuses "$check" "$dependabot" "$lookalike" "$repo"
+
+label='unresolvable main did not fail closed'
+DCO_MAIN_SHA=0000000000000000000000000000000000000001 refuses "$check" "$advanced_base" "$backmerge" "$repo"
+DCO_MAIN_SHA=not-a-ref refuses "$check" "$advanced_base" "$backmerge" "$repo"
+
+printf 'DCO fixture: signed/behind-base/merge accepted; unsigned, forged-without-opt-in, and look-alike refused; exact identity accepted only on opt-in; Dependabot commits exempt only when on the trusted main\n'
