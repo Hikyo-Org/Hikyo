@@ -119,7 +119,7 @@ type txForwarded interface {
 	PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error)
 	PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error)
 	// HandOverContainedPrincipals passes the incident's held principals to another open incident that also recorded them contained.
-	HandOverContainedPrincipals(ctx context.Context, incidentID string) ([]authn.HandedOver, error)
+	HandOverContainedPrincipals(ctx context.Context, incidentID string, at time.Time) ([]authn.HandedOver, error)
 	// CountPrincipalsContainedBy counts the principals an incident still holds contained.
 	CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error)
 	// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.

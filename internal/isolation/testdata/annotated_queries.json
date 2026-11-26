@@ -3373,6 +3373,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ReopenHandedOverIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "7797a428376aa343379bb93349994a8d0c9c14daf696263409dc802680806478",
+    "reason": "Close reopens the receiving incident's account.contain item and its attested identity items for one handed-over principal, so no evidence recorded before the handover counts toward a release; the closing caller was authorized at the closing incident and only the receiving incident's rows for that principal change."
+  },
+  {
+    "engine": "postgres",
     "name": "ResolveEnvChain",
     "annotation": "authn-resolution",
     "hash": "5943f4da693ec42590ca76214112c8f8088d47f1175824e9c2a03d5a933ed199"
@@ -7302,6 +7309,13 @@
     "name": "RenameRemote",
     "annotation": "instance-scoped",
     "hash": "fd1d947323b0a156b63eab896300773157609cf6834503ae17e244b4666b2865"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReopenHandedOverIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "7797a428376aa343379bb93349994a8d0c9c14daf696263409dc802680806478",
+    "reason": "Close reopens the receiving incident's account.contain item and its attested identity items for one handed-over principal, so no evidence recorded before the handover counts toward a release; the closing caller was authorized at the closing incident and only the receiving incident's rows for that principal change."
   },
   {
     "engine": "sqlite",

@@ -723,8 +723,8 @@ func (a *TxAuthorizer) GuardSAMLProviderForMint(ctx context.Context, id string, 
 }
 
 // HandOverContainedPrincipals passes the incident's held principals to another open incident that also recorded them contained.
-func (a *TxAuthorizer) HandOverContainedPrincipals(ctx context.Context, incidentID string) ([]authn.HandedOver, error) {
-	return a.r.HandOverContainedPrincipals(ctx, incidentID)
+func (a *TxAuthorizer) HandOverContainedPrincipals(ctx context.Context, incidentID string, at time.Time) ([]authn.HandedOver, error) {
+	return a.r.HandOverContainedPrincipals(ctx, incidentID, at)
 }
 
 func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {

@@ -373,5 +373,5 @@
   "WritePasswordCredential": "func(ctx context.Context, c PasswordCredential, at time.Time) error",
   "WriteRecoveryCodes": "func(ctx context.Context, b RecoveryBatch, at time.Time) error",
   "CountPrincipalsContainedBy": "func(ctx context.Context, incidentID string) (int64, error)",
-  "HandOverContainedPrincipals": "func(ctx context.Context, incidentID string) ([]authn.HandedOver, error)"
+  "HandOverContainedPrincipals": "func(ctx context.Context, incidentID string, at time.Time) ([]authn.HandedOver, error)"
 }

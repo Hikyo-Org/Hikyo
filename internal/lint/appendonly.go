@@ -196,9 +196,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// Reversible incident containment (incident-containment ADR, O1): read by
 	// authorize() like privacy_state, so written on the resolution surface under
 	// the principal-row lock.
-	"ContainPrincipal":            true,
-	"ReleasePrincipalContainment": true,
-	"HandOverContainedPrincipals": true,
+	"ContainPrincipal":              true,
+	"ReleasePrincipalContainment":   true,
+	"HandOverContainedPrincipals":   true,
+	"ReopenHandedOverIncidentItems": true,
 
 	// Incident containment ledger (incident-containment ADR, O5 option B):
 	// mutable ledger state, separate from the append-only audit tables, written

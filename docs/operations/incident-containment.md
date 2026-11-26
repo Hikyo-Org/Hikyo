@@ -402,7 +402,8 @@ not exist: run `hikyo account factor step-up` and retry.
   refused while the incident still holds a contained principal, with or without
   residuals: release that principal first, because a closed incident can no longer release it.
   When another open incident also recorded the principal as contained, closing hands the
-  principal to the open incident with the lowest id and closes. The close answers `409` when
+  principal to the open incident with the lowest id and closes. That incident's evidence for
+  the principal is reset: resume it again and attest the linked identities again before release. The close answers `409` when
   no other incident holds it.
 
 An unknown incident and one outside your authority answer the same way. A machine

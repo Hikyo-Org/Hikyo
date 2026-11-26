@@ -568,7 +568,13 @@ principal is contained, so a contained account would still have a scheduler acti
   the lowest id in the same write transaction, instead of refusing, so two incidents that
   recorded the same account can both close. The handover moves only the record of which
   incident holds the state: it never lifts containment, writes an `incident.principal_contained`
-  event correlated to the receiving incident, and a conflict rolls it back. Close still refuses
+  event correlated to the receiving incident, and a conflict rolls it back. Every refusal of
+  Close (open items without residuals, a stale version, a held principal nobody else holds) is
+  checked before the handover and rolls the transaction back, so a refused close commits
+  nothing. The receiving incident's claim may come from an earlier containment episode, so the
+  handover resets its evidence in the same transaction: its `account.contain` item for the
+  principal reopens (resume re-confirms it, idempotently) and its attested identity items and
+  cut row for that account become `unknown`, so the operator attests them again. Close still refuses
   when no other open incident holds the principal.
 - The operator surface is `POST /api/v1/incidents/{incident}/release`
   (`releaseIncidentPrincipal`, body `{principal, proof}`, `x-hikyo-min-revision: 22`, `204`),

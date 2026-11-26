@@ -230,21 +230,43 @@ type HandedOver struct {
 }
 
 // HandOverContainedPrincipals passes every principal the incident holds to the lowest
-// other open incident that recorded it contained. Containment itself is untouched.
-func (r *Resolver) HandOverContainedPrincipals(ctx context.Context, incidentID string) ([]HandedOver, error) {
+// other open incident that recorded it contained. Containment itself is untouched. The
+// receiving incident's claim may predate the current containment episode, so its
+// evidence is reset in the same transaction: its account.contain item reopens and its
+// attested identity items for the account become unknown, so nothing recorded earlier
+// counts toward a release.
+func (r *Resolver) HandOverContainedPrincipals(ctx context.Context, incidentID string, at time.Time) ([]HandedOver, error) {
 	var out []HandedOver
 	if r.sq != nil {
 		rows, err := r.sq.HandOverContainedPrincipals(ctx, incidentID)
+		if err != nil {
+			return nil, err
+		}
 		for _, row := range rows {
 			out = append(out, HandedOver{Principal: domain.PrincipalID(row.ID), ToIncident: row.ContainedIncidentID.String})
 		}
-		return out, err
+		for _, h := range out {
+			if _, err := r.sq.ReopenHandedOverIncidentItems(ctx, sqlitegen.ReopenHandedOverIncidentItemsParams{
+				At: encodeTime(at), IncidentID: h.ToIncident, PrincipalID: string(h.Principal)}); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
 	}
 	rows, err := r.pg.HandOverContainedPrincipals(ctx, incidentID)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range rows {
 		out = append(out, HandedOver{Principal: domain.PrincipalID(row.ID), ToIncident: row.ContainedIncidentID.String})
 	}
-	return out, err
+	for _, h := range out {
+		if _, err := r.pg.ReopenHandedOverIncidentItems(ctx, pggen.ReopenHandedOverIncidentItemsParams{
+			At: pgTimestamp(at), IncidentID: h.ToIncident, PrincipalID: string(h.Principal)}); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // CountPrincipalsContainedBy counts the principals the incident still holds contained.

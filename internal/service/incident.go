@@ -973,7 +973,6 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 // status, which lists them; a clean close with open items is refused.
 func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResiduals bool) (IncidentView, error) {
 	var out IncidentView
-	var staleErr error
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		caller, inc, err := s.incidentByID(ctx, az, actor, id, now)
@@ -986,11 +985,21 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 		if inc.Status != domain.IncidentOpen {
 			return fmt.Errorf("%w: incident is already closed", domain.ErrConflict)
 		}
+		counts, err := az.IncidentItemCounts(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		open := counts[domain.ItemPending] + counts[domain.ItemUnknown] + counts[domain.ItemBlocked]
+		// Every refusal comes before anything is written, and each returns an error so
+		// the transaction rolls back (a handover is never committed by a refused close).
+		if open > 0 && !withResiduals {
+			return ErrIncidentOpenItems
+		}
 		// A contained principal is released through its incident's ledger and nothing
 		// else, so closing (with residuals too) would strand it contained for good. One
 		// that another open incident also recorded contained is handed to that incident
 		// (containment itself untouched); one nobody else holds must be released first.
-		handed, err := az.HandOverContainedPrincipals(ctx, inc.ID)
+		handed, err := az.HandOverContainedPrincipals(ctx, inc.ID, now)
 		if err != nil {
 			return err
 		}
@@ -1010,15 +1019,6 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			if err := az.RecordAuthEvent(ctx, e); err != nil {
 				return err
 			}
-		}
-		counts, err := az.IncidentItemCounts(ctx, inc.ID)
-		if err != nil {
-			return err
-		}
-		open := counts[domain.ItemPending] + counts[domain.ItemUnknown] + counts[domain.ItemBlocked]
-		if open > 0 && !withResiduals {
-			staleErr = ErrIncidentOpenItems
-			return nil
 		}
 		status := domain.IncidentClosed
 		residuals := []string{}
@@ -1046,8 +1046,7 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			return err
 		}
 		if !ok {
-			staleErr = fmt.Errorf("%w: incident changed while closing", domain.ErrConflict)
-			return nil
+			return fmt.Errorf("%w: incident changed while closing", domain.ErrConflict)
 		}
 		payload := countsPayload(counts)
 		payload["status"], payload["residuals"] = string(status), residuals
@@ -1071,9 +1070,6 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 	})
 	if err != nil {
 		return IncidentView{}, err
-	}
-	if staleErr != nil {
-		return IncidentView{}, staleErr
 	}
 	return out, nil
 }
