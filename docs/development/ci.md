@@ -555,7 +555,7 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 R = 480 is below 919. With 658 allowed to gated work (1000 - 522 + 180), the pinned
 worst case at the lower bound is 658 + 739 = 1,397 requests, 39.7% over the window. That is
 above the 25% over-window the owner accepted for the exception (Q2), by 14.7 points. The
-owner accepted the earlier figure of 1,396 (39.6%) on 2026-11-26; the one extra read of the supply-chain input list moves it to 1,397. The owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. The post-write
+owner accepted the earlier figure of 1,396 (39.6%) on 2026-11-26; the one extra read of the supply-chain input list moves it to 1,397. The owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. Combined worst case with the dev backmerge #1601 (dev also lists the retarget feedback source, so its attempt-3 pass costs 95 before this change and 96 after it, 8 more than main's 88): honest lower bound 927, worst case 1,405 requests an hour (40.5%), measured on dev after this change is backmerged; below the 1,420 ceiling. The gate hotfix `hotfix/dev-gate-admit-backmerge` may add one read on the base-differs path and is pending. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
 the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
 requests and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation

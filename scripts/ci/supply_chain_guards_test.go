@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -219,7 +220,7 @@ func TestSupplyChainSelectionScript(t *testing.T) {
 		dir := t.TempDir()
 		repoGit := func(args ...string) {
 			full := append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)
-			if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+			if out, err := exec.CommandContext(context.Background(), "git", full...).CombinedOutput(); err != nil {
 				t.Fatalf("git %v: %v\n%s", args, err, out)
 			}
 		}
@@ -241,7 +242,7 @@ func TestSupplyChainSelectionScript(t *testing.T) {
 		write(change)
 		repoGit("add", "-A")
 		repoGit("commit", "-q", "--allow-empty", "-m", "change")
-		cmd := exec.Command("sh", "-s")
+		cmd := exec.CommandContext(context.Background(), "sh", "-s")
 		cmd.Dir = dir
 		cmd.Stdin = strings.NewReader(string(script))
 		return cmd.CombinedOutput()

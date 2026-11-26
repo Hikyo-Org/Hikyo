@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -218,7 +219,7 @@ func supplyChainRuns(t *testing.T, ci []byte) map[string]string {
 
 func supplyChainRepository(t *testing.T, root string) supplyChainRepo {
 	t.Helper()
-	list, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
+	list, err := exec.CommandContext(context.Background(), "git", "-C", root, "ls-files", "-z").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func supplyChainUncovered(t *testing.T, classifier, registry string, r supplyCha
 		if supplyChainCoveredByDocsJob[p] {
 			want = []string{"docs"}
 		}
-		cmd := exec.Command("sh", classifier, "--files")
+		cmd := exec.CommandContext(context.Background(), "sh", classifier, "--files")
 		cmd.Env = append(os.Environ(), "CI_JOB_REGISTRY="+registry)
 		cmd.Stdin = strings.NewReader(probe + "\n")
 		out, err := cmd.Output()

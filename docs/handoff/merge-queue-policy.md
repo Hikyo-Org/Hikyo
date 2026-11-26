@@ -199,6 +199,10 @@ Exception (2026-11-26, #1587): the `supply-chain fixtures` job in `ci-feedback`
 is outside the four-minute bound. It runs only when a PR touches one of the
 fixtures' exact inputs, with its own 20-minute timeout, and dev admission
 requires it (see `docs/development/ci.md`). The lanes keep the four-minute limit.
+Over the 60 days to 2026-11-26 the exact inputs select about 45% of dev merges
+(171 of 382) and 58% of main merges (130 of 226); the owner accepted these rates
+on 2026-11-26. Follow-up #1608 narrows the fixtures to read fewer files,
+measured per fixture; the trigger stays exact.
 
 The four-minute feedback job plus the one-minute targeted publisher allowance
 bounds controlled execution, not all GitHub elapsed time. Runner queues, API

@@ -5,7 +5,10 @@
 # seconds (runtime pending measurement from this workflow's own hosted run), so
 # they run as their own job beside the lanes, only when the PR changes one of
 # their inputs. The gate requires that job and its selection job by name
-# (scripts/ci/pr-gate) and recomputes the selection itself.
+# (scripts/ci/pr-gate) and recomputes the selection itself. The exact inputs
+# select about 45% of dev merges (171 of 382) and 58% of main merges (130 of
+# 226) over the 60 days to 2026-11-26, accepted by the owner that day; #1608
+# narrows the fixtures to read fewer files. The trigger stays exact.
 name: ci-feedback
 
 on:

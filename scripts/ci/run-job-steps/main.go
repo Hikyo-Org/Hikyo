@@ -100,7 +100,7 @@ func execute(steps []step) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	pathFile := filepath.Join(dir, "github_path")
 	path := os.Getenv("PATH")
 	for i, s := range steps {
@@ -111,19 +111,21 @@ func execute(steps []step) error {
 		if err := os.WriteFile(script, []byte(s.Run), 0o600); err != nil {
 			return err
 		}
-		args := []string{"-e"}
-		if s.Shell == "bash" {
-			args = []string{"--noprofile", "--norc", "-eo", "pipefail"}
-		}
 		fmt.Printf("::group::%s\n", s.Name)
 		ctx, cancel := context.Background(), context.CancelFunc(func() {})
 		if s.Timeout > 0 {
 			ctx, cancel = context.WithTimeout(ctx, time.Duration(s.Timeout)*stepTimeoutUnit)
 		}
-		cmd := exec.CommandContext(ctx, "bash", append(args, script)...)
+		// Constant arguments only: the step script is sourced from the environment,
+		// as Actions runs `bash -e {0}` (the default shell) or the pipefail form.
+		const source = `. "$RUN_JOB_STEP_SCRIPT"`
+		cmd := exec.CommandContext(ctx, "bash", "-e", "-c", source, "step")
+		if s.Shell == "bash" {
+			cmd = exec.CommandContext(ctx, "bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", source, "step")
+		}
 		cmd.WaitDelay = time.Second
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		cmd.Env = append(os.Environ(), "PATH="+path, "GITHUB_PATH="+pathFile)
+		cmd.Env = append(os.Environ(), "PATH="+path, "GITHUB_PATH="+pathFile, "RUN_JOB_STEP_SCRIPT="+script)
 		for k, v := range s.Env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}

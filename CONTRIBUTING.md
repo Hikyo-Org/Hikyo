@@ -275,8 +275,10 @@ the same deadline. All three lanes must succeed before queue admission. A PR
 that touches an input of the `supply-chain-checks` fixtures also runs them in a
 separate `ci-feedback` job that dev admission requires. Dated exception to the
 four-minute deadline (2026-11-26, #1587): that job is slower, with its duration
-pending measurement, and the exact inputs select about 45% of dev merges and 58%
-of main merges over the preceding 60 days.
+pending measurement, and the exact inputs select about 45% of dev merges (171 of
+382) and 58% of main merges (130 of 226) over the 60 days to 2026-11-26. The
+owner accepted these rates on 2026-11-26; follow-up #1608 narrows the fixtures
+to read fewer files, measured per fixture, and the trigger stays exact.
 This feedback does not authorize merge or replace any full-suite coverage.
 
 When a feature is ready, merge its reviewed PR into dev after

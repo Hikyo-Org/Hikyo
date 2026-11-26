@@ -72,7 +72,7 @@ func judgeSupplyChain(supply []job, head string) (failed, fixturesSkipped bool, 
 	f := fixtures[0]
 	ran := f.Status == "completed" && f.Conclusion == "success"
 	skipped := f.Status == "completed" && f.Conclusion == "skipped"
-	return !selected || !(ran || skipped), skipped, nil
+	return !selected || (!ran && !skipped), skipped, nil
 }
 
 const (
