@@ -271,7 +271,9 @@ Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
 Each pushed commit receives fast `ci-feedback` using selected package checks.
 Its four-minute runner timeout includes setup; shared-runner queue time is extra.
 Application Go, tooling Go and frontend checks have independent runners with
-the same deadline. All three lanes must succeed before queue admission.
+the same deadline. All three lanes must succeed before queue admission. A PR
+that touches an input of the `supply-chain-checks` fixtures also runs them in a
+separate `ci-feedback` job (about 9 to 13 minutes) that dev admission requires.
 This feedback does not authorize merge or replace any full-suite coverage.
 
 When a feature is ready, merge its reviewed PR into dev after

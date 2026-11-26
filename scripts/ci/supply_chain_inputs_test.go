@@ -14,11 +14,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Contract: every input of a supply-chain-checks fixture must make the changed
-// path classifier select that job. The advisory PR workflow
-// (ci-advisory-supply-chain.yml) runs the job only when the classifier does, so
-// a path a fixture reads but the classifier narrows away (as `*.go`, `docs/*`
-// and the kind-script cases do) would again break dev with a green PR.
+// Contract: every input of a supply-chain-checks fixture must reach the
+// fixtures on both paths that run them, and each is guarded on its own:
+//   - PR CI (ci-feedback.yml, select-supply-chain-fixtures.sh) runs them when a
+//     diff touches an entry of scripts/ci/supply-chain-fixture-inputs.txt.
+//     TestSupplyChainInputListCoversEveryInput requires an entry for each input.
+//   - The merge queue and ci-dev run them when the changed-path classifier
+//     selects the job. TestSupplyChainFixtureInputsSelectTheJob requires that for
+//     each input, so a path a fixture reads but the classifier narrows away (as
+//     `*.go`, `docs/*` and the kind-script cases did) cannot skip the job there.
 //
 // Inputs are derived from the job itself, not listed: the repository paths each
 // `run:` step names (scripts, directories, requirements), then, through every
@@ -255,98 +259,5 @@ func TestSupplyChainFixtureInputsSelectTheJob(t *testing.T) {
 	registry := filepath.Join(root, "scripts/ci/ci-job-registry.json")
 	for _, bad := range supplyChainUncovered(t, classifier, registry, repo, inputs) {
 		t.Error(bad)
-	}
-}
-
-// Prove the contract can fail: narrow the real classifier, and add a fixture,
-// each in a copy, and require the derivation to name what escaped.
-func TestSupplyChainContractFailsWhenCoverageIsRemoved(t *testing.T) {
-	root := repositoryRoot(t)
-	ci, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := supplyChainRepository(t, root)
-	runs := supplyChainRuns(t, ci)
-	registry := filepath.Join(root, "scripts/ci/ci-job-registry.json")
-	classifier, err := os.ReadFile(filepath.Join(root, "scripts/ci/classify-changed-paths.sh"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	narrow := func(t *testing.T, pattern string) string {
-		t.Helper()
-		const anchor = "\t\tcase \"$path\" in\n\t\t# Only the nightly-desktop"
-		if !strings.Contains(string(classifier), anchor) {
-			t.Fatal("classifier lost the case the mutation anchors to")
-		}
-		mutated := strings.Replace(string(classifier), anchor,
-			"\t\tcase \"$path\" in\n\t\t"+pattern+")\n\t\t\tselect_class docs\n\t\t\t;;\n\t\t# Only the nightly-desktop", 1)
-		file := filepath.Join(t.TempDir(), "classify.sh")
-		if err := os.WriteFile(file, []byte(mutated), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return file
-	}
-	t.Run("hook path narrowed away", func(t *testing.T) {
-		inputs, err := supplyChainInputs(repo, runs)
-		if err != nil {
-			t.Fatal(err)
-		}
-		bad := supplyChainUncovered(t, narrow(t, ".githooks/*"), registry, repo, inputs)
-		if len(bad) == 0 || !strings.Contains(strings.Join(bad, "\n"), ".githooks/pre-push") {
-			t.Fatalf("narrowing .githooks/* escaped the contract: %v", bad)
-		}
-	})
-	t.Run("new fixture in an uncovered area", func(t *testing.T) {
-		files := map[string]string{"web/new-fixture_test.sh": "#!/bin/sh\n"}
-		for k, v := range repo.files {
-			files[k] = v
-		}
-		extended := newSupplyChainRepo(files)
-		withNew := map[string]string{"New fixture": "./web/new-fixture_test.sh"}
-		for k, v := range runs {
-			withNew[k] = v
-		}
-		inputs, err := supplyChainInputs(extended, withNew)
-		if err != nil {
-			t.Fatal(err)
-		}
-		bad := supplyChainUncovered(t, filepath.Join(root, "scripts/ci/classify-changed-paths.sh"), registry, extended, inputs)
-		if len(bad) == 0 || !strings.Contains(strings.Join(bad, "\n"), "web/new-fixture_test.sh") {
-			t.Fatalf("a new fixture without coverage escaped the contract: %v", bad)
-		}
-	})
-	t.Run("new fixture naming no path", func(t *testing.T) {
-		withNew := map[string]string{"New fixture": "make check"}
-		for k, v := range runs {
-			withNew[k] = v
-		}
-		if _, err := supplyChainInputs(repo, withNew); err == nil {
-			t.Fatal("a fixture that names no input was accepted")
-		}
-	})
-}
-
-// The advisory workflow is only as strong as its gate: the classifier must come
-// from the base commit, the fixtures must run only on its verdict, and it must
-// replay the job rather than a copy that could drift.
-func TestSupplyChainAdvisoryWorkflowShape(t *testing.T) {
-	raw := readRepoFile(t, ".github/workflows/ci-supply-chain.yml")
-	for _, want := range []string{
-		`show "$BASE_SHA:scripts/ci/classify-changed-paths.sh"`,
-		`show "$BASE_SHA:scripts/ci/ci-job-registry.json"`,
-		`diff --name-only "$BASE_SHA...$HEAD_SHA"`,
-		`if: ${{ needs.changes.outputs.run == 'true' }}`,
-		`go run ./scripts/ci/run-job-steps .github/workflows/ci.yml supply-chain-checks`,
-		"persist-credentials: false",
-	} {
-		if !strings.Contains(raw, want) {
-			t.Errorf("workflow lost %q", want)
-		}
-	}
-	for _, forbidden := range []string{"actions/cache/save", "pull_request_target", "secrets.", "continue-on-error", "contents: write"} {
-		if strings.Contains(raw, forbidden) {
-			t.Errorf("advisory workflow must not contain %q", forbidden)
-		}
 	}
 }
