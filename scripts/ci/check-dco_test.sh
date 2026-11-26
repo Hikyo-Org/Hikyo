@@ -113,9 +113,19 @@ refuses DCO_MAIN_SHA="$unsigned" "$check" "$signed" "$unsigned" "$repo"
 label='look-alike author exempted by main ancestry'
 refuses DCO_MAIN_SHA="$lookalike" "$check" "$dependabot" "$lookalike" "$repo"
 
+# An invalid trusted tip is an error (exit 2), not a plain refusal. The other
+# tip holds the Dependabot commit, so the run would pass if the bad one were ignored.
+invalid_tip() {
+	status=0
+	env "$@" >/dev/null 2>&1 || status=$?
+	if [ "$status" -ne 2 ]; then
+		printf 'DCO fixture failed: %s (exit %s, want 2)\n' "$label" "$status" >&2
+		exit 1
+	fi
+}
 label='unresolvable main did not fail closed'
-refuses DCO_MAIN_SHA=0000000000000000000000000000000000000001 "$check" "$advanced_base" "$backmerge" "$repo"
-refuses DCO_MAIN_SHA=not-a-ref "$check" "$advanced_base" "$backmerge" "$repo"
+invalid_tip DCO_MAIN_SHA=0000000000000000000000000000000000000001 DCO_DEV_SHA="$dependabot" "$check" "$advanced_base" "$backmerge" "$repo"
+invalid_tip DCO_MAIN_SHA=not-a-ref DCO_DEV_SHA="$dependabot" "$check" "$advanced_base" "$backmerge" "$repo"
 
 # Dev ancestry: Dependabot's commits enter dev through PRs it opened, so a
 # promotion from dev carries them. Either trusted tip suffices; neither does not.
@@ -126,7 +136,7 @@ refuses DCO_MAIN_SHA="$signed" DCO_DEV_SHA="$signed" "$check" "$advanced_base" "
 label='human commit exempted by dev ancestry'
 refuses DCO_MAIN_SHA="$signed" DCO_DEV_SHA="$unsigned" "$check" "$signed" "$unsigned" "$repo"
 label='unresolvable dev did not fail closed'
-refuses DCO_MAIN_SHA="$dependabot" DCO_DEV_SHA=0000000000000000000000000000000000000001 "$check" "$advanced_base" "$backmerge" "$repo"
-refuses DCO_MAIN_SHA="$dependabot" DCO_DEV_SHA=not-a-ref "$check" "$advanced_base" "$backmerge" "$repo"
+invalid_tip DCO_MAIN_SHA="$dependabot" DCO_DEV_SHA=0000000000000000000000000000000000000001 "$check" "$advanced_base" "$backmerge" "$repo"
+invalid_tip DCO_MAIN_SHA="$dependabot" DCO_DEV_SHA=not-a-ref "$check" "$advanced_base" "$backmerge" "$repo"
 
 printf 'DCO fixture: signed/behind-base/merge accepted; unsigned, forged-without-opt-in, and look-alike refused; exact identity accepted only on opt-in; Dependabot commits exempt only when on the trusted main or dev\n'

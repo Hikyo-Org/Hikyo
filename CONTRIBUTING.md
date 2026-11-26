@@ -145,7 +145,7 @@ After creating your contribution with `git commit -S -s`, run:
 
 ```sh
 git log -1 --format='%h %G? %s'
-DCO_MAIN_SHA=$(git rev-parse hikyo-upstream/main) DCO_DEV_SHA=$(git rev-parse --verify --quiet hikyo-upstream/dev) scripts/ci/check-dco.sh hikyo-upstream/main HEAD
+DCO_MAIN_SHA=$(git rev-parse --verify --quiet 'hikyo-upstream/main^{commit}') DCO_DEV_SHA=$(git rev-parse --verify --quiet 'hikyo-upstream/dev^{commit}') scripts/ci/check-dco.sh hikyo-upstream/main HEAD
 scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
 ```
 

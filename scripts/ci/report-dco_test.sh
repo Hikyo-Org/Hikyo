@@ -64,8 +64,6 @@ fail() {
 	exit 1
 }
 
-# A Dependabot commit is exempt only when the trusted main already holds it;
-# the branch it arrives on no longer matters.
 # A bad trusted tip must stop the reporter before any gh call. The other tip is
 # the Dependabot commit itself, so the run would exit 0 (and look up comments)
 # if the bad tip were ignored. Invalid tips exit 2; an unset tip trips the
@@ -78,6 +76,8 @@ closed() {
 	[ ! -s "$work/calls" ] || fail "$1: gh was called"
 }
 
+# A Dependabot commit is exempt only when the trusted main or dev already holds it;
+# the branch it arrives on no longer matters.
 # Subshells: a POSIX shell keeps a variable assigned in front of a function call.
 (MAIN=$dependabot && run "$dependabot") || fail 'Dependabot commit already on main reported missing'
 run "$dependabot" && fail 'Dependabot commit off main claimed the exemption'
