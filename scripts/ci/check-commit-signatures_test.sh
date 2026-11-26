@@ -43,6 +43,11 @@ mkdir -p "$repo/.githooks" "$repo/scripts/ci" "$repo/scripts/git"
 cp "$(dirname "$0")/check-commit-signatures.sh" "$repo/scripts/ci/"
 cp "$(dirname "$0")/../../.githooks/pre-push" "$repo/.githooks/"
 cp "$(dirname "$0")/../git/install-hooks.sh" "$repo/scripts/git/"
+# The hook's last step runs the affected Go tests; this repository has no Go
+# module, and scripts/git/pre-push_test.sh covers that step, so a stub records
+# that the hook reached it.
+printf '#!/bin/sh\ntouch "%s/gotest-ran"\n' "$repo" >"$repo/scripts/ci/go-affected-test.sh"
+chmod +x "$repo/scripts/ci/go-affected-test.sh"
 chmod +x "$repo/.githooks/pre-push" "$repo/scripts/ci/check-commit-signatures.sh" "$repo/scripts/git/install-hooks.sh"
 (cd "$repo" && scripts/git/install-hooks.sh >/dev/null)
 [ "$(git -C "$repo" config core.hooksPath)" = .githooks ] || {
@@ -58,6 +63,10 @@ git -C "$repo" update-ref refs/remotes/hikyo-upstream/main "$base"
 git -C "$repo" update-ref refs/remotes/origin/main "$base"
 printf 'refs/heads/signed %s refs/heads/signed %s\n' "$signed" "$zero" >"$repo/push-input"
 git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
+[ -f "$repo/gotest-ran" ] || {
+	printf 'signature fixture failed: pre-push did not reach the Go test step\n' >&2
+	exit 1
+}
 
 primary=$(git -C "$repo" branch --show-current)
 # Reproduce an ordinary branch fast-forward when canonical main already equals
