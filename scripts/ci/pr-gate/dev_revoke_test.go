@@ -157,15 +157,7 @@ func TestDevRevocationSurvivesAnOlderPassThatListedACompletedRecord(t *testing.T
 	f.api.checks = []check{ownedRecord(f, 5, "completed", "success", "Ready for dev integration", start.Add(-time.Hour))}
 	f.api.nextID = 900
 	revocation := ownedRecord(f, 6, "queued", "", revocationTitle, start.Add(20*time.Second))
-	listings := 0
-	f.api.readHook = func(path string, _ int) {
-		if strings.Contains(path, "/check-runs?") {
-			listings++
-			if listings == 2 { // after the pass wrote its own success record
-				f.api.checks = append(f.api.checks, revocation)
-			}
-		}
-	}
+	f.c.api = &afterSuccessAPI{inner: f.api, then: func() { f.api.checks = append(f.api.checks, revocation) }}
 	err := f.q.admit(context.Background(), f.pr.Number)
 	if !onlyStaleHeadWork(err) {
 		t.Fatalf("a pass that lost the race must end as stale work, got %v", err)
@@ -176,7 +168,7 @@ func TestDevRevocationSurvivesAnOlderPassThatListedACompletedRecord(t *testing.T
 	}
 	// The reconcile queued after the revocation starts later and is not refused by the re-applied record.
 	f.q.queueDeadline = start.Add(2 * time.Minute).Add(admissionSeconds * time.Second)
-	f.api.readHook = nil
+	f.c.api = f.api
 	if err := f.q.admit(context.Background(), f.pr.Number); err != nil || !successPublished(f) {
 		t.Fatalf("the later reconcile must publish: %v %+v", err, f.api.checks)
 	}
@@ -261,6 +253,226 @@ func TestDevPostWriteListingFailsClosedWhenItCannotConfirmTheSuccess(t *testing.
 			}
 			if len(*waits) != tc.wantWaits && !tc.listFails {
 				t.Fatalf("waits = %v, want %d", *waits, tc.wantWaits)
+			}
+		})
+	}
+}
+
+// afterSuccessAPI runs then once, right after the first success write lands, and counts the
+// check listings that follow it.
+type afterSuccessAPI struct {
+	inner    api
+	then     func()
+	done     bool
+	listings int
+}
+
+func (a *afterSuccessAPI) read(ctx context.Context, path string, result any) error {
+	if a.done && strings.Contains(path, "/check-runs?") {
+		a.listings++
+	}
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *afterSuccessAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	err := a.inner.write(ctx, method, path, payload, result)
+	if m, ok := payload.(map[string]any); err == nil && !a.done && ok && m["conclusion"] == "success" {
+		a.done = true
+		a.then()
+	}
+	return err
+}
+
+// A record found and patched in place keeps the ID it had when listed, so a revocation
+// written after it stays on top: no confirmation listing is needed, and the head stays blocked.
+func TestDevRevocationWrittenAfterAnInPlaceSuccessStaysOnTopWithoutAListing(t *testing.T) {
+	f, start := passFixture(t)
+	f.api.checks = []check{ownedRecord(f, 5, "queued", "", "PR validation pending", start.Add(-time.Minute))}
+	f.api.nextID = 900
+	revocation := ownedRecord(f, 6, "queued", "", revocationTitle, start.Add(20*time.Second))
+	probe := &afterSuccessAPI{inner: f.api, then: func() { f.api.checks = append(f.api.checks, revocation) }}
+	f.c.api = probe
+	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+		t.Fatal(err)
+	}
+	if !probe.done || probe.listings != 0 {
+		t.Fatalf("success written in place = %v with %d later listings, want true and none", probe.done, probe.listings)
+	}
+	newest := newestQueueCheck(f.api.checks)
+	if newest == nil || newest.ID != 6 || !blockingQueueCheck(newest) || newest.Output.Title != revocationTitle {
+		t.Fatalf("the revocation must stay on top and blocking, got %+v", newest)
+	}
+}
+
+// Another pass's barrier above a newer revocation must not be turned green by an older pass.
+func TestDevRevocationBelowAnotherPassBarrierBlocksAnOlderPassSuccess(t *testing.T) {
+	f, start := passFixture(t)
+	f.api.checks = []check{
+		ownedRecord(f, 6, "queued", "", revocationTitle, start.Add(20*time.Second)),
+		ownedRecord(f, 7, "queued", "", "PR validation pending", start.Add(30*time.Second)),
+	}
+	f.api.nextID = 900
+	if err := f.q.admit(context.Background(), f.pr.Number); !onlyStaleHeadWork(err) {
+		t.Fatalf("an older pass must end as stale work, got %v", err)
+	}
+	if successPublished(f) {
+		t.Fatalf("the barrier above the revocation was turned green: %+v", f.api.checks)
+	}
+}
+
+// ctxAPI fails every call made on a cancelled context, as the real client does.
+type ctxAPI struct{ inner api }
+
+func (a *ctxAPI) read(ctx context.Context, path string, result any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *ctxAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return a.inner.write(ctx, method, path, payload, result)
+}
+
+// The proof is finished when the success is written, so the work clock may expire right
+// after it: the confirmation runs under the write context, the pass succeeds, and nothing
+// writes over the proven success (not even the final attempt's refusal).
+func TestDevPostWriteConfirmationSurvivesAnExpiredWorkContext(t *testing.T) {
+	for _, attempt := range []string{"1", "3"} {
+		t.Run("attempt "+attempt, func(t *testing.T) {
+			t.Setenv("GITHUB_REF", "refs/heads/main")
+			t.Setenv("GITHUB_RUN_ATTEMPT", attempt)
+			f := newDevFixture(t)
+			f.c.repo = f.pr.Base.Repo
+			f.c.repo.DefaultBranch = "main"
+			budget := admissionBudget{Started: time.Now(), Deadline: time.Now().Add(time.Minute)}
+			err := f.q.withAdmissionBudget(context.Background(), budget, func(work context.Context) error {
+				work, cancel := context.WithCancel(work)
+				defer cancel()
+				f.c.api = &ctxAPI{inner: &afterSuccessAPI{inner: f.api, then: cancel}}
+				return f.q.executeDev(work, "workflow_dispatch", event{Repository: f.c.repo}, f.pr.Number)
+			})
+			if err != nil || !successPublished(f) {
+				t.Fatalf("a finished proof whose work clock expired must stay published: err %v, checks %+v", err, f.api.checks)
+			}
+		})
+	}
+}
+
+// failListingsAfterSuccessAPI fails the first n check listings after the success write.
+type failListingsAfterSuccessAPI struct {
+	inner api
+	n     int
+	done  bool
+}
+
+func (a *failListingsAfterSuccessAPI) read(ctx context.Context, path string, result any) error {
+	if a.done && a.n > 0 && strings.Contains(path, "/check-runs?") {
+		a.n--
+		return errors.New("listing unavailable")
+	}
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *failListingsAfterSuccessAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	err := a.inner.write(ctx, method, path, payload, result)
+	if m, ok := payload.(map[string]any); err == nil && ok && m["conclusion"] == "success" {
+		a.done = true
+	}
+	return err
+}
+
+// A success whose confirmation fails is not a verdict on the PR: whatever the attempt, the
+// pass fails (so it is rerun) and the record stays blocking and pending, never refused.
+func TestDevUnconfirmedSuccessStaysPendingOnEveryAttemptIncludingTheLast(t *testing.T) {
+	for _, attempt := range []string{"1", "2", "3"} {
+		t.Run("attempt "+attempt, func(t *testing.T) {
+			t.Setenv("GITHUB_REF", "refs/heads/main")
+			t.Setenv("GITHUB_RUN_ATTEMPT", attempt)
+			f := newDevFixture(t)
+			f.c.repo = f.pr.Base.Repo
+			f.c.repo.DefaultBranch = "main"
+			f.c.api = &failListingsAfterSuccessAPI{inner: f.api, n: 1}
+			budget := admissionBudget{Started: time.Now(), Deadline: time.Now().Add(time.Minute)}
+			err := f.q.withAdmissionBudget(context.Background(), budget, func(work context.Context) error {
+				return f.q.executeDev(work, "workflow_dispatch", event{Repository: f.c.repo}, f.pr.Number)
+			})
+			if err == nil {
+				t.Fatal("an unconfirmed success must fail the pass so it is rerun")
+			}
+			newest := newestQueueCheck(f.api.checks)
+			if newest == nil || !blockingQueueCheck(newest) || newest.Conclusion == "failure" {
+				t.Fatalf("the head must stay blocking and pending, never refused: %+v", newest)
+			}
+			for _, w := range f.api.writes {
+				if w["conclusion"] == "failure" {
+					t.Fatalf("a terminal refusal was written for an unconfirmed success: %+v", w)
+				}
+			}
+		})
+	}
+}
+
+// staleStatusAPI lists the written success with its old status for n listings: the ID is
+// there, the status is not the one written, so it is not a confirmation.
+type staleStatusAPI struct {
+	inner *fakeAPI
+	n     int
+	done  bool
+}
+
+func (a *staleStatusAPI) read(ctx context.Context, path string, result any) error {
+	if a.done && a.n > 0 && strings.Contains(path, "/check-runs?") {
+		a.n--
+		live := a.inner.checks
+		stale := make([]check, len(live))
+		copy(stale, live)
+		for i := range stale {
+			if stale[i].Conclusion == "success" {
+				stale[i].Status, stale[i].Conclusion, stale[i].CompletedAt = "queued", "", ""
+			}
+		}
+		a.inner.checks = stale
+		defer func() { a.inner.checks = live }()
+	}
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *staleStatusAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	err := a.inner.write(ctx, method, path, payload, result)
+	if m, ok := payload.(map[string]any); err == nil && ok && m["conclusion"] == "success" {
+		a.done = true
+	}
+	return err
+}
+
+// A listing that holds the written ID with a stale status is behind the write: it is waited
+// out when it catches up, and fails closed when it never does.
+func TestDevPostWriteListingWithOurIDAtAStaleStatusIsNotAConfirmation(t *testing.T) {
+	for name, tc := range map[string]struct {
+		stale       int
+		wantSuccess bool
+		wantWaits   int
+	}{
+		"catches up after two listings": {stale: 2, wantSuccess: true, wantWaits: 2},
+		"never catches up":              {stale: 1 << 20, wantWaits: len(writeConfirmBackoff)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, _ := passFixture(t)
+			waits := recordReadWaits(t)
+			f.c.api = &staleStatusAPI{inner: f.api, n: tc.stale}
+			err := f.q.admit(context.Background(), f.pr.Number)
+			if len(*waits) != tc.wantWaits {
+				t.Fatalf("waits = %v, want %d", *waits, tc.wantWaits)
+			}
+			if tc.wantSuccess && (err != nil || !successPublished(f)) {
+				t.Fatalf("a catching-up listing must confirm: %v %+v", err, f.api.checks)
+			}
+			if !tc.wantSuccess && (err == nil || successPublished(f) || !errors.As(err, new(*unconfirmedSuccess))) {
+				t.Fatalf("a stale status must fail closed as an unconfirmed success: %v %+v", err, f.api.checks)
 			}
 		})
 	}

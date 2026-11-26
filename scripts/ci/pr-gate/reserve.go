@@ -11,7 +11,9 @@ import (
 // merge-queue group jobs (#1553). Merge CI takes 36 to 73 minutes, so at most two groups
 // finish in one window, and each may run three attempts of about 41 reads: 2 x 3 x 41 =
 // 246, plus the 232 requests an hour that nothing defers (event discovery, retry listings,
-// other workflows): 478, rounded up to 480. Every job that does not gate a merge-queue head checks
+// other workflows): 478, rounded up to 480. That is the original derivation, which assumed
+// nothing else spends; the honest bound, which exceeds 480, is the sizing table of the
+// interim exception in docs/development/ci.md. Every job that does not gate a merge-queue head checks
 // the free rate_limit endpoint first and defers instead of spending below it. Keep it in
 // step with `reserve=480` in .github/workflows/ci-queue-retry.yml and the sweep in
 // scripts/ci/discover-dev-prs.sh.

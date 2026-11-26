@@ -20,6 +20,7 @@ type revokeWorkflowJob struct {
 	Perms           map[string]string `yaml:"permissions"`
 	Steps           []struct {
 		Name string            `yaml:"name"`
+		If   string            `yaml:"if"`
 		Env  map[string]string `yaml:"env"`
 		Run  string            `yaml:"run"`
 	} `yaml:"steps"`
@@ -122,6 +123,11 @@ func TestDevGateRevokesEveryRoutedHeadBeforeThrottledWork(t *testing.T) {
 	}
 	if strings.Contains(run, "enforce") || strings.Contains(run, "rate_limit") {
 		t.Fatal("revocation is never deferred by the reserve")
+	}
+	// continue-on-error hides a failure from the run's conclusion, so a failed step must still announce itself.
+	last := revoke.Steps[len(revoke.Steps)-1]
+	if last.If != "failure()" || !strings.Contains(last.Run, "::error") || !strings.Contains(last.Run, "GITHUB_STEP_SUMMARY") {
+		t.Fatalf("the first pass must annotate and summarize its own failure: %+v", last)
 	}
 }
 

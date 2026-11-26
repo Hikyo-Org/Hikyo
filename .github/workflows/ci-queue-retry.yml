@@ -63,7 +63,8 @@ jobs:
           # budget that just failed it. Reading rate_limit does not count against the limit.
           # Keep a tenth of it free (about one reconcile's worth of reads on the 1000 per hour
           # repository token) and, for any job that does not gate a merge-queue head, the
-          # reserve (480 requests: the 232 that nothing can defer, plus two overlapping merge
+          # reserve (480 requests, the original derivation, superseded by the honest bound in the
+          # sizing table of docs/development/ci.md: the 232 that nothing can defer, plus two overlapping merge
           # groups of three attempts at about 41 reads each) for group jobs: it is rerun only while its expected cost (42 reads)
           # still leaves the reserve, the same rule the job itself defers on. Below that, hand
           # the run to rerun-after-reset, which reruns it after the reset, or leave it to the
@@ -195,7 +196,9 @@ jobs:
           # Requests kept for merge-group jobs: two overlapping merge groups (CI takes 36 to 73
           # minutes, so at most two groups finish within one window) of three attempts at about
           # 41 reads each is 246, plus the 232 requests a window spends on work that cannot defer
-          # (event discovery, retry listings, other workflows) is 478, rounded to 480. Keep in step with groupReserve in
+          # (event discovery, retry listings, other workflows) is 478, rounded to 480. That is the
+          # original derivation; the honest bound is in the sizing table of docs/development/ci.md.
+          # Keep in step with groupReserve in
           # scripts/ci/pr-gate/reserve.go and the other readers of rate_limit.
           reserve=480
           group_cost=41

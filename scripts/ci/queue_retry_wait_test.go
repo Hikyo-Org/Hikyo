@@ -772,3 +772,29 @@ func TestQueueRetryWaitJudgesBucketsByTheirAbsoluteRemaining(t *testing.T) {
 		t.Fatalf("the core bucket (260 left) decides, so the job waits for the reset: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
 	}
 }
+
+// A failed dev-revoke counts in the run's failed total but never qualifies, so a run whose
+// publishers failed beside it is handed to the wait as job-level reruns, never as the
+// run-level rerun (which would also rerun the revoke and, through it, every publisher).
+func TestQueueRetryWaitNeverRerunsAFailedDevRevokeOrTakesTheRunLevelPath(t *testing.T) {
+	now := int64(1795475603)
+	revoke := failedGroupJob(99, "dev-revoke", "Block every routed head until its reconciliation finishes")
+	one := failedGroupJob(31, "dev-publish-"+waitHead, "Reconcile exact-head dev admission")
+	two := failedGroupJob(32, "dev-publish-"+strings.Repeat("b", 40), "Reconcile exact-head dev admission")
+	for name, tc := range map[string]struct {
+		jobs []string
+		want []string
+	}{
+		"revoke beside two failed publishers": {jobs: []string{revoke, one, two}, want: []string{"31"}},
+		"two failed publishers alone":         {jobs: []string{one, two}, want: []string{"run:8"}},
+		"revoke alone":                        {jobs: []string{revoke}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, runs: []waitRun{trustedRun("ci-dev-gate.yml", 8, tc.jobs...)}}
+			recorded, out, err := f.run()
+			if err != nil || strings.Join(f.accepted(), " ") != strings.Join(tc.want, " ") {
+				t.Fatalf("rerun %v, want %v (err %v)\n%s\n%s", f.accepted(), tc.want, err, recorded, out)
+			}
+		})
+	}
+}

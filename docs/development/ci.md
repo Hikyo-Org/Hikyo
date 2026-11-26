@@ -473,7 +473,9 @@ next sweep) does. A group job
 spend into the reserve and is rerun first. The number is the measured group cost (about 41
 calls) times two overlapping merge groups (`max_entries_to_build` is 1, and merge CI of
 36 to 73 minutes lets at most two finish in one window) times three attempts: 246, plus the 232 requests an hour that nothing can defer
-(event discovery 102, retry listings about 30, other workflows about 100): 478, rounded to 480. It lives in `groupReserve` (`scripts/ci/pr-gate/reserve.go`),
+(event discovery 102, retry listings about 30, other workflows about 100): 478, rounded to 480. This is the
+original derivation, which assumed nothing else spends; the honest bound, which exceeds 480, is the sizing
+table of the interim exception below. It lives in `groupReserve` (`scripts/ci/pr-gate/reserve.go`),
 `reserve=480` in `ci-queue-retry.yml` and `scripts/ci/discover-dev-prs.sh`. A deferred
 job writes nothing, so a record already on the head stays as it is until the rerun; a
 feedback rerun's pending barrier can therefore be delayed by up to one window. A group
@@ -509,18 +511,28 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Retry first pass | 75 | M: 75 executed retry runs x at least one jobs listing |
 | Two groups, three attempts | 246 | M: 2 x 3 x 41 |
 | `requested` passes of two groups | 36 | M: about 18 each (fixtures) |
-| Gated concurrency margin | 168 | E: 4 lanes x 42; `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
-| **Measured total** | **627** | |
+| Gated concurrency margin | 180 | E: 4 lanes x 45 (a dev pass is the gate's 42 plus the 3 reads of its post-write confirmation listing); `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
+| **Measured total** | **639** | |
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
-| Attempt-3 bypass (`reserve.go`) | 42 per job | E: the last attempt spends instead of deferring |
+| Attempt-3 bypass (`reserve.go`) | 56 per job | E: the last attempt spends instead of deferring; a dev pass (45) whose confirmation listing lags for good adds 9 reads and 2 writes |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
 | First revocation pass (`dev-revoke`) | 70 | E: 7 events x (3 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
-| Post-write revocation listing | 102 | E: 3 reads (the suite-aware listing) per successful dev pass, at most one pass per event-driven discover (34 in the incident hour) |
-| **Honest lower bound** | **963** | measured plus the lower estimates |
+| **Honest lower bound** | **887** | measured plus the lower estimates |
 
-R = 480 is below 963. With 646 allowed to gated work (1000 - 522 + 168), the pinned
-worst case at the lower bound is 646 + 795 = 1,441 requests, 44% over the window. That is above the 25% over-window the owner accepted for
-this exception (19 points more), so the exception is wider than first stated. The
+R = 480 is below 887. With 658 allowed to gated work (1000 - 522 + 180), the pinned
+worst case at the lower bound is 658 + 707 = 1,365 requests, 36.5% over the window. That is
+above the 25% over-window the owner accepted for the exception (Q2), by 11.5 points. The
+owner has not accepted the recomputed figure: it is awaiting owner acceptance. The post-write
+confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
+the margin (45 per pass) and not an ungated row. Under a persistently lagging listing a pass
+reads up to 4 listings of 3 reads (12, which is 9 more than the 3 counted) and writes 2 records,
+11 more than the counted 45: 56 for the pass. Attempts 1 and 2 are gated like any pass, so the
+excess is bounded by the reserve check; the attempt-3 bypass is the ungated one and is counted
+once in the table. On a fan-out where the lag persists for every head, each of N heads can spend
+up to 56 ungated at attempt 3 (N x 56, not the one counted); that needs a sustained GitHub listing
+outage at the same time, and is not added to the lower bound. A listing is only needed when the
+pass created its record with a POST (a PATCH in place keeps a lower ID than any later
+revocation), so 45 is a ceiling, not the usual cost. The
 retirement fan-outs of `ci-check-retirement.yml` are not capped and not counted (hourly
 discovery, small). Expected drop frequency (an estimate): ungated spend near the incident
 level while a merge group is in flight. Over the last seven days 25 of 168 hours (15%) had
@@ -553,13 +565,24 @@ The first pass is never rerun. GitHub reruns a job together with every job that 
 and every dev publisher needs `dev-revoke`, so a rerun would cost one reconcile per head
 (about N x 42, and at attempt 3 the reserve bypass applies to all of them). The structure
 prevents it: the job has `continue-on-error: true`, so a failed first pass does not fail the
-job, and a timeout cannot happen because the step bounds itself to two minutes inside a
-four-minute job; `ci-queue-retry.yml` counts `dev-revoke` in the failed total of both
+job. The publisher itself is cut at two minutes, inside a four-minute job timeout; the checkout
+and the build of the publisher sit outside that cut, so a slow or failed checkout or build, or the
+job timeout, can still end the job as failed or cancelled: in that case the job reports
+`failure` or `cancelled`, which is why the retry must handle it (below). `ci-queue-retry.yml` counts `dev-revoke` in the failed total of both
 filters but never qualifies it, so a cancelled one is never rerun and forces job-level
 reruns of any failed publishers beside it (the run-level rerun skips the per-job reserve
-gating); and the jobs the retry does reorder or rerun by id
+gating); a failed first pass announces itself with an `::error::` annotation and a step
+summary (the last step of the job, `if: failure()`), since `continue-on-error` hides it from
+the run's conclusion; and the jobs the retry does reorder or rerun by id
 (`publish`, `group`) have no dependents. `TestDevRevokeRerunCannotCascadeIntoThePublishers`
-models GitHub's dependent rerun on the three workflows.
+models GitHub's dependent rerun on the three workflows, and
+`TestQueueRetryWaitNeverRerunsAFailedDevRevokeOrTakesTheRunLevelPath` runs the wait job against a
+run whose revoke failed beside failed publishers. Assumption, unverified against GitHub's
+documentation: a `continue-on-error` job that fails reports `conclusion == "failure"` in the
+jobs API, so the retry's filters see it and count it in the run total. If it reported
+`success` instead, it would not be in the total at all and a run-level rerun of failed publishers
+would be the normal path, which is the case without a revoke and is not harmful: the revoke
+would not be among the failed jobs that rerun selects.
 
 The revocation sticks. The record carries the title `PR validation revoked`.
 - A publisher that began before it (its authenticated job start is more than 3 seconds
@@ -570,16 +593,25 @@ The revocation sticks. The record carries the title `PR validation revoked`.
   seconds later, and a stale pass began before the event that preceded the revocation by a
   discovery job, a checkout and a build, so neither lands in that margin. A record whose
   start cannot be read fails the pass (it is retried) rather than ending it quietly.
-- If an older pass listed the owned checks while the newest record was completed, it creates
-  its own record with a higher ID than a revocation written afterwards. After a success write the
-  pass therefore lists the head's checks once more (the suite-aware listing and bounded
-  waits every other write confirmation uses, 3 reads, counted in the sizing table) and acts
-  only on a listing that shows the exact success it wrote as completed. If that listing is
-  absent, older, in another status or an error, the pass fails closed: a blocking record is
-  written over the success it cannot confirm and the pass fails (it is retried). If a
-  revocation newer than the pass sits below its record, a fresh blocking record that keeps
-  the revocation's start replaces it. The stale success is on top for the time between its
-  write and that listing, a second or two; the queued reconcile then proves the head again.
+- A pass that created its own record with a POST (it listed the checks while the newest
+  record was completed or absent, or created its pending barrier) can end with a record whose ID
+  is above a revocation written between its listing and the creation. After a success write the
+  pass therefore lists the head's checks once more (the suite-aware listing and bounded waits every
+  other write confirmation uses, 3 reads, counted in the 45 per pass of the sizing table) and acts
+  only on a listing that shows the exact success it wrote as completed; a listing with the right
+  ID in another status is not a confirmation. If the listing is absent, older, in another status or
+  an error, the pass fails closed: a blocking record is written over the success it cannot
+  confirm and the pass fails (it is retried). That failure is an unconfirmed success, and like a
+  rate-limited one it never becomes a terminal refusal on the last attempt: the record stays
+  pending. The proof is finished at that point, so the listing and the fail-closed write run
+  under the write context the work clock cannot cancel, not under the work context that may
+  already have expired. If a revocation newer than the pass sits below its record, a fresh
+  blocking record that keeps the revocation's start replaces it. The stale success is on top
+  for the time between its write and that listing, a second or two; the queued reconcile then
+  proves the head again. A record found and patched in place keeps its ID, so a revocation
+  written after it stays above it and no listing is needed; and a revocation already in the
+  listing a pass reads before writing a success, below another pass's barrier, ends the pass as
+  stale work instead of turning that barrier green.
 - The final phase of every pass already rereads policy, dev tip, feedback, DCO and roles
   before a success is written.
 
@@ -587,14 +619,22 @@ The revocation sticks. The record carries the title `PR validation revoked`.
 margin is older, one second more is newer), `TestDevRevocationSurvivesAnOlderPassThatListedACompletedRecord`
 the completed-newest interleaving, and `TestDevRevocationIsNeverRewrittenByAnOlderPass` the
 pending and refusal rewrites, and `TestDevPostWriteListingFailsClosedWhenItCannotConfirmTheSuccess` the
-lagging, absent and failing listings.
+lagging, absent and failing listings, `TestDevPostWriteListingWithOurIDAtAStaleStatusIsNotAConfirmation` the
+listing that holds the written ID at a stale status, `TestDevPostWriteConfirmationSurvivesAnExpiredWorkContext`
+the work clock expiring right after the success write, `TestDevUnconfirmedSuccessStaysPendingOnEveryAttemptIncludingTheLast`
+the final attempt, `TestDevRevocationWrittenAfterAnInPlaceSuccessStaysOnTopWithoutAListing` the in-place
+write that needs no listing, and `TestDevRevocationBelowAnotherPassBarrierBlocksAnOlderPassSuccess`
+the barrier above a revocation.
 
-Residual. When the window is exhausted the first pass cannot write, and the publishers defer
-for the same reason, so stale greens on the routed heads last until `rerun-after-reset`
-reruns them, up to about an hour after the reset. A head whose first pass succeeded stays
-blocked while its reconcile defers; a head whose first pass failed does not. No token other
-than `GITHUB_TOKEN` exists until #1598, and the first pass is the cheapest write that can
-revoke.
+Residual. The first pass can fail or be cut for reasons other than an exhausted window: a
+transient API error, a bad dev ref, a failed build of the publisher, a failed checkout, the
+two-minute cut of the publisher or the four-minute job timeout. It cannot write then, and when
+the window is exhausted the publishers defer for the same reason. A head the first pass did not
+block keeps its stale green until its own publisher runs: about N/2 minutes for N routed heads
+at `max-parallel: 2`, or, if that publisher defers, until `rerun-after-reset` reruns it, up to
+about 61 minutes after the reset plus the sweep. A head whose first pass succeeded stays blocked
+while its reconcile defers; a head whose first pass failed does not. No token other than
+`GITHUB_TOKEN` exists until #1598, and the first pass is the cheapest write that can revoke.
 
 Sibling matrices. `ci-queue-worker.yml` has the same `max-parallel: 2`. Its `publish`
 workers write PR-head queue admissions, and a stale one only lets a head enter the queue:

@@ -104,13 +104,17 @@ func maxParallelLanes(t *testing.T) int {
 func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	const limit = 1000
 	reserve, nonGroupCost, groupCost := reserveConstants(t)
-	margin := maxParallelLanes(t) * nonGroupCost // E: lanes past the check at once, now capped by max-parallel
+	// E: a dev pass that creates its record lists the head's checks again after its success write
+	// (suite-aware listing, 3 reads), so a dev pass costs the gate's 42 plus 3. It runs inside the pass,
+	// after enforceReserve, so it is gated spend and belongs in the margin, not in the ungated rows.
+	const postWriteReads = 3
+	devPassCost := nonGroupCost + postWriteReads
+	margin := maxParallelLanes(t) * devPassCost // E: lanes past the check at once, capped by max-parallel
 	const (
 		discovery   = 102 // M: 34 event discovers x 3 reads, incident hour 2026-11-23 21:00-22:00 UTC
 		retryFirst  = 75  // M: 75 executed retry runs x at least one jobs listing
 		requested   = 36  // M: requested passes of two groups, 2 x about 18 (fixtures)
 		waitSweeps  = 62  // E: lower bound, 2 sweeps an hour x 31 (6 run listings + 25 jobs listings)
-		attempt3    = 42  // E: one attempt-3 bypass (reserve.go) per hour, spent ungated
 		inRepoOther = 60  // E: about 55 ungated in-repo runs an hour x at least 1 call
 		// E: the dev-revoke first pass (pr-gate --dev-revoke): the repository, the open PR list and the dev tip
 		// cost 3 once, plus one create per head. 7 gate-dev push runs in the busiest hour of
@@ -118,28 +122,34 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		revokeEvents = 7
 		revokeFixed  = 3
 		revokeHeads  = 7
+		// E: one attempt-3 bypass (reserve.go) per hour, spent ungated, of a dev pass whose
+		// confirmation listing lags for good: the pass (45), the 3 listings past the first that the
+		// bounded backoff adds (3 reads each, 9) and the two writes of the fail-closed record (2).
+		// Attempts 1 and 2 of such a pass are gated by the reserve like any pass.
+		lagListings = 3 // the bounded backoff of three waits in pr-gate (writeConfirmBackoff), a listing after each
+		failClosed  = 2
 	)
+	attempt3 := devPassCost + lagListings*postWriteReads + failClosed
 	revoke := revokeEvents * (revokeFixed + revokeHeads)
-	const postWrite = 34 * 3    // E: the post-write revocation listing (suite-aware, 3 reads) per successful dev pass, at most one per event-driven discover (34 in the incident hour)
 	groups := 2 * 3 * groupCost // M: two overlapping groups, three attempts each
 	measured := discovery + retryFirst + groups + requested + margin
-	honest := measured + waitSweeps + attempt3 + inRepoOther + revoke + postWrite
-	if measured != 627 || revoke != 70 || postWrite != 102 || honest != 963 {
-		t.Fatalf("sizing changed: measured %d (want 627), honest lower bound %d (want 963, 791 plus the 70 of the revocation first pass and the 102 of its post-write check)", measured, honest)
+	honest := measured + waitSweeps + attempt3 + inRepoOther + revoke
+	if measured != 639 || revoke != 70 || attempt3 != 56 || honest != 887 {
+		t.Fatalf("sizing changed: measured %d (want 639), honest lower bound %d (want 887: 639 plus 62, 56 (attempt-3 bypass with a lagging confirmation), 60 and the 70 of the revocation first pass)", measured, honest)
 	}
 	if reserve >= honest {
 		t.Fatalf("R=%d now covers the honest bound %d: drop the interim exception from the PR body and docs", reserve, honest)
 	}
 	gatedBound := limit - (reserve + nonGroupCost) + margin
 	worst := gatedBound + (honest - margin)
-	if gatedBound != 646 || worst != 1441 {
-		t.Fatalf("pinned figures changed: gated bound %d (want 646), worst %d (want 1441)", gatedBound, worst)
+	if gatedBound != 658 || worst != 1365 {
+		t.Fatalf("pinned figures changed: gated bound %d (want 658), worst %d (want 1365)", gatedBound, worst)
 	}
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs", "development", "ci.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "627", "963", "dequeued and re-queued", "1,441", "dev-revoke"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "639", "887", "dequeued and re-queued", "1,365", "36.5%", "awaiting owner acceptance", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}

@@ -81,7 +81,7 @@ func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBu
 	q.queueDeadline = b.Deadline
 	defer func() { q.queueDeadline = oldDeadline }()
 	q.admissions = make(map[int]*admissionTrace)
-	defer func() { q.rateLimited = false }()
+	defer func() { q.rateLimited, q.unconfirmed = false, false }()
 	work, cancel := context.WithDeadline(ctx, b.Deadline.Add(-admissionReserve))
 	err := invoke(work)
 	workErr := work.Err()
@@ -97,6 +97,7 @@ func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBu
 	// This is a new bounded context, never the cancelled validation context. It
 	// does not extend the shared deadline and is shared by all routed PRs.
 	q.rateLimited = rateLimitedFailure(err)
+	q.unconfirmed = errors.As(err, new(*unconfirmedSuccess))
 	reserveEnd := time.Now().Add(admissionReserve)
 	if b.Deadline.Before(reserveEnd) {
 		reserveEnd = b.Deadline
@@ -167,6 +168,10 @@ func rateLimitedFailure(err error) bool {
 
 func (q *queueController) rateLimitedText(number int) outcome {
 	return pending(unfinished + " GitHub's API rate limit stopped this run, which says nothing about the PR; the record stays blocking until a later run reassesses it. " + q.reassessedBy(number))
+}
+
+func (q *queueController) unconfirmedText(number int) outcome {
+	return pending(unfinished + " A published success could not be confirmed against the check listing, which says nothing about the PR; the record stays blocking until a later run reassesses it. " + q.reassessedBy(number))
 }
 
 func (q *queueController) refusalText(number int) outcome {
@@ -249,6 +254,10 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 		// A spent API window is not a verdict on the PR, and a final attempt must not
 		// turn it into one: stay blocking and pending for a later window.
 		result = q.rateLimitedText(final.Number)
+	} else if q.unconfirmed {
+		// The success was proven and written; only its confirmation listing failed. That says
+		// nothing about the PR, so it is never a refusal, whatever the attempt.
+		result = q.unconfirmedText(final.Number)
 	} else if admissionRetryRemains() {
 		// Still blocking, but not a verdict: a rerun follows while attempts remain.
 		result = q.pendingText(final.Number)

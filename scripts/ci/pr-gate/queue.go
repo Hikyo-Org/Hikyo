@@ -66,8 +66,15 @@ type queueController struct {
 	targeted bool
 	// The failed pass ended on the GitHub rate limit, so no attempt count may turn it into a terminal refusal.
 	rateLimited bool
-	repairOnly  bool
-	admissions  map[int]*admissionTrace
+	// The pass wrote a success its confirmation listing could not show: the record was put
+	// back to blocking, which is not a verdict on the PR, so a final attempt must stay pending.
+	unconfirmed bool
+	// IDs of the records this process created with a POST, at any point of the pass. A created
+	// record can sit above a revocation written between its listing and its creation; a record
+	// found and patched in place keeps its ID, so a later revocation stays above it.
+	created    map[int64]bool
+	repairOnly bool
+	admissions map[int]*admissionTrace
 }
 type rule struct {
 	Type       string          `json:"type"`
