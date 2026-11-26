@@ -105,6 +105,10 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 			steps := w["jobs"].(map[string]any)["headroom"].(map[string]any)["steps"].([]any)
 			delete(steps[len(steps)-1].(map[string]any)["env"].(map[string]any), "HEADROOM_SKIP_KEY")
 		},
+		"lint lane names the runner image": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["headroom"].(map[string]any)["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-"
+		},
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},

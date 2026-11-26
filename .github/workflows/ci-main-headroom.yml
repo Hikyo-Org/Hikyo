@@ -4,14 +4,24 @@
 # checks, so the step cannot live there either. This workflow is the separate trusted producer: it runs 45
 # minutes before ci-main's cron (13:23 on Sunday), holds actions: write, checks out only the immutable main
 # commit and runs only scripts/ci/cache-prune.sh, never repository dependencies or Go code. Best effort: ci-main
-# does not wait for it, and a failure here changes nothing for it. A manual ci-main run is covered by
-# dispatching this workflow first.
+# does not wait for it, and a failure here changes nothing for it.
+# A manual ci-main run is covered by the workflow_run trigger on its request (type requested: it fires when the
+# run is queued, before any job, which is the earliest event GitHub offers). The trigger runs this file as it is
+# on main, with the default branch's latest commit as github.sha and a write-capable token, so the job guard
+# below is the one of ci-cache-prune.yml: the event's branch and repository are read, nothing else of the event
+# is. GitHub's documentation does not say whether `requested` fires for a run started by workflow_dispatch; the
+# completed type is observed to (fuzz-report ran two seconds after five dispatched ci-main runs on 2026-10-31).
+# Until a manual run has been seen to start this workflow, dispatching it first stays the fallback.
 name: ci-main-headroom
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '38 12 * * 0'
+  workflow_run:
+    workflows: [ci-main]
+    types: [requested]
+    branches: [main]
 
 permissions:
   contents: read
@@ -22,7 +32,11 @@ concurrency:
 
 jobs:
   headroom:
-    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)) &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

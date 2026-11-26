@@ -443,7 +443,8 @@ func headroomPages() [][]apiCacheEntry {
 
 // requireHeadroomBehavior runs the script as a seed writer does, right before a save.
 func requireHeadroomBehavior(script string) error {
-	race := "HEADROOM_PREFIXES=go-race-v2-Linux-X64-ubuntu26-"
+	// The lane names no runner image: an image bump must not make the lane look empty.
+	race := "HEADROOM_PREFIXES=go-race-v2-Linux-X64-"
 	// The race seed saves 0.7 GB (the size of the entry it replaces): the superseded generation goes, and the
 	// 1 GB older feedback seed then the pull request entry cover what is still over 9.75 GB (10.29 + 0.7); with
 	// the margin dropped the older seed alone would do.
@@ -461,16 +462,25 @@ func requireHeadroomBehavior(script string) error {
 	}
 	// A save larger than everything that may go: the whole order, never a newest seed (2, 4, 5, 11, 12) and
 	// never an unfamilied feedback seed (6).
-	got, _, err = runCachePrune(script, headroomPages(), "", "", "HEADROOM_PREFIXES=none-", "HEADROOM_FALLBACK=50000000000")
+	// The save is the size of the lane's newest entry on main: here a 50 GB one, which makes the whole order go,
+	// the oversized entry itself last.
+	huge := headroomPages()
+	huge[0] = append(huge[0], apiCacheEntry{ID: 14, Ref: "refs/heads/main", Key: "oversized-v1-x", Created: "2026-11-25T18:55:00Z", Accessed: "2026-11-25T18:55:00Z", Size: 50_000_000_000})
+	got, _, err = runCachePrune(script, huge, "", "", "HEADROOM_PREFIXES=oversized-")
 	if err != nil {
 		return err
 	}
-	if want := []int{1, 3, 7, 8, 9, 10}; !reflect.DeepEqual(got, want) {
+	if want := []int{1, 3, 7, 8, 9, 10, 14}; !reflect.DeepEqual(got, want) {
 		return fmt.Errorf("an oversized save deleted %v, want %v in that order", got, want)
 	}
-	// The incoming size is the lane's newest entry on main, not the fallback: a tiny fallback changes nothing.
-	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_FALLBACK=1"); err != nil || !reflect.DeepEqual(got, []int{1, 3, 7}) {
-		return fmt.Errorf("the fallback size must apply only when the lane has no entry: %v %w", got, err)
+	// A runner image bump: the entries on main are the old image's, the lane has no image, the save is sized
+	// all the same.
+	bumped := headroomPages()
+	for i, e := range bumped[0] {
+		bumped[0][i].Key = strings.ReplaceAll(e.Key, "ubuntu26", "ubuntu24")
+	}
+	if got, _, err := runCachePrune(script, bumped, "", "", race); err != nil || !reflect.DeepEqual(got, []int{1, 3, 7}) {
+		return fmt.Errorf("a lane of the old runner image must still size the save: %v %w", got, err)
 	}
 	// A save that will be a hit needs no room: the exact key exists on main (id 2's key), so nothing beyond the dead goes.
 	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_SKIP_KEY=go-race-v2-Linux-X64-ubuntu26-"+strings.Repeat("b", 64)); err != nil || !reflect.DeepEqual(got, []int{1}) {
@@ -479,9 +489,6 @@ func requireHeadroomBehavior(script string) error {
 	// ... but only on main: the same key on a branch is not this save's hit.
 	if got, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_SKIP_KEY=go-race-v2-Linux-X64-ubuntu26-"+strings.Repeat("c", 64)); err != nil || !reflect.DeepEqual(got, []int{1, 3, 7}) {
 		return fmt.Errorf("a key that exists only on a branch must not skip the headroom: %v %w", got, err)
-	}
-	if _, _, err := runCachePrune(script, headroomPages(), "", "", race, "HEADROOM_FALLBACK=1e3"); err == nil {
-		return fmt.Errorf("a fallback that is not a byte count must fail the job")
 	}
 	return nil
 }
@@ -531,16 +538,13 @@ func TestCachePruneHeadroom(t *testing.T) {
 		},
 		"seeds are not seeds": func(s string) string { return strings.Replace(s, `select(.key | seed | not)`, `select(true)`, 1) },
 		"incoming ignored":    func(s string) string { return strings.Replace(s, "+ $incoming - $budget", "- $budget", 1) },
-		"lane size ignored": func(s string) string {
-			return strings.Replace(s, "if . == 0 then $fallback else . end", "$fallback", 1)
-		},
+		"lane size ignored": func(s string) string { return strings.Replace(s, "| add // 0) as $planned", "| length) as $planned", 1) },
 		"skip key ignored": func(s string) string {
 			return strings.Replace(s, "if $skip != \"\" and any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "if false", 1)
 		},
 		"skip key on any ref": func(s string) string {
 			return strings.Replace(s, "any($all[]; .ref == \"refs/heads/main\" and .key == $skip)", "any($all[]; .key == $skip)", 1)
 		},
-		"fallback unchecked": func(s string) string { return strings.Replace(s, "case \"$fallback\" in", "case \"0\" in", 1) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			changed := mutate(run)
@@ -578,8 +582,8 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 		return fmt.Errorf("ci-main-headroom runs queue behind each other and are never cancelled mid-delete")
 	}
 	triggers, _ := workflow["on"].(map[string]any)
-	if len(triggers) != 2 {
-		return fmt.Errorf("ci-main-headroom runs only weekly or manually")
+	if len(triggers) != 3 {
+		return fmt.Errorf("ci-main-headroom runs weekly, manually or on the request of a ci-main run")
 	}
 	if _, ok := triggers["workflow_dispatch"]; !ok {
 		return fmt.Errorf("ci-main-headroom has no manual run")
@@ -587,8 +591,14 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 	if !reflect.DeepEqual(triggers["schedule"], []any{map[string]any{"cron": "38 12 * * 0"}}) {
 		return fmt.Errorf("ci-main-headroom runs 45 minutes before ci-main's Sunday cron (13:23)")
 	}
+	// The request of a manual ci-main run: only main's own runs of ci-main (the trigger filters the branch, the
+	// guard re-checks it and the repository, as ci-cache-prune.yml does) and only in this repository's default
+	// branch's copy of this file. Type requested, not completed: the saves happen during the run.
+	if !reflect.DeepEqual(triggers["workflow_run"], map[string]any{"workflows": []any{"ci-main"}, "types": []any{"requested"}, "branches": []any{"main"}}) {
+		return fmt.Errorf("ci-main-headroom starts when a ci-main run on main is requested")
+	}
 	want := map[string]any{
-		"if":              "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'",
+		"if":              "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.ref == 'refs/heads/main'",
 		"runs-on":         "ubuntu-latest",
 		"timeout-minutes": 10,
 		"permissions":     map[string]any{"contents": "read", "actions": "write"},
@@ -658,6 +668,26 @@ func TestCIMainHeadroomWorkflow(t *testing.T) {
 		"workflow token":       func(w map[string]any) { w["permissions"] = map[string]any{"contents": "read", "actions": "write"} },
 		"any ref":              func(w map[string]any) { delete(job(w), "if") },
 		"pull request trigger": func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
+		"completed, not requested": func(w map[string]any) {
+			w["on"].(map[string]any)["workflow_run"].(map[string]any)["types"] = []any{"completed"}
+		},
+		"another workflow": func(w map[string]any) {
+			w["on"].(map[string]any)["workflow_run"].(map[string]any)["workflows"] = []any{"ci"}
+		},
+		"every branch": func(w map[string]any) { delete(w["on"].(map[string]any)["workflow_run"].(map[string]any), "branches") },
+		"no request trigger": func(w map[string]any) {
+			delete(w["on"].(map[string]any), "workflow_run")
+			w["on"].(map[string]any)["push"] = nil
+		},
+		"guard without the branch": func(w map[string]any) {
+			job(w)["if"] = strings.Replace(job(w)["if"].(string), " && github.event.workflow_run.head_branch == 'main'", "", 1)
+		},
+		"guard without the repository": func(w map[string]any) {
+			job(w)["if"] = strings.Replace(job(w)["if"].(string), " && github.event.workflow_run.head_repository.full_name == github.repository", "", 1)
+		},
+		"guard without the ref": func(w map[string]any) {
+			job(w)["if"] = strings.Replace(job(w)["if"].(string), " && github.ref == 'refs/heads/main'", "", 1)
+		},
 		"another cron": func(w map[string]any) {
 			w["on"].(map[string]any)["schedule"] = []any{map[string]any{"cron": "0 14 * * 0"}}
 		},

@@ -51,7 +51,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          HEADROOM_PREFIXES: go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          HEADROOM_PREFIXES: go-race-v2-${{ runner.os }}-${{ runner.arch }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-
           HEADROOM_SKIP_KEY: go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
         run: ./scripts/ci/cache-prune.sh
       - name: Make room in the Actions cache for the module cache
@@ -59,7 +59,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           HEADROOM_PREFIXES: go-mod-v2-${{ runner.os }}-
-          HEADROOM_SKIP_KEY: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
         run: ./scripts/ci/cache-prune.sh
 
   seed:

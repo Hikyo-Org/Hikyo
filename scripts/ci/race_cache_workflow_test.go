@@ -66,6 +66,10 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 	}
 	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["seed"].(map[string]any) }
 	headroomJob := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["headroom"].(map[string]any) }
+	// The race lane's script step (index 2) and the module step after it (index 3, no skip key).
+	laneEnv := func(w map[string]any, i int) map[string]any {
+		return headroomJob(w)["steps"].([]any)[i].(map[string]any)["env"].(map[string]any)
+	}
 	for name, mutation := range map[string]func(map[string]any){
 		"top-level env": func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-race=false"} },
 		"top-level defaults": func(w map[string]any) {
@@ -113,11 +117,19 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 			headroomJob(w)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
 		},
 		"headroom runs on a hit": func(w map[string]any) {
-			delete(headroomJob(w)["steps"].([]any)[len(headroomJob(w)["steps"].([]any))-1].(map[string]any)["env"].(map[string]any), "HEADROOM_SKIP_KEY")
+			delete(laneEnv(w, 2), "HEADROOM_SKIP_KEY")
+		},
+		"module headroom skips on a key hit": func(w map[string]any) {
+			laneEnv(w, 3)["HEADROOM_SKIP_KEY"] = "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}"
+		},
+		"race lane names the runner image": func(w map[string]any) {
+			laneEnv(w, 2)["HEADROOM_PREFIXES"] = "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-"
+		},
+		"feedback lane names the runner image": func(w map[string]any) {
+			laneEnv(w, 2)["HEADROOM_PREFIXES"] = "go-race-v2-${{ runner.os }}-${{ runner.arch }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
 		},
 		"headroom without its lane": func(w map[string]any) {
-			steps := headroomJob(w)["steps"].([]any)
-			steps[len(steps)-1].(map[string]any)["env"].(map[string]any)["HEADROOM_PREFIXES"] = ""
+			laneEnv(w, 2)["HEADROOM_PREFIXES"] = ""
 		},
 		"headroom reads the PR head": func(w map[string]any) {
 			steps := headroomJob(w)["steps"].([]any)
@@ -413,14 +425,11 @@ func requireReuseHeadroom(job, seed map[string]any, spec reuseSeedSpec) error {
 		return fmt.Errorf("%s seed steps are missing", spec.label)
 	}
 	script := func(name, prefix, key string) map[string]any {
-		return map[string]any{
-			"name": name,
-			"env": map[string]any{
-				"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}",
-				"HEADROOM_PREFIXES": prefix, "HEADROOM_SKIP_KEY": key,
-			},
-			"run": "./scripts/ci/cache-prune.sh",
+		env := map[string]any{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEADROOM_PREFIXES": prefix}
+		if key != "" {
+			env["HEADROOM_SKIP_KEY"] = key
 		}
+		return map[string]any{"name": name, "env": env, "run": "./scripts/ci/cache-prune.sh"}
 	}
 	steps := []any{
 		seedSteps[0], // the same immutable, credential-free checkout as the seed
@@ -431,11 +440,15 @@ func requireReuseHeadroom(job, seed map[string]any, spec reuseSeedSpec) error {
 	}
 	// The daily go-feedback-v1 save lands between the headroom job and the seed's save (the model's
 	// 12:58), so its room is reserved with the seed's own.
-	feedbackLane := "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
-	steps = append(steps, script(spec.headroomName, strings.TrimSpace(spec.restoreKeys)+" "+feedbackLane, spec.key))
+	// The lanes carry no runner image or ABI: the selector's lane key drops the image, so a prefix that named
+	// one would find no entry after an image bump and size the save as nothing. The skip key is the exact key.
+	lane := strings.Replace(strings.TrimSpace(spec.restoreKeys), "${{ steps.runner-cache-abi.outputs.value }}-", "", 1)
+	feedbackLane := "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-"
+	steps = append(steps, script(spec.headroomName, lane+" "+feedbackLane, spec.key))
 	if spec.moduleWriter {
-		moduleKey := "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}"
-		steps = append(steps, script("Make room in the Actions cache for the module cache", "go-mod-v2-${{ runner.os }}-", moduleKey))
+		// No skip key: an exact key hit says nothing about the save, whose cache version (it includes the
+		// path) the headroom job cannot compute, so the save is sized every day (ci.md, "Module cache").
+		steps = append(steps, script("Make room in the Actions cache for the module cache", "go-mod-v2-${{ runner.os }}-", ""))
 	}
 	want := map[string]any{
 		"if":                "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'",

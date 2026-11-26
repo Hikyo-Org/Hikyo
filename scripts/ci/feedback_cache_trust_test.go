@@ -265,6 +265,19 @@ func requireNoOtherFeedbackV2Reader(dir string) error {
 		if err != nil {
 			return err
 		}
+		if filepath.Base(file) == "ci-cache-prune.yml" {
+			// The prune names the family only in its selector's text, which protects the unfamilied seeds from
+			// deletion. It never reads an entry: one script step, no checkout, no cache action, no dependency, and
+			// actions: write only (requireCachePruneWorkflow pins each of those).
+			var workflow map[string]any
+			if err := yaml.Unmarshal(raw, &workflow); err != nil {
+				return err
+			}
+			if _, err := requireCachePruneWorkflow(workflow); err != nil {
+				return fmt.Errorf("ci-cache-prune.yml may name the feedback v2 family only as the selector that keeps its seeds: %w", err)
+			}
+			continue
+		}
 		if strings.Contains(string(raw), "go-feedback-v2-") {
 			return fmt.Errorf("%s reads the feedback v2 cache family outside the trust-split reader", filepath.Base(file))
 		}

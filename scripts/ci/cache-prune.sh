@@ -5,27 +5,24 @@
 #   without HEADROOM_PREFIXES: delete what is superseded or idle (the hourly prune).
 #   with it: also free room for the save that follows, unless an entry with exactly HEADROOM_SKIP_KEY exists
 #   on main (the save will be a hit). The incoming size is the newest main entry of each lane that starts with
-#   one of the space-separated prefixes (HEADROOM_FALLBACK bytes when there is none). Deletion goes on until
+#   one of the space-separated prefixes. A prefix names the lane without the runner image or the ABI (the
+#   lane key drops the image, so an image bump must not make the lane look absent). Deletion goes on until
 #   the total plus the incoming save fits in 10 GB less a 0.25 GB margin, in this order: older feedback seeds,
 #   pull-request entries, entries idle for three days, then the least recently used entries that are not seeds.
 #   Never the newest main or dev entry of a seed lane (race, lint driver, pinned tools, feedback) and never
 #   an unfamilied feedback seed. At most 100 deletes a run.
-# The feedback family's version is written as a group, (v2): feedback_cache_trust_test.go forbids its literal
-# key prefix in any workflow but the seed and the feedback reader, and this text is copied into one.
 set -euo pipefail
 now=$(date -u +%s)
 prefixes=${HEADROOM_PREFIXES:-}
-fallback=${HEADROOM_FALLBACK:-0}
 skip=${HEADROOM_SKIP_KEY:-}
-case "$fallback" in '' | *[!0-9]*) echo "HEADROOM_FALLBACK must be a byte count" >&2; exit 1 ;; esac
 gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
-  jq -s -r --argjson now "$now" --arg prefixes "$prefixes" --arg skip "$skip" --argjson fallback "$fallback" --argjson budget 9750000000 '
+  jq -s -r --argjson now "$now" --arg prefixes "$prefixes" --arg skip "$skip" --argjson budget 9750000000 '
     def stem: sub("-[0-9a-f]{64}(-.*)?$"; "") | sub("-[0-9a-f]{40}(-[0-9]+-[0-9]+)?$"; "");
     def lane: stem | gsub("-ubuntu[0-9]+"; "") | gsub("-[0-9]+(\\.[0-9]+)+"; "") | gsub("-[0-9a-f]{16}(?=-)"; "");
     def regenerable: test("^(go-mod-v2|go-test-v2|go-race-v2|go-lint(driver)?-v2|go-generated-v2|go-k8s-e2e-v2|go-fuzz-v2|go-feedback-v1|pinned-tool-v1|pnpm-store-v2|codeql-overlay-base-database|codeql-dependencies|codeql-trap)-");
     def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
-    def feedbackfam: test("^go-feedback-(v2)-.*-(main|dev)-(application|cli|tooling)-");
-    def untouchable: test("^go-feedback-(v2)-") and (feedbackfam | not);
+    def feedbackfam: test("^go-feedback-v2-.*-(main|dev)-(application|cli|tooling)-");
+    def untouchable: test("^go-feedback-v2-") and (feedbackfam | not);
     def seed: test("^(go-race-v2|go-lint(driver)-v2|pinned-tool-v1)-") or feedbackfam;
     def oldest: sort_by([(.last_accessed_at | epoch), .id]);
     def dedupe: reduce .[] as $e ([]; if any(.[]; .id == $e.id) then . else . + [$e] end);
@@ -38,8 +35,7 @@ gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
     | ($superseded + $idle) as $regular
     | ([$prefixes | split(" ")[] | select(. != "")] as $wanted
         | [$all[] | select(.ref == "refs/heads/main" and (.key as $k | any($wanted[]; . as $p | $k | startswith($p))))]
-        | group_by(.key | lane) | map(sort_by([.created_at, .id]) | last | .size_in_bytes) | add // 0
-        | if . == 0 then $fallback else . end) as $planned
+        | group_by(.key | lane) | map(sort_by([.created_at, .id]) | last | .size_in_bytes) | add // 0) as $planned
     | (if $skip != "" and any($all[]; .ref == "refs/heads/main" and .key == $skip) then 0 else $planned end) as $incoming
     | (if $incoming == 0 then [] else
         ((($all | map(.size_in_bytes) | add // 0) - ($regular | map(.size_in_bytes) | add // 0)) + $incoming - $budget) as $over

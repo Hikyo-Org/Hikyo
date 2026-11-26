@@ -125,21 +125,21 @@ func (m *cacheModel) newestSeed(victim *modelEntry) bool {
 }
 
 // prune applies the workflow's jq to the simulated listing.
-func (m *cacheModel) prune() { m.selectVictims("", 0) }
+func (m *cacheModel) prune() { m.selectVictims("") }
 
 // headroom is the step a seed writer runs right before its save: the prune's jq with the lanes of what it
-// is about to save, which frees room for it as well (fallback 0: every lane of these seeds has an entry).
-func (m *cacheModel) headroom(prefixes string) { m.selectVictims(prefixes, 0) }
+// is about to save, which frees room for it as well.
+func (m *cacheModel) headroom(prefixes string) { m.selectVictims(prefixes) }
 
-func (m *cacheModel) selectVictims(prefixes string, fallback int64) {
-	gone := m.victims(prefixes, fallback)
+func (m *cacheModel) selectVictims(prefixes string) {
+	gone := m.victims(prefixes)
 	for _, e := range m.entries {
 		if gone[e.ID] && e.seed != "" && m.newestSeed(e) {
 			m.seedLost = append(m.seedLost, fmt.Sprintf("%s %s deleted by the script at %s", e.seed, e.Key[len(e.Key)-60:len(e.Key)-50], m.now.Format("Mon 15:04")))
 		}
 	}
 	if prefixes != "" {
-		dead := m.victims("", 0)
+		dead := m.victims("")
 		for _, e := range m.entries {
 			if gone[e.ID] && !dead[e.ID] {
 				m.freed = append(m.freed, e.Key[:min(len(e.Key), 60)])
@@ -161,7 +161,7 @@ func (m *cacheModel) selectVictims(prefixes string, fallback int64) {
 var victimMemo sync.Map
 
 // victims runs the script's jq over the simulated listing and returns the ids it would delete.
-func (m *cacheModel) victims(prefixes string, fallback int64) map[int]bool {
+func (m *cacheModel) victims(prefixes string) map[int]bool {
 	page := make([]apiCacheEntry, 0, len(m.entries))
 	for _, e := range m.entries {
 		c := e.apiCacheEntry
@@ -175,12 +175,12 @@ func (m *cacheModel) victims(prefixes string, fallback int64) map[int]bool {
 	}
 	// The replays of one sweep share their history until the first save that differs, so most listings
 	// repeat: the selection is a pure function of the program, the clock, the arguments and the listing.
-	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%d\x00%s\x00%d\x00%s", m.program, m.now.Unix(), prefixes, fallback, raw))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%d\x00%s\x00%s", m.program, m.now.Unix(), prefixes, raw))
 	var out []byte
 	if memo, ok := victimMemo.Load(sum); ok {
 		out = memo.([]byte)
 	} else {
-		cmd := exec.CommandContext(context.Background(), "jq", "-s", "-r", "--argjson", "now", strconv.FormatInt(m.now.Unix(), 10), "--arg", "prefixes", prefixes, "--arg", "skip", "", "--argjson", "fallback", strconv.FormatInt(fallback, 10), "--argjson", "budget", "9750000000", m.program)
+		cmd := exec.CommandContext(context.Background(), "jq", "-s", "-r", "--argjson", "now", strconv.FormatInt(m.now.Unix(), 10), "--arg", "prefixes", prefixes, "--arg", "skip", "", "--argjson", "budget", "9750000000", m.program)
 		cmd.Stdin = bytes.NewReader(raw)
 		var err error
 		if out, err = cmd.Output(); err != nil {
@@ -411,6 +411,11 @@ type plan struct {
 	headroom bool
 	// crossings: the sampled sweeps also replay every minute at which an event the sweep moves passes one it does not (sweepMinutes).
 	crossings bool
+	// requested: ci-main-headroom.yml runs on the request of a manual ci-main run (workflow_run, requested),
+	// requestLag after the request, and the writers save one after the other at the offsets measured in
+	// ciMainOffsets, instead of the Sunday cron's headroom 45 minutes ahead of one instant of saves.
+	requested  bool
+	requestLag time.Duration
 	// mainBySha is the main seed key as it was, <sha> alone: nothing is saved on a day main did not move,
 	// so a quiet weekend leaves the main seed where Friday left it.
 	mainBySha bool
@@ -596,12 +601,17 @@ func rotationDay(t *testing.T, p plan, limit int64) *cacheModel {
 
 // ciMainWeekday is a manual ci-main run on an ordinary weekday after a go.sum change: the same
 // 3.3 GB of saves as sundayGoSum, but every other entry is touched hourly. ci.yml's jobs run PR code
-// in the pull_request workflows, so no actions: write can be granted to them: no headroom step precedes
-// these saves, whatever the plan says.
+// in the pull_request workflows, so no actions: write can be granted to them: the headroom is the separate
+// workflow ci-main-headroom.yml, before the saves (45 minutes ahead on the Sunday cron, or started by the
+// request of a manual run, plan.requested).
 func ciMainWeekday(t *testing.T, p plan, limit int64) *cacheModel {
 	return weekdayWith(t, p, limit, func(m *cacheModel) []modelEvent {
 		save := p.times.at(26, p.times.ciMain)
-		return append(ciMainSaves(p, m, save, true), p.afterWriter(m, save)...)
+		last := save
+		if p.requested {
+			last = save.Add(ciMainOffsets["go-k8s-e2e-v2-"])
+		}
+		return append(ciMainSaves(p, m, save, true), p.afterWriter(m, last)...)
 	})
 }
 
@@ -613,24 +623,45 @@ func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent 
 	prefixes := []string{"go-mod-v2-", "go-test-v2-", "go-lint-v2-", "go-generated-v2-", "go-k8s-e2e-v2-", "go-fuzz-v2-"}
 	generations := map[string][]*modelEntry{}
 	var events []modelEvent
+	lead := 45 * time.Minute
+	if p.requested {
+		lead = -p.requestLag
+	}
 	if p.headroom {
-		events = append(events, modelEvent{save.Add(-45 * time.Minute), func() {
+		events = append(events, modelEvent{save.Add(-lead), func() {
 			for _, prefix := range prefixes {
 				generations[prefix] = m.generation(prefix)
 			}
 			m.headroom(strings.Join(prefixes, " "))
 		}})
 	}
+	saveOne := func(prefix string) {
+		m.touch(prefix)
+		old := generations[prefix]
+		if old == nil {
+			old = m.generation(prefix)
+		}
+		m.addNext(old, busy)
+	}
+	if p.requested {
+		for _, prefix := range prefixes {
+			events = append(events, modelEvent{save.Add(ciMainOffsets[prefix]), func() { saveOne(prefix) }})
+		}
+		return events
+	}
 	return append(events, modelEvent{save, func() {
 		for _, prefix := range prefixes {
-			m.touch(prefix)
-			old := generations[prefix]
-			if old == nil {
-				old = m.generation(prefix)
-			}
-			m.addNext(old, busy)
+			saveOne(prefix)
 		}
 	}})
+}
+
+// ciMainOffsets is when each writer of a ci-main run saves, after the run's request: measured from the
+// listing of run 11-22 (started 20:24:23: lint 40 MB +2 min, generated 182 MB +2.5, the fuzz shards +4 to
+// +10, go-test 707 MB +14, k8s-e2e 1.6 GB +24) and run 11-15 (the module cache +16 min).
+var ciMainOffsets = map[string]time.Duration{
+	"go-lint-v2-": 2 * time.Minute, "go-generated-v2-": 150 * time.Second, "go-fuzz-v2-": 7 * time.Minute,
+	"go-test-v2-": 14 * time.Minute, "go-mod-v2-": 16 * time.Minute, "go-k8s-e2e-v2-": 24 * time.Minute,
 }
 
 // sundayGoSum is the weekly ci-main run after a go.sum change landed since the daily seeds
@@ -1183,6 +1214,27 @@ func TestCacheBudgetModel(t *testing.T) {
 				}
 				if len(without.lost) == 0 {
 					t.Fatalf("without the headroom job a manual ci-main run on a weekday no longer loses a seed at %s; update docs/development/ci.md", l.name)
+				}
+			})
+			// The same manual run with the headroom started by its request (ci-main-headroom.yml, workflow_run
+			// requested) instead of 45 minutes ahead: the writers save while the headroom job queues, runs its
+			// checkout and lists the cache, so the saves of the first minutes (lint, generated, fuzz) can land
+			// before it. requestLag is how long after the request the script's listing is taken.
+			t.Run("ci-main on a weekday, headroom on request/"+l.name, func(t *testing.T) {
+				t.Parallel()
+				for _, lag := range []time.Duration{time.Minute, 3 * time.Minute, 5 * time.Minute, 10 * time.Minute, 20 * time.Minute} {
+					p := planAdopted
+					p.rate = map[string]int{"main": 0, "dev": 0}
+					p.headroom, p.requested, p.requestLag = true, true, lag
+					at := func(p plan, minute int) plan {
+						p.times.ciMain = [2]int{minute / 60, minute % 60}
+						return p
+					}
+					sweep := sweepSeeds(t, p, l.bytes, 10*60+59, 22*60+59, sweepStep(360), at, ciMainWeekday)
+					logSweep(t, fmt.Sprintf("headroom %v after the request, ci-main on a weekday", lag), l, sweep)
+					if lag <= 10*time.Minute && len(sweep.lost) != 0 {
+						t.Fatalf("a manual ci-main run loses a newest seed at %v with the headroom %v after its request (%s)", sweep.lost, lag, l.name)
+					}
 				}
 			})
 		}

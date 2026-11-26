@@ -55,7 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          HEADROOM_PREFIXES: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          HEADROOM_PREFIXES: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-
           HEADROOM_SKIP_KEY: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ steps.lint-cache-generation.outputs.value }}
         run: ./scripts/ci/cache-prune.sh
 
