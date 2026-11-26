@@ -3,6 +3,7 @@ package upgradecompat
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -261,6 +262,7 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 	}
 	seenBridges := map[releaseidentity.Digest]bool{}
 	seenBridgePairs := map[string]bool{}
+	retiredSkipped := false
 	for _, bridge := range bridges {
 		if !bridge.Valid() || bridge.SnapshotDigest() != snapshot.Digest() || seenBridges[bridge.Digest()] {
 			return Plan{}, errors.New("missing, stale or duplicate bridge proof")
@@ -273,6 +275,11 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 		// Matching a journaled route (parallel) ignores the clock: expiry limits only new
 		// admissions, and a legacy v1 statement (no not_after, always expired) can never have
 		// been admitted, so it cannot be journaled.
+		if !options.parallel && bridge.RetiredSigner() {
+			// Verified and counted, but under a root that still pins recovery-1 it never routes.
+			retiredSkipped = true
+			continue
+		}
 		if (!options.parallel && bridge.Expired(now)) || slices.Contains(revoked, bridge.Digest()) {
 			continue
 		}
@@ -373,6 +380,9 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 				queue = append(queue, pathState{source: next, steps: steps})
 			}
 		}
+	}
+	if retiredSkipped {
+		return Plan{}, fmt.Errorf("no authenticated upgrade route: %w", releasetrust.ErrRetiredBridgeSigner)
 	}
 	return Plan{}, errors.New("no authenticated upgrade route")
 }

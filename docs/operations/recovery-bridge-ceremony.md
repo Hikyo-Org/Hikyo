@@ -10,6 +10,22 @@ Every command below was rehearsed end to end with a throwaway key and a test
 root by `scripts/release/recovery-bridge-rehearsal.sh`. The rehearsal never
 reads production key material; this ceremony is the only step that does.
 
+## Owner prerequisite: rotate to recovery-2
+
+Owner only, before any bridge can be used. It is not a merge blocker, and agents do none
+of it. The code enforces the order: while the trust root a binary embeds still pins
+`recovery-1`, every routable bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`)
+still verifies and counts in the inventory, so every bundle loads and a security rollback
+works, but it never routes a new admission. The refusal says "the trust root pins recovery-1,
+and recovery bridges need the rotated recovery-2 root" and points here. The expiry-free
+`legacy-nightly-bridge/v1` statements stay inert either way.
+
+1. Rotate the trust root to `recovery-2` (new offline or hardware key, new root, new
+   catalog), and ship a release whose binary embeds that root.
+2. Sign the `legacy-nightly-bridge/v2` statements and the `recovery-bridge/v2` statements
+   with `recovery-2` (the steps below, with `RECOVERY_KEY` set to `recovery-2`).
+3. Publish the trust asset (the recovery-signed catalog and the bridge directories).
+
 ## Read first: constraints the rehearsal exposed
 
 1. **`recovery-2` signs (R2, owner decision on #1422).** A verifier accepts a

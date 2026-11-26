@@ -117,6 +117,11 @@ workflow (full `check-compatibility-unchanged.sh`).
 
 - Bridge for v1.0.0 (option B): tooling, independent verifier, rehearsal and
   ceremony runbook are in the bridge PR (`docs/operations/recovery-bridge-ceremony.md`).
+  Owner-only prerequisite, in order, before any bridge can be used (not a merge blocker,
+  agents do none of it): (1) rotate the root to `recovery-2`; (2) sign the legacy-nightly
+  v2 and recovery-bridge statements with `recovery-2`; (3) publish the trust asset. Until
+  then the code refuses to route any bridge under the `recovery-1` root and says so
+  (runbook section "Owner prerequisite: rotate to recovery-2"); load and rollback are unaffected.
   The ceremony itself (owner, #1560) is not done. The owner chose
   `recovery-2` as the signing key (ADR R2). Open: a real-signature database upgrade
   with operator attestation, and restore through `VerifyEmbeddedUpgradeSource` are untested.

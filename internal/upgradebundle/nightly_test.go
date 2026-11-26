@@ -2,6 +2,8 @@ package upgradebundle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
@@ -158,6 +160,23 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			// expiry-free statement included, with no revocation lookup at all.
 			if rolled, err := bundle.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
 				t.Fatalf("rollback of the journaled route must not be blocked: %v", err)
+			}
+			// R2: under a root that still pins recovery-1 the routable v2 bridge and the inert v1
+			// bridge both load and count, a new admission is refused with the way out named, and a
+			// security rollback of the route journaled earlier is not affected.
+			sum := sha256.Sum256(fixture.Pinned.RecoveryPublicKey)
+			undo := releasetrust.DenyBridgeSignerForTest(hex.EncodeToString(sum[:]))
+			retired, err := Load(t.Context(), directory, fixture.Pinned, bundle.Snapshot().Floor())
+			undo()
+			if err != nil || len(retired.bridges) != 2 {
+				t.Fatalf("both bridges load under the recovery-1 root: %d %v", len(retired.bridges), err)
+			}
+			retired = retired.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil })
+			if _, err := retired.Plan(source, node.Identity()); !errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || !strings.Contains(err.Error(), "recovery-2") || !strings.Contains(err.Error(), "recovery-bridge-ceremony.md") {
+				t.Fatalf("a new admission must say the root pins recovery-1 and name the runbook: %v", err)
+			}
+			if rolled, err := retired.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
+				t.Fatalf("security rollback must not be affected by the recovery-1 denial: %v", err)
 			}
 			// The legacy nightly bridge expires at its signed not_after like every bridge. An
 			// absent list (404) or an unreachable endpoint falls back to that expiry; a present

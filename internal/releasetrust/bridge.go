@@ -80,6 +80,8 @@ type bridgeState struct {
 	statement BridgeStatement
 	digest    releaseidentity.Digest
 	snapshot  releaseidentity.Digest
+	// retiredSigner: a routable schema signed under a root that still pins a denied key.
+	retiredSigner bool
 }
 
 // VerifiedBridge authorizes only the exact exceptional edge. Target release
@@ -87,6 +89,10 @@ type bridgeState struct {
 type VerifiedBridge struct{ state *bridgeState }
 
 func (b VerifiedBridge) Valid() bool { return b.state != nil }
+
+// RetiredSigner reports a routable bridge under a root that still pins a denied recovery
+// key: it verifies and counts, but never routes a new admission.
+func (b VerifiedBridge) RetiredSigner() bool { return b.state != nil && b.state.retiredSigner }
 func (b VerifiedBridge) Digest() releaseidentity.Digest {
 	if b.state == nil {
 		return ""
@@ -112,9 +118,22 @@ func (b VerifiedBridge) Statement() BridgeStatement {
 // bridgeDeniedSigners are recovery keys (SHA-256 of the public key) that never sign a
 // routable bridge. The owner decided that recovery-1 is not extended to bridges (R2): a
 // bridge is signed by a rotated key that the running binary's root pins, so a build whose
-// root still pins recovery-1 admits no routable bridge. The expiry-free legacy v1
-// statements stay loadable because they are inert.
+// root still pins recovery-1 admits no routable bridge. Such a bridge still verifies and
+// counts in the inventory, so every bundle loads and a security rollback is unaffected,
+// but it never routes a new admission.
 var bridgeDeniedSigners = []string{"1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"}
+
+// DenyBridgeSignerForTest adds a recovery key digest to the denied set, for tests that
+// cannot hold the retired key, and returns the undo. It can only add a restriction.
+func DenyBridgeSignerForTest(sha256 string) func() {
+	previous := bridgeDeniedSigners
+	bridgeDeniedSigners = append(append([]string{}, previous...), sha256)
+	return func() { bridgeDeniedSigners = previous }
+}
+
+// ErrRetiredBridgeSigner explains why a routable bridge cannot be used while the trust
+// root still pins recovery-1, and where the owner's way out is written down.
+var ErrRetiredBridgeSigner = errors.New("the trust root pins recovery-1, and recovery bridges need the rotated recovery-2 root: an owner step, see docs/operations/recovery-bridge-ceremony.md, section \"Owner prerequisite: rotate to recovery-2\"")
 
 func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, error) {
 	if !snapshot.Valid() {
@@ -133,9 +152,6 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 	}
 	if statement.Mode != "maintenance" || statement.Target.Validate() != nil || statement.TargetPolicySHA256.Validate() != nil {
 		return VerifiedBridge{}, errors.New("invalid recovery bridge identity or mode")
-	}
-	if statement.Schema != "hikyo.dev/legacy-nightly-bridge/v1" && slices.Contains(bridgeDeniedSigners, snapshot.state.root.Recovery.SHA256) {
-		return VerifiedBridge{}, errors.New("a routable recovery bridge cannot be signed by the retired recovery-1 key; rotate the recovery key first")
 	}
 	switch statement.Schema {
 	case BridgeSchemaV2:
@@ -174,5 +190,6 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 	if statement.SourceMigrations.Validate() != nil || statement.TargetMigrations.Validate() != nil || statement.SourceMigrations.Engine != statement.TargetMigrations.Engine || statement.SourceSchemaSHA256.Validate() != nil || statement.TargetSchemaSHA256.Validate() != nil {
 		return VerifiedBridge{}, errors.New("invalid recovery bridge migration binding")
 	}
-	return VerifiedBridge{state: &bridgeState{statement: statement, digest: digest, snapshot: snapshot.Digest()}}, nil
+	retired := statement.Schema != "hikyo.dev/legacy-nightly-bridge/v1" && slices.Contains(bridgeDeniedSigners, snapshot.state.root.Recovery.SHA256)
+	return VerifiedBridge{state: &bridgeState{statement: statement, digest: digest, snapshot: snapshot.Digest(), retiredSigner: retired}}, nil
 }

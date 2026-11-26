@@ -17,9 +17,9 @@ import (
 )
 
 // R2 (owner decision on #1422): recovery-1 is never extended to bridges. A bridge signed by
-// a denied key is refused for every routable schema, while the inert expiry-free legacy v1
-// statements stay loadable so the committed catalog still verifies.
-func TestRoutableBridgeSignedByTheRetiredRecoveryKeyIsRefused(t *testing.T) {
+// a denied key verifies and counts, but is marked retired for every routable schema so it
+// never routes; the inert expiry-free legacy v1 statements are not marked.
+func TestRoutableBridgeUnderTheRetiredRecoveryKeyVerifiesButNeverRoutes(t *testing.T) {
 	legacy := func(schema string) releasetrust.BridgeStatement {
 		digest := releaseidentity.Hash([]byte("fixture"))
 		target := releaseidentity.Identity{Profile: releaseidentity.NightlyV1, Version: "1.1.0-nightly.20260101.1.gabcdef12", Sequence: 2, Commit: strings.Repeat("c", 40), CompatibilitySHA256: digest, ManifestSHA256: digest}
@@ -28,35 +28,29 @@ func TestRoutableBridgeSignedByTheRetiredRecoveryKeyIsRefused(t *testing.T) {
 			SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: digest, TargetSchemaSHA256: digest,
 			NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339)}
 	}
-	for name, statement := range map[string]releasetrust.BridgeStatement{
-		"recovery bridge v2":       v2Statement(releasetrust.BridgeSchemaV2, time.Now().UTC().Add(24*time.Hour).Truncate(time.Second).Format(time.RFC3339)),
-		"legacy nightly bridge v2": legacy(releasetrust.LegacyNightlyBridgeSchemaV2),
+	for name, c := range map[string]struct {
+		statement releasetrust.BridgeStatement
+		retired   bool
+	}{
+		"recovery bridge v2":       {v2Statement(releasetrust.BridgeSchemaV2, time.Now().UTC().Add(24*time.Hour).Truncate(time.Second).Format(time.RFC3339)), true},
+		"legacy nightly bridge v2": {legacy(releasetrust.LegacyNightlyBridgeSchemaV2), true},
+		"legacy nightly bridge v1": {legacy("hikyo.dev/legacy-nightly-bridge/v1"), false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := testfixture.New(t)
-			material := f.AddBridge(t, statement)
+			material := f.AddBridge(t, c.statement)
 			snapshot := f.Snapshot(t)
-			if _, err := releasetrust.VerifyBridge(snapshot, material); err != nil {
-				t.Fatalf("a bridge signed by a key that is not denied verifies: %v", err)
+			if bridge, err := releasetrust.VerifyBridge(snapshot, material); err != nil || bridge.RetiredSigner() {
+				t.Fatalf("a bridge signed by a key that is not denied is routable: %v", err)
 			}
 			sum := sha256.Sum256(f.Pinned.RecoveryPublicKey)
-			undo := releasetrust.DenyBridgeSigner(hex.EncodeToString(sum[:]))
-			defer undo()
-			if _, err := releasetrust.VerifyBridge(snapshot, material); err == nil || !strings.Contains(err.Error(), "retired recovery-1") {
-				t.Fatalf("a routable bridge signed by a denied recovery key must be refused: %v", err)
+			defer releasetrust.DenyBridgeSignerForTest(hex.EncodeToString(sum[:]))()
+			bridge, err := releasetrust.VerifyBridge(snapshot, material)
+			if err != nil || !bridge.Valid() || bridge.RetiredSigner() != c.retired {
+				t.Fatalf("under a denied key the bridge still verifies; retired = %v, want %v: %v", bridge.RetiredSigner(), c.retired, err)
 			}
 		})
 	}
-	t.Run("legacy v1 stays loadable", func(t *testing.T) {
-		f := testfixture.New(t)
-		material := f.AddBridge(t, legacy("hikyo.dev/legacy-nightly-bridge/v1"))
-		snapshot := f.Snapshot(t)
-		sum := sha256.Sum256(f.Pinned.RecoveryPublicKey)
-		defer releasetrust.DenyBridgeSigner(hex.EncodeToString(sum[:]))()
-		if bridge, err := releasetrust.VerifyBridge(snapshot, material); err != nil || !bridge.Expired(time.Now()) {
-			t.Fatalf("the inert v1 statement still loads, always expired: %v", err)
-		}
-	})
 }
 
 // The denied digest is the committed recovery-1 key, not a stale or mistyped value.
