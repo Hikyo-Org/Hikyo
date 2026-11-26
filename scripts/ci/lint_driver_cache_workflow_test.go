@@ -17,7 +17,7 @@ const (
 	lintDriverModulePrefix   = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
 	lintDriverRunnerPrefix   = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
 	lintDriverGenerationID   = "lint-cache-generation"
-	lintDriverGenerationRun  = `echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"`
+	lintDriverGenerationRun  = `echo "value=$(date -u +%G-W%V)-nodwarf" >>"$GITHUB_OUTPUT"`
 	lintDriverSeedKey        = lintDriverModulePrefix + "${{ steps." + lintDriverGenerationID + ".outputs.value }}"
 	lintDriverRestoreName    = "Restore lint driver Go cache"
 	lintDriverSeedLintTests  = "go test -count=1 -timeout=20m ./internal/lint\n"

@@ -276,7 +276,10 @@ fi
 
 # Validate every cache reader by policy rather than mirroring a fixed reader
 # count or every job name. A newly added reader is covered automatically.
-grep -F 'path: ~/go/pkg/mod' "$@" >/dev/null || fail 'no Go module cache reader found'
+grep -F 'path: ~/go/pkg/mod/cache/download' "$@" >/dev/null || fail 'no Go module cache reader found'
+# Only the download cache is archived: the extracted tree is rebuilt from it on first use, which
+# keeps the entry about 44% smaller (docs/development/ci.md).
+! grep -E 'path: ~/go/pkg/mod$' "$@" >/dev/null || fail 'a Go module cache reader archives the whole module tree'
 grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache reader found'
 for file in "$@"; do
 	feedback_cache=false
@@ -401,7 +404,7 @@ lint_module_prefix="$lint_runner_prefix\${{ hashFiles('go.mod', 'go.sum', 'scrip
 lint_key="key: $lint_module_prefix\${{ steps.lint-cache-generation.outputs.value }}"
 require_line "$lint_cache_workflow" "$lint_key"
 require_line "$lint_cache_workflow" "restore-keys: $lint_runner_prefix"
-require_line "$lint_cache_workflow" 'run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"'
+require_line "$lint_cache_workflow" 'run: echo "value=$(date -u +%G-W%V)-nodwarf" >>"$GITHUB_OUTPUT"'
 require_line "$lint_cache_workflow" 'lookup-only: true'
 require_line "$lint_cache_workflow" 'key: ${{ steps.lint-driver-seed.outputs.cache-primary-key }}'
 [ "$(grep -c 'actions/cache/save@' "$lint_cache_workflow")" = 1 ] ||

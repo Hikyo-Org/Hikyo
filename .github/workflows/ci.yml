@@ -179,7 +179,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -254,7 +254,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -451,7 +451,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -537,7 +537,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -650,7 +650,7 @@ jobs:
         if: ${{ fromJSON(needs.changes.outputs.plan).generated || fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -759,7 +759,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -825,7 +825,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1172,7 +1172,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1243,7 +1243,7 @@ jobs:
         timeout-minutes: 2
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1426,7 +1426,7 @@ jobs:
         id: go-module-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1534,7 +1534,7 @@ jobs:
           steps.go-module-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: ${{ steps.go-module-cache.outputs.cache-primary-key }}
       - name: Remove CI PostgreSQL
         if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
@@ -1568,7 +1568,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1616,6 +1616,10 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['k8s-e2e'] }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # No DWARF in the compiled objects: the entry below is about 16% smaller. Panics keep file:line
+    # (the pc-line table is separate from DWARF). The nodwarf marker in the key names these flags.
+    env:
+      GOFLAGS: -gcflags=all=-dwarf=false
     steps:
       - *validate-revision
       - name: Check out the validated immutable revision
@@ -1630,7 +1634,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1641,7 +1645,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-k8s-e2e-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
+          key: go-k8s-e2e-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}-nodwarf
           restore-keys: |
             go-k8s-e2e-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       # A pinned, checksummed binary download (the shellcheck pattern above):
@@ -1802,7 +1806,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1911,7 +1915,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -1990,7 +1994,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -2138,7 +2142,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI

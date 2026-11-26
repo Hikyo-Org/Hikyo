@@ -26,15 +26,20 @@ import (
 const (
 	cachePruneWorkflow = ".github/workflows/ci-cache-prune.yml"
 	cachePruneStep     = "Delete superseded and idle pull request caches"
-	cachePruneGuard    = "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'"
+	cachePruneGuard    = "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.ref == 'refs/heads/main'"
 )
+
+// cachePruneWriters are the workflows whose completion on main triggers a prune: the writers of the
+// listed families that either run PR code (ci-main reuses ci.yml) or are not ours to edit (CodeQL).
+var cachePruneWriters = []any{"CodeQL", "ci-main", "cache-seed-lint", "cache-seed-race", "cache-seed-tools", "cache-seed-feedback"}
 
 func requireCachePruneWorkflow(workflow map[string]any) (string, error) {
 	if !reflect.DeepEqual(workflow["on"], map[string]any{
 		"workflow_dispatch": nil,
 		"schedule":          []any{map[string]any{"cron": "47 * * * *"}},
+		"workflow_run":      map[string]any{"workflows": cachePruneWriters, "types": []any{"completed"}},
 	}) {
-		return "", fmt.Errorf("the prune runs only on a schedule or by hand, never on a pull request or a push")
+		return "", fmt.Errorf("the prune runs only on a schedule, by hand or after a named cache writer finished, never on a pull request or a push")
 	}
 	if !reflect.DeepEqual(workflow["permissions"], map[string]any{}) {
 		return "", fmt.Errorf("the workflow grants nothing by default")
@@ -263,8 +268,21 @@ func TestCachePruneDeletesDeadEntriesOnly(t *testing.T) {
 		},
 		"runs on pushes":          func(w map[string]any) { w["on"].(map[string]any)["push"] = map[string]any{} },
 		"runs after any workflow": func(w map[string]any) { w["on"].(map[string]any)["workflow_run"] = map[string]any{} },
-		"guard accepts any ref":   func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
-		"guard accepts a pull":    func(w map[string]any) { job(w)["if"] = cachePruneGuard + " || github.event_name == 'pull_request'" },
+		"runs after a PR workflow": func(w map[string]any) {
+			run := w["on"].(map[string]any)["workflow_run"].(map[string]any)
+			run["workflows"] = append(run["workflows"].([]any), "trusted-ci")
+		},
+		"runs when a writer starts": func(w map[string]any) {
+			w["on"].(map[string]any)["workflow_run"].(map[string]any)["types"] = []any{"requested"}
+		},
+		"guard accepts any triggering branch": func(w map[string]any) {
+			job(w)["if"] = strings.Replace(cachePruneGuard, " && github.event.workflow_run.head_branch == 'main'", "", 1)
+		},
+		"guard accepts a fork": func(w map[string]any) {
+			job(w)["if"] = strings.Replace(cachePruneGuard, " && github.event.workflow_run.head_repository.full_name == github.repository", "", 1)
+		},
+		"guard accepts any ref": func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
+		"guard accepts a pull":  func(w map[string]any) { job(w)["if"] = cachePruneGuard + " || github.event_name == 'pull_request'" },
 		"guard accepts dev": func(w map[string]any) {
 			job(w)["if"] = strings.Replace(cachePruneGuard, "refs/heads/main", "refs/heads/dev", 1)
 		},

@@ -260,7 +260,7 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	}
 	modules := step(2)
 	if modules["uses"] != reuseRestoreAction || !reflect.DeepEqual(modules["with"], map[string]any{
-		"path":         "~/go/pkg/mod",
+		"path":         moduleDownloadCachePath,
 		"key":          "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
 		"restore-keys": "go-mod-v2-${{ runner.os }}-",
 	}) {

@@ -15,6 +15,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// moduleDownloadCachePath is all of the Go module cache that the Actions entries archive: the
+// extracted tree is rebuilt from it on first use, which makes the entry about 44% smaller.
+const moduleDownloadCachePath = "~/go/pkg/mod/cache/download"
+
 type coverageBaseline struct {
 	Version int               `json:"inventory_version"`
 	Source  string            `json:"source_commit"`
@@ -261,6 +265,44 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 			return fmt.Errorf("%s requires exactly one mandatory additive validation step, got %d", jobName, found)
 		}
 		workflow.Jobs[jobName]["steps"] = kept
+	}
+	// The Actions cache budget (docs/development/ci.md) moved two cache settings; neither changes what
+	// a job runs. Require the reviewed form, then restore the frozen one for hashing:
+	//   - every module cache step archives ~/go/pkg/mod/cache/download only, never the whole tree;
+	//   - the k8s-e2e job compiles without DWARF (a job-level GOFLAGS) and keys its build cache with
+	//     the nodwarf marker.
+	for name, job := range workflow.Jobs {
+		steps, _ := job["steps"].([]any)
+		for _, value := range steps {
+			step, ok := value.(map[string]any)
+			if !ok {
+				return fmt.Errorf("%s has malformed step configuration", name)
+			}
+			with, _ := step["with"].(map[string]any)
+			switch with["path"] {
+			case "~/go/pkg/mod":
+				return fmt.Errorf("%s archives the whole module tree; only the download cache is archived", name)
+			case moduleDownloadCachePath:
+				with["path"] = "~/go/pkg/mod"
+			}
+		}
+	}
+	if k8s, ok := workflow.Jobs["k8s-e2e"]; ok {
+		if !reflect.DeepEqual(k8s["env"], map[string]any{"GOFLAGS": "-gcflags=all=-dwarf=false"}) {
+			return fmt.Errorf("k8s-e2e must compile without DWARF")
+		}
+		delete(k8s, "env")
+		for _, value := range k8s["steps"].([]any) {
+			step, _ := value.(map[string]any)
+			if with, _ := step["with"].(map[string]any); with != nil {
+				if key, _ := with["key"].(string); strings.HasPrefix(key, "go-k8s-e2e-v2-") {
+					if !strings.HasSuffix(key, "-nodwarf") {
+						return fmt.Errorf("k8s-e2e build cache key must carry the nodwarf marker")
+					}
+					with["key"] = strings.TrimSuffix(key, "-nodwarf")
+				}
+			}
+		}
 	}
 	// Accept only the reviewed action runtime upgrades, then restore their
 	// frozen pins for hashing. Every other step setting remains fingerprinted.
@@ -589,6 +631,23 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 		},
 		"use candidate planner": func(j map[string]map[string]any) {
 			mutateShardPlanningStep(j, "run", replaceShardPlanningRunText("git show \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\"", "git show \"HEAD:scripts/ci/analysis-shards-go/main.go\""))
+		},
+		"module cache archives the whole tree": func(j map[string]map[string]any) {
+			for _, step := range j["supply-chain-checks"]["steps"].([]any) {
+				if with, _ := step.(map[string]any)["with"].(map[string]any); with["path"] == moduleDownloadCachePath {
+					with["path"] = "~/go/pkg/mod"
+				}
+			}
+		},
+		"k8s-e2e compiles with DWARF": func(j map[string]map[string]any) { delete(j["k8s-e2e"], "env") },
+		"k8s-e2e build cache loses the marker": func(j map[string]map[string]any) {
+			for _, step := range j["k8s-e2e"]["steps"].([]any) {
+				if with, _ := step.(map[string]any)["with"].(map[string]any); with != nil {
+					if key, _ := with["key"].(string); strings.HasPrefix(key, "go-k8s-e2e-v2-") {
+						with["key"] = strings.TrimSuffix(key, "-nodwarf")
+					}
+				}
+			}
 		},
 		"fail open complete planning": func(j map[string]map[string]any) { mutateShardPlanningStep(j, "continue-on-error", true) },
 		"skip complete planning":      func(j map[string]map[string]any) { mutateShardPlanningStep(j, "if", "false") },

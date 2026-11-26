@@ -40,17 +40,21 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
       # Compile results go stale as the module changes. One immutable seed per
-      # ISO week bounds both that staleness and the cache budget's churn.
+      # ISO week bounds both that staleness and the cache budget's churn. The
+      # nodwarf marker names the compiler flags of the lint contexts
+      # (internal/lint loaderGOFLAGS): a seed compiled with DWARF is a miss for
+      # them, so it must not be an exact hit here, and the lane rule drops the
+      # marker with the week, so the new seed supersedes the old one.
       - name: Select weekly lint driver cache generation
         id: lint-cache-generation
-        run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
+        run: echo "value=$(date -u +%G-W%V)-nodwarf" >>"$GITHUB_OUTPUT"
       # The cache policy fixture requires restore-keys on every go-build
       # reader; lookup-only never restores, so cache-hit stays exact-key only.
       - name: Look up this lint driver seed without restoring old entries

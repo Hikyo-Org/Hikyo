@@ -61,7 +61,7 @@ func sharedGoReuseErrors(raw []byte) []error {
 			if step.ID == "runner-cache-abi" && step.Run == "./scripts/ci/export-runner-cache-abi.sh" {
 				abi = i
 			}
-			if strings.HasPrefix(step.Uses, "actions/cache/restore@") && step.With["path"] == "~/go/pkg/mod" && step.With["key"] == moduleKey {
+			if strings.HasPrefix(step.Uses, "actions/cache/restore@") && step.With["path"] == moduleDownloadCachePath && step.With["key"] == moduleKey {
 				modules = i
 			}
 			if strings.HasPrefix(step.With["key"], "go-web-") || strings.HasPrefix(step.With["restore-keys"], "go-web-") {

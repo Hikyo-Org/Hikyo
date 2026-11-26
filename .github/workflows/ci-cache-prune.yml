@@ -10,15 +10,25 @@
 #               family and entry, and the old unfamilied ones are removed by hand.
 #   idle PR:    entries on pull-request refs not accessed for 24 hours. Writers are main-only, so
 #               none exist today; this is the bound if one ever does.
+# It also runs when a writer of those families finishes on main (the lint driver, race, tool and
+# feedback seeds, the weekly main validation that writes the k8s-e2e, fuzz, module and pnpm entries,
+# and GitHub's CodeQL default setup, whose overlay and dependency entries cannot be pruned from
+# inside its run): what the writer just superseded goes within minutes instead of at the next :47.
+# A workflow_run job is the one place that can hold actions: write for those writers, because they
+# either run PR code (ci.yml) or are not ours to edit (CodeQL). Nothing is read from the triggering
+# run except its branch, in the job guard; the script takes no input from the event.
 # It holds actions: write and nothing else, checks nothing out and runs no repository code. Each
-# run costs one to two listing calls plus at most 100 deletes, 24 runs a day: at most 102 calls an
-# hour against the shared 1000, one or two in the usual hour.
+# run costs one to two listing calls plus at most 100 deletes: 24 scheduled runs a day plus a few
+# per writer, so at most 102 calls a run against the shared 1000 an hour.
 name: cache-prune
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '47 * * * *'
+  workflow_run:
+    workflows: [CodeQL, ci-main, cache-seed-lint, cache-seed-race, cache-seed-tools, cache-seed-feedback]
+    types: [completed]
 
 permissions: {}
 
@@ -29,7 +39,9 @@ concurrency:
 jobs:
   prune:
     if: >-
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)) &&
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
