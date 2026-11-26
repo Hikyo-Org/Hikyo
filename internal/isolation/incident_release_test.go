@@ -597,9 +597,9 @@ func TestIncidentReleaseRefusesANonContainingIncident(t *testing.T) {
 		if got := queryString(t, db, `SELECT contained_incident_id FROM principals WHERE id='usr_itarget'`); got != first {
 			t.Fatalf("contained_incident_id = %q, want the first incident %q", got, first)
 		}
-		if _, err := w.svc.Close(ctx, w.as(incResponder), first, true); err != nil {
-			t.Fatal(err)
-		}
+		// A closed incident that still holds the principal (a row from before Close
+		// refused that), so the containing incident is closed and the other is not.
+		execRaw(t, db, `UPDATE incidents SET status='closed_with_residuals', closed_at=`+ts+`, closed_by='usr_irsp' WHERE id='`+first+`'`)
 		release := func() error { return w.svc.ReleasePrincipal(ctx, w.as(incResponder), second, incTarget, "") }
 		// Unattested: a missing containing-incident check would answer ErrReleaseNotReady.
 		if err := release(); !errors.Is(err, domain.ErrNotFound) {

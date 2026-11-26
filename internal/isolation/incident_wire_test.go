@@ -224,6 +224,10 @@ func TestIncidentWireLifecycle(t *testing.T) {
 		if res := iw.w.resume(t, wireResponder, inc.Id); res.Examined == 0 {
 			t.Fatalf("resume examined nothing: %+v", res)
 		}
+		// The incident holds the target contained, so it is released before it closes.
+		if err := iw.w.svc.ReleasePrincipal(t.Context(), iw.w.as(wireResponder), inc.Id, wireTarget, ""); err != nil {
+			t.Fatalf("release before close: %v", err)
+		}
 		// Everything observable is now confirmed or attested, so the clean close holds.
 		if code, body = iw.call(t, tok, http.MethodPost, path+"/close", map[string]bool{"with_residuals": false}); code != http.StatusOK || decodeWire[apigen.Incident](t, body).Status != "closed" {
 			t.Fatalf("close = %d %s", code, body)

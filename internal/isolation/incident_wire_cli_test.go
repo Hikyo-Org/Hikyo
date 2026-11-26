@@ -88,6 +88,9 @@ func TestIncidentCLIExercise(t *testing.T) {
 			t.Fatalf("resume --yes: %d proof prompts, exit %d, stdout %q stderr %q", prompts, yesCode, yesOut.String(), yesErr.String())
 		}
 		iw.w.resume(t, wireResponder, inc.Id) // the proof-bearing pass, through the service
+		if err := iw.w.svc.ReleasePrincipal(t.Context(), iw.w.as(wireResponder), inc.Id, wireTarget, ""); err != nil {
+			t.Fatalf("release before close: %v", err)
+		}
 		if out := run("incident", "close", inc.Id); !strings.Contains(out, "closed") {
 			t.Fatalf("close output %q", out)
 		}
