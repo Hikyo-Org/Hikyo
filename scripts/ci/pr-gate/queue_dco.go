@@ -53,6 +53,8 @@ func queueDCOMetadataArgs(repoName, repo string) []string {
 // beside the immutable range. It names no PR ref, so a PR cannot choose it.
 const queueTrustedMainRef = "refs/hikyo/trusted-main"
 const queueTrustedMainRefspec = "+refs/heads/main:" + queueTrustedMainRef
+const queueTrustedDevRef = "refs/hikyo/trusted-dev"
+const queueTrustedDevRefspec = "+refs/heads/dev:" + queueTrustedDevRef
 
 func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string, error) {
 	if err := ctx.Err(); err != nil {
@@ -77,7 +79,7 @@ func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string
 	if err := init.Run(); err != nil {
 		return "", "", errors.New("cannot initialize queue DCO metadata repository")
 	}
-	args := append(queueDCOMetadataArgs(repoName, repo), "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--filter=blob:none", "origin", queueTrustedMainRefspec, p.admission().SHA, p.Head.SHA)
+	args := append(queueDCOMetadataArgs(repoName, repo), "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--filter=blob:none", "origin", queueTrustedMainRefspec, queueTrustedDevRefspec, p.admission().SHA, p.Head.SHA)
 	cmd := gateCommand(ctx, "git", args...)
 	cmd.Env = queueDCOEnvironment()
 	if err := cmd.Run(); err != nil {
@@ -90,18 +92,26 @@ func checkQueueDCO(ctx context.Context, repoName string, p pull, repo string) (i
 	if p.User.ID <= 0 || p.User.Login == "" {
 		return 0, errors.New("missing authenticated PR actor for DCO policy")
 	}
-	// A Dependabot commit the PR carries is exempt only when it is already on
-	// the canonical main fetched above, which passed main's actor-checked gate.
-	// A missing main fails closed: no exemption, and the check errors out.
-	rev := gateCommand(ctx, "git", "-c", "core.hooksPath=/dev/null", "-C", repo, "rev-parse", "--verify", "--quiet", queueTrustedMainRef+"^{commit}")
-	rev.Env = queueDCOEnvironment()
-	out, err := rev.Output()
-	mainSHA := strings.TrimSpace(string(out))
-	if err != nil || !shaPattern.MatchString(mainSHA) {
-		return 0, errors.New("trusted canonical main is unavailable for DCO policy")
-	}
+	// A Dependabot commit the PR carries is exempt when it is already on the
+	// canonical main or dev fetched above, or when the PR itself was opened by
+	// Dependabot (the GitHub-asserted user.login, below). Dependabot's commits
+	// enter dev only through PRs it opened, and dev and main only take commits
+	// through gated PRs. That premise rests on the dev and main rulesets
+	// requiring PRs and status checks, blocking non-fast-forward pushes and
+	// having no bypass actors; adding a bypass actor or loosening either
+	// ruleset breaks the exemption. A missing main or dev fails closed.
 	cmd := gateCommand(ctx, "sh", "scripts/ci/check-dco.sh", p.admission().SHA, p.Head.SHA, repo)
-	cmd.Env = append(queueDCOEnvironment(), "DCO_MAIN_SHA="+mainSHA)
+	cmd.Env = queueDCOEnvironment()
+	for _, tip := range []struct{ env, ref string }{{"DCO_MAIN_SHA", queueTrustedMainRef}, {"DCO_DEV_SHA", queueTrustedDevRef}} {
+		rev := gateCommand(ctx, "git", "-c", "core.hooksPath=/dev/null", "-C", repo, "rev-parse", "--verify", "--quiet", tip.ref+"^{commit}")
+		rev.Env = queueDCOEnvironment()
+		out, err := rev.Output()
+		sha := strings.TrimSpace(string(out))
+		if err != nil || !shaPattern.MatchString(sha) {
+			return 0, errors.New("trusted canonical main or dev is unavailable for DCO policy")
+		}
+		cmd.Env = append(cmd.Env, tip.env+"="+sha)
+	}
 	if p.User.Login == "dependabot[bot]" {
 		cmd.Env = append(cmd.Env, "DCO_EXEMPT_AUTHOR=dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>")
 	}

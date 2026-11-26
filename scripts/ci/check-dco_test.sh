@@ -85,8 +85,9 @@ fi
 # forged commit that is refused while off main (as on a release/ branch) passes
 # once main contains it.
 check="$(dirname "$0")/check-dco.sh"
+# Assignments go through env: a POSIX shell keeps one set in front of a function.
 refuses() {
-	if "$@" >/dev/null 2>&1; then
+	if env "$@" >/dev/null 2>&1; then
 		printf 'DCO fixture failed: %s\n' "$label" >&2
 		exit 1
 	fi
@@ -94,9 +95,9 @@ refuses() {
 
 git -C "$repo" branch release/1.1.0 "$dependabot"
 label='forged dependabot author off main exempt'
-DCO_MAIN_SHA=$signed refuses "$check" "$signed" "$dependabot" "$repo"
+refuses DCO_MAIN_SHA="$signed" "$check" "$signed" "$dependabot" "$repo"
 label='forged dependabot author on a release branch, not on main, exempt'
-DCO_MAIN_SHA=$base refuses "$check" "$signed" release/1.1.0 "$repo"
+refuses DCO_MAIN_SHA="$base" "$check" "$signed" release/1.1.0 "$repo"
 
 # A backmerge into dev: main's Dependabot commit plus a signed-off merge commit.
 git -C "$repo" switch -q --detach "$advanced_base"
@@ -105,15 +106,27 @@ backmerge=$(git -C "$repo" rev-parse HEAD)
 DCO_MAIN_SHA=$dependabot "$check" "$advanced_base" "$backmerge" "$repo" >/dev/null
 label='backmerge carrying a Dependabot commit passed without main'
 refuses "$check" "$advanced_base" "$backmerge" "$repo"
-DCO_MAIN_SHA=$advanced_base refuses "$check" "$advanced_base" "$backmerge" "$repo"
+refuses DCO_MAIN_SHA="$advanced_base" "$check" "$advanced_base" "$backmerge" "$repo"
 
 label='unsigned human commit exempted by main ancestry'
-DCO_MAIN_SHA=$unsigned refuses "$check" "$signed" "$unsigned" "$repo"
+refuses DCO_MAIN_SHA="$unsigned" "$check" "$signed" "$unsigned" "$repo"
 label='look-alike author exempted by main ancestry'
-DCO_MAIN_SHA=$lookalike refuses "$check" "$dependabot" "$lookalike" "$repo"
+refuses DCO_MAIN_SHA="$lookalike" "$check" "$dependabot" "$lookalike" "$repo"
 
 label='unresolvable main did not fail closed'
-DCO_MAIN_SHA=0000000000000000000000000000000000000001 refuses "$check" "$advanced_base" "$backmerge" "$repo"
-DCO_MAIN_SHA=not-a-ref refuses "$check" "$advanced_base" "$backmerge" "$repo"
+refuses DCO_MAIN_SHA=0000000000000000000000000000000000000001 "$check" "$advanced_base" "$backmerge" "$repo"
+refuses DCO_MAIN_SHA=not-a-ref "$check" "$advanced_base" "$backmerge" "$repo"
 
-printf 'DCO fixture: signed/behind-base/merge accepted; unsigned, forged-without-opt-in, and look-alike refused; exact identity accepted only on opt-in; Dependabot commits exempt only when on the trusted main\n'
+# Dev ancestry: Dependabot's commits enter dev through PRs it opened, so a
+# promotion from dev carries them. Either trusted tip suffices; neither does not.
+DCO_MAIN_SHA=$advanced_base DCO_DEV_SHA=$dependabot "$check" "$advanced_base" "$backmerge" "$repo" >/dev/null
+DCO_DEV_SHA=$dependabot "$check" "$advanced_base" "$backmerge" "$repo" >/dev/null
+label='dependabot commit on neither main nor dev exempted'
+refuses DCO_MAIN_SHA="$signed" DCO_DEV_SHA="$signed" "$check" "$advanced_base" "$backmerge" "$repo"
+label='human commit exempted by dev ancestry'
+refuses DCO_MAIN_SHA="$signed" DCO_DEV_SHA="$unsigned" "$check" "$signed" "$unsigned" "$repo"
+label='unresolvable dev did not fail closed'
+refuses DCO_MAIN_SHA="$dependabot" DCO_DEV_SHA=0000000000000000000000000000000000000001 "$check" "$advanced_base" "$backmerge" "$repo"
+refuses DCO_MAIN_SHA="$dependabot" DCO_DEV_SHA=not-a-ref "$check" "$advanced_base" "$backmerge" "$repo"
+
+printf 'DCO fixture: signed/behind-base/merge accepted; unsigned, forged-without-opt-in, and look-alike refused; exact identity accepted only on opt-in; Dependabot commits exempt only when on the trusted main or dev\n'

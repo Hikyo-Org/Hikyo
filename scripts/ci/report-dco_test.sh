@@ -56,7 +56,7 @@ run() {
 	: >"$work/calls"
 	PATH="$work/bin:$PATH" CALLS=$work/calls EXISTING=${2:-} LOOKUP_FAIL=${3:-} GH_REPO=o/r PR_NUMBER=7 \
 		BASE_SHA=$base HEAD_SHA=$1 PR_AUTHOR=${AUTHOR:-someone} DCO_REPOSITORY=$repo \
-		DCO_MAIN_SHA=${MAIN-$base} "$script" >/dev/null 2>&1
+		DCO_MAIN_SHA=${MAIN-$base} DCO_DEV_SHA=${DEV-$base} "$script" >/dev/null 2>&1
 }
 
 fail() {
@@ -72,6 +72,11 @@ run "$dependabot" && fail 'Dependabot commit off main claimed the exemption'
 (MAIN=$signed && run "$dependabot") && fail 'forged Dependabot commit off main claimed the exemption'
 (MAIN=$unsigned && run "$unsigned") && fail 'main ancestry exempted a human commit'
 (AUTHOR='dependabot[bot]' && run "$dependabot") || fail 'PR opened by Dependabot reported missing'
+(DEV=$dependabot && run "$dependabot") || fail 'Dependabot commit already on dev reported missing'
+(DEV=$unsigned && run "$unsigned") && fail 'dev ancestry exempted a human commit'
+(MAIN=$signed DEV=$signed && run "$dependabot") && fail 'Dependabot commit on neither main nor dev claimed the exemption'
+(DEV='' && run "$dependabot") && fail 'unset trusted dev did not fail closed'
+(DEV=0000000000000000000000000000000000000001 && run "$dependabot") && fail 'unresolvable trusted dev did not fail closed'
 (MAIN='' && run "$dependabot") && fail 'unset trusted main did not fail closed'
 (MAIN=0000000000000000000000000000000000000001 && run "$dependabot") && fail 'unresolvable trusted main did not fail closed'
 

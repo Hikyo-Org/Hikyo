@@ -36,15 +36,18 @@ jobs:
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: git fetch --no-tags origin "$HEAD_SHA"
-      # The tip of the base repository's main, fetched from its canonical
-      # origin (the checkout's remote). A failed fetch fails the job, so no
-      # Dependabot commit is exempt without it.
-      - name: Resolve trusted main
-        id: main
+      # The tips of the base repository's main and dev, fetched from its
+      # canonical origin (the checkout's remote). A failed fetch fails the job,
+      # so no Dependabot commit is exempt without them.
+      - name: Resolve trusted main and dev
+        id: trusted
         run: |
           git fetch --no-tags origin refs/heads/main
-          sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
-          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          main_sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+          git fetch --no-tags origin refs/heads/dev
+          dev_sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+          echo "main=$main_sha" >>"$GITHUB_OUTPUT"
+          echo "dev=$dev_sha" >>"$GITHUB_OUTPUT"
       - name: Report missing sign-offs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,5 +57,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           # The authenticated opener, not commit metadata: see ci.yml's DCO step.
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          DCO_MAIN_SHA: ${{ steps.main.outputs.sha }}
+          DCO_MAIN_SHA: ${{ steps.trusted.outputs.main }}
+          DCO_DEV_SHA: ${{ steps.trusted.outputs.dev }}
         run: ./scripts/ci/report-dco.sh

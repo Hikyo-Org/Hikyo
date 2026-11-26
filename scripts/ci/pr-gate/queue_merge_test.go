@@ -61,6 +61,7 @@ func newQueueMergeFixture(t *testing.T, conflict bool) queueMergeFixture {
 	}
 	head := commit(headBody, ancestor, "Head")
 	run("", "-C", source, "update-ref", "refs/heads/main", base)
+	run("", "-C", source, "update-ref", "refs/heads/dev", base)
 	run("", "-C", source, "update-ref", "refs/heads/feature", head)
 	tools := t.TempDir()
 	log, fault := filepath.Join(tools, "calls"), filepath.Join(tools, "fault")
@@ -75,7 +76,7 @@ test "$GIT_CONFIG_SYSTEM" = /dev/null
 test "$GIT_CONFIG_COUNT" = 0
 test "${GH_TOKEN+x}" != x
 test "${GITHUB_TOKEN+x}" != x
-operation=; target=; previous=; penultimate=; origin=false; promisor=false; filter=false; fetch_filter=false; write_tree=false; refspec=
+operation=; target=; previous=; penultimate=; origin=false; promisor=false; filter=false; fetch_filter=false; write_tree=false; refspec=; devspec=
 for argument in "$@"; do
  if [ "$previous" = -C ]; then target=$argument; fi
  case "$argument" in
@@ -87,6 +88,7 @@ for argument in "$@"; do
   --filter=blob:none) fetch_filter=true ;;
   --write-tree) write_tree=true ;;
   +refs/heads/main:refs/hikyo/trusted-main) refspec=$argument ;;
+  +refs/heads/dev:refs/hikyo/trusted-dev) devspec=$argument ;;
  esac
  penultimate=$previous
  previous=$argument
@@ -98,7 +100,8 @@ fi
 if [ "$operation" = fetch ]; then
  $fetch_filter
  test -n "$refspec"
- @GIT@ -c protocol.file.allow=always -c remote.origin.url=@ORIGIN@ -c remote.origin.promisor=true -c remote.origin.partialclonefilter=blob:none -C "$target" fetch --quiet --no-tags --filter=blob:none origin "$refspec" "$penultimate" "$previous"
+ test -n "$devspec"
+ @GIT@ -c protocol.file.allow=always -c remote.origin.url=@ORIGIN@ -c remote.origin.promisor=true -c remote.origin.partialclonefilter=blob:none -C "$target" fetch --quiet --no-tags --filter=blob:none origin "$refspec" "$devspec" "$penultimate" "$previous"
  if @GIT@ -c remote.origin.promisor=false -C "$target" cat-file -e @SHARED@ 2>/dev/null; then exit 92; fi
  printf 'filtered\n' >> @LOG@
  exit 0

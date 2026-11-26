@@ -9,14 +9,15 @@
 # attacker-controlled text and never reach the comment body.
 set -eu
 
-: "${GH_REPO:?}" "${PR_NUMBER:?}" "${BASE_SHA:?}" "${HEAD_SHA:?}" "${PR_AUTHOR:?}" "${DCO_MAIN_SHA:?}"
+: "${GH_REPO:?}" "${PR_NUMBER:?}" "${BASE_SHA:?}" "${HEAD_SHA:?}" "${PR_AUTHOR:?}" "${DCO_MAIN_SHA:?}" "${DCO_DEV_SHA:?}"
 repo=${DCO_REPOSITORY:-.}
 marker='<!-- hikyo-dco-report -->'
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 
 # Same exemption as the queue gate: a PR Dependabot opened, or a Dependabot
-# commit already on main. DCO_MAIN_SHA comes from the workflow, which resolves
-# it from the base repository's main; this script never reads it from the PR.
+# commit already on main or dev. DCO_MAIN_SHA and DCO_DEV_SHA come from the
+# workflow, which resolves them from the base repository; this script never
+# reads them from the PR.
 if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
 	export DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
 fi

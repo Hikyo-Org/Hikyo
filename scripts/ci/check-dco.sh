@@ -27,19 +27,35 @@ commits=$(git -C "$repo" rev-list --no-merges --reverse "$base..$head")
 # controlled, so two exemptions exist, both default-closed:
 #   - DCO_EXEMPT_AUTHOR: one exact identity, set by a caller only after checking
 #     the non-spoofable GitHub PR actor (the PR was opened by Dependabot).
-#   - DCO_MAIN_SHA: a trusted tip of the base repository's main, resolved by the
-#     caller from the canonical remote, never from PR input. A Dependabot-
-#     authored commit that is already an ancestor of it passed main's gate,
-#     which checks the actor, so a backmerge or promotion may carry it.
-# An unset variable exempts nobody; a set DCO_MAIN_SHA that does not resolve
-# to a commit is an error, never a silent loss of the check.
+#   - DCO_MAIN_SHA / DCO_DEV_SHA: trusted tips of the base repository's main and
+#     dev, resolved by the caller from the canonical remote, never from PR
+#     input. A Dependabot-authored commit that is already an ancestor of either
+#     entered that branch through a gated PR, and Dependabot's commits only
+#     enter dev through PRs Dependabot opened, so a promotion or backmerge may
+#     carry it.
+# That premise rests on the dev and main rulesets: they require PRs and status
+# checks, block non-fast-forward pushes and deletions, and have no bypass
+# actors. Adding a bypass actor or loosening either ruleset breaks it.
+# An unset variable exempts nobody; a set one that does not resolve to a commit
+# is an error, never a silent loss of the check.
 dependabot='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
 exempt_author=${DCO_EXEMPT_AUTHOR:-}
-main_sha=${DCO_MAIN_SHA:-}
-if [ -n "$main_sha" ]; then
-	main_sha=$(git -C "$repo" rev-parse --verify "$main_sha^{commit}" 2>/dev/null) \
-		|| { printf 'DCO check: invalid trusted main %s\n' "$DCO_MAIN_SHA" >&2; exit 2; }
-fi
+trusted_tips=
+for name in DCO_MAIN_SHA DCO_DEV_SHA; do
+	value=$(printenv "$name" || true)
+	[ -n "$value" ] || continue
+	tip=$(git -C "$repo" rev-parse --verify "$value^{commit}" 2>/dev/null) \
+		|| { printf 'DCO check: invalid trusted %s %s\n' "$name" "$value" >&2; exit 2; }
+	trusted_tips="$trusted_tips $tip"
+done
+
+# Prints nothing and succeeds only for a commit reachable from a trusted tip.
+on_trusted_branch() {
+	for tip in $trusted_tips; do
+		git -C "$repo" merge-base --is-ancestor "$1" "$tip" 2>/dev/null && return 0
+	done
+	return 1
+}
 
 failed=0
 signed=0
@@ -52,8 +68,7 @@ for commit in $commits; do
 		exempt=$((exempt + 1))
 		continue
 	fi
-	if [ -n "$main_sha" ] && [ "$identity" = "$dependabot" ] \
-		&& git -C "$repo" merge-base --is-ancestor "$commit" "$main_sha" 2>/dev/null; then
+	if [ "$identity" = "$dependabot" ] && on_trusted_branch "$commit"; then
 		exempt=$((exempt + 1))
 		continue
 	fi
