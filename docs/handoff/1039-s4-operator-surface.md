@@ -6,7 +6,7 @@ Stacked on slice 3 (`feat/1039-s3-owner-functions`, PR #1538); merge that first.
 
 ## Result
 
-- API (revision 21, additive): `openIncident`, `getIncident`, `listIncidentItems`,
+- API (revision 22, additive): `openIncident`, `getIncident`, `listIncidentItems`,
   `resumeIncident`, `attestIncidentItem`, `closeIncident` under `/api/v1/incidents`.
 - CLI: `hikyo incident open|show|items|resume|attest|close`, human session only.
 - Web: Incidents at `/orgs/:org/incidents` with stories aligned to the route.

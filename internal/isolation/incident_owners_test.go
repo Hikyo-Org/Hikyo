@@ -868,19 +868,17 @@ func hasTruncatedRow(items map[string]string) bool {
 // found and an absence read that answers unauthorized, absent, or a conflict) are
 // covered by the stubbed TestPauseTargetFlow cases in the service package.
 
-// tempIncidentGrant gives the principal a capability in project prj_a1 (env is a
-// SQL literal: an environment id or NULL for the whole project) until expiry.
-func tempIncidentGrant(t *testing.T, db *store.DB, principal domain.PrincipalID, capability, env string, expiry time.Time) {
+// tempIncidentGrant gives the principal a capability in environment env_a1 until expiry.
+func tempIncidentGrant(t *testing.T, db *store.DB, principal domain.PrincipalID, capability string, expiry time.Time) {
 	t.Helper()
 	stamp, exp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z"), expiry.UTC().Format("2006-01-02T15:04:05.000000Z")
 	execRaw(t, db, fmt.Sprintf(`INSERT INTO access_requests(id,org_id,project_id,environment_id,policy_id,policy_version,requester_principal_id,capabilities,duration_seconds,reason,state,created_at,review_expires_at,granted_at,expires_at) VALUES ('ar_inc_%[1]s','org_a','prj_a1','env_a1','policy_fixture',1,'%[2]s','["%[1]s"]',3600,'incident owner clock fixture','granted','%[3]s','%[4]s','%[3]s','%[4]s')`, capability, principal, stamp, exp))
-	execRaw(t, db, fmt.Sprintf(`INSERT INTO access_grants(id,principal_id,capability,org_id,project_id,env_id,request_id,created_at,expires_at) VALUES ('ag_inc_%[1]s','%[2]s','%[1]s','org_a','prj_a1',%[5]s,'ar_inc_%[1]s','%[3]s','%[4]s')`, capability, principal, stamp, exp, env))
+	execRaw(t, db, fmt.Sprintf(`INSERT INTO access_grants(id,principal_id,capability,org_id,project_id,env_id,request_id,created_at,expires_at) VALUES ('ag_inc_%[1]s','%[2]s','%[1]s','org_a','prj_a1','env_a1','ar_inc_%[1]s','%[3]s','%[4]s')`, capability, principal, stamp, exp))
 }
 
 // lossClock reads before the grant's expiry for its first `live` calls and after it
-// from then on.
-func lossClock(live int32, expiry time.Time) func() time.Time {
-	var calls atomic.Int32
+// from then on; calls counts every read.
+func lossClock(live int32, expiry time.Time, calls *atomic.Int32) func() time.Time {
 	before, after := expiry.Add(-30*time.Minute), expiry.Add(time.Hour)
 	return func() time.Time {
 		if calls.Add(1) <= live {
@@ -892,26 +890,35 @@ func lossClock(live int32, expiry time.Time) func() time.Time {
 
 func TestIncidentLeaseOwnerBlocksWhenTheGrantIsLostAtEachStep(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		live int32
+		name  string
+		live  int32
+		state string // the lease after the call: only a revoke under authority moves it
+		reads int32  // clock reads, so each case stops at the step it names
 	}{
-		{"before the first read", 0},
-		{"between the first read and the revoke", 1},
-		{"between the revoke and the confirming read", 2},
+		{"before the first read", 0, "active", 1},
+		{"between the first read and the revoke", 1, "active", 3},
+		{"between the revoke and the confirming read", 2, "revoking", 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			forEngines(t, func(t *testing.T, db *store.DB) {
 				w := newIncidentWorld(t, db)
 				seedIncidentLeases(t, db)
 				expiry := time.Now().Add(time.Hour)
-				tempIncidentGrant(t, db, incLimited, "read", "'env_a1'", expiry)
+				tempIncidentGrant(t, db, incLimited, "read", expiry)
+				var reads atomic.Int32
 				w.svc.Owners = service.NewIncidentOwners(w.svc, service.IncidentOwnerServices{
-					Dynamic: &service.Dynamic{DB: db, Now: lossClock(tc.live, expiry)},
+					Dynamic: &service.Dynamic{DB: db, Now: lossClock(tc.live, expiry, &reads)},
 				})
 				inc := w.openOrg(t, incLimited)
 				res := w.callOwner(t, incLimited, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_01", "org_a/prj_a1/env_a1")
 				if res != service.OwnerBlocked {
 					t.Fatalf("a grant lost %s = %v, want blocked", tc.name, res)
+				}
+				if got := queryString(t, db, `SELECT state FROM dynamic_leases WHERE id='lse_it_01'`); got != tc.state {
+					t.Fatalf("a grant lost %s left the lease %s, want %s", tc.name, got, tc.state)
+				}
+				if got := reads.Load(); got != tc.reads {
+					t.Fatalf("a grant lost %s read the clock %d times, want %d", tc.name, got, tc.reads)
 				}
 			})
 		})

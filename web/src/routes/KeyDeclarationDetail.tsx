@@ -41,7 +41,11 @@ import { isDemo } from '../demo/config.ts';
 import { Button } from '../ui/Button.tsx';
 import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Field } from '../ui/Field.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { Input } from '../ui/Input.tsx';
+import { Select } from '../ui/Select.tsx';
+import { Textarea } from '../ui/Textarea.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
@@ -663,34 +667,29 @@ function MetadataEditor({
         paste secret values here.
       </p>
 
-      <div className="field">
-        <label htmlFor="key-detail-folder">Folder</label>
-        <Combobox
-          id="key-detail-folder"
-          className="mono"
-          options={[...new Set([record.folder_path, ...folders])]}
-          optionsLabel="folders"
-          emptyMessage="No matching folders. Enter a new folder name to create it when you save."
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-describedby="key-detail-folder-hint"
-          value={folderPath}
-          disabled={update.isPending}
-          onValueChange={setFolderPath}
-        />
-        <p id="key-detail-folder-hint" className="field__hint">
-          Choose an existing folder, type a new name, or leave blank for the root.
-        </p>
-      </div>
+      <Field id="key-detail-folder" label="Folder" hint="Choose an existing folder, type a new name, or leave blank for the root.">
+        {(control) => (
+          <Combobox
+            {...control}
+            className="mono"
+            options={[...new Set([record.folder_path, ...folders])]}
+            optionsLabel="folders"
+            emptyMessage="No matching folders. Enter a new folder name to create it when you save."
+            autoCapitalize="none"
+            spellCheck={false}
+            value={folderPath}
+            disabled={update.isPending}
+            onValueChange={setFolderPath}
+          />
+        )}
+      </Field>
 
-      <label className="field">
-        <span>Description</span>
-        <textarea
-          value={description}
-          disabled={update.isPending}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-      </label>
+      <Textarea
+        label="Description"
+        value={description}
+        disabled={update.isPending}
+        onChange={(event) => setDescription(event.target.value)}
+      />
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Alert tone="done">Saved.</Alert> : null}
@@ -835,15 +834,13 @@ function RenameKey({
         The name is part of the delivered payload and is exported to Git; treat it as public. The
         key’s identity does not change, so nothing that references it breaks.
       </p>
-      <label className="field">
-        <span>Name</span>
-        <input
-          className="mono"
-          value={name}
-          disabled={rename.isPending}
-          onChange={(event) => setName(event.target.value)}
-        />
-      </label>
+      <Input
+        label="Name"
+        mono
+        value={name}
+        disabled={rename.isPending}
+        onChange={(event) => setName(event.target.value)}
+      />
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Alert tone="done">Renamed.</Alert> : null}
@@ -1172,6 +1169,7 @@ function ConfirmDialog({
     <Dialog
       title={title}
       size="wide"
+      className="key-detail__confirm"
       // Escape is the platform's; the close it fires has to reach the caller or
       // the panel would still believe the confirm is open.
       onCancel={(event) => {
@@ -1626,21 +1624,19 @@ function DeclarationEditor({
             </p>
           ) : null}
           <div className="key-detail__add-alternative">
-            <label className="field">
-              <span>Add alternative of type</span>
-              <select
-                className="mono"
-                value={addKind}
-                disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
-                onChange={(event) => setAddKind(selectOption(RULE_TYPES, event.currentTarget.value))}
-              >
-                {RULE_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label="Add alternative of type"
+              mono
+              value={addKind}
+              disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
+              onChange={(event) => setAddKind(selectOption(RULE_TYPES, event.currentTarget.value))}
+            >
+              {RULE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </Select>
             <Button
               type="button"
               disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
@@ -1781,48 +1777,40 @@ function RuleFields({
     <fieldset className="key-detail__rule-editor" disabled={disabled}>
       <legend>{legend}</legend>
       {action}
-      <label className="field">
-        <span>Type</span>
-        <select
-          className="mono"
-          value={draft.type}
-          onChange={(event) =>
-            onChange({ ...draft, type: selectOption(RULE_TYPES, event.currentTarget.value), jsonSchemaError: null })
-          }
-        >
-          {RULE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select
+        label="Type"
+        mono
+        value={draft.type}
+        onChange={(event) =>
+          onChange({ ...draft, type: selectOption(RULE_TYPES, event.currentTarget.value), jsonSchemaError: null })
+        }
+      >
+        {RULE_TYPES.map((type) => (
+          <option key={type} value={type}>
+            {type}
+          </option>
+        ))}
+      </Select>
       {draft.type === 'string' ? (
         <>
-          <label className="field">
-            <span>Minimum length</span>
-            <input
-              inputMode="numeric"
-              value={draft.minLength}
-              onChange={(event) => set('minLength', event.currentTarget.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Maximum length</span>
-            <input
-              inputMode="numeric"
-              value={draft.maxLength}
-              onChange={(event) => set('maxLength', event.currentTarget.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Pattern (RE2, anchored)</span>
-            <input
-              className="mono"
-              value={draft.pattern}
-              onChange={(event) => set('pattern', event.currentTarget.value)}
-            />
-          </label>
+          <Input
+            label="Minimum length"
+            inputMode="numeric"
+            value={draft.minLength}
+            onChange={(event) => set('minLength', event.currentTarget.value)}
+          />
+          <Input
+            label="Maximum length"
+            inputMode="numeric"
+            value={draft.maxLength}
+            onChange={(event) => set('maxLength', event.currentTarget.value)}
+          />
+          <Input
+            label="Pattern (RE2, anchored)"
+            mono
+            value={draft.pattern}
+            onChange={(event) => set('pattern', event.currentTarget.value)}
+          />
           <Toggle
             label="Allow empty value"
             on={draft.allowEmpty}
@@ -1833,45 +1821,37 @@ function RuleFields({
       ) : null}
       {draft.type === 'integer' ? (
         <>
-          <label className="field">
-            <span>Minimum</span>
-            <input
-              inputMode="numeric"
-              value={draft.min}
-              onChange={(event) => set('min', event.currentTarget.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Maximum</span>
-            <input
-              inputMode="numeric"
-              value={draft.max}
-              onChange={(event) => set('max', event.currentTarget.value)}
-            />
-          </label>
+          <Input
+            label="Minimum"
+            inputMode="numeric"
+            value={draft.min}
+            onChange={(event) => set('min', event.currentTarget.value)}
+          />
+          <Input
+            label="Maximum"
+            inputMode="numeric"
+            value={draft.max}
+            onChange={(event) => set('max', event.currentTarget.value)}
+          />
         </>
       ) : null}
       {draft.type === 'enum' ? (
-        <label className="field">
-          <span>Members (one per line)</span>
-          <textarea
-            className="mono"
-            rows={4}
-            value={draft.members}
-            onChange={(event) => set('members', event.currentTarget.value)}
-          />
-        </label>
+        <Textarea
+          label="Members (one per line)"
+          mono
+          rows={4}
+          value={draft.members}
+          onChange={(event) => set('members', event.currentTarget.value)}
+        />
       ) : null}
       {draft.type === 'url' ? (
-        <label className="field">
-          <span>Allowed schemes (comma-separated)</span>
-          <input
-            className="mono"
-            placeholder="https, http"
-            value={draft.schemes}
-            onChange={(event) => set('schemes', event.currentTarget.value)}
-          />
-        </label>
+        <Input
+          label="Allowed schemes (comma-separated)"
+          mono
+          placeholder="https, http"
+          value={draft.schemes}
+          onChange={(event) => set('schemes', event.currentTarget.value)}
+        />
       ) : null}
       {draft.type === 'json' ? (
         <JsonSchemaBuilder
@@ -1903,15 +1883,11 @@ function PresenceControl({
 }) {
   return (
     <div className="key-detail__presence-control">
-      <label className="field">
-        <span>{label}</span>
-        <select value={mode} onChange={(event) => onMode(selectOption(PRESENCE_MODES, event.currentTarget.value))}>
-          <option value="none">none</option>
-          <option value="all">all</option>
-          <option value="explicit">explicit</option>
-        </select>
-      </label>
-      <p className="key-detail__hint">{hint}</p>
+      <Select label={label} hint={hint} value={mode} onChange={(event) => onMode(selectOption(PRESENCE_MODES, event.currentTarget.value))}>
+        <option value="none">none</option>
+        <option value="all">all</option>
+        <option value="explicit">explicit</option>
+      </Select>
       {mode === 'explicit' ? (
         environments.length === 0 ? (
           <p className="key-detail__state" role="status">
@@ -1959,32 +1935,30 @@ function GroupEditor({
     <section className="key-detail__section" aria-labelledby={`${id}-group`}>
       <h3 id={`${id}-group`}>Linked keys</h3>
       <p>Pending changes publish together. All linked keys must be set together in each environment.</p>
-      <label className="field">
-        <span>Linked-key set</span>
-        <select
-          value={record.group_id}
-          disabled={setGroup.isPending || !groups.isSuccess}
-          onChange={(event) => {
-            const groupId = event.currentTarget.value;
-            setRefusal(null);
-            setDone(false);
-            setGroup.mutate(
-              { groupId },
-              {
-                onSuccess: () => setDone(true),
-                onError: (error) => setRefusal(catalogueRefusalText(error, 'change the linked keys')),
-              },
-            );
-          }}
-        >
-          <option value="">No linked keys</option>
-          {(groups.data?.items ?? []).map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select
+        label="Linked-key set"
+        value={record.group_id}
+        disabled={setGroup.isPending || !groups.isSuccess}
+        onChange={(event) => {
+          const groupId = event.currentTarget.value;
+          setRefusal(null);
+          setDone(false);
+          setGroup.mutate(
+            { groupId },
+            {
+              onSuccess: () => setDone(true),
+              onError: (error) => setRefusal(catalogueRefusalText(error, 'change the linked keys')),
+            },
+          );
+        }}
+      >
+        <option value="">No linked keys</option>
+        {(groups.data?.items ?? []).map((group) => (
+          <option key={group.id} value={group.id}>
+            {group.name}
+          </option>
+        ))}
+      </Select>
       {groups.isError ? <Alert>The project’s linked keys could not be read.</Alert> : null}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Alert tone="done">Linked keys updated.</Alert> : null}

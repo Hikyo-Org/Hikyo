@@ -14,17 +14,21 @@ type promoteWorkflow struct {
 	On          map[string]yaml.Node `yaml:"on"`
 	Permissions map[string]string    `yaml:"permissions"`
 	Jobs        map[string]struct {
-		If          string            `yaml:"if"`
-		Environment string            `yaml:"environment"`
-		Permissions map[string]string `yaml:"permissions"`
-		Concurrency map[string]any    `yaml:"concurrency"`
-		Steps       []struct {
-			Name string            `yaml:"name"`
-			ID   string            `yaml:"id"`
-			Uses string            `yaml:"uses"`
-			Run  string            `yaml:"run"`
-			Env  map[string]string `yaml:"env"`
-			With map[string]string `yaml:"with"`
+		If              string            `yaml:"if"`
+		Environment     string            `yaml:"environment"`
+		Permissions     map[string]string `yaml:"permissions"`
+		Concurrency     map[string]any    `yaml:"concurrency"`
+		ContinueOnError any               `yaml:"continue-on-error"`
+		Steps           []struct {
+			Name            string            `yaml:"name"`
+			If              string            `yaml:"if"`
+			ID              string            `yaml:"id"`
+			Uses            string            `yaml:"uses"`
+			Run             string            `yaml:"run"`
+			Env             map[string]string `yaml:"env"`
+			With            map[string]string `yaml:"with"`
+			TimeoutMinutes  int               `yaml:"timeout-minutes"`
+			ContinueOnError any               `yaml:"continue-on-error"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -70,14 +74,15 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 	}
 
 	promote := workflow.Jobs["promote"]
-	if len(workflow.Jobs) != 2 || promote.If != "(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'" {
+	if len(workflow.Jobs) != 3 || promote.If != "(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'" {
 		t.Fatal("promotion must run only for the schedule or a manual run on main, never for a closed pull request")
 	}
-	if promote.Environment != "nightly-release" || promote.Concurrency["group"] != "nightly-promote" || promote.Concurrency["cancel-in-progress"] != false ||
+	if promote.Environment != "nightly-release" || promote.Concurrency["group"] != "nightly-promote" || promote.Concurrency["cancel-in-progress"] != false || promote.Concurrency["queue"] != "max" ||
 		!reflect.DeepEqual(promote.Permissions, map[string]string{"actions": "read", "checks": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("promotion must hold the protected environment, run one at a time and read with the workflow token only")
 	}
-	var minted, ran bool
+	promoteEnv := map[string]string{"GH_TOKEN": "${{ github.token }}", "APP_TOKEN": "${{ steps.app.outputs.token }}", "GH_REPO": "${{ github.repository }}"}
+	var minted, ran, backmerged bool
 	for _, step := range promote.Steps {
 		switch {
 		case strings.HasPrefix(step.Uses, "actions/checkout@"):
@@ -93,18 +98,44 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 			minted = step.With["client-id"] == "${{ vars.NIGHTLY_RELEASE_APP_CLIENT_ID }}" &&
 				step.With["private-key"] == "${{ secrets.NIGHTLY_RELEASE_APP_PRIVATE_KEY }}" &&
 				step.With["permission-contents"] == "write" && step.With["permission-pull-requests"] == "write" && len(step.With) == 6
+		case step.Run == "./scripts/release/nightly-backmerge.sh":
+			// Before promotion, which must still run when this fails.
+			// Its own deadline leaves promotion time inside the job's 15 minutes.
+			backmerged = !ran && step.If == "" && step.TimeoutMinutes == 5 && reflect.DeepEqual(step.Env, promoteEnv)
 		case step.Run != "":
-			ran = step.Run == "./scripts/release/nightly-promote.sh" &&
-				reflect.DeepEqual(step.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "APP_TOKEN": "${{ steps.app.outputs.token }}", "GH_REPO": "${{ github.repository }}"})
+			ran = step.Run == "./scripts/release/nightly-promote.sh" && backmerged &&
+				step.If == "${{ !cancelled() && steps.app.outcome == 'success' }}" && reflect.DeepEqual(step.Env, promoteEnv)
 		default:
 			t.Fatalf("unexpected promotion step %q", step.Name)
 		}
 	}
-	if !minted || !ran {
-		t.Fatal("promotion must mint a contents and pull-requests App token and run only the reviewed script")
+	if !minted || !ran || !backmerged {
+		t.Fatal("promotion must mint a contents and pull-requests App token, back-merge main into dev, then run the reviewed promotion script even if that failed")
 	}
 	if strings.Contains(raw, "permission-workflows") || strings.Contains(raw, "refs/heads/dev") {
 		t.Fatal("promotion must not request workflow writes or name dev as a ref to execute")
+	}
+
+	// A hotfix landing on main opens the back-merge at once, from main's own commit.
+	backmerge := workflow.Jobs["backmerge"]
+	const backmergeCondition = "github.event_name == 'pull_request_target' && github.ref == 'refs/heads/main' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main' && !startsWith(github.event.pull_request.head.ref, 'release/nightly-')"
+	if strings.Join(strings.Fields(backmerge.If), " ") != backmergeCondition {
+		t.Fatalf("the back-merge must require a merged same-repository pull request into main that is not a promotion: %q", backmerge.If)
+	}
+	if backmerge.Environment != "nightly-release" || backmerge.Concurrency["group"] != "nightly-promote" || backmerge.Concurrency["cancel-in-progress"] != false || backmerge.Concurrency["queue"] != "max" ||
+		!reflect.DeepEqual(backmerge.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) || len(backmerge.Steps) != 3 {
+		t.Fatal("the back-merge must hold the protected environment, share promotion's lock and read with the workflow token only")
+	}
+	if step := backmerge.Steps[0]; !strings.HasPrefix(step.Uses, "actions/checkout@") || step.With["ref"] != "${{ github.sha }}" || step.With["persist-credentials"] != "false" {
+		t.Fatalf("the back-merge may only check out main's own commit without credentials: %v", backmerge.Steps[0].With)
+	}
+	if step := backmerge.Steps[1]; !strings.HasPrefix(step.Uses, "actions/create-github-app-token@") || step.ID != "app" ||
+		step.With["client-id"] != "${{ vars.NIGHTLY_RELEASE_APP_CLIENT_ID }}" || step.With["private-key"] != "${{ secrets.NIGHTLY_RELEASE_APP_PRIVATE_KEY }}" ||
+		step.With["permission-contents"] != "write" || step.With["permission-pull-requests"] != "write" || len(step.With) != 6 {
+		t.Fatalf("the back-merge must mint a contents and pull-requests App token: %v", step.With)
+	}
+	if step := backmerge.Steps[2]; step.Run != "./scripts/release/nightly-backmerge.sh" || !reflect.DeepEqual(step.Env, promoteEnv) {
+		t.Fatal("the back-merge must run only the reviewed script with the workflow and App tokens")
 	}
 
 	landed := workflow.Jobs["landed"]
@@ -154,5 +185,56 @@ func TestNightlyBuildsOnlyTheTriggeringMainCommit(t *testing.T) {
 	}
 	if checkouts == 0 || !strings.Contains(raw, `test "$commit" = "$GITHUB_SHA"`) {
 		t.Fatal("nightly must pin its checkout to github.sha")
+	}
+}
+
+// A red promotion must turn the nightly red without blocking its publication.
+func TestNightlyReportsBrokenPromotion(t *testing.T) {
+	workflow, _ := readPromoteWorkflow(t, "nightly.yml")
+	health, ok := workflow.Jobs["promotion-health"]
+	if !ok || health.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(health.Permissions, map[string]string{"actions": "read", "contents": "read"}) || len(health.Steps) != 2 {
+		t.Fatal("promotion-health must be a main-only, read-only job with a checkout and one script step")
+	}
+	// continue-on-error would hide a red promotion as surely as skipping the job.
+	if health.ContinueOnError != nil {
+		t.Fatal("promotion-health must not set continue-on-error")
+	}
+	for _, step := range health.Steps {
+		if step.ContinueOnError != nil {
+			t.Fatalf("promotion-health step %q must not set continue-on-error", step.Name)
+		}
+	}
+	var raw struct {
+		Jobs map[string]struct {
+			Needs yaml.Node `yaml:"needs"`
+		} `yaml:"jobs"`
+	}
+	data, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "nightly.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw.Jobs["promotion-health"].Needs.Kind != 0 {
+		t.Fatal("promotion-health must not be a prerequisite or depend on the build, so hotfix builds still publish")
+	}
+	for name, job := range raw.Jobs {
+		needs := []string{job.Needs.Value}
+		for _, child := range job.Needs.Content {
+			needs = append(needs, child.Value)
+		}
+		for _, need := range needs {
+			if need == "promotion-health" {
+				t.Fatalf("%s waits for promotion-health", name)
+			}
+		}
+	}
+	if step := health.Steps[0]; !strings.HasPrefix(step.Uses, "actions/checkout@") || step.With["ref"] != "${{ github.sha }}" || step.With["persist-credentials"] != "false" {
+		t.Fatalf("promotion-health may only check out main's own commit without credentials: %v", step.With)
+	}
+	if step := health.Steps[1]; step.Uses != "" || step.Run != "./scripts/release/promotion-health.sh" ||
+		!reflect.DeepEqual(step.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}"}) {
+		t.Fatal("promotion-health must run only the reviewed script with the workflow token")
 	}
 }

@@ -357,6 +357,7 @@ import {
   reportFileTarget,
   requestInstanceUpdate,
   resetCredential,
+  resolveAccess,
   resumeAdapterMove,
   resumeAdapterTarget,
   resumeIncident,
@@ -799,6 +800,7 @@ import type {
   ReportFileTargetData,
   RequestInstanceUpdateData,
   ResetCredentialData,
+  ResolveAccessData,
   ResumeAdapterMoveData,
   ResumeAdapterTargetData,
   ResumeIncidentData,
@@ -1212,6 +1214,7 @@ import {
   zReplaceRulesResponse,
   zRequestInstanceUpdateResponse,
   zResetCredentialResponse,
+  zResolveAccessResponse,
   zResumeAdapterMoveResponse,
   zResumeAdapterTargetResponse,
   zResumeIncidentResponse,
@@ -1600,6 +1603,7 @@ export const reorderEnvironmentsOp: BodyOperation<ReorderEnvironmentsData, typeo
 export const replaceRulesOp: BodyOperation<ReplaceRulesData, typeof zReplaceRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(replaceRules, [200], zReplaceRulesResponse);
 export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, typeof zRequestInstanceUpdateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(requestInstanceUpdate, [202], zRequestInstanceUpdateResponse);
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
+export const resolveAccessOp: BodyOperation<ResolveAccessData, typeof zResolveAccessResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resolveAccess, [200], zResolveAccessResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
 export const resumeAdapterTargetOp: BodyOperation<ResumeAdapterTargetData, typeof zResumeAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterTarget, [202], zResumeAdapterTargetResponse);
 export const resumeIncidentOp: BodyOperation<ResumeIncidentData, typeof zResumeIncidentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeIncident, [200], zResumeIncidentResponse);

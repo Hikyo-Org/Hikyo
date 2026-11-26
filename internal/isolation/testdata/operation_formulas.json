@@ -2086,6 +2086,14 @@
     ]
   },
   {
+    "operation": "rule.resolve",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
     "operation": "rule.revoke",
     "class": "tenant",
     "level": "project",

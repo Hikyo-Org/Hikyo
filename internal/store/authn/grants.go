@@ -273,6 +273,50 @@ func (r *Resolver) GrantLinesInProject(ctx context.Context, org, project string)
 	return foldGrantLines(lines)
 }
 
+// GrantLinesAtOrgLevel lists the grant rows scoped AT one org (no project, no
+// environment) of one capability. They cover every
+// project of the org by inheritance, so they decide a project question for
+// their holders without naming any sibling project's membership. Instance
+// grants are absent, as in GrantLinesInOrg.
+func (r *Resolver) GrantLinesAtOrgLevel(ctx context.Context, org string, capability domain.Capability) ([]GrantLine, error) {
+	if r.sq != nil {
+		rows, err := r.sq.ListOrgLevelGrantsWithOriginsForCapability(ctx, sqlitegen.ListOrgLevelGrantsWithOriginsForCapabilityParams{
+			OrgID: nullString(org), Capability: string(capability),
+		})
+		if err != nil {
+			return nil, err
+		}
+		lines := make([]rawGrantLine, 0, len(rows))
+		for _, row := range rows {
+			at, err := decodeTime(row.CreatedAt)
+			if err != nil {
+				return nil, err
+			}
+			lines = append(lines, rawGrantLine{
+				id: row.ID, principal: row.PrincipalID, capability: row.Capability,
+				org: row.OrgID.String, project: row.ProjectID.String, env: row.EnvID.String,
+				at: at, kind: row.Kind, subject: row.Subject,
+			})
+		}
+		return foldGrantLines(lines)
+	}
+	rows, err := r.pg.ListOrgLevelGrantsWithOriginsForCapability(ctx, pggen.ListOrgLevelGrantsWithOriginsForCapabilityParams{
+		OrgID: pgText(org), Capability: string(capability),
+	})
+	if err != nil {
+		return nil, err
+	}
+	lines := make([]rawGrantLine, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, rawGrantLine{
+			id: row.ID, principal: row.PrincipalID, capability: row.Capability,
+			org: row.OrgID.String, project: row.ProjectID.String, env: row.EnvID.String,
+			at: row.CreatedAt.Time, kind: row.Kind, subject: row.Subject,
+		})
+	}
+	return foldGrantLines(lines)
+}
+
 // GrantLinesAtInstance lists the instance-scope grant rows with origins.
 func (r *Resolver) GrantLinesAtInstance(ctx context.Context) ([]GrantLine, error) {
 	if r.sq != nil {

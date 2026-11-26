@@ -1783,6 +1783,10 @@ func (s stubRules) List(context.Context, service.Actor, domain.Scope) ([]service
 	return nil, s.outcome()
 }
 
+func (s stubRules) Resolve(context.Context, service.Actor, domain.Scope, domain.Capability, string) ([]service.AccessView, error) {
+	return nil, s.outcome()
+}
+
 type stubGrants struct{ stubHierarchy }
 
 func (s stubGrants) Create(context.Context, service.Actor, service.GrantSpec) (service.GrantResult, error) {

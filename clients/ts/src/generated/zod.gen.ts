@@ -448,7 +448,7 @@ export const zAdapterVisibility = z.enum([
 ]);
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
  */
 export const zAdapterProvider = z.string();
 
@@ -3867,6 +3867,32 @@ export const zReplaceRulesRequest = z.intersection(z.union([
     create: z.array(zCreateRuleRequest).max(32).optional()
 }));
 
+export const zAccessExcept = z.object({
+    rule: zId,
+    environments: z.array(zId),
+    keys: z.array(zRuleKeyItem),
+    key_limited: z.boolean()
+});
+
+export const zAccessPrincipal = z.object({
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    kind: zPrincipalKind,
+    grants: z.array(zGrantScope),
+    rules: z.array(zId),
+    excepts: z.array(zAccessExcept)
+});
+
+export const zAccessResolution = z.object({
+    permission: zRuleCapability,
+    environment: zId,
+    key: zId.optional(),
+    can: z.array(zAccessPrincipal),
+    excepted: z.array(zAccessPrincipal),
+    needs_see: z.array(zAccessPrincipal),
+    none: z.array(zAccessPrincipal)
+});
+
 export const zRule = z.object({
     id: zId,
     principal_id: zId,
@@ -6756,6 +6782,22 @@ export const zListProjectRulesPath = z.object({
  * The project's rules.
  */
 export const zListProjectRulesResponse = zRuleList;
+
+export const zResolveAccessPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+export const zResolveAccessQuery = z.object({
+    permission: zRuleCapability,
+    key: zId.optional()
+});
+
+/**
+ * The answer, in four groups.
+ */
+export const zResolveAccessResponse = zAccessResolution;
 
 export const zApplyProjectTemplateBody = zApplyTemplateRequest;
 

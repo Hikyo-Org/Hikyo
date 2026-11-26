@@ -161,6 +161,7 @@ operations:
   createRule:                  {webui: members, via: [replaceRules]}
   revokeRule:                  {webui: members, via: [replaceRules]}
   listProjectRules:            {webui: members}
+  resolveAccess:               {issue: 1474}
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}

@@ -440,7 +440,7 @@ principal is contained, so a contained account would still have a scheduler acti
 - A rotation item's state is read from the live rotation when the page is built and is never
   stored, so it cannot go stale. A rotation the caller cannot read shows no state, and one that
   no longer exists shows `gone`.
-- The API adds six operations (revision 21): open, show, list items, resume, attest and close.
+- The API adds six operations (revision 22): open, show, list items, resume, attest and close.
   Each dispatches between the org and instance incident operations inside the service, like
   credential reset, so the routes are human-session only and carry no single contract operation.
   The CLI verb is `hikyo incident` and the web surface is Incidents at `/orgs/:org/incidents`.

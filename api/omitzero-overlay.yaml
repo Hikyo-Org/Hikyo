@@ -12,6 +12,10 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
+  - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access']['get']['parameters'][1]
+    update:
+      x-omitempty: false
+      x-omitzero: true
   - target: $['paths']['/api/v1/orgs/{org}/projects/{project}/definitions/export']['get']['parameters'][0]
     update:
       x-omitempty: false
@@ -685,6 +689,14 @@ actions:
       x-omitempty: false
       x-omitzero: true
   - target: $['components']['schemas']['RuleKeyItem']['properties']['folder','key']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['AccessResolution']['properties']['key']
+    update:
+      x-omitempty: false
+      x-omitzero: true
+  - target: $['components']['schemas']['AccessPrincipal']['properties']['principal_name']
     update:
       x-omitempty: false
       x-omitzero: true
