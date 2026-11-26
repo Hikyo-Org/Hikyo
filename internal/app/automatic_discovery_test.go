@@ -313,10 +313,12 @@ func TestAutomaticResumeRefusesARevokedBridge(t *testing.T) {
 	previous := &automaticJournal{Phase: "schema-applied", Target: target.Identity, Source: f.source, Instance: "actual-installation", Route: plan.Digest(), Hop: 1}
 	list := trustfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(f.trust.Pinned.Root), Revoked: plan.BridgeDigests()})
 	state := t.TempDir()
-	automaticProcessPut(t, filepath.Join(state, "bridge-revocations-store.json"), trustfixture.JSON(t, struct {
+	if err := os.WriteFile(filepath.Join(state, "bridge-revocations-store.json"), trustfixture.JSON(t, struct {
 		List      []byte `json:"list"`
 		Signature []byte `json:"signature"`
-	}{list, trustfixture.Sign(t, f.trust.RecoverySigner, list)}))
+	}{list, trustfixture.Sign(t, f.trust.RecoverySigner, list)}), 0600); err != nil {
+		t.Fatal(err)
+	}
 	_, err = discoverAutomaticRoute(t.Context(), offConfig(state), f, f, target, f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, previous)
 	if err == nil || !strings.Contains(err.Error(), "revoked") {
 		t.Fatalf("a resume through a revoked bridge must be refused as revoked: %v", err)
