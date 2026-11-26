@@ -429,7 +429,10 @@ func requireReuseHeadroom(job, seed map[string]any, spec reuseSeedSpec) error {
 	if spec.generation != "" {
 		steps = append(steps, seedSteps[4])
 	}
-	steps = append(steps, script(spec.headroomName, strings.TrimSpace(spec.restoreKeys), spec.key))
+	// The daily go-feedback-v1 save lands between the headroom job and the seed's save (the model's
+	// 12:58), so its room is reserved with the seed's own.
+	feedbackLane := "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+	steps = append(steps, script(spec.headroomName, strings.TrimSpace(spec.restoreKeys)+" "+feedbackLane, spec.key))
 	if spec.moduleWriter {
 		moduleKey := "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}"
 		steps = append(steps, script("Make room in the Actions cache for the module cache", "go-mod-v2-${{ runner.os }}-", moduleKey))

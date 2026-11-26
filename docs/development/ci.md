@@ -277,7 +277,12 @@ fourth (the headroom delete, below), which is what makes survival independent of
      contributes nothing (`HEADROOM_FALLBACK` exists in the script and is unset), because a lane with no
      main entry has already been evicted and the room is there.
    * Window: the headroom job runs before the seed's compile, so the room is made about 20 minutes (race
-     and lint) or 45 minutes (`ci-main`) before the save, not seconds. The model plays these leads.
+     and lint) or 45 minutes (`ci-main`) before the save, not seconds. The model plays these leads. The
+     per-minute sweep of the first version of this move showed what the window costs: the daily
+     `go-feedback-v1` save (observed 12:58, between the race and lint saves) landed unsized and the seed
+     was lost at 30 of 361 minutes at 10.00 GB. Both seed headroom jobs therefore also reserve the
+     newest `go-feedback-v1` entry's size (a prefix of the same script call); the sweep then loses none.
+     A short peak that evicts one idle entry remains possible and is accepted.
    * Cost: the headroom deletes live entries the cache would not yet have evicted. The model shows 3 to 6
      live least-recently-used entries freed per rotation day and 3 on Monday; they are rebuilt by the
      next run that needs them.
