@@ -203,7 +203,9 @@ apply-time revocation list (options (a) and (c) on
   path in the authenticated graph (ordinary edges and every verified bridge, with
   parallel edges kept), ignoring expiry; an upgrade admitted before `not_after`
   therefore finishes after it. A revoked bridge on that route still refuses a
-  forward resume. A security rollback validates the journaled route the same way
+  forward resume, and so does a journaled route through an expiry-free legacy `v1`
+  bridge (an older build may have routed it; it can never resume, only a security
+  rollback may use it). A security rollback validates the journaled route the same way
   with neither check, so neither expiry nor revocation ever blocks returning to
   the journaled source. Journals carry no timestamp: their formats are strictly
   decoded and an older image must still read them, so the journaled route digest

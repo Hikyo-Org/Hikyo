@@ -274,7 +274,7 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 		}
 	}
 	if c.Mode == Off {
-		return result, c.record(result)
+		return c.newest(snapshot, result)
 	}
 	list, signature, err := c.Fetcher.Fetch(ctx)
 	if unusable && err != nil {
@@ -286,7 +286,7 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 	}
 	if errors.Is(err, ErrUnreachable) {
 		result.Outcome = Unreachable
-		return result, c.record(result)
+		return c.newest(snapshot, result)
 	}
 	if err != nil {
 		return Result{}, err
@@ -311,20 +311,41 @@ func (c Checker) Check(ctx context.Context, snapshot releasetrust.Snapshot) (Res
 			return Result{}, errors.New("revocation list equivocation refused")
 		}
 	}
-	// stored is the list the directory holds afterwards: a concurrent run may have stored a
-	// newer one since this run read the directory, and only that list's revocations may be
-	// reported, never an older list's.
-	stored := fresh
-	if unusable || !st.have || fresh.Sequence() > st.known.Sequence() {
-		if stored, err = c.persist(snapshot, fresh, list, signature); err != nil {
-			return Result{}, err
-		}
+	// stored is the list the directory holds afterwards, read under the lock: a concurrent run
+	// may have stored a newer one since this run read the directory, and only that list's
+	// revocations may be reported, never an older list's. persist stores nothing when the
+	// directory already holds this list or a newer one.
+	stored, err := c.persist(snapshot, fresh, list, signature)
+	if err != nil {
+		return Result{}, err
 	}
 	outcome := Checked
 	if now.Sub(stored.IssuedAt()) > MaxListAge {
 		outcome = Stale
 	}
 	return Result{Outcome: outcome, Sequence: stored.Sequence(), Revoked: stored.Revoked()}, c.record(Result{Outcome: outcome, Sequence: stored.Sequence()})
+}
+
+// newest finishes a result that carries no fresh list (opt-out, unreachable endpoint): a
+// concurrent run may have stored a newer list since this run read the directory, so the
+// verified store is read again under the lock and the higher list is the one reported.
+func (c Checker) newest(snapshot releasetrust.Snapshot, result Result) (Result, error) {
+	release, err := c.lock()
+	if err != nil {
+		return Result{}, err
+	}
+	st, err := c.load(snapshot)
+	release()
+	if err != nil {
+		return Result{}, err
+	}
+	if st.unusable != nil {
+		return Result{}, c.unusable(st.unusable)
+	}
+	if st.have && st.known.Sequence() > result.Sequence {
+		result.Sequence, result.Revoked = st.known.Sequence(), st.known.Revoked()
+	}
+	return result, c.record(result)
 }
 
 // Revoked adapts Check to the gate's hook: the revoked digests, or the error
@@ -350,8 +371,12 @@ func (c Checker) unusable(cause error) error {
 		return fmt.Errorf("%w (%w); bridge routes are refused, and no fetched list can replace this while the floor record cannot be read. As an explicit operator action, stop the service and repair or remove %s (the next verified list recreates it), accepting that the recorded sequence floor is lost and an older validly signed list is then bounded only by its issued_at",
 			ErrUnusableState, cause, filepath.Join(c.Directory, floorFile))
 	}
-	return fmt.Errorf("%w (%w); bridge routes are refused. Restore access to the revocation endpoint so a valid list replaces it, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state are lost",
-		ErrUnusableState, cause, filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile))
+	way := "Restore access to the revocation endpoint so a valid list replaces it"
+	if c.Mode == Off {
+		way = "The check is off, so nothing is fetched: set HIKYO_UPGRADE_REVOCATION_CHECK to online so a valid list replaces it"
+	}
+	return fmt.Errorf("%w (%w); bridge routes are refused. %s, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state are lost",
+		ErrUnusableState, cause, way, filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile))
 }
 
 // state is what the directory holds. The floor applies only when it is bound to this
@@ -388,8 +413,11 @@ func (c Checker) load(snapshot releasetrust.Snapshot) (state, error) {
 	floor, haveFloor, floorErr := c.readFloor()
 	switch {
 	case floorErr != nil:
+		// Keep the floor error beside a store error: the floor is what the operator must repair.
 		if st.unusable == nil {
 			st.unusable = fmt.Errorf("%w: %w", errFloorUnreadable, floorErr)
+		} else {
+			st.unusable = fmt.Errorf("%w; %w: %w", st.unusable, errFloorUnreadable, floorErr)
 		}
 	case haveFloor && floor.Root == snapshot.RevocationRoot():
 		st.floor, st.haveFloor = floor, true

@@ -169,7 +169,7 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			v1Steps := plan.Steps()
 			v1Steps[0].BridgeSHA256 = legacyDigest
 			v1Route := journaledRouteDigest(t, source, node.Identity(), v1Steps)
-			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAdmitted(source, node.Identity(), v1Route); !errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || !strings.Contains(err.Error(), "legacy v1") {
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAdmitted(source, node.Identity(), v1Route); !errors.Is(err, ErrLegacyBridgeCannotResume) || errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || strings.Contains(err.Error(), "recovery-1") {
 				t.Fatalf("a resume through the legacy v1 bridge must be refused: %v", err)
 			}
 			if rolled, err := bundle.PlanRollback(source, node.Identity(), v1Route); err != nil || rolled.Digest() != v1Route {

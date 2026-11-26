@@ -89,3 +89,68 @@ func TestUnreadableOrMalformedFloorRefusesAndSaysWhatToDo(t *testing.T) {
 		})
 	}
 }
+
+// The slow run read sequence 1, a concurrent run stores sequence 2 revoking the bridge, and
+// the slow run then finishes without a fresh list of its own: its fetch returns the stored
+// list again, or the endpoint is unreachable. It still reports sequence 2.
+func TestARunWithoutAFreshListReportsTheNewerStoredList(t *testing.T) {
+	for _, mode := range []string{"same-list", "unreachable"} {
+		t.Run(mode, func(t *testing.T) {
+			f := testfixture.New(t)
+			snapshot := f.Snapshot(t)
+			directory := t.TempDir()
+			bridge := releaseidentity.Hash([]byte("bridge"))
+			l1, s1 := signedList(t, f, 1)
+			l2, s2 := signedList(t, f, 2, bridge)
+			clock := func() time.Time { return testNow }
+			seed := bridgerevocation.Checker{Mode: bridgerevocation.Online, Directory: directory, Now: clock, Fetcher: fetchFunc(func() ([]byte, []byte, error) { return l1, s1, nil })}
+			if _, err := seed.Check(t.Context(), snapshot); err != nil {
+				t.Fatal(err)
+			}
+			fast := bridgerevocation.Checker{Mode: bridgerevocation.Online, Directory: directory, Now: clock, Fetcher: fetchFunc(func() ([]byte, []byte, error) { return l2, s2, nil })}
+			slow := bridgerevocation.Checker{Mode: bridgerevocation.Online, Directory: directory, Now: clock, Fetcher: fetchFunc(func() ([]byte, []byte, error) {
+				if _, err := fast.Check(t.Context(), snapshot); err != nil {
+					t.Error(err)
+				}
+				if mode == "unreachable" {
+					return nil, nil, bridgerevocation.ErrUnreachable
+				}
+				return l1, s1, nil
+			})}
+			result, err := slow.Check(t.Context(), snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Sequence != 2 || !slices.Contains(result.Revoked, bridge) {
+				t.Fatalf("the stored list is sequence 2 and revokes the bridge; got %+v", result)
+			}
+		})
+	}
+}
+
+// With the store and the floor both damaged, the remedy names the floor, not the endpoint, and
+// with the check off it names the setting rather than restoring access.
+func TestUnusableStateAdviceMatchesWhatCanHelp(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	directory := t.TempDir()
+	for _, name := range []string{"bridge-revocations-store.json", "bridge-revocations-floor.json"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte("{"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	unreachable := bridgerevocation.Checker{Mode: bridgerevocation.Online, Directory: directory, Now: func() time.Time { return testNow }, Fetcher: fetchFunc(func() ([]byte, []byte, error) { return nil, nil, bridgerevocation.ErrUnreachable })}
+	_, err := unreachable.Check(t.Context(), snapshot)
+	if !errors.Is(err, bridgerevocation.ErrUnusableState) || !strings.Contains(err.Error(), "repair or remove") || strings.Contains(err.Error(), "Restore access") {
+		t.Fatalf("both damaged and unreachable must name the floor repair: %v", err)
+	}
+	// Only the store damaged, with the check off: nothing is fetched, so switching to online is the way.
+	if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
+		t.Fatal(err)
+	}
+	off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: directory}
+	_, err = off.Check(t.Context(), snapshot)
+	if !errors.Is(err, bridgerevocation.ErrUnusableState) || strings.Contains(err.Error(), "Restore access") || !strings.Contains(err.Error(), "HIKYO_UPGRADE_REVOCATION_CHECK") {
+		t.Fatalf("off must say to switch to online or remove the files: %v", err)
+	}
+}
