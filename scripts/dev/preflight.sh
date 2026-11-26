@@ -46,7 +46,12 @@ start=$(date +%s)
 #    common reds and a one-line fix (`git commit -s --amend` / rebase).
 stage 'DCO sign-off (vs hikyo-upstream/main)'
 if git rev-parse --verify --quiet hikyo-upstream/main >/dev/null; then
-	./scripts/ci/check-dco.sh hikyo-upstream/main HEAD || fail 'dco'
+	# Trusted tips, resolved to SHAs, let dev's already-merged Dependabot commits
+	# pass on a dev-based branch. An unresolved dev stays empty, which exempts
+	# nobody.
+	main_sha=$(git rev-parse --verify --quiet 'hikyo-upstream/main^{commit}')
+	dev_sha=$(git rev-parse --verify --quiet 'hikyo-upstream/dev^{commit}' || true)
+	DCO_MAIN_SHA=$main_sha DCO_DEV_SHA=$dev_sha ./scripts/ci/check-dco.sh hikyo-upstream/main HEAD || fail 'dco'
 else
 	printf 'preflight: canonical hikyo-upstream/main missing; fetch it using CONTRIBUTING.md.\n' >&2
 	fail 'missing canonical comparison base'

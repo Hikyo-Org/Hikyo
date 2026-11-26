@@ -49,8 +49,8 @@ func queueDCOMetadataArgs(repoName, repo string) []string {
 	return []string{"-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=30", "-c", "remote.origin.url=https://github.com/" + repoName + ".git", "-c", "remote.origin.promisor=true", "-c", "remote.origin.partialclonefilter=blob:none", "-C", repo}
 }
 
-// The canonical repository's main, fetched by the gate from the fixed origin
-// beside the immutable range. It names no PR ref, so a PR cannot choose it.
+// The canonical repository's main and dev, fetched by the gate from the fixed
+// origin beside the immutable range. It names no PR ref, so a PR cannot choose them.
 const queueTrustedMainRef = "refs/hikyo/trusted-main"
 const queueTrustedMainRefspec = "+refs/heads/main:" + queueTrustedMainRef
 const queueTrustedDevRef = "refs/hikyo/trusted-dev"

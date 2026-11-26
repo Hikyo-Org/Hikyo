@@ -200,23 +200,6 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 	}
 }
 
-func TestQueueDCOFailsClosedWithoutTrustedMain(t *testing.T) {
-	root, err := filepath.Abs("../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(root)
-	repo := t.TempDir()
-	if out, err := exec.Command("git", "init", "--bare", "--quiet", repo).CombinedOutput(); err != nil {
-		t.Fatalf("init: %v %s", err, out)
-	}
-	p := pull{Base: reference{SHA: strings.Repeat("a", 40)}, Head: reference{SHA: strings.Repeat("b", 40)}}
-	p.User.ID, p.User.Login = 12, "dependabot[bot]"
-	if code, err := checkQueueDCO(context.Background(), "example/hikyo", p, repo); err == nil || code != 0 {
-		t.Fatalf("missing trusted main did not fail closed: %d %v", code, err)
-	}
-}
-
 func TestQueueDCOSignoffRefusalBlocksAdmissionAndGroup(t *testing.T) {
 	for _, where := range []string{"admission", "group", "final admission", "final group"} {
 		t.Run(where, func(t *testing.T) {
@@ -242,7 +225,11 @@ func TestQueueDCOSignoffRefusalBlocksAdmissionAndGroup(t *testing.T) {
 	}
 }
 
-func TestQueueDCOFailsClosedWithoutTrustedDev(t *testing.T) {
+// A fully signed range that check-dco.sh would admit with exit 0 if the gate
+// ignored a missing trusted tip: only the one named ref exists, so the gate
+// itself must refuse with its own error rather than lean on the script.
+func queueDCOFailClosedFixture(t *testing.T, present string) (string, pull) {
+	t.Helper()
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
@@ -252,27 +239,40 @@ func TestQueueDCOFailsClosedWithoutTrustedDev(t *testing.T) {
 	if out, err := exec.Command("git", "init", "--bare", "--quiet", repo).CombinedOutput(); err != nil {
 		t.Fatalf("init: %v %s", err, out)
 	}
-	cmd := exec.Command("git", "-C", repo, "hash-object", "-w", "-t", "tree", "--stdin")
-	cmd.Stdin = strings.NewReader("")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err)
+	object := func(kind, body string) string {
+		t.Helper()
+		cmd := exec.Command("git", "-C", repo, "hash-object", "-w", "-t", kind, "--stdin")
+		cmd.Stdin = strings.NewReader(body)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
 	}
-	tree := strings.TrimSpace(string(out))
-	cmd = exec.Command("git", "-C", repo, "hash-object", "-w", "-t", "commit", "--stdin")
-	cmd.Stdin = strings.NewReader("tree " + tree + "\nauthor F <f@example.test> 1700000000 +0000\ncommitter F <f@example.test> 1700000000 +0000\n\nbase\n")
-	out, err = cmd.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	base := strings.TrimSpace(string(out))
-	// Only main resolves: dev is missing, so nothing may be exempt or admitted.
-	if out, err := exec.Command("git", "-C", repo, "update-ref", queueTrustedMainRef, base).CombinedOutput(); err != nil {
+	const author = "Fixture Contributor <fixture@example.test>"
+	tree := object("tree", "")
+	base := object("commit", "tree "+tree+"\nauthor "+author+" 1700000000 +0000\ncommitter "+author+" 1700000000 +0000\n\nBase\n")
+	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+author+" 1700000001 +0000\ncommitter "+author+" 1700000001 +0000\n\nEdit\n\nSigned-off-by: "+author+"\n")
+	if out, err := exec.Command("git", "-C", repo, "update-ref", present, base).CombinedOutput(); err != nil {
 		t.Fatalf("update-ref: %v %s", err, out)
 	}
-	p := pull{Base: reference{SHA: base}, Head: reference{SHA: base}}
-	p.User.ID, p.User.Login = 12, "dependabot[bot]"
-	if code, err := checkQueueDCO(context.Background(), "example/hikyo", p, repo); err == nil || code != 0 {
-		t.Fatalf("missing trusted dev did not fail closed: %d %v", code, err)
+	p := pull{Base: reference{SHA: base}, Head: reference{SHA: head}}
+	p.User.ID, p.User.Login = 12, "contributor"
+	return repo, p
+}
+
+func requireQueueDCOUnavailable(t *testing.T, present string) {
+	repo, p := queueDCOFailClosedFixture(t, present)
+	code, err := checkQueueDCO(context.Background(), "example/hikyo", p, repo)
+	if err == nil || !strings.Contains(err.Error(), "trusted canonical main or dev is unavailable") || code != 0 {
+		t.Fatalf("missing trusted tip did not fail closed in the gate: %d %v", code, err)
 	}
+}
+
+func TestQueueDCOFailsClosedWithoutTrustedMain(t *testing.T) {
+	requireQueueDCOUnavailable(t, queueTrustedDevRef)
+}
+
+func TestQueueDCOFailsClosedWithoutTrustedDev(t *testing.T) {
+	requireQueueDCOUnavailable(t, queueTrustedMainRef)
 }
