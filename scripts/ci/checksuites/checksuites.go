@@ -21,8 +21,9 @@ import (
 const AppID = 15368
 
 // Margin is the suite count above which a listing by commit cannot be trusted.
-// It sits under REST's cap of 1000 so suites added between counting and listing
-// cannot push a commit over it unnoticed.
+// It sits under REST's cap of 1000, and Recheck counts again after the listing,
+// so suites added between counting and listing cannot push a commit over it
+// unnoticed.
 const Margin = 900
 
 // MaxSuites bounds the github-actions suites one scan reads (50 pages of 100).

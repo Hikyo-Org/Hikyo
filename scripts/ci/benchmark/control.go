@@ -1,9 +1,11 @@
 package benchmark
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -124,12 +126,20 @@ func writeAPI(method, path, body string) error {
 		args = append(args, "--field", "body="+body)
 	}
 	command := exec.Command("gh", args...)
-	command.Stderr = os.Stderr
+	var stderr bytes.Buffer
+	command.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	if _, err := command.Output(); err != nil {
+		if strings.Contains(stderr.String(), "(HTTP 404)") {
+			err = fmt.Errorf("%w: %w", errNotFound, err)
+		}
 		return fmt.Errorf("GitHub write %s: %w", path, err)
 	}
 	return nil
 }
+
+// errNotFound marks a write the API answered with 404; gh's stderr stays in the
+// job log and out of error text, which decline copies into the PR comment.
+var errNotFound = errors.New("not found")
 
 func currentPull(repository string, number int) (pull, error) {
 	var pr pull
@@ -145,29 +155,55 @@ func currentPull(repository string, number int) (pull, error) {
 	return pr, nil
 }
 
-func botComment(repository string, number int) (comment, error) {
+// botComments is read-only: verify jobs hold only pull-requests: read. It
+// returns the lowest-id marker comment and any higher-id duplicates.
+func botComments(repository string, number int) (comment, []comment, error) {
 	var pages [][]comment
 	if err := api(fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repository, number), &pages); err != nil {
-		return comment{}, err
+		return comment{}, nil, err
 	}
 	if len(pages) == 0 {
-		return comment{}, fmt.Errorf("GitHub returned no comment-history pages")
+		return comment{}, nil, fmt.Errorf("GitHub returned no comment-history pages")
 	}
 	var found comment
+	var duplicates []comment
 	for _, page := range pages {
 		if page == nil {
-			return comment{}, fmt.Errorf("GitHub returned incomplete comment history")
+			return comment{}, nil, fmt.Errorf("GitHub returned incomplete comment history")
 		}
 		for _, c := range page {
 			if c.User.ID == botID && strings.HasPrefix(c.Body, marker) {
-				if found.ID != 0 {
-					return comment{}, fmt.Errorf("multiple benchmark bot comments on PR %d", number)
+				if found.ID == 0 || c.ID < found.ID {
+					found, c = c, found
 				}
-				found = c
+				if c.ID != 0 {
+					duplicates = append(duplicates, c)
+				}
 			}
 		}
 	}
-	return found, nil
+	return found, duplicates, nil
+}
+
+func botComment(repository string, number int) (comment, error) {
+	c, _, err := botComments(repository, number)
+	return c, err
+}
+
+// dedupeBotComments is called only by writers (prepare). Racing creators may
+// each post once; all keep the lowest id and delete the rest. A 404 means
+// another cleaner already deleted it.
+func dedupeBotComments(repository string, duplicates []comment) error {
+	for _, d := range duplicates {
+		if d.ID <= 0 || d.User.ID != botID {
+			return fmt.Errorf("refusing to delete a non-bot benchmark comment")
+		}
+		err := writeAPI("DELETE", fmt.Sprintf("repos/%s/issues/comments/%d", repository, d.ID), "")
+		if err != nil && !errors.Is(err, errNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 func commentBody(pr pull, r request, status string) string {
@@ -193,21 +229,61 @@ func prepare(repository string, e controlEvent) error {
 	if pr.State != "open" {
 		return nil
 	}
-	c, err := botComment(repository, pr.Number)
+	c, duplicates, err := botComments(repository, pr.Number)
 	if err != nil {
 		return err
 	}
-	if c.ID != 0 {
-		r, err := parseRequest(c.Body)
-		if err == nil && r.head == pr.Head.SHA {
-			return nil
-		}
+	if err := dedupeBotComments(repository, duplicates); err != nil {
+		return err
 	}
 	body := commentBody(pr, request{head: pr.Head.SHA}, "_Not run for this head._")
-	if c.ID == 0 {
-		return writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body)
+	// reconcile keeps a comment already for the live head (and any admitted
+	// request on it) and resets one left on an older head.
+	var reconcile func(c comment, retry bool) error
+	reconcile = func(c comment, retry bool) error {
+		if r, err := parseRequest(c.Body); err == nil && r.head == pr.Head.SHA {
+			return nil
+		}
+		// shortcut: no compare-and-swap on comments; re-checking the live head
+		// narrows, but does not close, a stale reset over a newer head's comment.
+		if latest, err := currentPull(repository, pr.Number); err != nil || latest.State != "open" || latest.Head.SHA != pr.Head.SHA {
+			return err
+		}
+		err := updateComment(repository, c, body)
+		if !errors.Is(err, errNotFound) {
+			return err
+		}
+		// A 404 means another cleaner deleted this duplicate. Reconcile the
+		// new survivor once.
+		// shortcut: one retry; a second deletion is left to the next writer.
+		if !retry {
+			return nil
+		}
+		next, _, err := botComments(repository, pr.Number)
+		if err != nil || next.ID == 0 || next.ID == c.ID {
+			return err
+		}
+		return reconcile(next, false)
 	}
-	return updateComment(repository, c, body)
+	if c.ID != 0 {
+		return reconcile(c, true)
+	}
+	if err := writeAPI("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repository, pr.Number), body); err != nil {
+		return err
+	}
+	// Re-read: a concurrent creator may have posted first, possibly for an
+	// older head, so the surviving lowest id is reconciled too.
+	c, duplicates, err = botComments(repository, pr.Number)
+	if err != nil {
+		return err
+	}
+	if err := dedupeBotComments(repository, duplicates); err != nil {
+		return err
+	}
+	if c.ID == 0 {
+		return nil // Listing lag; the next writer reconciles.
+	}
+	return reconcile(c, true)
 }
 
 func authorizedRequest(repository string, e controlEvent) (pull, comment, bool, error) {
@@ -490,8 +566,51 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	if automatic {
 		status += " Automatic admission: " + reason + "."
 	}
-	if err := updateComment(repository, c, commentBody(pr, r, status)); err != nil {
+	claim := commentBody(pr, r, status)
+	if err := updateComment(repository, c, claim); err != nil {
 		return err
+	}
+	// shortcut: GitHub has no compare-and-swap on comments, so a comment job
+	// PATCH landing after the live-head read below, before the rerun, can still
+	// clobber the claim; upgrade if that is seen in practice (e.g. a lease or ETag).
+	release := func() error {
+		return updateComment(repository, c, commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: the claim could not be confirmed."))
+	}
+	// resetMoved reconciles the comment to the live head after the PR moved off
+	// the claimed one, so no old-head claim stays over a newer head's reset.
+	resetMoved := func() error {
+		if err := prepare(repository, controlEvent{Number: pr.Number}); err != nil {
+			return fmt.Errorf("reset benchmark comment after the PR moved off %s: %w", pr.Head.SHA[:12], err)
+		}
+		return nil
+	}
+	if after, err := botComment(repository, pr.Number); err != nil {
+		// Never leave the claim: reset to the live head if the PR moved, else
+		// release it (a stranded claim blocks automatic retry, also after a
+		// reopen at this head).
+		// shortcut: when the PR read fails the head is unknown, so the release is
+		// written blind and can overwrite a newer head's reset with an old-head
+		// body; the next prepare heals it. Upgrade if that is seen in practice.
+		latest, lerr := currentPull(repository, pr.Number)
+		if lerr == nil && latest.Head.SHA != pr.Head.SHA {
+			return errors.Join(err, resetMoved())
+		}
+		return errors.Join(err, lerr, release())
+	} else if got, perr := parseRequest(after.Body); after.ID != c.ID || perr != nil || got != r {
+		// Compare the claim identity, not bytes: GitHub may normalize whitespace.
+		return nil // A concurrent writer replaced the claim; do not spend.
+	}
+	// A newer head's prepare may have reset the comment before our claim PATCH
+	// overwrote it, which the comment re-read cannot see. Re-check the PR.
+	latest, lerr := currentPull(repository, pr.Number)
+	if lerr != nil {
+		return errors.Join(lerr, release()) // Blind release; see the shortcut above.
+	}
+	if latest.Head.SHA != pr.Head.SHA {
+		return resetMoved()
+	}
+	if latest.State != "open" {
+		return release() // Closed at the same head: a reopen must be benchmarkable.
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/actions/runs/%d/rerun", repository, run.ID), ""); err != nil {
 		return decline(err)

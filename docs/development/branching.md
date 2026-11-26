@@ -76,10 +76,12 @@ gh pr create --repo Hikyo-Org/Hikyo --base dev
 The required `ci-dev-required` check verifies all three feedback lanes, canonical
 DCO, signatures, fork admission and current workflow authority. Main's queue is
 not part of this path. Fix or revert red integration before promoting a release.
-CI/publisher definitions land through main first, then a reviewed main-to-dev
-backmerge supplies those approved definitions to integration. Dev admission refuses
-a PR that changes them otherwise. Dev proof stays unavailable between that main
-landing and a green run of the backmerge, so backmerge promptly. Do not force-reset
+CI/publisher definitions land through main first, then a main-to-dev backmerge
+supplies those approved definitions to integration: the automatic one from
+`nightly-promote` (see Nightlies), or a manual one when that cannot (see Manual
+back-merge). Dev admission refuses a PR that changes them otherwise. Dev proof stays
+unavailable between that main landing and a green run of the backmerge, so backmerge
+promptly. Do not force-reset
 branches to synchronize them.
 
 A red dev run opens one `Dev integration is red` issue listing the failed jobs
@@ -209,12 +211,50 @@ dev history existing before dev was protected.
 A promotion that cannot land fails the `nightly-promote` run: a refused admission, or
 a PR over three hours old, even when the run also re-arms or replaces it.
 
-When main conflicts with dev, admission refuses the promotion PR for merge
-conflicts. Resolve it with a reviewed backmerge of main into dev (a PR from `main`
-to `dev`), not by force-pushing either branch. The next promotion then proceeds.
-Backmerge only when main has real commits dev lacks, such as CI definitions or a
-hotfix. A backmerge after a clean promotion is unnecessary and cannot pass admission,
-because it adds only a merge commit.
+Dev must contain main before promotion can pass: the source proof refuses a dev whose
+CI definitions differ from main's, and hotfixes land on main directly. `nightly-promote`
+therefore back-merges main into dev automatically, first thing each run and right after
+every merged PR into main whose head is a branch of this repository not named
+`release/nightly-*`. A merged fork PR starts no immediate back-merge; the next scheduled
+or manual run picks it up. It works from main's live tip, so a re-run of an older run
+acts on current main. When main has real commits dev lacks, it creates
+`backmerge/auto-<yyyymmdd>-<main sha7>` at dev, merges main into it through the merges
+API, opens a `chore(release): back-merge main into dev` PR from that branch, and queues
+auto-merge on the exact head. The head is always its own merge commit, never `main`
+(#1373: check runs attach to the SHA, so a head at main's SHA would carry main's checks).
+Later runs merge newer main commits into the same branch and re-queue a disarmed PR.
+Only a PR opened by the release App counts as automatic; the same branch name from anyone
+else is ignored. Each run deletes every `backmerge/auto-*` branch that no open PR uses.
+The run does nothing when dev already contains main or main leads only by merge commits,
+and a `backmerge/*` PR opened by hand takes precedence: no automatic one is opened beside
+it. Dev's ruleset has `require_extra_approval_for_unattributed_changes` with 0 required
+approvals; its effect on the App PR is confirmed on the first run, and a blocked PR shows
+up through the six-hour rule.
+
+The back-merge fails the `nightly-promote` run when it is stuck: main conflicts with its
+branch or with dev, or the PR has not landed after six hours (for instance because dev's
+required-signatures rule rejects the API-created merge commit). Promotion still runs.
+
+### Manual back-merge
+
+Resolve a conflicting or stuck automatic back-merge by hand on a
+`backmerge/main-into-dev-<yyyymmdd>` branch, as in #1550: merge main into a branch from
+dev, fix the conflicts, sign the merge commit, and open a reviewed PR into `dev`. Close
+the automatic PR first; the manual PR then takes precedence. Never force-push either
+branch. Back-merge only when main has real commits dev lacks, such as CI definitions or
+a hotfix; a back-merge after a clean promotion adds only a merge commit and cannot pass
+admission.
+
+Known limit: the dev gate lets dev's `.github/workflows/ci-dev-gate.yml` differ from
+main's only when the PR head is main's exact SHA (`devPublisherContract`). A hotfix that
+changes `ci-dev-gate.yml` therefore cannot flow through the automatic back-merge: the
+gate refuses it and, after six hours, the run reports it stuck. That case needs a manual
+back-merge whose head is main's exact SHA: push `backmerge/main-into-dev-<yyyymmdd>` at
+main's tip, with no merge commit of its own, and open its PR into `dev`. The automatic
+back-merge treats it as manual and stands aside. If that exact-main head also conflicts
+with dev, there is no self-service route: resolving the conflict changes the head's SHA,
+which the gate then refuses. Escalate to a maintainer, who decides whether to change the
+dev side first or adjust the gate.
 
 A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
 written, because nightlies reuse proof instead of running the full graph. It
