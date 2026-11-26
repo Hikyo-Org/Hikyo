@@ -16,7 +16,8 @@ import (
 // leaves behind, as items; `items` shows each one with its outcome, the owner's
 // refusal apart from work not yet run, and a rotation's live state; `resume`
 // does the work, running the open items, after you confirm the listed items with
-// --yes and prove your account again; `attest` records a statement the owner did
+// --yes and prove your account again; `release` lifts one contained account the
+// same way (--yes, then a fresh proof); `attest` records a statement the owner did
 // not confirm; `close` ends the ledger. Every verb is human-session only.
 
 const incidentBase = api.PathPrefix + "/incidents"
@@ -24,7 +25,7 @@ const incidentBase = api.PathPrefix + "/incidents"
 // runIncident executes the incident verbs. Usage, authentication, HTTP and
 // rendering errors are returned to the CLI.
 func runIncident(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("incident", args, "open", "show", "items", "resume", "attest", "close")
+	sub, rest, err := subverb("incident", args, "open", "show", "items", "resume", "release", "attest", "close")
 	if err != nil {
 		return err
 	}
@@ -44,6 +45,8 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&after, "after", "", "continue after this item id, as a previous page printed it")
 		case "resume":
 			fs.BoolVar(&yes, "yes", false, "confirm the listed open items and run them (it grants no authority and is no proof)")
+		case "release":
+			fs.BoolVar(&yes, "yes", false, "confirm the release of the named account (it grants no authority and is no proof)")
 		case "close":
 			fs.BoolVar(&withResiduals, "with-residuals", false, "close although items are open, recording them as residuals")
 		}
@@ -68,6 +71,10 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 	case "attest":
 		if len(flags.positionals) != 2 {
 			return failf(ExitUsage, "usage: hikyo incident attest <incident> <item>")
+		}
+	case "release":
+		if len(flags.positionals) != 2 {
+			return failf(ExitUsage, "usage: hikyo incident release <incident> <principal> [--yes]")
 		}
 	default:
 		if len(flags.positionals) != 1 {
@@ -150,6 +157,21 @@ func runIncident(ctx context.Context, ios IO, args []string) error {
 				strconv.Itoa(int(out.Blocked)), strconv.Itoa(int(out.Unconfirmed)), strconv.Itoa(int(out.Stale)), strconv.Itoa(int(out.Skipped))}},
 			JSON: out,
 		})
+	case "release":
+		principal := flags.positionals[1]
+		// Release lifts a containment, so it is never sent unconfirmed.
+		if !yes {
+			return failf(ExitRefused, "release lifts the containment of %s and restores no session, grant or delegation; run it again with --yes to confirm", principal)
+		}
+		proof, err := ios.readPassword("Account-security proof (your TOTP code, or password if no factor): ")
+		if err != nil {
+			return err
+		}
+		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/release", apigen.IncidentReleaseRequest{Principal: principal, Proof: proof}, nil); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(ios.Stdout, "released %s: it signs in again; no session, grant or delegation was restored\n", principal)
+		return err
 	case "attest":
 		item := url.PathEscape(flags.positionals[1])
 		if err := client.Do(ctx, http.MethodPost, incidentBase+"/"+id+"/items/"+item+"/attest", nil, nil); err != nil {

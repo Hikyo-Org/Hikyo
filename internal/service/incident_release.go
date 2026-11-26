@@ -128,6 +128,10 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 	// (linked after the enumeration) is given an open item in a transaction of its
 	// own, so the operator can attest it and release again; it is never attested here.
 	if lerr := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		// The caller is authorized again: authority may have changed since the refused attempt.
+		if _, _, err := s.incidentByID(ctx, az, actor, incidentID, s.now()); err != nil {
+			return err
+		}
 		return listUnlistedIdentities(ctx, az, relistBy, incidentID, target, relist, s.now())
 	}); lerr != nil {
 		return lerr

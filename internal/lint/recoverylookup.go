@@ -57,6 +57,11 @@ var ContainmentSetterRules = []RecoveryRule{
 		Module + "/internal/service":     {"Incidents.containAccount"},
 		Module + "/internal/store/authn": {"Resolver.ContainPrincipal"},
 	}},
+	{Name: "HandOverContainedPrincipals", Allowed: map[string][]string{
+		Module + "/internal/authz":       {"TxAuthorizer.HandOverContainedPrincipals"},
+		Module + "/internal/service":     {"Incidents.Close"},
+		Module + "/internal/store/authn": {"Resolver.HandOverContainedPrincipals"},
+	}},
 	{Name: "ReleasePrincipalContainment", Allowed: map[string][]string{
 		Module + "/internal/authz":       {"TxAuthorizer.ReleasePrincipalContainment"},
 		Module + "/internal/service":     {"Incidents.ReleasePrincipal"},

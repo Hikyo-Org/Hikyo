@@ -157,6 +157,29 @@ WHERE credential_authorities.account_id = (SELECT accounts.id FROM accounts WHER
 -- name: GetPrincipalContainedIncident :one
 SELECT contained_incident_id FROM principals WHERE id = sqlc.arg(principal_id) AND containment_state = 'contained';
 
+-- Closing hands a principal over instead of stranding it: when the closing incident
+-- holds a principal that another open incident also recorded as contained (done), the
+-- state passes to the lowest such incident id. Only the incident reference changes; the
+-- state, the instant and the generation stay, so the handover never lifts containment.
+-- hikyo:reason Close hands each principal the closing incident holds to another open incident that recorded it contained; it changes only the incident reference and never the containment state.
+-- hikyo:authn-resolution
+-- name: HandOverContainedPrincipals :many
+UPDATE principals
+SET contained_incident_id = (
+    SELECT MIN(incidents.id) FROM incidents
+    JOIN incident_items ON incident_items.incident_id = incidents.id
+    WHERE incidents.status = 'open' AND incidents.id <> sqlc.arg(incident_id)
+      AND incident_items.owner_function = 'account.contain' AND incident_items.object_kind = 'account'
+      AND incident_items.object_id = principals.id AND incident_items.outcome = 'done')
+WHERE principals.contained_incident_id = sqlc.arg(incident_id) AND principals.containment_state = 'contained' AND principals.kind = 'human'
+  AND EXISTS (
+    SELECT 1 FROM incidents
+    JOIN incident_items ON incident_items.incident_id = incidents.id
+    WHERE incidents.status = 'open' AND incidents.id <> sqlc.arg(incident_id)
+      AND incident_items.owner_function = 'account.contain' AND incident_items.object_kind = 'account'
+      AND incident_items.object_id = principals.id AND incident_items.outcome = 'done')
+RETURNING principals.id, principals.contained_incident_id;
+
 -- hikyo:reason Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else.
 -- hikyo:authn-resolution
 -- name: CountPrincipalsContainedBy :one

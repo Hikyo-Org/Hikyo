@@ -355,6 +355,7 @@ var wireRegistry = map[string]wireEntry{
 	"http:POST /api/v1/incidents":                                                                                            {Class: ClassUnauthenticated, Ops: []Operation{OpIncidentOrg, OpIncidentInstance}},
 	"http:POST /api/v1/incidents/{incident}/close":                                                                           {Class: ClassUnauthenticated, Ops: []Operation{OpIncidentOrg, OpIncidentInstance}},
 	"http:POST /api/v1/incidents/{incident}/items/{item}/attest":                                                             {Class: ClassUnauthenticated, Ops: []Operation{OpIncidentOrg, OpIncidentInstance}},
+	"http:POST /api/v1/incidents/{incident}/release":                                                                         {Class: ClassUnauthenticated, Ops: []Operation{OpIncidentOrg, OpIncidentInstance}},
 	"http:POST /api/v1/incidents/{incident}/resume":                                                                          {Class: ClassUnauthenticated, Ops: []Operation{OpIncidentOrg, OpIncidentInstance}},
 	"http:POST /api/v1/instance/config/adoption":                                                                             {Class: ClassInstance, Ops: []Operation{OpSelfConfigAdopt, OpSelfConfigProvisionProject}},
 	"http:POST /api/v1/instance/config/apply":                                                                                {Class: ClassTenant, Ops: []Operation{OpSelfConfigApply}},

@@ -223,6 +223,30 @@ func (r *Resolver) PrincipalContainedIncident(ctx context.Context, p domain.Prin
 	return id.String, notFoundOr(err)
 }
 
+// HandedOver names a principal whose containment passed to another open incident.
+type HandedOver struct {
+	Principal  domain.PrincipalID
+	ToIncident string
+}
+
+// HandOverContainedPrincipals passes every principal the incident holds to the lowest
+// other open incident that recorded it contained. Containment itself is untouched.
+func (r *Resolver) HandOverContainedPrincipals(ctx context.Context, incidentID string) ([]HandedOver, error) {
+	var out []HandedOver
+	if r.sq != nil {
+		rows, err := r.sq.HandOverContainedPrincipals(ctx, incidentID)
+		for _, row := range rows {
+			out = append(out, HandedOver{Principal: domain.PrincipalID(row.ID), ToIncident: row.ContainedIncidentID.String})
+		}
+		return out, err
+	}
+	rows, err := r.pg.HandOverContainedPrincipals(ctx, incidentID)
+	for _, row := range rows {
+		out = append(out, HandedOver{Principal: domain.PrincipalID(row.ID), ToIncident: row.ContainedIncidentID.String})
+	}
+	return out, err
+}
+
 // CountPrincipalsContainedBy counts the principals the incident still holds contained.
 func (r *Resolver) CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error) {
 	if r.sq != nil {

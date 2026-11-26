@@ -1183,6 +1183,17 @@ export type IncidentResumeRequest = {
     items_digest: string;
 };
 
+export type IncidentReleaseRequest = {
+    /**
+     * The contained principal to release (its `usr_` id).
+     */
+    principal: string;
+    /**
+     * Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
+     */
+    proof: string;
+};
+
 /**
  * What one resume pass did, in items.
  */
@@ -19390,6 +19401,75 @@ export type CloseIncidentResponses = {
 };
 
 export type CloseIncidentResponse = CloseIncidentResponses[keyof CloseIncidentResponses];
+
+export type ReleaseIncidentPrincipalData = {
+    body: IncidentReleaseRequest;
+    path: {
+        /**
+         * The incident id.
+         */
+        incident: Id;
+    };
+    query?: never;
+    url: '/api/v1/incidents/{incident}/release';
+};
+
+export type ReleaseIncidentPrincipalErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReleaseIncidentPrincipalError = ReleaseIncidentPrincipalErrors[keyof ReleaseIncidentPrincipalErrors];
+
+export type ReleaseIncidentPrincipalResponses = {
+    /**
+     * The principal is released.
+     */
+    204: void;
+};
+
+export type ReleaseIncidentPrincipalResponse = ReleaseIncidentPrincipalResponses[keyof ReleaseIncidentPrincipalResponses];
 
 export type EnrolPasskeyStartData = {
     body: WebauthnEnrolStartRequest;

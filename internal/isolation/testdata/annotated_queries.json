@@ -1781,6 +1781,13 @@
   },
   {
     "engine": "postgres",
+    "name": "HandOverContainedPrincipals",
+    "annotation": "authn-resolution",
+    "hash": "1567e0a6de362d1ac72493a306e4ef8375808a64f664424ab2f414160f2dc52d",
+    "reason": "Close hands each principal the closing incident holds to another open incident that recorded it contained; it changes only the incident reference and never the containment state."
+  },
+  {
+    "engine": "postgres",
     "name": "HoldRestoredPKIIssuers",
     "annotation": "authn-resolution",
     "hash": "fd13729c16a828f1f75a5490917c88c0abdcd00d60326ba1732b0a8563eeef1f"
@@ -5703,6 +5710,13 @@
     "annotation": "instance-scoped",
     "hash": "f7765bb47baec68d6275f3c86dc0f744a6f8cd111cdfd8dd57d04894ffafbd06",
     "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "HandOverContainedPrincipals",
+    "annotation": "authn-resolution",
+    "hash": "1567e0a6de362d1ac72493a306e4ef8375808a64f664424ab2f414160f2dc52d",
+    "reason": "Close hands each principal the closing incident holds to another open incident that recorded it contained; it changes only the incident reference and never the containment state."
   },
   {
     "engine": "sqlite",

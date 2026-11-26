@@ -563,8 +563,22 @@ principal is contained, so a contained account would still have a scheduler acti
   by `hikyo restore status`). Reconciling a principal re-asserts its grants and never lifts
   containment: the two acts stay apart. A restore from an archive that predates a
   containment shows no containment, so the operator re-opens the incident for that account.
-- No HTTP route or CLI verb releases yet: the service is the capability, and the operator
-  surface for it is a later slice.
+- Handover on close: when the closing incident holds a contained principal that another
+  open incident also recorded as done, Close hands the principal to the open incident with
+  the lowest id in the same write transaction, instead of refusing, so two incidents that
+  recorded the same account can both close. The handover moves only the record of which
+  incident holds the state: it never lifts containment, writes an `incident.principal_contained`
+  event correlated to the receiving incident, and a conflict rolls it back. Close still refuses
+  when no other open incident holds the principal.
+- The operator surface is `POST /api/v1/incidents/{incident}/release`
+  (`releaseIncidentPrincipal`, body `{principal, proof}`, `x-hikyo-min-revision: 22`, `204`),
+  `hikyo incident release <incident> <principal> [--yes]` and the web Incidents release action.
+  Authorization comes before the proof, and an unknown incident, an unknown account and an
+  account the incident did not contain answer the same `404`. A wrong proof is `401`, a
+  missing proof is the proof refusal, an account with no proof credential is `400` with detail
+  `no_proof_credential`, and a release condition not met is `409`. Each proof is spent once.
+  The CLI is unauthenticated (like resume) and needs a human session, and prompts for the proof
+  only after `--yes`.
 
 ## Not decided here
 

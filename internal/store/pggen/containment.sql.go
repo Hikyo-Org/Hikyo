@@ -252,6 +252,55 @@ func (q *Queries) GetPrincipalContainment(ctx context.Context, principalID strin
 	return i, err
 }
 
+const handOverContainedPrincipals = `-- name: HandOverContainedPrincipals :many
+UPDATE principals
+SET contained_incident_id = (
+    SELECT MIN(incidents.id) FROM incidents
+    JOIN incident_items ON incident_items.incident_id = incidents.id
+    WHERE incidents.status = 'open' AND incidents.id <> $1
+      AND incident_items.owner_function = 'account.contain' AND incident_items.object_kind = 'account'
+      AND incident_items.object_id = principals.id AND incident_items.outcome = 'done')
+WHERE principals.contained_incident_id = $1 AND principals.containment_state = 'contained' AND principals.kind = 'human'
+  AND EXISTS (
+    SELECT 1 FROM incidents
+    JOIN incident_items ON incident_items.incident_id = incidents.id
+    WHERE incidents.status = 'open' AND incidents.id <> $1
+      AND incident_items.owner_function = 'account.contain' AND incident_items.object_kind = 'account'
+      AND incident_items.object_id = principals.id AND incident_items.outcome = 'done')
+RETURNING principals.id, principals.contained_incident_id
+`
+
+type HandOverContainedPrincipalsRow struct {
+	ID                  string
+	ContainedIncidentID pgtype.Text
+}
+
+// Closing hands a principal over instead of stranding it: when the closing incident
+// holds a principal that another open incident also recorded as contained (done), the
+// state passes to the lowest such incident id. Only the incident reference changes; the
+// state, the instant and the generation stay, so the handover never lifts containment.
+// hikyo:reason Close hands each principal the closing incident holds to another open incident that recorded it contained; it changes only the incident reference and never the containment state.
+// hikyo:authn-resolution
+func (q *Queries) HandOverContainedPrincipals(ctx context.Context, incidentID string) ([]HandOverContainedPrincipalsRow, error) {
+	rows, err := q.db.Query(ctx, handOverContainedPrincipals, incidentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HandOverContainedPrincipalsRow
+	for rows.Next() {
+		var i HandOverContainedPrincipalsRow
+		if err := rows.Scan(&i.ID, &i.ContainedIncidentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recoveryListGrantsBeforeContainment = `-- name: RecoveryListGrantsBeforeContainment :many
 SELECT g.capability, g.org_id, g.project_id, g.env_id,
   CAST(COALESCE((SELECT org_id FROM self_config_binding WHERE id = 1), '') AS TEXT) AS self_config_org_id

@@ -153,6 +153,16 @@ func (a *API) ResumeIncident(ctx context.Context, req apigen.ResumeIncidentReque
 	}), nil
 }
 
+func (a *API) ReleaseIncidentPrincipal(ctx context.Context, req apigen.ReleaseIncidentPrincipalRequestObject) (apigen.ReleaseIncidentPrincipalResponseObject, error) {
+	if req.Body == nil {
+		return nil, domain.ErrInvalid
+	}
+	if err := a.Incidents.ReleasePrincipal(ctx, service.Bearer(bearer(ctx)), string(req.Incident), domain.PrincipalID(req.Body.Principal), req.Body.Proof); err != nil {
+		return nil, err
+	}
+	return apigen.ReleaseIncidentPrincipal204Response{}, nil
+}
+
 func (a *API) AttestIncidentItem(ctx context.Context, req apigen.AttestIncidentItemRequestObject) (apigen.AttestIncidentItemResponseObject, error) {
 	if err := a.Incidents.Attest(ctx, service.Bearer(bearer(ctx)), string(req.Incident), string(req.Item)); err != nil {
 		return nil, err

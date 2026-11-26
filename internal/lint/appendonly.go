@@ -198,6 +198,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// the principal-row lock.
 	"ContainPrincipal":            true,
 	"ReleasePrincipalContainment": true,
+	"HandOverContainedPrincipals": true,
 
 	// Incident containment ledger (incident-containment ADR, O5 option B):
 	// mutable ledger state, separate from the append-only audit tables, written

@@ -215,6 +215,7 @@ operations:
   resumeIncident:              {webui: incidents}
   attestIncidentItem:          {webui: incidents}
   closeIncident:               {webui: incidents}
+  releaseIncidentPrincipal:    {webui: incidents}
 
   # definitions
   # Browser bundle workflow uses each operation directly (#575).

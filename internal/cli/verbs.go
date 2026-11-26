@@ -592,6 +592,7 @@ incident containment:
   hikyo incident show <incident> [-o table|json]
   hikyo incident items <incident> [--open] [--limit N] [--after ITEM] [-o table|json]
   hikyo incident resume <incident> [--yes] [-o table|json]
+  hikyo incident release <incident> <principal> [--yes]
   hikyo incident attest <incident> <item>
   hikyo incident close <incident> [--with-residuals] [-o table|json]
 
@@ -604,8 +605,13 @@ incident containment:
   since the listing. items shows a refused item (its owner said no) apart from
   one that is not yet run, and a rotation's own state as the server read it
   just now. attest records your statement that an open item was dealt with
-  outside this system; it is not a confirmation. close needs --with-residuals
-  while items are open. Requires credential-reset at the incident's
+  outside this system; it is not a confirmation. release lifts one contained
+  account the incident holds: without --yes it only says what it would do, then
+  it asks for your TOTP code (or password); it needs a credential established
+  during the incident or every linked identity attested, and restores no
+  session, grant or delegation. close needs --with-residuals while items are
+  open, and is refused (with or without it) while the incident still holds a
+  contained account: release it first. Requires credential-reset at the incident's
   organisation, or at the instance for one that spans several organisations or
   none, and a session that passed multi-factor sign-in: a weaker session sees
   the same answer as for an incident that does not exist, so step up

@@ -6681,6 +6681,12 @@ paths:
         Closing with an open item needs `with_residuals`, which records the
         incident as `closed_with_residuals` and keeps the open items listed. Without
         it, an incident with open items answers `409`.
+
+        Closing, with or without `with_residuals`, answers `409` while the incident
+        still holds a contained principal that no other open incident also recorded as
+        contained: release it first (`releaseIncidentPrincipal`), because a closed
+        incident can no longer release it. A principal another open incident also
+        recorded as contained is handed to that incident, still contained.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 22
@@ -6699,6 +6705,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Incident"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/incidents/{incident}/release:
+    parameters:
+      - $ref: "#/components/parameters/IncidentID"
+    post:
+      operationId: releaseIncidentPrincipal
+      tags: [incidents]
+      summary: Release one contained principal the incident holds.
+      description: |
+        Release is a separate, audited act that lifts one account's containment. It
+        needs the incident's own evidence: for a password account a credential
+        establishment that completed while this incident held it contained, and for
+        every linked external identity an attested ledger item. It restores no session,
+        grant or delegation: the person signs in again. A release is refused (`409`)
+        while another open incident also recorded the principal as contained, while the
+        incident's own containment item is still open, and for an incident that is
+        closed.
+
+        Release needs a fresh account-security proof (your TOTP code, or your password
+        if you have no factor) of its own, spent by this one call, like resume. The
+        incident is authorized first: an unknown incident, an unknown account, an
+        account this incident did not contain and one outside your authority all answer
+        the same `404`, before any proof is asked for. A caller whose account has
+        neither a password nor a confirmed authenticator gets `400` with the detail
+        `no_proof_credential` and spends nothing; hand the release to another responder
+        who has a proof credential (federated step-up is tracked in #1590).
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
+      x-hikyo-min-revision: 22
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentReleaseRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: The principal is released.
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -19042,6 +19095,20 @@ components:
           type: string
           pattern: "^[0-9a-f]{64}$"
           description: "The open items you listed and confirmed: the lowercase hex SHA-256 of their ids sorted bytewise and joined by a newline. The call is a 409, and spends no proof, when the incident's open items are not exactly this set. It runs only the items of the set it checked."
+
+    IncidentReleaseRequest:
+      type: object
+      additionalProperties: false
+      required: [principal, proof]
+      properties:
+        principal:
+          type: string
+          maxLength: 256
+          description: The contained principal to release (its `usr_` id).
+        proof:
+          type: string
+          maxLength: 65536
+          description: Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
 
     IncidentResumeResult:
       type: object

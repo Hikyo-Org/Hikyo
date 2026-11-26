@@ -987,13 +987,29 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			return fmt.Errorf("%w: incident is already closed", domain.ErrConflict)
 		}
 		// A contained principal is released through its incident's ledger and nothing
-		// else, so closing (with residuals too) would strand it contained for good.
+		// else, so closing (with residuals too) would strand it contained for good. One
+		// that another open incident also recorded contained is handed to that incident
+		// (containment itself untouched); one nobody else holds must be released first.
+		handed, err := az.HandOverContainedPrincipals(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
 		held, err := az.CountPrincipalsContainedBy(ctx, inc.ID)
 		if err != nil {
 			return err
 		}
 		if held > 0 {
 			return fmt.Errorf("%w: the incident still holds %d contained principal(s); release them first", domain.ErrConflict, held)
+		}
+		for _, h := range handed {
+			e, err := incidentEvent(ctx, audit.EventIncidentPrincipalContained, caller.Principal, h.ToIncident, audit.OutcomeSuccess,
+				audit.Payload{"principal": string(h.Principal)})
+			if err != nil {
+				return err
+			}
+			if err := az.RecordAuthEvent(ctx, e); err != nil {
+				return err
+			}
 		}
 		counts, err := az.IncidentItemCounts(ctx, inc.ID)
 		if err != nil {

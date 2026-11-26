@@ -337,6 +337,8 @@ compromise using independent evidence, because restore does not establish that f
    from before a containment action does not carry that action, so re-apply it from
    your journal.
 6. Complete the fresh recovery-incarnation evidence and admission before serving.
+7. `hikyo restore status` marks contained principals; `restore reconcile` re-asserts grants and
+   never lifts containment, so release each one through its incident (`hikyo incident release`).
 
 ## 9. Prove the outcome before reopening
 
@@ -390,9 +392,18 @@ not exist: run `hikyo account factor step-up` and retry.
   step-up is tracked in #1590.
 - `hikyo incident attest <incident> <item>` records your statement that an open item
   was dealt with outside this system. It is a statement, not a confirmation.
+- `hikyo incident release <incident> <principal> --yes` ends the containment of one account
+  the incident contained. It needs the same authenticator code (or password) as resume, spent
+  once, and the release condition: a completed credential establishment for an account with a
+  password, and an attested item for each linked identity. Without `--yes` it stops. An
+  unknown incident, unknown account and an account the incident did not contain all answer
+  not found. The web Incidents page has the same action. Release revives nothing.
 - `hikyo incident close <incident>` needs `--with-residuals` while items are open. It is
   refused while the incident still holds a contained principal, with or without
   residuals: release that principal first, because a closed incident can no longer release it.
+  When another open incident also recorded the principal as contained, closing hands the
+  principal to the open incident with the lowest id and closes. The close answers `409` when
+  no other incident holds it.
 
 An unknown incident and one outside your authority answer the same way. A machine
 credential or a developer credential is refused on every one of these routes.

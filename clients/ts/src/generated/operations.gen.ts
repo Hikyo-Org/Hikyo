@@ -334,6 +334,7 @@ import {
   reencryptProject,
   refreshSamlProviderMetadata,
   regenerateRecoveryCodes,
+  releaseIncidentPrincipal,
   releasePkiIssuerHold,
   releaseRevisionPin,
   releaseRotationHold,
@@ -777,6 +778,7 @@ import type {
   ReencryptProjectData,
   RefreshSamlProviderMetadataData,
   RegenerateRecoveryCodesData,
+  ReleaseIncidentPrincipalData,
   ReleasePkiIssuerHoldData,
   ReleaseRevisionPinData,
   ReleaseRotationHoldData,
@@ -1746,6 +1748,7 @@ export const deleteSshCaOp: BodylessOperation<DeleteSshCaData> = /* @__PURE__ */
 export const establishCredentialOp: BodylessOperation<EstablishCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(establishCredential, [204]);
 export const logoutOp: BodylessOperation<LogoutData> = /* @__PURE__ */ new GeneratedBodylessOperation(logout, [204]);
 export const oidcLifecycleOp: BodylessOperation<OidcLifecycleData> = /* @__PURE__ */ new GeneratedBodylessOperation(oidcLifecycle, [204]);
+export const releaseIncidentPrincipalOp: BodylessOperation<ReleaseIncidentPrincipalData> = /* @__PURE__ */ new GeneratedBodylessOperation(releaseIncidentPrincipal, [204]);
 export const removeRemoteOp: BodylessOperation<RemoveRemoteData> = /* @__PURE__ */ new GeneratedBodylessOperation(removeRemote, [204]);
 export const reportDeliveryTargetOp: BodylessOperation<ReportDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportDeliveryTarget, [204]);
 export const reportFileTargetOp: BodylessOperation<ReportFileTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportFileTarget, [204]);

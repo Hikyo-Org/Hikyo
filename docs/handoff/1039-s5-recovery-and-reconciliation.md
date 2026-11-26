@@ -9,6 +9,8 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
 - `Incidents.ReleasePrincipal` (ADR O4 A): audited `incident.principal_released`, needs a
   credential establishment during the containment episode for a password account and every linked-identity
   item attested, refuses an account with neither, revives and regrants nothing.
+- Release surface (owner decision A): `POST /api/v1/incidents/{incident}/release` (min revision 22), `hikyo incident release <incident> <principal> [--yes]`, and the web release action with the resume step-up dialog. Same proof rules as resume; uniform 404; tests `TestIncidentReleaseOverHTTPWithAValidProof`, `TestIncidentReleaseRefusesAResponderWithNoProofCredentialOverHTTP`, the CLI exercise and `Incidents.release.test.tsx`.
+- Close hands a held principal to another open incident that also recorded it (lowest id), never lifting containment (`incident_handover_test.go`).
 - Store evidence: `CredentialEstablishedIn`, `PrincipalHasPassword`,
   `PrincipalContainedIncident`, `OtherOpenIncidentHolding`, `CountPrincipalsContainedBy` (five authn-resolution queries, both
   engines), and `ContainedAccountID` for the linked-identity read. Migration 00100 stamps
@@ -75,7 +77,6 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
 
 ## Not done
 
-- No HTTP route, CLI verb or web control for release: the operator surface is a later slice.
 - The recovery rehearsal on an isolated instance is not run.
 - The establishment signal is `credential_authorities.established_in_incident`, stamped with the
   containing incident only when a password establishment consumes an authority (never by a

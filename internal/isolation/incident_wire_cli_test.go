@@ -88,6 +88,20 @@ func TestIncidentCLIExercise(t *testing.T) {
 			t.Fatalf("resume --yes: %d proof prompts, exit %d, stdout %q stderr %q", prompts, yesCode, yesOut.String(), yesErr.String())
 		}
 		iw.w.resume(t, wireResponder, inc.Id) // the proof-bearing pass, through the service
+		// Release asks the same way: without --yes it stops, with --yes it prompts for
+		// the proof once and sends it; the account has no password here, so the server
+		// refuses and the target stays contained. The accepted pass is the HTTP test.
+		var relOut, relErr bytes.Buffer
+		if c := cli.Run(t.Context(), cli.IO{Stdin: strings.NewReader(""), Stdout: &relOut, Stderr: &relErr, Env: env, Workdir: workdir}, []string{"incident", "release", inc.Id, string(wireTarget), "--instance", "clean"}); c != cli.ExitRefused || !strings.Contains(relErr.String(), "--yes") || relOut.Len() != 0 {
+			t.Fatalf("release without --yes: exit %d stdout %q stderr %q", c, relOut.String(), relErr.String())
+		}
+		var relPrompts int
+		relOut.Reset()
+		relErr.Reset()
+		if c := cli.Run(t.Context(), cli.IO{Stdin: strings.NewReader(""), Stdout: &relOut, Stderr: &relErr, Env: env, Workdir: workdir,
+			ReadPassword: func(string) (string, error) { relPrompts++; return "000000", nil }}, []string{"incident", "release", inc.Id, string(wireTarget), "--yes", "--instance", "clean"}); relPrompts != 1 || c == cli.ExitOK {
+			t.Fatalf("release --yes: %d proof prompts, exit %d, stdout %q stderr %q", relPrompts, c, relOut.String(), relErr.String())
+		}
 		if err := iw.w.svc.ReleasePrincipal(t.Context(), iw.w.as(wireResponder), inc.Id, wireTarget, ""); err != nil {
 			t.Fatalf("release before close: %v", err)
 		}

@@ -59,6 +59,11 @@ function statusTone(status: string): BadgeTone {
   return 'changed';
 }
 
+/** An account the incident contained and still holds: the one place a release is offered. */
+function isHeldContainment(item: IncidentItem): boolean {
+  return item.owner_function === 'account.contain' && item.object_kind === 'account' && item.outcome === 'done';
+}
+
 function itemTone(item: IncidentItem): BadgeTone {
   if (item.refused || item.outcome === 'blocked') return 'danger';
   if (item.outcome === 'done' || item.outcome === 'attested') return 'ok';
@@ -134,9 +139,10 @@ function Ledger({ id }: { id: string }) {
   const incident = useIncident(id);
   const items = useIncidentItems(id);
   const actions = useIncidentActions(id);
-  const feedback = useFeedback(incidentFailureText);
+  const [releasing, setReleasing] = useState<IncidentItem | null>(null);
   const [attesting, setAttesting] = useState<IncidentItem | null>(null);
   const [closing, setClosing] = useState(false);
+  const feedback = useFeedback((error) => incidentFailureText(error, closing ? 'close' : releasing === null ? 'resume' : 'release'));
   // The open items the operator is shown while confirming, frozen when the dialog opens.
   const [resuming, setResuming] = useState<readonly IncidentItem[] | null>(null);
   const [proof, setProof] = useSensitiveState('');
@@ -188,6 +194,11 @@ function Ledger({ id }: { id: string }) {
                   <td>{item.object_state === undefined ? '' : <Badge tone={item.object_state === 'active' ? 'ok' : item.object_state === 'gone' ? 'neutral' : 'danger'} mono>{item.object_state}</Badge>}</td>
                   <td>{item.reason === undefined ? '' : (REASON_TEXT[item.reason] ?? item.reason)}</td>
                   <td>
+                    {live && isHeldContainment(item) ? (
+                      <Button type="button" disabled={actions.release.isPending} onClick={() => { feedback.clear(); setProof(''); setReleasing(item); }}>
+                        Release <span className="visually-hidden">{item.object_id}</span>
+                      </Button>
+                    ) : null}
                     {live && item.attestable ? (
                       <Button type="button" disabled={actions.attest.isPending} onClick={() => { feedback.clear(); setAttesting(item); }}>
                         Attest <span className="visually-hidden">{item.object_id}</span>
@@ -242,6 +253,36 @@ function Ledger({ id }: { id: string }) {
             <input id={`${proofId}-proof`} name="proof" type="password" autoComplete="one-time-code" required
               value={proof} onChange={(event) => setProof(event.target.value)} />
             <p className="settings-note">Confirm with your authenticator code if you have one, otherwise your password. A one-time code is spent by this resume; a password is checked fresh each time.</p>
+          </div>
+        </ConsequencesDialog>
+      )}
+      {releasing === null ? null : (
+        <ConsequencesDialog
+          title="Release this account?"
+          confirmLabel="Release account"
+          busyLabel="Releasing…"
+          busy={actions.release.isPending}
+          failure={feedback.failure}
+          onCancel={() => { setReleasing(null); setProof(''); feedback.clear(); }}
+          onConfirm={() => {
+            if (proof === '') return;
+            const sent = proof;
+            setProof('');
+            actions.release.mutate({ proof: sent, principal: releasing.object_id }, {
+              onSuccess: () => {
+                setReleasing(null);
+                feedback.ok('Account released. It restores no session or grant: the person signs in again.');
+              },
+              onError: feedback.report,
+            });
+          }}
+        >
+          <p>Release lifts the containment of <span className="mono">{releasing.object_id}</span>. It needs a credential established during this incident, or every linked identity attested, and it restores no session, grant or delegation.</p>
+          <div className="field">
+            <label htmlFor={`${proofId}-release-proof`}>Code or password</label>
+            <input id={`${proofId}-release-proof`} name="proof" type="password" autoComplete="one-time-code" required
+              value={proof} onChange={(event) => setProof(event.target.value)} />
+            <p className="settings-note">Confirm with your authenticator code if you have one, otherwise your password. A one-time code is spent by this release; a password is checked fresh each time.</p>
           </div>
         </ConsequencesDialog>
       )}

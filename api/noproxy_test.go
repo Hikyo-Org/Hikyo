@@ -490,6 +490,7 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/incidents/{incident}/resume":                                                 true,
 	"POST /api/v1/incidents/{incident}/items/{item}/attest":                                    true,
 	"POST /api/v1/incidents/{incident}/close":                                                  true,
+	"POST /api/v1/incidents/{incident}/release":                                                true,
 	"POST /api/v1/instance/invitations":                                                        true,
 	"POST /api/v1/orgs/{org}/invitations":                                                      true,
 	"POST /api/v1/orgs/{org}/email-invitations":                                                true,
