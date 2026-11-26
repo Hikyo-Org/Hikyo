@@ -209,7 +209,10 @@ Two things keep the newest seeds alive on such a day, and one of them is an assu
 Sweep, every minute (`seed survival at every minute`): the race and lint saves coincide at every minute
 from 10:59 to 16:59 on a rotation day (361 minutes; the observed seed runs ended 11:25 to 14:57), and the
 Sunday `ci-main` after a go.sum change saves at every minute from 10:59 to 22:59 (721 minutes; cron 13:23,
-observed 20:31).
+observed 20:31). The test samples every hour (rotation, at :59) and every two hours (Sunday) by default,
+because each replay runs the prune's jq about thirty times and the package has the hosted 600 s budget
+(the added test time is about 5 s); `HIKYO_CACHE_SWEEP_FULL=1 go test -run TestCacheBudgetModel
+./scripts/ci/` runs every minute (100 to 150 s) and is how the table below was measured.
 
 | Sweep | Limit | Minutes with a newest seed lost | Worst peak | Most live entries evicted |
 | --- | --- | --- | --- | --- |

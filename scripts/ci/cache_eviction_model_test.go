@@ -598,6 +598,16 @@ func coincideAt(p plan, minute int) plan {
 	return p
 }
 
+// sweepStep is the sampling step in minutes: coarse by default, because every replay runs the prune's jq
+// about thirty times (about 0.25 s) and the package has a 600 s budget in hosted CI; one minute when
+// HIKYO_CACHE_SWEEP_FULL is set, which is how the documented per-minute figures were measured (100 to 150 s).
+func sweepStep(coarse int) int {
+	if os.Getenv("HIKYO_CACHE_SWEEP_FULL") != "" {
+		return 1
+	}
+	return coarse
+}
+
 type seedSweep struct {
 	minutes, evicted int
 	peak             float64
@@ -721,7 +731,7 @@ func TestCacheBudgetModel(t *testing.T) {
 		}
 	})
 
-	// Every minute of the observed day window: the race and lint saves coincide on a rotation day
+	// The observed day window, every minute with HIKYO_CACHE_SWEEP_FULL=1 and every hour (at :59) otherwise: the race and lint saves coincide on a rotation day
 	// (10:59 to 16:59, the observed seed runs ended 11:25 to 14:57), and the Sunday ci-main run after a
 	// go.sum change saves at any time from 10:59 to 22:59 (cron 13:23, observed 20:31). The newest
 	// main and dev seeds must survive all of them at both limits. The survival rests on one stated
@@ -730,7 +740,7 @@ func TestCacheBudgetModel(t *testing.T) {
 		for _, l := range limits {
 			t.Run("rotation day/"+l.name, func(t *testing.T) {
 				t.Parallel()
-				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 16*60+59, 1, func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
+				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 16*60+59, sweepStep(60), func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
 				t.Logf("%s: %d minutes, seed lost at %d, worst peak %.2f GB, most live entries evicted %d", l.name, sweep.minutes, len(sweep.lost), sweep.peak, sweep.evicted)
 				if len(sweep.lost) != 0 {
 					t.Fatalf("a rotation day loses a newest seed at %v (%s)", sweep.lost, l.name)
@@ -738,7 +748,7 @@ func TestCacheBudgetModel(t *testing.T) {
 			})
 			t.Run("sunday go.sum/"+l.name, func(t *testing.T) {
 				t.Parallel()
-				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 22*60+59, 1, func(p plan, minute int) plan {
+				sweep := sweepSeeds(t, planAdopted, l.bytes, 10*60+59, 22*60+59, sweepStep(120), func(p plan, minute int) plan {
 					p.times.ciMain = [2]int{minute / 60, minute % 60}
 					return p
 				}, sundayGoSum)
@@ -750,14 +760,14 @@ func TestCacheBudgetModel(t *testing.T) {
 		}
 		// Sensitivity: if a weekday run touched a seed no more often than any other busy entry (the
 		// hour mark, a tie going against the seeds), the same rotation day loses them at nearly every
-		// minute. Sampled every ten minutes here; the full sweep lost a seed at 327 of 361 minutes at
+		// minute. Sampled every hour here; the full per-minute sweep (HIKYO_CACHE_SWEEP_FULL=1) lost a seed at 327 of 361 minutes at
 		// 10.00 GB and 326 at 10 GiB (docs/development/ci.md).
 		for _, l := range limits {
 			t.Run("sensitivity, seeds as ordinary entries/"+l.name, func(t *testing.T) {
 				t.Parallel()
 				p := planAdopted
 				p.seedsAsBusy = true
-				sweep := sweepSeeds(t, p, l.bytes, 10*60+59, 16*60+59, 10, func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
+				sweep := sweepSeeds(t, p, l.bytes, 10*60+59, 16*60+59, sweepStep(60), func(p plan, minute int) plan { return coincideAt(p, minute) }, rotationDay)
 				if len(sweep.lost) == 0 {
 					t.Fatalf("with seeds touched like any other entry no minute loses a seed at %s; the live-seed assumption is no longer load-bearing, update docs/development/ci.md", l.name)
 				}
