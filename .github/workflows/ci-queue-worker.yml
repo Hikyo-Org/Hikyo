@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: ${{ matrix.work.kind == 'group' && 10 || 1 }}
     strategy:
       fail-fast: false
+      # At most two heads past the reserve check at once: the check reads rate_limit before any job spends, so an unbounded fan-out (a publisher change reassesses every open PR) could all pass it together (#1553, #1598).
+      max-parallel: 2
       matrix:
         work: ${{ fromJSON(inputs.work) }}
     permissions:

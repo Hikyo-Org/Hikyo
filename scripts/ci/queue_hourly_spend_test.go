@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -72,54 +73,67 @@ func TestReserveConstantsAgreeAcrossGoAndShell(t *testing.T) {
 	}
 }
 
-// TestIncidentHourSpendIsPinned builds the incident-hour spend from per-call costs and pins
-// the throttled total. The reserve and costs come from the sources (reserveConstants).
-//
-// Measured: per-pass costs counted in the pr-gate fixtures (dev publish 42, queue publish 33,
-// a group pass 41, a dev discover 3) and the incident hour's run counts from the run listing
-// (2026-11-23 21:00-22:00 UTC: 42 dev publishes, 17 queue publishes, 1 group, 34 discovers,
-// 75 retry runs). Estimated: the counts after coalescing (16 dev publishes, 10 queue
-// publishes), 30 retry listings, 100 for workflows this repository does not control, and 4
-// gated jobs passing the check at the same instant.
-//
-// Gated spenders (publishers, queue publishers, the sweep's routing target) defer when
-// remaining - 42 < reserve. Ungated spenders cannot defer: dev discovery on events (gating it
-// would drop the event or hold a 5-minute job for up to an hour), the retry listings that
-// complete group jobs, and foreign workflows. Group passes may spend the reserve.
-func TestIncidentHourSpendIsPinned(t *testing.T) {
-	const (
-		limit       = 1000
-		concurrency = 4 // estimated
-	)
+// maxParallelLanes reads max-parallel from the two gated publisher fan-outs (dev publishers
+// and queue head workers) so the concurrency margin is derived from the workflows.
+func maxParallelLanes(t *testing.T) int {
+	t.Helper()
+	total := 0
+	for _, file := range []string{"ci-dev-gate.yml", "ci-queue-worker.yml"} {
+		raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := regexp.MustCompile(`(?m)^\s+max-parallel: (\d+)$`).FindAllStringSubmatch(string(raw), -1)
+		if len(m) != 1 {
+			t.Fatalf("%s must cap its publisher matrix with exactly one max-parallel, found %d", file, len(m))
+		}
+		n, err := strconv.Atoi(m[0][1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += n
+	}
+	return total
+}
+
+// TestReserveSizingIsPinnedAndDocumented pins the sizing behind the interim exception of
+// 2026-11-26 (#1598): R = 480 is below the honest bound, so ungated spend can exceed it in a
+// busy hour while a group is in flight and a merge group can then be dequeued and
+// re-queued. Every figure is measured (M) or estimated (E); docs/development/ci.md must
+// state the same numbers.
+func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
+	const limit = 1000
 	reserve, nonGroupCost, groupCost := reserveConstants(t)
+	margin := maxParallelLanes(t) * nonGroupCost // E: lanes past the check at once, now capped by max-parallel
 	const (
-		discoverCost = 3   // measured
-		otherWork    = 100 // estimated, foreign workflows
-		retryLists   = 30  // estimated
+		discovery   = 102 // M: 34 event discovers x 3 reads, incident hour 2026-11-23 21:00-22:00 UTC
+		retryFirst  = 75  // M: 75 executed retry runs x at least one jobs listing
+		requested   = 36  // M: requested passes of two groups, 2 x about 18 (fixtures)
+		waitSweeps  = 62  // E: lower bound, 2 sweeps an hour x 31 (6 run listings + 25 jobs listings)
+		attempt3    = 42  // E: one attempt-3 bypass (reserve.go) per hour, spent ungated
+		inRepoOther = 60  // E: about 55 ungated in-repo runs an hour x at least 1 call
 	)
-	gatedDemand := 16*nonGroupCost + 10*33
-	ungated := 34*discoverCost + retryLists + otherWork
-	group := groupCost
-	// Gated work starts only while remaining >= reserve + cost, then up to `concurrency`
-	// jobs started at the margin still finish.
-	gatedBound := limit - (reserve + nonGroupCost) + concurrency*nonGroupCost
-	spent := min(gatedDemand, gatedBound) + ungated + group
-	// The worst case of the reserve's own derivation: two overlapping groups of three attempts.
-	groupWorst := 2 * 3 * groupCost
-	worst := min(gatedDemand, gatedBound) + ungated + groupWorst
-	if gatedDemand <= gatedBound {
-		t.Fatalf("incident demand %d fits under the gated bound %d, the throttle would not be what holds it", gatedDemand, gatedBound)
+	groups := 2 * 3 * groupCost // M: two overlapping groups, three attempts each
+	measured := discovery + retryFirst + groups + requested + margin
+	honest := measured + waitSweeps + attempt3 + inRepoOther
+	if measured != 627 || honest != 791 {
+		t.Fatalf("sizing changed: measured %d (want 627), honest lower bound %d (want 791)", measured, honest)
 	}
-	// The reserve must cover what nothing defers plus the groups: otherwise a merge group
-	// can be starved by this repository's own spend and delayed past its timeout.
-	if ungated+group > reserve || ungated+groupWorst > reserve {
-		t.Fatalf("the reserve %d does not cover ungated %d plus a group pass %d (worst %d)", reserve, ungated, group, groupWorst)
+	if reserve >= honest {
+		t.Fatalf("R=%d now covers the honest bound %d: drop the interim exception from the PR body and docs", reserve, honest)
 	}
-	// The owner accepts about 25% over the limit, as delay only.
-	if worst > limit+limit/4 {
-		t.Fatalf("the worst case %d overshoots the accepted quarter", worst)
+	gatedBound := limit - (reserve + nonGroupCost) + margin
+	worst := gatedBound + (honest - margin)
+	if gatedBound != 646 || worst != 1269 {
+		t.Fatalf("pinned figures changed: gated bound %d (want 646), worst %d (want 1269)", gatedBound, worst)
 	}
-	if spent != 919 || worst != 1124 || gatedBound != 646 || ungated != 232 {
-		t.Fatalf("pinned figures changed: spent %d (want 919), worst %d (want 1124), gated bound %d (want 646), ungated %d (want 232)", spent, worst, gatedBound, ungated)
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs", "development", "ci.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "627", "791", "dequeued and re-queued", "1,269"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
+		}
 	}
 }

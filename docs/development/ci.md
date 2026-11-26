@@ -484,12 +484,48 @@ about 36 more for two groups), the worker dispatch (a group job, which never def
 the other workflows (under about 100 an hour, which do not check the reserve) and
 concurrent non-group jobs that all pass the check together and then spend 42 each. Group
 demand alone can exceed 480 within an hour, and so can the overshoot of those others.
-The ungated spend (232) is part of R, so the throttled incident hour is bounded at 919 requests (gated bound 646, pinned by `TestIncidentHourSpendIsPinned`) and even two groups of three attempts (246) leave 1,124, within the quarter the owner accepted. The residual is
+The sizing is in the interim exception below. The residual is
 completed by
 `gh workflow run ci-queue-gate.yml -f pr_number=<n>`, which also completes a group
 job that reached attempt 3 rate-limited (nothing reruns it automatically). The dispatch
 job is deliberately not made to defer: a failed dispatch is not a job the retry follows,
 so deferring it would leave group work undispatched until the next cron.
+
+#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)
+
+The accepted rule is that an overage delays a merge group and never drops it. The interim
+exception, decided by the owner on 2026-11-26, is that a merge group can occasionally be
+dequeued and re-queued when ungated spend exceeds the reserve: the group's check then
+waits for the reset (up to about 61 minutes after a 36 to 73 minute merge CI) and can pass
+the 120-minute response timeout, which the live ruleset 20539346 already has. No App token
+exists, so the reserve stays at R = 480 (defer below 522) and the exception ends when the
+separate token of #1598 (https://github.com/Hikyo-Org/Hikyo/issues/1598) lands.
+
+Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00-22:00 UTC):
+
+| Spender | Requests | Basis |
+| --- | --- | --- |
+| Event-driven dev discovery | 102 | M: 34 discovers x 3 reads |
+| Retry first pass | 75 | M: 75 executed retry runs x at least one jobs listing |
+| Two groups, three attempts | 246 | M: 2 x 3 x 41 |
+| `requested` passes of two groups | 36 | M: about 18 each (fixtures) |
+| Gated concurrency margin | 168 | E: 4 lanes x 42; `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
+| **Measured total** | **627** | |
+| Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
+| Attempt-3 bypass (`reserve.go`) | 42 per job | E: the last attempt spends instead of deferring |
+| Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
+| **Honest lower bound** | **791** (about 790) | measured plus the lower estimates |
+
+R = 480 is below 791. With 646 allowed to gated work (1000 - 522 + 168), the pinned
+worst case at the lower bound is 646 + 623 = 1,269 requests, 27% over the window. The
+retirement fan-outs of `ci-check-retirement.yml` are not capped and not counted (hourly
+discovery, small). Expected drop frequency (an estimate): ungated spend near the incident
+level while a merge group is in flight. Over the last seven days 25 of 168 hours (15%) had
+both a merge-queue run in flight (43 hours, from 31 merge-group runs) and at least 195
+runs created (half the incident hour's 390; 45 hours); that is an upper bound on the share
+of hours at risk, from run counts as a proxy for spend, and only a rate-limited group whose
+wait then passes the timeout is dropped. `TestReserveSizingIsPinnedAndDocumented` pins the
+numbers above and fails if R ever covers the bound, so the exception cannot outlive it.
 
 The pending and refusal records say only that the publisher did not finish (it
 failed or ran out of its budget) and that merging stays blocked. They name no

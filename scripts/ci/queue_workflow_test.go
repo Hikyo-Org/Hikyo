@@ -296,8 +296,8 @@ func queueWorkerContract(raw []byte) error {
 	if err := j.Strategy.Decode(&strategy); err != nil {
 		return err
 	}
-	if !reflect.DeepEqual(strategy, map[string]any{"fail-fast": false, "matrix": map[string]any{"work": "${{ fromJSON(inputs.work) }}"}}) {
-		return fmt.Errorf("complete worker batch must expand exactlyonce withfailfastfalse")
+	if !reflect.DeepEqual(strategy, map[string]any{"fail-fast": false, "max-parallel": 2, "matrix": map[string]any{"work": "${{ fromJSON(inputs.work) }}"}}) {
+		return fmt.Errorf("complete worker batch must expand exactlyonce withfailfastfalse and at most two lanes")
 	}
 	if err := queueBootstrapContract(j.Steps[0].Run, false); err != nil {
 		return err
@@ -753,6 +753,7 @@ func TestQueueHeadWorkerRejectsUnsafeWorkflowMutations(t *testing.T) {
 		},
 		"unboundedpendingqueue": func(w map[string]any) { queuePublisherJob(w)["concurrency"].(map[string]any)["queue"] = "max" },
 		"failfastdefault":       func(w map[string]any) { delete(queuePublisherJob(w)["strategy"].(map[string]any), "fail-fast") },
+		"unboundedlanes":        func(w map[string]any) { delete(queuePublisherJob(w)["strategy"].(map[string]any), "max-parallel") },
 		"excluderevocations": func(w map[string]any) {
 			queuePublisherJob(w)["strategy"].(map[string]any)["matrix"].(map[string]any)["exclude"] = []any{map[string]any{"kind": "admission"}}
 		},
