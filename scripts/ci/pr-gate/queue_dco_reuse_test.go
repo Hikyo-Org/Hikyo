@@ -62,21 +62,23 @@ test "$GIT_CONFIG_SYSTEM" = /dev/null
 test "$GIT_CONFIG_NOSYSTEM" = 1
 test "$GIT_CONFIG_COUNT" = 0
 test "${GH_TOKEN+x}" != x
-fetch=false; target=; previous=
+fetch=false; refspec=false; target=; previous=
 for argument in "$@"; do
+ if [ "$argument" = %s ]; then refspec=true; fi
  if [ "$previous" = -C ]; then target=$argument; fi
  if [ "$argument" = fetch ]; then fetch=true; fi
  if [ "$argument" = rev-list ]; then printf 'check\n' >> %s; fi
  previous=$argument
 done
 if $fetch; then
+ $refspec
  printf 'fetch %%s\n' "$target" >> %s
  test ! -e %s
  cp -R %s/. "$target/"
  exit 0
 fi
 exec %s "$@"
-`, quote(log), quote(log), quote(fail), quote(repo), quote(git))
+`, "'"+queueTrustedMainRefspec+"'", quote(log), quote(log), quote(fail), quote(repo), quote(git))
 	if err := os.WriteFile(filepath.Join(tools, "git"), []byte(shim), 0755); err != nil {
 		t.Fatal(err)
 	}

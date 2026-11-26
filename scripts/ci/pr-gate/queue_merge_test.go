@@ -75,7 +75,7 @@ test "$GIT_CONFIG_SYSTEM" = /dev/null
 test "$GIT_CONFIG_COUNT" = 0
 test "${GH_TOKEN+x}" != x
 test "${GITHUB_TOKEN+x}" != x
-operation=; target=; previous=; penultimate=; origin=false; promisor=false; filter=false; fetch_filter=false; write_tree=false
+operation=; target=; previous=; penultimate=; origin=false; promisor=false; filter=false; fetch_filter=false; write_tree=false; refspec=
 for argument in "$@"; do
  if [ "$previous" = -C ]; then target=$argument; fi
  case "$argument" in
@@ -86,6 +86,7 @@ for argument in "$@"; do
   remote.origin.partialclonefilter=blob:none) filter=true ;;
   --filter=blob:none) fetch_filter=true ;;
   --write-tree) write_tree=true ;;
+  +refs/heads/main:refs/hikyo/trusted-main) refspec=$argument ;;
  esac
  penultimate=$previous
  previous=$argument
@@ -96,7 +97,8 @@ if [ -n "$operation" ]; then
 fi
 if [ "$operation" = fetch ]; then
  $fetch_filter
- @GIT@ -c protocol.file.allow=always -c remote.origin.url=@ORIGIN@ -c remote.origin.promisor=true -c remote.origin.partialclonefilter=blob:none -C "$target" fetch --quiet --no-tags --filter=blob:none origin +refs/heads/main:refs/hikyo/trusted-main "$penultimate" "$previous"
+ test -n "$refspec"
+ @GIT@ -c protocol.file.allow=always -c remote.origin.url=@ORIGIN@ -c remote.origin.promisor=true -c remote.origin.partialclonefilter=blob:none -C "$target" fetch --quiet --no-tags --filter=blob:none origin "$refspec" "$penultimate" "$previous"
  if @GIT@ -c remote.origin.promisor=false -C "$target" cat-file -e @SHARED@ 2>/dev/null; then exit 92; fi
  printf 'filtered\n' >> @LOG@
  exit 0

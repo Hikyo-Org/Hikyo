@@ -58,20 +58,23 @@ test "${GIT_TERMINAL_PROMPT:-}" = 0
 test "${GH_TOKEN+x}" != x
 test "${DCO_EXEMPT_AUTHOR+x}" != x
 fetch=false
+refspec=false
 target=
 previous=
 for argument in "$@"; do
+  if [ "$argument" = %s ]; then refspec=true; fi
   if [ "$previous" = -C ]; then target=$argument; fi
   if [ "$argument" = fetch ]; then fetch=true; fi
   previous=$argument
 done
 if $fetch; then
   test -n "$target"
+  $refspec
   cp -R %s/. "$target/"
   exit 0
 fi
 exec %s "$@"
-`, quote(metadata), quote(git))
+`, "'"+queueTrustedMainRefspec+"'", quote(metadata), quote(git))
 	if err := os.WriteFile(filepath.Join(tools, "git"), []byte(wrapper), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +181,7 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 		})
 	}
 }
+
 func TestQueueDCOFailsClosedWithoutTrustedMain(t *testing.T) {
 	root, err := filepath.Abs("../../..")
 	if err != nil {

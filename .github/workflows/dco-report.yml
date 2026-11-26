@@ -43,7 +43,8 @@ jobs:
         id: main
         run: |
           git fetch --no-tags origin refs/heads/main
-          echo "sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')" >>"$GITHUB_OUTPUT"
+          sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
       - name: Report missing sign-offs
         env:
           GH_TOKEN: ${{ github.token }}

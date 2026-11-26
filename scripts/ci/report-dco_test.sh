@@ -70,7 +70,7 @@ fail() {
 (MAIN=$dependabot && run "$dependabot") || fail 'Dependabot commit already on main reported missing'
 run "$dependabot" && fail 'Dependabot commit off main claimed the exemption'
 (MAIN=$signed && run "$dependabot") && fail 'forged Dependabot commit off main claimed the exemption'
-(MAIN=$dependabot && run "$unsigned") && fail 'main ancestry exempted a human commit'
+(MAIN=$unsigned && run "$unsigned") && fail 'main ancestry exempted a human commit'
 (AUTHOR='dependabot[bot]' && run "$dependabot") || fail 'PR opened by Dependabot reported missing'
 (MAIN='' && run "$dependabot") && fail 'unset trusted main did not fail closed'
 (MAIN=0000000000000000000000000000000000000001 && run "$dependabot") && fail 'unresolvable trusted main did not fail closed'
