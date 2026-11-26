@@ -553,18 +553,31 @@ func rotationDay(t *testing.T, p plan, limit int64) *cacheModel {
 			at       time.Time
 			prefixes []string
 			headroom string
+			// lead is how long before the save the headroom job ran: the seed jobs compile after it (the race
+			// seed about 20 minutes; the lint seed starts when the race run, its prune included, has ended).
+			lead time.Duration
 		}{
-			{day(p.times.race), []string{"go-race-v2-", "go-mod-v2-"}, "go-race-v2- go-mod-v2-"},
-			{day(p.times.feedbackV1), []string{"go-feedback-v1-"}, ""},
-			{day(p.times.lint), []string{"go-lintdriver-v2-"}, "go-lintdriver-v2-"},
+			{day(p.times.race), []string{"go-race-v2-", "go-mod-v2-"}, "go-race-v2- go-mod-v2-", 20 * time.Minute},
+			{day(p.times.feedbackV1), []string{"go-feedback-v1-"}, "", 0},
+			{day(p.times.lint), []string{"go-lintdriver-v2-"}, "go-lintdriver-v2-", 2 * time.Minute},
 		} {
-			events = append(events, modelEvent{w.at, func() {
-				var old []*modelEntry
+			// The generations are read when the headroom job runs, before it deletes anything: the new one is
+			// what the writer compiles whatever the cache holds.
+			var old []*modelEntry
+			read := func() {
 				for _, prefix := range w.prefixes {
 					old = append(old, m.generation(prefix)...)
 				}
-				if p.headroom && w.headroom != "" {
+			}
+			if p.headroom && w.headroom != "" {
+				events = append(events, modelEvent{w.at.Add(-w.lead), func() {
+					read()
 					m.headroom(w.headroom)
+				}})
+			}
+			events = append(events, modelEvent{w.at, func() {
+				if old == nil {
+					read()
 				}
 				m.addNext(old, true)
 			}})
@@ -586,7 +599,7 @@ func ciMainWeekday(t *testing.T, p plan, limit int64) *cacheModel {
 }
 
 // ciMainSaves are the weekly writers' saves after a go.sum change: each restores the old generation of its
-// lanes and saves the next one, about 3.3 GB at once. With the headroom job (ci-main.yml) the room is made
+// lanes and saves the next one, about 3.3 GB at once. With the headroom workflow (ci-main-headroom.yml) the room is made
 // at the start of the run, about 45 minutes before the saves of ci.yml's jobs; the new generation is what the
 // writers compile whatever the cache still holds, so it is read before the job deletes anything.
 func ciMainSaves(p plan, m *cacheModel, save time.Time, busy bool) []modelEvent {
@@ -678,10 +691,11 @@ func monday(t *testing.T, p plan, limit int64) *cacheModel {
 	if p.devRefresh {
 		events = append(events, modelEvent{p.times.at(30, p.times.devSeed), func() { m.replaceSeed("dev", seedSizesDev) }})
 	}
+	if p.headroom {
+		// The headroom job runs before the seed's compile, about 20 minutes before the save.
+		events = append(events, modelEvent{save.Add(-20 * time.Minute), func() { m.headroom("go-lintdriver-v2-") }})
+	}
 	events = append(events, modelEvent{save, func() {
-		if p.headroom {
-			m.headroom("go-lintdriver-v2-")
-		}
 		m.add("go-lintdriver-v2-Linux-X64-ubuntu26-"+strings.Repeat("a", 64)+"-2026-W49", "refs/heads/main", size, "", false)
 	}})
 	events = append(events, p.afterWriter(m, save)...)

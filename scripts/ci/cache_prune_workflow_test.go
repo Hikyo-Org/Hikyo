@@ -554,26 +554,44 @@ func TestCachePruneHeadroom(t *testing.T) {
 	}
 }
 
-// requireCIMainHeadroom pins the one job of ci-main.yml that holds actions: write: the weekly writers' saves run in
-// ci.yml's jobs, which run PR code in the pull-request workflows and so can never hold it.
+// requireCIMainHeadroom pins ci-main-headroom.yml, the one place that frees room for the weekly ci-main writers.
+// Their saves run in ci.yml's jobs, which run PR code in the pull-request workflows and so can never hold
+// actions: write; and ci-main.yml is a promotion-proof producer whose job inventory the source proof checks, so
+// the step lives in a workflow of its own that runs 45 minutes before ci-main's cron.
 func requireCIMainHeadroom(workflow map[string]any) error {
 	jobs, _ := workflow["jobs"].(map[string]any)
-	if len(jobs) != 2 {
-		return fmt.Errorf("ci-main is its headroom job and its validation")
+	if len(jobs) != 1 {
+		return fmt.Errorf("ci-main-headroom is its one headroom job")
 	}
-	validation, _ := jobs["validation"].(map[string]any)
-	if validation["needs"] != "headroom" || validation["if"] != "${{ !cancelled() && github.ref == 'refs/heads/main' }}" {
-		return fmt.Errorf("validation waits for the headroom job but never depends on its success")
+	top := make([]string, 0, len(workflow))
+	for key := range workflow {
+		top = append(top, key)
 	}
-	if !reflect.DeepEqual(workflow["permissions"], map[string]any{"actions": "read", "contents": "read"}) {
-		return fmt.Errorf("ci-main grants read only by default")
+	sort.Strings(top)
+	if !reflect.DeepEqual(top, []string{"concurrency", "jobs", "name", "on", "permissions"}) {
+		return fmt.Errorf("ci-main-headroom sets only name, triggers, permissions, concurrency and jobs (got %v)", top)
+	}
+	if !reflect.DeepEqual(workflow["permissions"], map[string]any{"contents": "read"}) {
+		return fmt.Errorf("ci-main-headroom grants read only by default")
+	}
+	if !reflect.DeepEqual(workflow["concurrency"], map[string]any{"group": "ci-main-headroom", "cancel-in-progress": false}) {
+		return fmt.Errorf("ci-main-headroom runs queue behind each other and are never cancelled mid-delete")
+	}
+	triggers, _ := workflow["on"].(map[string]any)
+	if len(triggers) != 2 {
+		return fmt.Errorf("ci-main-headroom runs only weekly or manually")
+	}
+	if _, ok := triggers["workflow_dispatch"]; !ok {
+		return fmt.Errorf("ci-main-headroom has no manual run")
+	}
+	if !reflect.DeepEqual(triggers["schedule"], []any{map[string]any{"cron": "38 12 * * 0"}}) {
+		return fmt.Errorf("ci-main-headroom runs 45 minutes before ci-main's Sunday cron (13:23)")
 	}
 	want := map[string]any{
-		"if":                "github.ref == 'refs/heads/main'",
-		"runs-on":           "ubuntu-latest",
-		"timeout-minutes":   10,
-		"continue-on-error": true,
-		"permissions":       map[string]any{"contents": "read", "actions": "write"},
+		"if":              "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'",
+		"runs-on":         "ubuntu-latest",
+		"timeout-minutes": 10,
+		"permissions":     map[string]any{"contents": "read", "actions": "write"},
 		"steps": []any{
 			map[string]any{
 				"name": "Check out immutable trusted main without credentials",
@@ -604,36 +622,57 @@ func requireCIMainHeadroom(workflow map[string]any) error {
 	return nil
 }
 
-func TestCIMainHeadroomJob(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-main.yml"))
-	if err != nil {
-		t.Fatal(err)
+func TestCIMainHeadroomWorkflow(t *testing.T) {
+	read := func(name string) ([]byte, map[string]any) {
+		raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var workflow map[string]any
+		if err := yaml.Unmarshal(raw, &workflow); err != nil {
+			t.Fatal(err)
+		}
+		return raw, workflow
 	}
-	var workflow map[string]any
-	if err := yaml.Unmarshal(raw, &workflow); err != nil {
-		t.Fatal(err)
-	}
+	raw, workflow := read("ci-main-headroom.yml")
 	if err := requireCIMainHeadroom(workflow); err != nil {
 		t.Fatal(err)
+	}
+	// ci-main.yml itself carries no headroom job and no actions: write: the source proof rejects job names it
+	// does not know, and its writers' jobs run PR code.
+	_, ciMain := read("ci-main.yml")
+	mainJobs, _ := ciMain["jobs"].(map[string]any)
+	if len(mainJobs) != 1 || mainJobs["validation"] == nil {
+		t.Fatalf("ci-main.yml must keep validation as its only job (the promotion proof inventory), got %v", mainJobs)
+	}
+	if !reflect.DeepEqual(ciMain["permissions"], map[string]any{"actions": "read", "contents": "read"}) {
+		t.Fatal("ci-main.yml grants read only")
 	}
 	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["headroom"].(map[string]any) }
 	step := func(w map[string]any, i int) map[string]any { return job(w)["steps"].([]any)[i].(map[string]any) }
 	for name, mutate := range map[string]func(map[string]any){
-		"failure fails the run": func(w map[string]any) { delete(job(w), "continue-on-error") },
 		"token widened": func(w map[string]any) {
 			job(w)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
 		},
-		"no token":                  func(w map[string]any) { job(w)["permissions"] = map[string]any{"contents": "read"} },
-		"any ref":                   func(w map[string]any) { delete(job(w), "if") },
+		"no token":             func(w map[string]any) { job(w)["permissions"] = map[string]any{"contents": "read"} },
+		"workflow token":       func(w map[string]any) { w["permissions"] = map[string]any{"contents": "read", "actions": "write"} },
+		"any ref":              func(w map[string]any) { delete(job(w), "if") },
+		"pull request trigger": func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
+		"another cron": func(w map[string]any) {
+			w["on"].(map[string]any)["schedule"] = []any{map[string]any{"cron": "0 14 * * 0"}}
+		},
+		"cancelling group": func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"second job": func(w map[string]any) {
+			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
+		},
 		"mutable checkout":          func(w map[string]any) { step(w, 0)["with"].(map[string]any)["ref"] = "${{ github.ref }}" },
 		"checkout keeps credential": func(w map[string]any) { step(w, 0)["with"].(map[string]any)["persist-credentials"] = true },
 		"runs every week":           func(w map[string]any) { delete(step(w, 2)["env"].(map[string]any), "HEADROOM_SKIP_KEY") },
 		"another lane":              func(w map[string]any) { step(w, 2)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-mod-v2-" },
 		"another script":            func(w map[string]any) { step(w, 2)["run"] = "./scripts/ci/cache-prune.sh && true" },
-		"validation needs success": func(w map[string]any) {
-			w["jobs"].(map[string]any)["validation"].(map[string]any)["if"] = "github.ref == 'refs/heads/main'"
+		"repository code": func(w map[string]any) {
+			job(w)["steps"] = append(job(w)["steps"].([]any), map[string]any{"run": "go run ./scripts/ci/prepare-lint-cache"})
 		},
-		"validation does not wait": func(w map[string]any) { delete(w["jobs"].(map[string]any)["validation"].(map[string]any), "needs") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed map[string]any
@@ -642,7 +681,7 @@ func TestCIMainHeadroomJob(t *testing.T) {
 			}
 			mutate(changed)
 			if requireCIMainHeadroom(changed) == nil {
-				t.Fatal("accepted a ci-main headroom job outside its trust boundary")
+				t.Fatal("accepted a ci-main headroom workflow outside its trust boundary")
 			}
 		})
 	}

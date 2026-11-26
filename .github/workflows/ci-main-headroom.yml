@@ -1,0 +1,48 @@
+# Frees room in the Actions cache for the weekly ci-main writers before they save (docs/development/ci.md,
+# "Headroom before the save"). The writers are jobs of ci.yml, which runs pull-request code, so none of them can
+# hold actions: write; and ci-main.yml is a promotion-proof producer whose job inventory the source proof
+# checks, so the step cannot live there either. This workflow is the separate trusted producer: it runs 45
+# minutes before ci-main's cron (13:23 on Sunday), holds actions: write, checks out only the immutable main
+# commit and runs only scripts/ci/cache-prune.sh, never repository dependencies or Go code. Best effort: ci-main
+# does not wait for it, and a failure here changes nothing for it. A manual ci-main run is covered by
+# dispatching this workflow first.
+name: ci-main-headroom
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '38 12 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-main-headroom
+  cancel-in-progress: false
+
+jobs:
+  headroom:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      # Nothing to do unless go.mod or go.sum changed since the last save (no go-test-v2 entry for the current
+      # files yet): that is what makes the weekly writers save the 3 GB of rotated entries.
+      - name: Make room in the Actions cache for the weekly writers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEADROOM_PREFIXES: go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-
+          HEADROOM_SKIP_KEY: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+        run: ./scripts/ci/cache-prune.sh

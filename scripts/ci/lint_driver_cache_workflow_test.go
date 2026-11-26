@@ -32,6 +32,7 @@ var lintDriverSeedSpec = reuseSeedSpec{
 	lookupID:     "lint-driver-seed",
 	key:          lintDriverSeedKey,
 	restoreKeys:  lintDriverRunnerPrefix,
+	headroomName: "Make room in the Actions cache for the lint driver seed",
 	generationID: lintDriverGenerationID,
 	generation:   lintDriverGenerationRun,
 	compile: "cache=\"$HOME/.cache/go-build\"\n" +
@@ -42,9 +43,7 @@ var lintDriverSeedSpec = reuseSeedSpec{
 		lintDriverSeedLintTests +
 		"du -sh \"$cache\"\n" +
 		"df -h \"$cache\"\n",
-	maxTimeout:     45,
-	headroomPrefix: "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
-	headroomName:   "Make room in the Actions cache for the lint driver seed",
+	maxTimeout: 45,
 }
 
 func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
@@ -86,24 +85,25 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		"prune runs on a cancelled seed": func(w map[string]any) {
 			w["jobs"].(map[string]any)["prune"].(map[string]any)["if"] = "${{ always() }}"
 		},
-		"seed job holds the token":   func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
-		"seed job without the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"contents": "read"} },
-		"seed job widened": func(w map[string]any) {
-			job(w)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
+		"seed job holds the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"seed job holds the token with contents": func(w map[string]any) {
+			job(w)["permissions"] = map[string]any{"contents": "read", "actions": "write"}
 		},
-		"headroom dropped": func(w map[string]any) {
-			j := job(w)
-			steps := j["steps"].([]any)
-			j["steps"] = append(append([]any{}, steps[:7]...), steps[8:]...)
+		"seed does not wait for headroom": func(w map[string]any) { delete(job(w), "needs") },
+		"no headroom job":                 func(w map[string]any) { delete(w["jobs"].(map[string]any), "headroom") },
+		"headroom runs repository code": func(w map[string]any) {
+			h := w["jobs"].(map[string]any)["headroom"].(map[string]any)
+			h["steps"] = append(h["steps"].([]any), map[string]any{"run": "go run ./scripts/ci/prepare-lint-cache"})
 		},
-		"headroom after the save": func(w map[string]any) { swapSteps(job(w), 7, 8) },
-		"headroom on a hit":       func(w map[string]any) { delete(seedStep(w, 7), "if") },
-		"headroom from any ref": func(w map[string]any) {
-			seedStep(w, 7)["if"] = strings.Replace(seedStep(w, 7)["if"].(string), " && github.ref == 'refs/heads/main'", "", 1)
+		"headroom fails the run": func(w map[string]any) {
+			delete(w["jobs"].(map[string]any)["headroom"].(map[string]any), "continue-on-error")
 		},
-		"headroom without its lane": func(w map[string]any) { seedStep(w, 7)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "" },
-		"headroom reads the PR head": func(w map[string]any) {
-			seedStep(w, 7)["env"].(map[string]any)["GH_REPO"] = "${{ github.event.pull_request.head.repo.full_name }}"
+		"headroom token widened": func(w map[string]any) {
+			w["jobs"].(map[string]any)["headroom"].(map[string]any)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
+		},
+		"headroom runs on a hit": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["headroom"].(map[string]any)["steps"].([]any)
+			delete(steps[len(steps)-1].(map[string]any)["env"].(map[string]any), "HEADROOM_SKIP_KEY")
 		},
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
@@ -150,16 +150,16 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		"compile always runs": func(w map[string]any) { delete(seedStep(w, 6), "if") },
 		"compile env":         func(w map[string]any) { seedStep(w, 6)["env"] = map[string]any{"GOCACHE": "/tmp/other"} },
 		"save without exact miss": func(w map[string]any) {
-			seedStep(w, 8)["if"] = "success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
+			seedStep(w, 7)["if"] = "success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
 		},
 		"save from any ref": func(w map[string]any) {
-			seedStep(w, 8)["if"] = "success() && steps.lint-driver-seed.outputs.cache-hit != 'true'"
+			seedStep(w, 7)["if"] = "success() && steps.lint-driver-seed.outputs.cache-hit != 'true'"
 		},
 		"save after failure": func(w map[string]any) {
-			seedStep(w, 8)["if"] = strings.Replace(seedStep(w, 8)["if"].(string), "success() && ", "always() && ", 1)
+			seedStep(w, 7)["if"] = strings.Replace(seedStep(w, 7)["if"].(string), "success() && ", "always() && ", 1)
 		},
-		"save under another key": func(w map[string]any) { seedStep(w, 8)["with"].(map[string]any)["key"] = lintDriverSeedKey },
-		"save another path":      func(w map[string]any) { seedStep(w, 8)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
+		"save under another key": func(w map[string]any) { seedStep(w, 7)["with"].(map[string]any)["key"] = lintDriverSeedKey },
+		"save another path":      func(w map[string]any) { seedStep(w, 7)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed map[string]any

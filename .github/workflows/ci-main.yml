@@ -15,39 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  # Frees room in the Actions cache for the saves below, before they start (docs/development/ci.md, "Headroom
-  # before the save"): ci.yml's jobs run PR code in the pull-request workflows, so none of them can hold
-  # actions: write; this job holds it and nothing runs here but the checked-out script of the exact main
-  # commit. It does nothing unless go.mod or go.sum changed since the last save (no go-test-v2 entry for the
-  # current files yet), which is what makes the weekly writers save the 3 GB of rotated entries. Best effort:
-  # a failure here never fails the run or blocks its validation.
-  headroom:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    continue-on-error: true
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - name: Check out immutable trusted main without credentials
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Select runner cache ABI
-        id: runner-cache-abi
-        run: ./scripts/ci/export-runner-cache-abi.sh
-      - name: Make room in the Actions cache for the weekly writers
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          HEADROOM_PREFIXES: go-mod-v2- go-test-v2- go-lint-v2- go-generated-v2- go-k8s-e2e-v2- go-fuzz-v2-
-          HEADROOM_SKIP_KEY: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
-        run: ./scripts/ci/cache-prune.sh
   validation:
-    needs: headroom
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/ci.yml
     with:
       revision: ${{ github.sha }}

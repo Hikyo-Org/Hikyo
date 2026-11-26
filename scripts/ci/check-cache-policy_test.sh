@@ -430,9 +430,10 @@ for reader in "$workflow:test_core_serial" "$workflows_dir/ci-invariants.yml:inv
 	fi
 done
 for file in "$@"; do
-	# Every go-lintdriver line is the seed key, one of the two reader lines or the seed's headroom lane.
+	# Every go-lintdriver line is the seed key, one of the two reader lines or the headroom job's lane and skip key.
 	grep -F 'go-lintdriver' "$file" | sed 's/^[[:space:]]*//' |
-		grep -Fxv -e "$lint_key" -e "key: $lint_module_prefix" -e "restore-keys: $lint_runner_prefix" -e "HEADROOM_PREFIXES: $lint_runner_prefix" >/dev/null &&
+		grep -Fxv -e "$lint_key" -e "key: $lint_module_prefix" -e "restore-keys: $lint_runner_prefix" -e "HEADROOM_PREFIXES: $lint_runner_prefix" \
+			-e "HEADROOM_SKIP_KEY: $lint_module_prefix\${{ steps.lint-cache-generation.outputs.value }}" >/dev/null &&
 		fail "unexpected lint driver cache key or prefix in $(basename "$file")"
 	[ "$(basename "$file")" != ci-lint-cache.yml ] || continue
 	awk '

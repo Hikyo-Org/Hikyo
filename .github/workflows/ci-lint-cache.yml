@@ -26,13 +26,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  seed:
+  # Frees room in the Actions cache before the seed compiles and saves (docs/development/ci.md, "Headroom
+  # before the save"). A job of its own: it holds actions: write, so it runs no repository dependency and no
+  # Go code, only the checked-out cache-prune.sh of the immutable main commit; the seed job below, which
+  # compiles repository code, keeps the read-only token. Best effort: a failure here never blocks the seed.
+  # An exact hit of the seed key means no save follows, so it deletes nothing then.
+  headroom:
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # actions: write only for the headroom step below; the checkout is the immutable trusted commit.
+    timeout-minutes: 10
+    continue-on-error: true
     permissions:
       contents: read
       actions: write
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Select weekly lint driver cache generation
+        id: lint-cache-generation
+        run: echo "value=$(date -u +%G-W%V)-nodwarf" >>"$GITHUB_OUTPUT"
+      - name: Make room in the Actions cache for the lint driver seed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEADROOM_PREFIXES: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          HEADROOM_SKIP_KEY: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ steps.lint-cache-generation.outputs.value }}
+        run: ./scripts/ci/cache-prune.sh
+
+  seed:
+    needs: headroom
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Check out immutable trusted main without credentials
@@ -88,19 +118,6 @@ jobs:
           go test -count=1 -timeout=20m ./internal/lint
           du -sh "$cache"
           df -h "$cache"
-      # Right before the save, and only when a save follows: frees room for it (docs/development/ci.md,
-      # "Headroom before the save"). The selection is scripts/ci/cache-prune.sh, the same text as the prune
-      # workflow's step; it never deletes a newest main or dev seed. Trusted main only, the checkout above is
-      # the immutable commit of this run, and the token goes to this one step.
-      - name: Make room in the Actions cache for the lint driver seed
-        if: >-
-          success() && steps.lint-driver-seed.outputs.cache-hit != 'true' &&
-          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          HEADROOM_PREFIXES: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-        run: HEADROOM_FALLBACK=$(du -sb "$HOME/.cache/go-build" | cut -f1) ./scripts/ci/cache-prune.sh
       - name: Save lint driver seed from trusted main only
         if: >-
           success() && steps.lint-driver-seed.outputs.cache-hit != 'true' &&

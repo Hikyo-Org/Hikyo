@@ -80,7 +80,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Queue diagnostics | `ci-queue-report.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run). Neither grants merge authority. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
-| Compiler cache seeds | `ci-feedback-cache.yml`, `ci-race-cache.yml`, `ci-lint-cache.yml` | Trusted-main-only producers of Go build entries. (`ci-feedback-backend-cache.yml` is the one trusted-branch producer that also publishes from dev; see the first table.) PR feedback, source-artifact validation, race shards, the reliability race suite, `test_core_serial` and the advisory invariants job only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
+| Compiler cache seeds | `ci-feedback-cache.yml`, `ci-race-cache.yml`, `ci-lint-cache.yml`, `ci-main-headroom.yml` | Trusted-main-only producers of Go build entries (`ci-main-headroom.yml` writes none: it only frees room for ci-main's weekly saves, see "Headroom before the save"). (`ci-feedback-backend-cache.yml` is the one trusted-branch producer that also publishes from dev; see the first table.) PR feedback, source-artifact validation, race shards, the reliability race suite, `test_core_serial` and the advisory invariants job only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Pinned tool seed | `ci-tool-cache.yml` | Trusted-main-only producer of the pinned release-file entries. Every other workflow only restores them, and the helper verifies each file's SHA-256 before use, so a poisoned or stale entry cannot run. |
 | Cache prune | `ci-cache-prune.yml` | Scheduled, manual, and after a named writer workflow completed on main (`workflow_run` of `CodeQL`, `ci-main`, `cache-seed-tools`, `cache-seed-feedback`, filtered to `branches: [main]`; the job guard also requires that run's head branch to be main in this repository, and nothing else is read from it). It is also a reusable workflow (`workflow_call`): `ci-race-cache.yml` and `ci-lint-cache.yml` call it in a separate `prune` job (`needs: seed`, `actions: write` only, no checkout) right after their save, so the superseded generation of those seeds lives for seconds. Its concurrency group sits on the job, after the guard, and carries the calling workflow's name, so a skipped run cannot replace a pending real prune. Holds `actions: write`, checks nothing out and runs no repository code. A `workflow_run` job is the only way to give those writers a post-save prune without `actions: write` in a job that runs PR code (`ci-main` reuses `ci.yml`) or in a workflow that is not ours (CodeQL default setup). Superseded: of the listed regenerable families (`go-mod-v2`, `go-test-v2`, `go-race-v2`, `go-lint-v2`, `go-lintdriver-v2`, `go-generated-v2`, `go-k8s-e2e-v2`, `go-fuzz-v2`, `go-feedback-v1`, `pinned-tool-v1`, `pnpm-store-v2`, the CodeQL `overlay-base-database`, `dependencies` and `trap` entries), every entry on `refs/heads/main` or `refs/heads/dev` except the newest of its ref and lane (the key without its trailing hash, commit, attempt or week, the runner image, the tool version and the config hash, so an image or CodeQL bump retires the old lane at once). Idle: entries on `refs/pull/*` not accessed for 24 hours. The `go-feedback-v2` seeds are not listed: the backend seed's own prune keeps the newest set per family and entry. Other refs and unlisted families are never touched. One to two listing calls and at most 100 deletes per run: 24 scheduled runs a day plus a few per writer, at most 102 calls a run against the shared 1000 an hour. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
@@ -243,40 +243,51 @@ fourth (the headroom delete, below), which is what makes survival independent of
    under the assumption above it is safe only while it is touched more recently than the entries the
    save pushes out. The writers therefore make room first. `scripts/ci/cache-prune.sh` is the one
    selector (the hourly prune workflow carries its text verbatim, a test pins them byte-equal, because
-   that workflow has no checkout). Run by a seed writer right before its big save, with
-   `HEADROOM_PREFIXES` naming the lanes it is about to save, it deletes, after the usual superseded and
-   idle entries, whatever is needed until `total + incoming <= 9.75 GB`, in this order: older feedback
-   seeds (not the newest of their ref), entries of pull-request refs, entries idle for more than three
-   days, then the least recently used entries that are not seeds. It never deletes the newest main or
-   dev entry of any seed family (`go-race-v2`, `go-lint(driver)-v2`, `pinned-tool-v1`, the familied
-   `go-feedback-v2`), never touches the two unfamilied `go-feedback-v2` entries, and deletes at most 100
-   entries a run. It runs in the seed job right before each of the three big saves (race, module, lint
-   driver), with the same guard as the save (not a hit, scheduled or dispatched, main only), and only
-   `actions: write` added to that job's `contents: read`; nothing from a pull request is checked out
-   and the script comes from the immutable sha the job already checks out. `ci-main` cannot do this in
-   its saves (they live in `ci.yml` jobs that run pull-request code and so cannot hold `actions: write`),
-   so `ci-main.yml` has a `headroom` job (`continue-on-error: true`, the same permissions and checkout
-   as the seed jobs, all six lanes) and `validation` waits for it with `!cancelled()`: a headroom
-   failure never blocks validation. The job skips when the exact `go-test-v2` key of the current
-   `go.mod`/`go.sum` already exists, because then the saves are hits.
+   that workflow has no checkout). Run with `HEADROOM_PREFIXES` naming the lanes about to be saved, it
+   deletes, after the usual superseded and idle entries, whatever is needed until
+   `total + incoming <= 9.75 GB`, in this order: older feedback seeds (not the newest of their ref),
+   entries of pull-request refs, entries idle for more than three days, then the least recently used
+   entries that are not seeds. It never deletes the newest main or dev entry of any seed family
+   (`go-race-v2`, `go-lint(driver)-v2`, `pinned-tool-v1`, the familied `go-feedback-v2`), never touches
+   the two unfamilied `go-feedback-v2` entries, and deletes at most 100 entries a run.
+   * **Where it runs.** `actions: write` never sits in a job that runs repository code (a security review
+     finding on the first version, which put the step in the seed jobs next to `go run` and `go test`).
+     The race and lint seed workflows each get a `headroom` job before `seed` (`needs: headroom`):
+     `contents: read` plus `actions: write`, a checkout of the immutable main commit without
+     credentials, the runner ABI step and the script, nothing else; `seed` keeps the read-only token and
+     is pinned so by the workflow tests. The job is best effort (`continue-on-error`), so the seed never
+     waits on its success. It runs once for the race lane and once for the module lane (race), or for
+     the lint driver lane (lint), each with `HEADROOM_SKIP_KEY` set to the exact key the seed is about to
+     look up: on an exact main hit no save follows and the script deletes nothing. The weekly `ci-main`
+     writers are jobs of `ci.yml`, which runs pull-request code, so none of them can hold the token;
+     and `ci-main.yml` is a promotion-proof producer whose job inventory `scripts/ci/source-proof`
+     checks, so a job added there would fail the next proof. Option (b) was taken: a separate workflow,
+     `ci-main-headroom.yml` (one job, same permissions and checkout, all six lanes, skip key the exact
+     `go-test-v2` key of the current `go.mod`/`go.sum`), scheduled 45 minutes before ci-main's cron
+     (12:38 on Sunday). `source-proof` is untouched, and `ci-main.yml` is byte-identical to before, which a
+     test pins (one job, read-only permissions). A manual ci-main run is covered by dispatching
+     `ci-main-headroom` first; if nobody does, only GitHub's own eviction applies (the model shows the
+     seed can then be lost).
    * Margin 0.25 GB (budget 9.75 GB): it equals the largest single CodeQL overlay (0.268 GB), so one
      concurrent CodeQL save between the delete and the save still fits.
    * Incoming size: the sum, over the lanes named, of the size of the newest main entry of that lane
-     (compressed archive bytes, which is what the new generation will be about the size of). `du` of the
-     directory is only the fallback for a lane with no entry yet: it measures the uncompressed tree and
-     overestimates the archive by about 2 to 3 times, which would delete live entries every day. A
-     pre-job cannot be used instead, because it cannot know that a save follows (the lookup hit).
+     (compressed archive bytes, which is what the new generation will be about the size of). `du` is not
+     used: the headroom job has no build cache, and `du` of the uncompressed tree overestimates the
+     archive by about 2 to 3 times, which would delete live entries every day. A lane with no entry
+     contributes nothing (`HEADROOM_FALLBACK` exists in the script and is unset), because a lane with no
+     main entry has already been evicted and the room is there.
+   * Window: the headroom job runs before the seed's compile, so the room is made about 20 minutes (race
+     and lint) or 45 minutes (`ci-main`) before the save, not seconds. The model plays these leads.
    * Cost: the headroom deletes live entries the cache would not yet have evicted. The model shows 3 to 6
      live least-recently-used entries freed per rotation day and 3 on Monday; they are rebuilt by the
      next run that needs them.
    * Residual: the CodeQL saves (`codeql-trap`, `codeql-dependencies` and the overlays, about 12 saves
      a day) run in `github/codeql-action` and cannot carry the step. A CodeQL save larger than the
-     0.25 GB margin that lands in the minutes between the delete and the seed save (or, for `ci-main`, in
-     the longer window after its headroom job, about 45 minutes in the model) can push the total over the
-     limit. Only `codeql-dependencies` (0.755 GB) exceeds the margin, so the overshoot is at most about
-     0.5 GB and an eviction needs the newest seed to be the least recently used entry, which the order
-     and the daily restore make unlikely. Estimated, not measured: on the order of 1 percent of days.
-
+     0.25 GB margin that lands in the window between the delete and the seed save can push the total over
+     the limit. Only `codeql-dependencies` (0.755 GB) exceeds the margin, so the overshoot is at most about
+     0.5 GB, and an eviction needs the newest seed to be the least recently used entry, which the order
+     and the daily restore make unlikely. Estimated, not measured: on the order of 1 to 2 percent of
+     days, a little more than before the move out of the seed job because the window is now minutes.
 Sweep, every minute (`seed survival at every minute`): the race seed saves at every minute from 10:59
 to 16:59 on a rotation day with the lint seed three minutes later (361 minutes; the observed seed runs
 ended 11:25 to 14:57), and the Sunday `ci-main` after a go.sum change saves at every minute from 10:59 to
