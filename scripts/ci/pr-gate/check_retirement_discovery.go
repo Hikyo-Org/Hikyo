@@ -263,6 +263,14 @@ func (c *controller) unfinishedRetirementChecks(ctx context.Context, head string
 	err := errRetirementCheckOverflow
 	if !manySuites {
 		all, err = c.retirementCheckInventory(ctx, head, fmt.Sprintf("commits/%s/check-runs?filter=latest", head))
+		if err == nil {
+			// Suites may have grown past the margin since the history count, leaving an
+			// older suite out of that listing, so the listing is no longer complete.
+			var count int
+			if count, err = checksuites.Count(ctx, c.suiteSource(), head); err == nil && count > checksuites.Margin {
+				err = errRetirementCheckOverflow
+			}
+		}
 	}
 	if errors.Is(err, errRetirementCheckOverflow) {
 		all, err = c.oversizedRetirementChecks(ctx, head)

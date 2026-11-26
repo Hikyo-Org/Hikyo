@@ -1,0 +1,85 @@
+# Single writer for the lint driver build cache read by ci.yml test_core_serial
+# and the advisory ci-invariants.yml job. No other writer covers internal/lint:
+# the go-test-v2 writer runs the core pool, which excludes it, so every reader
+# compiled the four-context lint matrix cold (prepare 700 to 925 s). This entry
+# takes the 10 GB Actions budget the release-snapshot Go cache used to hold.
+# The key moves with go.mod, go.sum, the tool modules, the runner toolchain ABI
+# and the ISO week; readers fall back to older entries of the same family,
+# whose content-addressed hits stay valid. No PR can publish here.
+name: cache-seed-lint
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '11 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-lint-cache-main
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        env:
+          GOCACHE: ${{ runner.temp }}/lint-bootstrap
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      # Compile results go stale as the module changes. One immutable seed per
+      # ISO week bounds both that staleness and the cache budget's churn.
+      - name: Select weekly lint driver cache generation
+        id: lint-cache-generation
+        run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
+      # The cache policy fixture requires restore-keys on every go-build
+      # reader; lookup-only never restores, so cache-hit stays exact-key only.
+      - name: Look up this lint driver seed without restoring old entries
+        id: lint-driver-seed
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ steps.lint-cache-generation.outputs.value }}
+          restore-keys: go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          lookup-only: true
+      # The guard runs before the disk script, which creates the cache directory.
+      # A cold cache reached about 9 GB raw on macOS and may be larger on Linux;
+      # du and df record the real size and the remaining disk.
+      - name: Compile and vet the lint driver matrix into a fresh cache
+        if: steps.lint-driver-seed.outputs.cache-hit != 'true'
+        run: |
+          cache="$HOME/.cache/go-build"
+          test ! -e "$cache"
+          test "$(go env GOCACHE)" = "$cache"
+          ./scripts/ci/prepare-go-cache-disk.sh
+          go run ./scripts/ci/prepare-lint-cache
+          go test -count=1 -timeout=20m ./internal/lint
+          du -sh "$cache"
+          df -h "$cache"
+      - name: Save lint driver seed from trusted main only
+        if: >-
+          success() && steps.lint-driver-seed.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: ${{ steps.lint-driver-seed.outputs.cache-primary-key }}

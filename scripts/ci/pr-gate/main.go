@@ -453,7 +453,7 @@ func (e *githubReadError) Error() string {
 	case errors.Is(e.cause, context.Canceled):
 		details = append(details, context.Canceled.Error())
 	case errors.As(e.cause, &exit):
-		details = append(details, fmt.Sprintf("command exit status %d", exit.ExitCode()))
+		details = append(details, "command "+exit.ProcessState.String())
 	case e.cause != nil:
 		details = append(details, "command failed")
 	}
@@ -714,7 +714,19 @@ func (ghAPI) write(ctx context.Context, method, path string, payload, result any
 	response, err := cmd.Output()
 	// A lost response may follow a successful mutation. Never retry writes.
 	if err != nil {
-		return fmt.Errorf("GitHub %s failed for %s; no mutation retry attempted", method, path)
+		// Name gh's HTTP status (never its text), else why gh stopped, so a
+		// refused write is diagnosable.
+		detail := "command failed"
+		var exit *exec.ExitError
+		switch {
+		case ctx.Err() != nil:
+			detail = ctx.Err().Error()
+		case errors.As(err, &exit) && stderrHTTPStatus(exit.Stderr) != 0:
+			detail = fmt.Sprintf("HTTP %d", stderrHTTPStatus(exit.Stderr))
+		case errors.As(err, &exit):
+			detail = "command " + exit.ProcessState.String()
+		}
+		return fmt.Errorf("GitHub %s failed for %s (%s); no mutation retry attempted", method, path, detail)
 	}
 	if dispatch {
 		response, err = dispatchResponseBody(response)
@@ -928,6 +940,10 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 	for _, v := range foreign {
 		if strings.HasPrefix(v.ExternalID, externalPrefix) || strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 			return nil, errors.New("untrusted controller check identity")
+		}
+		// listOwnedChecksAt refuses this mixed identity on a listing by commit.
+		if v.App.ID == actionsAppID || v.App.Slug == "github-actions" {
+			return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
 		}
 	}
 	var own []check

@@ -34,6 +34,7 @@ for its ripple register.
 | --- | --- |
 | api-cli-surface ADR | [api-cli-surface.md](./api-cli-surface.md) |
 | audit-model ADR | [audit-model.md](./audit-model.md) |
+| ci-coverage-cuts ADR | [ci-coverage-cuts.md](./ci-coverage-cuts.md) |
 | compose-integration ADR | [compose-integration.md](./compose-integration.md) |
 | deployment-adapter ADR | [deployment-adapter.md](./deployment-adapter.md) |
 | design-tooling ADR | [design-tooling.md](./design-tooling.md) |
