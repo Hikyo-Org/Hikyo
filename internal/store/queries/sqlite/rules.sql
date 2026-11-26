@@ -267,3 +267,60 @@ SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
 -- hikyo:authn-resolution
 -- name: LockOrgProjectIDsForDelete :many
 SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
+
+-- Historical recovery of source schemas 89 through 98 (#1446): they hold the
+-- containment columns but no rules.project_mode, and every rule_items row
+-- names a project. The three readers below are ListRulesForPrincipal,
+-- ListMachineRulesForPrincipal and ListRulesForProject without the column;
+-- the caller reads every rule they return as project-bound ('only').
+-- hikyo:reason Historical recovery of source schema 89 through 98 reads the principal's member access rules without rules.project_mode, which that schema does not have; the human kind, privacy, containment and restore-epoch gates stay.
+-- hikyo:authn-resolution
+-- name: RecoveryListRulesBeforeAllProjects :many
+SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = sqlc.arg(principal_id)
+  AND p.kind = 'human'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id;
+
+-- hikyo:reason Historical recovery of source schema 89 through 98 reads a machine principal's member access rules without rules.project_mode, which that schema does not have; the machine kind, privacy, containment and restore-epoch gates stay and the caller applies the machine class's live rule check to every row.
+-- hikyo:authn-resolution
+-- name: RecoveryListMachineRulesBeforeAllProjects :many
+SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = sqlc.arg(principal_id)
+  AND p.kind = 'machine'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id;
+
+-- hikyo:reason Historical recovery of source schema 89 through 98 reads the folder-move census without rules.project_mode, which that schema does not have; like ListRulesForProject it is deliberately ungated beyond human kind so the census stays a superset.
+-- hikyo:authn-resolution
+-- name: RecoveryListRulesForProjectBeforeAllProjects :many
+SELECT r.id, r.principal_id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = sqlc.arg(org_id)
+  AND r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = sqlc.arg(org_id) AND pi.project_id = sqlc.arg(project_id))
+  AND p.kind = 'human'
+ORDER BY r.id, i.id;

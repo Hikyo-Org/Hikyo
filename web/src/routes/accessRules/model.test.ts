@@ -4,7 +4,7 @@ import { zRuleCapability } from '@hikyo/zod';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { grantRows, IDS, makeWorld, PAYMENTS_KEYS } from './fixture.ts';
+import { grantRows, IDS, makeWorld, PAYMENTS_KEYS, WEB_KEYS } from './fixture.ts';
 import {
   ALL,
   allowed,
@@ -22,6 +22,7 @@ import {
   presetOf,
   reachOf,
   resolve,
+  ruleHolders,
   rulesFromGrants,
   rulesFromServer,
   savePlan,
@@ -456,4 +457,50 @@ it('re-derives an all-projects rule over the current project list (#1446)', () =
   expect(overProjects(named, [IDS.payments, IDS.web])).toBe(named);
   // The create body uses the list as it is at save time, not the draft's copy.
   expect(createBody(rule, 'edit', [IDS.payments, IDS.web]).where.keys.items).toHaveLength(2);
+});
+
+it('keeps an all-projects rule unchanged when there is no project to spread it over (#1446)', () => {
+  const rule = { ...newRule(IDS.chen), projects: '*' as const, keys: { mode: 'all' as const, items: [{ project: IDS.payments, folder: 'db' }] } };
+  expect(overProjects(rule, [])).toBe(rule);
+});
+
+describe("an all-projects rule from a project's listing (#1446)", () => {
+  // A project's listing spreads the rule's folders over that project only
+  // (other_projects true); the server applies them in every project.
+  const [rule] = rulesFromServer([
+    {
+      id: 'rul_all',
+      principal_id: IDS.chen,
+      capability: 'edit',
+      other_projects: true,
+      where: {
+        project_mode: 'all',
+        projects: [IDS.payments],
+        environments: { mode: 'all', items: [] },
+        keys: { mode: 'all', items: [{ project: IDS.payments, folder: 'app' }] },
+      },
+    },
+  ]);
+  if (rule === undefined) throw new Error('no rule');
+  const world = { ...makeWorld(), rules: [rule] };
+  const webSecret = WEB_KEYS.find((k) => k.name === 'COOKIE_SECRET');
+  if (webSecret === undefined) throw new Error('no web key');
+
+  it('excepts the folder in every covered project, not only the listed one', () => {
+    expect(resolve(world, IDS.chen, 'edit', IDS.web, IDS.webProd, webSecret).state).toBe('excepted');
+    expect(resolve(world, IDS.chen, 'edit', IDS.payments, IDS.payProd, STRIPE_SECRET).state).toBe('yes');
+    // Every web key is in app/, so the rule reaches none of them; payments
+    // keeps its six keys outside app/.
+    expect(reachOf(world, rule).keys).toBe(PAYMENTS_KEYS.filter((k) => k.folder !== 'app').length);
+  });
+
+  it('answers no org-scope holder, as the server does: a rule reaches projects and environments only', () => {
+    const unnarrowed = { ...rule, keys: ALL };
+    const all = { ...world, rules: [unnarrowed] };
+    const org = { value: 'org', label: 'org', scope: { kind: 'org', org: IDS.org }, level: 'org', group: '', isProtected: null } as const;
+    expect(ruleHolders(all, 'edit', org)).toEqual([]);
+    // The same rule does answer a project scope, so the empty org answer is the scope's.
+    const project = { ...org, scope: { kind: 'project', org: IDS.org, project: IDS.web } } as const;
+    expect(ruleHolders(all, 'edit', project)).toHaveLength(1);
+  });
 });

@@ -875,6 +875,214 @@ func (q *Queries) PrivacyEraseRules(ctx context.Context, principalID string) err
 	return err
 }
 
+const recoveryListMachineRulesBeforeAllProjects = `-- name: RecoveryListMachineRulesBeforeAllProjects :many
+SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = ?1
+  AND p.kind = 'machine'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id
+`
+
+type RecoveryListMachineRulesBeforeAllProjectsRow struct {
+	ID         string
+	Capability string
+	OrgID      string
+	EnvMode    string
+	KeyMode    string
+	Axis       string
+	ProjectID  string
+	EnvID      string
+	KeyID      string
+	FolderPath string
+}
+
+// hikyo:reason Historical recovery of source schema 89 through 98 reads a machine principal's member access rules without rules.project_mode, which that schema does not have; the machine kind, privacy, containment and restore-epoch gates stay and the caller applies the machine class's live rule check to every row.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListMachineRulesBeforeAllProjects(ctx context.Context, principalID string) ([]RecoveryListMachineRulesBeforeAllProjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, recoveryListMachineRulesBeforeAllProjects, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListMachineRulesBeforeAllProjectsRow
+	for rows.Next() {
+		var i RecoveryListMachineRulesBeforeAllProjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Capability,
+			&i.OrgID,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recoveryListRulesBeforeAllProjects = `-- name: RecoveryListRulesBeforeAllProjects :many
+SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = ?1
+  AND p.kind = 'human'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id
+`
+
+type RecoveryListRulesBeforeAllProjectsRow struct {
+	ID         string
+	Capability string
+	OrgID      string
+	EnvMode    string
+	KeyMode    string
+	Axis       string
+	ProjectID  string
+	EnvID      string
+	KeyID      string
+	FolderPath string
+}
+
+// Historical recovery of source schemas 89 through 98 (#1446): they hold the
+// containment columns but no rules.project_mode, and every rule_items row
+// names a project. The three readers below are ListRulesForPrincipal,
+// ListMachineRulesForPrincipal and ListRulesForProject without the column;
+// the caller reads every rule they return as project-bound ('only').
+// hikyo:reason Historical recovery of source schema 89 through 98 reads the principal's member access rules without rules.project_mode, which that schema does not have; the human kind, privacy, containment and restore-epoch gates stay.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListRulesBeforeAllProjects(ctx context.Context, principalID string) ([]RecoveryListRulesBeforeAllProjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, recoveryListRulesBeforeAllProjects, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListRulesBeforeAllProjectsRow
+	for rows.Next() {
+		var i RecoveryListRulesBeforeAllProjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Capability,
+			&i.OrgID,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recoveryListRulesForProjectBeforeAllProjects = `-- name: RecoveryListRulesForProjectBeforeAllProjects :many
+SELECT r.id, r.principal_id, r.capability, r.org_id, r.env_mode, r.key_mode,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = ?1
+  AND r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = ?1 AND pi.project_id = ?2)
+  AND p.kind = 'human'
+ORDER BY r.id, i.id
+`
+
+type RecoveryListRulesForProjectBeforeAllProjectsParams struct {
+	OrgID     string
+	ProjectID sql.NullString
+}
+
+type RecoveryListRulesForProjectBeforeAllProjectsRow struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	EnvMode     string
+	KeyMode     string
+	Axis        string
+	ProjectID   string
+	EnvID       string
+	KeyID       string
+	FolderPath  string
+}
+
+// hikyo:reason Historical recovery of source schema 89 through 98 reads the folder-move census without rules.project_mode, which that schema does not have; like ListRulesForProject it is deliberately ungated beyond human kind so the census stays a superset.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListRulesForProjectBeforeAllProjects(ctx context.Context, arg RecoveryListRulesForProjectBeforeAllProjectsParams) ([]RecoveryListRulesForProjectBeforeAllProjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, recoveryListRulesForProjectBeforeAllProjects, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListRulesForProjectBeforeAllProjectsRow
+	for rows.Next() {
+		var i RecoveryListRulesForProjectBeforeAllProjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.Capability,
+			&i.OrgID,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveKeyByID = `-- name: ResolveKeyByID :one
 SELECT id, folder_path FROM keys
 WHERE org_id = ?1 AND project_id = ?2 AND id = ?3

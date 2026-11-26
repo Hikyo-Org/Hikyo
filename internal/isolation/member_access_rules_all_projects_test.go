@@ -466,11 +466,11 @@ func TestAllProjectsRulesConcurrentLastProjectDeletes(t *testing.T) {
 		close(start)
 		wg.Wait()
 		left := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE org_id = 'org_ap'")
-		if left < 1 || ruleCount(t, db, rule.ID) != 1 {
-			t.Fatalf("round %d: %d projects and the rule %d left (errors %v)", round, left, ruleCount(t, db, rule.ID), errs)
+		if left != 1 || ruleCount(t, db, rule.ID) != 1 {
+			t.Fatalf("round %d: %d projects and the rule %d left, want exactly one project and the rule (errors %v)", round, left, ruleCount(t, db, rule.ID), errs)
 		}
-		if errs[0] == nil && errs[1] == nil {
-			t.Fatalf("round %d: both deletions succeeded", round)
+		if (errs[0] == nil) == (errs[1] == nil) {
+			t.Fatalf("round %d: want exactly one deletion to succeed, got errors %v", round, errs)
 		}
 		for _, err := range errs {
 			if err != nil && !errors.Is(err, service.ErrLastProjectUnderAllProjectsRules) {

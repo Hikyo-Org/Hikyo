@@ -17,6 +17,7 @@
 
 import type { zRuleCapability, zServiceAccountKind } from '@hikyo/zod';
 import type { z } from 'zod';
+import type { ScopeOption } from '../../api/access.ts';
 
 export type PermId = z.infer<typeof zRuleCapability>;
 /** The machine classes that may hold rules: a service account's kind. */
@@ -313,7 +314,9 @@ export function reach(world: World, rule: Rule, id: PermId, project: string, env
     if (rule.envs.mode === 'all' && listed) return { hit: true, ok: false, why: `except ${envName(world, env)}` };
   }
   if (id === 'read') return OK;
-  const items = rule.keys.items.filter((k) => k.project === project);
+  // An all-projects rule's folders mean the same path in every project (the
+  // server stores them without one), whichever project a listing spread them over.
+  const items = rule.keys.items.filter((k) => rule.projects === '*' || k.project === project);
   if (rule.keys.mode === 'all' && items.length === 0) return OK;
   const matches = (item: KeyItem, k: Key) =>
     isFolder(item) ? item.folder === k.folder || (rule.keys.mode === 'all' && item.folder !== '' && k.folder.startsWith(`${item.folder}/`)) : item.key === k.id;
@@ -322,6 +325,35 @@ export function reach(world: World, rule: Rule, id: PermId, project: string, env
   if (key === undefined || !KEY_AWARE.has(id)) return { hit: true, ok: false, why: 'limited to some keys; pick a key to check its reach' };
   if (rule.keys.mode === 'only') return OK;
   return matched === undefined ? OK : { hit: true, ok: false, why: `except ${itemLabel(world, matched).text}` };
+}
+
+/**
+ * The scope inspector's rule half: who an access rule gives this capability on
+ * the WHOLE scope picked (every environment of a project, or the one
+ * environment), so the grant answer beside it does not under-report. An
+ * organisation scope has none, as on the server: a rule reaches projects and
+ * environments only (domain.Rule.Reaches, and Where.Names refuses the empty
+ * project even for an all-projects rule), so org-level checks are answered
+ * from organisation grants alone.
+ */
+export function ruleHolders(world: World, capability: string, option: ScopeOption): string[] {
+  const id = permOf(capability);
+  const scope = option.scope;
+  if (id === undefined || (scope.kind !== 'project' && scope.kind !== 'environment')) return [];
+  const envs =
+    scope.kind === 'environment'
+      ? [scope.environment]
+      : (world.projects.find((p) => p.id === scope.project)?.envs.map((e) => e.id) ?? []);
+  const holders = world.rules.filter(
+    (rule) =>
+      rule.source.kind === 'rule' &&
+      envs.length > 0 &&
+      envs.every((env) => {
+        const r = reach(world, rule, id, scope.project, env, undefined);
+        return r.hit && r.ok;
+      }),
+  );
+  return [...new Set(holders.map((rule) => world.people.find((p) => p.id === rule.member)?.name ?? rule.member))];
 }
 
 type Resolution =
@@ -550,7 +582,8 @@ export function toggleAllProjects(rule: Rule, projects: readonly string[]): Rule
  * editor and the create body both derive the items from the current list.
  */
 export function overProjects(rule: Rule, projects: readonly string[]): Rule {
-  if (rule.projects !== '*') return rule;
+  // With no project to spread over, keep the folders: "All projects" is unavailable then anyway.
+  if (rule.projects !== '*' || projects.length === 0) return rule;
   return { ...rule, keys: { mode: rule.keys.mode, items: everyProject(projects, folderNames(rule)) } };
 }
 

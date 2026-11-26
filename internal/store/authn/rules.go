@@ -139,15 +139,24 @@ func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, mac
 		var err error
 		switch {
 		case r.historicalRecoveryBeforeContainment:
-			// Source schemas 66 through 88 have no containment column. The two
-			// row types carry the same fields, so a conversion maps them.
-			// Their rules all name projects: project_mode is #1446's.
+			// Source schemas 66 through 88 have no containment column.
 			var old []sqlitegen.RecoveryListRulesBeforeContainmentRow
 			old, err = r.sq.RecoveryListRulesBeforeContainment(ctx, string(p))
 			for _, g := range old {
-				got = append(got, sqlitegen.ListRulesForPrincipalRow{ID: g.ID, Capability: g.Capability, OrgID: g.OrgID,
-					ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
-					EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath})
+				got = append(got, ruleRowBeforeAllProjectsSQLite(g))
+			}
+		case r.historicalRecoveryBeforeAllProjects && machine:
+			// Source schemas 89 through 98 have no rules.project_mode.
+			var old []sqlitegen.RecoveryListMachineRulesBeforeAllProjectsRow
+			old, err = r.sq.RecoveryListMachineRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsSQLite(sqlitegen.RecoveryListRulesBeforeContainmentRow(g)))
+			}
+		case r.historicalRecoveryBeforeAllProjects:
+			var old []sqlitegen.RecoveryListRulesBeforeAllProjectsRow
+			old, err = r.sq.RecoveryListRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsSQLite(sqlitegen.RecoveryListRulesBeforeContainmentRow(g)))
 			}
 		case machine:
 			var machineRows []sqlitegen.ListMachineRulesForPrincipalRow
@@ -171,13 +180,24 @@ func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, mac
 		var err error
 		switch {
 		case r.historicalRecoveryBeforeContainment:
-			// Their rules all name projects: project_mode is #1446's.
+			// Source schemas 66 through 88 have no containment column.
 			var old []pggen.RecoveryListRulesBeforeContainmentRow
 			old, err = r.pg.RecoveryListRulesBeforeContainment(ctx, string(p))
 			for _, g := range old {
-				got = append(got, pggen.ListRulesForPrincipalRow{ID: g.ID, Capability: g.Capability, OrgID: g.OrgID,
-					ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
-					EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath})
+				got = append(got, ruleRowBeforeAllProjectsPG(g))
+			}
+		case r.historicalRecoveryBeforeAllProjects && machine:
+			// Source schemas 89 through 98 have no rules.project_mode.
+			var old []pggen.RecoveryListMachineRulesBeforeAllProjectsRow
+			old, err = r.pg.RecoveryListMachineRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsPG(pggen.RecoveryListRulesBeforeContainmentRow(g)))
+			}
+		case r.historicalRecoveryBeforeAllProjects:
+			var old []pggen.RecoveryListRulesBeforeAllProjectsRow
+			old, err = r.pg.RecoveryListRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsPG(pggen.RecoveryListRulesBeforeContainmentRow(g)))
 			}
 		case machine:
 			var machineRows []pggen.ListMachineRulesForPrincipalRow
@@ -200,6 +220,22 @@ func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, mac
 	return rulesOf(foldRules(rows)), nil
 }
 
+// ruleRowBeforeAllProjectsSQLite maps a historical rule row (a source schema
+// before 99, which has no rules.project_mode) to the current row shape: every
+// rule there names its projects, so each reads as 'only'.
+func ruleRowBeforeAllProjectsSQLite(g sqlitegen.RecoveryListRulesBeforeContainmentRow) sqlitegen.ListRulesForPrincipalRow {
+	return sqlitegen.ListRulesForPrincipalRow{ID: g.ID, Capability: g.Capability, OrgID: g.OrgID,
+		ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+		EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath}
+}
+
+// ruleRowBeforeAllProjectsPG is the postgres twin of ruleRowBeforeAllProjectsSQLite.
+func ruleRowBeforeAllProjectsPG(g pggen.RecoveryListRulesBeforeContainmentRow) pggen.ListRulesForPrincipalRow {
+	return pggen.ListRulesForPrincipalRow{ID: g.ID, Capability: g.Capability, OrgID: g.OrgID,
+		ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+		EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath}
+}
+
 // RulesForProject returns every valid rule of a human principal naming one
 // project, for the folder-move widening census. It is deliberately wider than
 // the chokepoint's lookup (no privacy or restore-epoch gate): the census must
@@ -210,7 +246,20 @@ func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]
 	}
 	var rows []ruleRow
 	if r.sq != nil {
-		got, err := r.sq.ListRulesForProject(ctx, sqlitegen.ListRulesForProjectParams{OrgID: org, ProjectID: nullString(project)})
+		var got []sqlitegen.ListRulesForProjectRow
+		var err error
+		if r.historicalRecoveryBeforeAllProjects {
+			// Source schemas before 99 have no rules.project_mode: every rule is project-bound.
+			var old []sqlitegen.RecoveryListRulesForProjectBeforeAllProjectsRow
+			old, err = r.sq.RecoveryListRulesForProjectBeforeAllProjects(ctx, sqlitegen.RecoveryListRulesForProjectBeforeAllProjectsParams{OrgID: org, ProjectID: nullString(project)})
+			for _, g := range old {
+				got = append(got, sqlitegen.ListRulesForProjectRow{ID: g.ID, PrincipalID: g.PrincipalID, Capability: g.Capability, OrgID: g.OrgID,
+					ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+					EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath})
+			}
+		} else {
+			got, err = r.sq.ListRulesForProject(ctx, sqlitegen.ListRulesForProjectParams{OrgID: org, ProjectID: nullString(project)})
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +269,19 @@ func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
-		got, err := r.pg.ListRulesForProject(ctx, pggen.ListRulesForProjectParams{OrgID: org, ProjectID: pgText(project)})
+		var got []pggen.ListRulesForProjectRow
+		var err error
+		if r.historicalRecoveryBeforeAllProjects {
+			var old []pggen.RecoveryListRulesForProjectBeforeAllProjectsRow
+			old, err = r.pg.RecoveryListRulesForProjectBeforeAllProjects(ctx, pggen.RecoveryListRulesForProjectBeforeAllProjectsParams{OrgID: org, ProjectID: pgText(project)})
+			for _, g := range old {
+				got = append(got, pggen.ListRulesForProjectRow{ID: g.ID, PrincipalID: g.PrincipalID, Capability: g.Capability, OrgID: g.OrgID,
+					ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+					EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath})
+			}
+		} else {
+			got, err = r.pg.ListRulesForProject(ctx, pggen.ListRulesForProjectParams{OrgID: org, ProjectID: pgText(project)})
+		}
 		if err != nil {
 			return nil, err
 		}

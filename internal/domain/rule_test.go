@@ -205,3 +205,24 @@ func TestCheckMachineRule(t *testing.T) {
 		}
 	}
 }
+
+// An all-projects rule reaches every project's environments but never an
+// organisation-level atom: org-scope checks are answered from organisation
+// grants alone. The web scope inspector answers the same (ruleHolders in
+// web/src/routes/accessRules/model.ts), which its unit test pins (#1446).
+func TestAllProjectsRuleDoesNotReachOrgScope(t *testing.T) {
+	const org = OrgID("org")
+	all := Rule{ID: "a", Capability: CapEdit, Org: org, Where: Where{AllProjects: true, EnvMode: AxisAll, KeyMode: AxisAll}}
+	if err := all.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !all.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: "any", Env: "dev"}, nil) {
+		t.Fatal("an unnarrowed all-projects rule did not reach an environment of a project")
+	}
+	if !all.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: "any"}, nil) {
+		t.Fatal("an unnarrowed all-projects rule did not reach a project atom")
+	}
+	if all.Reaches(CapEdit, LevelOrg, Scope{Org: org}, nil) || all.Reaches(CapEdit, LevelEnv, Scope{Org: org}, nil) {
+		t.Fatal("an all-projects rule reached the organisation scope")
+	}
+}

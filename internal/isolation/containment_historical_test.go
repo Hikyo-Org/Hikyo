@@ -23,7 +23,27 @@ import (
 // columns, so the guarded historical resolver must load grants and rules
 // without referencing them; the current resolver must not run there at all.
 func TestHistoricalRecoveryBeforeContainmentSQLite(t *testing.T) {
-	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "before-containment.db")}
+	cfg, db := scratchSQLite(t, "before-containment.db")
+	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := db.ExecContext(t.Context(), stmt); return err })
+	assertBeforeContainmentReads(t, authn.NewHistoricalRecoverySQLite(db, 87))
+	if _, err := authn.NewSQLite(db).Grants(t.Context(), "usr_before"); err == nil {
+		t.Fatal("the current resolver read a schema that predates the containment columns")
+	}
+}
+
+func TestHistoricalRecoveryBeforeContainmentPostgres(t *testing.T) {
+	cfg, conn := scratchPostgres(t, "before_containment")
+	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := conn.Exec(t.Context(), stmt); return err })
+	assertBeforeContainmentReads(t, authn.NewHistoricalRecoveryPG(conn, 87))
+	if _, err := authn.NewPG(conn).Grants(t.Context(), "usr_before"); err == nil {
+		t.Fatal("the current resolver read a schema that predates the containment columns")
+	}
+}
+
+// scratchSQLite opens an empty SQLite database for a historical-schema drill.
+func scratchSQLite(t *testing.T, name string) (store.Config, *sql.DB) {
+	t.Helper()
+	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), name)}
 	db, err := sql.Open("sqlite", store.SQLiteDSN(cfg.Path))
 	if err != nil {
 		t.Fatal(err)
@@ -33,20 +53,19 @@ func TestHistoricalRecoveryBeforeContainmentSQLite(t *testing.T) {
 			t.Errorf("close sqlite: %v", err)
 		}
 	})
-	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := db.ExecContext(t.Context(), stmt); return err })
-	assertBeforeContainmentReads(t, authn.NewHistoricalRecoverySQLite(db, 87))
-	if _, err := authn.NewSQLite(db).Grants(t.Context(), "usr_before"); err == nil {
-		t.Fatal("the current resolver read a schema that predates the containment columns")
-	}
+	return cfg, db
 }
 
-func TestHistoricalRecoveryBeforeContainmentPostgres(t *testing.T) {
+// scratchPostgres creates an empty PostgreSQL database for a historical-schema
+// drill and drops it afterwards.
+func scratchPostgres(t *testing.T, suffix string) (store.Config, *pgx.Conn) {
+	t.Helper()
 	dsn := postgresTestDSN(t)
 	parsed, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	database := fmt.Sprintf("%s_before_containment_%d", strings.TrimPrefix(parsed.Path, "/"), time.Now().UnixNano())
+	database := fmt.Sprintf("%s_%s_%d", strings.TrimPrefix(parsed.Path, "/"), suffix, time.Now().UnixNano())
 	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -79,11 +98,7 @@ func TestHistoricalRecoveryBeforeContainmentPostgres(t *testing.T) {
 			t.Errorf("close scratch connection: %v", err)
 		}
 	})
-	seedBeforeContainment(t, cfg, func(stmt string) error { _, err := conn.Exec(t.Context(), stmt); return err })
-	assertBeforeContainmentReads(t, authn.NewHistoricalRecoveryPG(conn, 87))
-	if _, err := authn.NewPG(conn).Grants(t.Context(), "usr_before"); err == nil {
-		t.Fatal("the current resolver read a schema that predates the containment columns")
-	}
+	return cfg, conn
 }
 
 func seedBeforeContainment(t *testing.T, cfg store.Config, exec func(string) error) {
