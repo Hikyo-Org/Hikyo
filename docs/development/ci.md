@@ -24,11 +24,11 @@ for activation, promotion and operator commands.
 | Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. |
 | Refresh the bounded feedback compiler caches | `cache-seed-feedback-backend` | Compiles the feedback lanes' Go exports without DWARF into fresh dedicated directories, checks each entry's size and file count against the existing bound, and publishes version-2 entries: three per family, each under the existing 1,610,612,736 byte and 12,000 file bound: `application` (`internal/app`) and `cli` (`internal/cli`), both restored by the go lane, and `tooling` (`scripts/ci`, `internal/boundary`, `internal/isolation`, `internal/lint` and the pinned `actionlint`), restored by the tooling lane. The whole graph is about 1.6 GB, so no single entry can hold it. Two trust families, named in every key: `main` (daily or manual, from main) is read only by feedback runs on PRs that do not target dev; `dev` (a push to dev, at most one seed per UTC day, or a manual run on dev) is read only by runs on PRs that target dev. The reader picks its family from the PR's base branch and its entry from the lane's Go scope, and neither restore prefix matches the other family. Seeds publish only from those two refs, from the immutable pushed commit with a read-only token; pull requests, including their edited workflows' own runs, never publish. What separates the families is GitHub's ref scoping: a PR reads entries saved on its base branch and on the default branch, nothing else, and only trusted refs can write. The family string in the key and prefix keeps the prefixes honest and covers prefix fallbacks, but it is not the boundary: GitHub's `==` on strings ignores case, so a base branch named `DEV` takes the `dev` family string, finds no dev-saved entries in its own ref scope, and builds cold. Go does not re-hash a restored object: it looks up an action ID and checks that the output exists with the right size (only `GODEBUG=gocacheverify=1` re-hashes), so the guarantee is that only trusted refs can write, not content verification. After a successful seed a separate `prune` job (`actions: write` only, no checkout, no repository code, same trusted guard) deletes the superseded entries of the same ref, family and entry by exact key prefix and cache id, keeping the entry just saved and the newest one, and treating a 404 as done; the compiling job keeps a read-only token. Steady-state footprint (compressed): the 2026-11-25 measurement is two main `go-feedback-v2` entries of 306 MB each (a 0.20 ratio on the roughly 1.54 GB they hold); applied to the measured raw sizes this is an estimated 0.69 GB for the main family and 0.76 GB for the dev family, about 1.45 GB for both, replacing the old 0.3 to 0.6 GB single entry. Each family holds one set once its prune has run; a set exists twice only between a save and its prune. Repository usage was measured at 10.59 GB over 37 entries, already above the 10 GB budget before this change; the repository's limit setting is not readable with the workflow token (HTTP 402), so 10 GB is the documented default, not a measurement. The two old unfamilied `go-feedback-v2-<os>-<arch>-<abi>-<hash>-<sha>` entries (612 MB) match neither family's prune prefix and expire or are evicted on their own; deleting them after the first main seed frees that space. Until the backmerge, dev's old reader prefix also matches the new main-family entries (it names no family), so dev PRs restore a main entry; after it, dev PRs build cold until the first dev push seeds. The go lane restores two entries (`application` and `cli`, about 2.4 GB and 18,500 files expanded): read their hosted restore times from the first warm run (`gh run view <run> --json jobs`, the two restore steps) and the tooling lane's from its own, instead of the 4 to 5 s of the old single 321 MB entry. The seed workflow runs from the pushed ref, so a change to it reaches dev through a backmerge before dev pushes seed. Dispatch it manually (`--ref main`, `--ref dev`) after the workflow changes or a `go.mod`/`go.sum` change lands. |
 | Refresh the production-fixture compiler cache | `cache-seed-feedback` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
-| Refresh the shared race compiler cache | `cache-seed-race` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. It is also the daily second writer of `go-mod-v2` (restore, `go mod download` of the module and the pinned tools on a miss, save from trusted main only), so an evicted module cache refills within a day instead of at the next Sunday `ci-main` run. Run it manually after a `go.mod`/`go.sum` change lands. |
+| Refresh the shared race compiler cache | `cache-seed-race` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. It is also the daily second writer of `go-mod-v2` (restore, `scripts/ci/populate-go-module-cache.sh` on a miss, save from trusted main only; `ci.yml` runs the same script, so the two writers save the same contents), so an evicted module cache refills within a day instead of at the next Sunday `ci-main` run. Run it manually after a `go.mod`/`go.sum` change lands. |
 | Refresh the lint driver compiler cache | `cache-seed-lint` | Daily or manual, trusted main only. Prepares the lint matrix compiler cache and runs the `internal/lint` tests in a fresh cache, then publishes one entry per ISO week that `test_core_serial` and `ci-advisory-invariants` restore by prefix. Its key follows `go.mod`, `go.sum`, the tool modules, the runner toolchain and the week, so a seed is at most a week stale. Expect up to two seeds during a weekly rotation, plus one per module change; superseded seeds go idle and age out after seven days. Run it manually after a dependency or toolchain change on main. |
 | Refresh the pinned tool downloads | `cache-seed-tools` | Daily or manual, trusted main only. Downloads each checksum-pinned release file (ShellCheck, kind, Cosign, Node, Helm, the Calico manifest) with bounded backoff and publishes one entry per `scripts/ci/pinned-tools/<name>.pin`. `lint`, `supply-chain-checks`, `k8s-e2e`, reliability and `ci-feedback` restore it so a GitHub release outage does not fail them. Dispatch it manually after a pin file changes. |
 | Prune the repository cache | `cache-prune` | Hourly, manual, or minutes after a cache writer finished on main (CodeQL, `ci-main`, the lint, race, tool and feedback seeds), trusted main only, `actions: write` and nothing else, no checkout. Deletes the superseded entries of the regenerable cache families and idle pull-request entries so the 10 GB repository limit does not evict live entries; see Repository cache budget below. |
-| Refresh the dev feedback seed | `cache-refresh-dev-seed` | Daily at 03:44 UTC or manual, trusted main only, `actions: write` and nothing else, no checkout: runs `gh workflow run ci-feedback-backend-cache.yml --ref dev`. Schedules run on the default branch only, so dev has no cron; without this the dev seed is last used on the Friday before a quiet weekend and is the first entry the Monday 04:11 lint driver rollover evicts. The dispatched run is a dev run in every respect (it checks out dev, the key carries the dev family and the UTC day, only the dev ref can save it), so the trust families stay apart. A run takes about 3.6 minutes when it compiles (measured on the main seed) and 0.2 when the day already has a seed. |
+| Refresh the dev feedback seed | `cache-refresh-dev-seed` | Daily (cron 03:44 UTC, which in practice runs hours later, see the budget section) or manual, trusted main only, `actions: write` and nothing else, no checkout: runs `gh workflow run ci-feedback-backend-cache.yml --ref dev`. Schedules run on the default branch only, so dev has no cron; without this the dev seed is last used on the Friday before a quiet weekend and is the first entry the Monday lint driver rollover evicts. The dispatched run is a dev run in every respect (it checks out dev, the key carries the dev family and the UTC day, only the dev ref can save it), so the trust families stay apart. A run takes about 3.6 minutes when it compiles (measured on the main seed) and 0.2 when the day already has a seed. |
 | Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, the golangci-lint config, workflows, Git hooks, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Run the Storybook suite before merge | `ci-advisory-storybook` | Advisory, per PR push touching `web/`, `clients/ts/`, `.nvmrc`, the root `package.json`, `docs/site/scripts/test-csp.mjs`, `scripts/ci/storybook-suite.sh` or the workflow's setup helpers (`install-corepack.sh`, `export-pnpm-cache.sh`). Runs the same commands as the `storybook` job in `ci.yml` (story tests in both palettes, production build, theme and docs checks, static demo) on the exact PR head in the Playwright container. The pre-push hook runs the same script locally. Not a required context; `ci-dev` and the queue still run the job. |
 | Lint new Go code | `ci-advisory-golangci` | Advisory, per PR push touching Go files, `go.mod`, `go.sum`, `.golangci.yml`, `scripts/ci/golangci-lint-new.sh`, its version pin or `scripts/ci/run-go-tool.sh`. Runs golangci-lint (version in `scripts/ci/golangci-lint-version`, rules in `.golangci.yml`: errcheck, errorlint, errchkjson, noctx, wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, gosec G115/G204/G306 outside tests) and reports only issues on lines changed since the merge base, so the existing baseline is not enforced. Run it locally with `scripts/ci/golangci-lint-new.sh <base>`; the pre-push hook runs it too (`HIKYO_PREPUSH_GOLANGCI=skip` opts out). Lints only the default build (not other-OS files or `ui`, `k8se2e`, `floor*` tags); type errors are always reported in full. Restores caches only, saves none. Not a required context and in no required job or fast-feedback lane. |
@@ -115,7 +115,7 @@ entry, so they are estimated.
 | --- | --- | --- | --- |
 | `GOFLAGS=-gcflags=all=-dwarf=false` in the k8s-e2e job; key suffix `-nodwarf` | 898 to 755 MB (x0.84) | 1.62 to 1.36 GB (-0.26) | none for a run; the binaries lose DWARF |
 | The same flag in `internal/lint` `BuildContext.Env` (`loaderGOFLAGS`, replacing the cleared `GOFLAGS`); weekly key suffix `-nodwarf` | 1135 to 905 MB (x0.80) | 1.71 to 1.37 GB (-0.35); also the weekly overshoot | the seed re-saves at its next run; readers fall back to the old entry until then |
-| `go-mod-v2` archives `~/go/pkg/mod/cache/download` in the one writer step in `ci.yml` and the 25 restores | 663 to 372 MB (x0.56; 791 to 437 with a toolchain in the tree, x0.55) | 1.03 to 0.58 GB (-0.45) | see below |
+| `go-mod-v2` archives `~/go/pkg/mod/cache/download` in the two writer steps (`ci.yml` and `ci-race-cache.yml`, both filled by `scripts/ci/populate-go-module-cache.sh`) and the 25 restores | 663 to 372 MB (x0.56; 791 to 437 with a toolchain in the tree, x0.55) | 1.03 to 0.58 GB (-0.45) | see below |
 | Prune after each writer (`workflow_run`) | n/a | window in which two generations coexist drops from up to 60 to about 2 minutes | none; the replay shows no change in peak |
 | Daily dev seed refresh (`cache-refresh-dev-seed`) | main seed run 3.6 min (measured) | keeps the dev seed the newest-accessed entry before the Monday rollover | one 0.76 GB save and one prune a day |
 
@@ -141,59 +141,95 @@ access times), the prune workflow's own jq at :47 hourly and two minutes after e
 CodeQL overlay creation times, least recently accessed first, a tie against the seeds. Not in the listing
 and assumed: entries the listing shows touched within 90 minutes are touched hourly on a weekday and
 the others (overlays, kind, buildx) only when created; on a quiet weekend nothing is touched after
-Friday 20:30 except what a schedule saves; the main seed is saved at 03:32 (by 03:42); the dev seed
-refresh saves by 03:55 (03:44 plus the 3.6 minutes measured, rounded up); the old lint driver entry
-was looked up at 04:10 on Monday.
+Friday 20:30 except what a schedule saves; the old lint driver entry was looked up when the lint run
+started, two minutes before it saves.
+
+**A cron time is not a run time.** Scheduled runs on 2026-11-22 to 2026-11-25 (one `gh api` call on
+the schedule-event runs; `run_started_at` to `updated_at`) started 8 to 10.5 hours after their cron minute:
+
+| Workflow | Cron (UTC) | Started (UTC), 11-22 to 11-25 | Took |
+| --- | --- | --- | --- |
+| `cache-seed-feedback` (`go-feedback-v1`) | 03:17 | 11:25, 12:40, 13:42, 12:55 | about 2 min |
+| `cache-seed-feedback-backend` (main seed) | 03:32 | 11:46, 13:26, 14:04, 13:18 | 0 to 4 min |
+| `cache-seed-race` (race and `go-mod-v2`) | 03:41 | 11:58, 13:39, 14:15, 13:29 | 1 to 7 min |
+| `cache-seed-lint` (lint driver) | 04:11 | 14:46 (ended 14:57), 14:12 | 2 to 11 min |
+| `ci-main` (Sunday) | 13:23 | 20:24 on 11-22, cancelled at 21:07 | n/a |
+
+The order (feedback, main seed, race, lint) held on every observed day; the gaps did not. The model
+replays the saves at the run ends of 2026-11-25 (feedback 12:58, main seed 13:22, race 13:36, lint
+14:14, Sunday `ci-main` 20:31); the dev refresh is not deployed, so its time is assumed to follow the main
+seed (13:26). Earlier revisions of this section used the cron minutes (03:41, 04:11), which were never
+observed. The `ci-main` run of 11-22 was cancelled, so whatever only it writes was not refreshed that week.
 
 | Scenario | Plan | Demand | Peak at 10.00 GB / 10 GiB | Evicted live entries at 10.00 GB / 10 GiB | Newest seeds |
 | --- | --- | --- | --- | --- | --- |
-| Weekday | before | 10.04 | 10.44 / 10.80 | 11 / 2 | a main seed entry evicted at 10.00 GB (Thursday 11:39), none at 10 GiB |
+| Weekday | before | 10.04 | 10.51 / 11.23 | 16 / 6 | a main seed entry evicted at 10.00 GB (09:10), none at 10 GiB |
 | Weekday | adopted | 8.98 | 9.74 / 9.74 | 0 / 0 | both survive |
-| Monday 04:11 lint driver rollover after a quiet weekend | before | 10.04 | 11.46 / 11.75 | 4 / 4 (shellcheck, helm, cosign, `go-mod-v2`) | **dev seed evicted** at both limits |
-| Monday 04:11 | adopted | 8.98 | 10.34 / 10.34 | 4 / 0 | both survive |
+| Monday lint driver rollover (14:14) after a quiet weekend | before | 10.04 | 11.46 / 11.75 | 4 / 4 (shellcheck, helm, cosign, `go-mod-v2`) | **dev seed evicted** at both limits |
+| Monday lint driver rollover | adopted | 8.98 | 10.34 / 10.34 | 4 / 0 | both survive |
 | Sunday 20:31 fuzz rollover | before | 10.04 | 10.02 / 10.48 | 0 / 0 | main seed entry evicted on the tie at 10.00 GB |
 | Sunday 20:31 | adopted | 8.98 | 9.42 / 9.42 | 0 / 0 | both survive |
+| go.mod/go.sum change day, observed times | adopted | 8.98 | 10.26 / 10.34 | 7 / 0 | both survive |
+| same, race and lint saves in the same minute (14:14) | adopted | 8.98 | 11.32 / 11.63 | 14 / 12 | both survive |
+| same, both at 11:59 (before the day's seeds are re-saved) | adopted | 8.98 | 11.20 / 11.63 | 12 / 9 | **main and dev seed entries evicted** at both limits |
+| Sunday 20:31 `ci-main` after a go.sum change (every save at once) | adopted | 8.98 | 12.27 / 12.27 | 8 / 7 | both survive |
 
 New low point 8.98 GB (before 10.04): margin +1.02 GB at 10.00 GB and +1.76 GB at 10 GiB. Peaks 9.74
-(weekday), 9.42 (Sunday fuzz) and 10.34 (Monday), against 10.44, 10.02 and 11.46 before. Verdict: the
-newest main and dev seeds survive a weekday, the Sunday fuzz rollover and the Monday rollover at both
-limits. The one residual of those three is at exactly 10.00 GB on Monday: for the instant in which the
-old and new lint driver entries coexist (until the prune two minutes later) the model evicts the four
-least recently used idle entries (three pinned tools and `go-mod-v2`); at 10 GiB nothing live is
-evicted. Without the dev refresh the dev seed is lost again on Monday at 10.00 GB; without the shrinks
-the Monday peak is back at 11.46 GB and seven entries go (the test pins both). The prune after a writer
-does not change the replay, because the model evicts at the moment of the save; it shortens the window
-in which two generations coexist, which matters if GitHub's eviction is lazy, as the 12-hour
-observation suggests.
+(weekday), 9.42 (Sunday fuzz) and 10.34 (Monday), against 10.51, 10.02 and 11.46 before. Verdict for
+the three ordinary scenarios: the newest main and dev seeds survive a weekday, the Sunday fuzz rollover
+and the Monday rollover at both limits. The one residual of those three is at exactly 10.00 GB on
+Monday: for the instant in which the old and new lint driver entries coexist (until the prune two
+minutes later) the model evicts the four least recently used idle entries (three pinned tools and
+`go-mod-v2`); at 10 GiB nothing live is evicted. Without the dev refresh the dev seed is lost again on
+Monday at 10.00 GB; without the shrinks the Monday peak is back at 11.46 GB and seven entries go; without
+the prune after a writer an ordinary weekday peaks at 10.19 GB (10.26 at 10 GiB) and evicts three entries
+at 10.00 GB (the test pins all of these). On Monday and Sunday the prune after a writer changes nothing,
+because the model evicts at the moment of the save; it shortens the window in which two generations
+coexist, which matters if GitHub's eviction is lazy, as the 12-hour observation suggests.
 
-**Days that rotate keys are not covered by the three scenarios above.** `go.mod` or `go.sum` changed
-on main on 7 of the last 30 days (committer date, `origin/main` at 2026-11-25; one was a Sunday). Then
-the daily race seed (03:41, with `go-mod-v2`), the daily `go-feedback-v1` save (04:00 assumed) and the
-lint driver seed (04:11) each save next to the old generation until the prune, and on a Sunday the
-weekly `ci-main` saves about 3.3 GB at once (module, test, lint, generated, k8s-e2e and fuzz entries,
-with the old ones restored and so freshly accessed). Both are modelled and pinned:
+**Days that rotate keys are not covered by those three.** `go.mod` or `go.sum` changed on main on 7
+of the last 30 days (committer date, `origin/main` at 2026-11-25). Then the daily race seed (with
+`go-mod-v2`), the daily `go-feedback-v1` save and the lint driver seed each save next to the old
+generation until the prune. With the observed run ends the day peaks at 10.26 GB and takes seven idle
+entries at 10.00 GB, none at 10 GiB, and both seeds survive. The result depends on timing, and the
+timing is not under our control: when the race and lint saves land in the same minute there is no prune
+between them, and the peak reaches 11.32 GB (14 entries evicted at 10.00 GB, 12 at 10 GiB) with the
+seeds surviving. If that happens at 11:59, before the day's seed run has re-saved the seeds, the model
+loses the main seed and the dev seed entries at both limits. That is the worst case this model can show
+for an ordinary day, not a prediction: it needs a rotation day and two writers finishing in one minute
+(race and lint finished 38 and 41 minutes apart on 11-25 and 11-24; the lint seed has only those two observed runs).
 
-| Scenario (adopted plan) | Peak at 10.00 GB / 10 GiB | Evicted live entries at 10.00 GB / 10 GiB | Newest seeds |
-| --- | --- | --- | --- |
-| Weekday with a go.mod/go.sum change | 10.66 / 10.95 | 7 / 2 | both survive |
-| Sunday 13:23 `ci-main` after a go.sum change (worst case: every save at once) | 12.27 / 12.27 | 8 / 7 | both survive |
+How long a lost seed stays lost: the main and dev seeds are re-saved daily, and the observed run ends
+spread over 2.7 hours (11:25 to 14:07). A lost seed is therefore back after at most about 27 hours, and in
+the early case above within about 2 hours. The cost is cold feedback builds in that window (the
+main seed compile took 3.6 minutes in the measured run), so slower feedback jobs and no loss of
+coverage: the same checks run, uncached.
 
-What goes is idle and regenerates without a person. On the weekday at 10.00 GB: `buildx-dl-bin` (next
-Docker build), three CodeQL overlay entries (next CodeQL run on main), the `kind` and `shellcheck` tools
-(next job that pins them) and `go-generated-v2` (next main run of the job that saves it); at 10 GiB
-only `buildx-dl-bin` and one overlay. On the Sunday the model also evicts `go-lintdriver-v2` (the weekly
-seed saves it again on Monday 04:11, so lint runs without the driver cache until then),
-`go-feedback-v1` (the daily save), `codeql-dependencies`, `codeql-trap` and the CodeQL overlays (next CodeQL run on main). The
-figures are worst cases: they evict at the moment of the save, and `ci-main` saves over its run, not at
-one instant. Whether a go.sum change lands on a Sunday morning is rare (one of the last four Sundays had
-a change at all); the weekday case recurs on about one day in four.
+Sunday after a go.sum week. Only the weekly `ci-main` writes the test, lint, generated, k8s-e2e and
+fuzz entries, so on every Sunday after a week with a `go.mod` or `go.sum` change it saves about 3.3 GB at
+once: module, test, lint, generated, k8s-e2e and fuzz entries, with the old ones restored and so freshly
+accessed. That is the usual Sunday after such a week, not a rare one: 3 of the last 4 Sundays followed a
+week with a change (the weeks ending 11-01, 11-08 and 11-15; not 11-22). The model evicts 8 live entries
+at 10.00 GB and 7 at 10 GiB (peak 12.27 GB), both seeds survive, and the evicted entries are idle ones:
+`buildx-dl-bin` (next Docker build), three CodeQL overlays, `codeql-dependencies` and `codeql-trap`
+(next CodeQL run on main), `go-feedback-v1` (the daily save), and `go-lintdriver-v2` (the weekly seed
+saves it again on Monday, so lint runs without the driver cache until then). `ci-main` saves over its
+run, not at one instant, and it was cancelled on 11-22, so the figure is a worst case.
 
-Module cache. `go-mod-v2` has two writers, the daily `cache-seed-race` (03:41) and the weekly `ci-main`
-run (Sunday 13:23); 25 restores read it. Before the daily writer, a Monday eviction (the residual
-above) meant every restore missed for about six days. Now the entry is lost until the next 03:41 save,
-under 24 hours: every job downloads its modules from the proxy in that time (`go mod download` of the
-repository and the pinned tools took 23 s wall on the loaded macOS host above, so a few seconds to a
-minute a job is the estimated cost, not measured on a runner).
+What an eviction costs. An evicted entry is a cache miss, never lost coverage: the job that would
+have read it rebuilds from source and the checks run unchanged. Only the weekly `ci-main` writes
+`go-test-v2`, `go-lint-v2`, `go-generated-v2`, `go-k8s-e2e-v2` and `go-fuzz-v2`, so an evicted one of
+those is missing until the next Sunday `ci-main`, up to six days, and the jobs that read it run cold in
+the meantime. The others return sooner: `go-mod-v2` at the next race seed run, `go-race-v2` and
+`go-lintdriver-v2` at their seed runs, the pinned tools at the next job that pins them, CodeQL's
+entries at its next run on main.
+
+Module cache. `go-mod-v2` has two writers, the daily `cache-seed-race` and the weekly `ci-main` run;
+25 restores read it. Before the daily writer, a Monday eviction (the residual above) meant every restore
+missed for about six days. Now the entry is lost until the next race seed run, under 27 hours: every job
+downloads its modules from the proxy in that time (`go mod download` of the repository and the pinned
+tools took 23 s wall on the loaded macOS host above, so a few seconds to a minute a job is the
+estimated cost, not measured on a runner).
 
 Removing the Monday instant for real would need the lint driver seed to delete the old week's entry
 before it saves, with a cold lint cache until the new one lands; that is the owner's call and is not
@@ -205,7 +241,7 @@ Delivery order. The dev refresh does nothing until the backmerge to dev: dev sti
 main-only guard on the feedback seed, so a dispatched run on dev would not save. Every `go-mod-v2`
 restore misses until a writer saves the new `cache/download` entry (the key is unchanged but the path
 is part of the cache version); `ci-main` is dispatched by hand after the merge, and the daily race seed
-saves it at the next 03:41 at the latest. The old whole-tree entries of the same key are the older ones
+saves it at its next run at the latest. The old whole-tree entries of the same key are the older ones
 of their lane, so the prune removes them when the new entry saves.
 
 Files live in [`.github/workflows/`](../../.github/workflows/). Display names may

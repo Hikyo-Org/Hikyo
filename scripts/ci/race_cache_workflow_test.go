@@ -157,8 +157,8 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"module save wrong key": func(w map[string]any) {
 			seedStep(w, 8)["with"].(map[string]any)["key"] = "${{ steps.race-seed.outputs.cache-primary-key }}"
 		},
-		"module populate skipped tools": func(w map[string]any) { seedStep(w, 7)["run"] = "go mod download\n" },
-		"module restore unnamed":        func(w map[string]any) { delete(seedStep(w, 2), "id") },
+		"module populate is a private copy": func(w map[string]any) { seedStep(w, 7)["run"] = "go mod download\n" },
+		"module restore unnamed":            func(w map[string]any) { delete(seedStep(w, 2), "id") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed map[string]any
@@ -199,7 +199,7 @@ var raceSeedSpec = reuseSeedSpec{
 	moduleWriter: true,
 }
 
-const moduleWriterPopulate = "go mod download\ntool_module_dir=\"$RUNNER_TEMP/go-tool-modules\"\nmkdir -p \"$tool_module_dir\"\ncd \"$tool_module_dir\"\ngo mod init ci-tools\nwhile IFS= read -r module; do\n  go mod edit -require=\"$module\"\ndone < \"$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt\"\ngo mod download all\n"
+const moduleWriterPopulate = "./scripts/ci/populate-go-module-cache.sh"
 
 func requireRaceSeed(workflow map[string]any) error { return requireReuseSeed(workflow, raceSeedSpec) }
 

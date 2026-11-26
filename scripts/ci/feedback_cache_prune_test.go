@@ -364,7 +364,7 @@ func cachePolicyFixture(t *testing.T) (string, func() (string, error)) {
 	t.Helper()
 	repo := repositoryRoot(t)
 	root := t.TempDir()
-	files := []string{"scripts/ci/check-cache-policy_test.sh", "scripts/ci/go-tool-modules.txt", "scripts/ci/verify-docs.sh", "web/package.json", "docs/site/package.json"}
+	files := []string{"scripts/ci/check-cache-policy_test.sh", "scripts/ci/populate-go-module-cache.sh", "scripts/ci/go-tool-modules.txt", "scripts/ci/verify-docs.sh", "web/package.json", "docs/site/package.json"}
 	entries, err := os.ReadDir(filepath.Join(repo, ".github/workflows"))
 	if err != nil {
 		t.Fatal(err)

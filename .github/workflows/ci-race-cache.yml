@@ -76,16 +76,7 @@ jobs:
       # Monday eviction would otherwise miss all restores for about six days.
       - name: Populate shared Go module cache
         if: steps.go-module-cache.outputs.cache-hit != 'true'
-        run: |
-          go mod download
-          tool_module_dir="$RUNNER_TEMP/go-tool-modules"
-          mkdir -p "$tool_module_dir"
-          cd "$tool_module_dir"
-          go mod init ci-tools
-          while IFS= read -r module; do
-            go mod edit -require="$module"
-          done < "$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt"
-          go mod download all
+        run: ./scripts/ci/populate-go-module-cache.sh
       - name: Save shared Go module cache from trusted main only
         if: >-
           success() && steps.go-module-cache.outputs.cache-hit != 'true' &&

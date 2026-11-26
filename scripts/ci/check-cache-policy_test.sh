@@ -368,8 +368,10 @@ done
 
 require_line "$tool_modules" 'github.com/rhysd/actionlint@v1.7.12'
 require_line "$tool_modules" 'golang.org/x/vuln@v1.7.0'
-require_line "$workflow" 'done < "$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt"'
-require_line "$workflow" 'go mod download all'
+populate_script="$repo_root/scripts/ci/populate-go-module-cache.sh"
+require_line "$populate_script" 'done <"$repo_root/scripts/ci/go-tool-modules.txt"'
+require_line "$populate_script" 'go mod download all'
+require_line "$workflow" 'run: ./scripts/ci/populate-go-module-cache.sh'
 require_line "$workflow" 'run: ./scripts/ci/run-go-tool.sh actionlint'
 require_line "$workflow" './scripts/ci/run-go-tool.sh govulncheck -mode=binary'
 require_line "$workflow" 'run: ./scripts/ci/export-runner-cache-abi.sh'

@@ -320,16 +320,42 @@ func (m *cacheModel) report(name string) string {
 
 // plan is what the repository does: the shrinks it adopts, whether the prune also runs minutes after
 // each writer finishes (the workflow_run trigger of ci-cache-prune.yml; the hourly :47 run always
-// exists) and whether dev's seed is refreshed daily at 03:44, before the Monday rollover.
+// exists) and whether dev's seed is refreshed daily (cron 03:44, so in practice hours later), before the Monday rollover.
 type plan struct {
 	scales      map[string]float64
 	writerPrune bool
 	devRefresh  bool
+	times       runTimes
 }
+
+// runTimes are when the daily writers finish and save, as UTC {hour, minute}. A cron time is not a
+// run time: GitHub started the scheduled seeds 8 to 10.5 hours after their cron minute on every day
+// from 2026-11-22 to 2026-11-25 (`gh api repos/.../actions/runs?event=schedule`, one call):
+//
+//	cache-seed-feedback          cron 03:17  started 11:25 12:40 13:42 12:55, each about 2 min
+//	cache-seed-feedback-backend  cron 03:32  started 11:46 13:26 14:04 13:18, 0 to 4 min
+//	cache-seed-race              cron 03:41  started 11:58 13:39 14:15 13:29, 1 to 7 min (ended 11:59 to 14:16)
+//	cache-seed-lint              cron 04:11  started 14:46 (ran 11 min, ended 14:57) and 14:12 (2 min)
+//	ci-main (Sunday)             cron 13:23  started 20:24 on 11-22 and was cancelled at 21:07
+//
+// The order feedback, main seed, race, lint held on every observed day; how far apart they land did
+// not. The dev refresh is not deployed, so its time is assumed equal to the main seed's class.
+type runTimes struct {
+	feedbackV1, mainSeed, devSeed, race, lint [2]int
+	// ciMain is the Sunday weekly run's save.
+	ciMain [2]int
+}
+
+func (r runTimes) at(day int, hm [2]int) time.Time {
+	return time.Date(2026, 11, day, hm[0], hm[1], 0, 0, time.UTC)
+}
+
+// observedTimes are the saves of 2026-11-25 (run end), the latest day observed.
+var observedTimes = runTimes{feedbackV1: [2]int{12, 58}, mainSeed: [2]int{13, 22}, devSeed: [2]int{13, 26}, race: [2]int{13, 36}, lint: [2]int{14, 14}, ciMain: [2]int{20, 31}}
 
 var (
 	// Before this round: nothing adopted, only the hourly prune.
-	planBefore = plan{}
+	planBefore = plan{times: observedTimes}
 	// The adopted cuts: DWARF off in the k8s-e2e entry (898 to 755 MB zstd, x0.84) and in the lint
 	// driver (1135 to 905 MB, x0.80), the module cache holding only cache/download (791 to 437 MB,
 	// x0.55; see docs/development/ci.md for what the restore costs), the prune after each writer,
@@ -338,6 +364,7 @@ var (
 		scales:      map[string]float64{"go-k8s-e2e-v2-": 0.84, "go-lintdriver-v2-": 0.80, "go-mod-v2-": 0.55},
 		writerPrune: true,
 		devRefresh:  true,
+		times:       observedTimes,
 	}
 	limits = []struct {
 		name  string
@@ -354,8 +381,8 @@ func (p plan) afterWriter(m *cacheModel, at time.Time) []modelEvent {
 }
 
 // weekday replays 24 hours from the listing: the measured per-push CodeQL churn (the listing's overlay
-// entries, one day later), the main seed at 03:32 (saved by 03:42), the dev seed refreshed at 03:44
-// (saved by 03:55) or else saved by a dev push at 09:10, and the prune every hour at :47.
+// entries, one day later), the main seed saved at its observed run end (runTimes), the dev seed refreshed
+// (assumed to land just after it) or else saved by a dev push at 09:10, and the prune every hour at :47.
 func weekday(t *testing.T, p plan, limit int64) *cacheModel { return weekdayWith(t, p, limit, nil) }
 
 // weekdayWith is weekday plus the events of the day's own saves.
@@ -383,9 +410,9 @@ func weekdayWith(t *testing.T, p plan, limit int64, extra func(*cacheModel) []mo
 		events = append(events, modelEvent{at, func() { m.add(key, "refs/heads/main", size, "", false) }})
 		events = append(events, p.afterWriter(m, at)...)
 	}
-	events = append(events, modelEvent{time.Date(2026, 11, 26, 3, 42, 0, 0, time.UTC), func() { m.replaceSeed("main", seedSizesMain) }})
+	events = append(events, modelEvent{p.times.at(26, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }})
 	if p.devRefresh {
-		events = append(events, modelEvent{time.Date(2026, 11, 26, 3, 55, 0, 0, time.UTC), func() { m.replaceSeed("dev", seedSizesDev) }})
+		events = append(events, modelEvent{p.times.at(26, p.times.devSeed), func() { m.replaceSeed("dev", seedSizesDev) }})
 	} else {
 		events = append(events, modelEvent{time.Date(2026, 11, 26, 9, 10, 0, 0, time.UTC), func() { m.replaceSeed("dev", seedSizesDev) }})
 	}
@@ -426,20 +453,20 @@ func (m *cacheModel) touch(prefix string) {
 }
 
 // rotationDay is an ordinary weekday on which go.mod or go.sum changed on main. Everything keyed on
-// them rotates at its next save: the daily race seed (03:41, which also saves go-mod-v2 on a miss),
-// the daily go-feedback-v1 save (04:00 assumed; the time is not in the listing) and the lint driver
-// seed (04:11), each next to its old generation until the prune two minutes later.
+// them rotates at its next save: the daily race seed (which also saves go-mod-v2 on a miss), the daily
+// go-feedback-v1 save and the lint driver seed, each next to its old generation until the prune two
+// minutes later. When two saves land in the same minute the prune cannot run between them.
 func rotationDay(t *testing.T, p plan, limit int64) *cacheModel {
 	return weekdayWith(t, p, limit, func(m *cacheModel) []modelEvent {
-		day := func(h, min int) time.Time { return time.Date(2026, 11, 26, h, min, 0, 0, time.UTC) }
+		day := func(hm [2]int) time.Time { return p.times.at(26, hm) }
 		var events []modelEvent
 		for _, w := range []struct {
 			at       time.Time
 			prefixes []string
 		}{
-			{day(3, 41), []string{"go-race-v2-", "go-mod-v2-"}},
-			{day(4, 0), []string{"go-feedback-v1-"}},
-			{day(4, 11), []string{"go-lintdriver-v2-"}},
+			{day(p.times.race), []string{"go-race-v2-", "go-mod-v2-"}},
+			{day(p.times.feedbackV1), []string{"go-feedback-v1-"}},
+			{day(p.times.lint), []string{"go-lintdriver-v2-"}},
 		} {
 			events = append(events, modelEvent{w.at, func() {
 				for _, prefix := range w.prefixes {
@@ -452,7 +479,7 @@ func rotationDay(t *testing.T, p plan, limit int64) *cacheModel {
 	})
 }
 
-// sundayGoSum is the weekly ci-main run (13:23) after a go.sum change landed since the daily seeds
+// sundayGoSum is the weekly ci-main run after a go.sum change landed since the daily seeds
 // ran: it restores the old generation of the module, test, lint, generated, k8s-e2e and fuzz entries
 // and saves the new one of each, about 3.3 GB at once, on a quiet weekend.
 func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
@@ -462,16 +489,16 @@ func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
 		e.accessed, e.created = friday, friday
 		switch e.seed {
 		case "main":
-			e.accessed = time.Date(2026, 11, 29, 3, 42, 0, 0, time.UTC)
+			e.accessed = p.times.at(29, p.times.mainSeed)
 		case "dev":
 			if p.devRefresh {
-				e.accessed = time.Date(2026, 11, 29, 3, 55, 0, 0, time.UTC)
+				e.accessed = p.times.at(29, p.times.devSeed)
 			}
 		}
 	}
-	m.now = time.Date(2026, 11, 29, 13, 0, 0, 0, time.UTC)
+	save := p.times.at(29, p.times.ciMain)
+	m.now = save.Add(-time.Hour)
 	m.low, m.peak = 0, 0
-	save := time.Date(2026, 11, 29, 13, 23, 0, 0, time.UTC)
 	events := []modelEvent{{save, func() {
 		for _, prefix := range []string{"go-mod-v2-", "go-test-v2-", "go-lint-v2-", "go-generated-v2-", "go-k8s-e2e-v2-", "go-fuzz-v2-"} {
 			m.touch(prefix)
@@ -484,43 +511,35 @@ func sundayGoSum(t *testing.T, p plan, limit int64) *cacheModel {
 	return m
 }
 
-// monday replays Monday 04:00 to 12:00 after a quiet weekend: the weekly lint driver entry is saved at
-// 04:11. The old week's entry was last looked up at 04:10, fresher than every seed that nothing
-// refreshed; the main seed was saved at 03:32 (at 03:42 by the time it is in), and the dev seed was
-// last restored on Friday unless the daily refresh ran at 03:44.
+// monday replays Monday 11:00 to 21:00 after a quiet weekend: the weekly lint driver entry is saved at
+// the lint run's end. The old week's entry was looked up when that run started, two minutes earlier,
+// fresher than every seed that nothing refreshed; the main seed is saved at its run's end and the dev
+// seed was last restored on Friday unless the daily refresh runs.
 func monday(t *testing.T, p plan, limit int64) *cacheModel {
 	m, _, _ := newCacheModel(t, modelOpts{quiet: true, scales: p.scales, limit: limit})
 	friday := time.Date(2026, 11, 27, 20, 30, 0, 0, time.UTC)
-	start := time.Date(2026, 11, 30, 4, 0, 0, 0, time.UTC)
+	start := time.Date(2026, 11, 30, 11, 0, 0, 0, time.UTC)
+	save := p.times.at(30, p.times.lint)
 	var old *modelEntry
 	for _, e := range m.entries {
-		if e.seed != "main" && e.created.Before(start) {
-			e.accessed = friday
-		}
+		e.accessed = friday
 		if strings.HasPrefix(e.Key, "go-lintdriver-v2-") {
 			old = e
 		}
-		if e.seed == "dev" {
-			e.accessed = friday
-		}
-		if e.seed == "main" {
-			e.created, e.accessed = time.Date(2026, 11, 30, 3, 42, 0, 0, time.UTC), time.Date(2026, 11, 30, 3, 42, 0, 0, time.UTC)
-		}
 	}
-	old.accessed = time.Date(2026, 11, 30, 4, 10, 0, 0, time.UTC)
+	old.accessed = save.Add(-2 * time.Minute)
 	size := old.Size
 	m.now = start
 	m.low, m.peak = 0, 0
-	var events []modelEvent
+	events := []modelEvent{{p.times.at(30, p.times.mainSeed), func() { m.replaceSeed("main", seedSizesMain) }}}
 	if p.devRefresh {
-		events = append(events, modelEvent{time.Date(2026, 11, 30, 3, 55, 0, 0, time.UTC), func() { m.replaceSeed("dev", seedSizesDev) }})
+		events = append(events, modelEvent{p.times.at(30, p.times.devSeed), func() { m.replaceSeed("dev", seedSizesDev) }})
 	}
-	save := time.Date(2026, 11, 30, 4, 11, 0, 0, time.UTC)
 	events = append(events, modelEvent{save, func() {
 		m.add("go-lintdriver-v2-Linux-X64-ubuntu26-"+strings.Repeat("a", 64)+"-2026-W49", "refs/heads/main", size, "", false)
 	}})
 	events = append(events, p.afterWriter(m, save)...)
-	events = append(events, hourly(start, start.Add(8*time.Hour), 47, m.prune)...)
+	events = append(events, hourly(start, start.Add(10*time.Hour), 47, m.prune)...)
 	m.play(events)
 	return m
 }
@@ -540,7 +559,7 @@ func sunday(t *testing.T, p plan, limit int64) *cacheModel {
 	m.now = start
 	m.low, m.peak = 0, 0
 	var events []modelEvent
-	save := time.Date(2026, 11, 29, 20, 31, 0, 0, time.UTC)
+	save := p.times.at(29, p.times.ciMain)
 	for _, c := range before {
 		if strings.HasPrefix(c.Key, "go-fuzz-v2-") {
 			key := strings.Replace(c.Key, "-2026-W47", "-2026-W48", 1)
@@ -564,7 +583,7 @@ func TestCacheBudgetModel(t *testing.T) {
 	// and the Monday rollover after a quiet weekend evicts the newest dev seed, with 10 GB or 10 GiB.
 	// Peaks per scenario at 10 GB and at 10 GiB (they differ once an eviction has run).
 	peaks := map[string][2]float64{
-		"before/weekday": {10.44, 10.80}, "before/monday rollover": {11.46, 11.75}, "before/sunday fuzz rollover": {10.02, 10.48},
+		"before/weekday": {10.51, 11.23}, "before/monday rollover": {11.46, 11.75}, "before/sunday fuzz rollover": {10.02, 10.48},
 		"adopted/weekday": {9.74, 9.74}, "adopted/monday rollover": {10.34, 10.34}, "adopted/sunday fuzz rollover": {9.42, 9.42},
 	}
 	t.Run("before", func(t *testing.T) {
@@ -617,32 +636,47 @@ func TestCacheBudgetModel(t *testing.T) {
 	// generation until the prune, so these days peak above an ordinary weekday and, at 10.00 GB, take
 	// idle entries (never a seed); at 10 GiB they take two. The Sunday case is the worst: the weekly
 	// ci-main run saves about 3.3 GB at once.
+	// Days that rotate keys. go.mod or go.sum changed on main on 7 of the last 30 days (committer
+	// date, origin/main at 2026-11-25), one of them a Sunday. The rotated entries coexist with the old
+	// generation until the prune, so these days peak above an ordinary weekday and, at 10.00 GB, take
+	// idle entries. Whether a seed survives depends on when the saves land: scheduled runs start hours
+	// after their cron minute, and when the race and lint saves coincide there is no prune between
+	// them. The Sunday case is the worst, and the usual one after any go.mod/go.sum week: only the
+	// weekly ci-main writes the test, lint, generated, k8s-e2e and fuzz entries, about 3.3 GB at once.
 	t.Run("go.mod and go.sum change days", func(t *testing.T) {
+		coincide := planAdopted
+		coincide.times.lint = coincide.times.race
+		early := planAdopted
+		early.times.race, early.times.lint = [2]int{11, 59}, [2]int{11, 59}
 		days := []struct {
-			name string
-			run  func(*testing.T, plan, int64) *cacheModel
-			peak [2]float64
-			live [2]int
+			name      string
+			p         plan
+			run       func(*testing.T, plan, int64) *cacheModel
+			peak      [2]float64
+			live      [2]int
+			seedsLost bool
 		}{
-			{"rotation day", rotationDay, [2]float64{10.66, 10.95}, [2]int{7, 2}},
-			{"sunday go.sum", sundayGoSum, [2]float64{12.27, 12.27}, [2]int{8, 7}},
+			{"rotation day, observed times", planAdopted, rotationDay, [2]float64{10.26, 10.34}, [2]int{7, 0}, false},
+			{"rotation day, race and lint saves coincide at 14:14", coincide, rotationDay, [2]float64{11.32, 11.63}, [2]int{14, 12}, false},
+			{"rotation day, race and lint saves coincide at 11:59, before the day's seeds", early, rotationDay, [2]float64{11.20, 11.63}, [2]int{12, 9}, true},
+			{"sunday go.sum", planAdopted, sundayGoSum, [2]float64{12.27, 12.27}, [2]int{8, 7}, false},
 		}
 		for i, l := range limits {
 			for _, d := range days {
-				m := d.run(t, planAdopted, l.bytes)
+				m := d.run(t, d.p, l.bytes)
 				t.Log(m.report("adopted, " + d.name))
 				m.requireDemand(t, 8.97)
 				m.requirePeak(t, d.peak[i])
 				if len(m.evicted) != d.live[i] {
 					t.Fatalf("%s evicts %d live entries at %s, documented %d: %v", d.name, len(m.evicted), l.name, d.live[i], m.evicted)
 				}
-				if len(m.seedLost) != 0 {
-					t.Fatalf("%s at %s loses a newest seed: %v", d.name, l.name, m.seedLost)
+				if (len(m.seedLost) != 0) != d.seedsLost {
+					t.Fatalf("%s at %s: seeds lost %v, documented lost=%v", d.name, l.name, m.seedLost, d.seedsLost)
 				}
 			}
 		}
-		// The module cache is a casualty of the Monday instant at 10.00 GB; the daily race seed saves
-		// it again at 03:41 on Tuesday, where before only the Sunday ci-main run did.
+		// The module cache is a casualty of the Monday instant at 10.00 GB; the daily race seed
+		// saves it again at its next run, where before only the Sunday ci-main run did.
 		m := monday(t, planAdopted, 10_000_000_000)
 		if !slices.ContainsFunc(m.evicted, func(k string) bool { return strings.HasPrefix(k, "go-mod-v2-") }) {
 			t.Fatalf("the Monday instant no longer evicts go-mod-v2; update the budget section of docs/development/ci.md: %v", m.evicted)
@@ -665,14 +699,18 @@ func TestCacheBudgetModel(t *testing.T) {
 		if m := monday(t, without(func(p *plan) { p.scales = nil }), gb); float64(m.peak)/1e9 < 11.4 || len(m.evicted) <= 4 {
 			t.Fatalf("without the shrinks the Monday peak should be 11.46 GB and evict more than four entries: %s", m.report("monday"))
 		}
-		// The prune after a writer changes nothing here: with eviction at the moment of the save the
-		// old and new generation coexist at the peak whatever follows. It shortens the window in
-		// which they coexist from up to an hour to two minutes, which only matters if GitHub's
-		// eviction is lazy (docs/development/ci.md).
-		for _, s := range scenarios {
-			a, b := s.run(t, planAdopted, gb), s.run(t, without(func(p *plan) { p.writerPrune = false }), gb)
+		// The prune after a writer shortens the window in which two generations coexist. With the
+		// seeds saving after the CodeQL churn it matters on a weekday (9.74 GB and no eviction with it,
+		// 10.19 and three without at 10.00 GB); Monday and Sunday are unchanged because the
+		// model evicts at the moment of the save.
+		a, b := weekday(t, planAdopted, gb), weekday(t, without(func(p *plan) { p.writerPrune = false }), gb)
+		if a.peak >= b.peak || len(a.evicted) >= len(b.evicted) {
+			t.Fatalf("the prune after a writer no longer helps on a weekday (%.2f against %.2f GB); update the budget section of docs/development/ci.md", float64(a.peak)/1e9, float64(b.peak)/1e9)
+		}
+		for _, run := range []func(*testing.T, plan, int64) *cacheModel{monday, sunday} {
+			a, b := run(t, planAdopted, gb), run(t, without(func(p *plan) { p.writerPrune = false }), gb)
 			if a.peak != b.peak || len(a.evicted) != len(b.evicted) {
-				t.Fatalf("%s: the prune after a writer now changes the replay, update the budget section of docs/development/ci.md", s.name)
+				t.Fatal("the prune after a writer now changes Monday or Sunday, update the budget section of docs/development/ci.md")
 			}
 		}
 	})
