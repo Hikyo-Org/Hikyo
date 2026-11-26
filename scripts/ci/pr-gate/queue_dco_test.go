@@ -38,7 +38,7 @@ func TestQueueDCOIsolatesEveryGitSubprocessFromAmbientConfiguration(t *testing.T
 	base := object("commit", "tree "+tree+"\nauthor Fixture <fixture@example.test> 1700000000 +0000\ncommitter Fixture <fixture@example.test> 1700000000 +0000\n\nFixture base\n")
 	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor Fixture <fixture@example.test> 1700000001 +0000\ncommitter Fixture <fixture@example.test> 1700000001 +0000\n\nFixture edit\n\nSigned-off-by: Fixture <fixture@example.test>\n")
 	for _, ref := range []string{queueTrustedMainRef, queueTrustedDevRef} {
-		if out, err := exec.Command(git, "-C", metadata, "update-ref", ref, base).CombinedOutput(); err != nil {
+		if out, err := exec.CommandContext(t.Context(), git, "-C", metadata, "update-ref", ref, base).CombinedOutput(); err != nil {
 			t.Fatalf("update-ref: %v %s", err, out)
 		}
 	}
@@ -183,7 +183,7 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 				head = object("commit", "tree "+headTree+"\nparent "+base+"\nparent "+bot+"\nauthor "+merger+" 1700000002 +0000\ncommitter "+merger+" 1700000002 +0000\n\nBackmerge\n\nSigned-off-by: "+merger+"\n")
 			}
 			for ref, tip := range map[string]string{queueTrustedMainRef: mainTip, queueTrustedDevRef: devTip} {
-				if out, err := exec.Command("git", "-C", repo, "update-ref", ref, tip).CombinedOutput(); err != nil {
+				if out, err := exec.CommandContext(t.Context(), "git", "-C", repo, "update-ref", ref, tip).CombinedOutput(); err != nil {
 					t.Fatalf("update-ref: %v %s", err, out)
 				}
 			}
@@ -236,12 +236,12 @@ func queueDCOFailClosedFixture(t *testing.T, present string) (string, pull) {
 	}
 	t.Chdir(root)
 	repo := t.TempDir()
-	if out, err := exec.Command("git", "init", "--bare", "--quiet", repo).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "git", "init", "--bare", "--quiet", repo).CombinedOutput(); err != nil {
 		t.Fatalf("init: %v %s", err, out)
 	}
 	object := func(kind, body string) string {
 		t.Helper()
-		cmd := exec.Command("git", "-C", repo, "hash-object", "-w", "-t", kind, "--stdin")
+		cmd := exec.CommandContext(t.Context(), "git", "-C", repo, "hash-object", "-w", "-t", kind, "--stdin")
 		cmd.Stdin = strings.NewReader(body)
 		out, err := cmd.Output()
 		if err != nil {
@@ -253,7 +253,7 @@ func queueDCOFailClosedFixture(t *testing.T, present string) (string, pull) {
 	tree := object("tree", "")
 	base := object("commit", "tree "+tree+"\nauthor "+author+" 1700000000 +0000\ncommitter "+author+" 1700000000 +0000\n\nBase\n")
 	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+author+" 1700000001 +0000\ncommitter "+author+" 1700000001 +0000\n\nEdit\n\nSigned-off-by: "+author+"\n")
-	if out, err := exec.Command("git", "-C", repo, "update-ref", present, base).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "git", "-C", repo, "update-ref", present, base).CombinedOutput(); err != nil {
 		t.Fatalf("update-ref: %v %s", err, out)
 	}
 	p := pull{Base: reference{SHA: base}, Head: reference{SHA: head}}

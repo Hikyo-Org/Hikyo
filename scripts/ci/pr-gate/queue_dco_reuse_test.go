@@ -49,7 +49,7 @@ func newAdmissionDCOFixture(t *testing.T, bot bool) admissionDCOFixture {
 	}
 	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+identity+" 1700000001 +0000\ncommitter "+identity+" 1700000001 +0000\n\n"+message)
 	for _, ref := range []string{queueTrustedMainRef, queueTrustedDevRef} {
-		if out, err := exec.Command(git, "-C", repo, "update-ref", ref, base).CombinedOutput(); err != nil {
+		if out, err := exec.CommandContext(t.Context(), git, "-C", repo, "update-ref", ref, base).CombinedOutput(); err != nil {
 			t.Fatalf("update-ref: %v %s", err, out)
 		}
 	}
