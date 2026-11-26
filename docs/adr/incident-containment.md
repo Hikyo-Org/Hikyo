@@ -545,7 +545,8 @@ principal is contained, so a contained account would still have a scheduler acti
   Coverage is database state, never a comparison of clocks. An identity linked after the
   listing has no item and holds the release; the refused release lists it as an open item
   (in a transaction of its own, after the refusal), and an operator attests it before the
-  next attempt. A member with an identity and no password is released once its identities are
+  next attempt. Each item listed this way records an `incident.item_outcome` event
+  (outcome unknown) naming the acting principal, in the listing's own transaction. A member with an identity and no password is released once its identities are
   attested. Release is also refused while another open incident recorded the principal as
   contained (its ledger item reads done though the state belongs to the first incident); the
   refusal names that incident to a caller who can read it, and gives a generic reason to one who

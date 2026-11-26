@@ -67,7 +67,7 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
   (`TestInvariantAuditRegistryClosure` fails).
 - Mutants of the later security round killed with `go test -overlay` (assertion failures, both
   engines): no listing on attest and a "listed only" rule, auto-attesting the listed identities, a created_at
-  rule (slow-clock repro), no relisting by a refused release (truncation test), the proof step dropped (proof test), the stamp
+  rule (slow-clock repro), no relisting by a refused release, the listing's audit event dropped or given the wrong actor (truncation test), the proof step dropped (proof test), the stamp
   clear dropped (re-containment test), the open-item check dropped (open-item test).
 - Full-package results (`./internal/isolation`, `./internal/store/...`, `./internal/service`, `./internal/app`, `./internal/lint` including `TestVetDriverRepo`, both engines) are not claimed here: the implementation ran only the focused tests above, and the full run is the review's. Lint is hosted CI (the local golangci-lint is built with go1.26 and refuses the module's go1.27.4).
 

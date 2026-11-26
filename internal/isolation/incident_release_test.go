@@ -319,6 +319,13 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 		if err := release(); !errors.Is(err, service.ErrReleaseNotReady) {
 			t.Fatalf("release with the listed identity unattested = %v, want ErrReleaseNotReady", err)
 		}
+		// Each listed identity has an audit event naming the acting principal and incident.
+		audited := func(item string) int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='incident.item_outcome' AND actor_id='`+string(incResponder)+`' AND correlation_id='`+id+`' AND object_id='`+id+`' AND outcome='unknown' AND payload LIKE '%"object_id":"`+item+`"%'`)
+		}
+		if got := audited("xid_unlisted"); got != 1 {
+			t.Fatalf("listing xid_unlisted wrote %d audit events with the actor, want 1", got)
+		}
 		// An identity linked after the listing, on a node whose clock ran slow, has no
 		// item and holds the release whatever its created_at says.
 		execRaw(t, db, `INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('xid_slow','acc_itarget','oidc','https://idp.example.test','subject-slow','',`+acctEpoch(t, db)+`,'2000-01-01T00:00:00.000000Z')`)
@@ -329,6 +336,9 @@ func TestIncidentReleaseTruncationIsKeyedPerMember(t *testing.T) {
 			t.Fatalf("release with an identity linked after the listing = %v, want ErrReleaseNotReady", err)
 		}
 		// The refused release listed it as an open item; it still needs its own attestation.
+		if got := audited("xid_slow"); got != 1 {
+			t.Fatalf("a refused release listing xid_slow wrote %d audit events with the actor, want 1", got)
+		}
 		if got := queryString(t, db, `SELECT outcome FROM incident_items WHERE incident_id='`+id+`' AND object_id='xid_slow'`); got == "attested" || got == "" {
 			t.Fatalf("a refused release left the late identity %q, want an open item", got)
 		}

@@ -315,7 +315,7 @@ func countsPayload(counts map[domain.ItemOutcome]int64) audit.Payload {
 // attest explicitly, and an identity linked after this moment has no item at all
 // until a release attempt lists it. Release reads coverage from those items alone, so
 // no clock decides it and nothing the operator was not shown is covered.
-func listUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, incidentID string, member domain.PrincipalID, scope string, now time.Time) error {
+func listUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, by domain.PrincipalID, incidentID string, member domain.PrincipalID, scope string, now time.Time) error {
 	accountID, err := az.ContainedAccountID(ctx, member)
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil // a scope-level cut names no member
@@ -333,10 +333,24 @@ func listUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, inciden
 			return err
 		}
 		// An identity already listed keeps its item (the insert is a no-op).
-		if _, err := az.AddIncidentItem(ctx, authz.NewIncidentItem{
+		added, err := az.AddIncidentItem(ctx, authz.NewIncidentItem{
 			ID: itemID, IncidentID: incidentID, OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindExternalIdentity,
 			ObjectID: x.ID, Scope: scope, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner, At: now,
-		}); err != nil {
+		})
+		if err != nil {
+			return err
+		}
+		if !added {
+			continue
+		}
+		// A new ledger entry records who caused it, in the same transaction.
+		payload := itemPayload(authz.IncidentItem{ID: itemID, OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindExternalIdentity, ObjectID: x.ID})
+		payload["result"], payload["reason"] = "unknown", reasonPayload(domain.ReasonNoRevokeOwner)
+		e, err := incidentEvent(ctx, audit.EventIncidentItemOutcome, by, incidentID, audit.OutcomeUnknown, payload)
+		if err != nil {
+			return err
+		}
+		if err := az.RecordAuthEvent(ctx, e); err != nil {
 			return err
 		}
 	}
@@ -945,7 +959,7 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 			return nil
 		}
 		if item.ObjectKind == domain.ObjectKindEnumeration && item.OwnerFunction == domain.OwnerExternalIdentity {
-			return listUnlistedIdentities(ctx, az, inc.ID, domain.PrincipalID(item.ObjectID), item.Scope, now)
+			return listUnlistedIdentities(ctx, az, caller.Principal, inc.ID, domain.PrincipalID(item.ObjectID), item.Scope, now)
 		}
 		return nil
 	})

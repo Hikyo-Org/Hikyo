@@ -44,6 +44,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 		return err
 	}
 	var relist string
+	var relistBy domain.PrincipalID
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		relist = ""
 		now := s.now()
@@ -100,7 +101,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 			// account again, so release waits until the item is terminal.
 			return fmt.Errorf("%w: the incident's account containment item is still open; resume it first", ErrReleaseNotReady)
 		case pending > 0:
-			relist = scope
+			relist, relistBy = scope, caller.Principal
 			return fmt.Errorf("%w: %d linked identity item(s) are not attested", ErrReleaseNotReady, pending)
 		case !hasPassword && total == 0:
 			// No password and no linked identity to attest: nothing records that a
@@ -124,7 +125,7 @@ func (s *Incidents) ReleasePrincipal(ctx context.Context, actor Actor, incidentI
 	// (linked after the enumeration) is given an open item in a transaction of its
 	// own, so the operator can attest it and release again; it is never attested here.
 	if lerr := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		return listUnlistedIdentities(ctx, az, incidentID, target, relist, s.now())
+		return listUnlistedIdentities(ctx, az, relistBy, incidentID, target, relist, s.now())
 	}); lerr != nil {
 		return lerr
 	}
