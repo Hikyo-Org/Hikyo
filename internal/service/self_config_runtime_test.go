@@ -691,3 +691,26 @@ func TestSelfConfigInvalidSecretOwnerValuePublishNamesKeyOnly(t *testing.T) {
 		t.Fatalf("secret value echoed: %q / %v", detail, err)
 	}
 }
+
+// Capture must keep the cause of a failed metadata read, while still
+// matching the closed wire policy (and not being mistaken for a fence).
+func TestSelfConfigCaptureKeepsTheCauseOfAFailedMetadataRead(t *testing.T) {
+	t.Parallel()
+	s, _ := selfConfigFixture(t)
+	if err := s.LoadRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Capture(t.Context())
+	if !errors.Is(err, ErrSelfConfigUnavailable) {
+		t.Fatalf("got %v, want ErrSelfConfigUnavailable", err)
+	}
+	if errors.Is(err, ErrSelfConfigFenced) {
+		t.Fatalf("a failed read is a fault, not a fence: %v", err)
+	}
+	if err.Error() == ErrSelfConfigUnavailable.Error() {
+		t.Fatalf("the cause of the failed read was discarded: %v", err)
+	}
+}

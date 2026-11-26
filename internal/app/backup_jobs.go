@@ -14,6 +14,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
@@ -59,8 +60,18 @@ func backupJobs(cfg *config.Config, log *slog.Logger, svc *service.Backup) []Sch
 			return nil
 		},
 		LastSuccess: svc.LastExportSuccess,
-		OnRefused: func(ctx context.Context, err error) error {
-			return svc.RecordFailure(ctx, service.TriggerScheduled, err)
+		OnRefused: func(ctx context.Context, refusal error) error {
+			// A fence is by design (suspended, restoring, other topology): recording
+			// it every pass would overwrite the health reason with noise, and the
+			// RPO staleness check still catches a long fence. Only an export that
+			// was actually due and lost to a fault is a failure.
+			if errors.Is(refusal, service.ErrSelfConfigFenced) {
+				return refusal
+			}
+			if due, err := svc.Due(ctx, policy.Interval); err != nil || !due {
+				return refusal
+			}
+			return svc.RecordFailure(ctx, service.TriggerScheduled, refusal)
 		},
 	}, {
 		Name: "backup_prune",

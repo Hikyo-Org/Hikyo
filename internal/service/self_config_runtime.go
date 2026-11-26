@@ -52,7 +52,7 @@ func (s *SelfConfig) Capture(ctx context.Context) (*runtimeconfig.Bundle, error)
 		}
 		owner, incarnation, err := s.DB.RecoveryIdentity()
 		if err != nil {
-			return nil, ErrSelfConfigUnavailable
+			return nil, errors.Join(ErrSelfConfigUnavailable, err)
 		}
 		if owner != metadata.OwnerInstanceID || incarnation != metadata.Incarnation || metadata.Suspended || metadata.DeploymentRestoring || active.owner != metadata.OwnerInstanceID || active.generation != metadata.Generation || active.incarnation != metadata.Incarnation {
 			return nil, ErrSelfConfigFenced

@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -410,5 +411,42 @@ func TestCoordinationClaimCommitFailurePreservesProvisionalFence(t *testing.T) {
 	owner, _, live, err := coord.LeaseHolder(ctx, "provisional", now)
 	if err != nil || !live || owner != "successor" {
 		t.Fatalf("provisional release changed successor: owner=%q live=%v err=%v", owner, live, err)
+	}
+}
+
+// A coordination read racing a writer on upgrade_control aborts with 40001 at
+// the admission guard's FOR SHARE (RepeatableRead). The transaction must rerun
+// on a fresh snapshot instead of surfacing the conflict.
+func TestCoordinationRetriesSerializationFailureAtAdmissionGuard(t *testing.T) {
+	db := postgresTestDB(t)
+	ctx := t.Context()
+	writer, err := db.PG().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Rollback(context.WithoutCancel(ctx)) }()
+	// A no-op update still creates a new row version, which is what 40001 keys on.
+	if _, err := writer.Exec(ctx, `UPDATE upgrade_control SET generation=generation WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	read := make(chan error, 1)
+	go func() { _, err := db.Coordination().Now(ctx); read <- err }()
+	// Commit only once the reader is parked on the writer's row lock, so its
+	// snapshot is older than the commit and the first attempt must abort.
+	for blocked := 0; blocked == 0; {
+		select {
+		case err := <-read:
+			t.Fatalf("read finished while the writer held the row: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+		if err := db.PG().QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FOR SHARE%' AND pid <> pg_backend_pid()`).Scan(&blocked); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-read; err != nil {
+		t.Fatalf("coordination read after a concurrent upgrade_control update: %v", err)
 	}
 }

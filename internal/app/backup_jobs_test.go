@@ -198,3 +198,45 @@ func TestRefusedBackupExportRecordsFailure(t *testing.T) {
 		t.Fatalf("gated prune error = %v", err)
 	}
 }
+
+// Only a refusal of an export that was due is a failure. A fence is by design
+// and a not-due pass has nothing to fail, so neither may write the trail or
+// overwrite the health reason.
+func TestRefusedBackupExportOnlyRecordsDueNonFencedFailures(t *testing.T) {
+	cfg, svc, backupDir := scheduleFixture(t)
+	jobs := backupJobs(cfg, quietLogger(), svc)
+	fault := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: boom"))
+	refuse := func(err error) error {
+		return gateOnRuntimeConfig(jobs[0], func(context.Context) error { return err }).Run(t.Context())
+	}
+	failed := func() int64 { return countInstanceEvents(t, storeConfig(cfg), "backup.export_failed") }
+
+	// Due, but fenced: refused, not recorded.
+	if err := refuse(service.ErrSelfConfigFenced); !errors.Is(err, service.ErrSelfConfigFenced) {
+		t.Fatalf("fenced refusal = %v", err)
+	}
+	if n := failed(); n != 0 {
+		t.Fatalf("a fenced refusal wrote %d failure events", n)
+	}
+
+	// Not due (an export just succeeded): a fault refusal is not recorded either.
+	if err := jobs[0].Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := refuse(fault); !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		t.Fatalf("not-due refusal = %v", err)
+	}
+	if n := failed(); n != 0 {
+		t.Fatalf("a not-due refusal wrote %d failure events", n)
+	}
+	st, err := svc.State(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastFailureAt.IsZero() || st.LastFailureReason != "" {
+		t.Fatalf("health row overwritten by a refusal that was not a failure: %+v", st)
+	}
+	if n := archiveCount(t, backupDir); n != 1 {
+		t.Fatalf("archives = %d, want the single earlier export", n)
+	}
+}
