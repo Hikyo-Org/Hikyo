@@ -1,0 +1,352 @@
+package ci_test
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Contract: every input of a supply-chain-checks fixture must make the changed
+// path classifier select that job. The advisory PR workflow
+// (ci-advisory-supply-chain.yml) runs the job only when the classifier does, so
+// a path a fixture reads but the classifier narrows away (as `*.go`, `docs/*`
+// and the kind-script cases do) would again break dev with a green PR.
+//
+// Inputs are derived from the job itself, not listed: the repository paths each
+// `run:` step names (scripts, directories, requirements), then, through every
+// shell, Python or hook file reached that way, the files it names, resolved
+// from the repository root or from its own directory (`$(dirname "$0")/..`).
+// Data paths that only appear inside test fixtures (classifier sample paths) are
+// not followed: only code files are. Data a script reads indirectly is covered
+// where a step names it, and otherwise by its owning directory's case.
+
+const (
+	supplyChainJob          = "supply-chain-checks"
+	supplyChainValidateStep = "Validate the immutable caller revision"
+	// A step that names no repository path cannot be proven covered, so a new
+	// one must be recognized here or made to name its inputs.
+	supplyChainInline = "Chart renders and carries release substitution anchors"
+)
+
+// Go packages run by the job compile most of the module; no path list can
+// close that. A package must select the job or the test domain (`test` runs
+// every package), which the contract asserts instead of the job alone.
+var supplyChainGoPackages = map[string]bool{
+	"internal/app": true, "internal/releasetrust": true,
+	"scripts/ci": true, "scripts/ci/pr-gate": true, "scripts/ci/queue-report": true,
+	"scripts/ci/checksuites": true, "scripts/release": true,
+}
+
+var supplyChainToken = regexp.MustCompile(`[A-Za-z0-9_.@/+-]+`)
+
+type supplyChainRepo struct {
+	files map[string]string // tracked path -> content ("" for non-code)
+	dirs  map[string]bool
+}
+
+func newSupplyChainRepo(files map[string]string) supplyChainRepo {
+	r := supplyChainRepo{files: files, dirs: map[string]bool{}}
+	for f := range files {
+		for d := path.Dir(f); d != "."; d = path.Dir(d) {
+			r.dirs[d] = true
+		}
+	}
+	return r
+}
+
+func (r supplyChainRepo) isDir(p string) bool { return r.dirs[p] }
+
+func isCode(p string) bool {
+	switch path.Ext(p) {
+	case ".sh", ".py", ".bash":
+		return true
+	}
+	return strings.HasPrefix(p, ".githooks/")
+}
+
+// resolve maps a token to a tracked path, from the repository root or from the
+// directory of the file that names it.
+func (r supplyChainRepo) resolve(token, from string) (string, bool) {
+	token = strings.TrimRight(token, ".,:;")
+	var candidates []string
+	if from != "" {
+		candidates = append(candidates, path.Join(path.Dir(from), token))
+	}
+	root := token
+	for strings.HasPrefix(root, "./") || strings.HasPrefix(root, "../") {
+		root = strings.TrimPrefix(strings.TrimPrefix(root, "./"), "../")
+	}
+	candidates = append(candidates, root)
+	for _, c := range candidates {
+		if _, ok := r.files[c]; ok {
+			return c, true
+		}
+		if r.isDir(c) {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+// supplyChainInputs returns every derived input path and the step that led to it.
+func supplyChainInputs(r supplyChainRepo, runs map[string]string) (map[string]string, error) {
+	inputs := map[string]string{}
+	var queue []string
+	add := func(p, origin string) {
+		if _, ok := inputs[p]; !ok {
+			inputs[p] = origin
+			queue = append(queue, p)
+		}
+	}
+	for name, run := range runs {
+		found := false
+		for _, token := range supplyChainToken.FindAllString(run, -1) {
+			if p, ok := r.resolve(token, ""); ok && strings.Contains(p, "/") {
+				add(p, name)
+				found = true
+			}
+		}
+		if !found && name != supplyChainInline {
+			return nil, fmt.Errorf("step %q names no repository path; name its inputs or extend the contract", name)
+		}
+	}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		var codes []string
+		if _, ok := r.files[p]; ok {
+			codes = []string{p}
+		} else {
+			for f := range r.files {
+				if strings.HasPrefix(f, p+"/") {
+					codes = append(codes, f)
+				}
+			}
+		}
+		for _, code := range codes {
+			if !isCode(code) {
+				continue
+			}
+			for _, token := range supplyChainToken.FindAllString(r.files[code], -1) {
+				if q, ok := r.resolve(token, code); ok && isCode(q) && !r.isDir(q) {
+					add(q, code)
+				}
+			}
+		}
+	}
+	return inputs, nil
+}
+
+func supplyChainRuns(t *testing.T, ci []byte) map[string]string {
+	t.Helper()
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(ci, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	runs := map[string]string{}
+	for _, s := range workflow.Jobs[supplyChainJob].Steps {
+		if s.Run != "" && s.Name != supplyChainValidateStep {
+			runs[s.Name] = s.Run
+		}
+	}
+	if len(runs) < 30 {
+		t.Fatalf("%s lost its fixture steps: %d", supplyChainJob, len(runs))
+	}
+	return runs
+}
+
+func supplyChainRepository(t *testing.T, root string) supplyChainRepo {
+	t.Helper()
+	list, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, f := range strings.Split(strings.TrimRight(string(list), "\x00"), "\x00") {
+		if f == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, f)); err != nil {
+			continue // tracked but deleted in this worktree
+		}
+		if isCode(f) {
+			data, err := os.ReadFile(filepath.Join(root, f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			files[f] = string(data)
+		} else {
+			files[f] = ""
+		}
+	}
+	return newSupplyChainRepo(files)
+}
+
+// supplyChainUncovered classifies each input with the given classifier and
+// returns those that do not select the job (or, for Go packages, the test
+// domain).
+func supplyChainUncovered(t *testing.T, classifier, registry string, r supplyChainRepo, inputs map[string]string) []string {
+	t.Helper()
+	var bad []string
+	for p, origin := range inputs {
+		probe, want := p, []string{supplyChainJob}
+		if r.isDir(p) {
+			probe = p + "/probe"
+		}
+		if supplyChainGoPackages[p] {
+			probe, want = p+"/probe.go", []string{supplyChainJob, "test"}
+		}
+		cmd := exec.Command("sh", classifier, "--files")
+		cmd.Env = append(os.Environ(), "CI_JOB_REGISTRY="+registry)
+		cmd.Stdin = strings.NewReader(probe + "\n")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("classify %s: %v", probe, err)
+		}
+		var plan map[string]bool
+		if err := yaml.Unmarshal(out, &plan); err != nil {
+			t.Fatal(err)
+		}
+		selected := false
+		for _, job := range want {
+			selected = selected || plan[job]
+		}
+		if !selected {
+			bad = append(bad, fmt.Sprintf("%s (probe %s, from %s) does not select %s", p, probe, origin, strings.Join(want, " or ")))
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+func TestSupplyChainFixtureInputsSelectTheJob(t *testing.T) {
+	root := repositoryRoot(t)
+	ci, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := supplyChainRepository(t, root)
+	runs := supplyChainRuns(t, ci)
+	inputs, err := supplyChainInputs(repo, runs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, must := range []string{".githooks/pre-push", "scripts/git/install-hooks.sh", "scripts/ci/check-commit-signatures.sh", "scripts/release", "chart/hikyo/values.yaml"} {
+		if _, ok := inputs[must]; !ok {
+			t.Errorf("derivation lost known input %s (%d inputs)", must, len(inputs))
+		}
+	}
+	classifier := filepath.Join(root, "scripts/ci/classify-changed-paths.sh")
+	registry := filepath.Join(root, "scripts/ci/ci-job-registry.json")
+	for _, bad := range supplyChainUncovered(t, classifier, registry, repo, inputs) {
+		t.Error(bad)
+	}
+}
+
+// Prove the contract can fail: narrow the real classifier, and add a fixture,
+// each in a copy, and require the derivation to name what escaped.
+func TestSupplyChainContractFailsWhenCoverageIsRemoved(t *testing.T) {
+	root := repositoryRoot(t)
+	ci, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := supplyChainRepository(t, root)
+	runs := supplyChainRuns(t, ci)
+	registry := filepath.Join(root, "scripts/ci/ci-job-registry.json")
+	classifier, err := os.ReadFile(filepath.Join(root, "scripts/ci/classify-changed-paths.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrow := func(t *testing.T, pattern string) string {
+		t.Helper()
+		const anchor = "\t\tcase \"$path\" in\n\t\t# Only the nightly-desktop"
+		if !strings.Contains(string(classifier), anchor) {
+			t.Fatal("classifier lost the case the mutation anchors to")
+		}
+		mutated := strings.Replace(string(classifier), anchor,
+			"\t\tcase \"$path\" in\n\t\t"+pattern+")\n\t\t\tselect_class docs\n\t\t\t;;\n\t\t# Only the nightly-desktop", 1)
+		file := filepath.Join(t.TempDir(), "classify.sh")
+		if err := os.WriteFile(file, []byte(mutated), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	t.Run("hook path narrowed away", func(t *testing.T) {
+		inputs, err := supplyChainInputs(repo, runs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := supplyChainUncovered(t, narrow(t, ".githooks/*"), registry, repo, inputs)
+		if len(bad) == 0 || !strings.Contains(strings.Join(bad, "\n"), ".githooks/pre-push") {
+			t.Fatalf("narrowing .githooks/* escaped the contract: %v", bad)
+		}
+	})
+	t.Run("new fixture in an uncovered area", func(t *testing.T) {
+		files := map[string]string{"web/new-fixture_test.sh": "#!/bin/sh\n"}
+		for k, v := range repo.files {
+			files[k] = v
+		}
+		extended := newSupplyChainRepo(files)
+		withNew := map[string]string{"New fixture": "./web/new-fixture_test.sh"}
+		for k, v := range runs {
+			withNew[k] = v
+		}
+		inputs, err := supplyChainInputs(extended, withNew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := supplyChainUncovered(t, filepath.Join(root, "scripts/ci/classify-changed-paths.sh"), registry, extended, inputs)
+		if len(bad) == 0 || !strings.Contains(strings.Join(bad, "\n"), "web/new-fixture_test.sh") {
+			t.Fatalf("a new fixture without coverage escaped the contract: %v", bad)
+		}
+	})
+	t.Run("new fixture naming no path", func(t *testing.T) {
+		withNew := map[string]string{"New fixture": "make check"}
+		for k, v := range runs {
+			withNew[k] = v
+		}
+		if _, err := supplyChainInputs(repo, withNew); err == nil {
+			t.Fatal("a fixture that names no input was accepted")
+		}
+	})
+}
+
+// The advisory workflow is only as strong as its gate: the classifier must come
+// from the base commit, the fixtures must run only on its verdict, and it must
+// replay the job rather than a copy that could drift.
+func TestSupplyChainAdvisoryWorkflowShape(t *testing.T) {
+	raw := readRepoFile(t, ".github/workflows/ci-supply-chain.yml")
+	for _, want := range []string{
+		`show "$BASE_SHA:scripts/ci/classify-changed-paths.sh"`,
+		`show "$BASE_SHA:scripts/ci/ci-job-registry.json"`,
+		`diff --name-only "$BASE_SHA...$HEAD_SHA"`,
+		`if: ${{ needs.changes.outputs.run == 'true' }}`,
+		`go run ./scripts/ci/run-job-steps .github/workflows/ci.yml supply-chain-checks`,
+		"persist-credentials: false",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("workflow lost %q", want)
+		}
+	}
+	for _, forbidden := range []string{"actions/cache/save", "pull_request_target", "secrets.", "continue-on-error", "contents: write"} {
+		if strings.Contains(raw, forbidden) {
+			t.Errorf("advisory workflow must not contain %q", forbidden)
+		}
+	}
+}

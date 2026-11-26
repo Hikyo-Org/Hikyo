@@ -36,7 +36,7 @@
       "release-snapshot",
       "supply-chain-checks"
     ],
-    "chart-kind-script": ["k8s-e2e", "lint"],
+    "chart-kind-script": ["k8s-e2e", "lint", "supply-chain-checks"],
     "gitops": ["k8s-e2e", "lint", "supply-chain-checks"],
     "chart-runtime": ["k8s-e2e"],
     "client": ["client", "release-snapshot", "web-go"],
@@ -60,8 +60,8 @@
     ],
     "floor-bench": ["floor-bench"],
     "docs": ["docs"],
-    "docs-ci": ["docs", "lint"],
-    "k8s-e2e-script": ["k8s-e2e", "lint"],
+    "docs-ci": ["docs", "lint", "supply-chain-checks"],
+    "k8s-e2e-script": ["k8s-e2e", "lint", "supply-chain-checks"],
     "license": ["docs", "release-snapshot"],
     "operator": [
       "fuzz",
