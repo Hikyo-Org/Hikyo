@@ -97,7 +97,9 @@ func maxParallelLanes(t *testing.T) int {
 }
 
 // TestReserveSizingIsPinnedAndDocumented pins the sizing behind the interim exception of
-// 2026-11-26 (#1598): R = 480 is below the honest bound, so ungated spend can exceed it in a
+// 2026-11-26 (#1598). The owner accepted the pinned worst case of 1,396 requests an hour (39.6% over
+// the window, above the 25% of Q2) on 2026-11-26 for the interim only: it ends when #1598 lands.
+// R = 480 is below the honest bound, so ungated spend can exceed it in a
 // busy hour while a group is in flight and a merge group can then be dequeued and
 // re-queued. Every figure is measured (M) or estimated (E); docs/development/ci.md must
 // state the same numbers.
@@ -157,7 +159,7 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "639", "918", "dequeued and re-queued", "1,396", "39.6%", "awaiting owner acceptance", "dev-revoke"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "639", "918", "dequeued and re-queued", "1,396", "39.6%", "accepted this figure on 2026-11-26", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}

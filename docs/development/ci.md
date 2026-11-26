@@ -522,7 +522,7 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 R = 480 is below 918. With 658 allowed to gated work (1000 - 522 + 180), the pinned
 worst case at the lower bound is 658 + 738 = 1,396 requests, 39.6% over the window. That is
 above the 25% over-window the owner accepted for the exception (Q2), by 14.6 points. The
-owner has not accepted the recomputed figure: it is awaiting owner acceptance. The post-write
+owner accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
 the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
 requests and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
