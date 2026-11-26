@@ -112,26 +112,33 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		waitSweeps  = 62  // E: lower bound, 2 sweeps an hour x 31 (6 run listings + 25 jobs listings)
 		attempt3    = 42  // E: one attempt-3 bypass (reserve.go) per hour, spent ungated
 		inRepoOther = 60  // E: about 55 ungated in-repo runs an hour x at least 1 call
+		// E: the dev-revoke first pass (pr-gate --dev-revoke): repository, open PR list, dev tip and the
+		// record write cost 4 once, plus one create per head. 7 gate-dev push runs in the busiest hour of
+		// the last 100, 7 open dev PRs on 2026-11-26. Never deferred by the reserve, so it is ungated.
+		revokeEvents = 7
+		revokeFixed  = 4
+		revokeHeads  = 7
 	)
+	revoke := revokeEvents * (revokeFixed + revokeHeads)
 	groups := 2 * 3 * groupCost // M: two overlapping groups, three attempts each
 	measured := discovery + retryFirst + groups + requested + margin
-	honest := measured + waitSweeps + attempt3 + inRepoOther
-	if measured != 627 || honest != 791 {
-		t.Fatalf("sizing changed: measured %d (want 627), honest lower bound %d (want 791)", measured, honest)
+	honest := measured + waitSweeps + attempt3 + inRepoOther + revoke
+	if measured != 627 || revoke != 77 || honest != 868 {
+		t.Fatalf("sizing changed: measured %d (want 627), honest lower bound %d (want 868, 791 plus the 77 of the revocation first pass)", measured, honest)
 	}
 	if reserve >= honest {
 		t.Fatalf("R=%d now covers the honest bound %d: drop the interim exception from the PR body and docs", reserve, honest)
 	}
 	gatedBound := limit - (reserve + nonGroupCost) + margin
 	worst := gatedBound + (honest - margin)
-	if gatedBound != 646 || worst != 1269 {
-		t.Fatalf("pinned figures changed: gated bound %d (want 646), worst %d (want 1269)", gatedBound, worst)
+	if gatedBound != 646 || worst != 1346 {
+		t.Fatalf("pinned figures changed: gated bound %d (want 646), worst %d (want 1346)", gatedBound, worst)
 	}
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs", "development", "ci.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "627", "791", "dequeued and re-queued", "1,269"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "627", "868", "dequeued and re-queued", "1,346", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}

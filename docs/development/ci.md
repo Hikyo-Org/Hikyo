@@ -514,10 +514,11 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
 | Attempt-3 bypass (`reserve.go`) | 42 per job | E: the last attempt spends instead of deferring |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
-| **Honest lower bound** | **791** (about 790) | measured plus the lower estimates |
+| First revocation pass (`dev-revoke`) | 77 | E: 7 events x (4 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
+| **Honest lower bound** | **868** | measured plus the lower estimates |
 
-R = 480 is below 791. With 646 allowed to gated work (1000 - 522 + 168), the pinned
-worst case at the lower bound is 646 + 623 = 1,269 requests, 27% over the window. The
+R = 480 is below 868. With 646 allowed to gated work (1000 - 522 + 168), the pinned
+worst case at the lower bound is 646 + 700 = 1,346 requests, 35% over the window. The
 retirement fan-outs of `ci-check-retirement.yml` are not capped and not counted (hourly
 discovery, small). Expected drop frequency (an estimate): ungated spend near the incident
 level while a merge group is in flight. Over the last seven days 25 of 168 hours (15%) had
@@ -526,6 +527,36 @@ runs created (half the incident hour's 390; 45 hours); that is an upper bound on
 of hours at risk, from run counts as a proxy for spend, and only a rate-limited group whose
 wait then passes the timeout is dropped. `TestReserveSizingIsPinnedAndDocumented` pins the
 numbers above and fails if R ever covers the bound, so the exception cannot outlive it.
+
+##### Revocation is not queued behind the throttle
+
+A push to `main` or `dev`, or a dispatch for every PR, can make every earlier
+`ci-dev-required` success stale. The `publish` matrix reconciles heads at most
+`max-parallel: 2` at a time, so on its own a head at the end of a large matrix would keep
+its stale success for many waves. The `dev-revoke` job of `ci-dev-gate.yml` therefore runs
+first, outside the matrix: one job runs `pr-gate --dev --dev-revoke` on the discovered
+work and writes a blocking pending record on every routed head that is still open on `dev`
+at that head. It never reads the rate limit and is never deferred. `publish` needs it but
+runs even when it fails or is skipped (`!cancelled()`), so a failed first pass cannot stop
+the reconcile. A head the first pass cannot confirm (moved, closed, retargeted) is left to
+its own publisher run or retirement.
+
+Cost of the first pass: the repository, the open PR list and the dev tip are read once, and
+each head costs one record create, so 4 + N requests for N routed heads (N up to 100 per
+page); the sizing table counts 7 events an hour at N = 7. The alternative, exempting push
+and dispatch from `max-parallel`, costs nothing extra but removes the throttle on exactly
+the events that fan out, which is the large-fan-out margin the throttle exists for, so it
+was not chosen. The pending record is replaced by the reconcile; a head whose reconcile
+is deferred below the reserve stays blocked, which is the safe direction.
+
+Sibling matrices. `ci-queue-worker.yml` has the same `max-parallel: 2`. Its `publish`
+workers write PR-head queue admissions, and a stale one only lets a head enter the queue:
+the merge group is judged by its own full proof, which never reuses an earlier success, so
+a delayed revocation there cannot merge a stale head. `ci-queue-retry.yml` only reruns
+failed jobs and publishes nothing, and `ci-check-retirement.yml` only retires unfinished
+records. `TestDevGateRevokesEveryRoutedHeadBeforeThrottledWork` pins the dev ordering and
+`TestDevRevokeBlocksEveryRoutedHeadWithoutThrottledWork` pins that every routed head gets a
+blocking record without any verifier work.
 
 The pending and refusal records say only that the publisher did not finish (it
 failed or ran out of its budget) and that merging stays blocked. They name no

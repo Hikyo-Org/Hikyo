@@ -58,10 +58,40 @@ jobs:
           work=$(bash scripts/ci/discover-dev-prs.sh)
           printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
 
+  # First pass of a fan-out event: a blocking pending record on every routed head, before and outside the throttled publishers. A stale success must not wait behind max-parallel on the publish matrix (#1553). One job, one create per head, never deferred by the reserve.
+  revoke:
+    name: dev-revoke
+    needs: discover
+    if: needs.discover.outputs.work != '[]' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number == '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch admission tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+      - name: Block every routed head until its reconciliation finishes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DEV_REVOKE_WORK: ${{ needs.discover.outputs.work }}
+        run: |
+          set -euo pipefail
+          bash scripts/ci/build-queue-publisher.sh
+          "$RUNNER_TEMP/queue-publisher" --dev --dev-revoke
+
   publish:
     name: dev-publish-${{ matrix.work.head }}
-    needs: discover
-    if: needs.discover.outputs.work != '[]'
+    # The reconcile follows the first pass but never depends on it succeeding.
+    needs: [discover, revoke]
+    if: ${{ !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.work != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:

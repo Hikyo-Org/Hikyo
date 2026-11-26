@@ -1255,6 +1255,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	devMode := flag.Bool("dev", false, "publish trusted fast admission for the dev integration branch")
 	devPR := flag.Int("dev-pr", 0, "current dev PR routing hint under an exact head lease")
+	devRevoke := flag.Bool("dev-revoke", false, "publish blocking pending records for every routed dev head before the throttled publishers run (work JSON in DEV_REVOKE_WORK)")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
 	targeted := flag.Bool("targeted", false, "bound only a targeted queue admission invocation")
 	repairOnly := flag.Bool("repair-groups-only", false, "repair queue groups only on authenticated manual dispatch")
@@ -1262,6 +1263,18 @@ func main() {
 	dispatch := flag.Bool("dispatch-workers", false, "discover complete work and dispatch only fixed default-branch head workers")
 	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
+	if *devRevoke {
+		if !*devMode || *devPR != 0 || *discoverRetirement || *retire || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "" || flag.NArg() != 0 {
+			fmt.Fprintln(os.Stderr, "dev revocation takes only --dev and its work list")
+			os.Exit(1)
+		}
+		// No reserve check: revocation is never deferred.
+		if err := runDevRevoke(os.Getenv("DEV_REVOKE_WORK"), *dryRun); err != nil {
+			fmt.Fprintln(os.Stderr, "trusted dev revocation:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *devMode || *devPR != 0 {
 		if !*devMode || *devPR <= 0 || *discoverRetirement || *retire || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || flag.NArg() != 0 || !shaPattern.MatchString(*expectedHead) {
 			fmt.Fprintln(os.Stderr, "dev admission requires one PR and exact held head and cannot mix producer roles")
