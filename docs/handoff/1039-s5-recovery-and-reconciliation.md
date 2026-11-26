@@ -54,7 +54,7 @@ Slice 4 (#1549) is a draft and has not merged, so this PR stays a draft until it
 
 ## Tested revision
 
-- Code revision `898222daa` (rebased onto #1549 `adf0eb850`; later commits on this branch change only this document).
+- Code revision `898222daa` (rebased onto #1549 `adf0eb850`). The branch was later restacked onto #1549 `5bde7954a`, which only adds #1538 test files; the release tests and the new boundary tests were rerun on the restacked head, the full parts were not.
   All runs went through `agent-heavy` with `-p 2 -parallel 2 -timeout 90m`, every part finished, on SQLite and
   PostgreSQL 18 (`forEngines`): `./internal/isolation` in nine `-run` parts (A-B, C-D, E-H, I, L-O, P, R, S, T-Z) with 0 failures
   (`TestInvariant01ClassificationTotality` passes; the skips are env-gated emulator and smoke tests); `./internal/app` whole
