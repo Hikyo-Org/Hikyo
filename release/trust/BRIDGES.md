@@ -7,7 +7,10 @@ never a route, so no legacy-nightly route plans until the owner replaces it. The
 steps, in order: re-sign `legacy-nightly-bridge/v2` statements with a `not_after`
 offline, publish a new catalog listing them, and rotate the stable policy, because these
 two digests are policy-listed and cannot leave the catalog without a rotation. The
-rotation is an owner tidy-up, not a merge or release blocker.
+rotation is an owner tidy-up, not a merge or release blocker. Routable bridges also
+need the rotated `recovery-2` root first; the order is in
+[the ceremony runbook](../../docs/operations/recovery-bridge-ceremony.md), section
+"Owner prerequisite: rotate to recovery-2".
 
 ## Catalog sequence 3: legacy schema into nightly 27 (2026-09-07)
 

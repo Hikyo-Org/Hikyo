@@ -100,9 +100,12 @@ apply-time revocation list (options (a) and (c) on
 - **R2:** a new offline or hardware key `recovery-2` is rotated in first and a
   release that pins it ships. The bridge target is that release, and only
   `recovery-2` signs the bridge. The `recovery-1` exception is not extended to
-  bridges, and the verifier enforces it: a build whose root pins `recovery-1` refuses
-  every routable bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`); the inert
-  expiry-free `legacy-nightly-bridge/v1` statements still load, always expired. The owner holds the key alone and every signing is witnessed and logged
+  bridges, and the verifier enforces it: under a root that pins `recovery-1` every routable
+  bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`) verifies and counts, so
+  bundles load and a security rollback is unaffected, but it never routes a new
+  admission, and the refusal names the owner prerequisite in the runbook (rotate to
+  `recovery-2`, sign with it, publish). The inert expiry-free
+  `legacy-nightly-bridge/v1` statements load, always expired. The owner holds the key alone and every signing is witnessed and logged
   ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
   Solo custody ends before 1.2: signing (the key holder, offline) and publishing
   the trust asset and merging the trust pull request (a second person without the
