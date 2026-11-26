@@ -23,8 +23,11 @@ admission refuses go to `main`. See the [branching guide](./docs/development/bra
 Every commit on a pull request **must** carry a Developer Certificate of Origin
 (DCO) sign-off, and this is checked **before** the PR can merge: the
 trusted admission gates (`scripts/ci/pr-gate/queue_dco.go`, running `scripts/ci/check-dco.sh`) refuse
-a head when any non-merge commit in the range is missing one. Merge commits are not checked. They exempt only Dependabot's commits, on PRs
-it opened and on canonical `release/*` or `main` promotion heads that carry them.
+a head when any non-merge commit in the range is missing one. Merge commits are not checked. They exempt only Dependabot's commits: those in
+PRs it opened, and those already reachable from the base repository's `main` or `dev`, so
+promotions and backmerges can carry them. The gate fetches both tips itself, never from the
+PR. This relies on the `dev` and `main` rulesets requiring PRs and status checks and
+blocking non-fast-forward pushes, with no bypass actors.
 
 - Add both the signature and sign-off when you commit: `git commit -S -s`.
 - The trailer must match the commit's author identity exactly:

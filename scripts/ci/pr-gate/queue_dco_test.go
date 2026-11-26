@@ -37,6 +37,11 @@ func TestQueueDCOIsolatesEveryGitSubprocessFromAmbientConfiguration(t *testing.T
 	tree := object("tree", "")
 	base := object("commit", "tree "+tree+"\nauthor Fixture <fixture@example.test> 1700000000 +0000\ncommitter Fixture <fixture@example.test> 1700000000 +0000\n\nFixture base\n")
 	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor Fixture <fixture@example.test> 1700000001 +0000\ncommitter Fixture <fixture@example.test> 1700000001 +0000\n\nFixture edit\n\nSigned-off-by: Fixture <fixture@example.test>\n")
+	for _, ref := range []string{queueTrustedMainRef, queueTrustedDevRef} {
+		if out, err := exec.CommandContext(t.Context(), git, "-C", metadata, "update-ref", ref, base).CombinedOutput(); err != nil {
+			t.Fatalf("update-ref: %v %s", err, out)
+		}
+	}
 	tools := t.TempDir()
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 	// Fetch is an offline transport seam only. Init and all canonical Git
@@ -55,20 +60,26 @@ test "${GIT_TERMINAL_PROMPT:-}" = 0
 test "${GH_TOKEN+x}" != x
 test "${DCO_EXEMPT_AUTHOR+x}" != x
 fetch=false
+refspec=false
+devspec=false
 target=
 previous=
 for argument in "$@"; do
+  if [ "$argument" = %s ]; then refspec=true; fi
+  if [ "$argument" = %s ]; then devspec=true; fi
   if [ "$previous" = -C ]; then target=$argument; fi
   if [ "$argument" = fetch ]; then fetch=true; fi
   previous=$argument
 done
 if $fetch; then
   test -n "$target"
+  $refspec
+  $devspec
   cp -R %s/. "$target/"
   exit 0
 fi
 exec %s "$@"
-`, quote(metadata), quote(git))
+`, "'"+queueTrustedMainRefspec+"'", "'"+queueTrustedDevRefspec+"'", quote(metadata), quote(git))
 	if err := os.WriteFile(filepath.Join(tools, "git"), []byte(wrapper), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -133,23 +144,49 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 		want                           int
 		ref                            string
 		repo                           repository
+		onRef                          string
+		backmerge                      bool
 	}{
-		{"signed", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Fixture Contributor <fixture@example.test>\n", 0, "", repository{}},
-		{"missing", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n", 1, "", repository{}},
-		{"mismatched", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Someone Else <else@example.test>\n", 1, "", repository{}},
-		{"bot header spoof", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "contributor", "Dependency edit\n", 1, "", repository{}},
-		{"authenticated dependabot", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "dependabot[bot]", "Dependency edit\n", 0, "", repository{}},
-		// A promotion carries dependency commits a human did not author. Only
-		// write access reaches a canonical release/ or main head.
-		{"promotion carries dependabot", botIdentity, "maintainer", "Dependency edit\n", 0, "release/1.1.0", canonicalRepo},
-		{"backmerge carries dependabot", botIdentity, "maintainer", "Dependency edit\n", 0, "main", canonicalRepo},
-		{"promotion still checks humans", "Fixture Contributor <fixture@example.test>", "maintainer", "Scoped edit\n", 1, "release/1.1.0", canonicalRepo},
-		{"feature branch spoof", botIdentity, "maintainer", "Dependency edit\n", 1, "feat/x", canonicalRepo},
-		{"fork release branch spoof", botIdentity, "contributor", "Dependency edit\n", 1, "release/1.1.0", forkRepo},
-		{"fork main branch spoof", botIdentity, "contributor", "Dependency edit\n", 1, "main", forkRepo},
+		{"signed", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Fixture Contributor <fixture@example.test>\n", 0, "", repository{}, "", false},
+		{"missing", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n", 1, "", repository{}, "", false},
+		{"mismatched", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Someone Else <else@example.test>\n", 1, "", repository{}, "", false},
+		{"bot header spoof", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "contributor", "Dependency edit\n", 1, "", repository{}, "", false},
+		{"authenticated dependabot", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "dependabot[bot]", "Dependency edit\n", 0, "", repository{}, "", false},
+		// Branch names no longer matter: a Dependabot commit is exempt only
+		// when the canonical main or dev already holds it.
+		{"promotion forging dependabot is refused", botIdentity, "maintainer", "Dependency edit\n", 1, "release/1.1.0", canonicalRepo, "", false},
+		{"main-named head forging dependabot is refused", botIdentity, "maintainer", "Dependency edit\n", 1, "main", canonicalRepo, "", false},
+		{"feature branch spoof", botIdentity, "maintainer", "Dependency edit\n", 1, "feat/x", canonicalRepo, "", false},
+		{"fork spoof", botIdentity, "contributor", "Dependency edit\n", 1, "release/1.1.0", forkRepo, "", false},
+		{"dependabot commit already on main", botIdentity, "maintainer", "Dependency edit\n", 0, "feat/x", canonicalRepo, "main", false},
+		{"backmerge carries main's dependabot commit", botIdentity, "maintainer", "Dependency edit\n", 0, "backmerge/main-into-dev", canonicalRepo, "main", true},
+		// Dependabot's commits enter dev through PRs it opened, so a
+		// dev to main promotion carries them and must pass.
+		{"promotion carries dev's dependabot commit", botIdentity, "maintainer", "Dependency edit\n", 0, "release/nightly-20261126", canonicalRepo, "dev", false},
+		{"promotion merge carries dev's dependabot commit", botIdentity, "maintainer", "Dependency edit\n", 0, "release/nightly-20261126", canonicalRepo, "dev", true},
+		{"forged dependabot author in a human PR into dev is refused", botIdentity, "contributor", "Dependency edit\n", 1, "fix/x", canonicalRepo, "", false},
+		{"dev ancestry never exempts humans", "Fixture Contributor <fixture@example.test>", "maintainer", "Scoped edit\n", 1, "release/nightly-20261126", canonicalRepo, "dev", false},
+		{"main ancestry never exempts humans", "Fixture Contributor <fixture@example.test>", "maintainer", "Scoped edit\n", 1, "release/1.1.0", canonicalRepo, "main", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			head := object("commit", "tree "+headTree+"\nparent "+base+"\nauthor "+tc.identity+" 1700000001 +0000\ncommitter "+tc.identity+" 1700000001 +0000\n\n"+tc.message)
+			bot := head
+			mainTip, devTip := base, base
+			switch tc.onRef {
+			case "main":
+				mainTip = bot
+			case "dev":
+				devTip = bot
+			}
+			if tc.backmerge {
+				const merger = "Fixture Maintainer <maintainer@example.test>"
+				head = object("commit", "tree "+headTree+"\nparent "+base+"\nparent "+bot+"\nauthor "+merger+" 1700000002 +0000\ncommitter "+merger+" 1700000002 +0000\n\nBackmerge\n\nSigned-off-by: "+merger+"\n")
+			}
+			for ref, tip := range map[string]string{queueTrustedMainRef: mainTip, queueTrustedDevRef: devTip} {
+				if out, err := exec.CommandContext(t.Context(), "git", "-C", repo, "update-ref", ref, tip).CombinedOutput(); err != nil {
+					t.Fatalf("update-ref: %v %s", err, out)
+				}
+			}
 			p := pull{Base: reference{SHA: base}, Head: reference{SHA: head, Ref: tc.ref, Repo: tc.repo}}
 			p.User.ID = 12
 			p.User.Login = tc.actor
@@ -162,6 +199,7 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 		})
 	}
 }
+
 func TestQueueDCOSignoffRefusalBlocksAdmissionAndGroup(t *testing.T) {
 	for _, where := range []string{"admission", "group", "final admission", "final group"} {
 		t.Run(where, func(t *testing.T) {
@@ -185,4 +223,56 @@ func TestQueueDCOSignoffRefusalBlocksAdmissionAndGroup(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A fully signed range that check-dco.sh would admit with exit 0 if the gate
+// ignored a missing trusted tip: only the one named ref exists, so the gate
+// itself must refuse with its own error rather than lean on the script.
+func queueDCOFailClosedFixture(t *testing.T, present string) (string, pull) {
+	t.Helper()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	repo := t.TempDir()
+	if out, err := exec.CommandContext(t.Context(), "git", "init", "--bare", "--quiet", repo).CombinedOutput(); err != nil {
+		t.Fatalf("init: %v %s", err, out)
+	}
+	object := func(kind, body string) string {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", "-C", repo, "hash-object", "-w", "-t", kind, "--stdin")
+		cmd.Stdin = strings.NewReader(body)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	const author = "Fixture Contributor <fixture@example.test>"
+	tree := object("tree", "")
+	base := object("commit", "tree "+tree+"\nauthor "+author+" 1700000000 +0000\ncommitter "+author+" 1700000000 +0000\n\nBase\n")
+	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+author+" 1700000001 +0000\ncommitter "+author+" 1700000001 +0000\n\nEdit\n\nSigned-off-by: "+author+"\n")
+	if out, err := exec.CommandContext(t.Context(), "git", "-C", repo, "update-ref", present, base).CombinedOutput(); err != nil {
+		t.Fatalf("update-ref: %v %s", err, out)
+	}
+	p := pull{Base: reference{SHA: base}, Head: reference{SHA: head}}
+	p.User.ID, p.User.Login = 12, "contributor"
+	return repo, p
+}
+
+func requireQueueDCOUnavailable(t *testing.T, present string) {
+	repo, p := queueDCOFailClosedFixture(t, present)
+	code, err := checkQueueDCO(context.Background(), "example/hikyo", p, repo)
+	if err == nil || !strings.Contains(err.Error(), "trusted canonical main or dev is unavailable") || code != 0 {
+		t.Fatalf("missing trusted tip did not fail closed in the gate: %d %v", code, err)
+	}
+}
+
+func TestQueueDCOFailsClosedWithoutTrustedMain(t *testing.T) {
+	requireQueueDCOUnavailable(t, queueTrustedDevRef)
+}
+
+func TestQueueDCOFailsClosedWithoutTrustedDev(t *testing.T) {
+	requireQueueDCOUnavailable(t, queueTrustedMainRef)
 }
