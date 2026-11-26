@@ -65,7 +65,9 @@ func ruleNavigationReach(op Operation, chain domain.Scope, rules []domain.Rule, 
 				}
 			}
 		}
-		if len(rule.Where.Projects) == 0 || chain.Project != "" && !slices.Contains(rule.Where.Projects, chain.Project) {
+		// An all-projects rule names every project of its org, including one
+		// created after the rule (#1446); its environment axis is always all.
+		if !rule.Where.AllProjects && len(rule.Where.Projects) == 0 || chain.Project != "" && !rule.Where.Names(chain.Project) {
 			continue
 		}
 		reached = append(reached, rule)

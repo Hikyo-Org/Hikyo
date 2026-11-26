@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89 through 99, while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89 through 100, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -345,12 +345,14 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	// rotation), 00092 (rotation revoke deadline), 00093 (rotation manual run),
 	// 00094 (rotation restore hold), 00095 (OIDC lifecycle), 00096 (owed-run index
 	// on rotation_runs, which goes with that table), 00097 (mint reauth handoff
-	// checks on the empty cli_reauth_handoffs) and 00098 (access reauth handoff
-	// checks on the same table) and 00099 (authority index on rotations, which goes
-	// with that table) are on both engines.
-	versions = append(versions, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99)
+	// checks on the empty cli_reauth_handoffs), 00098 (access reauth handoff
+	// checks on the same table), 00099 (the all-projects rule mode, on the
+	// rules and rule_items tables the 00070 reversal drops whole) and 00100
+	// (authority index on rotations, which goes with that table) are on both
+	// engines.
+	versions = append(versions, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100)
 	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89 through 99 only")
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89 through 100 only")
 	}
 	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {

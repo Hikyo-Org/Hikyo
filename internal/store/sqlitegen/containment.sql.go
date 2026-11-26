@@ -215,7 +215,7 @@ func (q *Queries) RecoveryListGrantsBeforeContainment(ctx context.Context, arg R
 
 const recoveryListRulesBeforeContainment = `-- name: RecoveryListRulesBeforeContainment :many
 SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
-  i.axis, i.project_id,
+  i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
   CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path

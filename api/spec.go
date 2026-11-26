@@ -98,6 +98,9 @@ var SpecYAML []byte
 // It also adds, to a scheduled rotation, the fixed-word `halt_reason`, its
 // `last_run` and the `owed_drop_runs` counts (#148).
 // Revision 21 adds the server-side "Who can...?" resolver, rule.resolve (#1474).
+// Revision 21 also adds member access rules over all projects (#1446): the
+// `project_mode` of a rule's `where`. A create with `project_mode` `all` lists
+// exactly the organisation's current projects (owner decision R2).
 const Revision = 21
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1

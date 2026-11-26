@@ -4221,11 +4221,14 @@ func adapterLifecycleEvent(schema Schema) TypeSpec {
 var ruleSchema = Schema{
 	"target_principal": {Kind: KindString, Required: true},
 	"capability":       {Kind: KindString, Required: true},
-	"projects":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
-	"env_mode":         {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
-	"envs":             {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
-	"key_mode":         {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
-	"keys":             {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 1024},
+	// project_mode is the project axis (#1446): "all" covers every project of
+	// the org, including later ones, and then "projects" is empty.
+	"project_mode": {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"projects":     {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+	"env_mode":     {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"envs":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+	"key_mode":     {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"keys":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 1024},
 }
 
 var grantSchema = Schema{

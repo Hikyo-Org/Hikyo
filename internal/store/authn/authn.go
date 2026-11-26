@@ -43,6 +43,7 @@ type Resolver struct {
 	historicalRecoveryBeforeRules            bool
 	historicalRecoveryBeforeEmailInvitations bool
 	historicalRecoveryBeforeContainment      bool
+	historicalRecoveryBeforeAllProjects      bool
 	selfConfigOrgID                          domain.OrgID
 	sq                                       *sqlitegen.Queries
 	pg                                       *pggen.Queries

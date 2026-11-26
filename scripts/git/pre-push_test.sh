@@ -4,6 +4,8 @@
 # and one that changes Go inputs runs the golangci-lint ratchet.
 # The signature check, the suite and the ratchet are stubs in a throwaway repository.
 set -eu
+# The hook reads these opt-outs; a developer's exported values must not leak in.
+unset HIKYO_PREPUSH_STORYBOOK HIKYO_PREPUSH_GOLANGCI HIKYO_PREPUSH_GOTEST
 
 hook=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)/.githooks/pre-push
 root=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-prepush-fixture.XXXXXX")
@@ -53,6 +55,13 @@ echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/golangci.log"
 if [ -f .golangci.yml ]; then cfg=.golangci.yml; echo tree >>"$logs/config.log"; else cfg=\$(dirname "\$0")/../../.golangci.yml; echo "--config \$cfg" >>"$logs/config.log"; fi
 ! grep -q BADCFG "\$cfg" 2>/dev/null || { echo 'stub: bad config' >&2; exit 1; }
 [ ! -e wip.go ] || { echo 'stub: stray wip.go linted' >&2; exit 1; }
+STUB
+# The Go test runner stub records its base argument, the commit and work tree it
+# runs in, and fails with the code in gotest-fail.
+cat >scripts/ci/go-affected-test.sh <<STUB
+#!/bin/sh
+echo "\$1 \$(git rev-parse HEAD) \$(pwd -P)" >>"$logs/gotest.log"
+[ ! -f "$logs/gotest-fail" ] || exit "\$(cat "$logs/gotest-fail")"
 STUB
 chmod +x .githooks/pre-push scripts/ci/*.sh
 echo 26.0.0 >.nvmrc
@@ -243,7 +252,8 @@ if [ -w "$gitdir" ]; then
 	chmod u+w "$gitdir"
 	printf 'pre-push fixture: skipping the unwritable-stamp case (running as a user who ignores permissions)\n' >&2
 else
-	if push fe-new; then chmod u+w "$gitdir"; fail 'unwritable stamp file did not fail the hook'; fi
+	# The go test step also needs to write in the git directory; opt out of it here.
+	if (HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push fe-new); then chmod u+w "$gitdir"; fail 'unwritable stamp file did not fail the hook'; fi
 	chmod u+w "$gitdir"
 	grep -F 'Permission denied' "$out" >/dev/null || fail 'expected the stamp write error'
 fi
@@ -334,7 +344,8 @@ rm wip.go
 lint_dir=$(tail -n 1 "$logs/golangci.log" | cut -d' ' -f3-)
 [ "$lint_dir" != "$(pwd -P)" ] || fail 'ratchet ran in the checked-out tree'
 [ ! -e "$lint_dir" ] || fail 'temporary worktree was left behind'
-[ "$(git worktree list | wc -l | tr -d ' ')" = 1 ] || fail 'worktree registration left behind'
+# The kept go test worktree is the only other registration allowed.
+[ "$(git worktree list | grep -vc hikyo-gotest-tree | tr -d ' ')" = 1 ] || fail 'worktree registration left behind'
 # A branch that is not checked out is linted, and refused when bad.
 git branch -q gl-bad "$base"
 git switch -q -c gl-other "$base"
@@ -392,6 +403,7 @@ if lw_push other-bad:other-bad; then fail 'bad commit pushed from a linked workt
 grep -F 'reported issues' "$out" >/dev/null || fail 'linked-worktree refusal message missing'
 lw_push other-good:other-good || fail 'good commit pushed from a linked worktree was refused'
 [ "$(last 2)" = "$good_oid" ] || fail "linked-worktree push linted $(last 2), want $good_oid"
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$good_oid" ] || fail 'linked-worktree push did not run the go tests at the pushed commit'
 [ "$(marker)" = committed ] || fail "ran the $(marker) copy of the ratchet script, want the pushed commit's"
 # The lint tree is a fresh directory per push, and is gone afterwards.
 first_dir=$(last 3-)
@@ -452,4 +464,96 @@ grep -F 'reported issues or could not run' "$out" >/dev/null || fail 'non-execut
 expect_count golangci "$before"
 git worktree remove --force "$root/lw"
 
-printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out\n'
+# 19. The affected Go tests run in a worktree at the pushed commit against the
+# merge base; failure, opt-out and invalid values behave like the other two.
+git switch -q -c gt "$base"
+commit_change internal/x.go
+before=$(count gotest)
+expect_ok gt
+expect_count gotest $((before + 1))
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f1,2)" = "$base $(git rev-parse gt)" ] || fail 'go tests were not given the merge base and run at the pushed commit'
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)" != "$(pwd -P)" ] || fail 'go tests ran in the pushing checkout'
+first_tree=$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)
+git switch -q -c gt2 gt
+commit_change internal/x.go
+expect_ok gt2
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f3-)" = "$first_tree" ] || fail 'the go test worktree was not reused for the next push'
+[ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail 'the reused go test worktree is not at the pushed commit'
+tree=$gitdir/hikyo-gotest-tree
+# A lock held by a live push refuses; one left by a dead process is taken over.
+mkdir "$tree.lock"
+echo "$$ $(uname -n)" >"$tree.lock/owner"
+expect_refused 'is running the Go tests' gt2
+grep -F "rm -rf \"" "$out" | grep -F 'hikyo-gotest-tree.lock"' >/dev/null || fail 'the refusal does not give the command that clears the lock'
+dead=$(sh -c 'echo $$')
+# Another host's lock is never taken over, even with a dead-looking pid.
+echo "$dead elsewhere.invalid" >"$tree.lock/owner"
+expect_refused 'a push on host elsewhere.invalid' gt2
+# Two pushes seeing the same dead owner: while one takes over, the other refuses
+# and leaves the lock alone.
+echo "$dead $(uname -n)" >"$tree.lock/owner"
+mkdir "$tree.lock.takeover"
+expect_refused 'is taking over the stale' gt2
+[ -f "$tree.lock/owner" ] || fail 'a push removed a lock another push was taking over'
+rmdir "$tree.lock.takeover"
+expect_ok gt2
+[ ! -e "$tree.lock" ] && [ ! -e "$tree.lock.takeover" ] || fail 'a lock was left behind'
+# A lock without an owner file is never taken over, even when old: its creator
+# may only be stalled between mkdir and writing the owner.
+mkdir "$tree.lock"
+expect_refused 'is taking the Go test lock' gt2
+touch -t 202001010000 "$tree.lock"
+expect_refused 'no owner recorded yet' gt2
+[ -d "$tree.lock" ] || fail 'an ownerless lock was removed'
+rmdir "$tree.lock"
+expect_ok gt2
+[ ! -e "$tree.lock" ] || fail 'a lock was left behind'
+# A dirty kept tree, a pruned registration, a corrupted tree and a deleted tree
+# are all repaired, and the run is always at the pushed commit.
+kept_ok() { expect_ok gt2; [ "$(tail -n 1 "$logs/gotest.log" | cut -d' ' -f2)" = "$(git rev-parse gt2)" ] || fail "$1: not at the pushed commit"; }
+echo dirty >>"$tree/internal/x.go"
+echo stray >"$tree/stray.txt"
+kept_ok 'dirty tree'
+[ ! -e "$tree/stray.txt" ] || fail 'a stray file survived in the kept tree'
+git worktree prune
+kept_ok 'prune with the tree present'
+rm "$tree/.git"
+kept_ok 'corrupted tree'
+rm -rf "$tree"
+kept_ok 'deleted tree'
+git switch -q gt
+echo 1 >"$logs/gotest-fail"
+if push gt; then fail 'a failing go test run was accepted'; fi
+grep -F 'Go tests failed' "$out" >/dev/null || fail 'go test failure message missing'
+echo 130 >"$logs/gotest-fail"
+if push gt; then fail 'an interrupted go test run was accepted'; fi
+grep -F 'Go tests were interrupted' "$out" >/dev/null || fail 'go test interrupt message missing'
+echo 64 >"$logs/gotest-fail"
+if push gt; then fail 'a go test setup failure was accepted'; fi
+grep -F 'could not start' "$out" >/dev/null || fail 'go test setup message missing'
+before=$(count gotest)
+(HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push gt) || fail 'go test skip push was refused'
+grep -F 'skipping the affected Go tests' "$out" >/dev/null || fail 'go test skip warning missing'
+expect_count gotest "$before"
+rm "$logs/gotest-fail"
+if (HIKYO_PREPUSH_GOTEST=yes && export HIKYO_PREPUSH_GOTEST && push gt); then fail 'invalid HIKYO_PREPUSH_GOTEST accepted'; fi
+grep -F 'HIKYO_PREPUSH_GOTEST must be unset or "skip"' "$out" >/dev/null || fail 'invalid go test value message missing'
+: >"$logs/sig-fail"
+before=$(count gotest)
+if (HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push gt); then fail 'go test skip bypassed the signature check'; fi
+rm "$logs/sig-fail"
+expect_count gotest "$before"
+git switch -q -c gt-norunner gt
+git rm -q scripts/ci/go-affected-test.sh
+git commit -q -m "drop the runner"
+expect_refused 'nor has an executable copy' gt-norunner
+expect_count gotest "$before"
+git switch -q -c gt-runner-mode gt
+chmod -x scripts/ci/go-affected-test.sh
+git add scripts/ci/go-affected-test.sh
+git commit -q -m 'commit the runner without its executable bit'
+expect_refused 'go-affected-test.sh as an executable file' gt-runner-mode
+expect_count gotest "$before"
+git switch -q gt
+
+printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out; the affected Go tests run at the pushed commit and honour theirs\n'
