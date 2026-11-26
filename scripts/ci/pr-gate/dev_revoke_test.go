@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -201,5 +202,66 @@ func TestDevRevocationIsNeverRewrittenByAnOlderPass(t *testing.T) {
 	f.q.queueDeadline = start.Add(time.Minute).Add(admissionSeconds * time.Second)
 	if _, err := session.publishRecord(context.Background(), f.pr, b, &revocation, pending("later")); err != nil {
 		t.Fatalf("a later reconcile must be able to rewrite the revocation: %v", err)
+	}
+}
+
+// failingListAPI reads normally until the first write, then fails every check listing.
+type failingListAPI struct {
+	inner *fakeAPI
+	armed bool
+}
+
+func (a *failingListAPI) read(ctx context.Context, path string, result any) error {
+	if a.armed && strings.Contains(path, "/check-runs?") {
+		return errors.New("listing unavailable")
+	}
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *failingListAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	a.armed = true
+	return a.inner.write(ctx, method, path, payload, result)
+}
+
+// The listing after the success write can trail the write. The pass acts only on a listing
+// that shows the exact success it wrote: a lagging one is waited out, and one that never
+// shows it (absent, or an error) fails closed with a blocking record over the success.
+func TestDevPostWriteListingFailsClosedWhenItCannotConfirmTheSuccess(t *testing.T) {
+	for name, tc := range map[string]struct {
+		lag         int
+		listFails   bool
+		wantSuccess bool
+		wantWaits   int
+	}{
+		"visible at once":   {wantSuccess: true},
+		"lags then appears": {lag: 2, wantSuccess: true, wantWaits: 2},
+		"never appears":     {lag: 1 << 20, wantWaits: len(writeConfirmBackoff)},
+		"listing fails":     {listFails: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, _ := passFixture(t)
+			waits := recordReadWaits(t)
+			if tc.listFails {
+				f.c.api = &failingListAPI{inner: f.api}
+			} else {
+				f.c.api = &laggingListAPI{inner: f.api, lag: tc.lag}
+			}
+			err := f.q.admit(context.Background(), f.pr.Number)
+			if successPublished(f) != tc.wantSuccess {
+				t.Fatalf("newest record is success = %v, want %v (err %v, checks %+v)", successPublished(f), tc.wantSuccess, err, f.api.checks)
+			}
+			if tc.wantSuccess && err != nil {
+				t.Fatalf("a confirmed success failed the pass: %v", err)
+			}
+			if !tc.wantSuccess {
+				newest := newestQueueCheck(f.api.checks)
+				if err == nil || newest == nil || newest.Status != "queued" || !blockingQueueCheck(newest) {
+					t.Fatalf("an unconfirmed success must leave a blocking record on top and fail the pass: err %v, newest %+v", err, newest)
+				}
+			}
+			if len(*waits) != tc.wantWaits && !tc.listFails {
+				t.Fatalf("waits = %v, want %d", *waits, tc.wantWaits)
+			}
+		})
 	}
 }

@@ -120,26 +120,26 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		revokeHeads  = 7
 	)
 	revoke := revokeEvents * (revokeFixed + revokeHeads)
-	const postWrite = 34        // E: the post-write revocation listing, one request per successful dev pass, at most one per event-driven discover (34 in the incident hour)
+	const postWrite = 34 * 3    // E: the post-write revocation listing (suite-aware, 3 reads) per successful dev pass, at most one per event-driven discover (34 in the incident hour)
 	groups := 2 * 3 * groupCost // M: two overlapping groups, three attempts each
 	measured := discovery + retryFirst + groups + requested + margin
 	honest := measured + waitSweeps + attempt3 + inRepoOther + revoke + postWrite
-	if measured != 627 || revoke != 70 || honest != 895 {
-		t.Fatalf("sizing changed: measured %d (want 627), honest lower bound %d (want 895, 791 plus the 70 of the revocation first pass and the 34 of its post-write check)", measured, honest)
+	if measured != 627 || revoke != 70 || postWrite != 102 || honest != 963 {
+		t.Fatalf("sizing changed: measured %d (want 627), honest lower bound %d (want 963, 791 plus the 70 of the revocation first pass and the 102 of its post-write check)", measured, honest)
 	}
 	if reserve >= honest {
 		t.Fatalf("R=%d now covers the honest bound %d: drop the interim exception from the PR body and docs", reserve, honest)
 	}
 	gatedBound := limit - (reserve + nonGroupCost) + margin
 	worst := gatedBound + (honest - margin)
-	if gatedBound != 646 || worst != 1373 {
-		t.Fatalf("pinned figures changed: gated bound %d (want 646), worst %d (want 1373)", gatedBound, worst)
+	if gatedBound != 646 || worst != 1441 {
+		t.Fatalf("pinned figures changed: gated bound %d (want 646), worst %d (want 1441)", gatedBound, worst)
 	}
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs", "development", "ci.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "627", "895", "dequeued and re-queued", "1,373", "dev-revoke"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "627", "963", "dequeued and re-queued", "1,441", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}

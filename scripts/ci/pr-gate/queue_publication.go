@@ -44,10 +44,14 @@ func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b b
 	}
 	write, stop := s.q.verdictWriteContext(ctx)
 	defer stop()
-	if err := s.publishVerified(write, p, b, newestQueueCheck(own), result); err != nil || result.Conclusion != "success" {
+	written, err := s.publishRecord(write, p, b, newestQueueCheck(own), result)
+	if err == nil && result.Status == "completed" {
+		s.verifiedTerminal = true
+	}
+	if err != nil || result.Conclusion != "success" || s.q.checkName != devCheckName {
 		return err
 	}
-	return s.reapplyRevocation(write, p, b)
+	return s.reapplyRevocation(ctx, write, p, b, written)
 }
 
 // revocationSkew is how far a revocation record's start may trail this pass's start
@@ -75,20 +79,29 @@ func (q *queueController) revocationNewerThanPass(v *check) (bool, error) {
 
 // reapplyRevocation closes the one race the in-place guard cannot see: this pass listed
 // the owned checks before a revocation was written, so it created its own success record
-// with a higher ID than the revocation. If a revocation newer than this pass now sits
-// below the newest record, a fresh blocking record replaces the success and keeps the
-// revocation's start, so the reconcile queued after the revocation is still not refused.
-//
-// The listing is the head's commit-level one, a single request: it only decides whether
-// to add a blocking record, which is the safe direction, and never authenticates a success.
-func (s *queueReconciliation) reapplyRevocation(ctx context.Context, p pull, b binding) error {
-	own, err := s.q.listOwnedChecksAt(ctx, p.Head.SHA, "commits/"+p.Head.SHA+"/check-runs", make(map[int64]bool))
-	if err != nil {
-		return err
+// with a higher ID than the revocation. After a success write the pass lists the head's
+// checks again, with the suite-aware listing and bounded waits every other confirmation
+// uses, and acts only on a listing that shows the exact success it wrote as completed.
+// A listing that cannot show it (absent, older, other status, or an error) is not a clean
+// answer, so the pass fails closed: a blocking record goes over the success it cannot
+// confirm. If a revocation newer than the pass sits below the success, a blocking record
+// that keeps the revocation's start replaces it, so the reconcile queued after the
+// revocation is still not refused. Reads run under the work clock, writes under the write grace.
+func (s *queueReconciliation) reapplyRevocation(ctx, write context.Context, p pull, b binding, written *check) error {
+	if written == nil {
+		return errors.New("the success write returned no record to confirm")
 	}
+	own, err := s.q.ownedAfterWrite(ctx, written, &s.confirmSpent)
 	newest := newestQueueCheck(own)
-	if newest == nil || newest.Output.Title == revocationTitle {
-		return nil
+	if err != nil || newest == nil || newest.ID < written.ID || newest.ID == written.ID && (newest.Status != written.Status || newest.Conclusion != written.Conclusion) {
+		unconfirmed := errors.Join(err, errors.New("the success write could not be confirmed against a listing that shows it; a blocking record replaces it"))
+		if _, werr := s.publishRecord(write, p, b, written, pending("A published success could not be confirmed; admission remains blocked until the next reconciliation.")); werr != nil {
+			return errors.Join(unconfirmed, werr)
+		}
+		return unconfirmed
+	}
+	if newest.ID > written.ID {
+		return nil // a newer record, written by another pass or a revocation, is on top
 	}
 	var first *check
 	for i := range own {
@@ -96,7 +109,7 @@ func (s *queueReconciliation) reapplyRevocation(ctx context.Context, p pull, b b
 		if err != nil {
 			return err
 		}
-		if newer && own[i].ID < newest.ID && (first == nil || own[i].StartedAt < first.StartedAt) {
+		if newer && own[i].ID < written.ID && (first == nil || own[i].StartedAt < first.StartedAt) {
 			first = &own[i]
 		}
 	}
@@ -105,7 +118,7 @@ func (s *queueReconciliation) reapplyRevocation(ctx context.Context, p pull, b b
 	}
 	again := revoked("The dev publisher or main changed while an older pass was finishing; this head is blocked until its exact-head reconciliation finishes.")
 	again.StartedAt = first.StartedAt
-	if err := s.publishVerified(ctx, p, b, newest, again); err != nil {
+	if _, err := s.publishRecord(write, p, b, written, again); err != nil {
 		return err
 	}
 	return &staleHeadWork{expected: s.q.expectedHead}

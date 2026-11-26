@@ -141,8 +141,14 @@ func TestDevRevokeRerunCannotCascadeIntoThePublishers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(retryRaw), `and .name != "dev-revoke")`); n != 2 {
-		t.Fatalf("both failed-job filters of the retry workflow must leave dev-revoke alone, found %d", n)
+	// dev-revoke must stay a counted, non-qualifying job: the qualifying name pattern may not name it,
+	// and neither failed-job filter may drop it from the total (that would let the run-level rerun,
+	// which skips the per-job reserve gating, take over when publishers failed beside it).
+	if strings.Contains(string(retryRaw), "dev-revoke)") || strings.Contains(string(retryRaw), `.name != "dev-revoke"`) {
+		t.Fatal("dev-revoke must neither qualify for a rerun nor be excluded from the failed total")
+	}
+	if n := strings.Count(string(retryRaw), `test("^((dev-)?publish|group)-[0-9a-f]{40}$")`); n != 2 {
+		t.Fatalf("both failed-job filters must keep the publisher and group name pattern that excludes dev-revoke, found %d", n)
 	}
 	// The jobs the retry reruns by id are the publishers and group jobs; none may have a dependent.
 	for file, ids := range map[string][]string{"ci-dev-gate.yml": {"publish"}, "ci-queue-worker.yml": {"publish"}, "ci-queue-gate.yml": {"publish", "group"}} {
