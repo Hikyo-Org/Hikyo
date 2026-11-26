@@ -60,11 +60,15 @@ func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b b
 	if err == nil && result.Status == "completed" {
 		s.verifiedTerminal = true
 	}
-	if err != nil || result.Conclusion != "success" || s.q.checkName != devCheckName || !s.q.created[written.ID] {
+	if err != nil || result.Conclusion != "success" || s.q.checkName != devCheckName || written == nil || !s.q.created[written.ID] {
 		return err
 	}
 	return s.reapplyRevocation(write, p, b, written)
 }
+
+// failClosedReserve is the part of the write context kept for the fail-closed write: a POST
+// and a PATCH of a blocking record, out of the 3 seconds the write grace allows.
+const failClosedReserve = 1500 * time.Millisecond
 
 // unconfirmedSuccess is a pass that wrote its success and could not see it in a listing.
 type unconfirmedSuccess struct{ cause error }
@@ -114,7 +118,15 @@ func (s *queueReconciliation) reapplyRevocation(write context.Context, p pull, b
 	if written == nil {
 		return &unconfirmedSuccess{cause: errors.New("the success write returned no record to confirm")}
 	}
-	own, err := s.q.ownedAfterWrite(write, written, &s.confirmSpent)
+	// The backoff of the confirmation must not eat the write grace the fail-closed write needs:
+	// the listing stops failClosedReserve before the write context ends, the write does not.
+	list := write
+	if end, ok := write.Deadline(); ok {
+		var stopList context.CancelFunc
+		list, stopList = context.WithDeadline(write, end.Add(-failClosedReserve))
+		defer stopList()
+	}
+	own, err := s.q.ownedAfterWrite(list, written, &s.confirmSpent)
 	newest := newestQueueCheck(own)
 	if err != nil || newest == nil || newest.ID < written.ID || newest.ID == written.ID && (newest.Status != written.Status || newest.Conclusion != written.Conclusion) {
 		unconfirmed := errors.Join(err, errors.New("the success write could not be confirmed against a listing that shows it; a blocking record replaces it"))

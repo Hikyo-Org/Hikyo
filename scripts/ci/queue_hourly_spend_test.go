@@ -122,34 +122,42 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		revokeEvents = 7
 		revokeFixed  = 3
 		revokeHeads  = 7
-		// E: one attempt-3 bypass (reserve.go) per hour, spent ungated, of a dev pass whose
-		// confirmation listing lags for good: the pass (45), the 3 listings past the first that the
-		// bounded backoff adds (3 reads each, 9) and the two writes of the fail-closed record (2).
-		// Attempts 1 and 2 of such a pass are gated by the reserve like any pass.
-		lagListings = 3 // the bounded backoff of three waits in pr-gate (writeConfirmBackoff), a listing after each
-		failClosed  = 2
+		// M: one attempt-3 bypass (reserve.go) per hour, spent ungated, of a dev pass whose
+		// confirmation listing never catches up: the pass, its fail-closed write, and the final
+		// attempt's reserve (PR, policy, feedback, roles and listing read again, then the pending
+		// record). Counted on the dev fixture at GITHUB_RUN_ATTEMPT=3 by
+		// TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing (87 requests: 82 reads, 5 writes).
+		// Attempts 1 and 2 of such a pass are gated by the reserve like any pass. A created-record
+		// pass that confirms costs 41 + 2, within the 45 of the margin.
+		attempt3 = 87
 	)
-	attempt3 := devPassCost + lagListings*postWriteReads + failClosed
 	revoke := revokeEvents * (revokeFixed + revokeHeads)
 	groups := 2 * 3 * groupCost // M: two overlapping groups, three attempts each
 	measured := discovery + retryFirst + groups + requested + margin
 	honest := measured + waitSweeps + attempt3 + inRepoOther + revoke
-	if measured != 639 || revoke != 70 || attempt3 != 56 || honest != 887 {
-		t.Fatalf("sizing changed: measured %d (want 639), honest lower bound %d (want 887: 639 plus 62, 56 (attempt-3 bypass with a lagging confirmation), 60 and the 70 of the revocation first pass)", measured, honest)
+	if measured != 639 || revoke != 70 || attempt3 != 87 || honest != 918 {
+		t.Fatalf("sizing changed: measured %d (want 639), honest lower bound %d (want 918: 639 plus 62, 87 (attempt-3 bypass with a lagging confirmation), 60 and the 70 of the revocation first pass)", measured, honest)
 	}
 	if reserve >= honest {
 		t.Fatalf("R=%d now covers the honest bound %d: drop the interim exception from the PR body and docs", reserve, honest)
 	}
 	gatedBound := limit - (reserve + nonGroupCost) + margin
 	worst := gatedBound + (honest - margin)
-	if gatedBound != 658 || worst != 1365 {
-		t.Fatalf("pinned figures changed: gated bound %d (want 658), worst %d (want 1365)", gatedBound, worst)
+	if gatedBound != 658 || worst != 1396 {
+		t.Fatalf("pinned figures changed: gated bound %d (want 658), worst %d (want 1396)", gatedBound, worst)
+	}
+	measuredIn, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "dev_revoke_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(measuredIn), "const attempt3PassRequests = 87") {
+		t.Fatal("the attempt-3 cost pinned here must be the one scripts/ci/pr-gate/dev_revoke_test.go counts")
 	}
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs", "development", "ci.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "639", "887", "dequeued and re-queued", "1,365", "36.5%", "awaiting owner acceptance", "dev-revoke"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "639", "918", "dequeued and re-queued", "1,396", "39.6%", "awaiting owner acceptance", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}

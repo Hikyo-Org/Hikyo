@@ -514,25 +514,25 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Gated concurrency margin | 180 | E: 4 lanes x 45 (a dev pass is the gate's 42 plus the 3 reads of its post-write confirmation listing); `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
 | **Measured total** | **639** | |
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
-| Attempt-3 bypass (`reserve.go`) | 56 per job | E: the last attempt spends instead of deferring; a dev pass (45) whose confirmation listing lags for good adds 9 reads and 2 writes |
+| Attempt-3 bypass (`reserve.go`) | 87 per job | M: the last attempt spends instead of deferring; counted on the dev fixture for a dev pass whose confirmation never catches up (82 reads, 5 writes: the pass, its fail-closed write and the final attempt's reserve re-reading the PR, policy, feedback, roles and listing) |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
 | First revocation pass (`dev-revoke`) | 70 | E: 7 events x (3 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
-| **Honest lower bound** | **887** | measured plus the lower estimates |
+| **Honest lower bound** | **918** | measured plus the lower estimates |
 
-R = 480 is below 887. With 658 allowed to gated work (1000 - 522 + 180), the pinned
-worst case at the lower bound is 658 + 707 = 1,365 requests, 36.5% over the window. That is
-above the 25% over-window the owner accepted for the exception (Q2), by 11.5 points. The
+R = 480 is below 918. With 658 allowed to gated work (1000 - 522 + 180), the pinned
+worst case at the lower bound is 658 + 738 = 1,396 requests, 39.6% over the window. That is
+above the 25% over-window the owner accepted for the exception (Q2), by 14.6 points. The
 owner has not accepted the recomputed figure: it is awaiting owner acceptance. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
-the margin (45 per pass) and not an ungated row. Under a persistently lagging listing a pass
-reads up to 4 listings of 3 reads (12, which is 9 more than the 3 counted) and writes 2 records,
-11 more than the counted 45: 56 for the pass. Attempts 1 and 2 are gated like any pass, so the
-excess is bounded by the reserve check; the attempt-3 bypass is the ungated one and is counted
-once in the table. On a fan-out where the lag persists for every head, each of N heads can spend
-up to 56 ungated at attempt 3 (N x 56, not the one counted); that needs a sustained GitHub listing
-outage at the same time, and is not added to the lower bound. A listing is only needed when the
+the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
+requests and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
+never catches up costs 87 at attempt 3 (counted on the fixture), and a lane that lags costs
+that, not 45, in the margin as well. Attempts 1 and 2 of such a pass are gated like any pass;
+under sustained listing lag on a fan-out, each of N heads can spend 87 ungated at attempt 3
+(N x 87), and N lagging lanes cost 87 each in the margin. That is disclosed here, not counted:
+it needs a sustained GitHub listing outage at the same time. A listing is only needed when the
 pass created its record with a POST (a PATCH in place keeps a lower ID than any later
-revocation), so 45 is a ceiling, not the usual cost. The
+revocation), so 45 is a ceiling for the normal case, not the usual cost. The
 retirement fan-outs of `ci-check-retirement.yml` are not capped and not counted (hourly
 discovery, small). Expected drop frequency (an estimate): ungated spend near the incident
 level while a merge group is in flight. Over the last seven days 25 of 168 hours (15%) had
@@ -572,7 +572,7 @@ job timeout, can still end the job as failed or cancelled: in that case the job 
 filters but never qualifies it, so a cancelled one is never rerun and forces job-level
 reruns of any failed publishers beside it (the run-level rerun skips the per-job reserve
 gating); a failed first pass announces itself with an `::error::` annotation and a step
-summary (the last step of the job, `if: failure()`), since `continue-on-error` hides it from
+summary (the last step of the job, `if: failure() || cancelled()`, because a job timeout is a cancellation), since `continue-on-error` hides it from
 the run's conclusion; and the jobs the retry does reorder or rerun by id
 (`publish`, `group`) have no dependents. `TestDevRevokeRerunCannotCascadeIntoThePublishers`
 models GitHub's dependent rerun on the three workflows, and
@@ -605,7 +605,8 @@ The revocation sticks. The record carries the title `PR validation revoked`.
   rate-limited one it never becomes a terminal refusal on the last attempt: the record stays
   pending. The proof is finished at that point, so the listing and the fail-closed write run
   under the write context the work clock cannot cancel, not under the work context that may
-  already have expired. If a revocation newer than the pass sits below its record, a fresh
+  already have expired; the listing and its backoff stop 1.5 s before that context ends, so the
+  fail-closed write always has time. If a revocation newer than the pass sits below its record, a fresh
   blocking record that keeps the revocation's start replaces it. The stale success is on top
   for the time between its write and that listing, a second or two; the queued reconcile then
   proves the head again. A record found and patched in place keeps its ID, so a revocation

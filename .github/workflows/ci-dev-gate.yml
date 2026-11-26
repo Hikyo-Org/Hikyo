@@ -88,9 +88,9 @@ jobs:
           set -euo pipefail
           bash scripts/ci/build-queue-publisher.sh
           "$RUNNER_TEMP/queue-publisher" --dev --dev-revoke
-      # continue-on-error hides a failed first pass from the run's conclusion; this keeps it visible.
+      # continue-on-error hides a failed first pass from the run's conclusion; this keeps it visible. A job timeout cancels the job, so cancelled() is part of the condition.
       - name: Report a failed first pass
-        if: failure()
+        if: failure() || cancelled()
         run: |
           echo "::error title=dev-revoke failed::The first revocation pass did not finish. Stale ci-dev-required successes stay on the routed heads until each head's own publisher runs."
           {

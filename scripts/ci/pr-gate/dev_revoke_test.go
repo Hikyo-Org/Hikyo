@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -122,9 +123,12 @@ func TestDevRevocationSticksAgainstAnOlderPassSuccessWrite(t *testing.T) {
 		wantSuccess bool
 		wantStale   bool
 	}{
-		"revocation long after the pass began":     {offset: 20 * time.Second, wantStale: true},
-		"revocation one second past the skew":      {offset: revocationSkew + time.Second, wantStale: true},
-		"revocation exactly at the skew boundary":  {offset: revocationSkew, wantSuccess: true},
+		"revocation long after the pass began":    {offset: 20 * time.Second, wantStale: true},
+		"revocation one second past the skew":     {offset: revocationSkew + time.Second, wantStale: true},
+		"revocation exactly at the skew boundary": {offset: revocationSkew, wantSuccess: true},
+		// Absolute, not relative to the constant: a skew changed to 0 or 10 seconds fails here.
+		"absolute: 3 seconds after the pass began": {offset: 3 * time.Second, wantSuccess: true},
+		"absolute: 4 seconds after the pass began": {offset: 4 * time.Second, wantStale: true},
 		"revocation written before the pass began": {offset: -5 * time.Second, wantSuccess: true},
 		"revocation time unreadable":               {unreadable: true},
 	} {
@@ -475,5 +479,87 @@ func TestDevPostWriteListingWithOurIDAtAStaleStatusIsNotAConfirmation(t *testing
 				t.Fatalf("a stale status must fail closed as an unconfirmed success: %v %+v", err, f.api.checks)
 			}
 		})
+	}
+}
+
+// Dry run writes nothing and returns no record; the pass must neither panic nor confirm anything.
+func TestDevDryRunPassWithNoChecksDoesNotDereferenceAMissingRecord(t *testing.T) {
+	f, _ := passFixture(t)
+	f.c.dryRun = true
+	f.c.output = io.Discard
+	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.api.writes) != 0 {
+		t.Fatalf("a dry run wrote: %v", f.api.writes)
+	}
+}
+
+// The confirmation's backoff may not eat the write grace: with 2 s of the write context left (less
+// than the 3 s of the full backoff), the fail-closed write still has time, so the unconfirmed
+// success is replaced by a blocking record.
+func TestDevConfirmationLeavesRoomForTheFailClosedWriteAtTheEndOfTheWorkClock(t *testing.T) {
+	f, start := passFixture(t)
+	success := ownedRecord(f, 900, "completed", "success", "Ready for dev integration", start)
+	older := ownedRecord(f, 5, "completed", "success", "Ready for dev integration", start.Add(-time.Hour))
+	f.api.checks = []check{older, success}
+	f.api.nextID = 901
+	f.c.api = &ctxAPI{inner: &laggingListAPI{inner: f.api, lag: 1 << 20, armed: true, stale: []check{older}}}
+	// The package stubs the waits out; this test is about the real ones against a real deadline.
+	old := readRetryWait
+	readRetryWait = waitForReadRetry
+	t.Cleanup(func() { readRetryWait = old })
+	write, stop := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stop()
+	session := &queueReconciliation{q: f.q}
+	err := session.reapplyRevocation(write, f.pr, newBinding(f.c.repo.ID, f.pr, nil), &success)
+	if !errors.As(err, new(*unconfirmedSuccess)) {
+		t.Fatalf("an unconfirmable success must fail as unconfirmed: %v", err)
+	}
+	if newest := newestQueueCheck(f.api.checks); newest == nil || !blockingQueueCheck(newest) {
+		t.Fatalf("the fail-closed write must still land inside the grace: %+v", f.api.checks)
+	}
+}
+
+// countingAPI counts every request of a pass.
+type countingAPI struct {
+	inner         api
+	reads, writes int
+}
+
+func (a *countingAPI) read(ctx context.Context, path string, result any) error {
+	a.reads++
+	return a.inner.read(ctx, path, result)
+}
+
+func (a *countingAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	a.writes++
+	return a.inner.write(ctx, method, path, payload, result)
+}
+
+// attempt3PassRequests is what scripts/ci/queue_hourly_spend_test.go pins as the attempt-3 bypass.
+const attempt3PassRequests = 87
+
+// The worst pass an attempt-3 bypass can spend: the confirmation never catches up, so the pass
+// lists up to four times, writes its fail-closed record, and the final attempt's reserve then reads
+// the PR, policy, feedback, roles and listing again to publish the pending record.
+func TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing(t *testing.T) {
+	t.Setenv("GITHUB_REF", "refs/heads/main")
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3")
+	recordReadWaits(t)
+	f := newDevFixture(t)
+	f.c.repo = f.pr.Base.Repo
+	f.c.repo.DefaultBranch = "main"
+	counter := &countingAPI{inner: &laggingListAPI{inner: f.api, lag: 1 << 20}}
+	f.c.api = counter
+	budget := admissionBudget{Started: time.Now(), Deadline: time.Now().Add(time.Minute)}
+	err := f.q.withAdmissionBudget(context.Background(), budget, func(work context.Context) error {
+		return f.q.executeDev(work, "workflow_dispatch", event{Repository: f.c.repo}, f.pr.Number)
+	})
+	if err == nil {
+		t.Fatal("the pass must fail")
+	}
+	if got := counter.reads + counter.writes; got != attempt3PassRequests {
+		t.Fatalf("an attempt-3 pass with a lagging confirmation spends %d requests (%d reads, %d writes), the sizing pins %d", got, counter.reads, counter.writes, attempt3PassRequests)
 	}
 }

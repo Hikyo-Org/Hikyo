@@ -126,7 +126,7 @@ func TestDevGateRevokesEveryRoutedHeadBeforeThrottledWork(t *testing.T) {
 	}
 	// continue-on-error hides a failure from the run's conclusion, so a failed step must still announce itself.
 	last := revoke.Steps[len(revoke.Steps)-1]
-	if last.If != "failure()" || !strings.Contains(last.Run, "::error") || !strings.Contains(last.Run, "GITHUB_STEP_SUMMARY") {
+	if last.If != "failure() || cancelled()" || !strings.Contains(last.Run, "::error") || !strings.Contains(last.Run, "GITHUB_STEP_SUMMARY") {
 		t.Fatalf("the first pass must annotate and summarize its own failure: %+v", last)
 	}
 }
