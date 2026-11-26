@@ -3083,10 +3083,12 @@ export const zRuleAxisMode = z.enum(['all', 'only']);
  * `only` reaches the listed `projects`. `all` reaches every project of
  * the organisation, including projects created later; such a rule covers
  * every environment and narrows keys by folder only. Omitted, a rule's
- * project mode is `only`.
+ * project mode is `only`. The default is stated here rather than as a
+ * schema `default`, so generated clients never add the property to a
+ * request: a server before revision 21 refuses it.
  *
  */
-export const zRuleProjectMode = z.enum(['all', 'only']).default('only');
+export const zRuleProjectMode = z.enum(['all', 'only']);
 
 export const zRuleEnvironmentItem = z.object({
     project: zId,
