@@ -349,8 +349,9 @@ every minute (several minutes) and is how the tables below were measured.
 | Sunday after a go.sum week, main key by commit alone | 10.00 GB | 721 of 721 | 12.27 GB | 8 |
 | Sunday after a go.sum week, main key by commit alone | 10 GiB | 721 of 721 | 12.27 GB | 7 |
 
-With the headroom jobs (measured per minute, `HIKYO_CACHE_SWEEP_FULL=1`, merged tree b87310eac; all with the
-headroom lead times of the seed jobs, 20 minutes, and of ci-main, 45 minutes):
+With the headroom jobs (measured per minute, `HIKYO_CACHE_SWEEP_FULL=1`, merged tree 79e28858c, agent-heavy job 8123; the seed
+jobs' headroom leads are 20 minutes (race) and 11 minutes or less (lint), ci-main's 45 minutes unless a
+row says otherwise):
 
 | Case (with headroom) | Limit | Minutes with a newest seed lost | Worst peak | Most live entries evicted |
 | --- | --- | --- | --- | --- |
@@ -361,8 +362,12 @@ headroom lead times of the seed jobs, 20 minutes, and of ci-main, 45 minutes):
 | Monday rollover, no restore between saves | 10.00 GB | 0 | 9.74 GB | 0 (headroom freed 3) |
 | Sunday ci-main after a go.sum week | 10.00 GB | 0 of 721 | 9.74 GB | 0 |
 | Sunday ci-main after a go.sum week | 10 GiB | 0 of 721 | 9.74 GB | 0 |
-| Manual ci-main on a weekday after a go.sum change (headroom workflow dispatched) | 10.00 GB | 0 of 721 | 10.66 GB | 1 |
-| Manual ci-main on a weekday after a go.sum change | 10 GiB | 0 of 721 | 10.66 GB | 0 |
+| Manual ci-main on a weekday after a go.sum change (headroom workflow dispatched 45 minutes ahead) | 10.00 GB | 0 of 721 | 10.66 GB | 1 |
+| Manual ci-main on a weekday after a go.sum change (same) | 10 GiB | 0 of 721 | 10.66 GB | 0 |
+| The same, headroom started by the run's request, listing taken 1 / 3 / 5 / 10 minutes after it | 10.00 GB | 0 of 721 each | 10.59 / 10.37 / 9.96 / 10.40 GB | 1 / 1 / 0 / 2 |
+| The same, 1 / 3 / 5 / 10 minutes | 10 GiB | 0 of 721 each | 10.59 / 10.37 / 9.96 / 10.40 GB | 0 |
+| The same, 20 minutes after the request | 10.00 GB | 669 of 721 | 10.64 GB | 9 |
+| The same, 20 minutes after the request | 10 GiB | 502 of 721 | 11.40 GB | 8 |
 
 The same cases without the headroom, which is what the headroom is for: sparse traffic on a rotation day
 loses a newest seed at 311 of 361 minutes at 10.00 GB (peak 10.77 GB, 10 evicted); a manual ci-main run
@@ -371,6 +376,13 @@ evicted, because every entry but the saved ones is touched hourly). Two mutation
 must see: a selection that may delete a newest seed loses it at 361 of 361 minutes, and one that frees
 nothing at 311. The cost: at 10 GiB the manual weekday case shows the headroom freeing entries GitHub
 would not have evicted; the Monday rollover frees 3 live entries.
+
+The on-request rows are the race between the headroom job and the writers' first saves (finding F-B): the
+saves land at 2 minutes (lint, 40 MB), 2.5 (generated, 182 MB), about 7 (fuzz), 14 (go-test, 707 MB), 16
+(module) and 24 (k8s-e2e, 1.6 GB) after the request (offsets measured from the 2026-11-22 run; the
+request-to-listing delay is not measured, 1 to 3 minutes is expected on a hosted runner). A listing up to
+10 minutes after the request loses nothing; at 20 minutes the go-test save has landed unsized and a seed
+is lost.
 
 Sensitivity (review finding L1): if a weekday run touched a seed no more often than any other busy entry
 (the hour mark, a tie going against the seeds), the rotation day with the serialised saves loses a seed
