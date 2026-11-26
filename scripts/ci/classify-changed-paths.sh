@@ -50,21 +50,13 @@ else
 			select_class compose
 			;;
 		esac
-		# desktop/ is its own module, built and tested only by the desktop job. It
-		# compiles these root packages (check-desktop-deps.sh fails when one is missing
-		# from this list; it does not detect stale extras) and derives its refusal list from api/openapi.yaml.
-		case "$path" in
-		desktop/* | api/openapi.yaml | api/*.go | internal/audit/* | internal/clientauth/* | internal/clienterr/* | internal/clienttrust/* | internal/crypto/* | internal/delivery/* | internal/domain/* | internal/filedurability/* | internal/freetext/* | internal/jsonwire/* | internal/operation/* | internal/securefile/* | internal/tlspolicy/*)
-			select_class desktop
-			;;
-		esac
 		case "$path" in
 		cmd/hikyo/main.go | cmd/hikyo/rootkey_stage.go | internal/crypto/rootkey_stage.go | internal/crypto/rootkey_stage_test.go | internal/securefile/atomic.go | internal/securefile/atomic_test.go)
 			select_class chart-runtime
 			;;
 		esac
 		case "$path" in
-		# Only the desktop job builds this nested module; the root Go lanes cannot.
+		# Only the nightly-desktop workflow builds this nested module; no root lane can.
 		desktop/*)
 			;;
 		.github/workflows/*)
