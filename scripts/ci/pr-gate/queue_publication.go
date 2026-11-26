@@ -42,29 +42,73 @@ func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b b
 	if err != nil {
 		return err
 	}
-	newest := newestQueueCheck(own)
-	if result.Conclusion == "success" && s.q.supersededByRevocation(newest) {
-		return &staleHeadWork{expected: s.q.expectedHead}
-	}
 	write, stop := s.q.verdictWriteContext(ctx)
 	defer stop()
-	return s.publishVerified(write, p, b, newest, result)
+	if err := s.publishVerified(write, p, b, newestQueueCheck(own), result); err != nil || result.Conclusion != "success" {
+		return err
+	}
+	return s.reapplyRevocation(write, p, b)
 }
 
-// supersededByRevocation reports whether the newest owned record is a revocation
-// created at or after this pass began, or one whose time cannot be read. Both
-// clocks are GitHub's: the pass start is the authenticated job start. The reconcile
-// the same event queued behind the head's lease starts after the revocation and
-// proves the head from fresh inputs.
-func (q *queueController) supersededByRevocation(newest *check) bool {
-	if newest == nil || newest.Output.Title != revocationTitle || q.queueDeadline.IsZero() {
-		return false
+// revocationSkew is how far a revocation record's start may trail this pass's start
+// and still count as older. Both are GitHub's clocks, but one is a job start and the
+// other an API write, so a second or two of disagreement must not make the reconcile
+// that follows the revocation (it starts after the revoke job ends, tens of seconds
+// later) look older than the revocation. A stale pass reads its inputs before the
+// event that revoked the head, and the revocation follows that event by a discovery
+// job, a checkout and a build, so it is never within this margin of a stale pass's start.
+const revocationSkew = 3 * time.Second
+
+// revocationNewerThanPass reports whether v is a revocation written after this pass
+// began. An unreadable start fails the pass instead of ending it quietly, so the retry
+// runs it again and the head is not left revoked with nothing queued.
+func (q *queueController) revocationNewerThanPass(v *check) (bool, error) {
+	if v == nil || v.Output.Title != revocationTitle || q.queueDeadline.IsZero() {
+		return false, nil
 	}
-	created, err := time.Parse(time.RFC3339, newest.StartedAt)
+	created, err := time.Parse(time.RFC3339, v.StartedAt)
 	if err != nil {
-		return true
+		return false, errors.New("revocation record has no readable start time")
 	}
-	return !created.Before(q.queueDeadline.Add(-admissionSeconds * time.Second))
+	return created.After(q.queueDeadline.Add(-admissionSeconds*time.Second + revocationSkew)), nil
+}
+
+// reapplyRevocation closes the one race the in-place guard cannot see: this pass listed
+// the owned checks before a revocation was written, so it created its own success record
+// with a higher ID than the revocation. If a revocation newer than this pass now sits
+// below the newest record, a fresh blocking record replaces the success and keeps the
+// revocation's start, so the reconcile queued after the revocation is still not refused.
+//
+// The listing is the head's commit-level one, a single request: it only decides whether
+// to add a blocking record, which is the safe direction, and never authenticates a success.
+func (s *queueReconciliation) reapplyRevocation(ctx context.Context, p pull, b binding) error {
+	own, err := s.q.listOwnedChecksAt(ctx, p.Head.SHA, "commits/"+p.Head.SHA+"/check-runs", make(map[int64]bool))
+	if err != nil {
+		return err
+	}
+	newest := newestQueueCheck(own)
+	if newest == nil || newest.Output.Title == revocationTitle {
+		return nil
+	}
+	var first *check
+	for i := range own {
+		newer, err := s.q.revocationNewerThanPass(&own[i])
+		if err != nil {
+			return err
+		}
+		if newer && own[i].ID < newest.ID && (first == nil || own[i].StartedAt < first.StartedAt) {
+			first = &own[i]
+		}
+	}
+	if first == nil {
+		return nil
+	}
+	again := revoked("The dev publisher or main changed while an older pass was finishing; this head is blocked until its exact-head reconciliation finishes.")
+	again.StartedAt = first.StartedAt
+	if err := s.publishVerified(ctx, p, b, newest, again); err != nil {
+		return err
+	}
+	return &staleHeadWork{expected: s.q.expectedHead}
 }
 
 func (s *queueReconciliation) completeGroup(ctx context.Context, p pull, b binding, result outcome) error {
@@ -103,6 +147,15 @@ func (s *queueReconciliation) publishRecord(ctx context.Context, p pull, b bindi
 	decoded, err := decodeBinding(b.externalID())
 	if err != nil || decoded != b {
 		return nil, errors.New("noncanonical queue publication binding")
+	}
+	if result.Title != revocationTitle {
+		// No older pass rewrites a revocation record in place: a pending or refusal result
+		// would lose its title, and a success would turn the head green on stale inputs.
+		if newer, err := s.q.revocationNewerThanPass(selected); err != nil {
+			return nil, err
+		} else if newer {
+			return nil, &staleHeadWork{expected: c.expectedHead}
+		}
 	}
 	if c.recognizedTruncatedQueueCheck(selected, b.Head) {
 		// Prefix authentication is deliberately insufficient for PATCH/no-op.

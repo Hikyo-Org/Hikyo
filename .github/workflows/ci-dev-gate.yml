@@ -65,6 +65,8 @@ jobs:
     if: needs.discover.outputs.work != '[]' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number == '')
     runs-on: ubuntu-latest
     timeout-minutes: 4
+    # A failed first pass must not fail the job: a rerun of it would rerun every publisher that needs it, and ci-queue-retry leaves it alone for the same reason.
+    continue-on-error: true
     permissions:
       actions: read
       checks: write
@@ -77,8 +79,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: scripts/ci
-      # The name starts with Reconcile: ci-queue-retry reruns a failed job only when a step so named failed.
-      - name: Reconcile the first pass, blocking every routed head until its reconciliation finishes
+      - name: Block every routed head until its reconciliation finishes
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

@@ -83,45 +83,123 @@ func TestDevRevokeRefusesEventsThatDoNotFanOut(t *testing.T) {
 	}
 }
 
+// ownedRecord builds an owned dev check record for the fixture's head.
+func ownedRecord(f *queueFixture, id int64, status, conclusion, title string, started time.Time) check {
+	v := check{ID: id, Name: devCheckName, HeadSHA: f.pr.Head.SHA, ExternalID: newBinding(f.c.repo.ID, f.pr, nil).externalID(), Status: status, Conclusion: conclusion}
+	v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+	v.Output.Title = title
+	v.StartedAt = started.UTC().Format(time.RFC3339)
+	if status == "completed" {
+		v.CompletedAt = v.StartedAt
+	}
+	return v
+}
+
+func passFixture(t *testing.T) (*queueFixture, time.Time) {
+	t.Helper()
+	f := newDevFixture(t)
+	f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
+	start := time.Now().Add(-30 * time.Second).Truncate(time.Second)
+	f.q.queueDeadline = start.Add(admissionSeconds * time.Second)
+	f.c.expectedHead = f.pr.Head.SHA
+	return f, start
+}
+
+func successPublished(f *queueFixture) bool {
+	newest := newestQueueCheck(f.api.checks)
+	return newest != nil && newest.Conclusion == "success"
+}
+
 // An older pass can still be running when a push revokes its head. Its terminal
 // success must not rebind the revocation record: its inputs predate the event.
-// The reconcile that follows the revocation starts later and may publish.
+// The reconcile that follows the revocation starts later and may publish. The
+// boundary is the pass start plus revocationSkew: equal is older, one second more is newer.
 func TestDevRevocationSticksAgainstAnOlderPassSuccessWrite(t *testing.T) {
 	for name, tc := range map[string]struct {
-		before, unreadable, wantSuccess bool
+		offset      time.Duration
+		unreadable  bool
+		wantSuccess bool
+		wantStale   bool
 	}{
-		"older pass, newer revocation":   {},
-		"revocation time unreadable":     {unreadable: true},
-		"reconcile after the revocation": {before: true, wantSuccess: true},
+		"revocation long after the pass began":     {offset: 20 * time.Second, wantStale: true},
+		"revocation one second past the skew":      {offset: revocationSkew + time.Second, wantStale: true},
+		"revocation exactly at the skew boundary":  {offset: revocationSkew, wantSuccess: true},
+		"revocation written before the pass began": {offset: -5 * time.Second, wantSuccess: true},
+		"revocation time unreadable":               {unreadable: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f := newDevFixture(t)
-			f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
-			passStart := time.Now().Add(-10 * time.Second)
-			f.q.queueDeadline = passStart.Add(admissionSeconds * time.Second)
-			f.c.expectedHead = f.pr.Head.SHA
-			if err := f.q.publish(context.Background(), f.pr, newBinding(f.c.repo.ID, f.pr, nil), nil, revoked("revoked")); err != nil {
-				t.Fatal(err)
-			}
-			when := passStart.Add(5 * time.Second)
-			if tc.before {
-				when = passStart.Add(-5 * time.Second)
-			}
-			f.api.checks[0].StartedAt = when.UTC().Format(time.RFC3339)
+			f, start := passFixture(t)
+			f.api.checks = []check{ownedRecord(f, 800, "queued", "", revocationTitle, start.Add(tc.offset))}
+			f.api.nextID = 900
 			if tc.unreadable {
 				f.api.checks[0].StartedAt = ""
 			}
 			err := f.q.admit(context.Background(), f.pr.Number)
-			succeeded := false
-			for _, v := range f.api.checks {
-				succeeded = succeeded || v.Conclusion == "success"
+			if successPublished(f) != tc.wantSuccess {
+				t.Fatalf("success published = %v, want %v (err %v, checks %+v)", successPublished(f), tc.wantSuccess, err, f.api.checks)
 			}
-			if succeeded != tc.wantSuccess {
-				t.Fatalf("success published = %v, want %v (err %v, checks %+v)", succeeded, tc.wantSuccess, err, f.api.checks)
-			}
-			if !tc.wantSuccess && !onlyStaleHeadWork(err) {
+			switch {
+			case tc.wantStale && !onlyStaleHeadWork(err):
 				t.Fatalf("the superseded pass must end as stale work, got %v", err)
+			case tc.unreadable && (err == nil || onlyStaleHeadWork(err)):
+				t.Fatalf("an unreadable revocation time must fail the pass so it is retried, got %v", err)
 			}
 		})
+	}
+}
+
+// The older pass listed the owned checks while the newest record was a completed
+// success, so it creates a record with a higher ID than a revocation written after
+// that listing. The pass must notice and put a blocking record back on top.
+func TestDevRevocationSurvivesAnOlderPassThatListedACompletedRecord(t *testing.T) {
+	f, start := passFixture(t)
+	f.api.checks = []check{ownedRecord(f, 5, "completed", "success", "Ready for dev integration", start.Add(-time.Hour))}
+	f.api.nextID = 900
+	revocation := ownedRecord(f, 6, "queued", "", revocationTitle, start.Add(20*time.Second))
+	listings := 0
+	f.api.readHook = func(path string, _ int) {
+		if strings.Contains(path, "/check-runs?") {
+			listings++
+			if listings == 2 { // after the pass wrote its own success record
+				f.api.checks = append(f.api.checks, revocation)
+			}
+		}
+	}
+	err := f.q.admit(context.Background(), f.pr.Number)
+	if !onlyStaleHeadWork(err) {
+		t.Fatalf("a pass that lost the race must end as stale work, got %v", err)
+	}
+	newest := newestQueueCheck(f.api.checks)
+	if newest == nil || newest.Status != "queued" || newest.Conclusion != "" || newest.Output.Title != revocationTitle || newest.StartedAt != revocation.StartedAt {
+		t.Fatalf("the newest record must block and keep the revocation's start, got %+v", newest)
+	}
+	// The reconcile queued after the revocation starts later and is not refused by the re-applied record.
+	f.q.queueDeadline = start.Add(2 * time.Minute).Add(admissionSeconds * time.Second)
+	f.api.readHook = nil
+	if err := f.q.admit(context.Background(), f.pr.Number); err != nil || !successPublished(f) {
+		t.Fatalf("the later reconcile must publish: %v %+v", err, f.api.checks)
+	}
+}
+
+// A pending or refusal result from an older pass would lose the revocation's title.
+func TestDevRevocationIsNeverRewrittenByAnOlderPass(t *testing.T) {
+	f, start := passFixture(t)
+	f.api.nextID = 900
+	revocation := ownedRecord(f, 800, "queued", "", revocationTitle, start.Add(20*time.Second))
+	f.api.checks = []check{revocation}
+	session := &queueReconciliation{q: f.q}
+	b := newBinding(f.c.repo.ID, f.pr, nil)
+	for name, result := range map[string]outcome{"pending": pending("older"), "refusal": refused("older"), "success": {Status: "completed", Conclusion: "success", Title: "ok", Summary: "ok"}} {
+		if _, err := session.publishRecord(context.Background(), f.pr, b, &revocation, result); !onlyStaleHeadWork(err) {
+			t.Fatalf("%s: an older pass rewrote the revocation (%v)", name, err)
+		}
+	}
+	if len(f.api.writes) != 0 {
+		t.Fatalf("the revocation record was written to: %v", f.api.writes)
+	}
+	// A pass that began after the revocation owns the head again.
+	f.q.queueDeadline = start.Add(time.Minute).Add(admissionSeconds * time.Second)
+	if _, err := session.publishRecord(context.Background(), f.pr, b, &revocation, pending("later")); err != nil {
+		t.Fatalf("a later reconcile must be able to rewrite the revocation: %v", err)
 	}
 }

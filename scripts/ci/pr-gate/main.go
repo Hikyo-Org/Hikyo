@@ -1082,7 +1082,7 @@ func (s snapshot) binding(repoID int64) binding {
 	return b
 }
 
-type outcome struct{ Status, Conclusion, Title, Summary string }
+type outcome struct{ Status, Conclusion, Title, Summary, StartedAt string }
 
 func pending(summary string) outcome {
 	return outcome{Status: "queued", Title: "PR validation pending", Summary: summary}

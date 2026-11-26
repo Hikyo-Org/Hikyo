@@ -514,11 +514,13 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
 | Attempt-3 bypass (`reserve.go`) | 42 per job | E: the last attempt spends instead of deferring |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
-| First revocation pass (`dev-revoke`) | 77 | E: 7 events x (4 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
-| **Honest lower bound** | **868** | measured plus the lower estimates |
+| First revocation pass (`dev-revoke`) | 70 | E: 7 events x (3 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
+| Post-write revocation listing | 34 | E: one request per successful dev pass, at most one per event-driven discover (34 in the incident hour) |
+| **Honest lower bound** | **895** | measured plus the lower estimates |
 
-R = 480 is below 868. With 646 allowed to gated work (1000 - 522 + 168), the pinned
-worst case at the lower bound is 646 + 700 = 1,346 requests, 35% over the window. The
+R = 480 is below 895. With 646 allowed to gated work (1000 - 522 + 168), the pinned
+worst case at the lower bound is 646 + 727 = 1,373 requests, 37% over the window. That is above the 25% over-window the owner accepted for
+this exception (12 points more), so the exception is wider than first stated. The
 retirement fan-outs of `ci-check-retirement.yml` are not capped and not counted (hourly
 discovery, small). Expected drop frequency (an estimate): ungated spend near the incident
 level while a merge group is in flight. Over the last seven days 25 of 168 hours (15%) had
@@ -537,36 +539,57 @@ its stale success for many waves. The `dev-revoke` job of `ci-dev-gate.yml` ther
 first, outside the matrix: one job runs `pr-gate --dev --dev-revoke` on the discovered
 work and writes a blocking pending record on every routed head that is still open on `dev`
 at that head. It never reads the rate limit and is never deferred. `publish` needs it but
-runs even when it fails or is skipped (`!cancelled()`), so a failed first pass cannot stop
-the reconcile. A head the first pass cannot confirm (moved, closed, retargeted) is left to
-its own publisher run or retirement.
+runs even when it fails or is skipped (`!cancelled()`). A head the first pass cannot
+confirm (moved, closed, retargeted) is left to its own publisher run or retirement.
 
 Cost of the first pass: the repository, the open PR list and the dev tip are read once, and
-each head costs one record create, so 4 + N requests for N routed heads (N up to 100 per
+each head costs one record create, so 3 + N requests for N routed heads (N up to 100 per
 page); the sizing table counts 7 events an hour at N = 7. The alternative, exempting push
 and dispatch from `max-parallel`, costs nothing extra but removes the throttle on exactly
 the events that fan out, which is the large-fan-out margin the throttle exists for, so it
-was not chosen. The pending record is replaced by the reconcile; a head whose reconcile
-is deferred below the reserve stays blocked, which is the safe direction.
+was not chosen.
 
-The revocation sticks. The record carries the title `PR validation revoked`. A publisher
-that began before it (its authenticated job start, GitHub's clock, is not after the record's
-`started_at`) refuses to publish a success over it, or over a record whose time cannot be
-read, and ends as stale work; the reconcile the same event queued behind the head's lease
-starts after the record and proves the head from fresh inputs. The check uses the owned
-checks the pass already lists, so it adds no request. A pass already past the policy, dev
-tip, feedback, DCO and role reads of its final phase is covered by the same rule; the one
-window left is the round trip between that listing and the write, closed by the queued
-reconcile. `TestDevRevocationSticksAgainstAnOlderPassSuccessWrite` interleaves an older
-pass's success write after a revocation and asserts the head stays blocked.
+The first pass is never rerun. GitHub reruns a job together with every job that needs it,
+and every dev publisher needs `dev-revoke`, so a rerun would cost one reconcile per head
+(about N x 42, and at attempt 3 the reserve bypass applies to all of them). The structure
+prevents it: the job has `continue-on-error: true`, so a failed first pass does not fail the
+job, and a timeout cannot happen because the step bounds itself to two minutes inside a
+four-minute job; `ci-queue-retry.yml` leaves `dev-revoke` out of both failed-job filters, so
+a cancelled one is neither counted in the run total nor rerun, and the run-level rerun of
+failed publishers still applies; and the jobs the retry does reorder or rerun by id
+(`publish`, `group`) have no dependents. `TestDevRevokeRerunCannotCascadeIntoThePublishers`
+models GitHub's dependent rerun on the three workflows.
 
-The retry workflow knows the job. A failed `dev-revoke` counts in the run's failed total,
-ranks with the group jobs (released ahead of the publishers, never held by the reserve,
-accounted at the group cost of 41 for the rerun) and its rerun reruns its dependent
-publishers, so it can neither be miscounted nor stop the rerun of failed publishers. Its
-retry step is named `Reconcile the first pass, ...` because the filter reruns only a job
-whose `Reconcile` step failed. A rerun adds at most one more first pass of 4 + N requests
-and happens only after a failure, so the sizing table is unchanged.
+The revocation sticks. The record carries the title `PR validation revoked`.
+- A publisher that began before it (its authenticated job start is more than 3 seconds
+  before the record's `started_at`) never rewrites it in place: not with a success, and not
+  with a pending or refusal result, which would lose the title. It ends as stale work. The
+  3 seconds absorb the difference between a job start and an API write, both GitHub's
+  clocks; the reconcile the same event queued starts after the revoke job ended, tens of
+  seconds later, and a stale pass began before the event that preceded the revocation by a
+  discovery job, a checkout and a build, so neither lands in that margin. A record whose
+  start cannot be read fails the pass (it is retried) rather than ending it quietly.
+- If an older pass listed the owned checks while the newest record was completed, it creates
+  its own record with a higher ID than a revocation written afterwards. After a success write the
+  pass therefore lists the head's checks once more (one request, counted in the sizing
+  table) and, if a revocation newer than the pass sits below its record, writes a fresh
+  blocking record that keeps the revocation's start. The stale success is on top for the
+  time between its write and that listing, a second or two; the queued reconcile then
+  proves the head again.
+- The final phase of every pass already rereads policy, dev tip, feedback, DCO and roles
+  before a success is written.
+
+`TestDevRevocationSticksAgainstAnOlderPassSuccessWrite` pins the boundary (equal to the
+margin is older, one second more is newer), `TestDevRevocationSurvivesAnOlderPassThatListedACompletedRecord`
+the completed-newest interleaving, and `TestDevRevocationIsNeverRewrittenByAnOlderPass` the
+pending and refusal rewrites.
+
+Residual. When the window is exhausted the first pass cannot write, and the publishers defer
+for the same reason, so stale greens on the routed heads last until `rerun-after-reset`
+reruns them, up to about an hour after the reset. A head whose first pass succeeded stays
+blocked while its reconcile defers; a head whose first pass failed does not. No token other
+than `GITHUB_TOKEN` exists until #1598, and the first pass is the cheapest write that can
+revoke.
 
 Sibling matrices. `ci-queue-worker.yml` has the same `max-parallel: 2`. Its `publish`
 workers write PR-head queue admissions, and a stale one only lets a head enter the queue:

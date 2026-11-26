@@ -65,7 +65,7 @@ type devWork struct {
 // head before the throttled per-head publishers start, so no stale success waits
 // behind max-parallel. It never defers on the rate limit: revocation is the
 // cheap, safety-critical half. Cost: repository read, open PR list, dev tip, and
-// one create per head (heads + 4 for a hundred or fewer open PRs).
+// one create per head (3 + heads for a hundred or fewer open PRs).
 func runDevRevoke(workJSON string, dryRun bool) error {
 	var work []devWork
 	if err := decode([]byte(workJSON), &work); err != nil {
