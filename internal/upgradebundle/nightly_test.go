@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
@@ -161,6 +163,25 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if rolled, err := bundle.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
 				t.Fatalf("rollback of the journaled route must not be blocked: %v", err)
 			}
+			// The expiry-free v1 statement is never a route today, but an older build routed it and the
+			// journal is an unauthenticated file: a journaled route through it never resumes, while a
+			// security rollback still matches it.
+			v1Steps := plan.Steps()
+			v1Steps[0].BridgeSHA256 = legacyDigest
+			v1Route := journaledRouteDigest(t, source, node.Identity(), v1Steps)
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAdmitted(source, node.Identity(), v1Route); !errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || !strings.Contains(err.Error(), "legacy v1") {
+				t.Fatalf("a resume through the legacy v1 bridge must be refused: %v", err)
+			}
+			if rolled, err := bundle.PlanRollback(source, node.Identity(), v1Route); err != nil || rolled.Digest() != v1Route {
+				t.Fatalf("security rollback of a route through the legacy v1 bridge must stay permissive: %v", err)
+			}
+			// A resume is also refused when the revocation check cannot be made: no lookup, or a failing one.
+			if _, err := bundle.PlanAdmitted(source, node.Identity(), plan.Digest()); err == nil || !strings.Contains(err.Error(), "no revocation lookup") {
+				t.Fatalf("a resume with no revocation lookup must be refused: %v", err)
+			}
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, errors.New("list unreadable") }).PlanAdmitted(source, node.Identity(), plan.Digest()); err == nil || !strings.Contains(err.Error(), "revocation check") {
+				t.Fatalf("a resume whose revocation lookup fails must be refused: %v", err)
+			}
 			// R2: under a root that still pins recovery-1 the routable v2 bridge and the inert v1
 			// bridge both load and count, a new admission is refused with the way out named, and a
 			// security rollback of the route journaled earlier is not affected.
@@ -242,4 +263,20 @@ type scriptedFetcher struct {
 
 func (f scriptedFetcher) Fetch(context.Context) ([]byte, []byte, error) {
 	return f.list, f.signature, f.err
+}
+
+// journaledRouteDigest mirrors the planner's route digest (upgradecompat.makePlan), so a test can
+// name a route the planner would never build today but a journal could still hold.
+func journaledRouteDigest(t *testing.T, source upgradecompat.InstalledSource, target releaseidentity.Identity, steps []upgradecompat.Step) releaseidentity.Digest {
+	t.Helper()
+	raw, err := json.Marshal(struct {
+		Schema string                        `json:"schema"`
+		Source upgradecompat.InstalledSource `json:"source"`
+		Target releaseidentity.Identity      `json:"target"`
+		Steps  []upgradecompat.Step          `json:"steps"`
+	}{"hikyo.dev/upgrade-route/v1", source, target, steps}, jsonwire.Stable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return releaseidentity.Hash(raw)
 }

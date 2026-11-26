@@ -65,3 +65,16 @@ func TestPersistenceLockHeldByAnotherRunMakesTheNextRunWait(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+// A run that cannot get the lock within its wait refuses; it never proceeds unlocked.
+func TestPersistenceLockTimeoutRefuses(t *testing.T) {
+	directory := t.TempDir()
+	release, err := (Checker{Directory: directory}).lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := (Checker{Directory: directory, lockWait: 50 * time.Millisecond}).lock(); err == nil {
+		t.Fatal("a second holder must be refused once its wait passes")
+	}
+}

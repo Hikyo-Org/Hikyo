@@ -291,3 +291,34 @@ func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(
 		})
 	}
 }
+
+// An automatic resume is a resume, not a rollback: a journaled route through a bridge the
+// stored revocation list withdraws is refused, and the cause says revoked.
+func TestAutomaticResumeRefusesARevokedBridge(t *testing.T) {
+	f := newAutomaticDiscoveryFixture(t)
+	target := f.prepared[f.identities[2]]
+	full, err := f.AssembleNightlyRoute(t.Context(), target, []selfupdate.PreparedNightly{f.prepared[f.identities[0]], f.prepared[f.identities[1]]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := upgradebundle.Load(t.Context(), full, f.trust.Pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := bundle.WithBridgeRevocations(noRevokedBridges).Plan(f.source, target.Identity)
+	if err != nil || len(plan.BridgeDigests()) != 1 {
+		t.Fatalf("the fixture route uses one bridge: %v", err)
+	}
+	target.BundleDirectory = full
+	previous := &automaticJournal{Phase: "schema-applied", Target: target.Identity, Source: f.source, Instance: "actual-installation", Route: plan.Digest(), Hop: 1}
+	list := trustfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(f.trust.Pinned.Root), Revoked: plan.BridgeDigests()})
+	state := t.TempDir()
+	automaticProcessPut(t, filepath.Join(state, "bridge-revocations-store.json"), trustfixture.JSON(t, struct {
+		List      []byte `json:"list"`
+		Signature []byte `json:"signature"`
+	}{list, trustfixture.Sign(t, f.trust.RecoverySigner, list)}))
+	_, err = discoverAutomaticRoute(t.Context(), offConfig(state), f, f, target, f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, previous)
+	if err == nil || !strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("a resume through a revoked bridge must be refused as revoked: %v", err)
+	}
+}

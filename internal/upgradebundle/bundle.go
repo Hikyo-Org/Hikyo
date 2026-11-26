@@ -122,10 +122,18 @@ func (b Bundle) PlanAdmitted(source upgradecompat.InstalledSource, target releas
 	}
 	// R2: a bridge under a root that still pins recovery-1 never authorizes a resume (the
 	// journal is an unauthenticated file); only a security rollback ignores that.
-	if slices.ContainsFunc(b.bridges, func(bridge releasetrust.VerifiedBridge) bool {
-		return bridge.RetiredSigner() && slices.Contains(plan.BridgeDigests(), bridge.Digest())
-	}) {
+	onRoute := func(bridge releasetrust.VerifiedBridge) bool {
+		return slices.Contains(plan.BridgeDigests(), bridge.Digest())
+	}
+	if slices.ContainsFunc(b.bridges, func(bridge releasetrust.VerifiedBridge) bool { return bridge.RetiredSigner() && onRoute(bridge) }) {
 		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge on the journaled route: %w", releasetrust.ErrRetiredBridgeSigner)
+	}
+	// An expiry-free legacy v1 statement is never a route today, but an older build did route
+	// it and the journal is an unauthenticated file, so it cannot be resumed either.
+	if slices.ContainsFunc(b.bridges, func(bridge releasetrust.VerifiedBridge) bool {
+		return bridge.Statement().NotAfter == "" && onRoute(bridge)
+	}) {
+		return upgradecompat.Plan{}, fmt.Errorf("recovery bridge on the journaled route has no expiry (legacy v1) and cannot resume: %w", releasetrust.ErrRetiredBridgeSigner)
 	}
 	if b.revocations == nil {
 		return upgradecompat.Plan{}, errMissingRevocationLookup

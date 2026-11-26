@@ -190,6 +190,7 @@ func TestDeriveRefusesUnsoundPairs(t *testing.T) {
 	a, da := release(t, f, 1, 3, "x", nil)
 	b, db := release(t, f, 2, 5, "x", nil)
 	rewritten, drw := release(t, f, 3, 5, "y", nil) // same count, different migration hashes
+	same, dsame := release(t, f, 4, 3, "x", nil)    // a newer release with the very same migrations
 	other := testfixture.New(t)
 	foreign, dforeign := release(t, other, 2, 5, "x", nil)
 	snapshot := f.Snapshot(t)
@@ -205,6 +206,7 @@ func TestDeriveRefusesUnsoundPairs(t *testing.T) {
 		"target not newer":           {to, from, "newer stable release"},
 		"same release":               {from, from, "newer stable release"},
 		"rewritten history":          {from, evidence(t, snapshot, rewritten, drw), "strict prefix"},
+		"no new migrations":          {from, evidence(t, snapshot, same, dsame), "strict prefix"},
 		"different engine sets":      {from, oneEngine, "different engines"},
 		"declaration of another":     {from, wrongVersion, "does not describe"},
 		"evidence from another root": {from, evidenceFrom(t, other, foreign, dforeign), "one trust snapshot"},

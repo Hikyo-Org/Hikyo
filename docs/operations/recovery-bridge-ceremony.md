@@ -25,7 +25,10 @@ and recovery bridges need the rotated recovery-2 root" and points here. The expi
    catalog), and ship a release whose binary embeds that root.
 2. Sign the `legacy-nightly-bridge/v2` statements and the `recovery-bridge/v2` statements
    with `recovery-2` (the steps below, with `RECOVERY_KEY` set to `recovery-2`).
-3. Publish the trust asset (the recovery-signed catalog and the bridge directories).
+3. Publish the trust asset: the recovery-signed catalog, the bridge directories, and the
+   recovery-signed bridge revocation list (sequence 1, `recovery-revocations.json` and its
+   `.sigstore.json`) as assets of the `trust` release. Until it is published the check
+   gets a 404 and every bridge is bounded only by its signed `not_after`.
 
 ## Read first: constraints the rehearsal exposed
 

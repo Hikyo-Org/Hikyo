@@ -338,6 +338,26 @@ For multiple hops keep `HIKYO_UPGRADE_TARGET_MANIFEST` set to the final verified
 manifest SHA-256, execute each required binary in order, and retain maintenance
 between hops.
 
+### Recovery bridge revocation check
+
+A route that uses a recovery bridge first consults the signed bridge revocation list.
+Ordinary upgrades never do. Two settings control it, next to the other
+`HIKYO_UPGRADE_*` settings, and `HIKYO_UPGRADE_STATE_DIR` is required because the list
+and its sequence floor are kept there.
+
+- `HIKYO_UPGRADE_REVOCATION_CHECK` is `online` (default) or `off`. `off` is your explicit
+  opt-out: nothing is fetched, the last stored list still applies, and each bridge is
+  bounded only by its signed `not_after`.
+- `HIKYO_UPGRADE_REVOCATION_URL` overrides the default
+  `https://github.com/Hikyo-Org/Hikyo/releases/download/trust/recovery-revocations`
+  (the `.json` list and `.sigstore.json` signature are read from that base).
+
+If the list is not published (404) or the endpoint is unreachable, or the list is older
+than the maximum age, the check falls back to the bridge's expiry and says so in the log.
+A revoked bridge, or a stored list or floor that cannot be read, always refuses the bridge
+route; repair or remove the damaged state file under the state directory. A newer
+stored list is never replaced by an older one.
+
 A genuinely fresh empty installation omits evidence and backup paths. Ordinary
 healthy same-release restarts need no new receipt; remove the evidence, backup
 and legacy-stop environment settings after the final healthy boot. Startup with

@@ -273,8 +273,9 @@ func planRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 		// It still counted toward the complete inventory above.
 		statement := bridge.Statement()
 		// Matching a journaled route (parallel) ignores the clock: expiry limits only new
-		// admissions, and a legacy v1 statement (no not_after, always expired) can never have
-		// been admitted, so it cannot be journaled.
+		// admissions. A legacy v1 statement (no not_after, always expired) stays an edge here
+		// because an older build did route it and a security rollback must still match it;
+		// resume refuses such a route in upgradebundle (PlanAdmitted).
 		if !options.parallel && bridge.RetiredSigner() {
 			// Verified and counted, but under a root that still pins recovery-1 it never routes.
 			retiredSkipped = true
