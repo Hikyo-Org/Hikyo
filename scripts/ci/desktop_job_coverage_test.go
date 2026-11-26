@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,7 +53,7 @@ func stepsOf(job yamlMap) []yamlMap {
 	return steps
 }
 
-func needsOf(job yamlMap) []string {
+func yamlNeedsOf(job yamlMap) []string {
 	switch needs := job["needs"].(type) {
 	case string:
 		return []string{needs}
@@ -77,7 +77,7 @@ func checkDesktopOffRequiredPaths(workflows map[string]yamlMap, registryJSON []b
 			if strings.Contains(jobName, "desktop") {
 				return fmt.Errorf("%s still has the %s job on a required path", name, jobName)
 			}
-			for _, need := range needsOf(asMap(raw)) {
+			for _, need := range yamlNeedsOf(asMap(raw)) {
 				if strings.Contains(need, "desktop") {
 					return fmt.Errorf("%s job %s needs %s", name, jobName, need)
 				}
