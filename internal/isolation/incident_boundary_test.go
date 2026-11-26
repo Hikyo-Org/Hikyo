@@ -84,8 +84,9 @@ func TestIncidentContainRefusesAMemberOutsideTheIncidentOrg(t *testing.T) {
 }
 
 // An account incident revokes only the account's own delegations: one that
-// belongs to another authority is not revoked, and the confirmation read does not
-// see it as the incident's (so the item reports it gone from this authority).
+// belongs to another authority lies outside the incident, so the owner answers
+// not found and leaves it live, as the other owners do for an object outside
+// their incident.
 func TestIncidentAccountIncidentLeavesAnotherAuthoritysDelegation(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
@@ -93,14 +94,56 @@ func TestIncidentAccountIncidentLeavesAnotherAuthoritysDelegation(t *testing.T) 
 		insertDeveloperCredential(t, db, "devc_other", "devp_other", string(alice), "org_a", "prj_a1", "env_a1", "2099-01-01T00:00:00.000000Z")
 		inc := w.openAccount(t, incResponder).Incident.ID
 		res, err := w.svc.Owners[domain.OwnerDeveloperRevoke](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: inc, OwnerFunction: domain.OwnerDeveloperRevoke, ObjectKind: domain.ObjectKindDeveloperCred, ObjectID: "devc_other", Scope: "org_a/prj_a1/env_a1"})
-		if err != nil {
-			t.Fatalf("owner: %v", err)
-		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_other' AND revoked_at IS NULL`); n != 1 {
-			t.Fatalf("an account incident revoked another authority's delegation (result %v)", res)
+			t.Fatalf("an account incident revoked another authority's delegation (result %v, %v)", res, err)
 		}
-		if res != service.OwnerConfirmed {
-			t.Errorf("another authority's delegation = %v, want confirmed (absent from this authority's live set)", res)
+		if !errors.Is(err, domain.ErrNotFound) || res == service.OwnerConfirmed {
+			t.Errorf("another authority's delegation = %v, %v; want not found and unconfirmed", res, err)
+		}
+	})
+}
+
+// The delegation revoke reads the item's exact placement. An org incident has
+// no authority filter, so placement alone decides: an item that names a
+// delegation at another level, project or env answers not found and leaves it
+// live, and the exact placement still revokes it.
+func TestIncidentDeveloperRevokeRefusesAnotherPlacement(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		inc := w.openOrg(t, incResponder)
+		for _, scope := range []string{"org_a", "org_a/prj_a2/env_a1", "org_a/prj_a1/env_zz"} {
+			res, err := w.svc.Owners[domain.OwnerDeveloperRevoke](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: inc, OwnerFunction: domain.OwnerDeveloperRevoke, ObjectKind: domain.ObjectKindDeveloperCred, ObjectID: "devc_it", Scope: scope})
+			if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_it' AND revoked_at IS NULL`); n != 1 {
+				t.Fatalf("scope %s revoked a delegation placed at org_a/prj_a1/env_a1 (result %v, %v)", scope, res, err)
+			}
+			if !errors.Is(err, domain.ErrNotFound) || res == service.OwnerConfirmed {
+				t.Errorf("scope %s = %v, %v; want not found and unconfirmed", scope, res, err)
+			}
+		}
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerDeveloperRevoke, domain.ObjectKindDeveloperCred, "devc_it", "org_a/prj_a1/env_a1"); res != service.OwnerConfirmed {
+			t.Errorf("the exact placement = %v, want confirmed", res)
+		}
+	})
+}
+
+// The delegation revoke reads its one row by id and never the whole table: a
+// row of another org that no decoder can read does not reach it, and stays
+// untouched. Only SQLite can hold such a row; PostgreSQL types the timestamps.
+func TestIncidentDeveloperRevokeReadsOnlyItsOwnRow(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		if db.Engine() != store.EngineSQLite {
+			t.Skip("an undecodable timestamp needs SQLite's TEXT column")
+		}
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		inc := w.openOrg(t, incResponder)
+		insertDeveloperCredential(t, db, "devc_unreadable", "devp_unreadable", string(incOrgB), "org_b", "prj_b1", "env_b1", "not-a-time")
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerDeveloperRevoke, domain.ObjectKindDeveloperCred, "devc_it", "org_a/prj_a1/env_a1"); res != service.OwnerConfirmed {
+			t.Errorf("devc_it = %v, want confirmed", res)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_unreadable' AND revoked_at IS NULL AND expires_at='not-a-time'`); n != 1 {
+			t.Errorf("another org's delegation changed")
 		}
 	})
 }

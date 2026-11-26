@@ -288,7 +288,9 @@ func (o *incidentOwners) sessionRevoke(ctx context.Context, actor Actor, item au
 // developerRevoke revokes one developer delegation. An org-level delegation is
 // revoked under the credential-reset the incident was authorized with; a
 // project-level one needs the project owner's own revoke, as its enumeration
-// probed.
+// probed. The delegation is read by id at the item's exact placement and, on an
+// account incident, under the incident's authority, so one outside the incident
+// is not found and stays live, and the cost does not depend on the table size.
 func (o *incidentOwners) developerRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
 	return o.inTx(ctx, actor, item, domain.ObjectKindDeveloperCred, func(w ownerRun) (IncidentOwnerResult, error) {
 		var proof authz.Proof
@@ -305,11 +307,11 @@ func (o *incidentOwners) developerRevoke(ctx context.Context, actor Actor, item 
 		if w.inc.ScopeKind == domain.IncidentScopeAccount {
 			authority = domain.PrincipalID(w.inc.ScopeID)
 		}
-		revoked, err := w.az.RevokeDeveloperCredentials(ctx, authority, w.scope, item.ObjectID, w.now)
+		c, revoked, err := w.az.RevokeDeveloperCredentialInScope(ctx, authority, w.scope, item.ObjectID, w.now)
 		if err != nil {
 			return OwnerUnconfirmed, err
 		}
-		for _, c := range revoked {
+		if revoked {
 			e, err := developerRevocationEvent(ctx, w.caller.Principal, c, "incident-containment")
 			if err != nil {
 				return OwnerUnconfirmed, err
@@ -323,16 +325,16 @@ func (o *incidentOwners) developerRevoke(ctx context.Context, actor Actor, item 
 				return OwnerUnconfirmed, err
 			}
 		}
-		// Confirm from the scoped live listing: a delegation absent from it holds no
-		// authority, whether this call revoked it or it was already gone.
+		// Confirm by re-reading the delegation live: one no longer live holds no
+		// authority, whether this call revoked it or it was already revoked or expired.
 		live, err := developerCredentialLive(ctx, w.az, w.scope.Org, authority, item.ObjectID, w.now)
 		return confirm(err == nil && !live), err
 	})
 }
 
-// developerCredentialLive reports whether a live delegation of the org (and, when
-// given, authority) has the id. It is one scoped lookup, so its cost does not
-// depend on how many live delegations the org holds.
+// developerCredentialLive is the confirming re-read: whether a live delegation of
+// the org (and, when given, authority) has the id. It reads one row by id, so its
+// cost does not depend on how many delegations the org or the instance holds.
 func developerCredentialLive(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (bool, error) {
 	_, err := az.LiveDeveloperCredentialInOrg(ctx, org, authority, id, now)
 	if errors.Is(err, domain.ErrNotFound) {

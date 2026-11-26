@@ -83,6 +83,23 @@ func (a *TxAuthorizer) RevokeDeveloperCredentials(ctx context.Context, authority
 	}
 	return out, nil
 }
+
+// RevokeDeveloperCredentialInScope revokes one delegation by id at its exact
+// org, project and env placement (and, when given, authority). It reads that one
+// row, so its cost does not depend on the table size. It reports whether this
+// call revoked it; an already revoked one is returned unchanged, an expired one
+// is revoked like any other, and none at that placement is ErrNotFound.
+func (a *TxAuthorizer) RevokeDeveloperCredentialInScope(ctx context.Context, authority domain.PrincipalID, scope domain.Scope, id string, at time.Time) (DeveloperCredential, bool, error) {
+	c, err := a.r.DeveloperCredentialInScope(ctx, scope, authority, id)
+	if err != nil || !c.RevokedAt.IsZero() {
+		return c, false, err
+	}
+	if err := a.r.RevokeDeveloperCredential(ctx, c.ID, at); err != nil {
+		return DeveloperCredential{}, false, err
+	}
+	c.RevokedAt = at
+	return c, true, nil
+}
 func (a *TxAuthorizer) RevokeDeveloperCredentialsByProvenance(ctx context.Context, kind, id string, at time.Time) ([]DeveloperCredential, error) {
 	rows, err := a.r.ListDeveloperCredentials(ctx)
 	if err != nil {

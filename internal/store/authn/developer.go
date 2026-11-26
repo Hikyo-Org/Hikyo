@@ -250,3 +250,28 @@ func (r *Resolver) LiveDeveloperCredentialInOrg(ctx context.Context, org domain.
 	}
 	return pgDeveloper(row)
 }
+
+// DeveloperCredentialInScope reads one delegation by id at its exact org, project
+// and env placement (and, when given, authority), revoked or expired included, so
+// its cost does not depend on the table size. None there is ErrNotFound.
+func (r *Resolver) DeveloperCredentialInScope(ctx context.Context, scope domain.Scope, authority domain.PrincipalID, id string) (DeveloperCredential, error) {
+	if scope.Org == "" || id == "" {
+		return DeveloperCredential{}, domain.ErrInvalid
+	}
+	if r.sq != nil {
+		row, err := r.sq.GetDeveloperCredentialInScope(ctx, sqlitegen.GetDeveloperCredentialInScopeParams{
+			ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), Authority: string(authority),
+		})
+		if err != nil {
+			return DeveloperCredential{}, notFoundOr(err)
+		}
+		return sqliteDeveloper(row)
+	}
+	row, err := r.pg.GetDeveloperCredentialInScope(ctx, pggen.GetDeveloperCredentialInScopeParams{
+		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), Authority: string(authority),
+	})
+	if err != nil {
+		return DeveloperCredential{}, notFoundOr(err)
+	}
+	return pgDeveloper(row)
+}

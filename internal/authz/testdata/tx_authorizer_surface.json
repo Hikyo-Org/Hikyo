@@ -287,6 +287,7 @@
   "RestoreState": "func(ctx context.Context) (RestoreState, error)",
   "RestrictPrivacyPrincipal": "func(ctx context.Context, p, state string) error",
   "RevokeAllSessionsFor": "func(ctx context.Context, p domain.PrincipalID) error",
+  "RevokeDeveloperCredentialInScope": "func(ctx context.Context, authority domain.PrincipalID, scope domain.Scope, id string, at time.Time) (DeveloperCredential, bool, error)",
   "RevokeDeveloperCredentials": "func(ctx context.Context, authority domain.PrincipalID, scope domain.Scope, id string, at time.Time) ([]DeveloperCredential, error)",
   "RevokeDeveloperCredentialsByProvenance": "func(ctx context.Context, kind, id string, at time.Time) ([]DeveloperCredential, error)",
   "RevokeInstanceConnection": "func(ctx context.Context, id string, at time.Time) (bool, error)",
