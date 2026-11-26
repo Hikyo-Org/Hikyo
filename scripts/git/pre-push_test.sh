@@ -4,6 +4,8 @@
 # and one that changes Go inputs runs the golangci-lint ratchet.
 # The signature check, the suite and the ratchet are stubs in a throwaway repository.
 set -eu
+# The hook reads these opt-outs; a developer's exported values must not leak in.
+unset HIKYO_PREPUSH_STORYBOOK HIKYO_PREPUSH_GOLANGCI HIKYO_PREPUSH_GOTEST
 
 hook=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)/.githooks/pre-push
 root=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-prepush-fixture.XXXXXX")
@@ -541,5 +543,17 @@ before=$(count gotest)
 if (HIKYO_PREPUSH_GOTEST=skip && export HIKYO_PREPUSH_GOTEST && push gt); then fail 'go test skip bypassed the signature check'; fi
 rm "$logs/sig-fail"
 expect_count gotest "$before"
+git switch -q -c gt-norunner gt
+git rm -q scripts/ci/go-affected-test.sh
+git commit -q -m "drop the runner"
+expect_refused 'nor has an executable copy' gt-norunner
+expect_count gotest "$before"
+git switch -q -c gt-runner-mode gt
+chmod -x scripts/ci/go-affected-test.sh
+git add scripts/ci/go-affected-test.sh
+git commit -q -m 'commit the runner without its executable bit'
+expect_refused 'go-affected-test.sh as an executable file' gt-runner-mode
+expect_count gotest "$before"
+git switch -q gt
 
 printf 'pre-push fixture: signatures run first; the suite runs once per frontend key and is skipped on stamps, branch deletions, non-frontend pushes and explicit opt-out; dirty, foreign or failing runs refuse; the golangci-lint ratchet runs on Go changes only and honours its own opt-out; the affected Go tests run at the pushed commit and honour theirs\n'
