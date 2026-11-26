@@ -514,7 +514,7 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 | Gated concurrency margin | 180 | E: 4 lanes x 45 (a dev pass is the gate's 42 plus the 3 reads of its post-write confirmation listing); `max-parallel: 2` on the dev publisher and head-worker matrices now bounds it per run, runs can overlap |
 | **Measured total** | **639** | |
 | Retry wait sweeps | at least 62 | E: 2 sweeps x (6 run listings + jobs listing per failed run in 3 h) |
-| Attempt-3 bypass (`reserve.go`) | 87 per job | M: the last attempt spends instead of deferring; counted on the dev fixture for a dev pass whose confirmation never catches up (82 reads, 5 writes: the pass, its fail-closed write and the final attempt's reserve re-reading the PR, policy, feedback, roles and listing) |
+| Attempt-3 bypass of a pass with an unconfirmable success | 87 per job | M: counted on the dev fixture, 82 reads and 5 writes: the pass 38 + 2, the confirmation listing 12, the fail-closed POST with its fail-safe re-list and re-POST (`queue_refresh.go`) 6 + 2, and the admission-reserve refusal phase (`withAdmissionBudget`, `refuseAdmission`) 26 + 1. The last attempt spends instead of deferring, which is why it is ungated there; the 87 is what such a pass costs on every attempt, not only attempt 3 |
 | Ungated in-repo workflows (`perf-control`, `ci-feedback`, `report-dco`, `tidy-checks`, `pr-benchmark`, advisory jobs, queue report) | 60 to 550 | E: about 55 runs an hour at 1 to 10 calls; per-run calls are not logged |
 | First revocation pass (`dev-revoke`) | 70 | E: 7 events x (3 + 7 heads); 7 push runs in the busiest hour of the last 100, 7 open dev PRs; never deferred |
 | **Honest lower bound** | **918** | measured plus the lower estimates |
@@ -526,7 +526,7 @@ owner has not accepted the recomputed figure: it is awaiting owner acceptance. T
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
 the margin (45 per pass) and not an ungated row: a created-record pass that confirms costs 41 + 2
 requests and fits. The bound counts one attempt-3 bypass per hour. A pass whose confirmation
-never catches up costs 87 at attempt 3 (counted on the fixture), and a lane that lags costs
+never catches up costs 87 on every attempt, ungated at attempt 3 (counted on the fixture), and a lane that lags costs
 that, not 45, in the margin as well. Attempts 1 and 2 of such a pass are gated like any pass;
 under sustained listing lag on a fan-out, each of N heads can spend 87 ungated at attempt 3
 (N x 87), and N lagging lanes cost 87 each in the margin. That is disclosed here, not counted:

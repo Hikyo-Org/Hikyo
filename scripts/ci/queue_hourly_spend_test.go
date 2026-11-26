@@ -122,12 +122,12 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		revokeEvents = 7
 		revokeFixed  = 3
 		revokeHeads  = 7
-		// M: one attempt-3 bypass (reserve.go) per hour, spent ungated, of a dev pass whose
-		// confirmation listing never catches up: the pass, its fail-closed write, and the final
-		// attempt's reserve (PR, policy, feedback, roles and listing read again, then the pending
-		// record). Counted on the dev fixture at GITHUB_RUN_ATTEMPT=3 by
-		// TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing (87 requests: 82 reads, 5 writes).
-		// Attempts 1 and 2 of such a pass are gated by the reserve like any pass. A created-record
+		// M: one pass per hour, spent ungated at the final attempt, whose confirmation listing never
+		// catches up. Counted on the dev fixture by TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing:
+		// 87 requests, 82 reads and 5 writes = the pass 38 + 2, the confirmation listing 12, the
+		// fail-closed POST with its fail-safe re-list and re-POST 6 + 2, and the admission-reserve
+		// refusal phase (withAdmissionBudget, refuseAdmission) 26 + 1. It costs this on every
+		// attempt; attempts 1 and 2 are gated by the reserve like any pass. A created-record
 		// pass that confirms costs 41 + 2, within the 45 of the margin.
 		attempt3 = 87
 	)

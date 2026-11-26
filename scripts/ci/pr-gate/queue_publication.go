@@ -66,8 +66,8 @@ func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b b
 	return s.reapplyRevocation(write, p, b, written)
 }
 
-// failClosedReserve is the part of the write context kept for the fail-closed write: a POST
-// and a PATCH of a blocking record, out of the 3 seconds the write grace allows.
+// failClosedReserve is the part of the write context kept for the fail-closed write: one
+// POST of a blocking record, out of the 3 seconds the write grace allows.
 const failClosedReserve = 1500 * time.Millisecond
 
 // unconfirmedSuccess is a pass that wrote its success and could not see it in a listing.

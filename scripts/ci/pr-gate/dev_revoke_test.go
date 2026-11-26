@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -161,7 +163,7 @@ func TestDevRevocationSurvivesAnOlderPassThatListedACompletedRecord(t *testing.T
 	f.api.checks = []check{ownedRecord(f, 5, "completed", "success", "Ready for dev integration", start.Add(-time.Hour))}
 	f.api.nextID = 900
 	revocation := ownedRecord(f, 6, "queued", "", revocationTitle, start.Add(20*time.Second))
-	f.c.api = &afterSuccessAPI{inner: f.api, then: func() { f.api.checks = append(f.api.checks, revocation) }}
+	f.c.api = &afterSuccessAPI{inner: f.api, then: func() { f.api.mu.Lock(); f.api.checks = append(f.api.checks, revocation); f.api.mu.Unlock() }}
 	err := f.q.admit(context.Background(), f.pr.Number)
 	if !onlyStaleHeadWork(err) {
 		t.Fatalf("a pass that lost the race must end as stale work, got %v", err)
@@ -203,19 +205,25 @@ func TestDevRevocationIsNeverRewrittenByAnOlderPass(t *testing.T) {
 
 // failingListAPI reads normally until the first write, then fails every check listing.
 type failingListAPI struct {
+	mu    sync.Mutex
 	inner *fakeAPI
 	armed bool
 }
 
 func (a *failingListAPI) read(ctx context.Context, path string, result any) error {
-	if a.armed && strings.Contains(path, "/check-runs?") {
+	a.mu.Lock()
+	armed := a.armed
+	a.mu.Unlock()
+	if armed && strings.Contains(path, "/check-runs?") {
 		return errors.New("listing unavailable")
 	}
 	return a.inner.read(ctx, path, result)
 }
 
 func (a *failingListAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	a.mu.Lock()
 	a.armed = true
+	a.mu.Unlock()
 	return a.inner.write(ctx, method, path, payload, result)
 }
 
@@ -265,6 +273,7 @@ func TestDevPostWriteListingFailsClosedWhenItCannotConfirmTheSuccess(t *testing.
 // afterSuccessAPI runs then once, right after the first success write lands, and counts the
 // check listings that follow it.
 type afterSuccessAPI struct {
+	mu       sync.Mutex
 	inner    api
 	then     func()
 	done     bool
@@ -272,16 +281,23 @@ type afterSuccessAPI struct {
 }
 
 func (a *afterSuccessAPI) read(ctx context.Context, path string, result any) error {
+	a.mu.Lock()
 	if a.done && strings.Contains(path, "/check-runs?") {
 		a.listings++
 	}
+	a.mu.Unlock()
 	return a.inner.read(ctx, path, result)
 }
 
 func (a *afterSuccessAPI) write(ctx context.Context, method, path string, payload, result any) error {
 	err := a.inner.write(ctx, method, path, payload, result)
+	a.mu.Lock()
+	first := false
 	if m, ok := payload.(map[string]any); err == nil && !a.done && ok && m["conclusion"] == "success" {
-		a.done = true
+		a.done, first = true, true
+	}
+	a.mu.Unlock()
+	if first {
 		a.then()
 	}
 	return err
@@ -294,7 +310,7 @@ func TestDevRevocationWrittenAfterAnInPlaceSuccessStaysOnTopWithoutAListing(t *t
 	f.api.checks = []check{ownedRecord(f, 5, "queued", "", "PR validation pending", start.Add(-time.Minute))}
 	f.api.nextID = 900
 	revocation := ownedRecord(f, 6, "queued", "", revocationTitle, start.Add(20*time.Second))
-	probe := &afterSuccessAPI{inner: f.api, then: func() { f.api.checks = append(f.api.checks, revocation) }}
+	probe := &afterSuccessAPI{inner: f.api, then: func() { f.api.mu.Lock(); f.api.checks = append(f.api.checks, revocation); f.api.mu.Unlock() }}
 	f.c.api = probe
 	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
 		t.Fatal(err)
@@ -368,23 +384,29 @@ func TestDevPostWriteConfirmationSurvivesAnExpiredWorkContext(t *testing.T) {
 
 // failListingsAfterSuccessAPI fails the first n check listings after the success write.
 type failListingsAfterSuccessAPI struct {
+	mu    sync.Mutex
 	inner api
 	n     int
 	done  bool
 }
 
 func (a *failListingsAfterSuccessAPI) read(ctx context.Context, path string, result any) error {
+	a.mu.Lock()
 	if a.done && a.n > 0 && strings.Contains(path, "/check-runs?") {
 		a.n--
+		a.mu.Unlock()
 		return errors.New("listing unavailable")
 	}
+	a.mu.Unlock()
 	return a.inner.read(ctx, path, result)
 }
 
 func (a *failListingsAfterSuccessAPI) write(ctx context.Context, method, path string, payload, result any) error {
 	err := a.inner.write(ctx, method, path, payload, result)
 	if m, ok := payload.(map[string]any); err == nil && ok && m["conclusion"] == "success" {
+		a.mu.Lock()
 		a.done = true
+		a.mu.Unlock()
 	}
 	return err
 }
@@ -423,14 +445,18 @@ func TestDevUnconfirmedSuccessStaysPendingOnEveryAttemptIncludingTheLast(t *test
 // staleStatusAPI lists the written success with its old status for n listings: the ID is
 // there, the status is not the one written, so it is not a confirmation.
 type staleStatusAPI struct {
+	mu    sync.Mutex // serializes the wrapper: the swap below is not atomic
 	inner *fakeAPI
 	n     int
 	done  bool
 }
 
 func (a *staleStatusAPI) read(ctx context.Context, path string, result any) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.done && a.n > 0 && strings.Contains(path, "/check-runs?") {
 		a.n--
+		a.inner.mu.Lock()
 		live := a.inner.checks
 		stale := make([]check, len(live))
 		copy(stale, live)
@@ -440,12 +466,19 @@ func (a *staleStatusAPI) read(ctx context.Context, path string, result any) erro
 			}
 		}
 		a.inner.checks = stale
-		defer func() { a.inner.checks = live }()
+		a.inner.mu.Unlock()
+		defer func() {
+			a.inner.mu.Lock()
+			a.inner.checks = live
+			a.inner.mu.Unlock()
+		}()
 	}
 	return a.inner.read(ctx, path, result)
 }
 
 func (a *staleStatusAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	err := a.inner.write(ctx, method, path, payload, result)
 	if m, ok := payload.(map[string]any); err == nil && ok && m["conclusion"] == "success" {
 		a.done = true
@@ -522,27 +555,29 @@ func TestDevConfirmationLeavesRoomForTheFailClosedWriteAtTheEndOfTheWorkClock(t 
 }
 
 // countingAPI counts every request of a pass.
+// A pass reads from several goroutines (parallel reads, the policy read, settle), so the counters are atomic.
 type countingAPI struct {
 	inner         api
-	reads, writes int
+	reads, writes atomic.Int64
 }
 
 func (a *countingAPI) read(ctx context.Context, path string, result any) error {
-	a.reads++
+	a.reads.Add(1)
 	return a.inner.read(ctx, path, result)
 }
 
 func (a *countingAPI) write(ctx context.Context, method, path string, payload, result any) error {
-	a.writes++
+	a.writes.Add(1)
 	return a.inner.write(ctx, method, path, payload, result)
 }
 
 // attempt3PassRequests is what scripts/ci/queue_hourly_spend_test.go pins as the attempt-3 bypass.
 const attempt3PassRequests = 87
 
-// The worst pass an attempt-3 bypass can spend: the confirmation never catches up, so the pass
-// lists up to four times, writes its fail-closed record, and the final attempt's reserve then reads
-// the PR, policy, feedback, roles and listing again to publish the pending record.
+// The worst pass a final-attempt bypass can spend: the confirmation never catches up. It costs 87 on
+// every attempt (82 reads, 5 writes): the pass 38 reads + 2 writes, the confirmation listing 12 reads,
+// the fail-closed POST with the fail-safe re-list and re-POST (queue_refresh.go) 6 + 2, and the
+// admission-reserve refusal phase (withAdmissionBudget, refuseAdmission) 26 + 1.
 func TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing(t *testing.T) {
 	t.Setenv("GITHUB_REF", "refs/heads/main")
 	t.Setenv("GITHUB_RUN_ATTEMPT", "3")
@@ -559,7 +594,7 @@ func TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing(t *testing.T) {
 	if err == nil {
 		t.Fatal("the pass must fail")
 	}
-	if got := counter.reads + counter.writes; got != attempt3PassRequests {
-		t.Fatalf("an attempt-3 pass with a lagging confirmation spends %d requests (%d reads, %d writes), the sizing pins %d", got, counter.reads, counter.writes, attempt3PassRequests)
+	if got := counter.reads.Load() + counter.writes.Load(); got != attempt3PassRequests {
+		t.Fatalf("a pass with a lagging confirmation, refused on the final attempt, spends %d requests (%d reads, %d writes), the sizing pins %d", got, counter.reads.Load(), counter.writes.Load(), attempt3PassRequests)
 	}
 }
