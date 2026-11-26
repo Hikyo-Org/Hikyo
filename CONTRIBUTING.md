@@ -36,8 +36,9 @@ activation and the nightly promotion from dev to main.
 ## Developer Certificate of Origin
 
 Every commit in a pull request must carry a Developer Certificate of Origin
-(DCO) sign-off. Dependabot's commits are the only exemption, including when a
-canonical `release/*` promotion or `main` backmerge carries them. It must also carry a cryptographic signature that GitHub reports
+(DCO) sign-off. Dependabot's commits are the only exemption: in PRs Dependabot
+opened, and when already on the base repository's `main` or `dev`, such as in a
+promotion or backmerge that carries them. It must also carry a cryptographic signature that GitHub reports
 as **Verified**.
 After completing the [signing setup](#commit-signing-setup), commit with:
 
@@ -144,7 +145,7 @@ After creating your contribution with `git commit -S -s`, run:
 
 ```sh
 git log -1 --format='%h %G? %s'
-scripts/ci/check-dco.sh hikyo-upstream/main HEAD
+DCO_MAIN_SHA=$(git rev-parse --verify --quiet 'hikyo-upstream/main^{commit}') DCO_DEV_SHA=$(git rev-parse --verify --quiet 'hikyo-upstream/dev^{commit}') scripts/ci/check-dco.sh hikyo-upstream/main HEAD
 scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
 ```
 
