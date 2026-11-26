@@ -1086,9 +1086,11 @@ func TestIncidentAuthorizationRefusals(t *testing.T) {
 func runIncidentAuditLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
 	w := newIncidentWorld(t, db)
-	id := w.openAccount(t, incResponder).Incident.ID
-	w.realOwners()
-	if _, err := w.svc.Resume(t.Context(), w.as(incResponder), id, "", nil); err != nil {
+	id := w.containedIncident(t, true)
+	if err := w.svc.Attest(t.Context(), w.as(incResponder), id, w.itemIDByKey(t, incResponder, id, "external_identity.remove|external_identity|xid_rel")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.svc.ReleasePrincipal(t.Context(), w.as(incResponder), id, incTarget, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := w.svc.Close(t.Context(), w.as(incResponder), id, true); err != nil {

@@ -15,10 +15,25 @@ import (
 type Recovery struct{ DB *store.RecoveryDB }
 
 func (s *Recovery) Status(ctx context.Context) (Status, error) {
-	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) })
+	with, err := s.hasContainment()
+	if err != nil {
+		return Status{}, err
+	}
+	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) }, with)
 }
 func (s *Recovery) Reconcile(ctx context.Context, principal domain.PrincipalID) (Status, error) {
-	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.RecoveryReconcile(ctx, s.DB, fn) }, principal)
+	with, err := s.hasContainment()
+	if err != nil {
+		return Status{}, err
+	}
+	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.RecoveryReconcile(ctx, s.DB, fn) }, principal, with)
+}
+
+// hasContainment reports whether the verified source schema can be asked who is
+// contained: a source older than the containment migration has no such column.
+func (s *Recovery) hasContainment() (bool, error) {
+	version, err := s.DB.SourceMigrationVersion()
+	return version >= tx.ContainmentMigration, err
 }
 func (s *Recovery) ProveValuesReadable(ctx context.Context, kr *crypto.Keyring) (bool, error) {
 	return proveValuesReadable(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.RecoveryRead(ctx, s.DB, fn) }, kr)

@@ -204,8 +204,8 @@ func (a *TxAuthorizer) ConfirmedTOTP(ctx context.Context, accountID string) (TOT
 
 // ConsumeAuthority claims an authority atomically; false means it was already
 // consumed and the caller must fail closed.
-func (a *TxAuthorizer) ConsumeAuthority(ctx context.Context, id string, at time.Time) (bool, error) {
-	return a.r.ConsumeCredentialAuthority(ctx, id, at)
+func (a *TxAuthorizer) ConsumeAuthority(ctx context.Context, id string, at time.Time, establishedInIncident string) (bool, error) {
+	return a.r.ConsumeCredentialAuthority(ctx, id, at, establishedInIncident)
 }
 
 func (a *TxAuthorizer) ConsumeCLILogin(ctx context.Context, id string, at time.Time) (bool, error) {
@@ -284,6 +284,13 @@ func (a *TxAuthorizer) ContainPrincipal(ctx context.Context, p domain.PrincipalI
 	return a.r.ContainPrincipal(ctx, p, at, incidentID)
 }
 
+// ContainedAccountID is the account id of a principal that containment may
+// have hidden from the ordinary lookups: the narrow read the release
+// preconditions use, so they need no recovery lookup of their own.
+func (a *TxAuthorizer) ContainedAccountID(ctx context.Context, p domain.PrincipalID) (string, error) {
+	return a.r.ContainedAccountID(ctx, p)
+}
+
 func (a *TxAuthorizer) CorrectPrivacyAccount(ctx context.Context, account, username, displayName string) error {
 	return a.r.CorrectPrivacyAccount(ctx, account, username, displayName)
 }
@@ -309,6 +316,11 @@ func (a *TxAuthorizer) CountLiveRemotePairingExchanges(ctx context.Context, id s
 
 func (a *TxAuthorizer) CountLiveRemotePairingInvites(ctx context.Context, now time.Time) (int64, error) {
 	return a.r.CountLiveRemotePairingInvites(ctx, now)
+}
+
+// CountPrincipalsContainedBy counts the principals an incident still holds contained.
+func (a *TxAuthorizer) CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error) {
+	return a.r.CountPrincipalsContainedBy(ctx, incidentID)
 }
 
 // CountRegistrationPolicyOrgs counts the live orgs a policy minted.
@@ -468,6 +480,13 @@ func (a *TxAuthorizer) CredentialEpoch(ctx context.Context) (int64, error) {
 
 func (a *TxAuthorizer) CredentialEstablish(ctx context.Context, sessionID string, principal domain.PrincipalID, at time.Time) (CredentialEstablishEvidence, error) {
 	return a.r.CredentialEstablish(ctx, sessionID, principal, at)
+}
+
+// CredentialEstablishedIn, PrincipalHasPassword and PrincipalContainedIncident are the release
+// evidence (O4 A): whether a credential establishment completed for the account
+// while an incident held its principal contained, and which incident contained it.
+func (a *TxAuthorizer) CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error) {
+	return a.r.CredentialEstablishedIn(ctx, p, incidentID)
 }
 
 func (a *TxAuthorizer) CredentialPolicy(ctx context.Context) (CredentialPolicy, error) {
@@ -701,6 +720,11 @@ func (a *TxAuthorizer) GuardProviderForMint(ctx context.Context, id string, rowV
 // snapshot immediately before a session or reauth window is written.
 func (a *TxAuthorizer) GuardSAMLProviderForMint(ctx context.Context, id string, rowVersion int64, entityID string) (bool, error) {
 	return a.r.GuardSAMLProviderForMint(ctx, id, rowVersion, entityID)
+}
+
+// HandOverContainedPrincipals passes the incident's held principals to another open incident that also recorded them contained.
+func (a *TxAuthorizer) HandOverContainedPrincipals(ctx context.Context, incidentID string, at time.Time) ([]authn.HandedOver, error) {
+	return a.r.HandOverContainedPrincipals(ctx, incidentID, at)
 }
 
 func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {
@@ -961,6 +985,11 @@ func (a *TxAuthorizer) OrgEmailInvitationOrgName(ctx context.Context, org domain
 	return a.r.OrgEmailInvitationOrgName(ctx, org)
 }
 
+// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.
+func (a *TxAuthorizer) OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error) {
+	return a.r.OtherOpenIncidentHolding(ctx, p, incidentID)
+}
+
 // PasswordCredentialFor reads an account's verifier row.
 func (a *TxAuthorizer) PasswordCredentialFor(ctx context.Context, accountID string) (PasswordCredential, error) {
 	return a.r.PasswordCredential(ctx, accountID)
@@ -992,6 +1021,10 @@ func (a *TxAuthorizer) PrincipalContainedAt(ctx context.Context, p domain.Princi
 	return a.r.PrincipalContainedAt(ctx, p)
 }
 
+func (a *TxAuthorizer) PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error) {
+	return a.r.PrincipalContainedIncident(ctx, p)
+}
+
 // PrincipalFootprintOrgs lists every org holding any row about a principal.
 func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error) {
 	return a.r.PrincipalFootprintOrgs(ctx, p)
@@ -1001,6 +1034,10 @@ func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.Prin
 // freshly minted session records the generation it was born under.
 func (a *TxAuthorizer) PrincipalGeneration(ctx context.Context, p domain.PrincipalID) (int64, error) {
 	return a.r.PrincipalGeneration(ctx, p)
+}
+
+func (a *TxAuthorizer) PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return a.r.PrincipalHasPassword(ctx, p)
 }
 
 // PrincipalPausedByContainment reports a principal held out of authority by
@@ -1122,8 +1159,8 @@ func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
 }
 
-func (a *TxAuthorizer) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
-	return a.r.ReleasePrincipalContainment(ctx, p)
+func (a *TxAuthorizer) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID, incidentID string) error {
+	return a.r.ReleasePrincipalContainment(ctx, p, incidentID)
 }
 
 func (a *TxAuthorizer) RemotePairedConnectionByID(ctx context.Context, id string) (RemotePairedConnection, error) {

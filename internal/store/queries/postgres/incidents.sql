@@ -90,3 +90,21 @@ WHERE incident_items.id = sqlc.arg(id) AND incident_items.incident_id = sqlc.arg
 -- name: GetIncidentItem :one
 SELECT id, incident_id, owner_function, object_kind, object_id, scope, outcome, reason, attested_by, attested_at, row_version, created_at, updated_at
 FROM incident_items WHERE incident_id = sqlc.arg(incident_id) AND id = sqlc.arg(id);
+
+-- A handover gives the receiving incident a principal whose claim may predate the
+-- current containment episode, so its evidence is reset: the account.contain item
+-- reopens (resume re-confirms it, idempotently) and each attested identity item and
+-- cut row for the account becomes unknown, so the operator attests them again.
+-- hikyo:reason Close reopens the receiving incident's account.contain item and its attested identity items for one handed-over principal, so no evidence recorded before the handover counts toward a release; the closing caller was authorized at the closing incident and only the receiving incident's rows for that principal change.
+-- hikyo:authn-resolution
+-- name: ReopenHandedOverIncidentItems :execrows
+UPDATE incident_items
+SET outcome = CASE WHEN incident_items.outcome = 'done' THEN 'pending' ELSE 'unknown' END,
+    reason = CASE WHEN incident_items.outcome = 'done' THEN '' ELSE 'owner_unconfirmed' END,
+    attested_by = NULL, attested_at = NULL,
+    row_version = row_version + 1, updated_at = sqlc.arg(at)
+WHERE incident_items.incident_id = sqlc.arg(incident_id)
+  AND ((incident_items.outcome = 'done' AND incident_items.owner_function = 'account.contain' AND incident_items.object_id = sqlc.arg(principal_id))
+    OR (incident_items.outcome = 'attested' AND incident_items.owner_function = 'external_identity.remove'
+        AND (incident_items.object_id = sqlc.arg(principal_id)
+          OR incident_items.object_id IN (SELECT external_identities.id FROM external_identities JOIN accounts ON accounts.id = external_identities.account_id WHERE accounts.principal_id = sqlc.arg(principal_id)))));

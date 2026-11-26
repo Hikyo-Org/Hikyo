@@ -203,20 +203,21 @@ func (q *Queries) ConsumeCLIReauthHandoff(ctx context.Context, arg ConsumeCLIRea
 }
 
 const consumeCredentialAuthority = `-- name: ConsumeCredentialAuthority :execrows
-UPDATE credential_authorities SET consumed_at = ?
-WHERE id = ? AND consumed_at IS NULL
+UPDATE credential_authorities SET consumed_at = ?1, established_in_incident = ?2
+WHERE id = ?3 AND consumed_at IS NULL
 `
 
 type ConsumeCredentialAuthorityParams struct {
-	ConsumedAt sql.NullString
-	ID         string
+	ConsumedAt            sql.NullString
+	EstablishedInIncident sql.NullString
+	ID                    string
 }
 
 // Single-use consumption: the NULL guard is the atomic claim, so two
 // concurrent presentations cannot both establish a credential.
 // hikyo:authn-resolution
 func (q *Queries) ConsumeCredentialAuthority(ctx context.Context, arg ConsumeCredentialAuthorityParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, consumeCredentialAuthority, arg.ConsumedAt, arg.ID)
+	result, err := q.db.ExecContext(ctx, consumeCredentialAuthority, arg.ConsumedAt, arg.EstablishedInIncident, arg.ID)
 	if err != nil {
 		return 0, err
 	}

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
@@ -50,7 +52,21 @@ func (r *Resolver) ContainPrincipal(ctx context.Context, p domain.PrincipalID, a
 	if err != nil {
 		return ignoreDomainNotFound(err)
 	}
+	if r.sq != nil {
+		_, err = r.sq.ClearAuthorityEstablishmentStamps(ctx, accountID)
+	} else {
+		_, err = r.pg.ClearAuthorityEstablishmentStamps(ctx, accountID)
+	}
+	if err != nil {
+		return err
+	}
 	return r.ConsumeOutstandingAuthorities(ctx, accountID, at)
+}
+
+// ContainedAccountID reads only the account id, ignoring containment and privacy
+// state like the containment sweep, for the release preconditions.
+func (r *Resolver) ContainedAccountID(ctx context.Context, p domain.PrincipalID) (string, error) {
+	return r.containmentSweepAccount(ctx, p)
 }
 
 func (r *Resolver) containmentSweepAccount(ctx context.Context, p domain.PrincipalID) (string, error) {
@@ -72,16 +88,17 @@ func (r *Resolver) containmentSweepAccount(ctx context.Context, p domain.Princip
 // revives (O4). It also clears the owner's personal-value retention
 // suspensions, so release starts a fresh window even when no sweep ran between
 // containment and release (O8); a privacy-restricted owner's clock keeps running.
-func (r *Resolver) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error {
+// Only the incident that recorded the containment can release it.
+func (r *Resolver) ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID, incidentID string) error {
 	if err := r.LockPrincipalRow(ctx, p); err != nil {
 		return err
 	}
 	var n int64
 	var err error
 	if r.sq != nil {
-		n, err = r.sq.ReleasePrincipalContainment(ctx, string(p))
+		n, err = r.sq.ReleasePrincipalContainment(ctx, sqlitegen.ReleasePrincipalContainmentParams{PrincipalID: string(p), ContainedIncidentID: nullString(incidentID)})
 	} else {
-		n, err = r.pg.ReleasePrincipalContainment(ctx, string(p))
+		n, err = r.pg.ReleasePrincipalContainment(ctx, pggen.ReleasePrincipalContainmentParams{PrincipalID: string(p), ContainedIncidentID: pgText(incidentID)})
 	}
 	if err := containmentWritten(n, err); err != nil {
 		return err
@@ -162,4 +179,112 @@ func ignoreDomainNotFound(err error) error {
 		return nil
 	}
 	return err
+}
+
+// CredentialEstablishedIn reports whether a credential establishment
+// completed for the principal's account while the incident held it contained (O4 A).
+// The establishment stamped the incident id it read in its own transaction, so no
+// clock is compared; a sweep consumes an authority without a stamp.
+func (r *Resolver) CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error) {
+	var n int64
+	var err error
+	if r.sq != nil {
+		n, err = r.sq.CountAuthorityEstablishmentsIn(ctx, sqlitegen.CountAuthorityEstablishmentsInParams{PrincipalID: string(p), IncidentID: sql.NullString{String: incidentID, Valid: true}})
+	} else {
+		n, err = r.pg.CountAuthorityEstablishmentsIn(ctx, pggen.CountAuthorityEstablishmentsInParams{PrincipalID: string(p), IncidentID: pgtype.Text{String: incidentID, Valid: true}})
+	}
+	return n > 0, err
+}
+
+// OtherOpenIncidentHolding names another open incident whose ledger recorded the
+// principal's containment as done, empty when there is none.
+func (r *Resolver) OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error) {
+	var id string
+	var err error
+	if r.sq != nil {
+		id, err = r.sq.GetOtherOpenIncidentHoldingPrincipal(ctx, sqlitegen.GetOtherOpenIncidentHoldingPrincipalParams{IncidentID: incidentID, PrincipalID: string(p)})
+	} else {
+		id, err = r.pg.GetOtherOpenIncidentHoldingPrincipal(ctx, pggen.GetOtherOpenIncidentHoldingPrincipalParams{IncidentID: incidentID, PrincipalID: string(p)})
+	}
+	if isNoRows(err) {
+		return "", nil
+	}
+	return id, err
+}
+
+// PrincipalContainedIncident names the incident that contained the principal,
+// empty when it recorded none. A principal that is not contained is not found.
+func (r *Resolver) PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error) {
+	if r.sq != nil {
+		id, err := r.sq.GetPrincipalContainedIncident(ctx, string(p))
+		return id.String, notFoundOr(err)
+	}
+	id, err := r.pg.GetPrincipalContainedIncident(ctx, string(p))
+	return id.String, notFoundOr(err)
+}
+
+// HandedOver names a principal whose containment passed to another open incident.
+type HandedOver struct {
+	Principal  domain.PrincipalID
+	ToIncident string
+}
+
+// HandOverContainedPrincipals passes every principal the incident holds to the lowest
+// other open incident that recorded it contained. Containment itself is untouched. The
+// receiving incident's claim may predate the current containment episode, so its
+// evidence is reset in the same transaction: its account.contain item reopens and its
+// attested identity items for the account become unknown, so nothing recorded earlier
+// counts toward a release.
+func (r *Resolver) HandOverContainedPrincipals(ctx context.Context, incidentID string, at time.Time) ([]HandedOver, error) {
+	var out []HandedOver
+	if r.sq != nil {
+		rows, err := r.sq.HandOverContainedPrincipals(ctx, incidentID)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out = append(out, HandedOver{Principal: domain.PrincipalID(row.ID), ToIncident: row.ContainedIncidentID.String})
+		}
+		for _, h := range out {
+			if _, err := r.sq.ReopenHandedOverIncidentItems(ctx, sqlitegen.ReopenHandedOverIncidentItemsParams{
+				At: encodeTime(at), IncidentID: h.ToIncident, PrincipalID: string(h.Principal)}); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	}
+	rows, err := r.pg.HandOverContainedPrincipals(ctx, incidentID)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out = append(out, HandedOver{Principal: domain.PrincipalID(row.ID), ToIncident: row.ContainedIncidentID.String})
+	}
+	for _, h := range out {
+		if _, err := r.pg.ReopenHandedOverIncidentItems(ctx, pggen.ReopenHandedOverIncidentItemsParams{
+			At: pgTimestamp(at), IncidentID: h.ToIncident, PrincipalID: string(h.Principal)}); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// CountPrincipalsContainedBy counts the principals the incident still holds contained.
+func (r *Resolver) CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error) {
+	if r.sq != nil {
+		return r.sq.CountPrincipalsContainedBy(ctx, sql.NullString{String: incidentID, Valid: true})
+	}
+	return r.pg.CountPrincipalsContainedBy(ctx, pgtype.Text{String: incidentID, Valid: true})
+}
+
+// PrincipalHasPassword reports whether the principal's account holds a local password.
+func (r *Resolver) PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	var n int64
+	var err error
+	if r.sq != nil {
+		n, err = r.sq.CountPasswordCredentialsForPrincipal(ctx, string(p))
+	} else {
+		n, err = r.pg.CountPasswordCredentialsForPrincipal(ctx, string(p))
+	}
+	return n > 0, err
 }

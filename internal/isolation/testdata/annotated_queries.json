@@ -203,7 +203,7 @@
     "engine": "postgres",
     "name": "ClaimFederatedAuthority",
     "annotation": "authn-resolution",
-    "hash": "2064b452137547f751bc28a8d91a2e1f324069d30d44c53d962a1a65e6d911ad",
+    "hash": "27888e0f76bd438bb0a98a174216800197c368b79d8a18bd05dd9607fb391996",
     "reason": "A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation."
   },
   {
@@ -244,6 +244,13 @@
     "name": "ClampIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "0de0ff3948912fc279afa27bd4b2b4410972e529aae85795e13518ae2317567c"
+  },
+  {
+    "engine": "postgres",
+    "name": "ClearAuthorityEstablishmentStamps",
+    "annotation": "authn-resolution",
+    "hash": "76c1f2389ec275f76e6d08d1f8c324a533dbc73715875d4f077489cbeecc44e7",
+    "reason": "Containment clears the establishment stamps of the contained principal's own account in the same transaction as the containment, so release evidence never outlives the episode that earned it; it touches no secret and no other account."
   },
   {
     "engine": "postgres",
@@ -294,7 +301,7 @@
     "engine": "postgres",
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
-    "hash": "b330ed55a007f19c32911b43853007489c586625c0a27daf9c38d6ad63e48b80"
+    "hash": "3f1f2a8408b9890dc75a1e197400a8b4ba9fdb3b7ac80b5e33781bbbe47f35b3"
   },
   {
     "engine": "postgres",
@@ -596,6 +603,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CountAuthorityEstablishmentsIn",
+    "annotation": "authn-resolution",
+    "hash": "39e5f4442c95b5238f7c5f15274d4e58e12b45b459e60b249c910e9244e21277",
+    "reason": "Release counts the establishments of one principal's account stamped with one incident; it returns a count and no identifier or secret."
+  },
+  {
+    "engine": "postgres",
     "name": "CountBindingsForIssuer",
     "annotation": "authn-resolution",
     "hash": "35cb2098f9fd4c86d88b0e7bc238d1d1ed5e3ec8d6b7bd2886a0580f16523986"
@@ -682,6 +696,20 @@
     "name": "CountOrgs",
     "annotation": "instance-scoped",
     "hash": "7fc2dd344d79809f21d800fcfa4013d63d6148d627181e60196fd20508becac1"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountPasswordCredentialsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "a2bd7d5bb33242e64f1c51776a8b0ac1f3339fc23f8acd9889ce5ae9aa1564dc",
+    "reason": "Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else."
+  },
+  {
+    "engine": "postgres",
+    "name": "CountPrincipalsContainedBy",
+    "annotation": "authn-resolution",
+    "hash": "87d93900f668d62efb48fc275c78e10cd3b42df78f872d3c568c04f1a000cb69",
+    "reason": "Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else."
   },
   {
     "engine": "postgres",
@@ -1476,6 +1504,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GetOtherOpenIncidentHoldingPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ce74165022e64fb213657254953dc67ed0cec85ba81ce0b47b09dc86b84c2530",
+    "reason": "Release names another open incident whose ledger recorded the principal's containment as done, because that incident's operator also holds a claim on the contained state; it returns one incident id and nothing else."
+  },
+  {
+    "engine": "postgres",
     "name": "GetPasswordCredential",
     "annotation": "authn-resolution",
     "hash": "b9305f60d3277b60befea01d7a8cf3271d3cd152ebead1a361e85c2e2017208a"
@@ -1497,6 +1532,13 @@
     "name": "GetPrincipalClass",
     "annotation": "authn-resolution",
     "hash": "1d764102ff96096306e322195be1cddb81143f7a5db40f3a9ec21059df0216c2"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetPrincipalContainedIncident",
+    "annotation": "authn-resolution",
+    "hash": "c3b1489fa8757131b7142df900379bd2a0aab31489f878b55ffe07d9e8931443",
+    "reason": "Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else."
   },
   {
     "engine": "postgres",
@@ -1736,6 +1778,13 @@
     "annotation": "instance-scoped",
     "hash": "3b8f2911cea002e0f3884cf19b0c99cba9654f5351394af0adc0598b0b6647ca",
     "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "postgres",
+    "name": "HandOverContainedPrincipals",
+    "annotation": "authn-resolution",
+    "hash": "1567e0a6de362d1ac72493a306e4ef8375808a64f664424ab2f414160f2dc52d",
+    "reason": "Close hands each principal the closing incident holds to another open incident that recorded it contained; it changes only the incident reference and never the containment state."
   },
   {
     "engine": "postgres",
@@ -3278,7 +3327,7 @@
     "engine": "postgres",
     "name": "ReleasePrincipalContainment",
     "annotation": "authn-resolution",
-    "hash": "f4035fd87a6396926323d2a328187292a5a2fcabf2c69bd3d8551b7984057f6c",
+    "hash": "32f12c354a12ae180e879c55fefea769837781c736ff0bc2992d83cb23615161",
     "reason": "Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority."
   },
   {
@@ -3321,6 +3370,13 @@
     "name": "RenameRemote",
     "annotation": "instance-scoped",
     "hash": "3672f302fa6caeed1d9b274af5b5498a54818f332dec6cf14e294d4c62b13d28"
+  },
+  {
+    "engine": "postgres",
+    "name": "ReopenHandedOverIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "7797a428376aa343379bb93349994a8d0c9c14daf696263409dc802680806478",
+    "reason": "Close reopens the receiving incident's account.contain item and its attested identity items for one handed-over principal, so no evidence recorded before the handover counts toward a release; the closing caller was authorized at the closing incident and only the receiving incident's rows for that principal change."
   },
   {
     "engine": "postgres",
@@ -4114,7 +4170,7 @@
     "engine": "sqlite",
     "name": "ClaimFederatedAuthority",
     "annotation": "authn-resolution",
-    "hash": "8eb2802827f73e43ed000666ddf0039b7ea9ffe01e9618832eb7e7919c80b338",
+    "hash": "27888e0f76bd438bb0a98a174216800197c368b79d8a18bd05dd9607fb391996",
     "reason": "A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation."
   },
   {
@@ -4155,6 +4211,13 @@
     "name": "ClampIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "04d40c04f5f17d79bda3a4f3da532ad76a8b61eef44aeb116ee61342cb4ce005"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClearAuthorityEstablishmentStamps",
+    "annotation": "authn-resolution",
+    "hash": "76c1f2389ec275f76e6d08d1f8c324a533dbc73715875d4f077489cbeecc44e7",
+    "reason": "Containment clears the establishment stamps of the contained principal's own account in the same transaction as the containment, so release evidence never outlives the episode that earned it; it touches no secret and no other account."
   },
   {
     "engine": "sqlite",
@@ -4205,7 +4268,7 @@
     "engine": "sqlite",
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
-    "hash": "b55a467fd6ffe3d3f4bdce5f99f1536bcdd0213151e4f170fab088a938a11ec8"
+    "hash": "3f1f2a8408b9890dc75a1e197400a8b4ba9fdb3b7ac80b5e33781bbbe47f35b3"
   },
   {
     "engine": "sqlite",
@@ -4479,6 +4542,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountAuthorityEstablishmentsIn",
+    "annotation": "authn-resolution",
+    "hash": "39e5f4442c95b5238f7c5f15274d4e58e12b45b459e60b249c910e9244e21277",
+    "reason": "Release counts the establishments of one principal's account stamped with one incident; it returns a count and no identifier or secret."
+  },
+  {
+    "engine": "sqlite",
     "name": "CountBindingsForIssuer",
     "annotation": "authn-resolution",
     "hash": "b98c0f276802ff367b62169e60805c269e29d5f6a279fb238fbb435aefc5a494"
@@ -4565,6 +4635,20 @@
     "name": "CountOrgs",
     "annotation": "instance-scoped",
     "hash": "7fc2dd344d79809f21d800fcfa4013d63d6148d627181e60196fd20508becac1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountPasswordCredentialsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "a2bd7d5bb33242e64f1c51776a8b0ac1f3339fc23f8acd9889ce5ae9aa1564dc",
+    "reason": "Release reads whether a principal's account holds a local password, to decide between the credential-establishment and the identity-attestation condition; it returns a count and nothing else."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountPrincipalsContainedBy",
+    "annotation": "authn-resolution",
+    "hash": "87d93900f668d62efb48fc275c78e10cd3b42df78f872d3c568c04f1a000cb69",
+    "reason": "Close asks whether an incident still holds a contained principal, because closing would strand it with no ledger left to release it; it returns a count and nothing else."
   },
   {
     "engine": "sqlite",
@@ -5359,6 +5443,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetOtherOpenIncidentHoldingPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "ce74165022e64fb213657254953dc67ed0cec85ba81ce0b47b09dc86b84c2530",
+    "reason": "Release names another open incident whose ledger recorded the principal's containment as done, because that incident's operator also holds a claim on the contained state; it returns one incident id and nothing else."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetPasswordCredential",
     "annotation": "authn-resolution",
     "hash": "3b455d6e936523c6ebba942c06edda526495318ccec557a35aacac23f87dce33"
@@ -5380,6 +5471,13 @@
     "name": "GetPrincipalClass",
     "annotation": "authn-resolution",
     "hash": "eb78f70a3bd2f70c8a0c98fd40224b7c1971c734a0d991c4a7d572ada1a5ed5c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetPrincipalContainedIncident",
+    "annotation": "authn-resolution",
+    "hash": "c3b1489fa8757131b7142df900379bd2a0aab31489f878b55ffe07d9e8931443",
+    "reason": "Release names the incident that contained a principal, to find the attested ledger item for its linked identities; it returns one incident id and nothing else."
   },
   {
     "engine": "sqlite",
@@ -5619,6 +5717,13 @@
     "annotation": "instance-scoped",
     "hash": "f7765bb47baec68d6275f3c86dc0f744a6f8cd111cdfd8dd57d04894ffafbd06",
     "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "HandOverContainedPrincipals",
+    "annotation": "authn-resolution",
+    "hash": "1567e0a6de362d1ac72493a306e4ef8375808a64f664424ab2f414160f2dc52d",
+    "reason": "Close hands each principal the closing incident holds to another open incident that recorded it contained; it changes only the incident reference and never the containment state."
   },
   {
     "engine": "sqlite",
@@ -7161,7 +7266,7 @@
     "engine": "sqlite",
     "name": "ReleasePrincipalContainment",
     "annotation": "authn-resolution",
-    "hash": "f4035fd87a6396926323d2a328187292a5a2fcabf2c69bd3d8551b7984057f6c",
+    "hash": "32f12c354a12ae180e879c55fefea769837781c736ff0bc2992d83cb23615161",
     "reason": "Release returns the principal to none and clears the incident reference; it advances the generation so nothing minted before containment revives, and it restores no authority."
   },
   {
@@ -7204,6 +7309,13 @@
     "name": "RenameRemote",
     "annotation": "instance-scoped",
     "hash": "fd1d947323b0a156b63eab896300773157609cf6834503ae17e244b4666b2865"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReopenHandedOverIncidentItems",
+    "annotation": "authn-resolution",
+    "hash": "7797a428376aa343379bb93349994a8d0c9c14daf696263409dc802680806478",
+    "reason": "Close reopens the receiving incident's account.contain item and its attested identity items for one handed-over principal, so no evidence recorded before the handover counts toward a release; the closing caller was authorized at the closing incident and only the receiving incident's rows for that principal change."
   },
   {
     "engine": "sqlite",

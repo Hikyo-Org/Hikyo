@@ -126,6 +126,7 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/incidents/{incident}/resume":              {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
 		"http:POST /api/v1/incidents/{incident}/items/{item}/attest": {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
 		"http:POST /api/v1/incidents/{incident}/close":               {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
+		"http:POST /api/v1/incidents/{incident}/release":             {Ops: []string{"OpIncidentOrg", "OpIncidentInstance"}, NoPrimary: "The incident ledger selects OpIncidentOrg or OpIncidentInstance by the incident's owning org; OpenAPI has no single x-hikyo-operation."},
 		"http:POST /api/v1/auth/cli-reauth/approve":                  {Events: []string{"EventAuthCLIReauthHandoff"}},
 		"http:POST /api/v1/auth/cli-reauth/redeem":                   {Events: []string{"EventAuthCLIReauthHandoff"}},
 		"http:POST /api/v1/auth/cli-reauth/start":                    {Events: []string{"EventAuthCLIReauthHandoff"}},

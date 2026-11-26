@@ -4,6 +4,7 @@ import {
   getIncidentOp,
   listIncidentItemsOp,
   openIncidentOp,
+  releaseIncidentPrincipalOp,
   resumeIncidentOp,
 } from '@hikyo/operations';
 import { zIncident, zIncidentItem, zIncidentItemList, zIncidentResumeResult } from '@hikyo/zod';
@@ -112,7 +113,7 @@ export async function resumeBody(proof: string, shown: readonly IncidentItem[]):
   return { proof, items_digest: Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('') };
 }
 
-/** Resume, attest and close each refresh the incident and its items. */
+/** Resume, release, attest and close each refresh the incident and its items. */
 export function useIncidentActions(id: string) {
   const queries = useQueryClient();
   const refresh = () =>
@@ -126,6 +127,12 @@ export function useIncidentActions(id: string) {
     resume: useSensitiveMutation({
       mutationFn: async ({ proof, items }: { proof: string; items: readonly IncidentItem[] }) =>
         parsed(resumeIncidentOp, { path: { incident: id }, body: await resumeBody(proof, items) }),
+      onSettled: async () => { await refresh(); },
+    }),
+    // Release spends its own proof, like resume: the same sensitive handling.
+    release: useSensitiveMutation({
+      mutationFn: ({ proof, principal }: { proof: string; principal: string }) =>
+        ok(releaseIncidentPrincipalOp, { path: { incident: id }, body: { principal, proof } }),
       onSettled: async () => { await refresh(); },
     }),
     attest: useMutation({
@@ -143,8 +150,17 @@ export function useIncidentActions(id: string) {
 /** The detail a resume refused for lack of any proof credential carries (bad_request, 400). */
 const noProofCredentialDetail = 'no_proof_credential';
 
+/** What a 409 means for each act, when the server names no detail. */
+const CONFLICT_TEXT: Readonly<Record<'resume' | 'release' | 'close', string>> = {
+  resume: 'The incident changed or is closed. Reload and try again.',
+  release:
+    'This account cannot be released yet. It needs a password established during this incident, or every linked identity attested, and no other open incident may still hold it. Reload and check the items.',
+  close:
+    'The incident cannot be closed yet: it still holds a contained account (release it first, or let another open incident that also recorded it take it over), or its items changed. Reload and try again.',
+};
+
 /** The refusal wording; a 404 is deliberately the same for an unknown and a forbidden incident. */
-export function incidentFailureText(error: unknown): string {
+export function incidentFailureText(error: unknown, action: 'resume' | 'release' | 'close' = 'resume'): string {
   if (error instanceof IncidentListTooLong) {
     return `${error.message} List them with the hikyo CLI: hikyo incident items --open.`;
   }
@@ -155,12 +171,12 @@ export function incidentFailureText(error: unknown): string {
       // proof the dialog could collect would help.
       400: (e) =>
         e.code === 'bad_request' && e.detail === noProofCredentialDetail
-          ? 'Your account has no password or authenticator to confirm this. Ask another responder with one to resume the incident.'
+          ? `Your account has no password or authenticator to confirm this. Ask another responder with one to ${action === 'release' ? 'release the account' : 'resume the incident'}.`
           : 'The incident scope or the proof is not valid. Enter your authenticator code, or your password if you have no authenticator.',
       // A wrong proof and an ended session both answer 401; only the session check declares the latter.
       401: 'That did not authorise the incident action: the password or code was not accepted, or this session has ended.',
       404: 'No such incident, or you may not work it.',
-      409: (e) => e.detail ?? 'The incident changed or is closed. Reload and try again.',
+      409: (e) => e.detail ?? CONFLICT_TEXT[action],
       429: commonRefusalText.requests,
     },
     'The incident action could not be completed.',

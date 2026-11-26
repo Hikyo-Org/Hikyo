@@ -597,16 +597,18 @@ func (r *Resolver) CreateCredentialAuthority(ctx context.Context, a NewCredentia
 
 // ConsumeCredentialAuthority claims the authority atomically. It reports
 // false when the row was already consumed — two concurrent presentations
-// cannot both establish a credential, and the loser fails closed.
-func (r *Resolver) ConsumeCredentialAuthority(ctx context.Context, id string, at time.Time) (bool, error) {
+// cannot both establish a credential, and the loser fails closed. A non-empty
+// incident stamps the incident that held the principal contained when the
+// establishment ran.
+func (r *Resolver) ConsumeCredentialAuthority(ctx context.Context, id string, at time.Time, incidentID string) (bool, error) {
 	if r.sq != nil {
 		n, err := r.sq.ConsumeCredentialAuthority(ctx, sqlitegen.ConsumeCredentialAuthorityParams{
-			ConsumedAt: sql.NullString{String: encodeTime(at), Valid: true}, ID: id,
+			ConsumedAt: sql.NullString{String: encodeTime(at), Valid: true}, EstablishedInIncident: sql.NullString{String: incidentID, Valid: incidentID != ""}, ID: id,
 		})
 		return n == 1, err
 	}
 	n, err := r.pg.ConsumeCredentialAuthority(ctx, pggen.ConsumeCredentialAuthorityParams{
-		ConsumedAt: pgTimestamp(at), ID: id,
+		ConsumedAt: pgTimestamp(at), EstablishedInIncident: pgtype.Text{String: incidentID, Valid: incidentID != ""}, ID: id,
 	})
 	return n == 1, err
 }

@@ -340,3 +340,58 @@ func TestIncidentResumeRunsOnlyTheCheckedSnapshot(t *testing.T) {
 		}
 	})
 }
+
+// Release lifts containment, so it needs the same fresh proof as Resume: an
+// unknown incident is refused before any proof is asked for, a session without a
+// valid code is refused, a release refused for another reason leaves the one-time
+// code unspent, and the release that goes through spends it.
+func TestIncidentReleaseNeedsAFreshProof(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := newResumeFixture(t, db)
+		ctx := t.Context()
+		member := domain.PrincipalID("usr_resume_member")
+		f.incidents.Owners = service.NewIncidentOwners(f.incidents, service.IncidentOwnerServices{
+			Identities: &service.Identities{DB: db}, Invites: &service.EmailInvitations{DB: db},
+			SCIM: &service.SCIM{DB: db}, Dynamic: &service.Dynamic{DB: db}, Adapters: &service.Adapters{DB: db},
+		})
+		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_resume_member', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+ts+`)`)
+		*f.clk = f.base.Add(120 * time.Second)
+		if _, err := f.incidents.Resume(ctx, f.actor, f.id, totpCode(t, f.uri, *f.clk), nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.incidents.ReleasePrincipal(ctx, f.actor, "inc_missing", member, ""); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("release of an unknown incident = %v, want not found before any proof", err)
+		}
+		if err := f.incidents.ReleasePrincipal(ctx, f.actor, f.id, member, ""); !errors.Is(err, service.ErrReauthProofRequired) {
+			t.Fatalf("release without a proof = %v, want ErrReauthProofRequired", err)
+		}
+		if err := f.incidents.ReleasePrincipal(ctx, f.actor, f.id, member, "000000"); !errors.Is(err, domain.ErrUnauthenticated) {
+			t.Fatalf("release with a wrong proof = %v, want unauthenticated", err)
+		}
+		*f.clk = f.base.Add(200 * time.Second)
+		code := totpCode(t, f.uri, *f.clk)
+		// No establishment yet: refused, and the refusal spends nothing.
+		if err := f.incidents.ReleasePrincipal(ctx, f.actor, f.id, member, code); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release before an establishment = %v, want ErrReleaseNotReady", err)
+		}
+		r, err := f.auth.ResetCredential(ctx, f.actor, string(member), "response")
+		if err != nil {
+			t.Fatalf("reset: %v", err)
+		}
+		if err := f.auth.EstablishCredential(ctx, r.Authority, "a fresh password"); err != nil {
+			t.Fatalf("establish: %v", err)
+		}
+		if err := f.incidents.ReleasePrincipal(ctx, f.actor, f.id, member, code); err != nil {
+			t.Fatalf("release with the unspent code: %v", err)
+		}
+		if err := f.incidents.ReleasePrincipal(ctx, f.actor, f.id, member, code); err == nil {
+			t.Fatal("a replayed code released again")
+		}
+		// The code was spent by the release itself: the same code presented to
+		// another proof-consuming call is refused as a replay (the spent TOTP step), not only because the
+		// principal is already released.
+		if _, err := f.incidents.Resume(ctx, f.actor, f.id, code, nil); err == nil || !strings.Contains(err.Error(), "time step was already used") {
+			t.Fatalf("resume with the code the release spent = %v, want the spent time step refused", err)
+		}
+	})
+}

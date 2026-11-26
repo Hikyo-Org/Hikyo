@@ -487,6 +487,105 @@ principal is contained, so a contained account would still have a scheduler acti
   cannot observe, not the caller's own containment), so a surface offers Attest only where the
   server would accept it.
 
+### Slice 5: release and restore (O4 A)
+
+- Release is `Incidents.ReleasePrincipal(incident, principal)`, a separate audited act
+  (`incident.principal_released`, correlated to the incident) and never part of closing. It
+  names the incident that contained the principal; a principal another incident (or none)
+  contained, an unknown principal and the incident's own account all answer not found.
+- It needs the O4 A evidence: for an account with a local password, a credential
+  establishment during the containment episode (an establishment stamps the authority it consumes; a
+  sweep, whether containment's or a newer reset's, consumes without stamping, so it never
+  counts); and every linked identity of the target attested in the containing incident.
+  An account with neither a password nor a linked identity is refused, because nothing then records a replaced way to sign in. An unmet condition is a conflict
+  (`ErrReleaseNotReady`) and the principal stays contained.
+- The ways back for a contained account are the operator reset (refused for a linked
+  account, so a linked one needs the host-local reset) and the break-glass reset. Each mints an
+  authority row after containment. Recovery-code consumption and a federated claim are not
+  reachable for a contained account: their lookups are containment-gated and refuse before
+  anything is spent or minted (tests: `TestIncidentContainedAccountRefusesRecoveryCodeEstablishment`,
+  `TestIncidentContainedAccountRefusesFederatedClaim`). Containment retires outstanding
+  authorities and establishment refuses one minted before it, and password and factor writes of a
+  signed-in session need a session a contained account cannot hold. An establishment stamps
+  the id of the incident that holds the principal contained,
+  `credential_authorities.established_in_incident`, on the authority it consumes (migration
+  00100). The establishment transaction reads the principal's
+  containing incident itself, so the stamp is decided by database state under the same
+  serialization as containment and release compares incident ids; no clock, whether of the node
+  that minted, consumed or contained, is read. A password established before containment carries
+  no stamp however far ahead its node's clock ran, and one stamped for another incident does not
+  count. A sweep consumes without stamping, so neither containment's sweep nor a newer reset's
+  ever reads as an establishment. Only a credential authority's consumption by a password
+  establishment stamps it; a federated claim does not. The migration backfills nothing: an
+  authority consumed earlier has no stamp, so release fails closed for a password account
+  contained across the upgrade until it establishes a credential again (owner decision, #1039).
+  (The existing recovery lookup's refusal of an authority minted before containment still
+  compares the authority's `created_at` with `contained_at`; it only refuses, so a skewed clock
+  can at worst refuse an establishment, never admit a release.)
+  Release also binds the containing incident in the same UPDATE that clears the state.
+  Evidence belongs to one containment episode: containment clears the establishment stamps of
+  the account in its own transaction (a re-containment inside the same incident otherwise
+  would let the first episode's establishment release the second), and release also waits for
+  the incident's own `account.contain` item to be terminal, so a later resume cannot contain
+  the account again.
+- Closing is refused (a conflict) while the incident still holds a contained principal, with
+  or without residuals: release runs through the incident's ledger and nothing else, so a
+  close would leave the account contained with no way back (attestation needs an open
+  incident, and no other incident or host-local path lifts it). The operator releases first,
+  then closes; a release on an already closed incident answers with its own conflict, not a
+  request to attest.
+- Release lifts containment, so it needs the same fresh account-security proof as Resume
+  (O2): the incident is authorized first (a caller who cannot see it gets not found, never a
+  request for a proof), a session actor must present a valid proof (`ErrReauthProofRequired`
+  when none, `no_proof_credential` for an account with no proof credential), the evidence
+  is consumed in the release write transaction so a refused release spends no code, and
+  only a host-local actor, which has no session, is exempt.
+- Release is authorized as containment was: the same target classification applies, so a
+  target in several orgs needs instance scope and an instance-capability target is refused. The
+  linked-identity condition reads the target's own identities and needs an attested item for each
+  in the containing incident; an org incident lists every member's identities for that purpose.
+  An org incident that cuts a member's identities records one truncation row keyed to that
+  member: unattested it holds that member's release only. Attesting it lists each
+  identity the member holds at that moment and the ledger does not list as its own open
+  `unknown` item, and never attests one: every identity needs its own explicit attestation.
+  Coverage is database state, never a comparison of clocks. An identity linked after the
+  listing has no item and holds the release; the refused release lists it as an open item
+  (in a transaction of its own, after the refusal), and an operator attests it before the
+  next attempt. Each item listed this way records an `incident.item_outcome` event
+  (outcome unknown) naming the acting principal, in the listing's own transaction. A member with an identity and no password is released once its identities are
+  attested. Release is also refused while another open incident recorded the principal as
+  contained (its ledger item reads done though the state belongs to the first incident); the
+  refusal names that incident to a caller who can read it, and gives a generic reason to one who
+  cannot, and closing it lets the release proceed.
+- Release revives and regrants nothing. The store setter advances the session generation
+  again and retires pending proofs, and a revoked delegation stays revoked.
+- A restore lists the contained principals among the unreconciled (`Status.Contained`, shown
+  by `hikyo restore status`). Reconciling a principal re-asserts its grants and never lifts
+  containment: the two acts stay apart. A restore from an archive that predates a
+  containment shows no containment, so the operator re-opens the incident for that account.
+- Handover on close: when the closing incident holds a contained principal that another
+  open incident also recorded as done, Close hands the principal to the open incident with
+  the lowest id in the same write transaction, instead of refusing, so two incidents that
+  recorded the same account can both close. The handover moves only the record of which
+  incident holds the state: it never lifts containment, writes an `incident.principal_contained`
+  event correlated to the receiving incident, and a conflict rolls it back. Every refusal of
+  Close (open items without residuals, a stale version, a held principal nobody else holds) is
+  checked before the handover and rolls the transaction back, so a refused close commits
+  nothing. The receiving incident's claim may come from an earlier containment episode, so the
+  handover resets its evidence in the same transaction: its `account.contain` item for the
+  principal reopens (resume re-confirms it, idempotently) and its attested identity items and
+  cut row for that account become `unknown`, so the operator attests them again. Close still refuses
+  when no other open incident holds the principal.
+- The operator surface is `POST /api/v1/incidents/{incident}/release`
+  (`releaseIncidentPrincipal`, body `{principal, proof}`, `x-hikyo-min-revision: 22`, `204`),
+  `hikyo incident release <incident> <principal> [--yes]` and the web Incidents release action.
+  Authorization comes before the proof, and an unknown incident, an unknown account and an
+  account the incident did not contain answer the same `404`. A wrong proof is `401`, a
+  missing proof is the proof refusal, an account with no proof credential is `400` with detail
+  `no_proof_credential`, and a release condition not met is `409`. Each proof is spent once.
+  The CLI is unauthenticated (like resume) and needs a human session, and prompts for the proof
+  only after `--yes`.
+
 ## Not decided here
 
 - Alert-driven or automatic containment. F3 ([#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038))

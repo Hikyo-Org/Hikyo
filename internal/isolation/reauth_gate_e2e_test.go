@@ -124,6 +124,9 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 			_, err := incidents.Resume(ctx, actor, openedIncident.Incident.ID, "", nil)
 			return err
 		},
+		"releaseIncidentPrincipal": func() error {
+			return incidents.ReleasePrincipal(ctx, actor, openedIncident.Incident.ID, principal, "")
+		},
 		"testInstanceMail": func() error {
 			return instanceMail.Test(ctx, actor, "recipient@example.com", "")
 		},

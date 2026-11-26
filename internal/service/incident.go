@@ -309,6 +309,54 @@ func countsPayload(counts map[domain.ItemOutcome]int64) audit.Payload {
 	}
 }
 
+// listUnlistedIdentities lists each identity the member holds now and the ledger does
+// not list as its own open item. Attesting an enumeration cut never attests an
+// identity: each one the cut left out becomes an unknown item the operator must
+// attest explicitly, and an identity linked after this moment has no item at all
+// until a release attempt lists it. Release reads coverage from those items alone, so
+// no clock decides it and nothing the operator was not shown is covered.
+func listUnlistedIdentities(ctx context.Context, az *authz.TxAuthorizer, by domain.PrincipalID, incidentID string, member domain.PrincipalID, scope string, now time.Time) error {
+	accountID, err := az.ContainedAccountID(ctx, member)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil // a scope-level cut names no member
+	}
+	if err != nil {
+		return err
+	}
+	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	for _, x := range identities {
+		itemID, err := newID("itm")
+		if err != nil {
+			return err
+		}
+		// An identity already listed keeps its item (the insert is a no-op).
+		added, err := az.AddIncidentItem(ctx, authz.NewIncidentItem{
+			ID: itemID, IncidentID: incidentID, OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindExternalIdentity,
+			ObjectID: x.ID, Scope: scope, Outcome: domain.ItemUnknown, Reason: domain.ReasonNoRevokeOwner, At: now,
+		})
+		if err != nil {
+			return err
+		}
+		if !added {
+			continue
+		}
+		// A new ledger entry records who caused it, in the same transaction.
+		payload := itemPayload(authz.IncidentItem{ID: itemID, OwnerFunction: domain.OwnerExternalIdentity, ObjectKind: domain.ObjectKindExternalIdentity, ObjectID: x.ID})
+		payload["result"], payload["reason"] = "unknown", reasonPayload(domain.ReasonNoRevokeOwner)
+		e, err := incidentEvent(ctx, audit.EventIncidentItemOutcome, by, incidentID, audit.OutcomeUnknown, payload)
+		if err != nil {
+			return err
+		}
+		if err := az.RecordAuthEvent(ctx, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func itemPayload(it authz.IncidentItem) audit.Payload {
 	return audit.Payload{
 		"item_id": it.ID, "owner_function": it.OwnerFunction, "object_kind": it.ObjectKind, "object_id": it.ObjectID,
@@ -579,6 +627,34 @@ const resumePage = 100
 // the incident to a responder who can, #1590) from any other refused request.
 var errResumeNoProofCredential = &detailErr{err: ErrNoProofCredential, detail: "no_proof_credential"}
 
+// incidentProof checks the account-security proof an incident act that changes
+// containment needs (resume and release), after the caller is known to hold the
+// incident: a caller who cannot see it gets the uniform answer, never a request
+// for a proof. A host-local actor has no session and is exempt. The evidence is
+// verified, not consumed: the caller spends it in its own write transaction, so a
+// one-time code is spent by one call and no other operation, and a refusal in that
+// transaction leaves it unspent. A password is checked fresh on each call.
+func (s *Incidents) incidentProof(ctx context.Context, actor Actor, id, proof string) (ReauthEvidence, error) {
+	evidence := ReauthEvidence{kind: reauthEvidenceExempt}
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, _, err := s.incidentByID(ctx, az, actor, id, s.now())
+		return err
+	}); err != nil {
+		return evidence, err
+	}
+	if actor.bearer == "" {
+		return evidence, nil
+	}
+	if s.Auth == nil {
+		return evidence, ErrReauthProofRequired
+	}
+	evidence, err := s.Auth.VerifyReauthProofNamingNoCredential(ctx, actor.bearer, proof)
+	if errors.Is(err, ErrNoProofCredential) {
+		return evidence, errResumeNoProofCredential
+	}
+	return evidence, err
+}
+
 // Resume re-reads the ledger and re-runs only the open items through their
 // registered owners. Each item records its intent before the owner runs and its
 // outcome after, in separate transactions, so a crash between the owner's own
@@ -594,32 +670,13 @@ var errResumeNoProofCredential = &detailErr{err: ErrNoProofCredential, detail: "
 func (s *Incidents) Resume(ctx context.Context, actor Actor, id, proof string, confirmed *string) (ResumeResult, error) {
 	var res ResumeResult
 	// Resume performs the containment the ledger enumerated, so it needs a fresh
-	// account-security proof of its own (ADR O2), checked after the caller is
-	// known to hold the incident: a caller who cannot see it gets the uniform
-	// answer, never a request for a proof. A one-time code is spent in the write
-	// below, so one code covers one resume call and no other operation; a
-	// password is checked fresh on each call.
-	evidence := ReauthEvidence{kind: reauthEvidenceExempt}
-	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		_, _, err := s.incidentByID(ctx, az, actor, id, s.now())
-		return err
-	}); err != nil {
+	// account-security proof of its own (ADR O2).
+	evidence, err := s.incidentProof(ctx, actor, id, proof)
+	if err != nil {
 		return res, err
 	}
-	if actor.bearer != "" {
-		if s.Auth == nil {
-			return res, ErrReauthProofRequired
-		}
-		var err error
-		if evidence, err = s.Auth.VerifyReauthProofNamingNoCredential(ctx, actor.bearer, proof); err != nil {
-			if errors.Is(err, ErrNoProofCredential) {
-				return res, errResumeNoProofCredential
-			}
-			return res, err
-		}
-	}
 	var ids []string
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		caller, inc, err := s.incidentByID(ctx, az, actor, id, s.now())
 		if err != nil {
 			return err
@@ -816,9 +873,14 @@ func ownIncident(caller authz.Identity, inc authz.Incident) bool {
 // holds its capability, so neither is attestable.
 func attestable(it authz.IncidentItem) bool {
 	// An enumeration marker stands for objects that were never listed, so no
-	// operator statement can resolve it.
-	if it.Outcome == domain.ItemBlocked || it.ObjectKind == domain.ObjectKindEnumeration {
+	// operator statement can resolve it, except the cut of a member's linked
+	// identities: those are resolved at the identity provider, which the operator
+	// attests for the person the marker names.
+	if it.Outcome == domain.ItemBlocked {
 		return false
+	}
+	if it.ObjectKind == domain.ObjectKindEnumeration {
+		return it.OwnerFunction == domain.OwnerExternalIdentity
 	}
 	if it.Reason == domain.ReasonUpstreamNotObservable {
 		return true
@@ -894,6 +956,10 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 		if !ok {
 			// The unknown result is committed; the caller is told the row moved.
 			stale = fmt.Errorf("%w: item changed while attesting", domain.ErrConflict)
+			return nil
+		}
+		if item.ObjectKind == domain.ObjectKindEnumeration && item.OwnerFunction == domain.OwnerExternalIdentity {
+			return listUnlistedIdentities(ctx, az, caller.Principal, inc.ID, domain.PrincipalID(item.ObjectID), item.Scope, now)
 		}
 		return nil
 	})
@@ -907,7 +973,6 @@ func (s *Incidents) Attest(ctx context.Context, actor Actor, incidentID, itemID 
 // status, which lists them; a clean close with open items is refused.
 func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResiduals bool) (IncidentView, error) {
 	var out IncidentView
-	var staleErr error
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		caller, inc, err := s.incidentByID(ctx, az, actor, id, now)
@@ -925,9 +990,35 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			return err
 		}
 		open := counts[domain.ItemPending] + counts[domain.ItemUnknown] + counts[domain.ItemBlocked]
+		// Every refusal comes before anything is written, and each returns an error so
+		// the transaction rolls back (a handover is never committed by a refused close).
 		if open > 0 && !withResiduals {
-			staleErr = ErrIncidentOpenItems
-			return nil
+			return ErrIncidentOpenItems
+		}
+		// A contained principal is released through its incident's ledger and nothing
+		// else, so closing (with residuals too) would strand it contained for good. One
+		// that another open incident also recorded contained is handed to that incident
+		// (containment itself untouched); one nobody else holds must be released first.
+		handed, err := az.HandOverContainedPrincipals(ctx, inc.ID, now)
+		if err != nil {
+			return err
+		}
+		held, err := az.CountPrincipalsContainedBy(ctx, inc.ID)
+		if err != nil {
+			return err
+		}
+		if held > 0 {
+			return fmt.Errorf("%w: the incident still holds %d contained principal(s); release them first", domain.ErrConflict, held)
+		}
+		for _, h := range handed {
+			e, err := incidentEvent(ctx, audit.EventIncidentPrincipalContained, caller.Principal, h.ToIncident, audit.OutcomeSuccess,
+				audit.Payload{"principal": string(h.Principal)})
+			if err != nil {
+				return err
+			}
+			if err := az.RecordAuthEvent(ctx, e); err != nil {
+				return err
+			}
 		}
 		status := domain.IncidentClosed
 		residuals := []string{}
@@ -955,8 +1046,7 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 			return err
 		}
 		if !ok {
-			staleErr = fmt.Errorf("%w: incident changed while closing", domain.ErrConflict)
-			return nil
+			return fmt.Errorf("%w: incident changed while closing", domain.ErrConflict)
 		}
 		payload := countsPayload(counts)
 		payload["status"], payload["residuals"] = string(status), residuals
@@ -980,9 +1070,6 @@ func (s *Incidents) Close(ctx context.Context, actor Actor, id string, withResid
 	})
 	if err != nil {
 		return IncidentView{}, err
-	}
-	if staleErr != nil {
-		return IncidentView{}, staleErr
 	}
 	return out, nil
 }

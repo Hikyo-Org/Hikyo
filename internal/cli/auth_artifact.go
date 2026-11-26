@@ -133,7 +133,7 @@ var authRuleRows = []authRuleRow{
 		"dynamic-provider credential set", "dynamic-provider credential revoke",
 		"lease settle",
 		"rotation create", "rotation list", "rotation show", "rotation pause", "rotation resume", "rotation release-hold", "rotation delete", "rotation run-now", "rotation runs",
-		"incident open", "incident show", "incident items", "incident resume", "incident attest", "incident close",
+		"incident open", "incident show", "incident items", "incident resume", "incident release", "incident attest", "incident close",
 		"ssh-ca create", "ssh-ca rotate", "ssh-ca retire-key", "ssh-ca delete",
 		"ssh-profile create", "ssh-profile update", "ssh-profile delete",
 		"transit key create", "transit key configure", "transit key rotate", "transit key trim",

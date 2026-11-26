@@ -70,7 +70,7 @@ type txForwarded interface {
 	// authorities, so nothing minted before containment survives it. They revoke
 	// no session row and remove no grant.
 	ContainPrincipal(ctx context.Context, p domain.PrincipalID, at time.Time, incidentID string) error
-	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID) error
+	ReleasePrincipalContainment(ctx context.Context, p domain.PrincipalID, incidentID string) error
 
 	// The incident ledger (O5): mutable state apart from the append-only trail.
 	// OpenIncident is idempotent per scope; AddIncidentItem never overwrites a
@@ -103,9 +103,27 @@ type txForwarded interface {
 	// containment alone, for the personal-value retention clock.
 	PrincipalPausedByContainment(ctx context.Context, p domain.PrincipalID) (bool, error)
 
+	// ContainedAccountID is the account id of a principal that containment may
+	// have hidden from the ordinary lookups: the narrow read the release
+	// preconditions use, so they need no recovery lookup of their own.
+	ContainedAccountID(ctx context.Context, p domain.PrincipalID) (string, error)
+
 	// PrincipalContainedAt answers when the principal was contained, false when
 	// it is not. Establishment refuses an authority minted before that moment.
 	PrincipalContainedAt(ctx context.Context, p domain.PrincipalID) (time.Time, bool, error)
+
+	// CredentialEstablishedIn, PrincipalHasPassword and PrincipalContainedIncident are the release
+	// evidence (O4 A): whether a credential establishment completed for the account
+	// while an incident held its principal contained, and which incident contained it.
+	CredentialEstablishedIn(ctx context.Context, p domain.PrincipalID, incidentID string) (bool, error)
+	PrincipalHasPassword(ctx context.Context, p domain.PrincipalID) (bool, error)
+	PrincipalContainedIncident(ctx context.Context, p domain.PrincipalID) (string, error)
+	// HandOverContainedPrincipals passes the incident's held principals to another open incident that also recorded them contained.
+	HandOverContainedPrincipals(ctx context.Context, incidentID string, at time.Time) ([]authn.HandedOver, error)
+	// CountPrincipalsContainedBy counts the principals an incident still holds contained.
+	CountPrincipalsContainedBy(ctx context.Context, incidentID string) (int64, error)
+	// OtherOpenIncidentHolding names another open incident that also recorded the principal contained.
+	OtherOpenIncidentHolding(ctx context.Context, p domain.PrincipalID, incidentID string) (string, error)
 
 	// AccountCount answers the bootstrap path's one question. It has no network
 	// route: `hikyo admin create` runs on the server's own host.
@@ -176,7 +194,7 @@ type txForwarded interface {
 	// ConsumeAuthority claims an authority atomically; false means it was already
 	// consumed and the caller must fail closed.
 	//hikyo:forward ConsumeCredentialAuthority
-	ConsumeAuthority(ctx context.Context, id string, at time.Time) (bool, error)
+	ConsumeAuthority(ctx context.Context, id string, at time.Time, establishedInIncident string) (bool, error)
 	ConsumeCLIReauthHandoff(ctx context.Context, id string, at time.Time) (bool, error)
 
 	// ConsumeLoginChallenge claims a login challenge atomically; false means it was

@@ -105,7 +105,7 @@ func (s *Recovery) AutoCredentialProof(ctx context.Context, kr *crypto.Keyring) 
 				}
 				return ErrNoDrillCandidate
 			})
-		}, candidate.ID)
+		}, candidate.ID, false)
 		if errors.Is(err, ErrNoDrillCandidate) {
 			continue
 		}

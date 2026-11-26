@@ -8683,6 +8683,15 @@ type IncidentOutcomeCounts struct {
 	Unknown int32 `json:"unknown"`
 }
 
+// IncidentReleaseRequest defines model for IncidentReleaseRequest.
+type IncidentReleaseRequest struct {
+	// Principal The contained principal to release (its `usr_` id).
+	Principal string `json:"principal"`
+
+	// Proof Your TOTP code, or your password if you have no confirmed factor. A one-time code is spent by this call; a password is checked fresh on each call.
+	Proof string `json:"proof"`
+}
+
 // IncidentResumeRequest defines model for IncidentResumeRequest.
 type IncidentResumeRequest struct {
 	// ItemsDigest The open items you listed and confirmed: the lowercase hex SHA-256 of their ids sorted bytewise and joined by a newline. The call is a 409, and spends no proof, when the incident's open items are not exactly this set. It runs only the items of the set it checked.
@@ -14637,6 +14646,9 @@ type OpenIncidentJSONRequestBody = IncidentOpenRequest
 // CloseIncidentJSONRequestBody defines body for CloseIncident for application/json ContentType.
 type CloseIncidentJSONRequestBody = IncidentCloseRequest
 
+// ReleaseIncidentPrincipalJSONRequestBody defines body for ReleaseIncidentPrincipal for application/json ContentType.
+type ReleaseIncidentPrincipalJSONRequestBody = IncidentReleaseRequest
+
 // ResumeIncidentJSONRequestBody defines body for ResumeIncident for application/json ContentType.
 type ResumeIncidentJSONRequestBody = IncidentResumeRequest
 
@@ -16305,6 +16317,9 @@ type ServerInterface interface {
 	// AttestIncidentItem State that an open item was resolved outside this system.
 	// (POST /api/v1/incidents/{incident}/items/{item}/attest)
 	AttestIncidentItem(w http.ResponseWriter, r *http.Request, incident IncidentID, item IncidentItemID)
+	// ReleaseIncidentPrincipal Release one contained principal the incident holds.
+	// (POST /api/v1/incidents/{incident}/release)
+	ReleaseIncidentPrincipal(w http.ResponseWriter, r *http.Request, incident IncidentID)
 	// ResumeIncident Run the open items and report what the pass did.
 	// (POST /api/v1/incidents/{incident}/resume)
 	ResumeIncident(w http.ResponseWriter, r *http.Request, incident IncidentID)
@@ -17838,6 +17853,12 @@ func (_ Unimplemented) ListIncidentItems(w http.ResponseWriter, r *http.Request,
 // AttestIncidentItem State that an open item was resolved outside this system.
 // (POST /api/v1/incidents/{incident}/items/{item}/attest)
 func (_ Unimplemented) AttestIncidentItem(w http.ResponseWriter, r *http.Request, incident IncidentID, item IncidentItemID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReleaseIncidentPrincipal Release one contained principal the incident holds.
+// (POST /api/v1/incidents/{incident}/release)
+func (_ Unimplemented) ReleaseIncidentPrincipal(w http.ResponseWriter, r *http.Request, incident IncidentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -21475,6 +21496,32 @@ func (siw *ServerInterfaceWrapper) AttestIncidentItem(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AttestIncidentItem(w, r, incident, item)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleaseIncidentPrincipal operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseIncidentPrincipal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "incident" -------------
+	var incident IncidentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident", chi.URLParam(r, "incident"), &incident, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseIncidentPrincipal(w, r, incident)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -37317,6 +37364,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/incidents/{incident}/items/{item}/attest", wrapper.AttestIncidentItem)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/incidents/{incident}/release", wrapper.ReleaseIncidentPrincipal)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/incidents/{incident}/resume", wrapper.ResumeIncident)
 	})
 	r.Group(func(r chi.Router) {
@@ -45613,6 +45663,123 @@ func (response AttestIncidentItem500JSONResponse) VisitAttestIncidentItemRespons
 type AttestIncidentItem503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response AttestIncidentItem503JSONResponse) VisitAttestIncidentItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipalRequestObject struct {
+	Incident IncidentID `json:"incident"`
+	Body     *ReleaseIncidentPrincipalJSONRequestBody
+}
+
+type ReleaseIncidentPrincipalResponseObject interface {
+	VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error
+}
+
+type ReleaseIncidentPrincipal204Response struct {
+}
+
+func (response ReleaseIncidentPrincipal204Response) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReleaseIncidentPrincipal400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReleaseIncidentPrincipal400JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipal401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReleaseIncidentPrincipal401JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipal404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReleaseIncidentPrincipal404JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipal409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReleaseIncidentPrincipal409JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipal429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ReleaseIncidentPrincipal429JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipal500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReleaseIncidentPrincipal500JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseIncidentPrincipal503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReleaseIncidentPrincipal503JSONResponse) VisitReleaseIncidentPrincipalResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -89104,6 +89271,9 @@ type StrictServerInterface interface {
 	// AttestIncidentItem State that an open item was resolved outside this system.
 	// (POST /api/v1/incidents/{incident}/items/{item}/attest)
 	AttestIncidentItem(ctx context.Context, request AttestIncidentItemRequestObject) (AttestIncidentItemResponseObject, error)
+	// ReleaseIncidentPrincipal Release one contained principal the incident holds.
+	// (POST /api/v1/incidents/{incident}/release)
+	ReleaseIncidentPrincipal(ctx context.Context, request ReleaseIncidentPrincipalRequestObject) (ReleaseIncidentPrincipalResponseObject, error)
 	// ResumeIncident Run the open items and report what the pass did.
 	// (POST /api/v1/incidents/{incident}/resume)
 	ResumeIncident(ctx context.Context, request ResumeIncidentRequestObject) (ResumeIncidentResponseObject, error)
@@ -92200,6 +92370,39 @@ func (sh *strictHandler) AttestIncidentItem(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AttestIncidentItemResponseObject); ok {
 		if err := validResponse.VisitAttestIncidentItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseIncidentPrincipal operation middleware
+func (sh *strictHandler) ReleaseIncidentPrincipal(w http.ResponseWriter, r *http.Request, incident IncidentID) {
+	var request ReleaseIncidentPrincipalRequestObject
+
+	request.Incident = incident
+
+	var body ReleaseIncidentPrincipalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseIncidentPrincipal(ctx, request.(ReleaseIncidentPrincipalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseIncidentPrincipal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseIncidentPrincipalResponseObject); ok {
+		if err := validResponse.VisitReleaseIncidentPrincipalResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

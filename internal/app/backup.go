@@ -30,6 +30,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -560,7 +561,11 @@ func printPending(w io.Writer, status service.Status) {
 	}
 	fmt.Fprintf(w, "%d principal(s) awaiting reconciliation; their grants do not authorize until each is committed:\n", len(status.Pending))
 	for _, p := range status.Pending {
-		fmt.Fprintf(w, "  %q (%q)\n", p.ID, p.Kind)
+		note := ""
+		if slices.Contains(status.Contained, p.ID) {
+			note = " contained by an incident; reconciling does not release it"
+		}
+		_, _ = fmt.Fprintf(w, "  %q (%q)%s\n", p.ID, p.Kind, note)
 	}
 	fmt.Fprintln(w, "reconcile one at a time: hikyo restore reconcile --principal ID")
 }

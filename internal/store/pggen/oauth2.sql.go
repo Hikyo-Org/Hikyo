@@ -140,7 +140,7 @@ func (q *Queries) DeleteSessionsForOAuth2Provider(ctx context.Context, oauth2Pro
 }
 
 const getCredentialAuthorityByID = `-- name: GetCredentialAuthorityByID :one
-SELECT id, verifier, account_id, purpose, issued_by, established_credential_kind, credential_epoch, expires_at, consumed_at, created_at FROM credential_authorities WHERE id = $1
+SELECT id, verifier, account_id, purpose, issued_by, established_credential_kind, credential_epoch, expires_at, consumed_at, created_at, established_in_incident FROM credential_authorities WHERE id = $1
 `
 
 // hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.
@@ -159,6 +159,7 @@ func (q *Queries) GetCredentialAuthorityByID(ctx context.Context, id string) (Cr
 		&i.ExpiresAt,
 		&i.ConsumedAt,
 		&i.CreatedAt,
+		&i.EstablishedInIncident,
 	)
 	return i, err
 }

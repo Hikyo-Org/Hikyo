@@ -938,6 +938,11 @@ export const zIncidentResumeRequest = z.object({
     items_digest: z.string().regex(/^[0-9a-f]{64}$/)
 });
 
+export const zIncidentReleaseRequest = z.object({
+    principal: z.string().max(256),
+    proof: z.string().max(65536)
+});
+
 /**
  * What one resume pass did, in items.
  */
@@ -7660,6 +7665,17 @@ export const zCloseIncidentPath = z.object({
  * The closed incident.
  */
 export const zCloseIncidentResponse = zIncident;
+
+export const zReleaseIncidentPrincipalBody = zIncidentReleaseRequest;
+
+export const zReleaseIncidentPrincipalPath = z.object({
+    incident: zId
+});
+
+/**
+ * The principal is released.
+ */
+export const zReleaseIncidentPrincipalResponse = z.void();
 
 export const zEnrolPasskeyStartBody = zWebauthnEnrolStartRequest;
 

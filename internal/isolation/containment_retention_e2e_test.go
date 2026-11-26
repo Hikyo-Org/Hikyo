@@ -44,7 +44,7 @@ func TestPersonalValueRetentionPausedWhileContained(t *testing.T) {
 		release := func() {
 			t.Helper()
 			if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-				return az.ReleasePrincipalContainment(ctx, owner)
+				return az.ReleasePrincipalContainment(ctx, owner, "inc_retention")
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -164,7 +164,7 @@ func TestReleaseRestartsRetentionWindowWithoutAnIntermediateSweep(t *testing.T) 
 		})
 		clock = clock.Add(time.Hour)
 		write(func(ctx context.Context, az *authz.TxAuthorizer) error {
-			return az.ReleasePrincipalContainment(ctx, owner)
+			return az.ReleasePrincipalContainment(ctx, owner, "inc_release_clock")
 		})
 		if suspended() != 0 {
 			t.Fatal("release left the pre-containment suspension in place")
@@ -219,7 +219,7 @@ func TestReleaseKeepsTheClockOfAPrivacyRestrictedOwner(t *testing.T) {
 				return az.ContainPrincipal(ctx, owner, clock, "inc_restricted")
 			},
 			func(ctx context.Context, az *authz.TxAuthorizer) error {
-				return az.ReleasePrincipalContainment(ctx, owner)
+				return az.ReleasePrincipalContainment(ctx, owner, "inc_restricted")
 			},
 		} {
 			if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error { return f(ctx, az) }); err != nil {

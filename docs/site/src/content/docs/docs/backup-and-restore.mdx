@@ -388,7 +388,8 @@ hikyo restore reconcile --principal <principal-id>
 ```
 
 Reconcile one human principal at a time after confirming it should regain its
-restored grants. Re-mint and redistribute machine bearer credentials; they are
+restored grants. `restore status` marks contained principals, and reconcile never lifts
+containment: release them through their incident. Re-mint and redistribute machine bearer credentials; they are
 never reactivated.
 
 ## 6. Recurring restore drill

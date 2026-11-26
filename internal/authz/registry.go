@@ -2430,14 +2430,14 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelOrg,
 		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
 		events: []audit.EventType{
-			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained, audit.EventIncidentPrincipalReleased,
 		},
 	},
 	OpIncidentInstance: {
 		class:   ClassInstance,
 		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
 		events: []audit.EventType{
-			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained, audit.EventIncidentPrincipalReleased,
 		},
 	},
 	// The project listing addresses the project and takes the org-level

@@ -846,6 +846,11 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 		if err != nil {
 			return err
 		}
+		// The principal-row lock serializes this establishment with containment and
+		// release, which take it too: the two containment reads below see one state.
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
 		containedAt, contained, err := az.PrincipalContainedAt(ctx, account.PrincipalID)
 		if err != nil {
 			return err
@@ -860,7 +865,15 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 
 		// The NULL guard is the atomic claim: two concurrent presentations
 		// cannot both establish a credential, and the loser fails closed.
-		claimed, err := az.ConsumeAuthority(ctx, live.ID, now)
+		// The establishment stamps the incident holding the principal, read in this
+		// transaction, so release compares incident ids and no node's clock.
+		var heldBy string
+		if contained {
+			if heldBy, err = az.PrincipalContainedIncident(ctx, account.PrincipalID); err != nil {
+				return err
+			}
+		}
+		claimed, err := az.ConsumeAuthority(ctx, live.ID, now, heldBy)
 		if err != nil {
 			return err
 		}

@@ -1549,16 +1549,29 @@ test.describe('incident containment', () => {
     await expect(table).toContainText('Done');
     await expect(table).not.toContainText('Not yet run');
 
-    // Closing says what it records and ends the ledger.
+    // The incident now holds the contained account. A password account is released only
+    // after a credential was established during the incident, which this flow has not
+    // done, so the release is refused in plain words and spends its own fresh code.
+    await ledger.getByRole('button', { name: `Release ${account.principal}` }).click();
+    const release = page.getByRole('dialog', { name: 'Release this account?' });
+    await release.getByLabel('Code or password').fill(await nextTotpCode());
+    await release.getByRole('button', { name: 'Release account' }).click();
+    await expect(release).toContainText('This account cannot be released yet.');
+    await expect(release).not.toContainText('session');
+    await release.getByRole('button', { name: 'Cancel' }).click();
+    await expect(release).toBeHidden();
+
+    // Closing is refused while the incident still holds the account, and says why.
     await ledger.getByRole('button', { name: /^Close (incident|with residuals)$/ }).click();
     const confirm = page.getByRole('dialog');
     await confirm.getByRole('button', { name: /^Close (incident|with residuals)$/ }).click();
+    await expect(confirm).toContainText('still holds a contained account');
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
     await expect(confirm).toBeHidden();
-    await expect(ledger).toContainText('Incident closed.');
-    await expect(ledger.getByRole('button', { name: 'Resume open items' })).toHaveCount(0);
 
-    // A reload reads the same ledger back from the server.
+    // A reload reads the same ledger back from the server: still open, still holding it.
     await page.reload();
-    await expect(page.locator('#incident-ledger')).toContainText('closed');
+    await expect(page.locator('#incident-ledger')).toContainText('open');
+    await expect(page.locator('#incident-ledger').getByRole('button', { name: 'Resume open items' })).toBeVisible();
   });
 });

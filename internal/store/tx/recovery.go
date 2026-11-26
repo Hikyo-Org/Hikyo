@@ -9,6 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// ContainmentMigration is the migration that adds principals.containment_state;
+// a recovery source older than it takes the containment-free projections.
+const ContainmentMigration = 89
+
 // RecoveryRead and RecoveryWrite are confined to an authenticated operator
 // scratch database. Ordinary service constructors cannot accept RecoveryDB.
 // Callbacks retain ordinary repository proofs and cannot escape an attempt.
@@ -17,7 +21,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 	if err != nil {
 		return err
 	}
-	historical := version < 89
+	historical := version < ContainmentMigration
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()
@@ -64,7 +68,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 	if err != nil {
 		return err
 	}
-	historical := version < 89
+	historical := version < ContainmentMigration
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()

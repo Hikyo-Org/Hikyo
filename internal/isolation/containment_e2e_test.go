@@ -108,7 +108,11 @@ func containPrincipalForTest(t *testing.T, db *store.DB, p domain.PrincipalID) {
 func releaseContainmentForTest(t *testing.T, db *store.DB, p domain.PrincipalID) {
 	t.Helper()
 	err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		return az.ReleasePrincipalContainment(ctx, p)
+		inc, err := az.PrincipalContainedIncident(ctx, p)
+		if err != nil {
+			return err
+		}
+		return az.ReleasePrincipalContainment(ctx, p, inc)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +234,7 @@ func TestContainmentRefusesEveryAuthorityAndReleaseNeverRevivesASession(t *testi
 		}
 		// Releasing a principal that is not contained is refused too.
 		err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-			return az.ReleasePrincipalContainment(ctx, s.subject)
+			return az.ReleasePrincipalContainment(ctx, s.subject, "inc_test")
 		})
 		if !errors.Is(err, authn.ErrContainmentUnchanged) {
 			t.Fatalf("releasing an uncontained principal: %v, want ErrContainmentUnchanged", err)

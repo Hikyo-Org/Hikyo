@@ -364,6 +364,39 @@ func (q *Queries) ListOpenIncidentItems(ctx context.Context, arg ListOpenInciden
 	return items, nil
 }
 
+const reopenHandedOverIncidentItems = `-- name: ReopenHandedOverIncidentItems :execrows
+UPDATE incident_items
+SET outcome = CASE WHEN incident_items.outcome = 'done' THEN 'pending' ELSE 'unknown' END,
+    reason = CASE WHEN incident_items.outcome = 'done' THEN '' ELSE 'owner_unconfirmed' END,
+    attested_by = NULL, attested_at = NULL,
+    row_version = row_version + 1, updated_at = ?1
+WHERE incident_items.incident_id = ?2
+  AND ((incident_items.outcome = 'done' AND incident_items.owner_function = 'account.contain' AND incident_items.object_id = ?3)
+    OR (incident_items.outcome = 'attested' AND incident_items.owner_function = 'external_identity.remove'
+        AND (incident_items.object_id = ?3
+          OR incident_items.object_id IN (SELECT external_identities.id FROM external_identities JOIN accounts ON accounts.id = external_identities.account_id WHERE accounts.principal_id = ?3))))
+`
+
+type ReopenHandedOverIncidentItemsParams struct {
+	At          string
+	IncidentID  string
+	PrincipalID string
+}
+
+// A handover gives the receiving incident a principal whose claim may predate the
+// current containment episode, so its evidence is reset: the account.contain item
+// reopens (resume re-confirms it, idempotently) and each attested identity item and
+// cut row for the account becomes unknown, so the operator attests them again.
+// hikyo:reason Close reopens the receiving incident's account.contain item and its attested identity items for one handed-over principal, so no evidence recorded before the handover counts toward a release; the closing caller was authorized at the closing incident and only the receiving incident's rows for that principal change.
+// hikyo:authn-resolution
+func (q *Queries) ReopenHandedOverIncidentItems(ctx context.Context, arg ReopenHandedOverIncidentItemsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reopenHandedOverIncidentItems, arg.At, arg.IncidentID, arg.PrincipalID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const transitionIncidentItem = `-- name: TransitionIncidentItem :execrows
 UPDATE incident_items
 SET outcome = ?1, reason = ?2,
