@@ -131,8 +131,8 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 	}
 }
 
-// Stored state that exists but does not verify (a torn two-file write from an earlier
-// release, a damaged file, a list signed by another key) must never widen admission: the
+// Stored state that exists but does not verify (a list beside another list's signature, a
+// damaged file, a list signed by another key) must never widen admission: the
 // revocations it held are lost, so bridge routes refuse under off, unreachable and stale.
 // Only a fresh, non-stale, verified online list replaces it, and it keeps the recorded floor.
 func TestUnusableStoredStateRefusesUntilAFreshVerifiedListReplacesIt(t *testing.T) {
@@ -144,9 +144,9 @@ func TestUnusableStoredStateRefusesUntilAFreshVerifiedListReplacesIt(t *testing.
 	_, tornSignature := signedList(t, f, 4)
 	otherList, otherSignature := signedList(t, other, 9)
 	for name, files := range map[string]map[string][]byte{
-		"torn pair (list N beside signature N+1)": {"bridge-revocations.json": tornList, "bridge-revocations.sigstore.json": tornSignature},
-		"list without its signature":              {"bridge-revocations.json": tornList},
-		"signed by another trust root's key":      {"bridge-revocations.json": otherList, "bridge-revocations.sigstore.json": otherSignature},
+		"torn pair (list N beside signature N+1)": {"bridge-revocations-store.json": storeBytes(t, tornList, tornSignature)},
+		"list without its signature":              {"bridge-revocations-store.json": storeBytes(t, tornList, nil)},
+		"signed by another trust root's key":      {"bridge-revocations-store.json": storeBytes(t, otherList, otherSignature)},
 		"damaged combined file":                   {"bridge-revocations-store.json": []byte("not json")},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -255,16 +255,8 @@ func TestSequenceFloorIsAMonotonicRecordSeparateFromTheOutcomeLog(t *testing.T) 
 		directory, fetcher, checker := setup(t)
 		other := testfixture.New(t)
 		raw := testfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 2, IssuedAt: testNow.Add(-time.Hour).UTC().Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(other.Pinned.Root)})
-		for name, content := range map[string][]byte{"bridge-revocations-store.json": nil, "bridge-revocations.json": raw, "bridge-revocations.sigstore.json": testfixture.Sign(t, f.RecoverySigner, raw)} {
-			if content == nil {
-				if err := os.Remove(filepath.Join(directory, name)); err != nil {
-					t.Fatal(err)
-				}
-				continue
-			}
-			if err := os.WriteFile(filepath.Join(directory, name), content, 0o600); err != nil {
-				t.Fatal(err)
-			}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), storeBytes(t, raw, testfixture.Sign(t, f.RecoverySigner, raw)), 0o600); err != nil {
+			t.Fatal(err)
 		}
 		fetcher.list, fetcher.signature = signedList(t, f, 2)
 		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
@@ -273,40 +265,6 @@ func TestSequenceFloorIsAMonotonicRecordSeparateFromTheOutcomeLog(t *testing.T) 
 		fetcher.list, fetcher.signature = signedList(t, f, 5)
 		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 5 {
 			t.Fatalf("a list at the floor replaces it: %+v %v", result, err)
-		}
-	})
-	t.Run("a host with only the legacy check record is seeded from it", func(t *testing.T) {
-		directory, fetcher, checker := setup(t)
-		// setup left a torn store and a check record at sequence 1; make it the legacy shape.
-		if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-check.json"), []byte(`{"outcome":"checked","sequence":5,"at":"2026-01-01T00:00:00Z"}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		fetcher.list, fetcher.signature = signedList(t, f, 4)
-		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
-			t.Fatalf("a list below the legacy record's sequence is refused: %v", err)
-		}
-		fetcher.list, fetcher.signature = signedList(t, f, 5)
-		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 5 {
-			t.Fatalf("a list at the legacy sequence is accepted: %+v %v", result, err)
-		}
-		if floor, err := os.ReadFile(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil || !strings.Contains(string(floor), `"sequence":5`) {
-			t.Fatalf("the floor is written: %s %v", floor, err)
-		}
-	})
-	t.Run("an unreadable legacy check record refuses", func(t *testing.T) {
-		directory, fetcher, checker := setup(t)
-		if err := os.Remove(filepath.Join(directory, "bridge-revocations-floor.json")); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-check.json"), []byte("{"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		fetcher.list, fetcher.signature = signedList(t, f, 9)
-		if _, err := checker.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) {
-			t.Fatalf("an unreadable record must refuse: %v", err)
 		}
 	})
 	t.Run("an absent floor record is a first run", func(t *testing.T) {
@@ -332,16 +290,14 @@ func TestSequenceFloorIsAMonotonicRecordSeparateFromTheOutcomeLog(t *testing.T) 
 	t.Run("a stored list from before the floor existed gets a floor", func(t *testing.T) {
 		directory := t.TempDir()
 		list, signature := signedList(t, f, 5)
-		for name, raw := range map[string][]byte{"bridge-revocations.json": list, "bridge-revocations.sigstore.json": signature} {
-			if err := os.WriteFile(filepath.Join(directory, name), raw, 0o600); err != nil {
-				t.Fatal(err)
-			}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), storeBytes(t, list, signature), 0o600); err != nil {
+			t.Fatal(err)
 		}
 		off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: directory}
 		if _, err := off.Check(t.Context(), snapshot); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations.json"), []byte("torn"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), []byte("torn"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		fetcher := &scripted{}
@@ -367,10 +323,8 @@ func TestListBoundToAnotherRootIsUnusableUntilAFreshListReplacesIt(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
-			for file, content := range map[string][]byte{"bridge-revocations.json": raw, "bridge-revocations.sigstore.json": signature} {
-				if err := os.WriteFile(filepath.Join(directory, file), content, 0o600); err != nil {
-					t.Fatal(err)
-				}
+			if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), storeBytes(t, raw, signature), 0o600); err != nil {
+				t.Fatal(err)
 			}
 			off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: directory}
 			if _, err := off.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) {
@@ -534,57 +488,19 @@ func TestAcceptedListIsStoredAsOneFile(t *testing.T) {
 	if _, err := checker.Check(t.Context(), f.Snapshot(t)); err != nil {
 		t.Fatal(err)
 	}
-	for _, gone := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
-		if _, err := os.Stat(filepath.Join(directory, gone)); err == nil {
-			t.Fatalf("%s is the superseded two-file form and must not be written", gone)
-		}
-	}
 	if _, err := os.Stat(filepath.Join(directory, "bridge-revocations-store.json")); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// An installation upgraded from the two-file form keeps its sequence floor, and the next
-// accepted list moves it to the single file and removes the pair.
-func TestLegacyTwoFileStateIsReadAndMigrated(t *testing.T) {
-	f := testfixture.New(t)
-	snapshot := f.Snapshot(t)
-	directory := t.TempDir()
-	list, signature := signedList(t, f, 5)
-	for name, raw := range map[string][]byte{"bridge-revocations.json": list, "bridge-revocations.sigstore.json": signature} {
-		if err := os.WriteFile(filepath.Join(directory, name), raw, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	fetcher := &scripted{}
-	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
-	fetcher.list, fetcher.signature = signedList(t, f, 4)
-	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
-		t.Fatalf("the earlier form's floor still refuses a lower sequence: %v", err)
-	}
-	fetcher.list, fetcher.signature = signedList(t, f, 6)
-	if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 6 {
-		t.Fatalf("a newer list is accepted: %+v %v", result, err)
-	}
-	for _, gone := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
-		if _, err := os.Stat(filepath.Join(directory, gone)); err == nil {
-			t.Fatalf("%s must be removed once the single file holds the list", gone)
-		}
-	}
-}
-
-// A crash after the single-file store is durable but before the earlier pair is removed
-// leaves both: the store wins and keeps the floor. A crash while writing leaves only an
-// unrenamed temporary file, which no reader consults, and a completed store leaves none.
+// A crash while writing leaves only an unrenamed temporary file, which no reader consults,
+// and a completed store leaves none.
 func TestCrashLeavesAUsableStoreAndNoTemporaryFiles(t *testing.T) {
 	f := testfixture.New(t)
 	snapshot := f.Snapshot(t)
 	directory := t.TempDir()
-	oldList, oldSignature := signedList(t, f, 2)
-	for name, raw := range map[string][]byte{"bridge-revocations.json": oldList, "bridge-revocations.sigstore.json": oldSignature, ".revocation-12345": []byte("half written")} {
-		if err := os.WriteFile(filepath.Join(directory, name), raw, 0o600); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(directory, ".revocation-12345"), []byte("half written"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	fetcher := &scripted{}
 	fetcher.list, fetcher.signature = signedList(t, f, 6)
@@ -592,15 +508,9 @@ func TestCrashLeavesAUsableStoreAndNoTemporaryFiles(t *testing.T) {
 	if _, err := checker.Check(t.Context(), snapshot); err != nil {
 		t.Fatal(err)
 	}
-	// Put the superseded pair back, as if the crash came before its removal.
-	for name, raw := range map[string][]byte{"bridge-revocations.json": oldList, "bridge-revocations.sigstore.json": oldSignature} {
-		if err := os.WriteFile(filepath.Join(directory, name), raw, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	off := bridgerevocation.Checker{Mode: bridgerevocation.Off, Directory: directory}
 	if result, err := off.Check(t.Context(), snapshot); err != nil || result.Sequence != 6 {
-		t.Fatalf("the store wins over a leftover older pair: %+v %v", result, err)
+		t.Fatalf("the store is usable beside a crashed temporary file: %+v %v", result, err)
 	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -615,6 +525,15 @@ func TestCrashLeavesAUsableStoreAndNoTemporaryFiles(t *testing.T) {
 	if temporaries != 0 {
 		t.Fatalf("a completed store leaves %d temporary files", temporaries)
 	}
+}
+
+// storeBytes is the single-file store a Checker keeps: the list and its signature together.
+func storeBytes(t *testing.T, list, signature []byte) []byte {
+	t.Helper()
+	return testfixture.JSON(t, struct {
+		List      []byte `json:"list"`
+		Signature []byte `json:"signature"`
+	}{list, signature})
 }
 
 func listBytes(t *testing.T, f *testfixture.Fixture, sequence int64) []byte {

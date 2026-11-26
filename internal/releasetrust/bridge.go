@@ -109,6 +109,13 @@ func (b VerifiedBridge) Statement() BridgeStatement {
 	return statement
 }
 
+// bridgeDeniedSigners are recovery keys (SHA-256 of the public key) that never sign a
+// routable bridge. The owner decided that recovery-1 is not extended to bridges (R2): a
+// bridge is signed by a rotated key that the running binary's root pins, so a build whose
+// root still pins recovery-1 admits no routable bridge. The expiry-free legacy v1
+// statements stay loadable because they are inert.
+var bridgeDeniedSigners = []string{"1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"}
+
 func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, error) {
 	if !snapshot.Valid() {
 		return VerifiedBridge{}, errors.New("unverified trust snapshot")
@@ -126,6 +133,9 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 	}
 	if statement.Mode != "maintenance" || statement.Target.Validate() != nil || statement.TargetPolicySHA256.Validate() != nil {
 		return VerifiedBridge{}, errors.New("invalid recovery bridge identity or mode")
+	}
+	if statement.Schema != "hikyo.dev/legacy-nightly-bridge/v1" && slices.Contains(bridgeDeniedSigners, snapshot.state.root.Recovery.SHA256) {
+		return VerifiedBridge{}, errors.New("a routable recovery bridge cannot be signed by the retired recovery-1 key; rotate the recovery key first")
 	}
 	switch statement.Schema {
 	case BridgeSchemaV2:

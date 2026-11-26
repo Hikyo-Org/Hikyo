@@ -100,7 +100,9 @@ apply-time revocation list (options (a) and (c) on
 - **R2:** a new offline or hardware key `recovery-2` is rotated in first and a
   release that pins it ships. The bridge target is that release, and only
   `recovery-2` signs the bridge. The `recovery-1` exception is not extended to
-  bridges. The owner holds the key alone and every signing is witnessed and logged
+  bridges, and the verifier enforces it: a build whose root pins `recovery-1` refuses
+  every routable bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`); the inert
+  expiry-free `legacy-nightly-bridge/v1` statements still load, always expired. The owner holds the key alone and every signing is witnessed and logged
   ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
   Solo custody ends before 1.2: signing (the key holder, offline) and publishing
   the trust asset and merging the trust pull request (a second person without the
@@ -168,18 +170,17 @@ apply-time revocation list (options (a) and (c) on
   recovery key.
   **Stored state.** The accepted list and its signature are stored as one file
   (`bridge-revocations-store.json`, written by fsync, one rename and a directory
-  fsync before the earlier pair is removed), so a crash cannot leave a list beside
-  another list's signature; the earlier two-file form is still read. Losing known
+  fsync), so a crash cannot leave a list beside
+  another list's signature. Losing known
   revocations must never widen admission, so stored state that exists but does not
-  verify (a torn pair from the earlier form, a damaged file, a list signed by another
+  verify (a damaged file, a list signed by another
   key) is unusable: bridge routes refuse under `off`, when the endpoint is unreachable
   and when the fetched list is stale, with a message naming the files. Only a fresh,
   non-stale, verified online list replaces it, and its sequence must be at or above
   the high-water floor (`bridge-revocations-floor.json`: the highest sequence and its
   digest, raised only when a list is stored, under the lock, never lowered and kept apart
   from the outcome log; a different list at the floor's sequence is equivocation). A
-  host from before the floor record is seeded once from the earlier outcome log's
-  sequence; with neither record it is a first run, and an unreadable record refuses. A list that is
+  host with no floor record is on its first run, and an unreadable record refuses. A list that is
   correctly signed by the current recovery key but bound to another (older) root was never
   issued for this root, so it is unusable too (neither its revocations nor their absence can
   be applied) until a fresh list for this root replaces it. The floor is bound to the trust

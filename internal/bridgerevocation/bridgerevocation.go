@@ -236,11 +236,7 @@ const (
 	// storeFile holds the accepted list and its signature as one document, replaced by
 	// a single rename, so a crash never leaves a list beside another list's signature.
 	storeFile = "bridge-revocations-store.json"
-	// listFile and signatureFile are the earlier two-file form, still read (and removed
-	// on the next store) so an installation's floor survives the upgrade.
-	listFile      = "bridge-revocations.json"
-	signatureFile = "bridge-revocations.sigstore.json"
-	checkFile     = "bridge-revocations-check.json"
+	checkFile = "bridge-revocations-check.json"
 )
 
 type storedList struct {
@@ -340,8 +336,8 @@ func (c Checker) Revoked(ctx context.Context, snapshot releasetrust.Snapshot) ([
 var ErrUnusableState = errors.New("stored recovery bridge revocation state is unusable")
 
 func (c Checker) unusable(cause error) error {
-	return fmt.Errorf("%w (%w); bridge routes are refused. Restore access to the revocation endpoint so a valid list replaces it, or, as an explicit operator action, stop the service and remove %s, %s (and any older %s and %s), accepting that revocations known only to that state are lost",
-		ErrUnusableState, cause, filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile), listFile, signatureFile)
+	return fmt.Errorf("%w (%w); bridge routes are refused. Restore access to the revocation endpoint so a valid list replaces it, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state are lost",
+		ErrUnusableState, cause, filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile))
 }
 
 // state is what the directory holds. The floor applies only when it is bound to this
@@ -406,38 +402,17 @@ func parseStored(raw []byte) (list, signature []byte) {
 	return stored.List, stored.Signature
 }
 
-// readStored reads the combined store, else the earlier two files. Content that cannot
-// be parsed comes back as found with empty bytes, which then fails verification.
+// readStored reads the store. Content that cannot be parsed comes back as found with
+// empty bytes, which then fails verification.
 func (c Checker) readStored() (list, signature []byte, found bool, err error) {
 	raw, err := os.ReadFile(filepath.Join(c.Directory, storeFile))
-	if err == nil {
-		list, signature = parseStored(raw)
-		return list, signature, true, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, nil, false, err
-	}
-	list, err = os.ReadFile(filepath.Join(c.Directory, listFile))
 	if errors.Is(err, os.ErrNotExist) {
-		// A store written and the pair removed between the two reads: look again, so a
-		// concurrent migration never reads as "nothing stored".
-		raw, err = os.ReadFile(filepath.Join(c.Directory, storeFile))
-		if err == nil {
-			list, signature = parseStored(raw)
-			return list, signature, true, nil
-		}
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, false, nil
-		}
-		return nil, nil, false, err
+		return nil, nil, false, nil
 	}
 	if err != nil {
 		return nil, nil, false, err
 	}
-	signature, err = os.ReadFile(filepath.Join(c.Directory, signatureFile))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, nil, false, err
-	}
+	list, signature = parseStored(raw)
 	return list, signature, true, nil
 }
 
@@ -471,14 +446,6 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 			if _, _, floorErr := c.readFloor(); floorErr != nil {
 				return c.unusable(fmt.Errorf("%w; the sequence floor record is unreadable: %w", st.unusable, floorErr))
 			}
-			// One-time migration: a host from before the floor record has only the outcome
-			// log's sequence. Unreadable, it is as unusable as the list.
-			if _, recorded, _, recordErr := LastCheck(c.Directory); recordErr == nil {
-				// No digest was recorded, so the same sequence cannot be compared.
-				floor, found = floorRecord{Sequence: recorded, Digest: fresh.Digest()}, true
-			} else if !errors.Is(recordErr, os.ErrNotExist) {
-				return c.unusable(fmt.Errorf("%w; the legacy check record is unreadable: %w", st.unusable, recordErr))
-			}
 		}
 		if found && fresh.Sequence() < floor.Sequence {
 			return errors.New("revocation list rollback refused")
@@ -501,9 +468,6 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 	if err := writeAtomic(filepath.Join(c.Directory, storeFile), raw); err != nil {
 		return err
 	}
-	// The earlier two-file form is superseded; a leftover pair would only confuse a reader.
-	_ = os.Remove(filepath.Join(c.Directory, listFile))
-	_ = os.Remove(filepath.Join(c.Directory, signatureFile))
 	return nil
 }
 

@@ -262,8 +262,7 @@ Operator recovery for stored state: an installation keeps the last accepted list
 rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
 unreachable endpoint and with a stale list (a security rollback is never blocked); only a fresh,
 non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list and bound to the trust root; an unreadable one refuses), replaces it. The floor is enforced whenever it exists: a removed store, or a store behind the floor, is unusable too. Either reach the
-endpoint, or stop the service and remove that file and the floor record (and any older `bridge-revocations.json` and
-`bridge-revocations.sigstore.json`) as an explicit operator action, accepting that revocations known
+endpoint, or stop the service and remove that file and the floor record as an explicit operator action, accepting that revocations known
 only to that list are lost and that until the next list is stored an older validly signed list is
 bounded only by its 7-day `issued_at`. A list bound to another (older) trust root is unusable too until a fresh
 list for this root replaces it. The fetcher honors `HTTPS_PROXY` and `NO_PROXY` (on the native security path, from
@@ -287,7 +286,9 @@ owner picks a canonical UTC instant at most 30 days after signing and passes it 
 `scripts/release/nightly legacy-bridges --not-after ...`; the tool refuses a missing,
 past, non-canonical or longer-than-30-day value. The owner's offline steps: author
 the unsigned statements with that command, sign each with `recovery-bridge.sh sign`
-(the recovery key never leaves the signing machine), catalogue the digests with
+(with `RECOVERY_KEY` set to `recovery-2`, after the rotation; a build whose root still pins
+`recovery-1` refuses every routable bridge, legacy `v2` included, and the recovery key never
+leaves the signing machine), catalogue the digests with
 `recovery-bridge.sh reauthorize`, and publish the first revocation list with them. A
 lapsed legacy bridge is re-authored with a new `--not-after` and re-signed the same
 way; the new statement is a new digest on the same pair, and the old one is dropped
@@ -312,7 +313,9 @@ published proofs with a fresh window (`author ... [NOT_AFTER]`), signed with
 them from the catalog and the tree. The new statement has a new digest, so it is
 a new catalog entry; leaving the old one beside it puts two bridges on one pair
 and the verifier refuses that tree. A bundle that already holds the lapsed bridge
-keeps planning other routes: an expired or revoked bridge is skipped, not fatal.
+keeps planning other routes: an expired or revoked bridge is skipped, not fatal. It still
+controls its pair, though: the ordinary edge it overrode does not come back, so that pair has no
+route until the re-signed bridge is in the catalog.
 
 ## Using the bridge (operators)
 

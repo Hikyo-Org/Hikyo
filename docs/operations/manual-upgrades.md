@@ -160,11 +160,11 @@ fetches the signed revocation list (default: the `trust` release assets in
 endpoint falls back to `not_after` and logs a warning; a reachable but invalid answer
 refuses the route. `HIKYO_UPGRADE_REVOCATION_CHECK=off` skips the network and is
 your explicit decision to rely on `not_after` alone (also logged as a warning). The list is stored in `HIKYO_UPGRADE_STATE_DIR` as `bridge-revocations-store.json`. If it exists but
-does not verify (a damaged file or a torn write from an earlier release), is behind the sequence floor (a removed store, a crash between the two writes) or is bound to another trust root, bridge routes are refused, including
+does not verify (a damaged file or a list signed by another key), is behind the sequence floor (a removed store, a crash between the two writes) or is bound to another trust root, bridge routes are refused, including
 under `off`, when the endpoint is unreachable and when the fetched list is stale, because the revocations it held
 are lost. The way out: restore access to the endpoint so a fresh valid list replaces it (it must not be below the
 floor in `bridge-revocations-floor.json`, which only a stored list raises and which is bound to the trust root), or, as an explicit operator action, stop the service and remove
-`bridge-revocations-store.json` and `bridge-revocations-floor.json` (and any older `bridge-revocations.json` and `bridge-revocations.sigstore.json`),
+`bridge-revocations-store.json` and `bridge-revocations-floor.json`,
 accepting that revocations known only to that list are lost and that, until a list is stored again, an older
 validly signed list is bounded only by its `issued_at` (7 days). A security rollback is never blocked. `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` from the service environment file reach the upgrade child, so a proxy-only host can reach the endpoint. Ordinary upgrades never
 contact the endpoint.

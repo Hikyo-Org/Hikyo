@@ -68,7 +68,7 @@ func TestBridgeNotAfterIsRequiredCanonicalAndEnforced(t *testing.T) {
 }
 
 // The legacy nightly bridge expires like every other bridge: v2 requires a canonical
-// not_after, and the expiry-free v1 form is refused.
+// not_after, and the expiry-free v1 form loads but is always expired.
 func TestLegacyNightlyBridgeRequiresASignedNotAfter(t *testing.T) {
 	legacy := func(schema, notAfter string) releasetrust.BridgeStatement {
 		digest := releaseidentity.Hash([]byte("fixture"))

@@ -324,7 +324,7 @@ A pre-ledger database remains `legacy/v1`, identified by its inspected schema
 and exact migration inventory. It is never relabeled as a signed source release.
 An ordinary nightly declaration cannot admit it. The first hop needs a
 recovery-signed `hikyo.dev/legacy-nightly-bridge/v2` statement (with a `not_after`
-at most 30 days out; the expiry-free `v1` form is refused) for its engine,
+at most 30 days out; an expiry-free `v1` statement still loads and counts toward the inventory, but is always expired and never routes) for its engine,
 exact legacy schema/migrations, signed target identity and target policy digest.
 It also needs the installation's fresh backup/drill attestation.
 

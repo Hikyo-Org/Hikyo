@@ -96,8 +96,9 @@ func bridgeRevocation(cfg *config.Config) revocationLookup {
 		if result.Outcome == bridgerevocation.Checked {
 			diagnostics.Printf(ctx, 1, "Recovery bridge revocation check: %s (list sequence %d)", result.Outcome, result.Sequence)
 		} else {
-			// Relying on not_after alone must be visible at the default level.
-			slog.WarnContext(ctx, "recovery bridge revocation list was not applied; relying on the bridge's not_after", "outcome", string(result.Outcome), "sequence", result.Sequence)
+			// The stored list (sequence 0 when none) still applies; for anything newer only
+			// not_after limits a bridge, and that must be visible at the default level.
+			slog.WarnContext(ctx, "recovery bridge revocation list is not fresh; the stored list applies and only not_after limits a bridge against newer revocations", "outcome", string(result.Outcome), "stored_sequence", result.Sequence)
 		}
 		return result.Revoked, nil
 	}

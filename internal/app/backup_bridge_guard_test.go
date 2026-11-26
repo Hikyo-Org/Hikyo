@@ -88,14 +88,16 @@ func bridgedBundle(t *testing.T, source upgradecompat.InstalledSource, notAfter 
 	}
 	// The recovery-signed list that revokes the bridge, stored where an installation keeps its last verified list.
 	list := trustfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: []releaseidentity.Digest{bridge}})
-	write("revocations/bridge-revocations.json", list)
-	write("revocations/bridge-revocations.sigstore.json", trustfixture.Sign(t, f.RecoverySigner, list))
+	write("revocations/bridge-revocations-store.json", trustfixture.JSON(t, struct {
+		List      []byte `json:"list"`
+		Signature []byte `json:"signature"`
+	}{list, trustfixture.Sign(t, f.RecoverySigner, list)}))
 	return directory, f.Pinned, b.Identity, bridge, a.Identity
 }
 
 // A revoked bridge must stop the export and the drill before anything is
 // written, so no operator attestation can be minted for it. Mutating the
-// guardBridges call in either command makes this test fail.
+// loadGuardedBundle call in either command makes this test fail.
 func TestUpgradeExportAndDrillRefuseARevokedBridge(t *testing.T) {
 	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
 	migrations, err := upgrade.PinnedLegacyManifest(releaseidentity.SQLite)
@@ -114,7 +116,7 @@ func TestUpgradeExportAndDrillRefuseARevokedBridge(t *testing.T) {
 		return cfg
 	}
 	revoked := t.TempDir()
-	for _, name := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+	for _, name := range []string{"bridge-revocations-store.json"} {
 		raw, err := os.ReadFile(filepath.Join(directory, "revocations", name))
 		if err != nil {
 			t.Fatal(err)
@@ -339,7 +341,7 @@ func TestAbsentRevocationListFallsBackToExpiryWithAWarning(t *testing.T) {
 	}
 	serve(http.StatusNotFound)
 	logs, err := plan(time.Now().Add(24 * time.Hour))
-	if err != nil || !strings.Contains(logs, "revocation list was not applied") || !strings.Contains(logs, "unreachable") {
+	if err != nil || !strings.Contains(logs, "revocation list is not fresh") || !strings.Contains(logs, "unreachable") {
 		t.Fatalf("an unexpired bridge must plan on a 404 with a warning: %v\n%s", err, logs)
 	}
 	if _, err := plan(time.Now().Add(-24 * time.Hour)); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
@@ -375,7 +377,7 @@ func TestNewAdmissionDiscoveryRefusesARevokedBridge(t *testing.T) {
 	if result, err := discoverReleaseRoute(t.Context(), offConfig(state), noReleases{}, noReleases{}, prepared, pinned, inspection, releaseidentity.SQLite, nil, true); err != nil || len(result.Plan.BridgeDigests()) != 1 {
 		t.Fatalf("with nothing revoked the bridge route is admitted: %v", err)
 	}
-	for _, name := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+	for _, name := range []string{"bridge-revocations-store.json"} {
 		raw, err := os.ReadFile(filepath.Join(directory, "revocations", name))
 		if err != nil {
 			t.Fatal(err)
@@ -438,7 +440,7 @@ func TestGuardedBundleRefusesARevokedBridgeAndBackupCodeUsesNothingElse(t *testi
 	source := upgradecompat.InstalledSource{Identity: f.source.Source, Migrations: migrations, SchemaSHA256: f.source.SchemaDigest}
 	directory, pinned, target, _, _ := bridgedBundle(t, source, time.Now().Add(24*time.Hour))
 	state := t.TempDir()
-	for _, name := range []string{"bridge-revocations.json", "bridge-revocations.sigstore.json"} {
+	for _, name := range []string{"bridge-revocations-store.json"} {
 		raw, err := os.ReadFile(filepath.Join(directory, "revocations", name))
 		if err != nil {
 			t.Fatal(err)
