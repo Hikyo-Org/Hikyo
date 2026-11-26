@@ -846,6 +846,11 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 		if err != nil {
 			return err
 		}
+		// The principal-row lock serializes this establishment with containment and
+		// release, which take it too: the two containment reads below see one state.
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
 		containedAt, contained, err := az.PrincipalContainedAt(ctx, account.PrincipalID)
 		if err != nil {
 			return err

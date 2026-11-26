@@ -494,7 +494,7 @@ principal is contained, so a contained account would still have a scheduler acti
   names the incident that contained the principal; a principal another incident (or none)
   contained, an unknown principal and the incident's own account all answer not found.
 - It needs the O4 A evidence: for an account with a local password, a credential
-  establishment since containment (an establishment stamps the authority it consumes; a
+  establishment during the containment episode (an establishment stamps the authority it consumes; a
   sweep, whether containment's or a newer reset's, consumes without stamping, so it never
   counts); and every linked identity of the target attested in the containing incident.
   An account with neither a password nor a linked identity is refused, because nothing then records a replaced way to sign in. An unmet condition is a conflict

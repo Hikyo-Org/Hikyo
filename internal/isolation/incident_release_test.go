@@ -692,3 +692,27 @@ func TestIncidentReleaseRefusesWhileTheContainmentItemIsOpen(t *testing.T) {
 		}
 	})
 }
+
+// A real reset and establishment on a node whose clock runs ahead, before the
+// containment, must not count for the release: the stamp is decided by database
+// state under containment's serialization, not by comparing the clocks.
+func TestIncidentReleaseRefusesARealClockAheadEstablishmentBeforeContainment(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		w := newIncidentWorld(t, db)
+		fast := authService(t, db)
+		fast.Now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+		execRaw(t, db, `INSERT INTO password_credentials (account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism, dek_version, credential_epoch, row_version, updated_at) VALUES ('acc_itarget', `+blobLit(db, []byte("pw-verifier"))+`, 1, 1, 1, 1, `+acctEpoch(t, db)+`, 1, `+farFuture+`)`)
+		r, err := fast.ResetCredential(ctx, w.as(incResponder), string(incTarget), "response")
+		if err != nil {
+			t.Fatalf("reset: %v", err)
+		}
+		if err := fast.EstablishCredential(ctx, r.Authority, "a password established before containment"); err != nil {
+			t.Fatalf("establish: %v", err)
+		}
+		id := w.containedIncident(t, false)
+		if err := w.svc.ReleasePrincipal(ctx, w.as(incResponder), id, incTarget, ""); !errors.Is(err, service.ErrReleaseNotReady) {
+			t.Fatalf("release after a real clock-ahead establishment before containment = %v, want ErrReleaseNotReady", err)
+		}
+	})
+}
