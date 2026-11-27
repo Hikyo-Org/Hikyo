@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
@@ -48,10 +47,10 @@ func (a *TxAuthorizer) CallerCanDefineKeys(ctx context.Context, caller Identity,
 		return false, false, err
 	}
 	for _, rule := range rules {
-		if rule.Org != chain.Org || rule.Capability != domain.CapDefinitionsEdit || rule.Validate() != nil || !slices.Contains(rule.Where.Projects, chain.Project) {
+		if rule.Org != chain.Org || rule.Capability != domain.CapDefinitionsEdit || rule.Validate() != nil || !rule.Where.Names(chain.Project) {
 			continue
 		}
-		items := rule.Where.Keys[chain.Project]
+		items := rule.Where.KeysIn(chain.Project)
 		if rule.Where.KeyMode == domain.AxisAll {
 			// Finite exclusions cannot exclude every possible non-root folder.
 			// These are virtual creation targets, never catalogue reads.

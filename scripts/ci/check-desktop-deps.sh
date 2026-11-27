@@ -1,11 +1,12 @@
 #!/bin/sh
 # Keeps desktop/ (a nested Go module: Wails, cgo, WebKit) apart from the root
-# module, and keeps the changed-path classifier honest about what desktop/ builds.
+# module, and keeps the feedback planner honest about what desktop/ builds. Run nightly by
+# nightly-desktop.yml; no ci.yml job runs it.
 #   1. No desktop-only dependency (Wails and its platform bindings) in the root
 #      go.mod or go.sum, no go.work, and no root requirement on desktop/.
 #   2. desktop/go.mod still points at the root module with `replace ... => ../`.
 #   3. Every root package desktop/ compiles (go list -deps, darwin, default and
-#      probe builds) selects the desktop job in classify-changed-paths.sh.
+#      probe builds) selects the desktop-compile check in feedback-plan.sh.
 # Where desktop/ does not exist yet (main before the shell lands) only check 1 runs.
 # Go sources under desktop/ without desktop/go.mod fail: a deleted manifest must not
 # let the module pass unbuilt.
@@ -18,7 +19,7 @@ fail() {
 }
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd) || fail 'cannot locate this script'
-classifier=${DESKTOP_DEPS_CLASSIFIER:-$script_dir/classify-changed-paths.sh}
+feedback_plan=${DESKTOP_DEPS_FEEDBACK_PLAN:-$script_dir/feedback-plan.sh}
 root_module=github.com/Hikyo-Org/hikyo
 if [ "$#" -gt 0 ]; then
 	root=$1
@@ -65,17 +66,21 @@ awk -v mod="$root_module" '
 	END { exit !ok }' desktop/go.mod ||
 	fail "desktop/go.mod must keep: replace $root_module => ../"
 
-# 3. Every root package desktop/ compiles selects the desktop job.
+# 3. Every root package desktop/ compiles selects the desktop-compile feedback check.
 # The default build compiles files the probe build excludes (//go:build !probe).
 listing=$(cd desktop && GOOS=darwin CGO_ENABLED=1 "${GO:-go}" list -deps -test -f '{{.ImportPath}}' ./... &&
 	GOOS=darwin CGO_ENABLED=1 "${GO:-go}" list -deps -test -tags probe -f '{{.ImportPath}}' ./...) ||
 	fail 'go list failed inside desktop/'
 packages=$(printf '%s\n' "$listing" | sed -n "s|^$root_module/||p" | grep -v -E -e '^desktop( .*)?$' -e '^desktop/' -e '^desktop_test \[.*/desktop\.test\]$' | sed 's/ \[.*$//; s/\.test$//' | sort -u) ||
 	packages=''
-[ -n "$packages" ] || fail 'desktop/ imports no root packages; the classifier list is stale'
+[ -n "$packages" ] || fail 'desktop/ imports no root packages; the feedback planner list is stale'
+changed=$(mktemp "${TMPDIR:-/tmp}/hikyo-desktop-deps.XXXXXX") || fail 'cannot create a scratch file'
+trap 'rm -f "$changed"' EXIT HUP INT TERM
 for package in $packages; do
-	selected=$(printf '%s/x.go\n' "$package" | "$classifier" --files) || fail "classifier failed for $package"
-	printf '%s' "$selected" | jq -e '.desktop == true' >/dev/null ||
-		fail "desktop/ imports $package, but a change there does not select the desktop job; add it to classify-changed-paths.sh"
+	printf '%s/x.go\0' "$package" >"$changed"
+	selected=$(bash -c '. "$1" && feedback_plan_build "$2" && printf "%s" "$desktop"' _ "$feedback_plan" "$changed") ||
+		fail "feedback planner failed for $package"
+	[ "$selected" = true ] ||
+		fail "desktop/ imports $package, but a change there does not select the desktop-compile check; add it to feedback-plan.sh"
 done
-printf 'check-desktop-deps: desktop/ stays out of the root module; %s root packages select the desktop job\n' "$(printf '%s\n' "$packages" | wc -l | tr -d ' ')"
+printf 'check-desktop-deps: desktop/ stays out of the root module; %s root packages select desktop-compile\n' "$(printf '%s\n' "$packages" | wc -l | tr -d ' ')"

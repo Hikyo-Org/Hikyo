@@ -148,7 +148,7 @@ export const EditorFolderRule: Story = {
     await expect(dialog.getByRole('checkbox', { name: 'Manage machines' })).toBeDisabled();
     // What no rule can carry is not listed, and named once.
     await expect(dialog.queryByRole('checkbox', { name: 'Manage projects' })).toBeNull();
-    await expect(dialog.getAllByText(/Manage projects needs all projects/).length).toBeGreaterThan(0);
+    await expect(dialog.getAllByText(/Manage projects is an organisation permission/).length).toBeGreaterThan(0);
     // Manage access is available with its delegation boundary explained.
     await expect(dialog.getByRole('checkbox', { name: 'Manage access' })).toHaveAccessibleDescription(/Delegate only inside this rule/);
     await expect(dialog.getByText(/Left out until Where is wider: Pin, Manage machines/)).toBeVisible();
@@ -193,6 +193,21 @@ export const EditorNewRule: Story = {
     await userEvent.click(dialog.getByRole('button', { name: /^payments/ }));
     await expect(dialog.getByRole('group', { name: 'Environments' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
+  },
+};
+
+// Org-wide, the editor offers All projects (#1446): the rule covers every
+// environment, including later projects', and narrows keys by folder only.
+const saveAllProjects = fn<(rule: Rule) => void>();
+export const EditorAllProjects: Story = {
+  render: () => <RuleEditorDialog world={makeWorld()} rule={newRule(IDS.chen)} projects={PROJECTS} allProjects onSave={saveAllProjects} onCancel={fn()} />,
+  play: async ({ canvas }) => {
+    const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Chen Li' }));
+    await userEvent.click(dialog.getByRole('button', { name: /^All projects/ }));
+    await expect(dialog.getByText(/All projects covers every environment/)).toBeVisible();
+    await expect(dialog.queryByText(/Pick single keys/)).toBeNull();
+    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    await expect(saveAllProjects).toHaveBeenCalledWith(expect.objectContaining({ projects: '*' }));
   },
 };
 
@@ -356,7 +371,7 @@ export const Glossary: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Permissions: administration' }));
     const machines = canvas.getByText('Manage machines', { selector: 'dt' });
     await expect(machines.nextElementSibling).toHaveTextContent('Only on rules that cover a whole project.');
-    await expect(canvas.getByText(/Manage projects needs all projects/)).toBeVisible();
+    await expect(canvas.getByText(/Manage projects is an organisation permission/)).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Presets' }));
     const admin = canvas.getByText('Admin', { selector: 'dt' });
     await expect(admin.nextElementSibling).not.toHaveTextContent('Reveal');

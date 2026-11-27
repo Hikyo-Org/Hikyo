@@ -119,10 +119,8 @@ func NavigationProjectAllowed(p Proof, id domain.ProjectID) bool {
 		return true
 	}
 	for _, rule := range v.navigation {
-		for _, project := range rule.Where.Projects {
-			if project == id {
-				return true
-			}
+		if rule.Where.Names(id) {
+			return true
 		}
 	}
 	return false

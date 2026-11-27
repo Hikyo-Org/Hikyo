@@ -15,8 +15,9 @@ import (
 // member access rules before schema70 (no rule table exists there) and erases no
 // email invitations before schema87, and loads grants and rules without the
 // containment condition (and checks the personal-owner fallback without it)
-// before schema89, which cannot hold a contained principal. These constructors
-// add no login path and preserve restore reconciliation.
+// before schema89, which cannot hold a contained principal, and reads rules
+// without rules.project_mode (every rule project-bound) before schema99.
+// These constructors add no login path and preserve restore reconciliation.
 func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r := NewSQLite(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
@@ -26,15 +27,16 @@ func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforeRules = version < 70
 	r.historicalRecoveryBeforeEmailInvitations = version < 87
 	r.historicalRecoveryBeforeContainment = version < 89
+	r.historicalRecoveryBeforeAllProjects = version < 99
 	return r
 }
 
 // NewHistoricalRecoveryPG binds a resolver to a verified source schema version
 // for guarded recovery, with the same compatibility as NewHistoricalRecoverySQLite:
 // versions before 47 (privacy), 50 (profile), 64 (PKI retention), 66 (temporary
-// access), 70 (member access rules), 87 (email invitation erasure) and 89
-// (containment-free grant, rule and personal-owner projections) each use the
-// corresponding historical behavior.
+// access), 70 (member access rules), 87 (email invitation erasure), 89
+// (containment-free grant, rule and personal-owner projections) and 99
+// (rules without project_mode) each use the corresponding historical behavior.
 func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r := NewPG(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
@@ -44,6 +46,7 @@ func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforeRules = version < 70
 	r.historicalRecoveryBeforeEmailInvitations = version < 87
 	r.historicalRecoveryBeforeContainment = version < 89
+	r.historicalRecoveryBeforeAllProjects = version < 99
 	return r
 }
 func (r *Resolver) recoveryGrantsBeforePrivacy(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {

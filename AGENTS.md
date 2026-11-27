@@ -23,8 +23,11 @@ admission refuses go to `main`. See the [branching guide](./docs/development/bra
 Every commit on a pull request **must** carry a Developer Certificate of Origin
 (DCO) sign-off, and this is checked **before** the PR can merge: the
 trusted admission gates (`scripts/ci/pr-gate/queue_dco.go`, running `scripts/ci/check-dco.sh`) refuse
-a head when any non-merge commit in the range is missing one. Merge commits are not checked. They exempt only Dependabot's commits, on PRs
-it opened and on canonical `release/*` or `main` promotion heads that carry them.
+a head when any non-merge commit in the range is missing one. Merge commits are not checked. They exempt only Dependabot's commits: those in
+PRs it opened, and those already reachable from the base repository's `main` or `dev`, so
+promotions and backmerges can carry them. The gate fetches both tips itself, never from the
+PR. This relies on the `dev` and `main` rulesets requiring PRs and status checks and
+blocking non-fast-forward pushes, with no bypass actors.
 
 - Add both the signature and sign-off when you commit: `git commit -S -s`.
 - The trailer must match the commit's author identity exactly:
@@ -85,6 +88,16 @@ but it is not a substitute for this signature.
   not), and type errors are always reported in full. Reproduce with
   `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP pushes only, set
   `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci` check still runs it.
+- Last, the hook runs `scripts/ci/go-affected-test.sh <merge base>`: the Go tests
+  of the packages the pushed changes can affect (changed or embedded files and
+  every package whose tests depend on them; all on `go.mod`/`go.sum`). A test
+  that reads a changed repository file without embedding it is missed unless the
+  selector has an explicit path rule for it, so CI stays the gate. It runs in a
+  locked worktree kept in the git directory. `internal/isolation` and `scripts/ci`
+  are never run by the hook, so only CI catches breaks in them. A cold run of a
+  widely depended-on change takes about 25 minutes. PostgreSQL tests need
+  `HIKYO_TEST_POSTGRES_DSN`. For WIP pushes only, set
+  `HIKYO_PREPUSH_GOTEST=skip`; CI still runs the suites.
 - For `web/` changes, also run the affected flow specs before requesting review and
   list them in the PR Evidence:
   `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`

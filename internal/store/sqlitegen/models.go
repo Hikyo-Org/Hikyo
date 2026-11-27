@@ -1479,6 +1479,7 @@ type Rule struct {
 	KeyMode     string
 	CreatedBy   string
 	CreatedAt   string
+	ProjectMode string
 }
 
 type RuleItem struct {
@@ -1486,7 +1487,7 @@ type RuleItem struct {
 	RuleID     string
 	OrgID      string
 	Axis       string
-	ProjectID  string
+	ProjectID  sql.NullString
 	EnvID      sql.NullString
 	KeyID      sql.NullString
 	FolderPath sql.NullString

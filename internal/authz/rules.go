@@ -216,6 +216,26 @@ func (a *TxAuthorizer) RuleIDsForOrg(ctx context.Context, org domain.OrgID) ([]s
 	return a.r.RuleIDsForOrg(ctx, string(org))
 }
 
+// RuleOrgProjects lists the org's current projects: the projects an
+// all-projects rule covers today. lock takes them for a rule write (see
+// authn.Resolver.RuleOrgProjects).
+func (a *TxAuthorizer) RuleOrgProjects(ctx context.Context, org domain.OrgID, lock bool) ([]domain.ProjectID, error) {
+	return a.r.RuleOrgProjects(ctx, string(org), lock)
+}
+
+// LockOrgProjectsForDelete lists the org's projects for a project deletion,
+// locked so it serializes with other deletions and all-projects rule writes.
+func (a *TxAuthorizer) LockOrgProjectsForDelete(ctx context.Context, org domain.OrgID) ([]domain.ProjectID, error) {
+	return a.r.LockOrgProjectsForDelete(ctx, string(org))
+}
+
+// AllProjectsRulesInOrg lists the org's all-projects rules with their stored
+// item counts; the org's last project cannot be deleted while one exists, and
+// no project may be created that lists one past the v1 bounds.
+func (a *TxAuthorizer) AllProjectsRulesInOrg(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error) {
+	return a.r.AllProjectsRulesInOrg(ctx, string(org))
+}
+
 // RuleKeyExists reports ErrNotFound unless the key id exists in the project
 // scope names; the rule writer uses it to refuse a dangling key item clearly.
 func (a *TxAuthorizer) RuleKeyExists(ctx context.Context, s domain.Scope, keyID string) error {

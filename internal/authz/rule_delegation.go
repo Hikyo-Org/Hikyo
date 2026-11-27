@@ -3,7 +3,6 @@ package authz
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
@@ -15,7 +14,7 @@ func (a *TxAuthorizer) AuthorizeRule(ctx context.Context, caller Identity, op Op
 	if op != OpRuleCreate && op != OpRuleRevoke && op != OpRuleListProject {
 		return nil, fmt.Errorf("authz: operation %q does not address a rule selector", op)
 	}
-	if caller.Principal == "" || target.Org != scope.Org || !slices.Contains(target.Where.Projects, scope.Project) {
+	if caller.Principal == "" || target.Org != scope.Org || !target.Where.Names(scope.Project) {
 		return nil, fmt.Errorf("authz: invalid rule authorization target")
 	}
 	if caller.Class == domain.ClassInstanceConn {
@@ -45,7 +44,7 @@ func (a *TxAuthorizer) AuthorizeRuleList(ctx context.Context, caller Identity, s
 			return nil, err
 		}
 		for _, rule := range rules {
-			if rule.Org == scope.Org && rule.Capability == domain.CapManageMembers && rule.Validate() == nil && slices.Contains(rule.Where.Projects, scope.Project) {
+			if rule.Org == scope.Org && rule.Capability == domain.CapManageMembers && rule.Validate() == nil && rule.Where.Names(scope.Project) {
 				return a.AuthorizeRule(ctx, caller, OpRuleListProject, scope, rule)
 			}
 		}
@@ -115,6 +114,41 @@ func (a *TxAuthorizer) ruleDelegationHeld(ctx context.Context, f Formula, chain 
 	return true, nil
 }
 
+// RuleFutureProjectsHeld is the future-project half of the authority over an
+// all-projects rule (ADR D7, #1446). AuthorizeRule and RuleCapabilityHeld
+// prove the caller in every current project; a rule over all projects also
+// reaches every project created later, so the caller's management and the
+// conferred capability must cover domain.FutureProjectWitness as well. Only an
+// org- or instance-scope grant, or another all-projects rule, names it: a
+// list of today's projects never covers tomorrow's.
+func (a *TxAuthorizer) RuleFutureProjectsHeld(ctx context.Context, caller Identity, target domain.Rule) (manage, capability bool, err error) {
+	if !target.Where.AllProjects {
+		return false, false, fmt.Errorf("authz: the future-project check addresses an all-projects rule")
+	}
+	grants, err := a.r.Grants(ctx, caller.Principal)
+	if err != nil {
+		return false, false, err
+	}
+	var rules []domain.Rule
+	if rulesApply(caller) {
+		rules, err = a.r.Rules(ctx, caller.Principal)
+		if err != nil {
+			return false, false, err
+		}
+	}
+	chain := domain.Scope{Org: target.Org, Project: domain.FutureProjectWitness}
+	manage, err = a.ruleDelegationHeld(ctx, Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}}, chain, grants, rules, target)
+	if err != nil || !manage {
+		return false, false, err
+	}
+	w := target.Where
+	if target.Capability == domain.CapRead {
+		w.KeyMode, w.Keys = domain.AxisAll, nil
+	}
+	capability, err = a.ruleSelectorHeld(ctx, chain, grants, rules, target.Capability, w)
+	return manage, capability, err
+}
+
 // RuleCapabilityHeld is the grantor bound. A selector may not confer a
 // capability beyond the grantor's own reach, including future objects on an
 // all-except axis. This is separate from the management proof: possessing
@@ -179,7 +213,7 @@ func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain doma
 		}
 	}
 	for _, rule := range rules {
-		if rule.Org != chain.Org || rule.Capability != capability || rule.Validate() != nil || !slices.Contains(rule.Where.Projects, chain.Project) {
+		if rule.Org != chain.Org || rule.Capability != capability || rule.Validate() != nil || !rule.Where.Names(chain.Project) {
 			continue
 		}
 		outer := rule.Where
@@ -187,7 +221,7 @@ func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain doma
 			outer.KeyMode, outer.Keys = domain.AxisAll, nil
 		}
 		folders := map[string]string{}
-		for _, items := range [][]domain.RuleKeyItem{outer.Keys[chain.Project], target.Keys[chain.Project]} {
+		for _, items := range [][]domain.RuleKeyItem{outer.KeysIn(chain.Project), target.KeysIn(chain.Project)} {
 			for _, item := range items {
 				if item.IsFolder {
 					continue

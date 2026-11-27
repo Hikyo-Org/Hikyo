@@ -632,13 +632,23 @@ capability for one person; every verb is human-session only and needs
 
 - `access rule list [--org O] [--project P]`: the org's rules, or the rules
   naming the resolved project.
-- `access rule add --principal ID --capability C [--in-project P]... [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
+- `access rule add --principal ID --capability C [--in-project P... | --all-projects] [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
   `--org/--project/--env` stay the shared scope flags, so the rule's axes take
   distinct names. `--in-project` is repeatable and defaults to the resolved
   project. An environment or key id is qualified `PROJECT:ID` when the rule
   names several projects; a folder applies to every project unless qualified
   the same way. One axis takes only-items or except-items, never both.
+  `--all-projects` (#1446) covers every project of the org, including later
+  ones: the CLI lists the org's projects and sends exactly them with
+  `where.project_mode: all`; a stale list is refused with a conflict. It takes
+  unqualified folders only, never `--in-project`, environments or keys.
 - `access rule remove <rule>`.
+- An all-projects rule (#1446) reads back with `where.project_mode: all` and
+  `projects` listing the org's current projects (a project listing: that
+  project only), its folder items repeated
+  under each; `access rule list` shows it once as `all projects (now ...)`.
+  A create sends the same shape: the org's current projects, folders repeated
+  under each (owner decision R2).
 - `key update <key> --folder P --confirm-widening <principal>...` and
   `definitions apply --plan ID --confirm-widening <principal>...` confirm a
   widening move.

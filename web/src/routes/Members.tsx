@@ -56,8 +56,7 @@ import { AccessGlossary } from './accessRules/AccessGlossary.tsx';
 import {
   kindOfId,
   newRule,
-  permOf,
-  reach,
+  ruleHolders,
   rulesFromGrants,
   rulesFromServer,
   savePlan,
@@ -195,6 +194,9 @@ export function Members({ scope }: { scope: MembersScope }) {
     : projectId === ''
       ? memberProjects.map((p) => p.id)
       : memberProjects.filter((p) => p.id === projectId).map((p) => p.id);
+  // Org-wide, askable is the organisation's project list as shown: the editor
+  // offers "All projects" and a save sends that list (#1446).
+  const orgWide = !instance && projectId === '' && !selectorTopologyOnly;
   const catalogues = useKeyCatalogues(org, askable);
   const [find, setFind] = useState('');
   // The two reference tools open in the side panel from the row above the
@@ -721,6 +723,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           rule={editing.draft}
           showReach={!selectorTopologyOnly}
           projects={askable}
+          allProjects={orgWide}
           busy={ruleMutations.save.isPending || ruleMutations.remove.isPending}
           failure={editorFailure}
           onCancel={() => setEditing(null)}
@@ -742,7 +745,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             const before = editing.before;
             const revokes = savePlan(before, draft).revoke.length > 0;
             ruleMutations.save.mutate(
-              { before, draft },
+              { before, draft, orgProjects: orgWide ? askable : [] },
               {
                 onSuccess: () => {
                   setEditing(null);
@@ -975,32 +978,6 @@ function Inspect({
       ) : null}
     </Panel>
   );
-}
-
-/**
- * ruleHolders is the scope inspector's rule half: who an access rule gives
- * this capability on the WHOLE scope picked (every environment of a project,
- * or the one environment), so the grant answer above it does not under-report.
- * No rule names all projects, so an organisation scope has none.
- */
-function ruleHolders(world: World, capability: string, option: ScopeOption): string[] {
-  const id = permOf(capability);
-  const scope = option.scope;
-  if (id === undefined || (scope.kind !== 'project' && scope.kind !== 'environment')) return [];
-  const envs =
-    scope.kind === 'environment'
-      ? [scope.environment]
-      : (world.projects.find((p) => p.id === scope.project)?.envs.map((e) => e.id) ?? []);
-  const holders = world.rules.filter(
-    (rule) =>
-      rule.source.kind === 'rule' &&
-      envs.length > 0 &&
-      envs.every((env) => {
-        const r = reach(world, rule, id, scope.project, env, undefined);
-        return r.hit && r.ok;
-      }),
-  );
-  return [...new Set(holders.map((rule) => world.people.find((p) => p.id === rule.member)?.name ?? rule.member))];
 }
 
 function compactScopeLabel(option: ScopeOption): string {

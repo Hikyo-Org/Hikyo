@@ -65,6 +65,24 @@ subfolders; an only-pick of a folder is exact. The browser's **Edit rule** repla
 current rule commands add, list and remove rules; removing and then adding is
 two operations.
 
+A rule may also cover **all projects** of the organization, including
+projects created later. Such a rule covers every environment and may narrow
+keys by folder only (*only* or *except* folders); it cannot name environments
+or single keys, and machine identities cannot hold one. Creating or removing it
+needs member management over the whole organization. Listings show it with the
+organization's current projects. An organization without projects cannot get
+one, and its last project cannot be deleted while one exists: the refusal names
+the rules to remove first. To create one, choose **All projects** in the
+Members rule editor or run `hikyo access rule add --all-projects`; both list
+the organization's projects first, and the rule is refused if a project was
+added or removed in the meantime.
+
+Because a listing repeats the rule's folders under every project, a rule
+counts as its projects times one plus its folders, at most 500. A rule that
+would count more is refused, and so is a new project that would take an
+existing rule past 500; that refusal also names the rules to narrow or
+remove.
+
 Moving a key to another folder can give people access through their rules.
 Such a move is refused until it is confirmed with `--confirm-widening`
 naming exactly those people; only a member manager of the project is told who
