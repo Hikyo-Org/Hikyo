@@ -243,9 +243,9 @@ func setsErrexit(args []string) bool {
 // patterns are needed only for spellings it leaves unknown ($'...', a backslash inside "...").
 // eval is also found by the parser (unscannedErrexitUses), which reads a quoted or escaped
 // eval. The match is textual, so it also rejects such text in a comment or string, and it
-// cannot see a form built at run time (eval "$cmd", a set or shopt name from a variable) or a
-// ${ } or alias spelling, an escape inside $'...' or a brace expansion. shortcut: rejected, not parsed; teach bareTests the form if a script
-// ever needs it.
+// cannot see a form built at run time (eval "$cmd", a set or shopt name from a variable), a
+// ${ } or alias spelling, an escape inside $'...' or a brace expansion. shortcut: rejected, not
+// parsed; teach bareTests the form if a script ever needs it.
 var unscannedErrexitForms = []struct {
 	name    string
 	pattern *regexp.Regexp
@@ -256,8 +256,9 @@ var unscannedErrexitForms = []struct {
 }
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
-// and for each eval, spelled with quotes, backslashes, line continuations or a plain $'...', whose arguments' text
-// names set or shopt. An eval name or argument built from a variable is not seen.
+// and for each eval whose arguments' text names set or shopt. Words are read as source text
+// without quote marks, backslashes, $ and line continuations, so any mix of those spellings is
+// seen. An eval name or argument built from a variable is not.
 func unscannedErrexitUses(script string) []string {
 	var found []string
 	if file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), ""); err == nil {
@@ -265,13 +266,12 @@ func unscannedErrexitUses(script string) []string {
 			if call, ok := node.(*syntax.CallExpr); ok {
 				// Source text, not literal(): $'eval' and "set -$x" have no literal value but still
 				// name eval and set, and the check is textual like the patterns below.
-				source := func(word *syntax.Word) string { return script[word.Pos().Offset():word.End().Offset()] }
-				// Both readings: source text misses a line continuation that literal() removes.
-				names := func(word *syntax.Word, want func(string) bool) bool { return want(literal(word)) || want(source(word)) }
-				isEval := func(text string) bool { return quoteMarks.Replace(text) == "eval" }
-				if words := commandWords(call); len(words) > 1 && names(words[0], isEval) {
+				source := func(word *syntax.Word) string {
+					return quoteMarks.Replace(strings.ReplaceAll(script[word.Pos().Offset():word.End().Offset()], "\\\n", ""))
+				}
+				if words := commandWords(call); len(words) > 1 && source(words[0]) == "eval" {
 					for _, word := range words[1:] {
-						if names(word, setOrShopt.MatchString) {
+						if setOrShopt.MatchString(source(word)) {
 							found = append(found, fmt.Sprintf("%d: eval of set or shopt", words[0].Pos().Line()))
 							break
 						}
@@ -553,6 +553,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"eval set -e\n", "eval 'set -e'\n", "eval \"shopt -s inherit_errexit\"\n",
 		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "\"eval\" set -e\n", "\\eval set -e\n", "'eval' set -e\n", "e\"val\" set -e\n", "x=$(\"eval\" set -e)\n",
 		"$'eval' set -e\n", "\"eval\" \"set -$x\"\n", "builtin \"eval\" set -e\n", "\"eval\" -- set -e\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n", "e\\\nval set -e\n", "\"e\\\nval\" set -e\n", "eval s\\\net -e\n", "eval \"s\\\net -e\"\n",
+		"$'e'\\\nval set -e\n", "eval $'s'\\\net -e\n", "eval \"s\\\net -$x\"\n", "eval 's\\\net -e'\n",
 	} {
 		if len(matches(script)) == 0 {
 			t.Errorf("not rejected: %q", script)
