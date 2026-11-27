@@ -367,6 +367,7 @@ func TestIsBashShellTreatsWindowsDefaultAsPowerShell(t *testing.T) {
 		{"  ", "ubuntu-latest", true},
 		{"  ", "windows-latest", true},
 		{"python", "ubuntu-latest", false},
+		{"\"pwsh\" -command \". '{0}'\"", "ubuntu-latest", false},
 		{"C:\\Windows\\cmd.EXE /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\"", "windows-latest", false},
 		{"pwsh -command \". '{0}'\"", "ubuntu-latest", false},
 		{"/bin/sh -e {0}", "ubuntu-latest", false},
