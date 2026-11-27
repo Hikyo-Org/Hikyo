@@ -133,7 +133,22 @@ jobs:
             done
             return 1
           }
-          if [ "$eligible" -ge 2 ] && [ "$eligible" = "$total" ] && { [ "${#groups[@]}" = 0 ] || [ "${#others[@]}" = 0 ]; }; then
+          # The run-level rerun starts every failed job at once, so a set of non-group jobs must
+          # afford their combined cost above the reserve, not each one alone.
+          # Rerunning only one of several non-group jobs would strand the rest: the next attempt lists
+          # only its own jobs, so no later callback sees them. Hold them all for rerun-after-reset, which
+          # reruns the set once the window has recovered and the set fits above the reserve. Known limits, routed
+          # to #1598: a set of 13 or more publishers (n x 42 above limit - reserve on a 1000-request window) never
+          # fits and stays held for the operator; a set of 12 is usually held too, because the sweep's own listings
+          # and other callers spend after the reset (a 12-set needs about 984 left); a run that also failed another
+          # job (not the exact set) takes the single-job path below, which strands its siblings.
+          combined=$((${#others[@]} * other_cost))
+          if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ "$eligible" = "$total" ] && [ $((remaining - combined)) -lt "$reserve" ]; then
+            echo "Held for the group reserve ($remaining of $limit requests left): the ${#others[@]} failed jobs of this run cost $((${#others[@]} * other_cost)) together, more than leaves the reserve. rerun-after-reset reruns them once the window has reset, if they fit then; a set that never fits (13 or more publishers, usually 12 too) needs the operator: gh workflow run ci-queue-gate.yml -f pr_number=<n>."
+            echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+            exit 0
+          fi
+          if [ "$eligible" -ge 2 ] && [ "$eligible" = "$total" ] && { [ "${#others[@]}" = 0 ] || { [ "${#groups[@]}" = 0 ] && [ $((remaining - combined)) -ge "$reserve" ]; }; }; then
             echo "Rerunning the $eligible failed jobs of run $RUN_ID (attempt $RUN_ATTEMPT) together."
             target="repos/$GH_REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
             named="run $RUN_ID"
@@ -223,11 +238,13 @@ jobs:
             return 1
           }
           # A rerun request is an idempotent re-request, not a gate write: a refusal is retried
-          # with backoff (65 seconds at most) before the job is reported not rerun.
+          # with backoff (65 seconds at most) before the job is reported not rerun. No request starts
+          # after the 66 minutes: that is status 2, and the caller holds the job instead of refusing it.
           rerun_post() {
             local delay
             for delay in 0 5 15 45; do
               if [ "$delay" != 0 ]; then sleep "$delay"; fi
+              if [ $(($(date +%s) - started)) -gt 3960 ]; then return 2; fi
               if gh api --method POST "$1" >/dev/null 2>&1; then return 0; fi
             done
             return 1
@@ -265,8 +282,7 @@ jobs:
             wait_for_reset || exit 1
             slept=1
           fi
-          # What the window held when releasing began; reruns released since have not spent yet.
-          budget_at_start=$remaining
+          last_release=$started
           # Same trust rule as the rerun job's `if`, applied to listed runs: a branch can
           # edit these workflows, so only their real triggers on protected branches count.
           since=$(jq -nr --argjson at "$(($(date +%s) - 10800))" '$at | todate')
@@ -315,17 +331,20 @@ jobs:
             done <<<"$2"
             count=$((${#g[@]} + ${#o[@]}))
             [ "$count" -gt 0 ] || return 0
-            # Entries are "type id cost run key": the key is the job name (kind and head), or the run for a run-level rerun.
+            # Entries are "type id cost run heads": heads lists every "jobid:name" (kind and head) the rerun covers, so a stale run is cut down to the heads no newer run has.
+            local i pairs=""
             if [ "$count" -ge 2 ] && [ "$count" = "$total" ] && { [ "${#g[@]}" = 0 ] || [ "${#o[@]}" = 0 ]; }; then
               if [ "${#g[@]}" -gt 0 ]; then
-                group_plan="${group_plan}run $1 $((count * group_cost)) $1 run$1"$'\n'
+                for i in "${!g[@]}"; do pairs="$pairs${pairs:+,}${g[$i]}:${gh[$i]}"; done
+                group_plan="${group_plan}run $1 $((count * group_cost)) $1 $pairs"$'\n'
               else
-                other_plan="${other_plan}run $1 $((count * other_cost)) $1 run$1"$'\n'
+                for i in "${!o[@]}"; do pairs="$pairs${pairs:+,}${o[$i]}:${oh[$i]}"; done
+                other_plan="${other_plan}run $1 $((count * other_cost)) $1 $pairs"$'\n'
               fi
             elif [ "${#g[@]}" -gt 0 ]; then
-              group_plan="${group_plan}job ${g[0]} $group_cost $1 ${gh[0]}"$'\n'
+              group_plan="${group_plan}job ${g[0]} $group_cost $1 ${g[0]}:${gh[0]}"$'\n'
             else
-              other_plan="${other_plan}job ${o[0]} $other_cost $1 ${oh[0]}"$'\n'
+              other_plan="${other_plan}job ${o[0]} $other_cost $1 ${o[0]}:${oh[0]}"$'\n'
             fi
           }
           while read -r run_id attempt; do
@@ -339,8 +358,33 @@ jobs:
             plan_run "$run_id" "$found"
           done <<<"$runs"
           # Newest run first, and one entry per job name (kind and head): a stale run of an earlier head
-          # must not take a release slot ahead of the current one.
-          newest_per_head() { sort -k4,4nr | awk 'NF && !seen[$5]++'; }
+          # must not take a release slot ahead of the current one. A run-level entry that covers a head a
+          # newer run already has is cut down to one job of a head that is still unseen; its other unseen heads
+          # become "skip" entries, which the release loop holds and names, because a run takes one rerun per pass.
+          newest_per_head() {
+            sort -k4,4nr | awk '
+              NF {
+                n = split($5, pair, ",")
+                fresh = 0
+                for (i = 1; i <= n; i++) {
+                  split(pair[i], part, ":")
+                  if (!(part[2] in seen)) fresh++
+                }
+                if (fresh == n) {
+                  for (i = 1; i <= n; i++) { split(pair[i], part, ":"); seen[part[2]] = 1 }
+                  print
+                } else if (fresh > 0) {
+                  done = 0
+                  for (i = 1; i <= n; i++) {
+                    split(pair[i], part, ":")
+                    if (part[2] in seen) continue
+                    seen[part[2]] = 1
+                    if (!done) { printf "job %s %d %s %s\n", part[1], $3 / n, $4, pair[i]; done = 1 }
+                    else printf "skip %s 0 %s %s\n", part[1], $4, pair[i]
+                  }
+                }
+              }'
+          }
           group_plan=$(printf '%s' "$group_plan" | newest_per_head)
           other_plan=$(printf '%s' "$other_plan" | newest_per_head)
           # Space the reruns and count each one at its expected cost before it is released: a
@@ -354,7 +398,12 @@ jobs:
           budget_down=0
           retry_plan=""
           spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other
-            local available floor path
+            local available floor path rc
+            if [ "$1" = skip ]; then
+              echo "Not rerunning job $2: a run takes one rerun per pass, which goes to the run's first unseen head above."
+              held="$held job:$2"
+              return 0
+            fi
             if [ $(($(date +%s) - started)) -gt 3960 ]; then
               held="$held $1:$2"
               return 0
@@ -367,8 +416,10 @@ jobs:
               unread="$unread $1:$2"
               return 0
             fi
-            available=$remaining
-            if [ $((budget_at_start - released)) -lt "$available" ]; then available=$((budget_at_start - released)); fi
+            # Every rerun released so far counts as outstanding, although part of its cost may already show in the live
+            # balance: min() against the balance at the start would let other callers' spend hide a rerun that has not
+            # started. The sweep holds more as a result, never less; a held job needs the operator.
+            available=$((remaining - released))
             floor=$((limit / 5))
             if [ "$4" = other ] && [ "$reserve" -gt "$floor" ]; then floor=$reserve; fi
             if [ $((available - $3)) -lt "$floor" ]; then
@@ -378,8 +429,15 @@ jobs:
             fi
             echo "Rerunning $1 $2 (about $3 requests of the $available left)."
             if [ "$1" = run ]; then path="repos/$GH_REPO/actions/runs/$2/rerun-failed-jobs"; else path="repos/$GH_REPO/actions/jobs/$2/rerun"; fi
+            rc=0
+            rerun_post "$path" || rc=$?
+            if [ "$rc" = 2 ]; then
+              held="$held $1:$2"
+              return 0
+            fi
             released=$((released + $3))
-            if ! rerun_post "$path"; then
+            last_release=$(date +%s)
+            if [ "$rc" != 0 ]; then
               echo "The rerun of $1 $2 was refused."
               refused="$refused $1:$2"
             fi
@@ -409,8 +467,9 @@ jobs:
           if [ -n "$retry_plan" ] && [ "$slept" = 0 ]; then
             echo "Held for the reserve: waiting for the reset to release them once."
             if wait_for_reset; then
-              budget_at_start=$remaining
-              released=0
+              # The first pass's reruns are still starting when the reset is seconds away: only a wait
+              # longer than a publisher's runtime leaves their cost in the old window.
+              if [ $(($(date +%s) - last_release)) -ge 120 ]; then released=0; fi
               second=1
               plan=$retry_plan
               retry_plan=""

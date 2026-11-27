@@ -172,9 +172,18 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "643", "923", "dequeued and re-queued", "1,401", "40.1%", "accepted this figure on 2026-11-26", "dev-revoke"} {
-		if !strings.Contains(string(raw), want) {
-			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
+	// The figures must sit in the exception's own section: elsewhere in the file they would satisfy the pin by accident.
+	const heading = "#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)"
+	_, section, found := strings.Cut(string(raw), heading)
+	if !found {
+		t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", heading)
+	}
+	if end := regexp.MustCompile(`\n#{1,4} `).FindStringIndex(section); end != nil {
+		section = section[:end[0]]
+	}
+	for _, want := range []string{"https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "643", "923", "dequeued and re-queued", "1,401", "40.1%", "accepted this figure on 2026-11-26", "dev-revoke", "With " + strconv.Itoa(gatedBound) + " allowed to gated work"} {
+		if !strings.Contains(section, want) {
+			t.Fatalf("the interim exception section of docs/development/ci.md must state the sizing: missing %q", want)
 		}
 	}
 }
