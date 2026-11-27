@@ -85,7 +85,7 @@ jobs:
           }
           balance
           # Every failed or cancelled job of the attempt, with whether it is a publisher or
-          # group job whose reconcile step failed (the only kind worth another budget). Worker
+          # group job whose reconcile step failed (the only kind worth another budget). The
           # worker jobs are named by kind (group-<sha> for a group job, publish-<sha> otherwise), and reconcile always runs, so a failed setup
           # counts too. Discovery is left alone, and so is dev-revoke: it counts in the failed total but never
           # qualifies, so its presence forces job-level reruns of the publishers (the run-level rerun skips the per-job reserve

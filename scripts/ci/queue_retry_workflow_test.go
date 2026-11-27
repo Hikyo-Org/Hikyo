@@ -234,10 +234,12 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
-			// Each "|"-separated balance answers one rate_limit read in turn; the last repeats.
 			// "before|after": the first balance answers rate_limit reads until the jobs listing has run
 			// (it spends requests), the second answers reads after it; one balance answers both.
 			balances := strings.Split(tc.rateLimit, "|")
+			if len(balances) > 2 {
+				t.Fatalf("rateLimit %q: at most a before and an after balance", tc.rateLimit)
+			}
 			for name, balance := range map[string]string{"before.json": balances[0], "after.json": balances[len(balances)-1]} {
 				rl := strings.Fields(balance)
 				graphql := ""
