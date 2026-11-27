@@ -47,11 +47,13 @@ func (s *SelfConfig) Capture(ctx context.Context) (*runtimeconfig.Bundle, error)
 	if err != nil {
 		return nil, errors.Join(ErrSelfConfigUnavailable, err)
 	}
-	active := s.active.Load()
+	// Read publishing before active: activation stores the new bundle before it
+	// clears the flag, so a cleared flag guarantees the following load sees it.
 	fenced := ErrSelfConfigFenced
 	if s.publishing.Load() {
 		fenced = ErrSelfConfigPublicationPending
 	}
+	active := s.active.Load()
 	if active == nil {
 		return nil, ErrSelfConfigUnavailable
 	}
@@ -95,8 +97,8 @@ func (s *SelfConfig) LoadRuntime(ctx context.Context) error {
 		return err
 	}
 	s.publishing.Store(true)
+	defer s.publishing.Store(false) // every exit, including a panic, clears the flag
 	if err := s.activateInstallation(ctx, "seed:"+seed.token, seed.incarnation, bundle); err != nil {
-		s.publishing.Store(false)
 		return err
 	}
 	active := &selfConfigActive{bundle: bundle, owner: seed.owner, incarnation: seed.incarnation, seedToken: seed.token}
@@ -304,9 +306,9 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 			return ErrDeploymentSourcesPending
 		}
 		s.publishing.Store(true)
+		defer s.publishing.Store(false) // every exit, including a panic, clears the flag
 		if err := s.activateInstallation(ctx, binding.DesiredSnapshotID, binding.Incarnation, bundle); err != nil {
 			s.active.Store(nil)
-			s.publishing.Store(false)
 			return errors.Join(err, s.recordRuntimeRefusal(ctx, binding, nodes, "activation_failed"))
 		}
 		active = &selfConfigActive{bundle: bundle, owner: binding.OwnerInstanceID, incarnation: binding.Incarnation, snapshotID: binding.DesiredSnapshotID, generation: binding.Generation, revision: binding.DesiredRevision}
