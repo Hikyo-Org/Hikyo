@@ -9804,7 +9804,7 @@ type PersonalOffboardingServiceAccount struct {
 
 // PersonalValueCount defines model for PersonalValueCount.
 type PersonalValueCount struct {
-	// Holders Deprecated alias of `members`, kept until v2. Not marked deprecated: true because the v1 freeze guard rejects a deprecation flag on a released field.
+	// Holders Deprecated alias of `members`, kept until v2.
 	Holders int `json:"holders"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.

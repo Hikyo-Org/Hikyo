@@ -1,6 +1,6 @@
 # Automatic security maintenance (ADR, proposed 2026-11-04)
 
-> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance, bare "operator" for a person to production operator or instance administrator); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
 
 > **Status: proposed with [#1068](https://github.com/Hikyo-Org/Hikyo/issues/1068).**
 > It becomes operative when its reviewed PR merges. It authorizes no release,
@@ -73,7 +73,7 @@ project-held deployment credential.
 Owner decision, 2026-11-04: **automatic maintenance is on by default in the chart** for an
 instance that has chosen unattended upgrades, and the recipes enable it too. The chart cannot
 turn on unattended upgrades itself, because they need a scratch database and a state volume only
-the production operator can provide. Owner decision, 2026-11-06: this stays so, which means a Kubernetes operator
+the production operator can provide. Owner decision, 2026-11-06: this stays so, which means a production operator on Kubernetes
 sets `upgrade.unattended.enabled` once before fixes apply. Default enrollment happens on `helm install`. An upgrading release
 enrolls only when asked, because a failed hook would fail that release.
 

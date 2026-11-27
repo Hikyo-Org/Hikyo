@@ -21688,7 +21688,8 @@ components:
         key_id: {$ref: "#/components/schemas/ID"}
         name: {type: string, maxLength: 256}
         members: {type: integer, minimum: 0, description: Members with a value of their own for this key here.}
-        holders: {type: integer, minimum: 0, description: "Deprecated alias of `members`, kept until v2. Not marked deprecated: true because the v1 freeze guard rejects a deprecation flag on a released field."}
+        # Not flagged deprecated: true; the v1 freeze guard rejects a deprecation flag on a released field.
+        holders: {type: integer, minimum: 0, description: "Deprecated alias of `members`, kept until v2."}
         notices: {type: integer, minimum: 0, description: People with an unacknowledged removal notice.}
         required: {type: boolean, description: The key is personal_required_in this environment.}
     PersonalValueCounts:

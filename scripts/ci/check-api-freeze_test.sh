@@ -41,6 +41,21 @@ active_output=$($guard)
 printf '%s\n' "$active_output" | grep -F \
 	'API freeze guard passed: api/openapi.yaml is compatible with v1.0.0' >/dev/null
 
+# The newest stable v1 tag is the base: a later minor wins, nightlies are
+# ignored, and v1.10.0 sorts above v1.9.0.
+expect_base() {
+	output=$($guard)
+	printf '%s\n' "$output" | grep -F "compatible with $1" >/dev/null
+}
+git tag v1.1.0
+expect_base v1.1.0
+git tag v1.2.0-nightly.20261201.1
+expect_base v1.1.0
+git tag v1.9.0
+git tag v1.10.0
+expect_base v1.10.0
+git tag --delete v1.1.0 v1.2.0-nightly.20261201.1 v1.9.0 v1.10.0 >/dev/null
+
 cp "$fixture_root/revised.yaml" api/openapi.yaml
 if failure_output=$($guard 2>&1); then
 	printf '%s\n' 'API freeze fixture failed: breaking change passed' >&2
@@ -51,4 +66,4 @@ printf '%s\n' "$failure_output" | grep -F \
 	'[api-path-removed-with-deprecation]' >/dev/null
 
 printf '%s\n' \
-	'API freeze fixture: dormant, invalid-tag refusal, active-pass, and active-refusal paths passed'
+	'API freeze fixture: dormant, invalid-tag refusal, active-pass, newest-stable selection, and active-refusal paths passed'

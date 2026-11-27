@@ -139,7 +139,7 @@ live values; clearing a value and publishing does not erase historical snapshots
 
 The supported coarse erasure boundary is an environment. After completing the
 normal lifecycle teardown of dependent grants, adapters and dynamic leases, an
-authorized operator can use:
+authorized instance administrator can use:
 
 ```bash
 hikyo env delete ENV_ID --org ORG_ID --project PROJECT_ID
@@ -207,7 +207,7 @@ supported; Windows replay refuses. The receipt must be an owner-only regular fil
 at most 4096 bytes, and match the instance and account. Reapplication does not erase customer content or external copies; repeat
 those separately approved actions as well. Keep networking and provisioning isolated
 until reconciliation is complete. Test the procedure on a scratch restore and record
-cleanup. The command is operator-invoked, not an automatic restoration hook.
+cleanup. An instance administrator runs the command; it is not an automatic restoration hook.
 
 ## Website and integration boundary
 
@@ -221,7 +221,7 @@ a complete website privacy notice.
 
 Inventory your own reverse proxy logs, monitoring, identity providers, support
 uploads and delivery destinations. Product no-egress claims do not describe those
-operator-selected systems.
+systems an instance administrator selects.
 
 ## Sources
 

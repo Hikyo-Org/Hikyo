@@ -3267,7 +3267,7 @@ export type PersonalValueCount = {
      */
     members: number;
     /**
-     * Deprecated alias of `members`, kept until v2. Not marked deprecated: true because the v1 freeze guard rejects a deprecation flag on a released field.
+     * Deprecated alias of `members`, kept until v2.
      */
     holders: number;
     /**

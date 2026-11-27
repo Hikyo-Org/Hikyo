@@ -1199,10 +1199,7 @@ func targetTable(list apigen.AdapterTargetList, environmentLabel func(string) st
 // and answers `sealed-webhook`, which is named encrypted-webhook everywhere
 // a person reads it.
 func providerLabel(p apigen.AdapterProvider) string {
-	if p == apigen.AdapterProvider(adapter.EncryptedWebhookProvider) {
-		return adapter.EncryptedWebhookName
-	}
-	return string(p)
+	return adapter.Provider(p).Label()
 }
 
 func adapterDetailTable(in apigen.Adapter) Table {

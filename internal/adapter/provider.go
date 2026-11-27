@@ -27,6 +27,15 @@ const EncryptedWebhookName = "encrypted-webhook"
 
 var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, EncryptedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 
+// Label is the provider's display name: the wire id, except the encrypted
+// webhook, which v1 carries as sealed-webhook.
+func (p Provider) Label() string {
+	if p == EncryptedWebhookProvider {
+		return EncryptedWebhookName
+	}
+	return string(p)
+}
+
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {
 	return append([]Provider(nil), supportedProviders[:]...)
