@@ -3,32 +3,32 @@ package app
 import (
 	"fmt"
 
-	"github.com/Hikyo-Org/hikyo/internal/adapter/sealedwebhook"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/encryptedwebhook"
 	"github.com/Hikyo-Org/hikyo/internal/config"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
 )
 
-// activateSealedWebhookEndpoints validates the operator registry before the
+// activateEncryptedWebhookEndpoints validates the operator registry before the
 // server serves. Any endpoint whose confirmed fingerprint does not match its
 // origin, keys, and generation refuses the whole boot: a changed host or key
 // is a new trust boundary that an instance admin must re-confirm.
-func activateSealedWebhookEndpoints(cfg *config.SealedWebhookConfig) (sealedWebhookEndpoints, error) {
+func activateEncryptedWebhookEndpoints(cfg *config.EncryptedWebhookConfig) (encryptedWebhookEndpoints, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	signer, err := sealedhook.ParseSigningKeyPEM(cfg.SigningKeyPEM)
+	signer, err := encryptedhook.ParseSigningKeyPEM(cfg.SigningKeyPEM)
 	if err != nil {
-		return nil, fmt.Errorf("sealed webhook: %w", err)
+		return nil, fmt.Errorf("encrypted webhook: %w", err)
 	}
-	var signerPQ *sealedhook.MLDSASigner
+	var signerPQ *encryptedhook.MLDSASigner
 	if len(cfg.SigningKeyMLDSA65PEM) > 0 {
-		if signerPQ, err = sealedhook.ParseMLDSASigningKeyPEM(cfg.SigningKeyMLDSA65PEM); err != nil {
-			return nil, fmt.Errorf("sealed webhook: %w", err)
+		if signerPQ, err = encryptedhook.ParseMLDSASigningKeyPEM(cfg.SigningKeyMLDSA65PEM); err != nil {
+			return nil, fmt.Errorf("encrypted webhook: %w", err)
 		}
 	}
-	out := make(sealedWebhookEndpoints, len(cfg.Targets))
+	out := make(encryptedWebhookEndpoints, len(cfg.Targets))
 	for _, target := range cfg.Targets {
-		endpointConfig := sealedwebhook.EndpointConfig{
+		endpointConfig := encryptedwebhook.EndpointConfig{
 			ID: target.ID, InstanceID: cfg.InstanceID, Origin: target.Origin, RecipientKey: target.RecipientKey,
 			AckKey: target.AckKey, Generation: target.Generation, Timeout: target.Timeout,
 			MaxResponseBytes: target.MaxResponseBytes, ConfirmedFingerprint: target.ConfirmedFingerprint, Signer: signer,
@@ -37,9 +37,9 @@ func activateSealedWebhookEndpoints(cfg *config.SealedWebhookConfig) (sealedWebh
 		if target.Protocol == 2 {
 			endpointConfig.SignerPQ = signerPQ
 		}
-		endpoint, err := sealedwebhook.NewEndpoint(endpointConfig)
+		endpoint, err := encryptedwebhook.NewEndpoint(endpointConfig)
 		if err != nil {
-			return nil, fmt.Errorf("sealed webhook: %w", err)
+			return nil, fmt.Errorf("encrypted webhook: %w", err)
 		}
 		out[endpoint.Origin()] = endpoint
 	}

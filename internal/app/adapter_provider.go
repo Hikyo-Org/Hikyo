@@ -11,10 +11,10 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/cloudflare"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/encryptedwebhook"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/gitlab"
-	"github.com/Hikyo-Org/hikyo/internal/adapter/sealedwebhook"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/vaultkv"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
@@ -34,11 +34,11 @@ type adapterProviderPolicy struct {
 	awsWorkloadIdentity bool
 }
 
-// sealedWebhookEndpoints is the activated instance-admin receiver registry,
+// encryptedWebhookEndpoints is the activated instance-admin receiver registry,
 // keyed by exact canonical origin.
-type sealedWebhookEndpoints map[string]*sealedwebhook.Endpoint
+type encryptedWebhookEndpoints map[string]*encryptedwebhook.Endpoint
 
-func deploymentProviderRegistry(endpoints sealedWebhookEndpoints, policy adapterProviderPolicy) map[adapter.Provider]providerConstructor {
+func deploymentProviderRegistry(endpoints encryptedWebhookEndpoints, policy adapterProviderPolicy) map[adapter.Provider]providerConstructor {
 	return map[adapter.Provider]providerConstructor{
 		adapter.ForgejoProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			client, err := forgejo.NewClient(forgejo.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second})
@@ -71,18 +71,18 @@ func deploymentProviderRegistry(endpoints sealedWebhookEndpoints, policy adapter
 		adapter.EncryptedWebhookProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			endpoint := endpoints[config.Origin]
 			if endpoint == nil {
-				return nil, nil, errors.New("sealed-webhook: origin is not an instance-admin configured endpoint")
+				return nil, nil, errors.New("encrypted-webhook: origin is not an instance-admin configured endpoint")
 			}
 			if credential == "" {
-				return nil, nil, errors.New("sealed-webhook: a binding credential is required")
+				return nil, nil, errors.New("encrypted-webhook: a binding credential is required")
 			}
 			clientConfig := endpoint.ClientConfig()
 			clientConfig.AllowedCIDRs = allowed
-			client, err := sealedwebhook.NewClient(clientConfig)
+			client, err := encryptedwebhook.NewClient(clientConfig)
 			if err != nil {
 				return nil, nil, err
 			}
-			return &sealedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, func(context.Context) { client.Forget() }, nil
+			return &encryptedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, func(context.Context) { client.Forget() }, nil
 		},
 		adapter.VaultKVProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			// Five sequential requests (mount check, metadata read, mark, CAS
@@ -129,7 +129,7 @@ func egressOrigin(_ adapter.Provider, origin string) string {
 	return parsed.Scheme + "://" + parsed.Host
 }
 
-func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix, endpoints sealedWebhookEndpoints, policy adapterProviderPolicy) *adapterModuleFactory {
+func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix, endpoints encryptedWebhookEndpoints, policy adapterProviderPolicy) *adapterModuleFactory {
 	return &adapterModuleFactory{egressPolicy: egressPolicy, providers: deploymentProviderRegistry(endpoints, policy)}
 }
 

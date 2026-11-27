@@ -1,5 +1,5 @@
-// Package sealedhook owns every cryptographic operation of the sealed webhook
-// receiver protocol (docs/spec/sealed-webhook.md). Payloads are age-encrypted
+// Package encryptedhook owns every cryptographic operation of the sealed webhook
+// receiver protocol (docs/spec/encrypted-webhook.md). Payloads are age-encrypted
 // to a pinned X25519 recipient, envelopes and acknowledgements are Ed25519
 // signed over a length-prefixed injective encoding, and nothing outside the
 // ciphertext ever carries a secret value.
@@ -7,7 +7,7 @@
 // The adapter transport and the reference receiver call this package; neither
 // touches age or Ed25519 directly, so the encryption-model ADR seam ("the
 // crypto packages are the only callers of a cryptographic primitive") holds.
-package sealedhook
+package encryptedhook
 
 import (
 	"bytes"
@@ -89,13 +89,13 @@ const (
 )
 
 var (
-	ErrMalformed   = errors.New("sealedhook: malformed message")
-	ErrSignature   = errors.New("sealedhook: signature verification failed")
-	ErrUnknownKey  = errors.New("sealedhook: signing key is not pinned")
-	ErrExpired     = errors.New("sealedhook: envelope is expired or not yet valid")
-	ErrPayload     = errors.New("sealedhook: payload does not match its envelope")
-	ErrAckMismatch = errors.New("sealedhook: acknowledgement is bound to a different envelope")
-	ErrTooLarge    = errors.New("sealedhook: message exceeds its size bound")
+	ErrMalformed   = errors.New("encryptedhook: malformed message")
+	ErrSignature   = errors.New("encryptedhook: signature verification failed")
+	ErrUnknownKey  = errors.New("encryptedhook: signing key is not pinned")
+	ErrExpired     = errors.New("encryptedhook: envelope is expired or not yet valid")
+	ErrPayload     = errors.New("encryptedhook: payload does not match its envelope")
+	ErrAckMismatch = errors.New("encryptedhook: acknowledgement is bound to a different envelope")
+	ErrTooLarge    = errors.New("encryptedhook: message exceeds its size bound")
 )
 
 var (
@@ -176,7 +176,7 @@ type lp []byte
 
 func (b lp) add(field []byte) lp {
 	if uint64(len(field)) > math.MaxUint32 {
-		panic("sealedhook: length-prefixed field exceeds uint32")
+		panic("encryptedhook: length-prefixed field exceeds uint32")
 	}
 	var n [4]byte
 	binary.BigEndian.PutUint32(n[:], uint32(len(field)))
@@ -197,7 +197,7 @@ type PublicKey struct{ key ed25519.PublicKey }
 func ParsePublicKey(raw string) (PublicKey, error) {
 	body, ok := strings.CutPrefix(strings.TrimSpace(raw), "ed25519:")
 	if !ok || !hexKey.MatchString(body) {
-		return PublicKey{}, errors.New("sealedhook: public key must be ed25519:<64 lowercase hex>")
+		return PublicKey{}, errors.New("encryptedhook: public key must be ed25519:<64 lowercase hex>")
 	}
 	key, _ := hex.DecodeString(body)
 	return PublicKey{key: ed25519.PublicKey(key)}, nil
@@ -229,15 +229,15 @@ type Signer struct {
 func ParseSigningKeyPEM(raw []byte) (*Signer, error) {
 	block, rest := pem.Decode(raw)
 	if block == nil || block.Type != "PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
-		return nil, errors.New("sealedhook: signing key must be exactly one PKCS#8 PRIVATE KEY PEM block")
+		return nil, errors.New("encryptedhook: signing key must be exactly one PKCS#8 PRIVATE KEY PEM block")
 	}
 	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, errors.New("sealedhook: signing key is not valid PKCS#8")
+		return nil, errors.New("encryptedhook: signing key is not valid PKCS#8")
 	}
 	key, ok := parsed.(ed25519.PrivateKey)
 	if !ok {
-		return nil, errors.New("sealedhook: signing key is not Ed25519")
+		return nil, errors.New("encryptedhook: signing key is not Ed25519")
 	}
 	return newSigner(key), nil
 }
@@ -276,7 +276,7 @@ func GenerateRecipient() (identity, recipient string, err error) {
 func CanonicalRecipient(raw string) (string, error) {
 	r, err := age.ParseX25519Recipient(strings.TrimSpace(raw))
 	if err != nil {
-		return "", errors.New("sealedhook: recipient must be an age X25519 public key (age1...)")
+		return "", errors.New("encryptedhook: recipient must be an age X25519 public key (age1...)")
 	}
 	return r.String(), nil
 }
@@ -294,7 +294,7 @@ func Fingerprint(origin, recipient, ackKey string, generation int64) (string, er
 		return "", err
 	}
 	if generation < 1 {
-		return "", errors.New("sealedhook: generation must be positive")
+		return "", errors.New("encryptedhook: generation must be positive")
 	}
 	return "sha256:" + newLP(fingerprintDomain).str(origin).str(canonical).str(ack.String()).i64(generation).hexSum(), nil
 }
@@ -474,10 +474,10 @@ type Sealer struct {
 func NewSealer(recipient string, signer *Signer) (*Sealer, error) {
 	r, err := age.ParseX25519Recipient(strings.TrimSpace(recipient))
 	if err != nil {
-		return nil, errors.New("sealedhook: recipient must be an age X25519 public key (age1...)")
+		return nil, errors.New("encryptedhook: recipient must be an age X25519 public key (age1...)")
 	}
 	if signer == nil {
-		return nil, errors.New("sealedhook: a signing key is required")
+		return nil, errors.New("encryptedhook: a signing key is required")
 	}
 	return &Sealer{recipient: r, signer: signer}, nil
 }
@@ -538,7 +538,7 @@ func (s *Sealer) Seal(d Draft) (Sealed, error) {
 	}
 	clear(plain)
 	if err != nil {
-		return Sealed{}, fmt.Errorf("sealedhook: encrypt: %w", err)
+		return Sealed{}, fmt.Errorf("encryptedhook: encrypt: %w", err)
 	}
 	e.Ciphertext = ct.Bytes()
 	e.Sig = make([]byte, ed25519.SignatureSize)
@@ -600,15 +600,15 @@ type Opener struct {
 func NewOpener(identity string, senders []PinnedKey) (*Opener, error) {
 	id, err := age.ParseX25519Identity(strings.TrimSpace(identity))
 	if err != nil {
-		return nil, errors.New("sealedhook: identity must be an age X25519 secret key")
+		return nil, errors.New("encryptedhook: identity must be an age X25519 secret key")
 	}
 	if len(senders) == 0 {
-		return nil, errors.New("sealedhook: at least one pinned sender key is required")
+		return nil, errors.New("encryptedhook: at least one pinned sender key is required")
 	}
 	pinned := make(map[string]PinnedKey, len(senders))
 	for _, k := range senders {
 		if !k.Key.valid() {
-			return nil, errors.New("sealedhook: invalid pinned sender key")
+			return nil, errors.New("encryptedhook: invalid pinned sender key")
 		}
 		pinned[k.Key.ID()] = k
 	}

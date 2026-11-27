@@ -1458,8 +1458,8 @@ export const Failed: Story = {
 const personalCounts = {
   eligible: 14,
   items: [
-    { key_id: keyId(4), name: 'DATABASE_URL', holders: 11, notices: 0, required: true },
-    { key_id: keyId(7), name: 'STRIPE_SECRET_KEY', holders: 3, notices: 1, required: false },
+    { key_id: keyId(4), name: 'DATABASE_URL', members: 11, holders: 11, notices: 0, required: true },
+    { key_id: keyId(7), name: 'STRIPE_SECRET_KEY', members: 3, holders: 3, notices: 1, required: false },
   ],
 } satisfies z.input<typeof zPersonalValueCounts>;
 const ownPersonal = {
@@ -1485,7 +1485,7 @@ const personalRows: readonly MockRoute[] = [
 const personalApp = app([...personalRows, ...catalogue({}), ...allReady]);
 
 const expectPersonalMarks = async (canvas: ReturnType<typeof within>, canvasElement: HTMLElement, phone: boolean) => {
-  const counted = await canvas.findByRole('button', { name: /^DATABASE_URL in staging:.*personal value required, 11 of 14 people hold one/ });
+  const counted = await canvas.findByRole('button', { name: /^DATABASE_URL in staging:.*personal value required, 11 of 14 members have one/ });
   await expect(counted.querySelector('.matrix-cell__personal')?.textContent).toBe('personal · 11/14');
   const holders = canvas.getByRole('button', { name: /^STRIPE_SECRET_KEY in staging:/ });
   await expect(holders.querySelector('.matrix-cell__personal')?.textContent).toBe('3 personal · 1 notice');

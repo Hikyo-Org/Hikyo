@@ -1,5 +1,7 @@
 # Hikyo source of truth & the role of Git (ADR, locked 2026-07-30)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) (the machine `reveal` opt-in no longer names a bare "operator" for a person); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** the definitions bundle carries `personal_required_in` and never carries personal values. Personal values do not count as live occurrences that refuse environment deletion, and a deletion plan reports how many it removes.
 
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** definitions apply needs keys for affected environments, in Sealed orgs. See its supersession register.
@@ -124,7 +126,7 @@ hikyo definitions apply --plan <plan-id>
 **Reveal escalation is inherited, not waived.** Two locked rules reach `apply` unchanged: changing a value-dependent rule on a `secret` key requires `reveal` and is rejected without evaluating it (schema ADR); and a publish that makes an environment begin delivering a `secret` occurrence the publisher did not supply requires `reveal` on that key (inheritance ADR, as amended by the schema ADR) — which a base-pointer edit or a presence-rule change in a bundle can trigger. Consequently such a bundle can only be applied by an identity holding `reveal`. This must not be special-cased away, and the resolution is **not** to give CI `reveal`:
 
 - **The default is a human applier.** A reveal-requiring apply is **routed to a human** holding `reveal`; the CI identity's apply fails with the specific entries that triggered it named. The overwhelming majority of definition changes — adding a key, tightening a `config` constraint, renaming — trigger nothing and flow through CI untouched.
-- **Granting `reveal` to a machine identity is an explicit, documented, per-project operator opt-in**, never a default and never implied by granting `apply`. A build runner holding `reveal` is a standing decryption capability sitting in the most-attacked box in the system.
+- **Granting `reveal` to a machine identity is an explicit, documented, per-project opt-in**, never a default and never implied by granting `apply`. A build runner holding `reveal` is a standing decryption capability sitting in the most-attacked box in the system.
 - **`plan` reporting is a usability affordance, not a control.** It tells an honest operator why their apply will fail; it does nothing against a compromised runner, which can simply submit its own plans. The control is not holding the credential there in the first place.
 
 Constraint on RBAC ([#15](https://github.com/Hikyo-Org/Hikyo/issues/15)) and machine identities ([#17](https://github.com/Hikyo-Org/Hikyo/issues/17)).

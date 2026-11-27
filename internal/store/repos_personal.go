@@ -47,8 +47,8 @@ type PersonalRetentionRow struct {
 	SuspendedAt   time.Time
 }
 
-// PersonalValueHolder is who holds a value for a key, and when it changed.
-type PersonalValueHolder struct {
+// PersonalValueMember is who holds a value for a key, and when it changed.
+type PersonalValueMember struct {
 	Owner     domain.PrincipalID
 	UpdatedAt time.Time
 }
@@ -86,7 +86,7 @@ type PersonalValueRepo interface {
 	// CountForEnvironment counts one environment's personal values in the
 	// proof's project, for a deletion plan. Metadata only.
 	CountForEnvironment(ctx context.Context, p authz.Proof, environmentID string) (int64, error)
-	Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueHolder, error)
+	Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueMember, error)
 	DeleteMember(ctx context.Context, p authz.Proof, keyID string, owner domain.PrincipalID) (int64, error)
 	CellsForKey(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueCell, error)
 	DeleteForKey(ctx context.Context, p authz.Proof, keyID string) (int64, error)
@@ -247,7 +247,7 @@ func (r sqlitePersonalValues) CountForEnvironment(ctx context.Context, p authz.P
 	})
 }
 
-func (r sqlitePersonalValues) Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueHolder, error) {
+func (r sqlitePersonalValues) Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueMember, error) {
 	chain, env, err := envChain(p, authz.StorePersonalValuesHolders, r.tok)
 	if err != nil {
 		return nil, err
@@ -258,13 +258,13 @@ func (r sqlitePersonalValues) Holders(ctx context.Context, p authz.Proof, keyID 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]PersonalValueHolder, 0, len(rows))
+	out := make([]PersonalValueMember, 0, len(rows))
 	for _, row := range rows {
 		u, err := parseTime("personal value holder", row.OwnerPrincipalID, row.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, PersonalValueHolder{Owner: domain.PrincipalID(row.OwnerPrincipalID), UpdatedAt: u})
+		out = append(out, PersonalValueMember{Owner: domain.PrincipalID(row.OwnerPrincipalID), UpdatedAt: u})
 	}
 	return out, nil
 }
@@ -550,7 +550,7 @@ func (r pgPersonalValues) CountForEnvironment(ctx context.Context, p authz.Proof
 	})
 }
 
-func (r pgPersonalValues) Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueHolder, error) {
+func (r pgPersonalValues) Holders(ctx context.Context, p authz.Proof, keyID string) ([]PersonalValueMember, error) {
 	chain, env, err := envChain(p, authz.StorePersonalValuesHolders, r.tok)
 	if err != nil {
 		return nil, err
@@ -561,9 +561,9 @@ func (r pgPersonalValues) Holders(ctx context.Context, p authz.Proof, keyID stri
 	if err != nil {
 		return nil, err
 	}
-	out := make([]PersonalValueHolder, len(rows))
+	out := make([]PersonalValueMember, len(rows))
 	for i, row := range rows {
-		out[i] = PersonalValueHolder{Owner: domain.PrincipalID(row.OwnerPrincipalID), UpdatedAt: pgTimeToGo(row.UpdatedAt)}
+		out[i] = PersonalValueMember{Owner: domain.PrincipalID(row.OwnerPrincipalID), UpdatedAt: pgTimeToGo(row.UpdatedAt)}
 	}
 	return out, nil
 }

@@ -17,6 +17,11 @@ export type RoleTemplate = {
   readonly orgOnly: readonly string[];
 };
 
+/** The v1 wire id of the instance administrator template is `operator`. */
+export function templateLabel(id: string): string {
+  return id === 'operator' ? 'Instance administrator' : id;
+}
+
 /** Shared by the real UI and prototype API so grant expansion cannot drift. */
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   { id: 'viewer', levels: ['org', 'project', 'environment'], seeds: ['read'], orgOnly: [] },

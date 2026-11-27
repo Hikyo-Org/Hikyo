@@ -52,7 +52,7 @@ func TestPersonalValueCountsMarksAndEligible(t *testing.T) {
 			t.Fatal(err)
 		}
 		a, ok := countFor(counts, e.keyA)
-		if !ok || len(counts.Items) != 1 || a.Name != ceremonySecretA || a.Holders != 1 || a.Notices != 0 || a.Required {
+		if !ok || len(counts.Items) != 1 || a.Name != ceremonySecretA || a.Members != 1 || a.Notices != 0 || a.Required {
 			t.Fatalf("counts: items=%d a=%+v", len(counts.Items), a)
 		}
 		// The owner and the invited administrator both hold read and reveal.
@@ -80,7 +80,7 @@ func TestPersonalValueCountsMarksAndEligible(t *testing.T) {
 		}
 		a, _ = countFor(counts, e.keyA)
 		b, ok := countFor(counts, keyB)
-		if len(counts.Items) != 2 || a.Holders != 0 || a.Notices != 1 || !ok || !b.Required || b.Holders != 0 {
+		if len(counts.Items) != 2 || a.Members != 0 || a.Notices != 1 || !ok || !b.Required || b.Members != 0 {
 			t.Fatalf("marks after removal: items=%d a=%+v b=%+v", len(counts.Items), a, b)
 		}
 

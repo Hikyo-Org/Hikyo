@@ -65,16 +65,16 @@ subfolders; an only-pick of a folder is exact. The browser's **Edit rule** repla
 current rule commands add, list and remove rules; removing and then adding is
 two operations.
 
-A rule may also cover **all projects** of the organization, including
+A rule may also cover **all projects** of the organisation, including
 projects created later. Such a rule covers every environment and may narrow
 keys by folder only (*only* or *except* folders); it cannot name environments
 or single keys, and machine identities cannot hold one. Creating or removing it
-needs member management over the whole organization. Listings show it with the
-organization's current projects. An organization without projects cannot get
+needs member management over the whole organisation. Listings show it with the
+organisation's current projects. An organisation without projects cannot get
 one, and its last project cannot be deleted while one exists: the refusal names
 the rules to remove first. To create one, choose **All projects** in the
 Members rule editor or run `hikyo access rule add --all-projects`; both list
-the organization's projects first, and the rule is refused if a project was
+the organisation's projects first, and the rule is refused if a project was
 added or removed in the meantime.
 
 Because a listing repeats the rule's folders under every project, a rule
@@ -107,7 +107,7 @@ organisation admin reaches the project that way) or a rule you may manage
 there, in four groups: `can`, `excepted` (a rule would reach but an except
 removes it, with the excepted environments and keys), `needs_see` (Reveal or
 Reveal history without See) and `none`. Without `key`, a rule limited to some
-keys answers as `key_limited`. Other projects and instance operators are not
+keys answers as `key_limited`. Other projects and instance administrators are not
 listed. Grants above organisation scope are not shown and rules you cannot
 manage are not named, so a listed principal who can only through those is
 shown with no sources.

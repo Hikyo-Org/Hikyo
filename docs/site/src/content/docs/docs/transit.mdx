@@ -226,13 +226,13 @@ you can recover your data: rotate, rewrap, raise `min_decrypt_version`, trim.
 
 Every state check reads the key inside the operation's own transaction, so a
 disable or compromise on one node binds the next request on every node of a
-[multi-node](/docs/high-availability/) installation.
+[multi-node](/docs/high-availability/) instance.
 
 ## Custody
 
-This release ships **software custody**: each version's material is sealed under
+This release ships **software custody**: each version's material is encrypted under
 the owning project's data key, so `rotate-dek`, `reencrypt`, `rotate-master-key`
-and project deletion cover it like any other sealed field.
+and project deletion cover it like any other encrypted field.
 
 The external-custody seam (for an HSM, a KMIP server or a cloud KMS) is defined
 and tested against a mock provider, but no production provider ships yet, so a
@@ -244,7 +244,7 @@ back to software custody.
 
 Trimming versions or destroying a software-custody key erases the material from
 the **live** database only. Every backup taken earlier still contains it,
-exactly like any other sealed field. Restoring such a backup restores the key as
+exactly like any other encrypted field. Restoring such a backup restores the key as
 it was then, including versions later trimmed and keys later destroyed, and
 ciphertext produced under versions created after the backup fails with a
 `version` refusal. Deleting the backups, or destroying every identity that opens

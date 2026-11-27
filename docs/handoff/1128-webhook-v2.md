@@ -8,8 +8,8 @@ Owner and maintainer are one person, so independent adversarial review compensat
 cross-provider review is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
 Refs [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128); the PR does not close it.
 Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). Operator text:
-[receiver and sender migration](../operations/sealed-webhook-v2-migration.md). Protocol text:
-[spec section 11](../spec/sealed-webhook.md#11-protocol-version-2).
+[receiver and sender migration](../operations/encrypted-webhook-v2-migration.md). Protocol text:
+[spec section 11](../spec/encrypted-webhook.md#11-protocol-version-2).
 
 ## Decisions applied, nothing newly selected
 
@@ -23,7 +23,7 @@ primitive or composition was added.
 
 | Area | Change |
 | --- | --- |
-| Spec | Section 11 of `docs/spec/sealed-webhook.md`, a declared amendment operative at merge; sections 1 to 10 (v1) untouched |
+| Spec | Section 11 of `docs/spec/encrypted-webhook.md`, a declared amendment operative at merge; sections 1 to 10 (v1) untouched |
 | Crypto (`internal/crypto/sealedhook/v2.go`) | New file beside v1. Dual suite `ed25519+mldsa65` (both required), hybrid recipient, version-separated path, media types and labels, `ed25519-sha256:` / `mldsa65-sha256:` / `mlkem768x25519-sha256:` ids, `swh2-...` fingerprint, `ciphertext_digest`, exact-length fields checked before base64 decoding, one-stanza age header allowlist with a 4096-byte header bound (copy of the #1126 scan: this leaf package may not import `crypto/backup`), an exact-case unique member set and the names bound checked on the token stream before any struct decode, canonical base64. v1 code only gained shared validators (`validateScope`, `validateWindow`, `validateStatus`, `destinationID`, `idempotencyKey`) |
 | Sender (`internal/adapter/sealedwebhook`) | `Endpoint`, `Client`, `Module` select the protocol per target; route table has `deliver` and `deliver.v2`; a protocol 2 client verifies both ack signatures and never emits a v1 request. `Client.RootCAs` test wiring added (same pattern as awssm; `Endpoint.ClientConfig` never sets it) |
 | Registry (`internal/config`, `internal/app`) | Per-target `protocol` (absent = 1), `ack_key_mldsa65`, top-level `signing_key_file_mldsa65` (same `0600` check). Mixed, missing or unused ML-DSA material refuses boot |

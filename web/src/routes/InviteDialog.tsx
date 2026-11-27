@@ -2,6 +2,7 @@ import { useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
+import { templateLabel } from '../api/access-templates.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   inviteFailureText,
@@ -216,7 +217,7 @@ function InviteForm({
           <option value="">No initial grants</option>
           {templates.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
-              {candidate.id}
+              {templateLabel(candidate.id)}
             </option>
           ))}
         </Select>

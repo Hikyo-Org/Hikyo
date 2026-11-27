@@ -18,14 +18,16 @@ import (
 type Template string
 
 const (
-	TemplateViewer     Template = "viewer"
-	TemplateEditor     Template = "editor"
-	TemplatePublisher  Template = "publisher"
-	TemplateRevealer   Template = "revealer"
-	TemplateHistorian  Template = "historian"
-	TemplateMaintainer Template = "maintainer"
-	TemplateAdmin      Template = "admin"
-	TemplateOperator   Template = "operator"
+	TemplateViewer        Template = "viewer"
+	TemplateEditor        Template = "editor"
+	TemplatePublisher     Template = "publisher"
+	TemplateRevealer      Template = "revealer"
+	TemplateHistorian     Template = "historian"
+	TemplateMaintainer    Template = "maintainer"
+	TemplateAdmin         Template = "admin"
+	// TemplateInstanceAdmin is the instance administrator template. Its v1
+	// wire name is `operator`; it becomes `instance-admin` in v2.
+	TemplateInstanceAdmin Template = "operator"
 )
 
 // templateSpec is one row of the ADR's template table.
@@ -80,7 +82,7 @@ var templates = map[Template]templateSpec{
 		},
 		orgOnly: []Capability{CapManageProjects},
 	},
-	TemplateOperator: {
+	TemplateInstanceAdmin: {
 		applicable: instanceOnly,
 		creates:    append(append([]Capability{}, OperatorSet...), CapManageMembers),
 	},

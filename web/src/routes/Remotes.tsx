@@ -122,7 +122,7 @@ export function Remotes() {
         {remotes.isError ? (
           <Alert>
             The remote directory could not be read. You may not hold{' '}
-            <span className="mono">instance-directory</span> on this instance. The operator
+            <span className="mono">instance-directory</span> on this instance. The instance-admin
             template does not include it; an instance member manager grants it under Instance
             members, and the grant ends the current session.
           </Alert>
@@ -167,7 +167,7 @@ export function ThisInstance() {
       {directory.isError ? (
         <Alert>
           {directory.error instanceof ApiError && directory.error.status === 403
-            ? 'You do not hold instance-directory on this instance. Its directory is not available to you. The operator template does not include it; an instance member manager grants it under Instance members, and the grant ends the current session.'
+            ? 'You do not hold instance-directory on this instance. Its directory is not available to you. The instance-admin template does not include it; an instance member manager grants it under Instance members, and the grant ends the current session.'
             : "This instance's directory could not be read. Reload to try again."}
         </Alert>
       ) : directory.data === undefined ? null : (

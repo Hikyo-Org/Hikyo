@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Config and SealedWebhookTarget carry time.Duration fields. encoding/json (v1)
+// Config and EncryptedWebhookTarget carry time.Duration fields. encoding/json (v1)
 // encoded a Duration as its nanosecond count; v2 has no default and fails at
 // runtime. These methods keep the v1 integers without changing the field types
 // or their order, and keep the encoder's own options, so a caller using
@@ -38,13 +38,13 @@ func (c *Config) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 }
 
 // MarshalJSONTo implements json.MarshalerTo.
-func (t SealedWebhookTarget) MarshalJSONTo(enc *jsontext.Encoder) error {
-	type plain SealedWebhookTarget
+func (t EncryptedWebhookTarget) MarshalJSONTo(enc *jsontext.Encoder) error {
+	type plain EncryptedWebhookTarget
 	return json.MarshalEncode(enc, plain(t), nanosecondMarshalers)
 }
 
 // UnmarshalJSONFrom implements json.UnmarshalerFrom.
-func (t *SealedWebhookTarget) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	type plain SealedWebhookTarget
+func (t *EncryptedWebhookTarget) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	type plain EncryptedWebhookTarget
 	return json.UnmarshalDecode(dec, (*plain)(t), nanosecondUnmarshalers)
 }

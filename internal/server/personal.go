@@ -14,7 +14,7 @@ type PersonalValueService interface {
 	Set(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, value string) (service.PersonalEntry, error)
 	Reveal(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) (service.PersonalEntry, error)
 	Delete(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) error
-	Members(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) ([]service.PersonalHolder, error)
+	Members(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) ([]service.PersonalMember, error)
 	DeleteMember(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, member string) error
 	Counts(ctx context.Context, actor service.Actor, scope domain.Scope) (service.PersonalCounts, error)
 	OffboardingReport(ctx context.Context, actor service.Actor, scope domain.Scope, member string) (service.OffboardingReport, error)

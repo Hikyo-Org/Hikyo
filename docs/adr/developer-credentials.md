@@ -1,10 +1,12 @@
 # Bounded developer credentials (#807, locked 2026-10-09)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("holder secret" to holder key, "organization" to organisation); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Declared amendment (2026-11-12, [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039), owner-accepted in the [incident-containment ADR](./incident-containment.md), operative when its implementation pull request merges; cross-provider review did not run and is not CLEAN):** Containment revokes developer delegations as credential reset does. Ordinary logout is unchanged. Historical text below is preserved.
 
 > **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** a developer credential's consent extends to the delegating human's current and future personal values in its one environment, and the mint prompt says so. A credential minted without that consent gets only the names of keys where its owner holds a value or notice, and `hikyo run` refuses those keys. Delivery rules are otherwise unchanged.
 
-> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** `dev` credentials must present a holder secret separately, in Sealed orgs. See its supersession register.
+> **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** `dev` credentials must present a holder key separately, in Sealed orgs. See its supersession register.
 
 Status: **owner-locked on 2026-10-09; operative when this implementation PR merges**.
 After the grilled decision and ordinary Standards and Spec reviews, the owner
@@ -89,7 +91,7 @@ The credential delegates current published delivery only. It cannot use
 to another environment through inherited grants. Subsequent increases in the
 human's grants cannot widen the developer principal's fixed authority.
 
-Minting requires an explicit TTY ceremony that shows the server, organization,
+Minting requires an explicit TTY ceremony that shows the server, organisation,
 project, environment, lifetime, current key list, and accepted future-key
 policy. The human confirms and performs a fresh reauthentication bound to that
 disclosure/delegation unit using the existing authentication mechanisms. A
@@ -112,7 +114,7 @@ provenance. Any principal-generation advance invalidates the delegation,
 including non-SCIM grant increases and factor changes under the existing
 human-auth policy. SCIM origin changes retain their existing org-specific
 semantics: check current membership and grants for this environment, without
-invalidating unrelated organizations' delegations.
+invalidating unrelated organisations' delegations.
 
 Security invalidation is terminal. Account disable/removal, explicit security
 revocation, provider/identity invalidation, and an environment becoming

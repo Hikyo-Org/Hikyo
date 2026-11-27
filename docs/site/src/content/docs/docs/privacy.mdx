@@ -4,7 +4,7 @@ description: Inventory personal data, distinguish retention from erasure, and ac
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/privacy.mdx
 ---
 
-Use this inventory as a starting point for your installation's processing record.
+Use this inventory as a starting point for your instance's processing record.
 Record the owner, purpose, lawful basis, recipients, retention period and deletion
 mechanism for every applicable row. Add your own integrations and infrastructure.
 This is a source-based inventory, not a scan of your production data.
@@ -27,12 +27,12 @@ column or operational log is encrypted by Hikyo; protect storage and access acco
 ## Identity workflows
 
 These are host-local instance-operator commands, with no HTTP route. Root-key
-custody authorizes inspection of the selected account across organizations; this
+custody authorizes inspection of the selected account across organisations; this
 is not a tenant-admin permission. Filter the response to the requesting
-controller's lawful scope before disclosure. Use the installation's
+controller's lawful scope before disclosure. Use the instance's
 normal datastore, root-key and verified build configuration. For example, set
 `HIKYO_DB` and `HIKYO_ROOT_KEY_FILE` in the operator environment; root-key options
-are not privacy-verb flags. Production admission still requires the installation's
+are not privacy-verb flags. Production admission still requires the instance's
 verified build/trust configuration. Exports and receipts
 require a new owner-only output file; existing files are not overwritten and
 personal data is not printed to stdout. If a mutation commits but file delivery
@@ -139,7 +139,7 @@ live values; clearing a value and publishing does not erase historical snapshots
 
 The supported coarse erasure boundary is an environment. After completing the
 normal lifecycle teardown of dependent grants, adapters and dynamic leases, an
-authorized operator can use:
+authorized instance administrator can use:
 
 ```bash
 hikyo env delete ENV_ID --org ORG_ID --project PROJECT_ID
@@ -204,10 +204,10 @@ hikyo admin privacy reapply --receipt /secure/erase-receipt.json --output-file /
 
 Receipt replay runs on the Unix server host, where owner and mode checks are
 supported; Windows replay refuses. The receipt must be an owner-only regular file,
-at most 4096 bytes, and match the installation instance and account. Reapplication does not erase customer content or external copies; repeat
+at most 4096 bytes, and match the instance and account. Reapplication does not erase customer content or external copies; repeat
 those separately approved actions as well. Keep networking and provisioning isolated
 until reconciliation is complete. Test the procedure on a scratch restore and record
-cleanup. The command is operator-invoked, not an automatic restoration hook.
+cleanup. An instance administrator runs the command; it is not an automatic restoration hook.
 
 ## Website and integration boundary
 
@@ -221,7 +221,7 @@ a complete website privacy notice.
 
 Inventory your own reverse proxy logs, monitoring, identity providers, support
 uploads and delivery destinations. Product no-egress claims do not describe those
-operator-selected systems.
+systems an instance administrator selects.
 
 ## Sources
 

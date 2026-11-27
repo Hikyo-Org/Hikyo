@@ -24,7 +24,7 @@ const instant = (value: string | undefined) =>
 /**
  * Security maintenance state, read-only, on `instance-admin`. The separate
  * maintenance coordinator publishes it; this server holds no deployment
- * credentials, so nothing here can change the installation.
+ * credentials, so nothing here can change the instance.
  */
 export function SecurityMaintenancePanel({ now: fixed }: { now?: Date }) {
   const report = useSecurityMaintenance();
@@ -130,7 +130,7 @@ function Reported({ status, now }: { status: SecurityMaintenancePublicStatus; no
       <Row title="Known until" detail={`catalog sequence ${String(status.catalog_sequence)}`}>
         <code className="mono">{instant(status.known_until)}</code>
       </Row>
-      <Row title="Applicable advisories" detail="known and not yet remediated on this installation">
+      <Row title="Applicable advisories" detail="known and not yet remediated on this instance">
         <Ids ids={status.applicable} />
       </Row>
       <Row
@@ -149,18 +149,18 @@ function Headline({ status, stale }: { status: SecurityMaintenancePublicStatus; 
     return (
       <Alert>
         Protection gap: {count} applicable {count === 1 ? 'advisory remains' : 'advisories remain'}{' '}
-        unremediated and this installation is not waiting on a schedule. An operator must act.
+        unremediated and this instance is not waiting on a schedule. A production operator must act.
       </Alert>
     );
   }
   if (status.phase === 'failed') {
-    return <Alert>The last update failed and needs an operator.</Alert>;
+    return <Alert>The last update failed and needs a production operator.</Alert>;
   }
   if (!status.enrolled) {
     return (
       <Alert tone="info">
-        This installation is not enrolled. The coordinator reports advisories but changes nothing
-        until an operator enrols it.
+        This instance is not enrolled. The coordinator reports advisories but changes nothing
+        until a production operator enrols it.
       </Alert>
     );
   }

@@ -595,7 +595,7 @@ export function CredentialForm({
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label="Replace credential">
-      <p className="field__hint">Write-only: entered once, sealed, never read back. No job is queued.</p>
+      <p className="field__hint">Write-only: entered once, encrypted, never read back. No job is queued.</p>
       {aws ? (
         <AwsAccessFields value={access} onChange={setAccess} />
       ) : (
@@ -1152,8 +1152,8 @@ function CreateAdapterForm({
           autoComplete="new-password"
           hint={
             provider === 'vault-kv'
-              ? 'Write-only. A token, or JSON {"method":"approle","role_id":…,"secret_id":…} with optional ca_pem and spki_sha256. Sealed on save and never shown again.'
-              : 'Write-only. It is sealed on save and never shown again.'
+              ? 'Write-only. A token, or JSON {"method":"approle","role_id":…,"secret_id":…} with optional ca_pem and spki_sha256. Encrypted on save and never shown again.'
+              : 'Write-only. It is encrypted on save and never shown again.'
           }
         />}
       </div>

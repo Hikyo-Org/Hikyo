@@ -2333,7 +2333,7 @@ function MatrixLegend() {
           <dt className="mono">personal</dt>
           <dd>your own value replaces the shared one when you run a program; <span className="mono">· missing</span>, <span className="mono">· removed</span> or <span className="mono">· suspended</span> say why it does not</dd>
           <dt className="mono">3 personal</dt>
-          <dd>for whoever manages members: how many people hold their own value here</dd>
+          <dd>for whoever manages members: how many members have their own value here</dd>
           <dt className="mono">personal · 11/14</dt>
           <dd>a personal value is required: how many of the people who can read and reveal here hold one</dd>
         </dl>

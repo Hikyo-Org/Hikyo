@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { z } from 'zod';
+import { templateLabel } from '../api/access-templates.ts';
 
 import {
   acceptanceFailureText,
@@ -144,7 +145,7 @@ export function InvitationAccept() {
         <dt>Organisation</dt>
         <dd>{preview.org_name}</dd>
         <dt>Role template</dt>
-        <dd>{preview.template}</dd>
+        <dd>{templateLabel(preview.template)}</dd>
         <dt>Expires</dt>
         <dd>{formatWhen(preview.expires_at)}</dd>
       </dl>

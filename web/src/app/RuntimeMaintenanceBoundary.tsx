@@ -146,12 +146,12 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
 
 function RuntimeInterruption({ status }: { status: DisplayStatus }) {
   const title = status.state === 'maintenance' ? 'Hikyo is upgrading'
-    : status.state === 'recovery-required' ? 'Recovery needs an operator'
+    : status.state === 'recovery-required' ? 'Recovery needs a production operator'
     : 'Reconnecting to Hikyo';
   const detail = status.state === 'maintenance'
     ? phaseText[status.phase]
     : status.state === 'recovery-required'
-      ? 'This instance could not complete its upgrade safely. An operator must recover it before editing can resume.'
+      ? 'This instance could not complete its upgrade safely. A production operator must recover it before editing can resume.'
       : 'This browser cannot reach its home instance. The cause is not yet confirmed.';
   // No actions: this interruption is not dismissable, and the preventDefault on
   // cancel is what keeps Escape from closing it. Both paragraphs stay in the

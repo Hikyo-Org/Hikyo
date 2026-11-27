@@ -110,7 +110,7 @@ var (
 	ErrPKIProfileExists  = fmt.Errorf("%w: a certificate profile with this name already exists", domain.ErrConflict)
 	ErrPKIProfileRace    = fmt.Errorf("%w: the certificate profile changed underneath this write", domain.ErrConflict)
 	ErrPKIBindingExists  = fmt.Errorf("%w: the profile is already bound to this scope", domain.ErrConflict)
-	ErrPKIBindingTarget  = fmt.Errorf("%w: the organization, project or environment does not exist", domain.ErrInvalid)
+	ErrPKIBindingTarget  = fmt.Errorf("%w: the organisation, project or environment does not exist", domain.ErrInvalid)
 	ErrPKIRenewWindow    = fmt.Errorf("%w: the certificate is not inside its profile's renewal window", domain.ErrConflict)
 	ErrPKICertificateNot = fmt.Errorf("%w: the certificate is not in a state that allows this", domain.ErrConflict)
 	ErrPKISigning        = fmt.Errorf("%w: the certificate was not issued; the issuer changed while signing", domain.ErrConflict)

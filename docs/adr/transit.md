@@ -1,5 +1,7 @@
 # Hikyo transit: versioned cryptographic operations (ADR, decision locked 2026-09-26)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("crypto-shred" to shred, "installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** automatic rotation and key custody, for Sealed orgs. See its supersession register.
 
 > **Owner-locked declared amendment (2026-11-02, [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), decisions DEC-02, DEC-03, DEC-07 and DEC-08 in the [post-quantum migration ADR](./post-quantum-migration.md#decision-register); originating ticket [#156](https://github.com/Hikyo-Org/Hikyo/issues/156) reopened; operative only when the pull request implementing [#1129](https://github.com/Hikyo-Org/Hikyo/issues/1129) (#1172) merges). Independent adversarial review is required; cross-provider review is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.** D2 gains the signing algorithm `mldsa65`, as DEC-02 selects, with a new immutable key identity; Ed25519 keys stay Ed25519. D3: the ML-DSA seed is derived with HKDF-SHA256 from the 32-byte version material under the existing `hikyo/transit-key/v1` pattern (algorithm, org, project, environment, key and version in the info), as the Ed25519 seed is; the material, not the seed, is what is sealed and stored. D4: the signature carries algorithm and parameter set; the context string is the Transit label (at most 255 bytes). D5: rotation appends a version of the same algorithm and never converts a key; version windows and compromise rules are unchanged. D9: bounds unchanged. D10: verification consumers exist before the first key. Unavailable custody still refuses.
@@ -116,7 +118,7 @@ metadata stored beside the version and returned by ordinary reads.
   bound to `owner_table=transit_key_versions`, the version row id, field tag
   `material`, and the environment and key ids. Consequences, all intended: the
   material participates in `rotate-dek`, `reencrypt`, `rotate-master-key` and
-  project crypto-shred with no new machinery, and it lands under the project
+  project shred with no new machinery, and it lands under the project
   DEK, never the instance DEK (encryption-model CI invariant 16).
 - **external custody** (HSM, KMIP, cloud KMS): the provider holds the material
   and Hikyo stores only an opaque reference. The seam is operation-level
@@ -273,7 +275,7 @@ DEK-sealed field (encryption-model § Erasure). Restoring a backup restores the
 key as of that backup, including versions later trimmed or keys later
 destroyed; ciphertext produced under versions created after the backup fails to
 decrypt with an explicit unknown-version error. External custody is the path to
-real crypto-shredding, because its material never enters a backup.
+real shredding, because its material never enters a backup.
 
 ### D9. Bounds and rate limits
 
@@ -289,7 +291,7 @@ real crypto-shredding, because its material never enters a backup.
 
 Data-plane operations are a named expensive-path budget category, `transit`:
 600 per minute per principal and 6000 per minute per organisation. Under
-multi-node HA the counters are the #146 installation-wide admission counters,
+multi-node HA the counters are the #146 instance-wide admission counters,
 so node hopping cannot multiply the allowance. Management operations ride the
 authenticated-API budget.
 
@@ -318,7 +320,7 @@ authenticated-API budget.
   creation against master rotation; one hierarchy row per customer key would
   make master rotation proportional to customer keys and put customer key
   lifecycle inside the fenced key hierarchy. Sealing material under the project
-  DEK gets rotation, re-encryption and crypto-shred for free.
+  DEK gets rotation, re-encryption and shred for free.
 - **Exportable keys, key import, BYOK.** Each is a separate amendment with its
   own custody story.
 - **A generic operation endpoint.** One route per operation keeps each

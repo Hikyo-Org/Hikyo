@@ -24,7 +24,7 @@ Systems Manager and no inbound security-group rules.
 
 AWS's prefilled CloudFormation launch URL requires an **S3-hosted template**.
 The repository and docs site are not S3 template endpoints, so this guide uses
-upload instead of presenting a broken one-click link. An operator who publishes
+upload instead of presenting a broken one-click link. A production operator who publishes
 the reviewed template to their own S3 bucket can use AWS's
 [quick-create link format](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-create-stacks-quick-create-links.html).
 
@@ -40,7 +40,7 @@ also requires the operator's IAM permissions and a registered, reachable SSM age
 Identify the retained data volume by its volume ID, including on Nitro instances
 where Linux uses NVMe device names instead of the attachment label. Follow
 [AWS's EBS filesystem guidance](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-using-volumes.html)
-and never reformat a disk containing an existing installation.
+and never reformat a disk containing an existing instance.
 
 For a managed database, use RDS PostgreSQL in private subnets. Permit its database
 port from the Hikyo security group, install the current
@@ -66,5 +66,5 @@ For a new Docker-based nightly on this host, follow
 [deploy and upgrade cloud nightlies](/docs/cloud-nightlies/). It includes durable
 storage, native HTTPS, first administrator creation, and image replacement.
 For native installations, stable releases, and recovery, use
-[upgrade a cloud installation](/docs/cloud-upgrades/). Keep the same data volume,
+[upgrade a cloud instance](/docs/cloud-upgrades/). Keep the same data volume,
 root key, and installation custody; do not redeploy infrastructure to update Hikyo.

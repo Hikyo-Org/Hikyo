@@ -45,7 +45,7 @@ export const Narrowing: Story = {
   },
 };
 
-// Binding opens its own panel; Bind stays disabled until an organization and
+// Binding opens its own panel; Bind stays disabled until an organisation and
 // a project are named.
 export const Binding: Story = {
   play: async ({ canvas }) => {
@@ -53,7 +53,7 @@ export const Binding: Story = {
     const panel = within(canvas.getByRole('complementary', { name: 'Bind web-services' }));
     const bind = panel.getByRole('button', { name: 'Bind' });
     await expect(bind).toBeDisabled();
-    await userEvent.type(panel.getByRole('textbox', { name: 'Organization id' }), 'org_acme');
+    await userEvent.type(panel.getByRole('textbox', { name: 'Organisation id' }), 'org_acme');
     await userEvent.type(panel.getByRole('textbox', { name: 'Project id' }), 'prj_app');
     await expect(bind).toBeEnabled();
   },
@@ -79,7 +79,7 @@ export const BindAndDeleteInPanel: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Bind' }));
     const bind = within(canvas.getByRole('complementary', { name: 'Bind web-services' }));
-    await expect(bind.getByRole('textbox', { name: 'Organization id' })).toBeVisible();
+    await expect(bind.getByRole('textbox', { name: 'Organisation id' })).toBeVisible();
     await userEvent.keyboard('{Escape}');
     await expect(canvas.queryByRole('complementary')).toBeNull();
     await userEvent.click(canvas.getByRole('button', { name: 'Delete' }));

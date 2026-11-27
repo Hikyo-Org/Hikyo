@@ -1,5 +1,7 @@
 # Hikyo — API & CLI spellings deferred to synthesis (2026-08-06)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("organization" to organisation); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **1.0 disposition sweep (2026-09-05, [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)): section 9 is operative for the existing release surface and takes precedence over older shorthand examples in this document. Section 8 records registration spellings; release scope remains governed by its owning decision, not this spelling inventory. Retain current parser spellings, output classes and authority checks.**
 
 [api-cli-surface.md](../adr/api-cli-surface.md) is the API/CLI spec's skeleton; several later ADRs joined its closed grammar at declared join points and delegated their **exact spellings** to this document. Every spelling here is bound by the locked grammar (noun-verb families, output classes, print triad, exit codes, parity rules) and by the delegating ADR's constraints; a spelling that would violate either is a defect here, not a licence to reinterpret the ADR. Nothing here adds a verb class, an output class, or an endpoint outside the declared join points.
@@ -567,7 +569,7 @@ require `--confirm`. `correct` also requires `--username HANDLE --display-name N
 `hikyo admin privacy reapply --receipt PATH --output-file PATH --confirm` reapplies
 an approved restriction/erasure after restoration to the same instance and account.
 There is no network route or tenant-admin authority. Root custody covers the named
-account across organizations. Outputs are new owner-only files; receipts exclude
+account across organisations. Outputs are new owner-only files; receipts exclude
 direct identifying labels and must be retained separately from backups.
 
 Exports contain account, linked identity, grant, session and actor-activity metadata;

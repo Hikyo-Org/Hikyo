@@ -1,4 +1,4 @@
-package sealedwebhook
+package encryptedwebhook
 
 import (
 	"bufio"
@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
-	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
+	"github.com/Hikyo-Org/hikyo/internal/encryptedreceiver"
 )
 
 const (
@@ -118,13 +118,13 @@ type recorded struct {
 
 type harness struct {
 	t        *testing.T
-	receiver *sealedreceiver.Receiver
+	receiver *encryptedreceiver.Receiver
 	server   *httptest.Server
 	origin   string
 	roots    *x509.CertPool
-	signer   *sealedhook.Signer
-	ackKey   *sealedhook.Signer
-	ackPub   sealedhook.PublicKey
+	signer   *encryptedhook.Signer
+	ackKey   *encryptedhook.Signer
+	ackPub   encryptedhook.PublicKey
 	identity string
 	recip    string
 	endpoint *Endpoint
@@ -153,20 +153,20 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{t: t}
 	var err error
-	h.identity, h.recip, err = sealedhook.GenerateRecipient()
+	h.identity, h.recip, err = encryptedhook.GenerateRecipient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	signerPEM, _, err := sealedhook.GenerateSigningKey()
+	signerPEM, _, err := encryptedhook.GenerateSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.signer, _ = sealedhook.ParseSigningKeyPEM(signerPEM)
-	ackPEM, ackPubText, _ := sealedhook.GenerateSigningKey()
-	h.ackKey, _ = sealedhook.ParseSigningKeyPEM(ackPEM)
-	h.ackPub, _ = sealedhook.ParsePublicKey(ackPubText)
-	h.receiver, err = sealedreceiver.New(sealedreceiver.Config{
-		Identity: h.identity, AckSigner: h.ackKey, Senders: []sealedhook.PinnedKey{{Key: h.signer.Public()}},
+	h.signer, _ = encryptedhook.ParseSigningKeyPEM(signerPEM)
+	ackPEM, ackPubText, _ := encryptedhook.GenerateSigningKey()
+	h.ackKey, _ = encryptedhook.ParseSigningKeyPEM(ackPEM)
+	h.ackPub, _ = encryptedhook.ParsePublicKey(ackPubText)
+	h.receiver, err = encryptedreceiver.New(encryptedreceiver.Config{
+		Identity: h.identity, AckSigner: h.ackKey, Senders: []encryptedhook.PinnedKey{{Key: h.signer.Public()}},
 		TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding},
 	})
 	if err != nil {
@@ -209,8 +209,8 @@ func (h *harness) startServer() {
 	h.origin = "https://example.com:" + port
 }
 
-func (h *harness) newEndpoint(generation int64, signer *sealedhook.Signer) *Endpoint {
-	fp, err := sealedhook.Fingerprint(h.origin, h.recip, h.ackPub.String(), generation)
+func (h *harness) newEndpoint(generation int64, signer *encryptedhook.Signer) *Endpoint {
+	fp, err := encryptedhook.Fingerprint(h.origin, h.recip, h.ackPub.String(), generation)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func (h *harness) target() adapter.Target {
 	}}
 }
 
-func (h *harness) receiverSigner() *sealedhook.Signer { return h.ackKey }
+func (h *harness) receiverSigner() *encryptedhook.Signer { return h.ackKey }
 
 func source(revision int64) adapter.Source {
 	return adapter.Source{OrgID: "org_1", ProjectID: "prj_1", EnvironmentID: "env_1", Revision: revision}
@@ -295,8 +295,8 @@ func TestProviderSurfaceIsDeliverOnly(t *testing.T) {
 		t.Fatalf("API = %v, want exactly Deliver", got)
 	}
 	want := map[string]operation{
-		"deliver":    {Method: http.MethodPost, Path: sealedhook.SyncPath},
-		"deliver.v2": {Method: http.MethodPost, Path: sealedhook.SyncPathV2},
+		"deliver":    {Method: http.MethodPost, Path: encryptedhook.SyncPath},
+		"deliver.v2": {Method: http.MethodPost, Path: encryptedhook.SyncPathV2},
 	}
 	if !reflect.DeepEqual(operationRegistry, want) {
 		t.Fatalf("route table = %v, want exactly %v", operationRegistry, want)
@@ -326,7 +326,7 @@ func TestEndpointActivationRequiresConfirmedFingerprintAndBounds(t *testing.T) {
 	cases := map[string]func(*EndpointConfig){
 		"tofu":           func(c *EndpointConfig) { c.ConfirmedFingerprint = "" },
 		"wrong fp":       func(c *EndpointConfig) { c.ConfirmedFingerprint = "sha256:" + strings.Repeat("0", 64) },
-		"key swap":       func(c *EndpointConfig) { _, r, _ := sealedhook.GenerateRecipient(); c.RecipientKey = r },
+		"key swap":       func(c *EndpointConfig) { _, r, _ := encryptedhook.GenerateRecipient(); c.RecipientKey = r },
 		"host change":    func(c *EndpointConfig) { c.Origin = "https://attacker.example" },
 		"generation":     func(c *EndpointConfig) { c.Generation = 2 },
 		"plain http":     func(c *EndpointConfig) { c.Origin = "http://example.com" },
@@ -438,7 +438,7 @@ func TestCrashWindowReplayReusesIdempotencyKey(t *testing.T) {
 	if idemOf(t, h.log[1].body) != firstKey {
 		t.Fatal("retry did not reuse the idempotency key")
 	}
-	if ack, _ := sealedhook.ParseAck(h.log[1].resp); ack.Status != sealedhook.AckAlreadyApplied {
+	if ack, _ := encryptedhook.ParseAck(h.log[1].resp); ack.Status != encryptedhook.AckAlreadyApplied {
 		t.Fatalf("replayed effect ack = %q, want already_applied", ack.Status)
 	}
 	if j.states["secret:MANAGED_BY_HIKYO"] != adapter.Owned {
@@ -448,7 +448,7 @@ func TestCrashWindowReplayReusesIdempotencyKey(t *testing.T) {
 }
 
 func idemOf(t *testing.T, body []byte) string {
-	e, err := sealedhook.ParseEnvelope(body)
+	e, err := encryptedhook.ParseEnvelope(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,21 +458,21 @@ func idemOf(t *testing.T, body []byte) string {
 func TestForgedAcknowledgementsAreTerminal(t *testing.T) {
 	for name, forge := range map[string]func(h *harness, body []byte) []byte{
 		"wrong key": func(h *harness, body []byte) []byte {
-			other, _ := sealedhook.ParseSigningKeyPEM(mustPEM(t))
-			e, _ := sealedhook.ParseEnvelope(body)
-			ack, _ := other.SignAck(sealedhook.Digest(body), e.IdempotencyKey, sealedhook.AckApplied, "")
+			other, _ := encryptedhook.ParseSigningKeyPEM(mustPEM(t))
+			e, _ := encryptedhook.ParseEnvelope(body)
+			ack, _ := other.SignAck(encryptedhook.Digest(body), e.IdempotencyKey, encryptedhook.AckApplied, "")
 			return ack
 		},
 		"tampered status": func(h *harness, body []byte) []byte {
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPath, bytes.NewReader(body))
-			req.Header.Set("Content-Type", sealedhook.ContentType)
+			req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPath, bytes.NewReader(body))
+			req.Header.Set("Content-Type", encryptedhook.ContentType)
 			h.receiver.ServeHTTP(rec, req)
 			return bytes.Replace(rec.Body.Bytes(), []byte(`"status":"applied"`), []byte(`"status":"already_applied"`), 1)
 		},
 		"wrong digest": func(h *harness, body []byte) []byte {
-			e, _ := sealedhook.ParseEnvelope(body)
-			ack, _ := h.receiverSigner().SignAck(sealedhook.Digest([]byte("x")), e.IdempotencyKey, sealedhook.AckApplied, "")
+			e, _ := encryptedhook.ParseEnvelope(body)
+			ack, _ := h.receiverSigner().SignAck(encryptedhook.Digest([]byte("x")), e.IdempotencyKey, encryptedhook.AckApplied, "")
 			return ack
 		},
 	} {
@@ -480,7 +480,7 @@ func TestForgedAcknowledgementsAreTerminal(t *testing.T) {
 			h := newHarness(t)
 			h.override = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
-				w.Header().Set("Content-Type", sealedhook.AckContentType)
+				w.Header().Set("Content-Type", encryptedhook.AckContentType)
 				_, _ = w.Write(forge(h, body))
 			})
 			j := newJournal()
@@ -499,7 +499,7 @@ func TestForgedAcknowledgementsAreTerminal(t *testing.T) {
 }
 
 func mustPEM(t *testing.T) []byte {
-	p, _, err := sealedhook.GenerateSigningKey()
+	p, _, err := encryptedhook.GenerateSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,15 +510,15 @@ func TestAmbiguousResponsesStayUnknown(t *testing.T) {
 	for name, handler := range map[string]http.HandlerFunc{
 		"redirect": func(w http.ResponseWriter, r *http.Request) {
 			// Same origin, so a followed redirect would be observed here.
-			http.Redirect(w, r, sealedhook.SyncPath+"?redirected=1", http.StatusTemporaryRedirect)
+			http.Redirect(w, r, encryptedhook.SyncPath+"?redirected=1", http.StatusTemporaryRedirect)
 		},
 		"server error": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) },
 		"oversized": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", sealedhook.AckContentType)
+			w.Header().Set("Content-Type", encryptedhook.AckContentType)
 			_, _ = w.Write(bytes.Repeat([]byte("a"), 8192))
 		},
 		"malformed": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", sealedhook.AckContentType)
+			w.Header().Set("Content-Type", encryptedhook.AckContentType)
 			_, _ = w.Write([]byte(`{"v":1,"status":"applied"}`))
 		},
 		"media type": func(w http.ResponseWriter, r *http.Request) {
@@ -582,15 +582,15 @@ func TestReceiverRefusesReplayedExpiredAndUnpinnedEnvelopes(t *testing.T) {
 	captured := h.log[2].body // secret DB_PASSWORD upsert
 	before := h.receiver.Snapshot(namespace)
 	// Replay inside the validity window: acknowledged as already applied, no double effect.
-	if ack := post(t, h, captured); ack.Status != sealedhook.AckAlreadyApplied {
+	if ack := post(t, h, captured); ack.Status != encryptedhook.AckAlreadyApplied {
 		t.Fatalf("replay ack = %q", ack.Status)
 	}
 	if !reflect.DeepEqual(before, h.receiver.Snapshot(namespace)) {
 		t.Fatal("replay changed receiver state")
 	}
 	// Expired replay: refused with no signed acknowledgement.
-	late, _ := sealedreceiver.New(sealedreceiver.Config{
-		Identity: h.identity, AckSigner: h.receiverSigner(), Senders: []sealedhook.PinnedKey{{Key: h.signer.Public()}},
+	late, _ := encryptedreceiver.New(encryptedreceiver.Config{
+		Identity: h.identity, AckSigner: h.receiverSigner(), Senders: []encryptedhook.PinnedKey{{Key: h.signer.Public()}},
 		TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding},
 		Now: func() time.Time { return time.Now().Add(10 * time.Minute) },
 	})
@@ -598,29 +598,29 @@ func TestReceiverRefusesReplayedExpiredAndUnpinnedEnvelopes(t *testing.T) {
 		t.Fatalf("expired replay status = %d", code)
 	}
 	// Envelope signed by a key the receiver never pinned.
-	rogue, _ := sealedhook.ParseSigningKeyPEM(mustPEM(t))
+	rogue, _ := encryptedhook.ParseSigningKeyPEM(mustPEM(t))
 	m := &Module{API: h.module.API, Endpoint: h.newEndpoint(1, rogue), Binding: binding}
 	if _, err := m.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: h.target().Destination, Gate: func(context.Context) error { return nil }}); !errors.Is(err, ErrNoAck) {
 		t.Fatalf("unpinned sender error = %v", err)
 	}
 }
 
-func post(t *testing.T, h *harness, body []byte) sealedhook.Ack {
+func post(t *testing.T, h *harness, body []byte) encryptedhook.Ack {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPath, bytes.NewReader(body))
-	req.Header.Set("Content-Type", sealedhook.ContentType)
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPath, bytes.NewReader(body))
+	req.Header.Set("Content-Type", encryptedhook.ContentType)
 	h.receiver.ServeHTTP(rec, req)
-	ack, err := sealedhook.VerifyAck(rec.Body.Bytes(), h.ackPub, sealedhook.Digest(body), idemOf(t, body))
+	ack, err := encryptedhook.VerifyAck(rec.Body.Bytes(), h.ackPub, encryptedhook.Digest(body), idemOf(t, body))
 	if err != nil {
 		t.Fatalf("ack: %v (%d)", err, rec.Code)
 	}
 	return ack
 }
 
-func serve(r *sealedreceiver.Receiver, body []byte) int {
+func serve(r *encryptedreceiver.Receiver, body []byte) int {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPath, bytes.NewReader(body))
-	req.Header.Set("Content-Type", sealedhook.ContentType)
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPath, bytes.NewReader(body))
+	req.Header.Set("Content-Type", encryptedhook.ContentType)
 	r.ServeHTTP(rec, req)
 	return rec.Code
 }
@@ -644,11 +644,11 @@ func TestUnownedNameIsAConflictAndNeverOverwritten(t *testing.T) {
 func TestKeyOverlapRotationAndTrustBoundaryChange(t *testing.T) {
 	h := newHarness(t)
 	newPEM := mustPEM(t)
-	next, _ := sealedhook.ParseSigningKeyPEM(newPEM)
+	next, _ := encryptedhook.ParseSigningKeyPEM(newPEM)
 	// Receiver pins both keys; the old key retires after the overlap window.
-	rotated, _ := sealedreceiver.New(sealedreceiver.Config{
+	rotated, _ := encryptedreceiver.New(encryptedreceiver.Config{
 		Identity: h.identity, AckSigner: h.receiverSigner(),
-		Senders:  []sealedhook.PinnedKey{{Key: h.signer.Public(), NotAfter: time.Now().Add(-time.Second)}, {Key: next.Public()}},
+		Senders:  []encryptedhook.PinnedKey{{Key: h.signer.Public(), NotAfter: time.Now().Add(-time.Second)}, {Key: next.Public()}},
 		TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding},
 	})
 	h.override = rotated
@@ -728,7 +728,7 @@ func TestRevisionZeroIsANoOpOnlyWhileTheRouteHoldsNoName(t *testing.T) {
 
 func TestReceiverPersistFailureRollsBackAndWithholdsAcknowledgement(t *testing.T) {
 	h := newHarness(t)
-	h.receiver.SetPersist(func(sealedreceiver.State) error { return errors.New("disk full") })
+	h.receiver.SetPersist(func(encryptedreceiver.State) error { return errors.New("disk full") })
 	j := newJournal()
 	_, err := h.sync(j, 1, manifest(marker), false)
 	if !errors.Is(err, adapter.ErrIndeterminate) {

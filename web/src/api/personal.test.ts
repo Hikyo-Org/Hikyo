@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from './client.ts';
 import { countsMark, NOTICE_CAUSE_TEXT, ownMark, personalSetRefusalText, personalWarningText } from './personal.ts';
 
-const count = (over: Partial<{ holders: number; notices: number; required: boolean }>) => ({
+const count = (over: Partial<{ members: number; holders: number; notices: number; required: boolean }>) => ({
   key_id: 'k1',
   name: 'DATABASE_URL',
+  members: 0,
   holders: 0,
   notices: 0,
   required: false,
@@ -13,16 +14,16 @@ const count = (over: Partial<{ holders: number; notices: number; required: boole
 });
 
 describe('countsMark', () => {
-  it('reads holders of eligible for a required key', () => {
-    expect(countsMark(count({ required: true, holders: 11 }), 14)).toEqual({
+  it('reads members of eligible for a required key', () => {
+    expect(countsMark(count({ required: true, members: 11, holders: 11 }), 14)).toEqual({
       text: 'personal · 11/14',
-      words: 'personal value required, 11 of 14 people hold one',
+      words: 'personal value required, 11 of 14 members have one',
     });
   });
 
-  it('counts holders and notices for an optional key', () => {
-    expect(countsMark(count({ holders: 3, notices: 1 }), 14)?.text).toBe('3 personal · 1 notice');
-    expect(countsMark(count({ holders: 1 }), 14)?.words).toBe('1 person holds a personal value');
+  it('counts members and notices for an optional key', () => {
+    expect(countsMark(count({ members: 3, holders: 3, notices: 1 }), 14)?.text).toBe('3 personal · 1 notice');
+    expect(countsMark(count({ members: 1, holders: 1 }), 14)?.words).toBe('1 member has a personal value');
   });
 
   it('marks nothing when nobody holds or is noticed', () => {

@@ -905,7 +905,7 @@ func writeGrantRowState(ctx context.Context, az *authz.TxAuthorizer, spec GrantS
 				return GrantResult{}, err
 			}
 			if n >= MaxGrantsPerOrg {
-				return GrantResult{}, fmt.Errorf("%w: an organization holds at most %d grants",
+				return GrantResult{}, fmt.Errorf("%w: an organisation holds at most %d grants",
 					domain.ErrLimitExceeded, MaxGrantsPerOrg)
 			}
 		}

@@ -1,5 +1,7 @@
 # Complete Hikyo configuration and remote Apply
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("organization" to organisation); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
 
 Status, 2026-09-06: **all 53 server input lifecycles are implemented. The full fresh Kubernetes proof passes on signed runtime source `c40833b9`, ending at generation 19 with exact binary/source/chart evidence. Combined package, race, isolation, generated SQL, web and admission checks are recorded in the validation report. Exact-head CI is tracked in draft PR #686.** The catalogue has 27 top-level keys: nine original mail/channel values, 16 owner settings, one secret node-overlay document and one bootstrap document. Supported deployment boundaries remain explicit below.
@@ -10,7 +12,7 @@ The user's D11 correction requires every supported server variable and remote Ap
 
 Historical PR #686 validation at `152373212c6d78a3bcae91e3300097ff0d893acf` covers the nine-key implementation. Current expansion evidence belongs in the [validation record](../reports/self-configuration/validation.md). No merge, deployment, cluster enrollment or exact-head CI result is implied by local tests.
 
-Each logical instance owns its protected organization, project, environment, schema, secrets and generation. The root management view groups references. It does not confer remote authority or centralize secrets. Only HA replicas share one owner configuration. The owning instance enforces normal scoped access together with instance-admin MFA; machine credentials, directory credentials and administration of a different instance cannot Apply.
+Each logical instance owns its protected organisation, project, environment, schema, secrets and generation. The root management view groups references. It does not confer remote authority or centralize secrets. Only HA replicas share one owner configuration. The owning instance enforces normal scoped access together with instance-admin MFA; machine credentials, directory credentials and administration of a different instance cannot Apply.
 
 ## Catalogue and activation coverage
 

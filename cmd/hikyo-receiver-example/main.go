@@ -1,5 +1,5 @@
 // Command hikyo-receiver-example is the reference receiver for Hikyo's sealed
-// webhook adapter (docs/spec/sealed-webhook.md). It is documentation and a
+// webhook adapter (docs/spec/encrypted-webhook.md). It is documentation and a
 // test harness, not a release artifact: it applies values to a local JSON
 // state file so the protocol can be exercised end to end.
 //
@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
-	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
+	"github.com/Hikyo-Org/hikyo/internal/encryptedreceiver"
 )
 
 func main() {
@@ -67,12 +67,12 @@ func keygen(args []string, stdout io.Writer) error {
 	if *protocol != 1 && *protocol != 2 {
 		return errors.New("keygen: protocol must be 1 or 2")
 	}
-	ackPEM, ackKey, err := sealedhook.GenerateSigningKey()
+	ackPEM, ackKey, err := encryptedhook.GenerateSigningKey()
 	if err != nil {
 		return err
 	}
 	if *protocol == 1 {
-		identity, recipient, err := sealedhook.GenerateRecipient()
+		identity, recipient, err := encryptedhook.GenerateRecipient()
 		if err != nil {
 			return err
 		}
@@ -85,11 +85,11 @@ func keygen(args []string, stdout io.Writer) error {
 		_, err = fmt.Fprintf(stdout, "recipient_key: %s\nack_key: %s\n", recipient, ackKey)
 		return err
 	}
-	identity, recipient, err := sealedhook.GenerateHybridRecipient()
+	identity, recipient, err := encryptedhook.GenerateHybridRecipient()
 	if err != nil {
 		return err
 	}
-	pqPEM, pqKey, err := sealedhook.GenerateMLDSASigningKey()
+	pqPEM, pqKey, err := encryptedhook.GenerateMLDSASigningKey()
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func senderKeygen(args []string, stdout io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	pqPEM, _, err := sealedhook.GenerateMLDSASigningKey()
+	pqPEM, _, err := encryptedhook.GenerateMLDSASigningKey()
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func senderKeygen(args []string, stdout io.Writer) error {
 		return err
 	}
 	if *withEd {
-		edPEM, _, err := sealedhook.GenerateSigningKey()
+		edPEM, _, err := encryptedhook.GenerateSigningKey()
 		if err != nil {
 			return err
 		}
@@ -147,11 +147,11 @@ func pubkey(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if ed, err := sealedhook.ParseSigningKeyPEM(raw); err == nil {
+	if ed, err := encryptedhook.ParseSigningKeyPEM(raw); err == nil {
 		_, err = fmt.Fprintf(stdout, "public_key: %s\nkey_id_v1: %s\nkey_id_v2: %s\n", ed.Public(), ed.Public().ID(), ed.Public().IDV2())
 		return err
 	}
-	pq, err := sealedhook.ParseMLDSASigningKeyPEM(raw)
+	pq, err := encryptedhook.ParseMLDSASigningKeyPEM(raw)
 	if err != nil {
 		return errors.New("pubkey: not an Ed25519 or ML-DSA-65 PKCS#8 signing key")
 	}
@@ -191,13 +191,13 @@ func fingerprint(args []string, stdout io.Writer) error {
 		if *ackPQ != "" {
 			return errors.New("fingerprint: -ack-key-mldsa65 needs -protocol 2")
 		}
-		fp, err = sealedhook.Fingerprint(*origin, *recipient, *ack, *generation)
+		fp, err = encryptedhook.Fingerprint(*origin, *recipient, *ack, *generation)
 	case 2:
-		var ed sealedhook.PublicKey
-		var pq sealedhook.MLDSAPublicKey
-		if ed, err = sealedhook.ParsePublicKey(*ack); err == nil {
-			if pq, err = sealedhook.ParseMLDSAPublicKey(*ackPQ); err == nil {
-				fp, err = sealedhook.FingerprintV2(*origin, *recipient, ed, pq, *generation)
+		var ed encryptedhook.PublicKey
+		var pq encryptedhook.MLDSAPublicKey
+		if ed, err = encryptedhook.ParsePublicKey(*ack); err == nil {
+			if pq, err = encryptedhook.ParseMLDSAPublicKey(*ackPQ); err == nil {
+				fp, err = encryptedhook.FingerprintV2(*origin, *recipient, ed, pq, *generation)
 			}
 		}
 	default:
@@ -235,14 +235,14 @@ type receiverFile struct {
 	Bindings map[string]string `json:"bindings"`
 }
 
-func loadReceiver(path string) (sealedreceiver.Config, error) {
+func loadReceiver(path string) (encryptedreceiver.Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return sealedreceiver.Config{}, err
+		return encryptedreceiver.Config{}, err
 	}
 	var file receiverFile
 	if err := json.Unmarshal(raw, &file, json.RejectUnknownMembers(true)); err != nil {
-		return sealedreceiver.Config{}, fmt.Errorf("config: %w", err)
+		return encryptedreceiver.Config{}, fmt.Errorf("config: %w", err)
 	}
 	base := filepath.Dir(path)
 	resolve := func(p string) string {
@@ -253,31 +253,31 @@ func loadReceiver(path string) (sealedreceiver.Config, error) {
 	}
 	ackPEM, err := os.ReadFile(resolve(file.AckKeyFile))
 	if err != nil {
-		return sealedreceiver.Config{}, fmt.Errorf("ack key: %w", err)
+		return encryptedreceiver.Config{}, fmt.Errorf("ack key: %w", err)
 	}
-	ack, err := sealedhook.ParseSigningKeyPEM(ackPEM)
+	ack, err := encryptedhook.ParseSigningKeyPEM(ackPEM)
 	if err != nil {
-		return sealedreceiver.Config{}, err
+		return encryptedreceiver.Config{}, err
 	}
-	cfg := sealedreceiver.Config{
+	cfg := encryptedreceiver.Config{
 		TargetID: file.TargetID, InstanceID: file.InstanceID, Generation: file.Generation, Bindings: file.Bindings,
 	}
 	if file.IdentityFile != "" {
 		identity, err := os.ReadFile(resolve(file.IdentityFile))
 		if err != nil {
-			return sealedreceiver.Config{}, fmt.Errorf("identity: %w", err)
+			return encryptedreceiver.Config{}, fmt.Errorf("identity: %w", err)
 		}
 		cfg.Identity, cfg.AckSigner = strings.TrimSpace(string(identity)), ack
 	}
 	for _, s := range file.Senders {
-		key, err := sealedhook.ParsePublicKey(s.Key)
+		key, err := encryptedhook.ParsePublicKey(s.Key)
 		if err != nil {
-			return sealedreceiver.Config{}, fmt.Errorf("sender: %w", err)
+			return encryptedreceiver.Config{}, fmt.Errorf("sender: %w", err)
 		}
-		pinned := sealedhook.PinnedKey{Key: key}
+		pinned := encryptedhook.PinnedKey{Key: key}
 		if s.NotAfter != "" {
 			if pinned.NotAfter, err = time.Parse(time.RFC3339, s.NotAfter); err != nil {
-				return sealedreceiver.Config{}, fmt.Errorf("sender not_after: %w", err)
+				return encryptedreceiver.Config{}, fmt.Errorf("sender not_after: %w", err)
 			}
 		}
 		cfg.Senders = append(cfg.Senders, pinned)
@@ -285,31 +285,31 @@ func loadReceiver(path string) (sealedreceiver.Config, error) {
 	if file.HybridIdentityFile != "" {
 		identity, err := os.ReadFile(resolve(file.HybridIdentityFile))
 		if err != nil {
-			return sealedreceiver.Config{}, fmt.Errorf("hybrid identity: %w", err)
+			return encryptedreceiver.Config{}, fmt.Errorf("hybrid identity: %w", err)
 		}
 		pqPEM, err := os.ReadFile(resolve(file.AckKeyMLDSA65File))
 		if err != nil {
-			return sealedreceiver.Config{}, fmt.Errorf("ML-DSA-65 ack key: %w", err)
+			return encryptedreceiver.Config{}, fmt.Errorf("ML-DSA-65 ack key: %w", err)
 		}
-		pq, err := sealedhook.ParseMLDSASigningKeyPEM(pqPEM)
+		pq, err := encryptedhook.ParseMLDSASigningKeyPEM(pqPEM)
 		if err != nil {
-			return sealedreceiver.Config{}, err
+			return encryptedreceiver.Config{}, err
 		}
-		if cfg.AckSignerV2, err = sealedhook.NewSignerV2(ack, pq); err != nil {
-			return sealedreceiver.Config{}, err
+		if cfg.AckSignerV2, err = encryptedhook.NewSignerV2(ack, pq); err != nil {
+			return encryptedreceiver.Config{}, err
 		}
 		cfg.HybridIdentity = strings.TrimSpace(string(identity))
 	}
 	for _, s := range file.SendersV2 {
-		ed, err1 := sealedhook.ParsePublicKey(s.Key)
-		pq, err2 := sealedhook.ParseMLDSAPublicKey(s.KeyMLDSA65)
+		ed, err1 := encryptedhook.ParsePublicKey(s.Key)
+		pq, err2 := encryptedhook.ParseMLDSAPublicKey(s.KeyMLDSA65)
 		if err := errors.Join(err1, err2); err != nil {
-			return sealedreceiver.Config{}, fmt.Errorf("sender pair: %w", err)
+			return encryptedreceiver.Config{}, fmt.Errorf("sender pair: %w", err)
 		}
-		pinned := sealedhook.PinnedSenderV2{Ed: ed, PQ: pq}
+		pinned := encryptedhook.PinnedSenderV2{Ed: ed, PQ: pq}
 		if s.NotAfter != "" {
 			if pinned.NotAfter, err = time.Parse(time.RFC3339, s.NotAfter); err != nil {
-				return sealedreceiver.Config{}, fmt.Errorf("sender pair not_after: %w", err)
+				return encryptedreceiver.Config{}, fmt.Errorf("sender pair not_after: %w", err)
 			}
 		}
 		cfg.SendersV2 = append(cfg.SendersV2, pinned)
@@ -334,12 +334,12 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
-	receiver, err := sealedreceiver.New(cfg)
+	receiver, err := encryptedreceiver.New(cfg)
 	if err != nil {
 		return err
 	}
 	if raw, err := os.ReadFile(*statePath); err == nil {
-		var state sealedreceiver.State
+		var state encryptedreceiver.State
 		if err := json.Unmarshal(raw, &state); err != nil {
 			return fmt.Errorf("state: %w", err)
 		}
@@ -347,16 +347,16 @@ func serve(args []string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	receiver.Persist = func(state sealedreceiver.State) error {
-		raw, err := sealedreceiver.MarshalState(state)
+	receiver.Persist = func(state encryptedreceiver.State) error {
+		raw, err := encryptedreceiver.MarshalState(state)
 		if err != nil {
 			return err
 		}
 		return persistState(*statePath, raw)
 	}
 	mux := http.NewServeMux()
-	mux.Handle(sealedhook.SyncPath, receiver)
-	mux.Handle(sealedhook.SyncPathV2, receiver)
+	mux.Handle(encryptedhook.SyncPath, receiver)
+	mux.Handle(encryptedhook.SyncPathV2, receiver)
 	server := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second}
 	return server.ListenAndServeTLS(*cert, *key)
 }

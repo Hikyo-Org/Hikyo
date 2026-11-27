@@ -106,7 +106,7 @@ export function AwsAccessFields({
       </label>
       {value.mode === 'static' ? null : (
         <p className="field__hint">
-          Uses this server&apos;s own AWS identity. The node operator must allow it with
+          Uses this server&apos;s own AWS identity. The production operator must allow it with
           HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow; no secret is stored.
         </p>
       )}
@@ -154,7 +154,7 @@ export function AwsAccessFields({
             value={value.secretAccessKey}
             onChange={(event) => set({ secretAccessKey: event.target.value })}
             autoComplete="new-password"
-            hint="Write-only. It is sealed on save and never shown again."
+            hint="Write-only. It is encrypted on save and never shown again."
           />
         </>
       ) : null}

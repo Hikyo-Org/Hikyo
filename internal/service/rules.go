@@ -36,10 +36,10 @@ var (
 	// ErrRuleAllProjectsNoProject refuses an all-projects rule in an org with
 	// no project: a v1 rule response lists the projects a rule covers and is
 	// never empty (owner decision 2026-11-25, #1446).
-	ErrRuleAllProjectsNoProject = fmt.Errorf("%w: service: an organization with no project cannot hold a rule over all projects; create a project first", domain.ErrConflict)
+	ErrRuleAllProjectsNoProject = fmt.Errorf("%w: service: an organisation with no project cannot hold a rule over all projects; create a project first", domain.ErrConflict)
 	// ErrRuleAllProjectsStale refuses an all-projects create whose project
 	// list differs from the org's current projects (owner decision R2).
-	ErrRuleAllProjectsStale = fmt.Errorf("%w: service: a rule over all projects must list exactly the organization's current projects", domain.ErrConflict)
+	ErrRuleAllProjectsStale = fmt.Errorf("%w: service: a rule over all projects must list exactly the organisation's current projects", domain.ErrConflict)
 	// ErrRuleAllProjectsTooLarge refuses an all-projects rule whose listing,
 	// its folders repeated under every current project, would pass the v1
 	// selector bound (#1446).
@@ -219,7 +219,7 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleVie
 			return err
 		}
 		if len(existing) >= MaxRulesPerOrg {
-			return fmt.Errorf("%w: an organization holds at most %d rules", domain.ErrLimitExceeded, MaxRulesPerOrg)
+			return fmt.Errorf("%w: an organisation holds at most %d rules", domain.ErrLimitExceeded, MaxRulesPerOrg)
 		}
 		id, err := newID("rul")
 		if err != nil {
@@ -431,7 +431,7 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		folders := len(spec.Where.Keys[domain.AnyProject])
 		if n := domain.AllProjectsExpansion(len(projects), folders); n > domain.MaxRuleItems {
 			return preparedRule{}, &detailErr{err: ErrRuleAllProjectsTooLarge, detail: fmt.Sprintf(
-				"a rule over all projects is listed with its %d folder items under each of the organization's %d projects: %d items, above the %d a rule carries",
+				"a rule over all projects is listed with its %d folder items under each of the organisation's %d projects: %d items, above the %d a rule carries",
 				folders, len(projects), n, domain.MaxRuleItems)}
 		}
 	}
@@ -529,12 +529,12 @@ func checkClaimedProjects(claimed, current []domain.ProjectID) error {
 		parts = append(parts, "missing "+strings.Join(missing, ", "))
 	}
 	if len(extra) > 0 {
-		parts = append(parts, "not in the organization "+strings.Join(extra, ", "))
+		parts = append(parts, "not in the organisation "+strings.Join(extra, ", "))
 	}
 	if len(dup) > 0 {
 		parts = append(parts, "listed twice "+strings.Join(dup, ", "))
 	}
-	return &detailErr{err: ErrRuleAllProjectsStale, detail: "a rule over all projects must list exactly the organization's current projects: " + strings.Join(parts, "; ")}
+	return &detailErr{err: ErrRuleAllProjectsStale, detail: "a rule over all projects must list exactly the organisation's current projects: " + strings.Join(parts, "; ")}
 }
 
 // refuseAllProjectsWithoutProject answers an all-projects rule in an org with
@@ -545,7 +545,7 @@ func refuseAllProjectsWithoutProject(ctx context.Context, az *authz.TxAuthorizer
 	if _, _, err := authorize(ctx, az, actor, authz.OpRuleListOrg, domain.Scope{Org: org}, now); err != nil {
 		return err
 	}
-	return &detailErr{err: ErrRuleAllProjectsNoProject, detail: "an organization with no project cannot hold a rule over all projects; create a project first"}
+	return &detailErr{err: ErrRuleAllProjectsNoProject, detail: "an organisation with no project cannot hold a rule over all projects; create a project first"}
 }
 
 // checkMachineRule holds a machine rule to the class's allowlist, to every
@@ -741,7 +741,7 @@ func checkRuleReferences(ctx context.Context, az *authz.TxAuthorizer, rule domai
 	for _, project := range rule.Where.Projects {
 		scope := domain.Scope{Org: rule.Org, Project: project}
 		if _, err := az.ResolveChain(ctx, scope); err != nil {
-			return fmt.Errorf("%w: project %s is not in organization %s", domain.ErrInvalid, project, rule.Org)
+			return fmt.Errorf("%w: project %s is not in organisation %s", domain.ErrInvalid, project, rule.Org)
 		}
 		for _, env := range rule.Where.Envs[project] {
 			if _, err := az.ResolveChain(ctx, domain.Scope{Org: rule.Org, Project: project, Env: env}); err != nil {

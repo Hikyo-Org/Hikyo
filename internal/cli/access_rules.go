@@ -275,7 +275,7 @@ func allProjectsRuleRequest(ctx context.Context, client *Client, base, principal
 		return apigen.CreateRuleRequest{}, err
 	}
 	if len(list.Items) == 0 {
-		return apigen.CreateRuleRequest{}, failf(ExitUsage, "hikyo access rule add: the organization has no project; create one before a rule over all projects")
+		return apigen.CreateRuleRequest{}, failf(ExitUsage, "hikyo access rule add: the organisation has no project; create one before a rule over all projects")
 	}
 	projects := make([]string, 0, len(list.Items))
 	for _, p := range list.Items {

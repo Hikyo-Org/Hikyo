@@ -14,13 +14,13 @@ import (
 	"time"
 )
 
-const sealedWebhookSetting = "HIKYO_SEALED_WEBHOOK_FILE"
+const encryptedWebhookSetting = "HIKYO_ENCRYPTED_WEBHOOK_FILE"
 
-// SealedWebhookConfig is the operator-owned sealed webhook registry (#163).
+// EncryptedWebhookConfig is the operator-owned encrypted webhook registry (#163).
 // Endpoints are instance-admin configuration: the file lives on the server,
 // and every endpoint must carry the fingerprint the admin verified out of
 // band. No tenant request can add, move, or re-key one.
-type SealedWebhookConfig struct {
+type EncryptedWebhookConfig struct {
 	InstanceID string
 	// SigningKeyPEM is the instance's Ed25519 envelope signing key, read from
 	// the file named by signing_key_file. It is never logged or exported.
@@ -28,11 +28,11 @@ type SealedWebhookConfig struct {
 	// SigningKeyMLDSA65PEM is the instance's ML-DSA-65 envelope signing key
 	// (seed-only PKCS#8), required exactly when a target speaks protocol 2.
 	SigningKeyMLDSA65PEM []byte
-	Targets              []SealedWebhookTarget
+	Targets              []EncryptedWebhookTarget
 }
 
-// SealedWebhookTarget is one receiver as written by the instance admin.
-type SealedWebhookTarget struct {
+// EncryptedWebhookTarget is one receiver as written by the instance admin.
+type EncryptedWebhookTarget struct {
 	ID                   string
 	Origin               string
 	RecipientKey         string
@@ -47,7 +47,7 @@ type SealedWebhookTarget struct {
 	AckKeyMLDSA65 string
 }
 
-type sealedWebhookFile struct {
+type encryptedWebhookFile struct {
 	InstanceID            string `json:"instance_id"`
 	SigningKeyFile        string `json:"signing_key_file"`
 	SigningKeyFileMLDSA65 string `json:"signing_key_file_mldsa65"`
@@ -65,28 +65,28 @@ type sealedWebhookFile struct {
 	} `json:"targets"`
 }
 
-func loadSealedWebhookConfig(path string) (*SealedWebhookConfig, error) {
+func loadEncryptedWebhookConfig(path string) (*EncryptedWebhookConfig, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("%s: read: %w", sealedWebhookSetting, err)
+		return nil, fmt.Errorf("%s: read: %w", encryptedWebhookSetting, err)
 	}
-	return parseSealedWebhookConfig(raw, filepath.Dir(path), readSigningKeyFile)
+	return parseEncryptedWebhookConfig(raw, filepath.Dir(path), readSigningKeyFile)
 }
 
-func parseSealedWebhookConfig(raw []byte, baseDir string, readKey func(string) ([]byte, error)) (*SealedWebhookConfig, error) {
-	var file sealedWebhookFile
+func parseEncryptedWebhookConfig(raw []byte, baseDir string, readKey func(string) ([]byte, error)) (*EncryptedWebhookConfig, error) {
+	var file encryptedWebhookFile
 	dec := jsontext.NewDecoder(bytes.NewReader(raw))
 	if err := json.UnmarshalDecode(dec, &file, json.RejectUnknownMembers(true)); err != nil {
-		return nil, fmt.Errorf("%s: invalid JSON: %w", sealedWebhookSetting, err)
+		return nil, fmt.Errorf("%s: invalid JSON: %w", encryptedWebhookSetting, err)
 	}
 	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%s: trailing data after the JSON object", sealedWebhookSetting)
+		return nil, fmt.Errorf("%s: trailing data after the JSON object", encryptedWebhookSetting)
 	}
 	if file.InstanceID == "" || file.SigningKeyFile == "" || len(file.Targets) == 0 {
-		return nil, fmt.Errorf("%s: instance_id, signing_key_file, and at least one target are required", sealedWebhookSetting)
+		return nil, fmt.Errorf("%s: instance_id, signing_key_file, and at least one target are required", encryptedWebhookSetting)
 	}
 	keyPath := file.SigningKeyFile
 	if !filepath.IsAbs(keyPath) {
@@ -94,9 +94,9 @@ func parseSealedWebhookConfig(raw []byte, baseDir string, readKey func(string) (
 	}
 	key, err := readKey(keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("%s: signing key: %w", sealedWebhookSetting, err)
+		return nil, fmt.Errorf("%s: signing key: %w", encryptedWebhookSetting, err)
 	}
-	out := &SealedWebhookConfig{InstanceID: file.InstanceID, SigningKeyPEM: key}
+	out := &EncryptedWebhookConfig{InstanceID: file.InstanceID, SigningKeyPEM: key}
 	ids, origins := map[string]bool{}, map[string]bool{}
 	protocol2 := false
 	for _, t := range file.Targets {
@@ -106,27 +106,27 @@ func parseSealedWebhookConfig(raw []byte, baseDir string, readKey func(string) (
 		}
 		switch {
 		case protocol != 1 && protocol != 2:
-			return nil, fmt.Errorf("%s: target %q protocol must be 1 or 2", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: target %q protocol must be 1 or 2", encryptedWebhookSetting, t.ID)
 		case protocol == 2 && t.AckKeyMLDSA65 == "":
-			return nil, fmt.Errorf("%s: protocol 2 target %q needs ack_key_mldsa65", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: protocol 2 target %q needs ack_key_mldsa65", encryptedWebhookSetting, t.ID)
 		case protocol == 1 && t.AckKeyMLDSA65 != "":
-			return nil, fmt.Errorf("%s: target %q sets ack_key_mldsa65 but speaks protocol 1; set protocol to 2 or remove it", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: target %q sets ack_key_mldsa65 but speaks protocol 1; set protocol to 2 or remove it", encryptedWebhookSetting, t.ID)
 		case t.ID == "" || t.Origin == "" || t.RecipientKey == "" || t.AckKey == "" || t.Generation < 1:
-			return nil, fmt.Errorf("%s: target %q needs id, origin, recipient_key, ack_key, and generation >= 1", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: target %q needs id, origin, recipient_key, ack_key, and generation >= 1", encryptedWebhookSetting, t.ID)
 		case t.ConfirmedFingerprint == "":
-			return nil, fmt.Errorf("%s: target %q has no confirmed_fingerprint; verify the receiver fingerprint out of band before activation", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: target %q has no confirmed_fingerprint; verify the receiver fingerprint out of band before activation", encryptedWebhookSetting, t.ID)
 		case t.TimeoutSeconds < 1 || t.TimeoutSeconds > 10:
-			return nil, fmt.Errorf("%s: target %q timeout_seconds must be 1..10", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: target %q timeout_seconds must be 1..10", encryptedWebhookSetting, t.ID)
 		case t.MaxResponseBytes < 1 || t.MaxResponseBytes > 64<<10:
-			return nil, fmt.Errorf("%s: target %q max_response_bytes must be 1..65536", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: target %q max_response_bytes must be 1..65536", encryptedWebhookSetting, t.ID)
 		case ids[t.ID]:
-			return nil, fmt.Errorf("%s: duplicate target id %q", sealedWebhookSetting, t.ID)
+			return nil, fmt.Errorf("%s: duplicate target id %q", encryptedWebhookSetting, t.ID)
 		case origins[t.Origin]:
-			return nil, fmt.Errorf("%s: origin %q is configured twice", sealedWebhookSetting, t.Origin)
+			return nil, fmt.Errorf("%s: origin %q is configured twice", encryptedWebhookSetting, t.Origin)
 		}
 		ids[t.ID], origins[t.Origin] = true, true
 		protocol2 = protocol2 || protocol == 2
-		out.Targets = append(out.Targets, SealedWebhookTarget{
+		out.Targets = append(out.Targets, EncryptedWebhookTarget{
 			ID: t.ID, Origin: t.Origin, RecipientKey: t.RecipientKey, AckKey: t.AckKey, Generation: t.Generation,
 			Timeout: time.Duration(t.TimeoutSeconds) * time.Second, MaxResponseBytes: t.MaxResponseBytes,
 			ConfirmedFingerprint: t.ConfirmedFingerprint, Protocol: protocol, AckKeyMLDSA65: t.AckKeyMLDSA65,
@@ -134,18 +134,18 @@ func parseSealedWebhookConfig(raw []byte, baseDir string, readKey func(string) (
 	}
 	switch {
 	case protocol2 && file.SigningKeyFileMLDSA65 == "":
-		return nil, fmt.Errorf("%s: a protocol 2 target needs signing_key_file_mldsa65", sealedWebhookSetting)
+		return nil, fmt.Errorf("%s: a protocol 2 target needs signing_key_file_mldsa65", encryptedWebhookSetting)
 	case !protocol2 && file.SigningKeyFileMLDSA65 != "":
 		// Unused private key material is surprise custody: remove the line
 		// when the last protocol 2 target is rolled back.
-		return nil, fmt.Errorf("%s: signing_key_file_mldsa65 is set but no target speaks protocol 2", sealedWebhookSetting)
+		return nil, fmt.Errorf("%s: signing_key_file_mldsa65 is set but no target speaks protocol 2", encryptedWebhookSetting)
 	case protocol2:
 		pqPath := file.SigningKeyFileMLDSA65
 		if !filepath.IsAbs(pqPath) {
 			pqPath = filepath.Join(baseDir, pqPath)
 		}
 		if out.SigningKeyMLDSA65PEM, err = readKey(pqPath); err != nil {
-			return nil, fmt.Errorf("%s: ML-DSA signing key: %w", sealedWebhookSetting, err)
+			return nil, fmt.Errorf("%s: ML-DSA signing key: %w", encryptedWebhookSetting, err)
 		}
 	}
 	return out, nil
@@ -165,4 +165,18 @@ func readSigningKeyFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("mode %v is accessible to group or other; chmod 600", info.Mode().Perm())
 	}
 	return os.ReadFile(path)
+}
+
+// getenvDeprecatedAlias reads a renamed setting. The old name is accepted until
+// v2 with a warning; setting both to different values fails fast.
+func getenvDeprecatedAlias(getenv func(string) string, key, oldKey string, warnings *[]string) (string, error) {
+	value, old := getenv(key), getenv(oldKey)
+	if old == "" {
+		return value, nil
+	}
+	if value != "" && value != old {
+		return "", fmt.Errorf("%s and the deprecated %s are both set to different values; set only %s", key, oldKey, key)
+	}
+	*warnings = append(*warnings, fmt.Sprintf("%s is deprecated and will be removed in v2; use %s", oldKey, key))
+	return old, nil
 }

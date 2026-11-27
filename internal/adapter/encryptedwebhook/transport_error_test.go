@@ -1,4 +1,4 @@
-package sealedwebhook
+package encryptedwebhook
 
 import (
 	"bytes"
@@ -13,16 +13,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
 )
 
 func TestTransportErrorsDoNotLogReceiverSecrets(t *testing.T) {
 	const marker = "github_pat_CANARY_PRIVATE_TOKEN"
-	_, public, err := sealedhook.GenerateSigningKey()
+	_, public, err := encryptedhook.GenerateSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	ackKey, err := sealedhook.ParsePublicKey(public)
+	ackKey, err := encryptedhook.ParsePublicKey(public)
 	if err != nil {
 		t.Fatal(err)
 	}

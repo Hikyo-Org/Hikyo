@@ -17,6 +17,23 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 )
 
+// templateWire maps the CLI spelling `instance-admin` to the v1 wire name
+// `operator`; both are accepted on input.
+func templateWire(name string) apigen.RoleTemplate {
+	if name == "instance-admin" {
+		return apigen.RoleTemplate("operator")
+	}
+	return apigen.RoleTemplate(name)
+}
+
+// templateLabel is the CLI output spelling of a wire template name.
+func templateLabel[T ~string](wire T) string {
+	if wire == "operator" {
+		return "instance-admin"
+	}
+	return string(wire)
+}
+
 // The access verbs (#55): `hikyo access grant list|add|remove|template` and
 // `hikyo access member list|remove`, plus `hikyo project-settings get|set`.
 //
@@ -240,7 +257,7 @@ func runAccessGrant(ctx context.Context, ios IO, args []string) error {
 	default: // template
 		var res apigen.GrantResultList
 		body := apigen.ApplyTemplateRequest{
-			Principal: principal, Template: apigen.RoleTemplate(template),
+			Principal: principal, Template: templateWire(template),
 		}
 		if err := client.Do(ctx, http.MethodPost, scope.path+"/template", body, &res); err != nil {
 			return err
@@ -401,7 +418,7 @@ func runAccessMemberInvite(ctx context.Context, ios IO, args []string) (returnEr
 		body.DisplayName = &displayName
 	}
 	if template != "" {
-		tmpl := apigen.RoleTemplate(template)
+		tmpl := templateWire(template)
 		body.Template = &tmpl
 	}
 	var result apigen.InvitationResult

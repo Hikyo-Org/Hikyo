@@ -99,7 +99,7 @@ type (
 	acknowledgementsInput []string
 
 	changeInput struct {
-		OrgID         string               `json:"org_id" jsonschema:"required,the organization immutable id"`
+		OrgID         string               `json:"org_id" jsonschema:"required,the organisation immutable id"`
 		ProjectID     string               `json:"project_id" jsonschema:"required,the project immutable id"`
 		EnvironmentID string               `json:"environment_id" jsonschema:"required,the environment immutable id"`
 		KeyName       string               `json:"key_name" jsonschema:"required,the declared key name"`

@@ -1,5 +1,7 @@
 # Hikyo personal values: one shared environment, one value per developer (ADR, accepted 2026-11-06)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("holder counts" to counts of members with a value, "crypto-shred" to shred); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Declared amendment (2026-11-12, [#1039](https://github.com/Hikyo-Org/Hikyo/issues/1039), owner-accepted in the [incident-containment ADR](./incident-containment.md) (O8), operative when its implementation pull request merges; cross-provider review did not run and is not CLEAN):** A contained owner still holds the personal-value retention predicate. The 14-day deletion clock is paused while the owner is contained: it is cleared, not started, no personal value is deleted, and a release restarts the clock fresh instead of expiring values retroactively. Privacy restriction keeps its own behavior. Historical text below is preserved.
 
 > **Status: accepted and operative.** The owner took decisions O1 to O4 below on 2026-11-03 and O5 to O8 on 2026-11-06,
@@ -160,7 +162,7 @@ local `DATABASE_URL` could silently become the shared one.
 ### Encryption
 
 Sealed under the project DEK with a new envelope kind, **`personal_value` (kind byte 9)**. Its AAD is `org_id`, `project_id`,
-`env_id`, `key_id` and `owner_principal_id`. The rows join project DEK rotation, reencrypt coverage and crypto-shred on project
+`env_id`, `key_id` and `owner_principal_id`. The rows join project DEK rotation, reencrypt coverage and shred on project
 delete. The encryption ADR's statement that the server must be able to decrypt is unchanged.
 
 ### What this guarantee is
@@ -221,7 +223,7 @@ exception class is added.
 | Delete my value, dismiss a notice | Same page | `hikyo personal set KEY --clear` |
 | See who holds a value | Matrix side panel, Members | `hikyo personal members KEY` |
 | Delete someone's value | Same panel | `hikyo personal set KEY --clear --member NAME` |
-| Holder counts per key | Matrix marks | `hikyo personal counts` |
+| Counts of members with a value, per key | Matrix marks | `hikyo personal counts` |
 | Offboarding report | Members | `hikyo personal offboarding-report NAME` |
 
 Spellings belong to [api-cli-spellings.md](../spec/api-cli-spellings.md). Three things are outside this rule, and all predate this

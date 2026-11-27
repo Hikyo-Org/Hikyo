@@ -1,5 +1,5 @@
-// Package sealedreceiver is the reference implementation of the receiver side
-// of the sealed webhook protocol (docs/spec/sealed-webhook.md). It exists for
+// Package encryptedreceiver is the reference implementation of the receiver side
+// of the sealed webhook protocol (docs/spec/encrypted-webhook.md). It exists for
 // documentation, interoperability, and adversarial tests; it is not shipped
 // in the Hikyo release binary.
 //
@@ -8,7 +8,7 @@
 // ciphertext, keeps an idempotency store so at-least-once delivery is safe,
 // tracks which route owns each name so it never overwrites an unowned value,
 // and signs every acknowledgement bound to the exact envelope digest.
-package sealedreceiver
+package encryptedreceiver
 
 import (
 	"crypto/subtle"
@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
@@ -38,8 +38,8 @@ import (
 // version 1 path.
 type Config struct {
 	Identity   string
-	AckSigner  *sealedhook.Signer
-	Senders    []sealedhook.PinnedKey
+	AckSigner  *encryptedhook.Signer
+	Senders    []encryptedhook.PinnedKey
 	TargetID   string
 	InstanceID string
 	Generation int64
@@ -48,8 +48,8 @@ type Config struct {
 	Bindings map[string]string
 	// Version 2 trust material.
 	HybridIdentity string
-	AckSignerV2    *sealedhook.SignerV2
-	SendersV2      []sealedhook.PinnedSenderV2
+	AckSignerV2    *encryptedhook.SignerV2
+	SendersV2      []encryptedhook.PinnedSenderV2
 	Now            func() time.Time
 	// AfterApply runs after a mutation is durably applied and before the
 	// acknowledgement is written. Tests use it to simulate a crash window.
@@ -65,8 +65,8 @@ type Entry struct {
 }
 
 type outcome struct {
-	Status sealedhook.AckStatus `json:"status"`
-	Reason string               `json:"reason,omitempty"`
+	Status encryptedhook.AckStatus `json:"status"`
+	Reason string                  `json:"reason,omitempty"`
 }
 
 // State is the receiver's durable state.
@@ -75,11 +75,11 @@ type State struct {
 	Seen   map[string]outcome          `json:"seen"`
 }
 
-// Receiver is an http.Handler serving sealedhook.SyncPath.
+// Receiver is an http.Handler serving encryptedhook.SyncPath.
 type Receiver struct {
 	cfg      Config
-	opener   *sealedhook.Opener
-	openerV2 *sealedhook.OpenerV2
+	opener   *encryptedhook.Opener
+	openerV2 *encryptedhook.OpenerV2
 	mu       sync.Mutex
 	state    State
 	// Persist, when set, is called with the new state after every mutation.
@@ -90,30 +90,30 @@ type Receiver struct {
 func New(cfg Config) (*Receiver, error) {
 	r := &Receiver{cfg: cfg, state: State{Values: map[string]map[string]Entry{}, Seen: map[string]outcome{}}}
 	if cfg.Identity == "" && cfg.HybridIdentity == "" {
-		return nil, errors.New("sealedreceiver: at least one of a version 1 or version 2 identity is required")
+		return nil, errors.New("encryptedreceiver: at least one of a version 1 or version 2 identity is required")
 	}
 	if cfg.Identity != "" {
-		opener, err := sealedhook.NewOpener(cfg.Identity, cfg.Senders)
+		opener, err := encryptedhook.NewOpener(cfg.Identity, cfg.Senders)
 		if err != nil {
 			return nil, err
 		}
 		if cfg.AckSigner == nil {
-			return nil, errors.New("sealedreceiver: a version 1 acknowledgement key is required")
+			return nil, errors.New("encryptedreceiver: a version 1 acknowledgement key is required")
 		}
 		r.opener = opener
 	}
 	if cfg.HybridIdentity != "" {
-		opener, err := sealedhook.NewOpenerV2(cfg.HybridIdentity, cfg.SendersV2)
+		opener, err := encryptedhook.NewOpenerV2(cfg.HybridIdentity, cfg.SendersV2)
 		if err != nil {
 			return nil, err
 		}
 		if cfg.AckSignerV2 == nil {
-			return nil, errors.New("sealedreceiver: a version 2 acknowledgement key pair is required")
+			return nil, errors.New("encryptedreceiver: a version 2 acknowledgement key pair is required")
 		}
 		r.openerV2 = opener
 	}
-	if !sealedhook.ValidID(cfg.TargetID) || !sealedhook.ValidID(cfg.InstanceID) || cfg.Generation < 1 {
-		return nil, errors.New("sealedreceiver: target id, instance id, and generation are required")
+	if !encryptedhook.ValidID(cfg.TargetID) || !encryptedhook.ValidID(cfg.InstanceID) || cfg.Generation < 1 {
+		return nil, errors.New("encryptedreceiver: target id, instance id, and generation are required")
 	}
 	if r.cfg.Now == nil {
 		r.cfg.Now = time.Now
@@ -201,18 +201,18 @@ func (r *Receiver) bucket(namespace string) map[string]Entry {
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	version := 0
 	switch {
-	case req.URL.Path == sealedhook.SyncPath && r.opener != nil:
+	case req.URL.Path == encryptedhook.SyncPath && r.opener != nil:
 		version = 1
-	case req.URL.Path == sealedhook.SyncPathV2 && r.openerV2 != nil:
+	case req.URL.Path == encryptedhook.SyncPathV2 && r.openerV2 != nil:
 		version = 2
 	}
 	if req.Method != http.MethodPost || version == 0 || req.URL.RawQuery != "" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	wantType, ackType, limit := sealedhook.ContentType, sealedhook.AckContentType, int64(sealedhook.MaxEnvelope)
+	wantType, ackType, limit := encryptedhook.ContentType, encryptedhook.AckContentType, int64(encryptedhook.MaxEnvelope)
 	if version == 2 {
-		wantType, ackType, limit = sealedhook.ContentTypeV2, sealedhook.AckContentTypeV2, sealedhook.MaxEnvelopeV2
+		wantType, ackType, limit = encryptedhook.ContentTypeV2, encryptedhook.AckContentTypeV2, encryptedhook.MaxEnvelopeV2
 	}
 	if media, _, err := mime.ParseMediaType(req.Header.Get("Content-Type")); err != nil || media != wantType {
 		http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
@@ -228,7 +228,7 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	var opened sealedhook.Opened
+	var opened encryptedhook.Opened
 	if version == 2 {
 		opened, err = r.openerV2.Open(body, r.cfg.Now())
 	} else {
@@ -267,26 +267,26 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	_, _ = w.Write(ack)
 }
 
-func (r *Receiver) apply(o sealedhook.Opened) (sealedhook.AckStatus, string, bool, error) {
+func (r *Receiver) apply(o encryptedhook.Opened) (encryptedhook.AckStatus, string, bool, error) {
 	e := o.Envelope
 	if e.TargetID != r.cfg.TargetID || e.InstanceID != r.cfg.InstanceID {
-		return sealedhook.AckRejected, "wrong_target", false, nil
+		return encryptedhook.AckRejected, "wrong_target", false, nil
 	}
 	if e.Generation != r.cfg.Generation {
-		return sealedhook.AckRejected, "generation_mismatch", false, nil
+		return encryptedhook.AckRejected, "generation_mismatch", false, nil
 	}
 	want, ok := r.cfg.Bindings[e.Namespace]
 	if !ok || subtle.ConstantTimeCompare([]byte(want), []byte(o.Payload.Binding)) != 1 {
-		return sealedhook.AckRejected, "unauthorized", false, nil
+		return encryptedhook.AckRejected, "unauthorized", false, nil
 	}
-	if e.Op == sealedhook.OpProbe {
-		return sealedhook.AckApplied, "", false, nil
+	if e.Op == encryptedhook.OpProbe {
+		return encryptedhook.AckApplied, "", false, nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if prior, seen := r.state.Seen[e.IdempotencyKey]; seen {
-		if prior.Status == sealedhook.AckApplied {
-			return sealedhook.AckAlreadyApplied, "", false, nil
+		if prior.Status == encryptedhook.AckApplied {
+			return encryptedhook.AckAlreadyApplied, "", false, nil
 		}
 		return prior.Status, prior.Reason, false, nil
 	}
@@ -309,31 +309,31 @@ func (r *Receiver) apply(o sealedhook.Opened) (sealedhook.AckStatus, string, boo
 			return "", "", false, err
 		}
 	}
-	return result.Status, result.Reason, result.Status == sealedhook.AckApplied, nil
+	return result.Status, result.Reason, result.Status == encryptedhook.AckApplied, nil
 }
 
-func (r *Receiver) mutate(e sealedhook.Envelope, p sealedhook.Payload) outcome {
+func (r *Receiver) mutate(e encryptedhook.Envelope, p encryptedhook.Payload) outcome {
 	b := r.bucket(e.Namespace)
 	for _, n := range e.Names {
 		cur, exists := b[n.Surface+"/"+n.Name]
 		if exists && cur.Route != e.Route {
-			return outcome{Status: sealedhook.AckConflict, Reason: "exists_unowned"}
+			return outcome{Status: encryptedhook.AckConflict, Reason: "exists_unowned"}
 		}
 		if exists && cur.Revision > e.Source.Revision {
-			return outcome{Status: sealedhook.AckRejected, Reason: "stale_revision"}
+			return outcome{Status: encryptedhook.AckRejected, Reason: "stale_revision"}
 		}
 	}
 	switch e.Op {
-	case sealedhook.OpUpsert:
+	case encryptedhook.OpUpsert:
 		for _, v := range p.Values {
 			b[v.Surface+"/"+v.Name] = Entry{Value: v.Value, Route: e.Route, Revision: e.Source.Revision}
 		}
-	case sealedhook.OpPrune:
+	case encryptedhook.OpPrune:
 		for _, n := range e.Names {
 			delete(b, n.Surface+"/"+n.Name)
 		}
 	}
-	return outcome{Status: sealedhook.AckApplied}
+	return outcome{Status: encryptedhook.AckApplied}
 }
 
 // MarshalState encodes the state for a state file.

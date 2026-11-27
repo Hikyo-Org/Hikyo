@@ -1,5 +1,7 @@
 # Hikyo schema & validation model (ADR, locked 2026-07-30)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Proposed declared amendment (2026-11-03, owner decisions O5 to O8 on 2026-11-06, [personal-values.md](./personal-values.md), operative when its implementation PR merges; cross-provider review waived by the owner on 2026-11-06, did not run and is not CLEAN; the amended tickets are not reopened yet):** a key declaration gains `personal_required_in`, the presence shape restricted to `mode: none | explicit`, edited under `definitions-edit` without per-environment publish authority because it moves no delivered content. It is rejected alongside `required_in` or `forbidden_in` for the same environment and on key-group members. No value-dependent rule ever refuses a personal value, at write or delivery: the owner gets a warning and audit has the same shape, so the rule-failure oracle does not reach them. Publish validation never evaluates one.
 
 > **Amended by the flat-model ADR ([flat-model.md](./flat-model.md), 2026-08-06, [#40](https://github.com/Hikyo-Org/Hikyo/issues/40), per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure):** the product adopts a flat value model — no inheritance, no project defaults, presence `set | absent`. § *Newly inheriting a secret*'s trigger list, the defaults section's project-defaults sentence, the dormant-occurrence rule, the base-graph serialization half, and every `(…, layer)` tuple in the closure/pending-version/recompute algorithms (now `(…, environment)`) read per that ADR's ripple register. `required_in`/`forbidden_in` and all other semantics stand.
@@ -82,7 +84,7 @@ A `json` key may carry an optional **JSON Schema**, because parseability alone i
 
 But "we accept JSON Schema 2020-12" is not implementable as stated, and byte/depth/count limits do not bound it: a schema well inside every size limit can drive combinatorial evaluation through nested applicators, and independent Go libraries disagree on formats, vocabularies, and reference resolution. So v1 accepts a **pinned, profiled, budgeted** subset of the real thing:
 
-1. **A pinned library and version, plus a conformance-suite baseline**, named in the operations spec. Two Hikyo installations must accept and reject the same schemas; "some 2020-12 validator" is not a contract.
+1. **A pinned library and version, plus a conformance-suite baseline**, named in the operations spec. Two Hikyo instances must accept and reject the same schemas; "some 2020-12 validator" is not a contract.
 2. **One pinned dialect** — 2020-12, declared, no dialect negotiation. It rides inside the pinned schema revision like every other rule.
 3. **A supported profile, enumerated as an explicit allowlist.** The **operations spec owns the enumeration**, and it MUST be a keyword-and-vocabulary **allowlist**, not a denylist — a denylist silently admits every keyword a future dialect or library version adds. Fixed here as binding constraints on that allowlist:
    - `$ref` is **in-document only** — no `http(s)`, no file refs; a remote `$ref` makes the validator an SSRF primitive and puts a third party in the publish path.
@@ -242,7 +244,7 @@ The attack: a principal holds schema-edit but not `reveal`. They set `pattern: "
 - **Presence rules are not value-dependent.** `required_in`, `forbidden_in`, key-group membership, and all-or-none presence report only whether an entry is `set`, `absent`, or `masked` — which is **write-presence**, already visible without `reveal` under the revision ADR. They need no `reveal`.
 - **Metadata is not value-dependent.** `description`, `deprecated`, `deprecation_note`, folder path.
 - **Every attempt is audited and rate-limited**, per key and per principal. Rate limiting is defence in depth, not the control — the control is that no predicate result reaches a non-revealer.
-- **Consequence, stated plainly:** tightening validation on a secret key is a privileged act. In a project whose secrets are widely `reveal`-restricted, schema-edit alone cannot tighten their rules. That is the correct trade — the alternative is a byte-at-a-time extraction oracle on every secret in the installation.
+- **Consequence, stated plainly:** tightening validation on a secret key is a privileged act. In a project whose secrets are widely `reveal`-restricted, schema-edit alone cannot tighten their rules. That is the correct trade — the alternative is a byte-at-a-time extraction oracle on every secret in the instance.
 
 ### Error disclosure — never echo a secret's value, including through paths
 

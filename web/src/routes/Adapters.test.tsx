@@ -412,7 +412,7 @@ it.each([
   ['github-actions', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
   ['cloudflare', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
   ['vault-kv', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
-  ['sealed-webhook', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['encrypted-webhook', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
   ['future-provider', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
 ])('renders %s destination mapping without another provider syntax', (provider, expected) => {
   expect(targetMappingText(provider, [

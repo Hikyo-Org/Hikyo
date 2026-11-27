@@ -565,7 +565,7 @@ function CADialog({
         </div>
       </fieldset>
       <p className="ceremony__scope">
-        The private key is sealed on the server and never shown or returned again, by any route.
+        The private key is encrypted on the server and never shown or returned again, by any route.
       </p>
       {error !== null ? <Alert>{error}</Alert> : null}
     </Dialog>

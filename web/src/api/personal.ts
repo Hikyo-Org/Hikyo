@@ -13,7 +13,7 @@ import type {
   PersonalOffboardingReport,
   PersonalValueCounts,
   PersonalValueEntry,
-  PersonalValueHolder,
+  PersonalValueHolder as PersonalValueMember,
   PersonalValueList,
   PersonalValueNoticeCause,
 } from '@hikyo/client';
@@ -34,11 +34,11 @@ import { useTransport } from './transport.tsx';
  * another person's value, and there is deliberately no `.env` download (O7).
  */
 
-export type { PersonalValueEntry, PersonalValueHolder, PersonalOffboardingReport, PersonalValueCounts };
+export type { PersonalValueEntry, PersonalValueMember, PersonalOffboardingReport, PersonalValueCounts };
 
 /** The ADR's fixed statement, shown wherever a personal value is entered. */
 export const PERSONAL_STATEMENT =
-  'Hikyo does not show this to administrators. Your instance operator could read it, and anyone who can change shared values here could capture it once your program runs. If someone gave you your password, authenticator or recovery codes, replace them, regenerate your recovery codes and check your linked identities first.';
+  'Hikyo does not show this to administrators. Your production operator could read it, and anyone who can change shared values here could capture it once your program runs. If someone gave you your password, authenticator or recovery codes, replace them, regenerate your recovery codes and check your linked identities first.';
 
 /** Why a value disappeared, in words. One table, used by every surface. */
 export const NOTICE_CAUSE_TEXT: Record<PersonalValueNoticeCause, string> = {
@@ -115,7 +115,7 @@ export function useDeletePersonalValue(env: EnvRef) {
 }
 
 /** Who holds a value or notice for one key here: metadata only, `manage-members`. */
-export function usePersonalMembers(env: EnvRef, key: string): UseQueryResult<PersonalValueHolder[]> {
+export function usePersonalMembers(env: EnvRef, key: string): UseQueryResult<PersonalValueMember[]> {
   const transport = useTransport();
   return useQuery({
     queryKey: membersKey(env, key),
@@ -161,18 +161,18 @@ export type PersonalMark = { readonly text: string; readonly words: string };
 
 /**
  * The mark a `manage-members` holder sees: counts, never values. A required
- * key reads `personal · 11/14` (holders of eligible), any other key with
- * holders `3 personal`. Notices add `1 notice`.
+ * key reads `personal · 11/14` (members with a value of eligible), any other key with
+ * members with a value `3 personal`. Notices add `1 notice`.
  */
 export function countsMark(item: PersonalValueCounts['items'][number], eligible: number): PersonalMark | null {
   const parts: string[] = [];
   const words: string[] = [];
   if (item.required) {
-    parts.push(`personal · ${String(item.holders)}/${String(eligible)}`);
-    words.push(`personal value required, ${String(item.holders)} of ${String(eligible)} people hold one`);
-  } else if (item.holders > 0) {
-    parts.push(`${String(item.holders)} personal`);
-    words.push(`${String(item.holders)} ${item.holders === 1 ? 'person holds' : 'people hold'} a personal value`);
+    parts.push(`personal · ${String(item.members)}/${String(eligible)}`);
+    words.push(`personal value required, ${String(item.members)} of ${String(eligible)} members have one`);
+  } else if (item.members > 0) {
+    parts.push(`${String(item.members)} personal`);
+    words.push(`${String(item.members)} ${item.members === 1 ? 'member has' : 'members have'} a personal value`);
   }
   if (item.notices > 0) {
     parts.push(`${String(item.notices)} ${item.notices === 1 ? 'notice' : 'notices'}`);

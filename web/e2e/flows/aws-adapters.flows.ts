@@ -186,7 +186,7 @@ export function registerAwsAdapterFlows(): void {
               await expect(secret).toHaveAttribute('type', 'password');
               await secret.fill(SECRET_CANARY);
             } else {
-              await expect(replacement.getByText(/The node operator must allow it/)).toBeVisible();
+              await expect(replacement.getByText(/The production operator must allow it/)).toBeVisible();
               await expect(replacement.getByLabel('Secret access key', { exact: true })).toHaveCount(0);
             }
             if (mode === 'assume-role' || mode === 'web-identity') {

@@ -1,5 +1,7 @@
 # Hikyo MCP phase 1 (ADR, locked 2026-09-04)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("organization" to organisation); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** the need for a service-account token with a slot, for Sealed orgs. See its supersession register.
 
 > **Owner-approved #1034 amendment (2026-10-28, operative on implementation merge):** missing/invalid/expired/revoked tool-call bearer refusals use the bounded instance summary contract in [auth-refusal-signals.md](./auth-refusal-signals.md), superseding the generic silence below only for those covered attempts. Discovery remains intentionally anonymous, successful pure reads remain `audited: none`, and dedicated refusal / `grant.denied` semantics are unchanged. The #1034-only cross-provider review waiver does not waive maintainer security review or merge approval.
@@ -129,7 +131,7 @@ one existing service operation. A bounded service or store pagination method
 may be added under the same named authorization operation, but the MCP handler
 must not materialize an existing whole-list result and slice it afterward.
 
-`O`, `P`, and `E` below mean the explicitly supplied organization, project, and
+`O`, `P`, and `E` below mean the explicitly supplied organisation, project, and
 environment immutable ids. There is no ambient context, name resolution, or
 default scope. Successful `audited: none` is the existing audit registry's
 reviewed disposition for a proof-scoped pure read. An authenticated
@@ -210,7 +212,7 @@ multiply permitted bulk-read work.
 
 MCP has a datastore-coordinated token bucket per service-account principal. It
 refills at 60 calls per minute and has capacity 20, so no burst exceeds 20
-calls. Concurrency caps are 4 per principal, 8 per organization, and 64 per
+calls. Concurrency caps are 4 per principal, 8 per organisation, and 64 per
 instance. The 64-instance cap is inside the
 server's existing global 512-request cap. Every replica shares the same budget
 state; an unavailable coordinator refuses rather than falling back to a local

@@ -1,13 +1,15 @@
 # Hikyo — Domain Model (synthesis, 2026-08-06)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("Organization" to organisation, "installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 The ubiquitous language, as locked in the domain-model grilling ([#7](https://github.com/Hikyo-Org/Hikyo/issues/7)) and amended by the flat-model ADR ([flat-model.md](../adr/flat-model.md), which supersedes the inheritance model in full). This document is the consolidated current state; the owning ADRs hold the rationale and the full semantics. It decides nothing.
 
 ## Hierarchy
 
-**Instance → Organization → Project → Environment → Folder → Key/Value.**
+**Instance → Organisation → Project → Environment → Folder → Key/Value.**
 
-- **Instance** — one Hikyo installation. Holds instance configuration, identity providers, remotes, the operator capability set.
-- **Organization** — tenancy boundary. All isolation is application-layer, proof-carrying ([tenant-isolation.md](../adr/tenant-isolation.md)); org admins are trusted within their org ([threat-model.md](../adr/threat-model.md)).
+- **Instance** — one running Hikyo service. Holds instance configuration, identity providers, remotes, the operator capability set.
+- **Organisation** — tenancy boundary. All isolation is application-layer, proof-carrying ([tenant-isolation.md](../adr/tenant-isolation.md)); org admins are trusted within their org ([threat-model.md](../adr/threat-model.md)).
 - **Project** — owns the key catalogue (the schema), environments, service accounts, adapters, per-project DEK ([encryption-model.md](../adr/encryption-model.md)).
 - **Environment** — user-defined per project, display-ordered. **No `base` pointer** (deleted by flat-model); no inheritance of any kind.
 - **Folder** — organizational only in v1: namespace + display grouping. No folder-scoped RBAC, no folder-level values.
@@ -54,7 +56,7 @@ One row per persisted entity class; the owning ADR holds the authoritative shape
 
 | Entity | Owner |
 |---|---|
-| Organization, Project, Environment, Folder | #7 + [flat-model.md](../adr/flat-model.md) |
+| Organisation, Project, Environment, Folder | #7 + [flat-model.md](../adr/flat-model.md) |
 | Key (declaration, constraints, group membership) | [schema-model.md](../adr/schema-model.md) |
 | Value entry `(key, environment)`, encrypted | [flat-model.md](../adr/flat-model.md), [encryption-model.md](../adr/encryption-model.md) |
 | Pending change (draft version) | [revision-model.md](../adr/revision-model.md) |

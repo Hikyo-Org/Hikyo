@@ -111,7 +111,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		// optional-policy, unenrolled operator control.
 		grants := &service.Grants{DB: db, Auth: admin.auth, Now: func() time.Time { return clk }}
 		weak, err := grants.InviteMember(t.Context(), service.Bearer(elevated.SessionToken), service.InviteSpec{
-			Username: "skew-unenrolled", Template: domain.TemplateOperator, Delivery: "response",
+			Username: "skew-unenrolled", Template: domain.TemplateInstanceAdmin, Delivery: "response",
 		})
 		if err != nil {
 			t.Fatal(err)

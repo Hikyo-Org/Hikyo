@@ -54,32 +54,32 @@ func CanonicalOrigin(provider Provider, raw string) (string, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("%s: parse origin: %w", provider, err)
+		return "", fmt.Errorf("%s: parse origin: %w", provider.Label(), err)
 	}
 	if u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-		return "", fmt.Errorf("%s: origin must be HTTPS without credentials, query, or fragment", provider)
+		return "", fmt.Errorf("%s: origin must be HTTPS without credentials, query, or fragment", provider.Label())
 	}
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if ip, err := netip.ParseAddr(host); err == nil {
 		if ip.Zone() != "" {
-			return "", fmt.Errorf("%s: scoped IP origins are not supported", provider)
+			return "", fmt.Errorf("%s: scoped IP origins are not supported", provider.Label())
 		}
 		host = ip.Unmap().String()
 	} else {
 		host, err = idna.Lookup.ToASCII(host)
 		if err != nil || host == "" || strings.ContainsAny(host, ":%/\\") {
-			return "", fmt.Errorf("%s: origin must name a valid host", provider)
+			return "", fmt.Errorf("%s: origin must name a valid host", provider.Label())
 		}
 		host = strings.ToLower(host)
 	}
 	port := u.Port()
 	if strings.HasSuffix(u.Host, ":") {
-		return "", fmt.Errorf("%s: origin has an empty port", provider)
+		return "", fmt.Errorf("%s: origin has an empty port", provider.Label())
 	}
 	if port != "" {
 		n, err := strconv.ParseUint(port, 10, 16)
 		if err != nil || n == 0 {
-			return "", fmt.Errorf("%s: origin port must be between 1 and 65535", provider)
+			return "", fmt.Errorf("%s: origin port must be between 1 and 65535", provider.Label())
 		}
 		port = strconv.FormatUint(n, 10)
 	}
@@ -92,53 +92,53 @@ func CanonicalOrigin(provider Provider, raw string) (string, error) {
 	switch provider {
 	case ForgejoProvider, EncryptedWebhookProvider, AWSSecretsManagerProvider, CloudflareProvider:
 		if u.Path != "" && u.Path != "/" {
-			return "", fmt.Errorf("%s: origin must be a bare https origin", provider)
+			return "", fmt.Errorf("%s: origin must be a bare https origin", provider.Label())
 		}
 	case GitHubActionsProvider:
 		path = strings.TrimSuffix(u.EscapedPath(), "/")
 		if path != "" && path != "/api/v3" {
-			return "", fmt.Errorf("%s: origin must be https://api.github.com or an HTTPS GHES /api/v3 base URL", provider)
+			return "", fmt.Errorf("%s: origin must be https://api.github.com or an HTTPS GHES /api/v3 base URL", provider.Label())
 		}
 	case GitLabProvider:
 		// Encoded separators and dot segments have proxy-dependent routing
 		// semantics. They cannot establish a unique custody namespace.
 		if strings.Contains(strings.ToLower(u.RawPath), "%2f") || strings.Contains(strings.ToLower(u.RawPath), "%5c") || strings.Contains(u.Path, "\\") {
-			return "", fmt.Errorf("%s: origin root contains an ambiguous separator", provider)
+			return "", fmt.Errorf("%s: origin root contains an ambiguous separator", provider.Label())
 		}
 		path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/api/v4")
 		for _, segment := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
 			if segment == "." || segment == ".." || (segment == "" && path != "") {
-				return "", fmt.Errorf("%s: origin root contains an ambiguous segment", provider)
+				return "", fmt.Errorf("%s: origin root contains an ambiguous segment", provider.Label())
 			}
 		}
 		path = (&url.URL{Path: path}).EscapedPath()
 	case VaultKVProvider:
 		if u.RawPath != "" {
-			return "", fmt.Errorf("%s: origin namespace must not be escaped", provider)
+			return "", fmt.Errorf("%s: origin namespace must not be escaped", provider.Label())
 		}
 		namespace := strings.Trim(u.Path, "/")
 		if namespace != "" {
 			if strings.HasSuffix(u.Path, "/") || namespace == "root" {
-				return "", fmt.Errorf("%s: omit root namespace and do not end namespace with a slash", provider)
+				return "", fmt.Errorf("%s: omit root namespace and do not end namespace with a slash", provider.Label())
 			}
 			for _, segment := range strings.Split(namespace, "/") {
 				if segment == "" {
-					return "", fmt.Errorf("%s: invalid namespace segment", provider)
+					return "", fmt.Errorf("%s: invalid namespace segment", provider.Label())
 				}
 				for _, ch := range segment {
 					if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_') {
-						return "", fmt.Errorf("%s: invalid namespace segment", provider)
+						return "", fmt.Errorf("%s: invalid namespace segment", provider.Label())
 					}
 				}
 			}
 			path = "/" + namespace
 		} else if u.Path != "" && u.Path != "/" {
-			return "", fmt.Errorf("%s: origin path must name a namespace", provider)
+			return "", fmt.Errorf("%s: origin path must name a namespace", provider.Label())
 		}
 	}
 	canonical := "https://" + host + path
 	if provider == CloudflareProvider && canonical != "https://api.cloudflare.com" {
-		return "", fmt.Errorf("%s: origin must be https://api.cloudflare.com", provider)
+		return "", fmt.Errorf("%s: origin must be https://api.cloudflare.com", provider.Label())
 	}
 	return canonical, nil
 }

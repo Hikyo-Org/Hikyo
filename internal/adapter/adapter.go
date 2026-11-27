@@ -231,7 +231,7 @@ type SyncRequest struct {
 	// tokens can replay an unknown outcome without writing twice.
 	JobID string
 	// Source pins the exact source scope and revision this job converges.
-	// Providers that carry provenance on the wire (sealed-webhook) require it.
+	// Providers that carry provenance on the wire (encrypted-webhook) require it.
 	Source Source
 }
 
@@ -445,21 +445,21 @@ func ValidateEncryptedWebhookManifest(prefix string, entries []ManifestEntry, va
 		name := prefix + entry.CanonicalName
 		switch {
 		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
-			return fmt.Errorf("sealed-webhook: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+			return fmt.Errorf("encrypted-webhook: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
 		case name == prefix+SentinelName:
-			return fmt.Errorf("sealed-webhook: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+			return fmt.Errorf("encrypted-webhook: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
 		case len(name) > 256:
-			return fmt.Errorf("sealed-webhook: %s: effective name exceeds the protocol's 256-byte limit", entry.CanonicalName)
+			return fmt.Errorf("encrypted-webhook: %s: effective name exceeds the protocol's 256-byte limit", entry.CanonicalName)
 		case !effectiveName.MatchString(name):
-			return fmt.Errorf("sealed-webhook: %s: effective name %q is not uppercase identifier syntax", entry.CanonicalName, name)
+			return fmt.Errorf("encrypted-webhook: %s: effective name %q is not uppercase identifier syntax", entry.CanonicalName, name)
 		case values && len(entry.Value) > EncryptedWebhookValueLimit:
-			return fmt.Errorf("sealed-webhook: %s: value exceeds the %d-byte limit", entry.CanonicalName, EncryptedWebhookValueLimit)
+			return fmt.Errorf("encrypted-webhook: %s: value exceeds the %d-byte limit", entry.CanonicalName, EncryptedWebhookValueLimit)
 		case values && !utf8.ValidString(entry.Value):
-			return fmt.Errorf("sealed-webhook: %s: non-UTF-8 values cannot be delivered byte-exactly", entry.CanonicalName)
+			return fmt.Errorf("encrypted-webhook: %s: non-UTF-8 values cannot be delivered byte-exactly", entry.CanonicalName)
 		}
 		normalized := strings.ToUpper(name)
 		if _, ok := seen[normalized]; ok {
-			return fmt.Errorf("sealed-webhook: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+			return fmt.Errorf("encrypted-webhook: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
 		}
 		seen[normalized] = struct{}{}
 	}
@@ -586,7 +586,7 @@ func ConsumptionForTarget(provider string, destination Destination, prefix strin
 }
 
 // WorkflowForProvider validates names and renders provider wiring: Cloudflare
-// bindings, an empty string for sealed-webhook, or workflow mappings otherwise.
+// bindings, an empty string for encrypted-webhook, or workflow mappings otherwise.
 // Prefixing is provider wiring; applications continue to receive canonical
 // names in every environment. Manifest validation errors propagate.
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {

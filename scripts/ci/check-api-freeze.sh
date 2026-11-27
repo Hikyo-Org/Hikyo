@@ -4,7 +4,11 @@ set -eu
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 cd "$repo_root"
 
-freeze_tag=v1.0.0
+# Compare against the newest stable v1 release (v1.0.0 until a later one is
+# tagged), so fields added in a minor release freeze too.
+freeze_tag=$(git for-each-ref --sort=-v:refname --format='%(refname:short)' 'refs/tags/v1.*' |
+	grep -E '^v1\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+freeze_tag=${freeze_tag:-v1.0.0}
 freeze_ref="refs/tags/$freeze_tag"
 if ! matched_ref=$(git for-each-ref --format='%(refname)' "$freeze_ref"); then
 	printf '%s\n' "API freeze guard: failed to inspect $freeze_ref" >&2

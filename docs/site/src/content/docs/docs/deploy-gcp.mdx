@@ -44,7 +44,7 @@ resolved image for repeatability. Confirm sizes and regional availability with
 
 ## Connect through IAP
 
-Grant the operator the required
+Grant the production operator the required
 [IAP TCP forwarding permissions](https://cloud.google.com/iap/docs/using-tcp-forwarding)
 and [OS Login role](https://cloud.google.com/compute/docs/oslogin/set-up-oslogin).
 OS Admin Login is needed for the host setup steps requiring sudo. Create a
@@ -92,7 +92,7 @@ reserved external IP continue to incur charges until deliberately removed.
 Before cleanup, perform the [backup and recovery steps](/docs/cloud-deployment/#managed-databases-and-recovery).
 Record the disk's zone, VM configuration, and exact Hikyo release. Reattach the
 existing disk deliberately during recovery; do not rerun disk-creation or
-formatting commands over an existing installation.
+formatting commands over an existing instance.
 
 ## Nightlies and upgrades
 
@@ -100,5 +100,5 @@ For a new Docker-based nightly on this host, follow
 [deploy and upgrade cloud nightlies](/docs/cloud-nightlies/). It includes durable
 storage, native HTTPS, first administrator creation, and image replacement.
 For native installations, stable releases, and recovery, use
-[upgrade a cloud installation](/docs/cloud-upgrades/). Keep the same data volume,
+[upgrade a cloud instance](/docs/cloud-upgrades/). Keep the same data volume,
 root key, and installation custody; do not redeploy infrastructure to update Hikyo.

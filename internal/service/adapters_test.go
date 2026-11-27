@@ -1735,7 +1735,7 @@ func TestAdapterAdoptRequiresRevealAcrossEveryAdapterEnvironment(t *testing.T) {
 	}
 }
 
-func TestAdapterAdoptRefusesSealedWebhookTargets(t *testing.T) {
+func TestAdapterAdoptRefusesEncryptedWebhookTargets(t *testing.T) {
 	db := adapterServiceDB(t)
 	recordAdapterPlanArtifact(t, db, "plan_sealed")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET provider='sealed-webhook' WHERE id='adp_1'`); err != nil {
@@ -1745,7 +1745,7 @@ func TestAdapterAdoptRefusesSealedWebhookTargets(t *testing.T) {
 		TargetID: "tgt_one", ArtifactID: "plan_sealed", ExpectedGeneration: 1, ExpectedDestinationID: 42, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "ONE_TOKEN"}},
 	})
 	if !errors.Is(err, domain.ErrInvalid) {
-		t.Fatalf("Adopt(sealed-webhook) = %v, want invalid: the protocol has no adopt intent", err)
+		t.Fatalf("Adopt(encrypted-webhook) = %v, want invalid: the protocol has no adopt intent", err)
 	}
 }
 
@@ -2321,5 +2321,28 @@ func TestAdapterOriginMoveCredentialFailureRequiresAttentionAndCancelReconverges
 	}
 	if state != "active" || origin != "https://git.example" {
 		t.Fatalf("old route not restored: %q %q", state, origin)
+	}
+}
+
+func TestAdapterCreateStoresAndAnswersTheV1WireIDForEncryptedWebhook(t *testing.T) {
+	db := adapterServiceDB(t)
+	seedKey(t, db, "key_create", "API_TOKEN")
+	gates := 0
+	svc := &Adapters{DB: db, Keyring: adapterKeyring(t, db), ModuleFactory: providerBlindTestModuleFactory(func(origin, credential string) (adapter.Module, func(), error) {
+		return fakeAdapterConfigureModule{gates: &gates}, nil, nil
+	})}
+	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
+		Provider: "encrypted-webhook", Origin: "https://receiver.example", Credential: []byte("binding"),
+		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "organization", DestinationOwner: "receiver", KeyIDs: []string{"key_create"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT provider FROM adapters WHERE id=?`, view.Adapter.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "sealed-webhook" || view.Adapter.Provider != "sealed-webhook" {
+		t.Fatalf("stored provider = %q, answered %q; want the v1 wire id sealed-webhook", stored, view.Adapter.Provider)
 	}
 }

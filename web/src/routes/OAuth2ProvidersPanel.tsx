@@ -119,7 +119,7 @@ export function OAuth2ProvidersPanel() {
       {deleting ? (
         <Dialog
           title={`Delete ${deleting.display_name}?`}
-          lede="The sign-in option disappears and its sessions end. Linked identities remain for operator reconciliation."
+          lede="The sign-in option disappears and its sessions end. Linked identities remain for instance administrator reconciliation."
           onCancel={(event) => {
             event.preventDefault();
             if (!remove.isPending) setDeleting(null);

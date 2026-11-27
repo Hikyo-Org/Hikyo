@@ -15,7 +15,7 @@ import (
 func TestConfigDurationsKeepNanosecondIntegers(t *testing.T) {
 	want := Config{
 		BackupInterval: 24 * time.Hour, BackupRPO: 26 * time.Hour, BackupRTOTarget: 30 * time.Minute, ReauthWindow: 15 * time.Minute,
-		SealedWebhook: &SealedWebhookConfig{InstanceID: "i", Targets: []SealedWebhookTarget{{ID: "t", Timeout: 5 * time.Second}}},
+		EncryptedWebhook: &EncryptedWebhookConfig{InstanceID: "i", Targets: []EncryptedWebhookTarget{{ID: "t", Timeout: 5 * time.Second}}},
 	}
 	got, err := json.Marshal(want, jsonwire.Stable)
 	if err != nil {
@@ -40,15 +40,15 @@ func TestConfigDurationsKeepNanosecondIntegers(t *testing.T) {
 		t.Fatalf("round trip changed bytes: %v\n%s\n%s", err, got, again)
 	}
 	if back.BackupInterval != want.BackupInterval || back.BackupRPO != want.BackupRPO || back.BackupRTOTarget != want.BackupRTOTarget ||
-		back.ReauthWindow != want.ReauthWindow || back.SealedWebhook.Targets[0].Timeout != 5*time.Second {
+		back.ReauthWindow != want.ReauthWindow || back.EncryptedWebhook.Targets[0].Timeout != 5*time.Second {
 		t.Fatalf("durations changed: %+v", back)
 	}
 }
 
-// TestSealedWebhookTargetDurationExactBytes pins a whole standalone target,
+// TestEncryptedWebhookTargetDurationExactBytes pins a whole standalone target,
 // including through a pointer and with default options.
-func TestSealedWebhookTargetDurationExactBytes(t *testing.T) {
-	target := SealedWebhookTarget{ID: "t", Timeout: 5 * time.Second, Protocol: 1}
+func TestEncryptedWebhookTargetDurationExactBytes(t *testing.T) {
+	target := EncryptedWebhookTarget{ID: "t", Timeout: 5 * time.Second, Protocol: 1}
 	const want = `{"ID":"t","Origin":"","RecipientKey":"","AckKey":"","Generation":0,"Timeout":5000000000,"MaxResponseBytes":0,"ConfirmedFingerprint":"","Protocol":1,"AckKeyMLDSA65":""}`
 	for name, value := range map[string]any{"value": target, "pointer": &target} {
 		got, err := json.Marshal(value)
@@ -56,7 +56,7 @@ func TestSealedWebhookTargetDurationExactBytes(t *testing.T) {
 			t.Fatalf("%s: %v\n%s", name, err, got)
 		}
 	}
-	var back SealedWebhookTarget
+	var back EncryptedWebhookTarget
 	if err := json.Unmarshal([]byte(want), &back); err != nil || back != target {
 		t.Fatalf("round trip: %v %+v", err, back)
 	}

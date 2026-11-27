@@ -1,5 +1,7 @@
 # Hikyo — Ops catalogue additions landed at synthesis (2026-08-06)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 [ops-spec.md](../adr/ops-spec.md) owns every concrete operational value; several post-lock ADRs declared **categories** into its composable-maxima catalogue and delegated the **values** to synthesis. This document lands those values under ops-spec's rules: every bound is a named user-visible refusal; every default is overridable at the stated scope unless marked fixed; all values are sane at the Pi-4/4 GB calibration floor. These rows join the ops-spec decision inventory; contradictions reopen the owning ticket.
 
 ## Row numbering collision (reported, not corrected)
@@ -229,7 +231,7 @@ An absent managed backup schedule alone produces a `not_scheduled` warning,
 not a retention breach or doctor error. This applies both before any managed
 backup exists and after a fresh successful manual export/prune. Recorded prune
 evidence remains visible; a false breach flag does not certify an unchecked
-installation. Observed expired archives, failed/incomplete or uncertain prune
+instance. Observed expired archives, failed/incomplete or uncertain prune
 attempts, and clock uncertainty remain errors even after scheduling is disabled.
 A configured schedule with missing or stale checks also remains unhealthy.
 

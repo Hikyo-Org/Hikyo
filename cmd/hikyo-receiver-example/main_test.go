@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
+	"github.com/Hikyo-Org/hikyo/internal/encryptedreceiver"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
-	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
 )
 
 func TestKeygenFingerprintAndConfigRoundTrip(t *testing.T) {
@@ -45,11 +45,11 @@ func TestKeygenFingerprintAndConfigRoundTrip(t *testing.T) {
 	if err := run([]string{"fingerprint", "-origin", "https://recv.example", "-recipient", recipient, "-ack-key", ack}, &out); err != nil {
 		t.Fatal(err)
 	}
-	want, _ := sealedhook.Fingerprint("https://recv.example", recipient, ack, 1)
+	want, _ := encryptedhook.Fingerprint("https://recv.example", recipient, ack, 1)
 	if strings.TrimSpace(out.String()) != want {
 		t.Fatalf("fingerprint = %q, want %q", out.String(), want)
 	}
-	_, sender, _ := sealedhook.GenerateSigningKey()
+	_, sender, _ := encryptedhook.GenerateSigningKey()
 	cfg, _ := json.Marshal(map[string]any{
 		"target_id": "payments", "instance_id": "hikyo", "generation": 1,
 		"identity_file": "identity.age", "ack_key_file": "ack.pem",
@@ -156,9 +156,9 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 	if err := run([]string{"fingerprint", "-protocol", "2", "-origin", "https://recv.example", "-recipient", pub["recipient_key"], "-ack-key", pub["ack_key"], "-ack-key-mldsa65", pub["ack_key_mldsa65"], "-generation", "4"}, &out); err != nil {
 		t.Fatal(err)
 	}
-	ed, _ := sealedhook.ParsePublicKey(pub["ack_key"])
-	pq, _ := sealedhook.ParseMLDSAPublicKey(pub["ack_key_mldsa65"])
-	want, err := sealedhook.FingerprintV2("https://recv.example", pub["recipient_key"], ed, pq, 4)
+	ed, _ := encryptedhook.ParsePublicKey(pub["ack_key"])
+	pq, _ := encryptedhook.ParseMLDSAPublicKey(pub["ack_key_mldsa65"])
+	want, err := encryptedhook.FingerprintV2("https://recv.example", pub["recipient_key"], ed, pq, 4)
 	if err != nil || strings.TrimSpace(out.String()) != want {
 		t.Fatalf("fingerprint = %q, want %q (%v)", out.String(), want, err)
 	}
@@ -191,14 +191,14 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 	if loaded.Identity != "" || loaded.AckSigner != nil || loaded.AckSignerV2 == nil || len(loaded.SendersV2) != 2 || loaded.SendersV2[1].NotAfter.IsZero() {
 		t.Fatalf("loaded = %+v", loaded)
 	}
-	receiver, err := sealedreceiver.New(loaded)
+	receiver, err := encryptedreceiver.New(loaded)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The version 1 route does not exist on a PQ-required receiver.
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPath, strings.NewReader("{}"))
-	req.Header.Set("Content-Type", sealedhook.ContentType)
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPath, strings.NewReader("{}"))
+	req.Header.Set("Content-Type", encryptedhook.ContentType)
 	receiver.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("v1 route on a PQ-required receiver = %d", rec.Code)

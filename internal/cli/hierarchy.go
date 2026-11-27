@@ -87,7 +87,7 @@ func runProject(ctx context.Context, ios IO, args []string) error {
 		// taxonomy spells 4. It is checked here so it refuses before any server
 		// contact — including before the GET that reads the name to compare.
 		return failf(ExitRefused,
-			"deleting a project is irreversible: it crypto-shreds the project key. "+
+			"deleting a project is irreversible: it shreds the project key. "+
 				"Re-run with --confirm <project-name>, naming the project you mean")
 	}
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
@@ -146,7 +146,7 @@ func runProject(ctx context.Context, ios IO, args []string) error {
 		// The permission model's locked row for this operation is
 		// `manage-projects(org)` ∧ EXPLICIT CONFIRMATION NAMING THE PROJECT (∧ no
 		// protected environment in it, which needs the protected flag that does
-		// not exist yet). Project deletion crypto-shreds the project DEK and is
+		// not exist yet). Project deletion shreds the project DEK and is
 		// irreversible, so the confirmation is not a nicety.
 		//
 		// It is a typed flag rather than an interactive prompt for two reasons:

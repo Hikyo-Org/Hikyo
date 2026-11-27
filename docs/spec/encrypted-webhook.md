@@ -1,19 +1,21 @@
-# Sealed webhook receiver protocol, version 1
+# Encrypted webhook receiver protocol, version 1
 
-Status: normative for the `sealed-webhook` deployment adapter ([#163](https://github.com/Hikyo-Org/Hikyo/issues/163)).
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) (the file renamed from `sealed-webhook.md`, "sealed webhook" and `sealed-webhook` to encrypted webhook and `encrypted-webhook`, `HIKYO_SEALED_WEBHOOK_FILE` to `HIKYO_ENCRYPTED_WEBHOOK_FILE`, and the code package paths. The wire domain labels, media types and vector file name keep their `sealed` spelling because they are protocol values); no decision changed. The v1 API keeps `sealed-webhook` and `operator` as the wire values until v2. The CLI, UI and code use `encrypted-webhook` and `instance-admin` and accept the old names as deprecated aliases, including the provider id on API input and `HIKYO_SEALED_WEBHOOK_FILE`. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
+Status: normative for the `encrypted-webhook` deployment adapter (`sealed-webhook` on the v1 API; [#163](https://github.com/Hikyo-Org/Hikyo/issues/163)).
 Owning ADR: [deployment-adapter.md](../adr/deployment-adapter.md), declared amendment of 2026-09-26.
-Reference implementation: `internal/crypto/sealedhook` (all cryptography),
-`internal/adapter/sealedwebhook` (sender), `internal/sealedreceiver` and
+Reference implementation: `internal/crypto/encryptedhook` (all cryptography),
+`internal/adapter/encryptedwebhook` (sender), `internal/encryptedreceiver` and
 `cmd/hikyo-receiver-example` (receiver).
 
 ## 1. Purpose and trust boundary
 
-The sealed webhook adapter pushes secret values from Hikyo to a generic HTTPS
+The encrypted webhook adapter pushes secret values from Hikyo to a generic HTTPS
 receiver without turning a webhook into a plaintext exfiltration path.
 
 - **Endpoints are instance-admin configuration.** They live in the
-  operator-owned registry file named by `HIKYO_SEALED_WEBHOOK_FILE`. A tenant
-  can create a `sealed-webhook` adapter only for an origin already present and
+  operator-owned registry file named by `HIKYO_ENCRYPTED_WEBHOOK_FILE`. A tenant
+  can create an `encrypted-webhook` adapter only for an origin already present and
   activated there; a tenant never supplies a URL that Hikyo dials.
 - **Activation requires an out-of-band fingerprint.** The receiver operator
   computes the fingerprint (section 6) and reads it to the instance admin over
@@ -94,7 +96,7 @@ the domain string `hikyo/sealed-webhook/envelope/v1`, `v`, `target_id`,
 `names`, then `surface` and `name` for each entry, the raw ciphertext bytes,
 `idempotency_key`, `issued_at`, `expires_at`, `key_id`. This is the same
 injective encoding as the encryption-model AAD schema. A frozen known-answer
-vector lives in `internal/crypto/sealedhook/sealedhook_test.go`.
+vector lives in `internal/crypto/encryptedhook/encryptedhook_test.go`.
 
 **Payload.** The ciphertext decrypts to JSON:
 
@@ -524,7 +526,7 @@ already recorded are exposed to a recording adversary.
 
 ### 11.9 Published vectors
 
-[`internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json`](../../internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json)
+[`internal/crypto/encryptedhook/testdata/sealed-webhook-v2-vectors.json`](../../internal/crypto/encryptedhook/testdata/sealed-webhook-v2-vectors.json)
 is the protocol vector: one envelope and its acknowledgement, the pinned public
 keys, the key ids, recipient id, fingerprint and destination id they derive, the
 exact signed bytes of both messages in hex, and negative bodies with the error

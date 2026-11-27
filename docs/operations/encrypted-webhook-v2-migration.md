@@ -1,4 +1,4 @@
-# Sealed webhook protocol 2: receiver and sender migration
+# Encrypted webhook protocol 2: receiver and sender migration
 
 Status: **protocol 2 of [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128)
 is usable after the implementation merges, when a target is explicitly
@@ -6,7 +6,7 @@ configured for it.** The owner authorized merge on 2026-11-04 and accepted the
 declared-amendment revision route for the spec. That is not a claim that the
 registered limits below are closed, and cross-provider review was SKIPPED by
 owner instruction, not CLEAN. The protocol is
-[section 11 of the sealed webhook spec](../spec/sealed-webhook.md#11-protocol-version-2).
+[section 11 of the encrypted webhook spec](../spec/encrypted-webhook.md#11-protocol-version-2).
 Nothing here authorizes a production key change, a push to a live receiver, or
 retiring protocol 1. Follow the order: receiver first.
 
@@ -154,7 +154,7 @@ hikyo-receiver-example fingerprint -protocol 2 \
 
 ### 4. Change the registry entry to protocol 2
 
-The registry (`HIKYO_SEALED_WEBHOOK_FILE`) gains a top-level
+The registry (`HIKYO_ENCRYPTED_WEBHOOK_FILE`) gains a top-level
 `signing_key_file_mldsa65` and, per target, `"protocol": 2` and
 `ack_key_mldsa65`. An origin is configured once, so you change the entry **in
 place**: `recipient_key`, both ack keys, `protocol` and `confirmed_fingerprint`

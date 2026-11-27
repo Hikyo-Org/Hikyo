@@ -12,6 +12,7 @@ type Provider string
 const (
 	ForgejoProvider           Provider = "forgejo"
 	GitHubActionsProvider     Provider = "github-actions"
+	// EncryptedWebhookProvider keeps its v1 wire and stored id until v2.
 	EncryptedWebhookProvider  Provider = "sealed-webhook"
 	CloudflareProvider        Provider = "cloudflare"
 	VaultKVProvider           Provider = "vault-kv"
@@ -19,7 +20,21 @@ const (
 	GitLabProvider            Provider = "gitlab"
 )
 
+// EncryptedWebhookName is the current name of EncryptedWebhookProvider. Input
+// accepts it and ParseProvider maps it to the v1 wire id; the CLI and web UI
+// show it. It becomes the wire id in v2.
+const EncryptedWebhookName = "encrypted-webhook"
+
 var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, EncryptedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
+
+// Label is the provider's display name: the wire id, except the encrypted
+// webhook, which v1 carries as sealed-webhook.
+func (p Provider) Label() string {
+	if p == EncryptedWebhookProvider {
+		return EncryptedWebhookName
+	}
+	return string(p)
+}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {
@@ -29,6 +44,9 @@ func SupportedProviders() []Provider {
 // ParseProvider rejects missing and unknown persisted provider identities.
 // API defaults must resolve to an explicit provider before this boundary.
 func ParseProvider(raw string) (Provider, error) {
+	if raw == EncryptedWebhookName {
+		return EncryptedWebhookProvider, nil
+	}
 	provider := Provider(raw)
 	for _, supported := range supportedProviders {
 		if provider == supported {

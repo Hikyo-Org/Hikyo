@@ -159,7 +159,7 @@ var forbidden = []struct{ importer, imports, why string }{
 // Crypto chokepoint (encryption-model ADR CI invariant 12, placed by the
 // system-architecture ADR § Encryption boundary): no import of a
 // cryptographic primitive package outside the envelope package, and age
-// nowhere outside the backup and sealed-webhook crypto packages. crypto/sha256
+// nowhere outside the backup and encrypted-webhook crypto packages. crypto/sha256
 // and crypto/subtle stay unrestricted — hashing verifiers is not envelope
 // encryption. The golang.org/x/crypto/ssh subtree is skipped here and confined
 // to internal/sshca by the OpenSSH protocol confinement instead.
@@ -179,8 +179,8 @@ var cryptoPrimitivePrefixes = []string{
 }
 
 var ageImporters = map[string]bool{
-	module + "/internal/crypto/backup":     true, // backup containers (#76)
-	module + "/internal/crypto/sealedhook": true, // sealed webhook payloads (#163)
+	module + "/internal/crypto/backup":        true, // backup containers (#76)
+	module + "/internal/crypto/encryptedhook": true, // sealed webhook payloads (#163)
 }
 
 type pkg struct {
@@ -377,7 +377,7 @@ func TestCryptoChokepoint(t *testing.T) {
 					}
 				}
 				if matchesDependencyPrefix(imp, "filippo.io/age") && !ageImporters[p.ImportPath] {
-					t.Errorf("%s imports %s: age is confined to internal/crypto/backup and internal/crypto/sealedhook", p.ImportPath, imp)
+					t.Errorf("%s imports %s: age is confined to internal/crypto/backup and internal/crypto/encryptedhook", p.ImportPath, imp)
 				}
 			}
 		}

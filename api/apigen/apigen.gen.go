@@ -5155,7 +5155,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
@@ -5358,7 +5358,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -5623,7 +5623,8 @@ type ApplyTemplateRequest struct {
 	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
 	Principal ID `json:"principal"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -6563,7 +6564,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
@@ -7787,7 +7788,8 @@ type EmailInvitation struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7803,7 +7805,8 @@ type EmailInvitationAcceptance struct {
 	// the current one included, and they must sign in again.
 	SignedOut bool `json:"signed_out"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7828,7 +7831,8 @@ type EmailInvitationListing struct {
 	// InvitedBy A prefixed UUIDv7, e.g. `org_0198…`.
 	InvitedBy ID `json:"invited_by"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7841,7 +7845,8 @@ type EmailInvitationPreview struct {
 	Org     ID     `json:"org"`
 	OrgName string `json:"org_name"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7851,7 +7856,8 @@ type EmailInvitationSendRequest struct {
 	// verified address of an existing account can be reached.
 	Email string `json:"email"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -9798,12 +9804,15 @@ type PersonalOffboardingServiceAccount struct {
 
 // PersonalValueCount defines model for PersonalValueCount.
 type PersonalValueCount struct {
-	// Holders People holding a personal value for this key here.
+	// Holders Deprecated alias of `members`, kept until v2.
 	Holders int `json:"holders"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
-	KeyId ID     `json:"key_id"`
-	Name  string `json:"name"`
+	KeyId ID `json:"key_id"`
+
+	// Members Members with a value of their own for this key here.
+	Members int    `json:"members"`
+	Name    string `json:"name"`
 
 	// Notices People with an unacknowledged removal notice.
 	Notices int `json:"notices"`
@@ -10381,7 +10390,8 @@ type RegistrationLanding struct {
 	Cap  *int                    `json:"cap,omitzero"`
 	Kind RegistrationLandingKind `json:"kind"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template *RoleTemplate `json:"template,omitzero"`
 }
 
@@ -11033,7 +11043,8 @@ type RevisionPinResult struct {
 // RevisionPinResultAction defines model for RevisionPinResult.Action.
 type RevisionPinResultAction string
 
-// RoleTemplate The closed v1 role template set.
+// RoleTemplate The closed v1 role template set. `operator` is the v1 wire name of the
+// instance administrator template; it becomes `instance-admin` in v2.
 type RoleTemplate string
 
 // RollbackRequest defines model for RollbackRequest.
@@ -16474,10 +16485,10 @@ type ServerInterface interface {
 	// RenameOrg Rename an organisation.
 	// (PATCH /api/v1/orgs/{org})
 	RenameOrg(w http.ResponseWriter, r *http.Request, org OrgID)
-	// QueryOrgAudit One bounded page of the organization's audit trail.
+	// QueryOrgAudit One bounded page of the organisation's audit trail.
 	// (GET /api/v1/orgs/{org}/audit)
 	QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams)
-	// ExportOrgAudit Stream the organization's audit trail as JSONL.
+	// ExportOrgAudit Stream the organisation's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams)
 	// ListOrgEmailInvitations List the organisation's live pending email invitations.
@@ -18283,13 +18294,13 @@ func (_ Unimplemented) RenameOrg(w http.ResponseWriter, r *http.Request, org Org
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// QueryOrgAudit One bounded page of the organization's audit trail.
+// QueryOrgAudit One bounded page of the organisation's audit trail.
 // (GET /api/v1/orgs/{org}/audit)
 func (_ Unimplemented) QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ExportOrgAudit Stream the organization's audit trail as JSONL.
+// ExportOrgAudit Stream the organisation's audit trail as JSONL.
 // (GET /api/v1/orgs/{org}/audit/export)
 func (_ Unimplemented) ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -88318,10 +88329,10 @@ type StrictServerInterface interface {
 	// RenameOrg Rename an organisation.
 	// (PATCH /api/v1/orgs/{org})
 	RenameOrg(ctx context.Context, request RenameOrgRequestObject) (RenameOrgResponseObject, error)
-	// QueryOrgAudit One bounded page of the organization's audit trail.
+	// QueryOrgAudit One bounded page of the organisation's audit trail.
 	// (GET /api/v1/orgs/{org}/audit)
 	QueryOrgAudit(ctx context.Context, request QueryOrgAuditRequestObject) (QueryOrgAuditResponseObject, error)
-	// ExportOrgAudit Stream the organization's audit trail as JSONL.
+	// ExportOrgAudit Stream the organisation's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(ctx context.Context, request ExportOrgAuditRequestObject) (ExportOrgAuditResponseObject, error)
 	// ListOrgEmailInvitations List the organisation's live pending email invitations.

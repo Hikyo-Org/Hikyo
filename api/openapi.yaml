@@ -66,10 +66,10 @@ tags:
       one-surface rule (api-cli-surface ADR). Client-specific by nature and
       parity-exempt; never domain endpoints.
   - name: orgs
-    description: Organisation administration — instance-scoped operator work.
+    description: Organisation administration — instance-scoped administrator work.
   - name: hierarchy
     description: |
-      The domain hierarchy: Organization, Project, Environment, Folder. Every
+      The domain hierarchy: Organisation, Project, Environment, Folder. Every
       by-id route is tenant-scoped, so unauthorized is indistinguishable from
       nonexistent at every level.
 
@@ -5531,7 +5531,7 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
-          description: The holders.
+          description: The members with a value.
           content:
             application/json:
               schema:
@@ -12887,7 +12887,7 @@ paths:
         poll topology even with a healthy connection to observe other-node
         writes. The SPA polls topology every 30 seconds while mounted. A client
         that cannot keep up is disconnected rather than buffered. Connection
-        admission is bounded per principal, per organization, and instance-wide;
+        admission is bounded per principal, per organisation, and instance-wide;
         a refusal is 429. Accepted streams begin with a jittered `retry:` hint.
       x-hikyo-class: tenant
       x-hikyo-operation: advisory.watch
@@ -12918,7 +12918,7 @@ paths:
     get:
       operationId: queryOrgAudit
       tags: [audit]
-      summary: One bounded page of the organization's audit trail.
+      summary: One bounded page of the organisation's audit trail.
       description: |
         Reads one bounded page of the append-only trail in stable
         commit-sequence order, oldest first. Filtering by principal,
@@ -12980,7 +12980,7 @@ paths:
     get:
       operationId: exportOrgAudit
       tags: [audit]
-      summary: Stream the organization's audit trail as JSONL.
+      summary: Stream the organisation's audit trail as JSONL.
       description: |
         Streams the filtered slice of the trail as newline-delimited JSON, one
         schema-versioned event per line, in gap-free commit-sequence order up
@@ -13338,8 +13338,8 @@ paths:
         `exportOrgAudit`; supported consumers require verified completion.
 
         Authorization and artifact eligibility are as for
-        `queryInstanceAudit`. Instance exports have no organization, so the
-        per-organization export concurrency bound does not apply; the
+        `queryInstanceAudit`. Instance exports have no organisation, so the
+        per-organisation export concurrency bound does not apply; the
         per-principal rate and the instance-wide concurrency bound do.
       x-hikyo-class: instance
       x-hikyo-operation: audit.instance-export
@@ -17947,9 +17947,12 @@ components:
       description: >-
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
-        sealed-webhook binds only to an origin an instance admin activated in
-        the server's encrypted webhook registry.
-      x-extensible-enum: [forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, gitlab]
+        encrypted-webhook binds only to an origin an instance admin activated in
+        the server's encrypted webhook registry. The v1 API carries it as
+        sealed-webhook until v2: responses answer sealed-webhook, and creation
+        accepts both sealed-webhook and encrypted-webhook (stored as
+        sealed-webhook).
+      x-extensible-enum: [forgejo, github-actions, encrypted-webhook, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, gitlab]
 
     AdapterTargetInput:
       type: object
@@ -21680,11 +21683,13 @@ components:
     PersonalValueCount:
       type: object
       additionalProperties: false
-      required: [key_id, name, holders, notices, required]
+      required: [key_id, name, members, holders, notices, required]
       properties:
         key_id: {$ref: "#/components/schemas/ID"}
         name: {type: string, maxLength: 256}
-        holders: {type: integer, minimum: 0, description: People holding a personal value for this key here.}
+        members: {type: integer, minimum: 0, description: Members with a value of their own for this key here.}
+        # Not flagged deprecated: true; the v1 freeze guard rejects a deprecation flag on a released field.
+        holders: {type: integer, minimum: 0, description: "Deprecated alias of `members`, kept until v2."}
         notices: {type: integer, minimum: 0, description: People with an unacknowledged removal notice.}
         required: {type: boolean, description: The key is personal_required_in this environment.}
     PersonalValueCounts:
@@ -23511,7 +23516,9 @@ components:
 
     RoleTemplate:
       type: string
-      description: The closed v1 role template set.
+      description: |
+        The closed v1 role template set. `operator` is the v1 wire name of the
+        instance administrator template; it becomes `instance-admin` in v2.
       enum: [viewer, editor, publisher, revealer, historian, maintainer, admin, operator]
 
     CreateGrantRequest:

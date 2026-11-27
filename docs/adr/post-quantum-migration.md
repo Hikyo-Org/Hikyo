@@ -1,5 +1,7 @@
 # Post-quantum migration: policy, decision register and proposed amendments (ADR, proposed 2026-11-02)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) (the spec path to `docs/spec/encrypted-webhook.md`); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Status: Proposed. Not operative. Nothing here is locked or authorized.** The
 > owner accepted the register as recommended and gave maintainer security approval
 > on 2026-11-02. It is not operative until each ADR amendment is recorded and its implementation merges. This file
@@ -132,7 +134,7 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | [api-cli-surface](./api-cli-surface.md) (#25; found while implementing #1129 and #1133) | The version promise (closed enums never grow, old clients keep working) and the freeze guard: a one-time growth of the Transit and PKI enums for `mldsa65` only, with the skew break stated | Owner decision of 2026-11-04 (option A) |
 | [ops-spec](./ops-spec.md) (#32; recipient hygiene "exactly one age identity per retention class") | Listed because DEC-08 and DEC-12 touch recipients; no change proposed | DEC-08 |
 
-Non-ADR owners: `docs/spec/sealed-webhook.md` (#1128) and the self-configuration
+Non-ADR owners: `docs/spec/encrypted-webhook.md` (#1128) and the self-configuration
 specs (#1131); DEC-18 does not state their revision route. The owner chose the declared-amendment
 banner on 2026-11-04.
 

@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
+import { templateLabel } from '../api/access-templates.ts';
 
 import {
   emailInvitationTemplate,
@@ -141,7 +142,7 @@ export function EmailInviteDialog({
           <option value="" disabled>Choose a template</option>
           {emailInvitationTemplates().map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
-              {candidate.id}
+              {templateLabel(candidate.id)}
             </option>
           ))}
         </Select>

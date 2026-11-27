@@ -517,8 +517,8 @@ describe('runtime interruption', () => {
   it('explains required recovery without promising automatic repair', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ state: 'recovery-required', phase: null })));
     const { container } = await mount();
-    expect(container.textContent).toContain('Recovery needs an operator');
-    expect(container.textContent).toContain('An operator must recover it');
+    expect(container.textContent).toContain('Recovery needs a production operator');
+    expect(container.textContent).toContain('A production operator must recover it');
     expect(container.querySelector('[aria-live="polite"]')).not.toBeNull();
   });
 

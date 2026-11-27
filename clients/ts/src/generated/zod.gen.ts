@@ -448,7 +448,7 @@ export const zAdapterVisibility = z.enum([
 ]);
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
  */
 export const zAdapterProvider = z.string();
 
@@ -2259,6 +2259,7 @@ export const zPersonalValueHolder = z.object({
 export const zPersonalValueCount = z.object({
     key_id: zId,
     name: z.string().max(256),
+    members: z.int().gte(0),
     holders: z.int().gte(0),
     notices: z.int().gte(0),
     required: z.boolean()
@@ -2985,7 +2986,9 @@ export const zCredentialPolicyResult = z.object({
 export const zCapability = z.string().min(1).max(64).regex(/^[a-z][a-z-]{0,63}$/);
 
 /**
- * The closed v1 role template set.
+ * The closed v1 role template set. `operator` is the v1 wire name of the
+ * instance administrator template; it becomes `instance-admin` in v2.
+ *
  */
 export const zRoleTemplate = z.enum([
     'viewer',
@@ -7321,7 +7324,7 @@ export const zListPersonalValueMembersPath = z.object({
 });
 
 /**
- * The holders.
+ * The members with a value.
  */
 export const zListPersonalValueMembersResponse = zPersonalValueHolderList;
 

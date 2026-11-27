@@ -446,7 +446,7 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
  */
 export type AdapterProvider = string;
 
@@ -3263,7 +3263,11 @@ export type PersonalValueCount = {
     key_id: Id;
     name: string;
     /**
-     * People holding a personal value for this key here.
+     * Members with a value of their own for this key here.
+     */
+    members: number;
+    /**
+     * Deprecated alias of `members`, kept until v2.
      */
     holders: number;
     /**
@@ -4613,7 +4617,9 @@ export type CredentialPolicyResult = {
 export type Capability = string;
 
 /**
- * The closed v1 role template set.
+ * The closed v1 role template set. `operator` is the v1 wire name of the
+ * instance administrator template; it becomes `instance-admin` in v2.
+ *
  */
 export type RoleTemplate = 'viewer' | 'editor' | 'publisher' | 'revealer' | 'historian' | 'maintainer' | 'admin' | 'operator';
 
@@ -17489,7 +17495,7 @@ export type ListPersonalValueMembersError = ListPersonalValueMembersErrors[keyof
 
 export type ListPersonalValueMembersResponses = {
     /**
-     * The holders.
+     * The members with a value.
      */
     200: PersonalValueHolderList;
 };

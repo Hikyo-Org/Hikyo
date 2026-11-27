@@ -147,7 +147,7 @@ func runAllProjectsRules(t *testing.T, db *store.DB) {
 		t.Run("missing_a_project", func(t *testing.T) { stale(t, []domain.ProjectID{p1}, "missing "+string(p2)) })
 		t.Run("listing_none", func(t *testing.T) { stale(t, nil, string(p1), string(p2)) })
 		t.Run("an_extra_project", func(t *testing.T) {
-			stale(t, []domain.ProjectID{p1, p2, "prj_elsewhere"}, "not in the organization prj_elsewhere")
+			stale(t, []domain.ProjectID{p1, p2, "prj_elsewhere"}, "not in the organisation prj_elsewhere")
 		})
 		t.Run("a_deleted_project", func(t *testing.T) {
 			gone := f.newProject(t, "gone")
