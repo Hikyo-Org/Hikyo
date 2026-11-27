@@ -229,6 +229,8 @@ func TestAFailedFloorWriteLeavesTheStoreUnchanged(t *testing.T) {
 	}()
 	// Every floor read before the fetch gets the floor. The first one after it is persist's read
 	// under the lock: the FIFO is then replaced by a directory, so raising the floor fails.
+	// Otherwise a fresh FIFO is renamed in before the write: the reader that has just read EOF
+	// may still hold the old one open, and the next open must pair with the next reader.
 	for last := false; !last; {
 		pipe, err := os.OpenFile(floorPath, os.O_WRONLY, 0)
 		if err != nil {
@@ -244,6 +246,12 @@ func TestAFailedFloorWriteLeavesTheStoreUnchanged(t *testing.T) {
 				t.Fatal(err)
 			}
 		default:
+			if err := syscall.Mkfifo(floorPath+".next", 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(floorPath+".next", floorPath); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if _, err := pipe.Write(floor); err != nil {
 			t.Fatal(err)
