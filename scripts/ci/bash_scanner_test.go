@@ -22,13 +22,11 @@ var (
 	leadingTabs = regexp.MustCompile(`(?m)^\t+`)
 	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?bash|/(?:usr/)?bin/bash)(?:\s|$)`)
 	// An sh script is scanned too: on macOS sh is bash 3.2, the shell the scan guards against.
-	// Only a quoted sh heredoc is: an unquoted one's raw text (\$ escapes) is not what runs, so
-	// it may not parse. shortcut: unquoted sh heredocs are unscanned; quote them.
 	scriptShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?(?:ba)?sh|/(?:usr/)?bin/(?:ba)?sh)(?:\s|$)`)
 	// A shebang naming bash or sh that the patterns above miss (env -S -i bash, a quoted,
 	// versioned or upper-case name, rbash, nix-shell); the scan fails on it rather than skip
 	// the file. zsh, dash and the like do not match.
-	shellMention = regexp.MustCompile(`(?:^|[^a-zA-Z]|-S)[rR]?(?:[bB][aA])?[sS][hH](?:[^a-zA-Z]|$)|nix-shell`) // -S: env -Ssh
+	shellMention = regexp.MustCompile(`(?:^|[^a-zA-Z]|-[a-zA-Z]*S)[rR]?(?:[bB][aA])?[sS][hH](?:[^a-zA-Z]|$)|nix-shell`) // -iSbash: env flags
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
 	workflowExpression = regexp.MustCompile(`\$\{\{(?:[^}']|'(?:[^']|'')*')*\}\}`) // a quoted '{0}' does not end it
 )
@@ -54,9 +52,11 @@ func bareTests(script string) ([]int, error) {
 			stmt(s, inert)
 		}
 	}
+	inertStmts := map[*syntax.Stmt]bool{}
 	stmt = func(s *syntax.Stmt, inert bool) {
 		// An async list runs in its own subshell, where errexit still applies to its body.
 		inert = inert || s.Negated
+		inertStmts[s] = inertStmts[s] || inert
 		switch c := s.Cmd.(type) {
 		case *syntax.TestClause, *syntax.ArithmCmd:
 			if !inert && !s.Background {
@@ -112,11 +112,14 @@ func bareTests(script string) ([]int, error) {
 		}
 		return true
 	})
-	// Code the script hands to bash is scanned too: a heredoc that is a bash script or is fed to
-	// bash or sh, and a literal eval, trap or bash -c string. One that does not parse is an
-	// error, except the single deliberately broken fixture fast-feedback_test.sh writes.
-	// An expansion in the code is read as a placeholder word, so code built wholly at run time
-	// (eval "$cmd") is not seen. shortcut: spell handed code literally.
+	// Code the script hands to bash is scanned too: a heredoc or here-string that is a bash
+	// script or is fed to bash or sh, an eval's words (unless the eval is in a condition, where
+	// its code is too), a trap's action and a bash or sh -c string, through builtin, command,
+	// exec, env and nohup. One that does not parse is an error, except the single deliberately
+	// broken fixture fast-feedback_test.sh writes, and so is a script bash would read from a
+	// pipe or /dev/stdin. An expansion in the code reads as a placeholder word. shortcut: code
+	// built wholly at run time (eval "$cmd") or reaching bash through a wrapper script is not
+	// seen; spell handed code literally.
 	nested := func(body string, line int, what string) {
 		lines, herr := bareTests(body)
 		if herr != nil && body != brokenSourceFixture {
@@ -133,10 +136,15 @@ func bareTests(script string) ([]int, error) {
 		}
 		call, _ := s.Cmd.(*syntax.CallExpr)
 		name, code, word, stdin := handedCode(call)
+		fedStdin := false
 		for _, redirect := range s.Redirs {
 			fedTo := ""
-			if stdin {
-				fedTo = name
+			if stdin && (redirect.N == nil || redirect.N.Value == "0") {
+				fedTo, fedStdin = name, fedStdin || redirect.Op == syntax.Hdoc || redirect.Op == syntax.DashHdoc || redirect.Op == syntax.WordHdoc || redirect.Op == syntax.RdrIn
+			}
+			if redirect.Op == syntax.WordHdoc && fedTo != "" {
+				nested(codeText(redirect.Word), int(redirect.Word.Pos().Line()), name+" here-string")
+				continue
 			}
 			body, isBash := bashHeredoc(script, redirect, fedTo)
 			first, _, _ := strings.Cut(body, "\n")
@@ -146,8 +154,20 @@ func bareTests(script string) ([]int, error) {
 				err = fmt.Errorf("heredoc at line %d: shebang %q names bash or sh in a form the scan does not read", redirect.Hdoc.Pos().Line(), first)
 			}
 		}
-		if word != nil {
+		if word != nil && (name != "eval" || !inertStmts[s]) {
 			nested(code, int(word.Pos().Line()), name+" string")
+		}
+		if (name == "source" || name == ".") && call != nil && len(call.Args) > 1 {
+			if target, _ := plainText(call.Args[len(call.Args)-1]); target == "/dev/stdin" || target == "/dev/fd/0" || target == "/proc/self/fd/0" {
+				err = fmt.Errorf("line %d: a script sourced from stdin cannot be scanned; use a heredoc fed to bash", s.Pos().Line())
+			}
+		}
+		if pipe, ok := s.Cmd.(*syntax.BinaryCmd); ok && (pipe.Op == syntax.Pipe || pipe.Op == syntax.PipeAll) {
+			if right, ok := pipe.Y.Cmd.(*syntax.CallExpr); ok {
+				if _, _, _, reads := handedCode(right); reads && len(pipe.Y.Redirs) == 0 {
+					err = fmt.Errorf("line %d: a script piped into bash or sh cannot be scanned; use a heredoc", pipe.Y.Pos().Line())
+				}
+			}
 		}
 		return err == nil
 	})
@@ -157,10 +177,10 @@ func bareTests(script string) ([]int, error) {
 }
 
 // bashHeredoc returns the body of redirect's heredoc as bash runs it, when the scan reads it:
-// a bash script or one fed to bash (fedTo), or an sh script or one fed to sh behind a quoted
-// delimiter.
+// a bash or sh script, or one fed to bash or sh (fedTo). An unquoted delimiter's body has its
+// \$, \` and \\ escapes removed, as the shell writing it does.
 func bashHeredoc(script string, redirect *syntax.Redirect, fedTo string) (string, bool) {
-	if redirect == nil || redirect.Hdoc == nil {
+	if redirect.Hdoc == nil {
 		return "", false
 	}
 	body := script[redirect.Hdoc.Pos().Offset():redirect.Hdoc.End().Offset()]
@@ -168,27 +188,54 @@ func bashHeredoc(script string, redirect *syntax.Redirect, fedTo string) (string
 	if redirect.Op == syntax.DashHdoc {
 		body = leadingTabs.ReplaceAllString(body, "") // <<- strips leading tabs from every line
 	}
-	if word := redirect.Word; len(word.Parts) != 1 || !isPlainLit(word.Parts[0]) {
-		// A quoted delimiter: the body is the script as it runs.
-		return body, fedTo != "" || scriptShebang.MatchString(body)
+	if word := redirect.Word; len(word.Parts) == 1 && isPlainLit(word.Parts[0]) {
+		body = heredocEscape.ReplaceAllString(body, "$1")
 	}
-	return body, fedTo == "bash" || bashShebang.MatchString(body)
+	return body, fedTo != "" || scriptShebang.MatchString(body)
 }
 
-// handedCode reads the command call runs (past builtin and command prefixes): its name, the
-// code it hands to bash (an eval's words, a trap's action, a bash or sh -c string, as
-// codeText reads them) with the word that holds it, and whether it is bash or sh reading a
-// script from stdin.
+var heredocEscape = regexp.MustCompile("\\\\([$`\\\\])")
+
+// handedCode reads the command call runs, past builtin, command, exec, env and nohup and their
+// options: its name, the code it hands to bash (an eval's words, a trap's action, a bash or sh
+// -c string, as codeText reads them) with the word that holds it, and whether it is bash or sh
+// reading its script from stdin.
 func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, stdin bool) {
 	if call == nil {
 		return "", "", nil, false
 	}
 	words := call.Args
+prefixes:
 	for len(words) > 1 {
-		if prefix, _ := plainText(words[0]); prefix != "builtin" && prefix != "command" {
-			break
+		prefix, _ := plainText(words[0])
+		switch prefix[strings.LastIndex(prefix, "/")+1:] {
+		case "builtin", "command", "exec", "nohup":
+			words = words[1:]
+			for len(words) > 1 {
+				switch option, _ := plainText(words[0]); {
+				case option == "-p" || option == "-c" || option == "-l" || option == "--":
+					words = words[1:]
+				case option == "-a" && len(words) > 2:
+					words = words[2:] // exec -a NAME
+				default:
+					continue prefixes
+				}
+			}
+		case "env":
+			words = words[1:]
+			for len(words) > 1 {
+				switch option, _ := plainText(words[0]); {
+				case option == "-i" || option == "-" || option == "--" || (strings.Contains(option, "=") && !strings.HasPrefix(option, "-")):
+					words = words[1:]
+				case option == "-u" && len(words) > 2:
+					words = words[2:]
+				default:
+					continue prefixes
+				}
+			}
+		default:
+			break prefixes
 		}
-		words = words[1:]
 	}
 	if len(words) == 0 {
 		return "", "", nil, false // assignments only
@@ -198,6 +245,11 @@ func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, st
 	args := words[1:]
 	switch name {
 	case "eval":
+		if len(args) > 0 {
+			if first, _ := plainText(args[0]); first == "--" {
+				args = args[1:]
+			}
+		}
 		// eval joins its words with spaces. A word that is only an expansion may hold whole
 		// commands, so the words around it are read as separate commands.
 		var pieces, run []string
@@ -227,33 +279,46 @@ func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, st
 			return name, codeText(args[0]), args[0], false
 		}
 	case "bash", "sh":
+		// Options come first; -c takes the first word after them as its code, -o and -O take an
+		// option name, --rcfile and --init-file a file, and -s (or no word left) reads stdin.
+		dashC, dashS, operand := false, false, len(args)
+	options:
 		for i := 0; i < len(args); i++ {
 			text, ok := plainText(args[i])
 			switch {
 			case !ok:
-				return name, "", nil, false
+				operand = i
+				break options
+			case text == "--" || text == "-":
+				operand = i + 1
+				break options
+			case text == "--rcfile" || text == "--init-file":
+				i++
 			case strings.HasPrefix(text, "--"):
-			case strings.HasPrefix(text, "-") || strings.HasPrefix(text, "+"):
-				if strings.Contains(text, "c") {
-					if i+1 < len(args) {
-						return name, codeText(args[i+1]), args[i+1], false
-					}
-					return name, "", nil, false
-				}
-				if strings.Contains(text, "o") || strings.Contains(text, "O") {
-					i++ // -o and -O take an option name
-				}
+			case len(text) > 1 && (text[0] == '-' || text[0] == '+'):
+				dashC = dashC || strings.Contains(text, "c")
+				dashS = dashS || strings.Contains(text, "s")
+				i += strings.Count(text, "o") + strings.Count(text, "O")
 			default:
-				return name, "", nil, false // a script file: stdin is its data
+				operand = i
+				break options
 			}
 		}
-		return name, "", nil, true
+		switch {
+		case dashC && operand < len(args):
+			return name, codeText(args[operand]), args[operand], false
+		case dashC:
+			return name, "", nil, false
+		case dashS || operand >= len(args):
+			return name, "", nil, true
+		}
+		// A script file: stdin is its data.
 	}
 	return name, "", nil, false
 }
 
-// codeText is word's value as code: quotes and backslashes removed, each expansion read as
-// the word EXPANSION.
+// codeText is word's value as code: quotes and backslashes removed, $'...' escapes decoded,
+// each expansion read as the word EXPANSION.
 func codeText(word *syntax.Word) string {
 	var value strings.Builder
 	var parts func([]syntax.WordPart)
@@ -263,7 +328,11 @@ func codeText(word *syntax.Word) string {
 			case *syntax.Lit:
 				value.WriteString(backslashEscape.ReplaceAllString(part.Value, "$1"))
 			case *syntax.SglQuoted:
-				value.WriteString(part.Value)
+				if part.Dollar {
+					value.WriteString(ansiEscapes.Replace(part.Value))
+				} else {
+					value.WriteString(part.Value)
+				}
 			case *syntax.DblQuoted:
 				parts(part.Parts)
 			default:
@@ -276,6 +345,10 @@ func codeText(word *syntax.Word) string {
 }
 
 var backslashEscape = regexp.MustCompile(`\\(.)`)
+
+// ansiEscapes decodes the $'...' escapes that change how code parses; shortcut: \x, \0 and
+// \u escapes are left as text.
+var ansiEscapes = strings.NewReplacer(`\n`, "\n", `\t`, "\t", `\\`, `\`, `\'`, "'", `\"`, `"`)
 
 // plainText returns word's value when it has no expansion or escape: plain, '...' or "..." text.
 func plainText(word *syntax.Word) (string, bool) {
@@ -318,121 +391,139 @@ const brokenSourceFixture = "#!/usr/bin/env bash\nfixture_message() { printf 'so
 
 // bareTestCases pin what bareTests flags and allows. Each flagged form fails open on
 // bash 3.2 and exits on bash 5; each allowed form behaves the same on both. The scanner
-// is conservative in one direction: pipeline members, substitution bodies, and the final
-// statement of a background subshell are flagged although bash 3.2 and 5 may agree there.
+// is conservative in one direction: pipeline members, substitution bodies, handed code (a
+// trap action, a bash -c string) and the final statement of a background subshell are flagged
+// although bash 3.2 and 5 may agree there.
 var bareTestCases = struct{ flagged, allowed map[string]string }{
 	flagged: map[string]string{
-		"top level test":              "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
-		"top level arith":             "(( n >= 21 ))\n",
-		"inside a loop":               "for a in b; do\n  [[ -n $a ]]\ndone\n",
-		"inside then body":            "if true; then\n  [[ -n $a ]]\nfi\n",
-		"inside else body":            "if true; then :; else\n  [[ -n $a ]]\nfi\n",
-		"last in a function":          "f() {\n  ((a == 1 || b == 2))\n}\n",
-		"function called with or":     "f() { [[ a == b ]]; }\nf || die\n", // conservative: bodies are active
-		"test with comment":           "[[ -n $a ]] # why\n",
-		"semicolon":                   "[[ -n $a ]];\n",
-		"quoted bracket":              "[[ \"$a ]] b\" == x ]]\n",
-		"nested bash heredoc":         "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
-		"continued test":              "[[ -n $a &&\n  -n $b ]]\n",
-		"after semicolon":             "x=1; [[ -n $x ]]\n",
-		"brace group":                 "{ [[ -n $a ]]; }\n",
-		"subshell":                    "( [[ -n $a ]] )\n",
-		"inline then":                 "if c; then [[ -n $a ]]; fi\n",
-		"inline else":                 "if c; then :; else [[ -n $a ]]; fi\n",
-		"inline then and else":        "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
-		"inline do":                   "for a in b; do [[ -n $a ]]; done\n",
-		"inline do arith":             "while c; do ((n > 0)); done\n",
-		"case arm":                    "case $x in a) [[ -n $x ]] ;; esac\n",
-		"case arm last":               "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
-		"case arm leading paren":      "case $x in (a) [[ a == b ]] ;; esac\n",
-		"function one-liner":          "f() { [[ -n $1 ]]; }\n",
-		"and tail":                    "a &&\n  [[ -n $b ]]\n",
-		"and tail inline":             "true && [[ a == b ]]\n",
-		"or tail":                     "false || [[ a == b ]]\n",
-		"test and test":               "[[ a == a ]] && [[ a == b ]]\n",
-		"arith and tail":              "true && (( 0 ))\n",
-		"tab after bracket":           "[[\t-n $a ]]\n",
-		"comment ending in or":        "# explain ||\n[[ -n $a ]]\n",
-		"comment ending in and":       "# explain &&\n[[ -n $a ]]\n",
-		"comment ending in pipe":      "# explain |\n((a))\n",
-		"redirect after test":         "[[ a == b ]] >/dev/null\n",
-		"stderr redirect after":       "[[ a == b ]] 2>/dev/null\n",
-		"time prefix":                 "time [[ a == b ]]\n",
-		"after quoted paren":          "x=$(echo \")\")\n[[ a == b ]]\n",
-		"after quoted brace":          "x=${y:-\"}\"}\n[[ a == b ]]\n",
-		"after ansi-c quote":          "x=$'it\\'s'\n[[ a == b ]]\n",
-		"after grep with quotes":      "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
-		"group closed by plain end":   "{ [[ -n $a ]]; other; }\n",
-		"background group":            "{ [[ a == b ]]; echo x; } &\n",
-		"background subshell":         "( [[ a == b ]]; echo x ) &\n",
-		"process substitution":        "cat <( [[ a == b ]]; echo x )\n",
-		"plain substitution":          "value=$([[ a == b ]]; echo x)\n", // conservative unless errexit reaches $( )
-		"set -e in a substitution":    "value=$(set -e; [[ a == b ]]; echo accepted)\n",
-		"sh script inherits errexit":  "#!/bin/sh\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
-		"quoted sh heredoc":           "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
-		"partly quoted sh heredoc":    "cat >f <<E\"O\"F\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
-		"literal eval":                "eval '[[ a == b ]]'\n",
-		"literal bash -c":             "bash -c '[[ a == b ]]'\n",
-		"literal sh -ec":              "/bin/sh -ec \"[[ a == b ]]\"\n",
-		"literal trap":                "trap '[[ a == b ]]' EXIT\n",
-		"trap after --":               "trap -- '[[ a == b ]]' EXIT\n",
-		"bash -c with an expansion":   "bash -c \"set -e; [[ $a == b ]]\"\n",
-		"eval with an expansion":      "eval \"$x\" '[[ a == b ]]'\n",
-		"heredoc fed to bash":         "bash <<'EOF'\n[[ a == b ]]\nEOF\n",
-		"heredoc fed to sh -s":        "sh -s <<'EOF'\n[[ a == b ]]\nEOF\n",
-		"heredoc fed to command bash": "command bash -o pipefail <<EOF\n[[ a == b ]]\nEOF\n",
-		"tab-indented bash heredoc":   "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
+		"top level test":                     "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
+		"top level arith":                    "(( n >= 21 ))\n",
+		"inside a loop":                      "for a in b; do\n  [[ -n $a ]]\ndone\n",
+		"inside then body":                   "if true; then\n  [[ -n $a ]]\nfi\n",
+		"inside else body":                   "if true; then :; else\n  [[ -n $a ]]\nfi\n",
+		"last in a function":                 "f() {\n  ((a == 1 || b == 2))\n}\n",
+		"function called with or":            "f() { [[ a == b ]]; }\nf || die\n", // conservative: bodies are active
+		"test with comment":                  "[[ -n $a ]] # why\n",
+		"semicolon":                          "[[ -n $a ]];\n",
+		"quoted bracket":                     "[[ \"$a ]] b\" == x ]]\n",
+		"nested bash heredoc":                "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
+		"continued test":                     "[[ -n $a &&\n  -n $b ]]\n",
+		"after semicolon":                    "x=1; [[ -n $x ]]\n",
+		"brace group":                        "{ [[ -n $a ]]; }\n",
+		"subshell":                           "( [[ -n $a ]] )\n",
+		"inline then":                        "if c; then [[ -n $a ]]; fi\n",
+		"inline else":                        "if c; then :; else [[ -n $a ]]; fi\n",
+		"inline then and else":               "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
+		"inline do":                          "for a in b; do [[ -n $a ]]; done\n",
+		"inline do arith":                    "while c; do ((n > 0)); done\n",
+		"case arm":                           "case $x in a) [[ -n $x ]] ;; esac\n",
+		"case arm last":                      "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
+		"case arm leading paren":             "case $x in (a) [[ a == b ]] ;; esac\n",
+		"function one-liner":                 "f() { [[ -n $1 ]]; }\n",
+		"and tail":                           "a &&\n  [[ -n $b ]]\n",
+		"and tail inline":                    "true && [[ a == b ]]\n",
+		"or tail":                            "false || [[ a == b ]]\n",
+		"test and test":                      "[[ a == a ]] && [[ a == b ]]\n",
+		"arith and tail":                     "true && (( 0 ))\n",
+		"tab after bracket":                  "[[\t-n $a ]]\n",
+		"comment ending in or":               "# explain ||\n[[ -n $a ]]\n",
+		"comment ending in and":              "# explain &&\n[[ -n $a ]]\n",
+		"comment ending in pipe":             "# explain |\n((a))\n",
+		"redirect after test":                "[[ a == b ]] >/dev/null\n",
+		"stderr redirect after":              "[[ a == b ]] 2>/dev/null\n",
+		"time prefix":                        "time [[ a == b ]]\n",
+		"after quoted paren":                 "x=$(echo \")\")\n[[ a == b ]]\n",
+		"after quoted brace":                 "x=${y:-\"}\"}\n[[ a == b ]]\n",
+		"after ansi-c quote":                 "x=$'it\\'s'\n[[ a == b ]]\n",
+		"after grep with quotes":             "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
+		"group closed by plain end":          "{ [[ -n $a ]]; other; }\n",
+		"background group":                   "{ [[ a == b ]]; echo x; } &\n",
+		"background subshell":                "( [[ a == b ]]; echo x ) &\n",
+		"process substitution":               "cat <( [[ a == b ]]; echo x )\n",
+		"plain substitution":                 "value=$([[ a == b ]]; echo x)\n", // conservative unless errexit reaches $( )
+		"set -e in a substitution":           "value=$(set -e; [[ a == b ]]; echo accepted)\n",
+		"sh script inherits errexit":         "#!/bin/sh\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
+		"quoted sh heredoc":                  "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"partly quoted sh heredoc":           "cat >f <<E\"O\"F\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"literal eval":                       "eval '[[ a == b ]]'\n",
+		"literal bash -c":                    "bash -c '[[ a == b ]]'\n",
+		"literal sh -ec":                     "/bin/sh -ec \"[[ a == b ]]\"\n",
+		"literal trap":                       "trap '[[ a == b ]]' EXIT\n",
+		"trap after --":                      "trap -- '[[ a == b ]]' EXIT\n",
+		"unquoted sh heredoc fed to sh":      "sh <<EOF\n[[ -n \\$a ]]\nEOF\n",
+		"unquoted sh heredoc":                "cat >f <<EOF\n#!/bin/sh\n[[ -n \\$a ]]\nEOF\n",
+		"unquoted bash heredoc with escapes": "bash <<EOF\nx=\\$(printf hi)\n[[ a == b ]]\nEOF\n",
+		"bash -c after other options":        "bash -c -e '[[ a == b ]]'\n",
+		"bash -c --":                         "bash -c -- '[[ a == b ]]'\n",
+		"bash -co errexit":                   "bash -co errexit '[[ a == b ]]'\n",
+		"bash +o posix -c":                   "bash +o posix -c '[[ a == b ]]'\n",
+		"bash -s with arguments":             "bash -s -- foo <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"bash -s with an expansion":          "bash -s \"$x\" <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"bash --rcfile":                      "bash --rcfile f <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"here-string to bash":                "bash <<<'[[ a == b ]]'\n",
+		"exec bash -c":                       "exec bash -c '[[ a == b ]]'\n",
+		"env bash -c":                        "env -i PATH=/bin bash -c '[[ a == b ]]'\n",
+		"command -p bash -c":                 "command -p bash -c '[[ a == b ]]'\n",
+		"eval --":                            "eval -- '[[ a == b ]]'\n",
+		"eval of an ansi-c string":           "eval $'x=1\\n[[ a == b ]]'\n",
+		"bash -c with an expansion":          "bash -c \"set -e; [[ $a == b ]]\"\n",
+		"eval with an expansion":             "eval \"$x\" '[[ a == b ]]'\n",
+		"heredoc fed to bash":                "bash <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"heredoc fed to sh -s":               "sh -s <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"heredoc fed to command bash":        "command bash -o pipefail <<EOF\n[[ a == b ]]\nEOF\n",
+		"tab-indented bash heredoc":          "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
 	},
 	allowed: map[string]string{
-		"trap with or":                    "trap '[[ a == b ]] || exit 1' EXIT\n",
-		"trap -p":                         "trap -p EXIT\n",
-		"eval built at run time":          "eval \"$cmd\"\n", // shortcut: not seen
-		"stdin data for bash -c":          "bash -c 'cat' <<'EOF'\n[[ data\nEOF\n",
-		"stdin data for a bash script":    "bash ./x.sh <<'EOF'\n[[ data\nEOF\n",
-		"heredoc text naming sh":          "cat <<EOF\nUsage: run.sh\nSSH key setup\nPUSH the button\nbash is required\nEOF\n",
-		"unquoted sh heredoc fed to sh":   "sh <<EOF\n[[ -n \\$a ]]\nEOF\n",
-		"assignment only":                 "x=1\n",
-		"unquoted sh heredoc (unscanned)": "cat >f <<EOF\n#!/bin/sh\n[[ -n \\$a ]]\nEOF\n",
-		"or exit":                         "[[ -n $a ]] || exit 1\n",
-		"or return":                       "((a == 1)) || return 1\n",
-		"or brace":                        "[[ $a =~ x ]] || { echo no >&2; exit 1; }\n",
-		"and chain":                       "[[ $a == b ]] && x=1\n",
-		"or inside the test":              "[[ $a == b || $c == d ]] || exit 1\n",
-		"or in a regex":                   "[[ $a =~ ^(x\\|y)$ ]] || exit 1\n",
-		"if":                              "if [[ -n $a ]]; then :; fi\n",
-		"elif":                            "if true; then :; elif ((a)); then :; fi\n",
-		"while":                           "while ((n > 0)); do n=$((n - 1)); done\n",
-		"until":                           "until [[ -n $a ]]; do :; done\n",
-		"bare if keyword":                 "if\n  [[ -n $a ]]\nthen :; fi\n",
-		"and tail then":                   "if a && [[ -n $b ]]; then :; fi\n",
-		"or tail then":                    "while a || ((n)); do :; done\n",
-		"read loop condition":             "while read -r l && [[ -n $l ]]; do :; done\n",
-		"tail then or":                    "a && [[ -n $b ]] || exit 1\n",
-		"inline then or":                  "if c; then [[ -n $a ]] || exit 1; else [[ -n $b ]] || return 1; fi\n",
-		"case arm or":                     "case $x in a) [[ -n $x ]] || exit 1 ;; esac\n",
-		"redirect ampersand":              "cmd 2>&1 || exit 1\n[[ -n $a ]] || exit 1\n",
-		"array and subst":                 "a=(1 2); b=$([[ -n $a ]] && echo y); cat <(echo) >/dev/null; [[ -n $a ]] || exit 1\n",
-		"function header":                 "f() {\n  [[ -n $1 ]] || return 1\n}\n",
-		"wrapped or":                      "[[ -n $a ]] \\\n  || exit 1\n",
-		"multi-line test":                 "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
-		"test in condition":               "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
-		"plain heredoc":                   "cat <<EOF\n[[ -n $a ]]\nEOF\n",
-		"here string":                     "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
-		"arith expansion":                 "x=$((a + 1))\n",
-		"command":                         "test -n \"$a\"\n",
-		"comment":                         "# [[ -n $a ]]\n",
-		"subshell list":                   "(cd x && ls)\n",
-		"negated test":                    "! [[ -e f ]]\n", // errexit ignores a ! pipeline on every bash
-		"negated group":                   "! { [[ -n $a ]]; }\n",
-		"group then or":                   "{ [[ -n $a ]]; other; } || die x\n",
-		"subshell then or":                "( [[ a == b ]] ) || exit 1\n",
-		"group tail then or":              "{ true && [[ a == b ]]; } || exit 1\n",
-		"group redirect or":               "{ read -r a && [[ -z $a ]]; } <\"$f\" ||\n  die x\n",
-		"group then and":                  "{ [[ -n $a ]]; } && x\n",
-		"group in condition":              "if { [[ -n $a ]]; }; then :; fi\n",
-		"subshell in condition":           "if ( [[ -n $a ]] ); then :; fi\n",
-		"background":                      "[[ -n $a ]] &\n",
-		"quoted bracket text":             "echo '[[ -n $a ]]' \"[[ x ]]\"\n",
+		"trap with or":                  "trap '[[ a == b ]] || exit 1' EXIT\n",
+		"trap -p":                       "trap -p EXIT\n",
+		"eval in a condition":           "if eval '[[ a == b ]]'; then :; fi\n",
+		"eval or exit":                  "eval '[[ a == b ]]' || exit 1\n",
+		"heredoc on another descriptor": "bash 3<<'EOF'\n[[ data\nEOF\n",
+		"eval built at run time":        "eval \"$cmd\"\n", // shortcut: not seen
+		"stdin data for bash -c":        "bash -c 'cat' <<'EOF'\n[[ data\nEOF\n",
+		"stdin data for a bash script":  "bash ./x.sh <<'EOF'\n[[ data\nEOF\n",
+		"heredoc text naming sh":        "cat <<EOF\nUsage: run.sh\nSSH key setup\nPUSH the button\nbash is required\nEOF\n",
+		"assignment only":               "x=1\n",
+		"or exit":                       "[[ -n $a ]] || exit 1\n",
+		"or return":                     "((a == 1)) || return 1\n",
+		"or brace":                      "[[ $a =~ x ]] || { echo no >&2; exit 1; }\n",
+		"and chain":                     "[[ $a == b ]] && x=1\n",
+		"or inside the test":            "[[ $a == b || $c == d ]] || exit 1\n",
+		"or in a regex":                 "[[ $a =~ ^(x\\|y)$ ]] || exit 1\n",
+		"if":                            "if [[ -n $a ]]; then :; fi\n",
+		"elif":                          "if true; then :; elif ((a)); then :; fi\n",
+		"while":                         "while ((n > 0)); do n=$((n - 1)); done\n",
+		"until":                         "until [[ -n $a ]]; do :; done\n",
+		"bare if keyword":               "if\n  [[ -n $a ]]\nthen :; fi\n",
+		"and tail then":                 "if a && [[ -n $b ]]; then :; fi\n",
+		"or tail then":                  "while a || ((n)); do :; done\n",
+		"read loop condition":           "while read -r l && [[ -n $l ]]; do :; done\n",
+		"tail then or":                  "a && [[ -n $b ]] || exit 1\n",
+		"inline then or":                "if c; then [[ -n $a ]] || exit 1; else [[ -n $b ]] || return 1; fi\n",
+		"case arm or":                   "case $x in a) [[ -n $x ]] || exit 1 ;; esac\n",
+		"redirect ampersand":            "cmd 2>&1 || exit 1\n[[ -n $a ]] || exit 1\n",
+		"array and subst":               "a=(1 2); b=$([[ -n $a ]] && echo y); cat <(echo) >/dev/null; [[ -n $a ]] || exit 1\n",
+		"function header":               "f() {\n  [[ -n $1 ]] || return 1\n}\n",
+		"wrapped or":                    "[[ -n $a ]] \\\n  || exit 1\n",
+		"multi-line test":               "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
+		"test in condition":             "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
+		"plain heredoc":                 "cat <<EOF\n[[ -n $a ]]\nEOF\n",
+		"here string":                   "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
+		"arith expansion":               "x=$((a + 1))\n",
+		"command":                       "test -n \"$a\"\n",
+		"comment":                       "# [[ -n $a ]]\n",
+		"subshell list":                 "(cd x && ls)\n",
+		"negated test":                  "! [[ -e f ]]\n", // errexit ignores a ! pipeline on every bash
+		"negated group":                 "! { [[ -n $a ]]; }\n",
+		"group then or":                 "{ [[ -n $a ]]; other; } || die x\n",
+		"subshell then or":              "( [[ a == b ]] ) || exit 1\n",
+		"group tail then or":            "{ true && [[ a == b ]]; } || exit 1\n",
+		"group redirect or":             "{ read -r a && [[ -z $a ]]; } <\"$f\" ||\n  die x\n",
+		"group then and":                "{ [[ -n $a ]]; } && x\n",
+		"group in condition":            "if { [[ -n $a ]]; }; then :; fi\n",
+		"subshell in condition":         "if ( [[ -n $a ]] ); then :; fi\n",
+		"background":                    "[[ -n $a ]] &\n",
+		"quoted bracket text":           "echo '[[ -n $a ]]' \"[[ x ]]\"\n",
 	},
 }
 
@@ -487,6 +578,16 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 	}
 	if _, err := bareTests("cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ a == b ]]\ng() {\nEOF\n"); err == nil {
 		t.Error("an unparsable bash heredoc must be returned as an error, not skipped")
+	}
+	for _, script := range []string{"echo x | bash\n", "printf x | sh -s -- a\n", "source /dev/stdin\n", ". /dev/fd/0 <f\n"} {
+		if _, err := bareTests(script); err == nil || !strings.Contains(err.Error(), "cannot be scanned") {
+			t.Errorf("%q: got %v, want a script read from stdin rejected", script, err)
+		}
+	}
+	for _, script := range []string{"echo x | bash ./y.sh\n", "echo x | bash -c 'cat'\n", "source ./lib.sh\n"} {
+		if _, err := bareTests(script); err != nil {
+			t.Errorf("%q: %v, want accepted", script, err)
+		}
 	}
 	if _, err := bareTests("cat >f <<'EOF'\n#!/bin/bash5\n[[ a == b ]]\nEOF\n"); err == nil || !strings.Contains(err.Error(), "does not read") {
 		t.Errorf("a heredoc whose shebang the scan does not read must be an error: %v", err)
@@ -567,7 +668,7 @@ func TestRepositoryScanSelectors(t *testing.T) {
 		"#!/usr/bin/env -S -i bash": "unread", "#!/usr/bin/env -S VAR=1 sh": "unread", "#!/usr/bin/env -Ssh": "unread",
 		"#!/usr/bin/env --split-string=sh": "unread", "#!/usr/bin/env -S 'bash' -e": "unread", "#!/usr/bin/env -S \"sh\"": "unread",
 		"#!/bin/bash5": "unread", "#!/usr/bin/env bash-5.2": "unread", "#!/bin/rbash": "unread", "#!/bin/BASH": "unread",
-		"#!/usr/bin/env nix-shell": "unread", "#!/usr/bin/env -S deno run --allow-env=SHELL": "",
+		"#!/usr/bin/env nix-shell": "unread", "#!/usr/bin/env -iSbash": "unread", "#!/usr/bin/env -vSsh": "unread", "#!/usr/bin/env -S deno run --allow-env=SHELL": "",
 		"#!/bin/zsh": "", "#!/bin/dash": "", "#!/usr/bin/env -S uv run --script": "", "#!/usr/bin/env python3": "",
 	} {
 		if got := shebangKind(line); got != want {
@@ -670,7 +771,7 @@ func repositoryScripts(root string) (map[string]string, []string, error) {
 			if d.Name() == ".git" || ignored[rel] {
 				return fs.SkipDir
 			}
-			if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil && path != root {
+			if path != root && holdsRepository(path) {
 				return fs.SkipDir // another repository or worktree, not this one's files
 			}
 			return nil
@@ -694,6 +795,21 @@ func repositoryScripts(root string) (map[string]string, []string, error) {
 	return scripts, unread, err
 }
 
+// holdsRepository reports whether dir is a repository or worktree root: a .git directory
+// with a HEAD, or a .git file pointing at one.
+func holdsRepository(dir string) bool {
+	info, err := os.Lstat(filepath.Join(dir, ".git"))
+	if err != nil {
+		return false
+	}
+	if info.IsDir() {
+		_, err := os.Stat(filepath.Join(dir, ".git", "HEAD"))
+		return err == nil
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".git"))
+	return err == nil && bytes.HasPrefix(raw, []byte("gitdir: "))
+}
+
 func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -711,7 +827,7 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 		".gitignore": "ignored/\n*.log\n", "a.sh": "#!/usr/bin/env bash\n", "b.sh": "#!/bin/sh\n",
 		"ignored/c.sh": "#!/usr/bin/env bash\n", "with space.log": "#!/usr/bin/env bash\n",
 		"new\nline.log": "#!/usr/bin/env bash\n", "cafe\u0301.log": "#!/usr/bin/env bash\n", // decomposed é
-		"u.sh": "#!/bin/rbash\n", ".claude/worktrees/w1/.git": "gitdir: elsewhere\n", ".claude/worktrees/w1/old.sh": "#!/usr/bin/env bash\n", "py": "#!/usr/bin/env python3\n",
+		"u.sh": "#!/bin/rbash\n", ".claude/worktrees/w1/.git": "gitdir: elsewhere\n", "stray/.git": "", "stray/s.sh": "#!/usr/bin/env bash\n", ".claude/worktrees/w1/old.sh": "#!/usr/bin/env bash\n", "py": "#!/usr/bin/env python3\n",
 	}
 	for name, body := range files {
 		path := filepath.Join(root, name)
@@ -726,7 +842,7 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string]string{"a.sh": "bash", "b.sh": "sh"}; !reflect.DeepEqual(scripts, want) {
+	if want := map[string]string{"a.sh": "bash", "b.sh": "sh", filepath.Join("stray", "s.sh"): "bash"}; !reflect.DeepEqual(scripts, want) {
 		t.Errorf("scripts = %v, want %v", scripts, want)
 	}
 	if !reflect.DeepEqual(unread, []string{"u.sh"}) {
