@@ -115,7 +115,8 @@ func bareTests(script string) ([]int, error) {
 	// Code the script hands to bash is scanned too: a heredoc that is a bash script or is fed to
 	// bash or sh, and a literal eval, trap or bash -c string. One that does not parse is an
 	// error, except the single deliberately broken fixture fast-feedback_test.sh writes.
-	// shortcut: code built at run time (eval "$cmd", bash -c "$x") is not seen; spell it literally.
+	// An expansion in the code is read as a placeholder word, so code built wholly at run time
+	// (eval "$cmd") is not seen. shortcut: spell handed code literally.
 	nested := func(body string, line int, what string) {
 		lines, herr := bareTests(body)
 		if herr != nil && body != brokenSourceFixture {
@@ -175,8 +176,9 @@ func bashHeredoc(script string, redirect *syntax.Redirect, fedTo string) (string
 }
 
 // handedCode reads the command call runs (past builtin and command prefixes): its name, the
-// literal code it hands to bash (an eval's words, a trap's action, a bash or sh -c string)
-// with the word that holds it, and whether it is bash or sh reading a script from stdin.
+// code it hands to bash (an eval's words, a trap's action, a bash or sh -c string, as
+// codeText reads them) with the word that holds it, and whether it is bash or sh reading a
+// script from stdin.
 func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, stdin bool) {
 	if call == nil {
 		return "", "", nil, false
@@ -196,23 +198,33 @@ func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, st
 	args := words[1:]
 	switch name {
 	case "eval":
-		var parts []string
+		// eval joins its words with spaces. A word that is only an expansion may hold whole
+		// commands, so the words around it are read as separate commands.
+		var pieces, run []string
 		for _, arg := range args {
-			text, ok := plainText(arg)
-			if !ok {
-				return name, "", nil, false
+			if text := codeText(arg); text != "EXPANSION" {
+				run = append(run, text)
+				continue
 			}
-			parts = append(parts, text)
+			if len(run) > 0 {
+				pieces = append(pieces, strings.Join(run, " "))
+			}
+			pieces, run = append(pieces, "EXPANSION"), nil
+		}
+		if len(run) > 0 {
+			pieces = append(pieces, strings.Join(run, " "))
 		}
 		if len(args) > 0 {
-			return name, strings.Join(parts, " "), args[0], false
+			return name, strings.Join(pieces, "; "), args[0], false
 		}
 	case "trap":
-		if len(args) < 2 {
-			break
+		if len(args) > 0 {
+			if first, _ := plainText(args[0]); first == "--" {
+				args = args[1:]
+			}
 		}
-		if action, ok := plainText(args[0]); ok && !strings.HasPrefix(action, "-") {
-			return name, action, args[0], false
+		if len(args) > 1 { // an action and a signal; trap -p and trap -l take none
+			return name, codeText(args[0]), args[0], false
 		}
 	case "bash", "sh":
 		for i := 0; i < len(args); i++ {
@@ -224,9 +236,7 @@ func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, st
 			case strings.HasPrefix(text, "-") || strings.HasPrefix(text, "+"):
 				if strings.Contains(text, "c") {
 					if i+1 < len(args) {
-						if code, ok := plainText(args[i+1]); ok {
-							return name, code, args[i+1], false
-						}
+						return name, codeText(args[i+1]), args[i+1], false
 					}
 					return name, "", nil, false
 				}
@@ -241,6 +251,31 @@ func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, st
 	}
 	return name, "", nil, false
 }
+
+// codeText is word's value as code: quotes and backslashes removed, each expansion read as
+// the word EXPANSION.
+func codeText(word *syntax.Word) string {
+	var value strings.Builder
+	var parts func([]syntax.WordPart)
+	parts = func(list []syntax.WordPart) {
+		for _, part := range list {
+			switch part := part.(type) {
+			case *syntax.Lit:
+				value.WriteString(backslashEscape.ReplaceAllString(part.Value, "$1"))
+			case *syntax.SglQuoted:
+				value.WriteString(part.Value)
+			case *syntax.DblQuoted:
+				parts(part.Parts)
+			default:
+				value.WriteString("EXPANSION")
+			}
+		}
+	}
+	parts(word.Parts)
+	return value.String()
+}
+
+var backslashEscape = regexp.MustCompile(`\\(.)`)
 
 // plainText returns word's value when it has no expansion or escape: plain, '...' or "..." text.
 func plainText(word *syntax.Word) (string, bool) {
@@ -340,6 +375,9 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"literal bash -c":             "bash -c '[[ a == b ]]'\n",
 		"literal sh -ec":              "/bin/sh -ec \"[[ a == b ]]\"\n",
 		"literal trap":                "trap '[[ a == b ]]' EXIT\n",
+		"trap after --":               "trap -- '[[ a == b ]]' EXIT\n",
+		"bash -c with an expansion":   "bash -c \"set -e; [[ $a == b ]]\"\n",
+		"eval with an expansion":      "eval \"$x\" '[[ a == b ]]'\n",
 		"heredoc fed to bash":         "bash <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"heredoc fed to sh -s":        "sh -s <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"heredoc fed to command bash": "command bash -o pipefail <<EOF\n[[ a == b ]]\nEOF\n",
