@@ -107,7 +107,6 @@ jobs:
           # Pinned, not latest: revoking a bad latest release must not stop its withdrawal.
           PUBLISHER_VERSION: ${{ vars.HIKYO_SECURITY_FEED_PUBLISHER_VERSION }}
         run: |
-          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           if ! [[ "$PUBLISHER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             printf '::error::Set HIKYO_SECURITY_FEED_PUBLISHER_VERSION to a signed stable version.\n'
@@ -201,7 +200,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           feed="$FEED_WORK/feed"
           git -C "$feed" add -- metadata targets
@@ -361,7 +359,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           feed="$FEED_WORK/feed"
           git -C "$feed" add -A -- metadata targets
@@ -410,7 +407,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           # A fork's run can also report the branch name main, so filter on who ran it.
           # An empty run would make gh search every artifact in the repository.

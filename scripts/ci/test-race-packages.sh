@@ -3,7 +3,6 @@
 # sequentially after peers to avoid PostgreSQL checkpoint/fsync contention.
 # Peers, including filtered store and upgrade suites, share a two-wide pool
 # with one go test per entry, in the planner's longest-first order.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 if [[ "$#" != 1 || ! -f "$1" || ! -r "$1" ]]; then
   echo 'test race: expected one readable shard package file' >&2

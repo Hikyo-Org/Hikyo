@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Shared cache archives coexist with their expanded contents during restore.
 # Keep capacity for that peak and subsequent compilation on disposable runners.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 
 fail() { printf 'Go cache disk: %s\n' "$*" >&2; exit 1; }

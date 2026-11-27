@@ -9,7 +9,6 @@
 # default ~/.cache/hikyo-pinned-tools) is used only after its SHA-256 matches;
 # a missing or corrupt copy is downloaded with bounded exponential backoff and
 # must match too. Nothing unverified is cached or written to <output>.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 
 die() {

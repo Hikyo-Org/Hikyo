@@ -2,7 +2,6 @@
 # Developer feedback only. Full current-main candidate CI remains the merge gate.
 # Node dependencies must already be installed; no source fixes or generation.
 # Go checks may download modules/toolchains and populate normal Go caches.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 
 working_tree=false

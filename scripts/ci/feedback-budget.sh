@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Bound setup commands and reserve headroom for bounded external Actions.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 fail() { printf 'fast-feedback: %s\n' "$*" >&2; exit 1; }
 [[ ${FAST_FEEDBACK_DEADLINE:-} =~ ^[1-9][0-9]{0,10}$ ]] || fail 'invalid FAST_FEEDBACK_DEADLINE; expected a positive epoch timestamp'

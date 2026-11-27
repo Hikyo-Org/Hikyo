@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d)
@@ -99,11 +98,11 @@ if "$root/scripts/ci/test-core-packages.sh" serial >"$work/log" 2>&1; then
   echo 'test core fixture: failed lint preparation accepted' >&2
   exit 1
 fi
-[[ ! -s "$CORE_TEST_EXECUTED" ]]
+[[ ! -s "$CORE_TEST_EXECUTED" ]] || exit 1
 # The pool never prepares the lint cache, so that failure cannot affect it.
 rm -f "$CORE_TEST_PREPARED"
 "$root/scripts/ci/test-core-packages.sh" pool >"$work/log" 2>&1
-[[ ! -e "$CORE_TEST_PREPARED" ]]
+[[ ! -e "$CORE_TEST_PREPARED" ]] || exit 1
 export CORE_TEST_FAIL=''
 for inventory in missing-app missing-lint missing-isolation duplicate empty-concurrent; do
   printf '%s\n' example/internal/service example/internal/app example/internal/lint example/internal/isolation >"$CORE_TEST_INVENTORY"
@@ -121,7 +120,7 @@ for inventory in missing-app missing-lint missing-isolation duplicate empty-conc
       echo "test core fixture: invalid package inventory accepted in $mode" >&2
       exit 1
     fi
-    [[ ! -s "$CORE_TEST_EXECUTED" ]]
+    [[ ! -s "$CORE_TEST_EXECUTED" ]] || exit 1
     if [[ "$inventory" == empty-concurrent ]]; then
       grep -Fx 'test core: concurrent package inventory is empty' "$work/log" >/dev/null
     fi

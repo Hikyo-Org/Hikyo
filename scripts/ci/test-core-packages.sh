@@ -12,7 +12,6 @@
 #   serial  prepare the lint cache, then internal/app and internal/lint, alone,
 #           in the test_core_serial job
 # Both modes run the same inventory checks, so a package cannot drop out of both.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 mode=${1:-pool}
 case "$mode" in

@@ -52,15 +52,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
         run: |
-          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
-          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
           case "$GITHUB_EVENT_NAME" in
             pull_request_target) JOB_HEAD="$HEAD" ;;
             workflow_run) JOB_HEAD="$GITHUB_SHA" ;;
             *) exit 1 ;;
           esac
-          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
           # This step is already executing. A lagging Jobs API status cannot
           # change its authenticated run/attempt/head/start identity.
           # One retry: without this clock the job fails before it can publish anything.

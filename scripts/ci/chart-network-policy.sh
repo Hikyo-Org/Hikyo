@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Called only by chart-kind.sh inside its owned, disposable enforcing cluster.
 # Transport fixtures model destinations, never real provider credentials.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 
 if [[ $# != 3 || -z "${HIKYO_NETWORK_POLICY_FIXTURE_IMAGE:-}" || -z "${KUBECONFIG:-}" ]]; then
@@ -163,7 +162,7 @@ jq -n --arg ns "$ns" --arg approved "$approved" --arg targets "$targets" --arg r
 ' >"$work/restricted.json"
 helm upgrade "$release" chart/hikyo -n "$ns" --reuse-values -f "$work/restricted.json" >/dev/null
 snapshot restricted
-[[ "$(jq -r '.items[0].metadata.uid' "$evidence/restricted-policies.json")" == "$policy_uid" ]]
+[[ "$(jq -r '.items[0].metadata.uid' "$evidence/restricted-policies.json")" == "$policy_uid" ]] || exit 1
 
 # Denials converge first, so the approved peers below are read under the
 # enforced restricted policy rather than the allow-all one it replaced.
@@ -251,7 +250,7 @@ echo 'network-policy: PASS authenticated-cluster port-forward recovery and loopb
 helm upgrade "$release" chart/hikyo -n "$ns" --reuse-values \
     --set networkPolicy.ingress.restricted=false --set networkPolicy.egress.restricted=false >/dev/null
 snapshot recovered
-[[ "$(jq -r '.items[0].metadata.uid' "$evidence/recovered-policies.json")" == "$policy_uid" ]]
+[[ "$(jq -r '.items[0].metadata.uid' "$evidence/recovered-policies.json")" == "$policy_uid" ]] || exit 1
 http_probe recovered-ingress "$ns" unapproved probe 200 "$server"
 http_probe recovered-egress "$ns" "$pod" np-probe 200 "http://management.$targets.svc:8080/"
 http_probe recovered-cleanup "$ns" "$pod" np-probe 200 "http://adapter.$targets.svc:8080/cleanup" --request DELETE

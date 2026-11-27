@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Run only with separately approved synthetic resources and protected credentials.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 # Tracing would print credentials when they are loaded below.
 set +x

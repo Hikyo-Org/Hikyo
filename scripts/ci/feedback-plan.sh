@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 # Feedback policy, shared by local execution and hosted setup. Source only from
 # the feedback tooling owner, never from the candidate being inspected.
 # Indexed arrays and shell builtins keep planning usable with Bash 3.2 before

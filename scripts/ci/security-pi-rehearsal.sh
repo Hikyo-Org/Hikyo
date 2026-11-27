@@ -68,7 +68,6 @@
 #   On the node  images ghcr.io/hikyo-1068-pi/hikyo:1.1.0-nightly.{1,2,3} (and their @sha256 names)
 #                and localhost/hikyo-1068-pi/standin:1, recorded when imported and removed by
 #                exact reference; the local-path directories of the PVCs go with the namespace.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 
 NS=${HIKYO_PI_NAMESPACE:-hikyo-1068-pi}

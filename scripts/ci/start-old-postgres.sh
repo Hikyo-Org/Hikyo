@@ -3,7 +3,6 @@
 # older than 18 (#1552). It is never a datastore: the matrix stays on the pinned
 # 18 image. Exports HIKYO_TEST_POSTGRES_OLD_DSN into $GITHUB_ENV; the tests that
 # read it fail under CI when it is missing. The runner is discarded afterwards.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 : "${GITHUB_ENV:?start-old-postgres.sh runs only in GitHub Actions}"
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"

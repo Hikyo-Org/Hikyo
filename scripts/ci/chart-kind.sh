@@ -2,7 +2,6 @@
 # Install the exact chart and candidate image into a disposable kind cluster.
 # The test proves boot, semantic probes, and readiness loss/recovery while the
 # liveness endpoint remains healthy and the server container does not restart.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 

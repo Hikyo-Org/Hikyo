@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # Called only from trusted default-branch tooling inside the absolute work cutoff.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
-[[ $# == 0 ]]
+[[ $# == 0 ]] || exit 1
 : "${RUNNER_TEMP:?missing runner temporary directory}"
 : "${RUNNER_TOOL_CACHE:?missing trusted runner tool cache}"
-[[ "$RUNNER_TOOL_CACHE" == /* ]]
+[[ "$RUNNER_TOOL_CACHE" == /* ]] || exit 1
 pin=$(awk '
   { sub(/\/\/.*$/, "") }
   $1 == "go" { if (NF != 2 || ++n != 1) exit 1; version=$2 }
   $1 == "toolchain" { if (NF != 2 || ++t != 1) exit 1; toolchain=$2 }
   END { if (n != 1 || (t && toolchain != "go" version)) exit 1; print version }
 ' go.mod)
-[[ "$pin" =~ ^1\.([0-9]+)\.(0|[1-9][0-9]*)$ ]]
-[[ ${BASH_REMATCH[1]} != 0* ]]
-(( 10#${BASH_REMATCH[1]} >= 21 ))
+[[ "$pin" =~ ^1\.([0-9]+)\.(0|[1-9][0-9]*)$ ]] || exit 1
+[[ ${BASH_REMATCH[1]} != 0* ]] || exit 1
+(( 10#${BASH_REMATCH[1]} >= 21 )) || exit 1
 # Ignore persisted settings and prevent workspace, flags or private-proxy overrides.
 export GOENV=off GOWORK=off GOFLAGS='' GOPROXY=https://proxy.golang.org
 export GOSUMDB=sum.golang.org GOPRIVATE='' GONOPROXY='' GONOSUMDB=''
@@ -32,14 +31,14 @@ for sdk in "$RUNNER_TOOL_CACHE/go/$pin/$arch" "$RUNNER_TOOL_CACHE"/go/*/"$arch";
   (( 10#${BASH_REMATCH[1]} >= 21 )) || continue
   [[ -f "$sdk.complete" && -x "$sdk/bin/go" ]] || continue
   bootstrap=$(GOTOOLCHAIN=local "$sdk/bin/go" env GOVERSION GOHOSTARCH)
-  [[ "$bootstrap" == "go$version"$'\n'"$host_arch" ]]
+  [[ "$bootstrap" == "go$version"$'\n'"$host_arch" ]] || exit 1
   bootstrap_go="$sdk/bin/go"
   break
 done
-[[ -n "$bootstrap_go" ]]
+[[ -n "$bootstrap_go" ]] || exit 1
 export PATH="${bootstrap_go%/*}:$PATH" GOTOOLCHAIN="go$pin"
 # Native Go downloads and verifies the exact toolchain without another SDK copy.
-[[ "$("$bootstrap_go" env GOVERSION)" == "go$pin" ]]
+[[ "$("$bootstrap_go" env GOVERSION)" == "go$pin" ]] || exit 1
 # The publisher needs its executable and runtime stack information, not DWARF
 # debugger data. Avoid generating and compressing debug sections inside the
 # setup-inclusive work budget; toolchain identity and source checks stay exact.

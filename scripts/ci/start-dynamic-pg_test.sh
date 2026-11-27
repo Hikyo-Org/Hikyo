@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Port discovery must preserve exact container ownership and fail closed before
 # exporting an unusable or non-loopback target to subsequent CI steps.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 umask 077
 # This fixture replaces Docker with a stub, so it must not configure a daemon.
@@ -64,7 +63,7 @@ fi
 grep -Fx 'HIKYO_TEST_DYNAMIC_PG_DSN=postgres://leaseadmin@127.0.0.1:49157/app' "$GITHUB_ENV" >/dev/null
 grep -Fx 'HIKYO_TEST_DYNAMIC_PG_CONTAINER=owned-fixture-id' "$GITHUB_ENV" >/dev/null
 grep -Fx 'HIKYO_DYNAMIC_PG_REQUIRED=1' "$GITHUB_ENV" >/dev/null
-[[ ! -e "$DYNAMIC_PG_TEST_REMOVED" ]]
+[[ ! -e "$DYNAMIC_PG_TEST_REMOVED" ]] || exit 1
 for binding in '' '0.0.0.0:49157' '127.0.0.1:0' '127.0.0.1:65536' '127.0.0.1:abc' $'127.0.0.1:49157\n127.0.0.1:49158' query-failed; do
   rm -f "$GITHUB_ENV" "$DYNAMIC_PG_TEST_REMOVED"
   export DYNAMIC_PG_TEST_BINDING="$binding"
@@ -72,6 +71,6 @@ for binding in '' '0.0.0.0:49157' '127.0.0.1:0' '127.0.0.1:65536' '127.0.0.1:abc
     echo 'dynamic-pg port fixture: invalid discovery succeeded' >&2
     exit 1
   fi
-  [[ ! -s "$GITHUB_ENV" && -e "$DYNAMIC_PG_TEST_REMOVED" ]]
+  [[ ! -s "$GITHUB_ENV" && -e "$DYNAMIC_PG_TEST_REMOVED" ]] || exit 1
 done
 printf 'dynamic-pg port discovery: owned binding exported; seven invalid/error bindings refused and cleaned\n'

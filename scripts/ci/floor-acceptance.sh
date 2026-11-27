@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Release-only K2/K3 evidence. Native arm64 Docker; measured processes are inside
 # one 4 CPU / 4 GiB / zero-swap cgroup. No secret enters an image or artifact.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 : "${FLOOR_BACKUP_CUSTODY:?set the dedicated TEST backup custody JSON secret}"

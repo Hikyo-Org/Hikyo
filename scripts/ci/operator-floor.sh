@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Native arm64 acceptance of the actual operator process, its informers and
 # leader election. Only the newly created kind cluster may be mutated.
-(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"
