@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -819,6 +820,16 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 			t.Error(problem)
 		}
 	}
+	// Ignored files (build output, a local tool's cache) are not the repository's scripts. Untracked
+	// ones are still scanned, so a new script is checked before it is committed.
+	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard").Output()
+	if err != nil {
+		t.Fatalf("listing ignored files: %v", err)
+	}
+	ignored := map[string]bool{}
+	for _, name := range strings.Split(string(out), "\x00") {
+		ignored[filepath.FromSlash(name)] = true
+	}
 	scripts, shScripts := 0, 0
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -831,7 +842,8 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() {
+		rel, _ := filepath.Rel(root, path)
+		if !d.Type().IsRegular() || ignored[rel] {
 			return nil
 		}
 		raw, err := os.ReadFile(path)
@@ -849,7 +861,6 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 			shScripts++
 		}
 		scripts++
-		rel, _ := filepath.Rel(root, path)
 		scanScript(t, rel, string(raw), "append `|| exit 1` (or `|| return 1` in a function)")
 		return nil
 	})
