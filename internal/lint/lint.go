@@ -67,8 +67,8 @@ const webuiDistPlaceholder = "internal/webui/dist/index.html"
 
 // Overlay returns the build overlay the context needs: the webui dist
 // placeholder for the ui context when no dist file exists, otherwise nil.
-// It locates the module from the working directory, which must be inside the
-// module, as it already must be for the go command to build it.
+// It finds the module root from the working directory, so the working
+// directory must be inside the module.
 func (c BuildContext) Overlay() (map[string][]byte, error) {
 	if !c.needsWebuiPlaceholder() {
 		return nil, nil

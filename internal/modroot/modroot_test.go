@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/modroot"
@@ -53,8 +54,11 @@ func TestFindReturnsInspectionErrors(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
 
 	got, err := modroot.Find()
-	if !errors.Is(err, fs.ErrPermission) {
-		t.Fatalf("Find() = %q, %v; want a permission error", got, err)
+	var pathErr *fs.PathError
+	// The error must come from checking a/b/go.mod, not from Getwd.
+	if !errors.Is(err, fs.ErrPermission) || !errors.As(err, &pathErr) ||
+		!strings.HasSuffix(pathErr.Path, filepath.Join("a", "b", "go.mod")) {
+		t.Fatalf("Find() = %q, %v; want a permission error for a/b/go.mod", got, err)
 	}
 }
 
