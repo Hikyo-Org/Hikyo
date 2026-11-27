@@ -144,14 +144,7 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 		if !ok {
 			return !found
 		}
-		words := call.Args
-		// builtin [--] name and command [-p] [--] name run the same builtin.
-		for len(words) > 1 && (literal(words[0]) == "builtin" || literal(words[0]) == "command") {
-			words = words[1:]
-			for len(words) > 1 && (literal(words[0]) == "-p" || literal(words[0]) == "--") {
-				words = words[1:]
-			}
-		}
+		words := commandWords(call)
 		if len(words) == 0 || literal(words[0]) != name {
 			return !found
 		}
@@ -163,6 +156,19 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 		return !found
 	})
 	return found
+}
+
+// commandWords returns call's words from the command it runs: builtin [--] name and
+// command [-p] [--] name run the same builtin as name.
+func commandWords(call *syntax.CallExpr) []*syntax.Word {
+	words := call.Args
+	for len(words) > 1 && (literal(words[0]) == "builtin" || literal(words[0]) == "command") {
+		words = words[1:]
+		for len(words) > 1 && (literal(words[0]) == "-p" || literal(words[0]) == "--") {
+			words = words[1:]
+		}
+	}
+	return words
 }
 
 // literal returns the value bash gives word when it has no expansion, with quotes and
@@ -192,6 +198,8 @@ func literal(word *syntax.Word) string {
 	}
 	return value.String()
 }
+
+var setOrShopt = regexp.MustCompile(`\b(?:set|shopt)\b`)
 
 var backslashEscape = regexp.MustCompile(`\\(.)`)
 
@@ -228,10 +236,14 @@ func setsErrexit(args []string) bool {
 
 // unscannedErrexitForms are the ways to turn errexit on that setsErrexit and the shopt match in
 // bareTests do not read, so a script using one could hide a bare test. None is used in the
-// repository; scanScript rejects them instead of parsing them. The match is textual, so it also
-// rejects such text in a comment or string, and it cannot see a form built at run time (eval
-// "$cmd", a set or shopt name from a variable) or a ${ } or alias spelling. shortcut: rejected,
-// not parsed; teach bareTests the form if a script ever needs it.
+// repository; scanScript rejects them instead of parsing them. literal() already reads plainly
+// quoted or escaped set and shopt words, so the quote and backslash parts of the first two
+// patterns are needed only for spellings it leaves unknown ($'...', a backslash inside "...").
+// eval is also found by the parser (unscannedErrexitUses), which reads a quoted or escaped
+// eval. The match is textual, so it also rejects such text in a comment or string, and it
+// cannot see a form built at run time (eval "$cmd", a set or shopt name from a variable) or a
+// ${ } or alias spelling. shortcut: rejected, not parsed; teach bareTests the form if a script
+// ever needs it.
 var unscannedErrexitForms = []struct {
 	name    string
 	pattern *regexp.Regexp
@@ -241,9 +253,25 @@ var unscannedErrexitForms = []struct {
 	{"eval of set or shopt", regexp.MustCompile(`(?:^|[\s;|&(\x60])(eval)\b(?:[^;|&\n"']|\\\n|"[^"]*"|'[^']*')*?(?:\b|"[^"]*\b|'[^']*\b)(?:set|shopt)\b`)},
 }
 
-// unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script.
+// unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
+// and for each eval, however quoted, whose literal arguments name set or shopt.
 func unscannedErrexitUses(script string) []string {
 	var found []string
+	if file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), ""); err == nil {
+		syntax.Walk(file, func(node syntax.Node) bool {
+			if call, ok := node.(*syntax.CallExpr); ok {
+				if words := commandWords(call); len(words) > 1 && literal(words[0]) == "eval" {
+					for _, word := range words[1:] {
+						if setOrShopt.MatchString(literal(word)) {
+							found = append(found, fmt.Sprintf("%d: eval of set or shopt", call.Pos().Line()))
+							break
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
 	for _, form := range unscannedErrexitForms {
 		if loc := form.pattern.FindStringSubmatchIndex(script); loc != nil {
 			start := loc[0]
@@ -253,7 +281,8 @@ func unscannedErrexitUses(script string) []string {
 			found = append(found, fmt.Sprintf("%d: %s", strings.Count(script[:start], "\n")+1, form.name))
 		}
 	}
-	return found
+	slices.Sort(found)
+	return slices.Compact(found) // the parser and the eval pattern can both report a line
 }
 
 // brokenSourceFixture is the one bash heredoc that must not parse: fast-feedback_test.sh
@@ -319,6 +348,9 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"expanded option in a substitution":   "value=$(set -uo \"$x\"; [[ a == b ]]; echo accepted)\n",
 		"set -o -e in a substitution":         "value=$(set -o -e; [[ a == b ]]; echo accepted)\n",
 		"second o names errexit":              "value=$(set -oo pipefail errexit; [[ a == b ]]; echo accepted)\n",
+		"ansi-c quoted set option":            "value=$(set $'\\x2de'; [[ a == b ]]; echo accepted)\n",
+		"expanded set option in quotes":       "value=$(set \"-$x\"; [[ a == b ]]; echo accepted)\n",
+		"expanded set -o name in quotes":      "value=$(set -o \"err$x\"; [[ a == b ]]; echo accepted)\n",
 		"partly quoted set in a substitution": "value=$(s\"et\" -e; [[ a == b ]]; echo accepted)\n",
 		"escaped set name in a substitution":  "value=$(se\\t -e; [[ a == b ]]; echo accepted)\n",
 		"quoted inherit_errexit":              "shopt -s \"inherit_errexit\"\nvalue=$([[ a == b ]]; echo accepted)\n",
@@ -444,25 +476,34 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 // top-level commands, must both be flagged.
 func scanScript(t *testing.T, name, script, hint string) {
 	t.Helper()
+	for _, problem := range scanProblems(name, script, hint) {
+		t.Error(problem)
+	}
+}
+
+// scanProblems returns every problem scanScript reports for script.
+func scanProblems(name, script, hint string) []string {
+	var problems []string
+	errorf := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
 	for _, found := range unscannedErrexitUses(script) {
-		t.Errorf("%s:%s; bareTests cannot see whether it turns errexit on, so spell it as a plain set or shopt -s inherit_errexit call (the check matches text: reword a comment or string that trips it)", name, found)
+		errorf("%s:%s; bareTests cannot see whether it turns errexit on, so spell it as a plain set or shopt -s inherit_errexit call (the check matches text: reword a comment or string that trips it)", name, found)
 	}
 	lines, err := bareTests(script)
 	if err != nil {
-		t.Errorf("%s: cannot parse as bash: %v", name, err)
-		return
+		errorf("%s: cannot parse as bash: %v", name, err)
+		return problems
 	}
 	for _, line := range lines {
-		t.Errorf("%s:%d: bare test relies on errexit; %s", name, line, hint)
+		errorf("%s:%d: bare test relies on errexit; %s", name, line, hint)
 	}
 	const sentinel = "[[ 1 == 2 ]]"
 	appended := script + "\n" + sentinel + "\n"
 	if got, err := bareTests(appended); err != nil || !containsLine(got, strings.Count(script, "\n")+2) {
-		t.Errorf("%s: a test appended at the end is not flagged (%v, %v): the scan has a blind spot", name, got, err)
+		errorf("%s: a test appended at the end is not flagged (%v, %v): the scan has a blind spot", name, got, err)
 	}
 	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), "")
 	if err != nil {
-		return
+		return problems
 	}
 	text := strings.Split(script, "\n")
 	for index, line := range text {
@@ -478,10 +519,11 @@ func scanScript(t *testing.T, name, script, hint string) {
 		}
 		mutated := append(append([]string{}, text[:index]...), append([]string{sentinel}, text[index+1:]...)...)
 		if got, err := bareTests(strings.Join(mutated, "\n")); err != nil || !containsLine(got, index+1) {
-			t.Errorf("%s: a test inserted at top-level line %d is not flagged (%v, %v): the scan has a blind spot", name, index+1, got, err)
+			errorf("%s: a test inserted at top-level line %d is not flagged (%v, %v): the scan has a blind spot", name, index+1, got, err)
 		}
-		return
+		return problems
 	}
+	return problems
 }
 
 func containsLine(lines []int, want int) bool {
@@ -500,7 +542,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"shopt -s \"inherit_errexit\"\n", "shopt '-s' inherit_errexit\n", "shopt -sq inherit_errexit\n", "shopt -so errexit\n",
 		"shopt -s -o errexit\n", "\"set\" -e\n", "'set' -e\n", "\\set -e\n", "\\shopt -s inherit_errexit\n",
 		"eval set -e\n", "eval 'set -e'\n", "eval \"shopt -s inherit_errexit\"\n",
-		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n",
+		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "\"eval\" set -e\n", "\\eval set -e\n", "'eval' set -e\n", "e\"val\" set -e\n", "x=$(\"eval\" set -e)\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n",
 	} {
 		if len(matches(script)) == 0 {
 			t.Errorf("not rejected: %q", script)
@@ -514,6 +556,9 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		if got := matches(script); len(got) != 0 {
 			t.Errorf("rejected %q as %v", script, got)
 		}
+	}
+	if got := scanProblems("fixture.sh", "#!/usr/bin/env bash\neval set -e\n", "hint"); len(got) == 0 || !strings.HasPrefix(got[0], "fixture.sh:2: eval of set or shopt") {
+		t.Errorf("scanScript must report an unscanned form: got %q", got)
 	}
 	if got := matches("a\nb\neval set -e\n"); !reflect.DeepEqual(got, []string{"3: eval of set or shopt"}) {
 		t.Errorf("line numbers: got %v, want [3: eval of set or shopt]", got)
