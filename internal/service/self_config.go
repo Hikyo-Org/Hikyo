@@ -15,18 +15,21 @@ import (
 // validates old process settings. Remote instances own separate services and
 // datastores; this object coordinates only replicas of its local owner.
 type SelfConfig struct {
-	DB           *store.DB
-	Keyring      *crypto.Keyring
-	Auth         *Auth
-	Budget       *Budget
-	NodeID       string
-	HAMode       bool
-	Now          func() time.Time
-	Seed         func() (map[string]string, error)
-	SeedNode     func() (map[string]string, error)
-	Installer    runtimeconfig.RuntimeInstaller
-	Deployment   BootstrapDeployment
-	active       atomic.Pointer[selfConfigActive]
+	DB         *store.DB
+	Keyring    *crypto.Keyring
+	Auth       *Auth
+	Budget     *Budget
+	NodeID     string
+	HAMode     bool
+	Now        func() time.Time
+	Seed       func() (map[string]string, error)
+	SeedNode   func() (map[string]string, error)
+	Installer  runtimeconfig.RuntimeInstaller
+	Deployment BootstrapDeployment
+	active     atomic.Pointer[selfConfigActive]
+	// publishing is true from graph activation until the new active bundle is
+	// stored, so Capture can tell that window from a lasting fence.
+	publishing   atomic.Bool
 	originReview atomic.Pointer[selfConfigOriginReview]
 	repairOrigin atomic.Pointer[selfConfigRepairOrigin]
 	// installed retains origin evidence when a failed target fences Capture.

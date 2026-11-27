@@ -630,3 +630,48 @@ func TestSelfConfigInstallerDisposesAbortedCandidateWithoutReplacement(t *testin
 		})
 	}
 }
+
+// While a replacement graph is activated but its bundle is unpublished, a node
+// still holding the previous generation is fenced only transiently: Capture must
+// say so (still a fence for every other consumer), and a lasting fence must not.
+func TestSelfConfigCaptureMarksPublicationPendingOnlyDuringActivation(t *testing.T) {
+	s, local, probe := installerFixture(t, store.EngineSQLite)
+	if err := s.LoadRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	previous := s.installed.Load()
+	actor, sessionID := selfConfigSession(t, s, local)
+	status := publishInstallerCandidate(t, s, local, "4")
+	req := installerRequest(status, "pending-window")
+	authorizeInstallerApply(t, s, sessionID, status, req)
+	done := beginInstallerApply(t, s, actor, req)
+	if err := s.ReconcileRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if result := awaitInstallerApply(t, done); result.err != nil {
+		t.Fatal(result.err)
+	}
+	// The node never observed the preparing job: the previous generation stays active.
+	s.active.Store(previous)
+	if _, err := s.Capture(t.Context()); !errors.Is(err, ErrSelfConfigFenced) || errors.Is(err, ErrSelfConfigPublicationPending) {
+		t.Fatalf("lasting fence must not be pending: %v", err)
+	}
+	var inWindow error
+	probe.mu.Lock()
+	probe.activateHook = func(ctx context.Context, value string) error {
+		if value == "4" {
+			_, inWindow = s.Capture(ctx)
+		}
+		return nil
+	}
+	probe.mu.Unlock()
+	if err := s.ReconcileRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(inWindow, ErrSelfConfigPublicationPending) || !errors.Is(inWindow, ErrSelfConfigFenced) || !errors.Is(inWindow, ErrSelfConfigUnavailable) {
+		t.Fatalf("capture during activation = %v, want pending fence", inWindow)
+	}
+	if _, err := s.Capture(t.Context()); err != nil {
+		t.Fatalf("published generation still refused: %v", err)
+	}
+}
