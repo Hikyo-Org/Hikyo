@@ -199,9 +199,8 @@ apply-time revocation list (options (a) and (c) on
   the high-water floor (`bridge-revocations-floor.json`: one record per trust root, each the
   highest sequence and its digest, raised only when a list is stored under that root, under
   the lock, never lowered and kept apart from the outcome log; a different list at the
-  floor's sequence is equivocation; the earlier single-record file is read as the floor of
-  the root it records). A root with no floor record is on its first run under that root, and
-  an unreadable file refuses. A list that is
+  floor's sequence is equivocation). A root with no floor record is on its first run under
+  that root, and an unreadable or malformed file refuses. A list that is
   correctly signed by the current recovery key but bound to another (older) root was never
   issued for this root, so it is unusable too (neither its revocations nor their absence can
   be applied) until a verified list for this root replaces it. This root's floor is enforced

@@ -487,13 +487,12 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 	}
 	if st.unusable != nil {
 		// The stored list cannot be relied on, so the floor is the memory left. A missing floor
-		// is a first run; an unreadable one is as unusable as the list.
-		floor, found := st.floor, st.haveFloor
-		if !found {
-			if _, _, floorErr := c.readFloor(snapshot.RevocationRoot()); floorErr != nil {
-				return releasetrust.VerifiedRevocations{}, c.unusable(fmt.Errorf("%w; %w: %w", st.unusable, errFloorUnreadable, floorErr))
-			}
+		// is a first run; an unreadable one is as unusable as the list, and load, under this
+		// lock, has already named it.
+		if errors.Is(st.unusable, errFloorUnreadable) {
+			return releasetrust.VerifiedRevocations{}, c.unusable(st.unusable)
 		}
+		floor, found := st.floor, st.haveFloor
 		if found && fresh.Sequence() < floor.Sequence {
 			return releasetrust.VerifiedRevocations{}, fmt.Errorf("revocation list rollback refused: sequence %d is below this trust root's floor (sequence %d)", fresh.Sequence(), floor.Sequence)
 		}
@@ -532,8 +531,8 @@ type floorSet struct {
 	Floors []floorRecord `json:"floors"`
 }
 
-// readFloors reads every root's floor. A file holding one bare record is the earlier
-// single-slot form, read as the floor of the root it records.
+// readFloors reads every root's floor. Anything but a non-empty set with one valid record
+// per root is malformed.
 func (c Checker) readFloors() ([]floorRecord, error) {
 	raw, err := os.ReadFile(filepath.Join(c.Directory, floorFile))
 	if errors.Is(err, os.ErrNotExist) {
@@ -544,11 +543,7 @@ func (c Checker) readFloors() ([]floorRecord, error) {
 	}
 	var set floorSet
 	if definitions.DecodeStrict(raw, &set) != nil {
-		var single floorRecord
-		if definitions.DecodeStrict(raw, &single) != nil {
-			return nil, errors.New("sequence floor record is malformed")
-		}
-		set.Floors = []floorRecord{single}
+		return nil, errors.New("sequence floor record is malformed")
 	}
 	roots := map[releaseidentity.Digest]bool{}
 	for _, floor := range set.Floors {

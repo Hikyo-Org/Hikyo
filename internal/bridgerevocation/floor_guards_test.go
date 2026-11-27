@@ -58,17 +58,26 @@ func TestUnreadableOrMalformedFloorRefusesAndSaysWhatToDo(t *testing.T) {
 		Digest   releaseidentity.Digest `json:"digest"`
 		Root     releaseidentity.Digest `json:"root"`
 	}
+	type floors struct {
+		Floors []floor `json:"floors"`
+	}
+	three, threeSignature := signedList(t, f, 3)
+	stored := floor{3, releaseidentity.Hash(three), root}
 	for name, content := range map[string][]byte{
 		"not json":         []byte("{"),
-		"sequence zero":    testfixture.JSON(t, floor{0, digest, root}),
-		"invalid digest":   testfixture.JSON(t, floor{3, "nope", root}),
-		"invalid root":     testfixture.JSON(t, floor{3, digest, "nope"}),
-		"unknown property": []byte(`{"sequence":3,"extra":true}`),
+		"sequence zero":    testfixture.JSON(t, floors{[]floor{{0, digest, root}}}),
+		"invalid digest":   testfixture.JSON(t, floors{[]floor{{3, "nope", root}}}),
+		"invalid root":     testfixture.JSON(t, floors{[]floor{{3, digest, "nope"}}}),
+		"unknown property": []byte(`{"floors":[{"sequence":3,"digest":"` + string(stored.Digest) + `","root":"` + string(root) + `"}],"extra":true}`),
+		"no floors":        []byte(`{"floors":[]}`),
+		"null floors":      []byte(`{"floors":null}`),
+		"empty object":     []byte(`{}`),
+		// Each record matches the stored list, so only the duplicate root makes this malformed.
+		"two records for one root": testfixture.JSON(t, floors{[]floor{stored, stored}}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
-			fetcher := &scripted{}
-			fetcher.list, fetcher.signature = signedList(t, f, 3)
+			fetcher := &scripted{list: three, signature: threeSignature}
 			online := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
 			if _, err := online.Check(t.Context(), snapshot); err != nil {
 				t.Fatal(err)
@@ -83,8 +92,9 @@ func TestUnreadableOrMalformedFloorRefusesAndSaysWhatToDo(t *testing.T) {
 				t.Fatalf("off must refuse and name the operator action on the floor file: %v", err)
 			}
 			fetcher.list, fetcher.signature = signedList(t, f, 9)
-			if _, err := online.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) || !strings.Contains(err.Error(), "repair or remove") {
-				t.Fatalf("a fetched list cannot replace an unreadable floor: %v", err)
+			_, err = online.Check(t.Context(), snapshot)
+			if !errors.Is(err, bridgerevocation.ErrUnusableState) || !strings.Contains(err.Error(), "repair or remove") || strings.Count(err.Error(), "the sequence floor record is unreadable") != 1 {
+				t.Fatalf("a fetched list cannot replace an unreadable floor, and the cause is named once: %v", err)
 			}
 		})
 	}
