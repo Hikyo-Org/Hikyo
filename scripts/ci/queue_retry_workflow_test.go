@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -21,7 +22,13 @@ type queueRetryWorkflow struct {
 		Cancel bool   `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
-		If          string            `yaml:"if"`
+		If          string `yaml:"if"`
+		Needs       string `yaml:"needs"`
+		Timeout     int    `yaml:"timeout-minutes"`
+		Concurrency struct {
+			Group  string `yaml:"group"`
+			Cancel bool   `yaml:"cancel-in-progress"`
+		} `yaml:"concurrency"`
 		Permissions map[string]string `yaml:"permissions"`
 		Steps       []struct {
 			Uses string `yaml:"uses"`
@@ -77,8 +84,8 @@ func TestQueueRetryWorkflowIsBoundedAndMinimal(t *testing.T) {
 	if !reflect.DeepEqual(trigger.Workflows, want) || !reflect.DeepEqual(trigger.Types, []string{"completed"}) {
 		t.Fatalf("retry must follow exactly the three publishers and never itself: %+v want %v", trigger, want)
 	}
-	if len(w.Jobs) != 1 {
-		t.Fatalf("one rerun job expected: %d", len(w.Jobs))
+	if len(w.Jobs) != 2 {
+		t.Fatalf("the rerun job and its post-reset wait expected: %d", len(w.Jobs))
 	}
 	job := w.Jobs["rerun"]
 	if !reflect.DeepEqual(job.Permissions, map[string]string{"actions": "write"}) {
@@ -123,54 +130,194 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		t.Fatal("the rerun step filters jobs with jq, which the runner image and this test need")
 	}
 	script := readQueueRetryWorkflow(t).Jobs["rerun"].Steps[0].Run
-	job := func(name, conclusion, failedStep string) string {
+	job := func(id int, name, conclusion, failedStep string) string {
 		step := conclusion
 		if conclusion == "cancelled" { // On a timeout the step failed and the job was then cancelled.
 			step = "failure"
 		}
-		return `{"name":"` + name + `","conclusion":"` + conclusion + `","steps":[{"name":"Compile trusted publisher","conclusion":"success"},{"name":"` + failedStep + `","conclusion":"` + step + `"}]}`
+		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"` + conclusion + `","steps":[{"name":"Compile trusted publisher","conclusion":"success"},{"name":"` + failedStep + `","conclusion":"` + step + `"}]}`
+	}
+	// A pending job that a newer one replaced was cancelled before it started: no step ran.
+	replaced := func(id int, name string) string {
+		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"cancelled","steps":[]}`
 	}
 	head := strings.Repeat("a", 40)
+	const runLevel = 0 // the run-level endpoint rather than a job id
+	const healthy, spent = "4000 5000 1795475603", "40 5000 1795475603"
+	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
+	// The worker names its jobs by kind and runs one step for every kind.
+	const workerReconcile = "Reconcile one authenticated head without borrowing another lease"
 	for _, tc := range []struct {
-		name    string
-		jobs    []string
-		attempt string
-		rerun   bool
-		fails   bool
+		name      string
+		jobs      []string
+		attempt   string
+		rateLimit string
+		rerun     []int
+		fails     bool
+		says      string
 	}{
-		{"queue publisher failed", []string{job("publish-"+head, "failure", "Reconcile one authenticated head")}, "1", true, false},
-		{"dev publisher failed", []string{job("dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "2", true, false},
-		{"one failure among passes", []string{job("publish-"+head, "success", "Reconcile one authenticated head"), job("publish-"+strings.Repeat("b", 40), "failure", "Reconcile one authenticated head")}, "1", true, false},
-		{"last attempt is never rerun", []string{job("publish-"+head, "failure", "Reconcile one authenticated head")}, "3", false, true},
-		{"publisher passed", []string{job("publish-"+head, "success", "Reconcile one authenticated head")}, "1", false, false},
-		{"no failed reconcile step", []string{job("publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
-		{"publisher cancelled by its timeout", []string{job("publish-"+head, "cancelled", "Reconcile one authenticated head")}, "1", true, false},
-		{"cancelled without a failed reconcile", []string{job("publish-"+head, "cancelled", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
-		{"cancelled after reconcile passed", []string{`{"name":"publish-` + head + `","conclusion":"cancelled","steps":[{"name":"Reconcile one authenticated head","conclusion":"success"}]}`}, "1", false, false},
-		{"worker group job shares the publisher name", []string{job("publish-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", true, false},
-		{"group job is not a head publisher", []string{job("group-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", false, false},
-		{"job name that is not a head is ignored", []string{job("publish-not-a-sha", "failure", "Reconcile")}, "1", false, false},
+		{"queue publisher failed", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", healthy, []int{1}, false, ""},
+		{"dev publisher failed", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "2", healthy, []int{1}, false, ""},
+		{"one failure among passes", []string{job(1, "publish-"+head, "success", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", healthy, []int{2}, false, ""},
+		{"last attempt is never rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "3", healthy, nil, true, ""},
+		{"publisher passed", []string{job(1, "publish-"+head, "success", reconcile)}, "1", healthy, nil, false, ""},
+		{"no failed reconcile step", []string{job(1, "publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", healthy, nil, false, ""},
+		{"publisher cancelled by its timeout", []string{job(1, "publish-"+head, "cancelled", reconcile)}, "1", healthy, []int{1}, false, ""},
+		{"cancelled without a failed reconcile", []string{job(1, "publish-"+head, "cancelled", "Capture the authenticated setup-inclusive admission budget")}, "1", healthy, nil, false, ""},
+		{"cancelled after reconcile passed", []string{`{"id":1,"name":"publish-` + head + `","conclusion":"cancelled","steps":[{"name":"` + reconcile + `","conclusion":"success"}]}`}, "1", healthy, nil, false, ""},
+		{"worker group job shares the publisher name", []string{job(1, "publish-"+head, "failure", groupReconcile)}, "1", healthy, []int{1}, false, ""},
+		{"failed group job is rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", healthy, []int{1}, false, ""},
+		{"passed group job is not rerun", []string{job(1, "group-"+head, "success", groupReconcile)}, "1", healthy, nil, false, ""},
+		{"job name that is not a head is ignored", []string{job(1, "publish-not-a-sha", "failure", "Reconcile")}, "1", healthy, nil, false, ""},
+		// gh run rerun --failed reruns cancelled jobs too, so only the failed one may be rerun, by id.
+		{"replaced pending reconcile is not rerun", []string{replaced(1, "publish-"+head), job(2, "publish-"+head, "failure", reconcile), replaced(3, "group-"+head)}, "1", healthy, []int{2}, false, ""},
+		// dev-revoke is never rerun by the retry: rerunning a job reruns every job that needs it, and every dev publisher does.
+		{"a failed revoke alone reruns nothing", []string{job(1, "dev-revoke", "failure", "Block every routed head until its reconciliation finishes")}, "1", healthy, nil, false, ""},
+		{"a cancelled revoke reruns nothing", []string{job(1, "dev-revoke", "cancelled", "Block every routed head until its reconciliation finishes")}, "1", healthy, nil, false, ""},
+		{"a failed revoke keeps the failed publishers on job-level reruns", []string{job(1, "dev-revoke", "cancelled", "Block every routed head until its reconciliation finishes"), job(2, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission"), job(3, "dev-publish-"+strings.Repeat("b", 40), "failure", "Reconcile exact-head dev admission"), job(4, "dev-publish-"+strings.Repeat("c", 40), "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2}, false, ""},
+		{"a failed revoke beside one failed publisher reruns only the publisher", []string{job(1, "dev-revoke", "failure", "Block every routed head until its reconciliation finishes"), job(2, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2}, false, ""},
+		{"only replaced pending reconciles", []string{replaced(1, "publish-"+head), replaced(2, "dev-publish-"+head)}, "1", healthy, nil, false, ""},
+		{"nothing is rerun while the budget is spent", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", spent, nil, false, "40 of 5000"},
+		// The reserve (480) is for merge-group jobs: another job is rerun only while its expected
+		// cost (42 reads) still leaves the reserve, the same rule the job itself defers on.
+		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
+		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603", []int{1}, false, ""},
+		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
+		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve"},
+		{"a group job below the reserve is rerun while the publisher waits", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
+		{"a group job at fifteen percent is rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "150 1000 1795475603", []int{1}, false, ""},
+		// GitHub refuses a rerun of another job while the run is active again: one rerun per run.
+		{"a mixed failed set reruns only the group job", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile), job(3, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2}, false, ""},
+		{"several failed publishers of one kind use the run-level rerun", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},
+		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
+		// Worker group jobs are named group-<sha> in the worker run and may spend the reserve.
+		{"a worker group job at 270 of 1000 is rerun", []string{job(1, "group-"+head, "failure", workerReconcile)}, "1", "270 1000 1795475603", []int{1}, false, ""},
+		{"a worker publisher at 270 of 1000 is held while its group job runs", []string{job(1, "publish-"+head, "failure", workerReconcile), job(2, "group-"+strings.Repeat("c", 40), "failure", workerReconcile)}, "1", "270 1000 1795475603", []int{2}, false, "Held for the group reserve (270 of 1000"},
+		// The core and graphql buckets are separate: the one with the lower remaining share decides.
+		{"a spent graphql bucket declines the rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 20 1000 1795475603", nil, false, "20 of 1000"},
+		// The Go gate judges each bucket by its absolute remaining; the lower share (graphql here) must not win.
+		{"the bucket with the fewest requests left decides, not the lowest share", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "260 1000 1795475603 900 5000 1795475603", nil, false, "Held for the group reserve (260 of 1000"},
+		{"a healthy graphql bucket changes nothing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "4000 5000 1795475603 900 1000 1795475603", []int{1}, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
-			// The stub answers the jobs listing and applies the script's own --jq filter to it.
+			rl := strings.Fields(tc.rateLimit)
+			graphql := ""
+			if len(rl) == 6 {
+				graphql = ",\"graphql\":{\"remaining\":" + rl[3] + ",\"limit\":" + rl[4] + ",\"reset\":" + rl[5] + "}"
+			}
+			// The stub answers rate_limit and the jobs listing by applying the script's own --jq filter, and records reruns.
 			stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
-				"if [ \"$1\" = api ]; then\n  while [ $# -gt 0 ]; do\n    if [ \"$1\" = --jq ]; then filter=$2; break; fi\n    shift\n  done\n" +
-				"  printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq \"$filter\"\nfi\n"
+				"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
+				"case \"$*\" in\n" +
+				"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}" + graphql + "}}' | jq -r \"$filter\" ;;\n" +
+				"  *--method\\ POST*) ;;\n" +
+				"  api*) printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
+				"esac\n"
 			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			cmd := exec.Command("bash", "-c", script)
-			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT="+tc.attempt)
+			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT="+tc.attempt, "GITHUB_OUTPUT="+filepath.Join(dir, "output"))
 			out, err := cmd.CombinedOutput()
 			if tc.fails != (err != nil) {
 				t.Fatalf("exit mismatch (want failure=%t): %v\n%s", tc.fails, err, out)
 			}
 			recorded, _ := os.ReadFile(calls)
-			if reran := strings.Contains(string(recorded), "run rerun 41595466545 --failed"); reran != tc.rerun {
-				t.Fatalf("rerun=%t want %t\ncalls:\n%s\noutput:\n%s", reran, tc.rerun, recorded, out)
+			var got []string
+			for _, line := range strings.Split(string(recorded), "\n") {
+				if strings.HasPrefix(line, "api --method POST ") {
+					got = append(got, line)
+				}
+				if strings.Contains(line, "run rerun") {
+					t.Fatalf("gh run rerun also reruns cancelled jobs; rerun by job id instead: %s", line)
+				}
+			}
+			var want []string
+			for _, id := range tc.rerun {
+				if id == runLevel {
+					want = append(want, "api --method POST repos/Hikyo-Org/Hikyo/actions/runs/41595466545/rerun-failed-jobs")
+				} else {
+					want = append(want, "api --method POST repos/Hikyo-Org/Hikyo/actions/jobs/"+strconv.Itoa(id)+"/rerun")
+				}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("reruns %v want %v\ncalls:\n%s\noutput:\n%s", got, want, recorded, out)
+			}
+			// Declining on a spent budget is what hands the run to the post-reset wait job.
+			handed, _ := os.ReadFile(filepath.Join(dir, "output"))
+			if (tc.says != "") != strings.Contains(string(handed), "exhausted=true") {
+				t.Fatalf("exhausted=true must be set exactly when the rerun declines on a spent budget: %q", handed)
+			}
+			if tc.says != "" && !strings.Contains(string(out), tc.says) {
+				t.Fatalf("output must say why nothing reran (%q):\n%s", tc.says, out)
 			}
 		})
 	}
+}
+
+// GitHub refuses a rerun of another job while the run is active again (403, "the workflow
+// run containing this job is already running"). At most one rerun is requested per run, so
+// that refusal never arises and a second failed job is not reported as lost; a rerun that
+// is refused anyway is retried, named without GitHub's text, and fails the step.
+func TestQueueRetryRequestsOneRerunPerRun(t *testing.T) {
+	script := readQueueRetryWorkflow(t).Jobs["rerun"].Steps[0].Run
+	head := strings.Repeat("a", 40)
+	failedJob := func(id int, name, step string) string {
+		return `{"id":` + strconv.Itoa(id) + `,"name":"` + name + `","conclusion":"failure","steps":[{"name":"` + step + `","conclusion":"failure"}]}`
+	}
+	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
+	run := func(t *testing.T, jobs, refuse string) (string, string, error) {
+		dir := t.TempDir()
+		calls := filepath.Join(dir, "calls")
+		// Once any rerun is accepted the run is active again: every later POST is refused as GitHub does.
+		stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
+			"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
+			"case \"$*\" in\n" +
+			"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":4000,\"limit\":5000,\"reset\":1795475603}}}' | jq -r \"$filter\" ;;\n" +
+			"  *--method\\ POST*) if [ -e '" + dir + "/active' ] || [ -n '" + refuse + "' ] && case \"$*\" in *'" + refuse + "'*) true ;; *) false ;; esac; then echo 'secret response text' >&2; exit 1; fi; : > '" + dir + "/active' ;;\n" +
+			"  api*) printf '%s' '{\"jobs\":[" + jobs + "]}' | jq -r \"$filter\" ;;\n" +
+			"esac\n"
+		if err := os.WriteFile(filepath.Join(dir, "sleep"), []byte("#!/usr/bin/env bash\nprintf 'sleep %s\\n' \"$*\" >> '"+calls+"'\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.CommandContext(t.Context(), "bash", "-c", script)
+		cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_TOKEN=x", "GH_REPO=Hikyo-Org/Hikyo", "RUN_ID=41595466545", "RUN_ATTEMPT=1")
+		out, err := cmd.CombinedOutput()
+		recorded, _ := os.ReadFile(calls)
+		return string(recorded), string(out), err
+	}
+	t.Run("mixed kinds in one run", func(t *testing.T) {
+		recorded, out, err := run(t, strings.Join([]string{failedJob(1, "publish-"+head, reconcile), failedJob(2, "group-"+head, groupReconcile), failedJob(3, "dev-publish-"+head, "Reconcile exact-head dev admission")}, ","), "")
+		if err != nil || strings.Count(recorded, "--method POST") != 1 || !strings.Contains(recorded, "jobs/2/rerun") {
+			t.Fatalf("one rerun of the group job; the second POST would be refused and must never be sent: %v\n%s\n%s", err, recorded, out)
+		}
+		if strings.Contains(out, "was refused") || !strings.Contains(out, "left for that rerun's own completion") {
+			t.Fatalf("the other failed jobs are left for the rerun's completion, not reported lost:\n%s", out)
+		}
+	})
+	t.Run("a uniform failed set goes through the run-level endpoint", func(t *testing.T) {
+		recorded, out, err := run(t, strings.Join([]string{failedJob(1, "publish-"+head, reconcile), failedJob(2, "publish-"+strings.Repeat("b", 40), reconcile)}, ","), "")
+		if err != nil || strings.Count(recorded, "--method POST") != 1 || !strings.Contains(recorded, "runs/41595466545/rerun-failed-jobs") {
+			t.Fatalf("one run-level rerun covers both failed jobs: %v\n%s\n%s", err, recorded, out)
+		}
+	})
+	t.Run("a refused rerun is retried, named, and fails the step", func(t *testing.T) {
+		recorded, out, err := run(t, failedJob(2, "publish-"+head, reconcile), "jobs/2/rerun")
+		if err == nil {
+			t.Fatalf("a refused rerun must fail the step, not report success:\n%s", out)
+		}
+		if n := strings.Count(recorded, "jobs/2/rerun"); n != 3 {
+			t.Fatalf("a refused rerun request is retried twice with backoff before it is reported: %d requests\n%s", n, recorded)
+		}
+		if !strings.Contains(out, "The rerun of job 2 was refused") || strings.Contains(out, "secret response text") {
+			t.Fatalf("the refused job must be named without GitHub's text:\n%s", out)
+		}
+	})
 }

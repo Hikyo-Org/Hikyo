@@ -41,7 +41,7 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	if workflow.Name != "gate-dev" || !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) || len(workflow.Jobs) != 2 {
+	if workflow.Name != "gate-dev" || !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) || len(workflow.Jobs) != 3 {
 		t.Fatal("dev publisher lost its read-only discovery/write-worker separation")
 	}
 	var target struct {
@@ -52,19 +52,19 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 		t.Fatal("dev target publisher must listen only to dev PRs")
 	}
 	discover, publish := workflow.Jobs["discover"], workflow.Jobs["publish"]
-	if discover.If != "github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev'" {
+	if discover.If != "(github.event_name != 'pull_request_target' || github.event.pull_request.base.ref == 'dev') && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1)" {
 		t.Fatal("a stacked PR event must skip dev discovery instead of failing it, and every other event must still reach it")
 	}
-	if publish.If != "needs.discover.outputs.work != '[]'" {
+	if publish.If != "${{ !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.work != '[]' }}" {
 		t.Fatal("dev workers must stay skipped when discovery is skipped or fails")
 	}
-	if !reflect.DeepEqual(discover.Permissions, map[string]string{"contents": "read", "pull-requests": "read"}) {
-		t.Fatal("routing discovery must not write checks")
+	if !reflect.DeepEqual(discover.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
+		t.Fatal("routing discovery must not write checks; actions: read is only the sweep cursor's run count")
 	}
 	if !reflect.DeepEqual(publish.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read", "checks": "write"}) || publish.Timeout != 1 {
 		t.Fatal("dev admission must retain narrow permissions and setup-inclusive budget")
 	}
-	if publish.Concurrency.Group != "dev-check-${{ github.repository_id }}-${{ matrix.work.head }}" || publish.Concurrency.Cancel || publish.Concurrency.Queue != "max" {
+	if publish.Concurrency.Group != "dev-check-${{ github.repository_id }}-${{ matrix.work.head }}" || publish.Concurrency.Cancel || publish.Concurrency.Queue != "" {
 		t.Fatal("dev writers must serialize under their distinct exact-head lease")
 	}
 	for _, job := range workflow.Jobs {

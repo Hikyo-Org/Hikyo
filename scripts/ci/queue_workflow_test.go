@@ -143,8 +143,8 @@ func queuePublisherContract(raw []byte) error {
 	head := "${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}"
 	groupHead := "${{ github.event.workflow_run.head_sha }}"
 	wantIf := map[string]string{
-		"publish":  "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))",
-		"group":    "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'",
+		"publish":  "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback' && github.event.workflow_run.path == '.github/workflows/ci-feedback.yml'))",
+		"group":    "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'",
 		"dispatch": "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
 	}
 	for _, id := range []string{"publish", "group", "dispatch"} {
@@ -157,7 +157,7 @@ func queuePublisherContract(raw []byte) error {
 		}
 		budget := "10"
 		permissions := map[string]string{"actions": "read", "checks": "write", "contents": "read", "pull-requests": "read"}
-		jobHead, command := groupHead, `go run ./scripts/ci/pr-gate --queue --expected-head "$HEAD"`
+		jobHead, command := groupHead, "PR_GATE_DEADLINE=$(($(date +%s) + 300))\nexport PR_GATE_DEADLINE\n"+`go run ./scripts/ci/pr-gate --queue --expected-head "$HEAD"`
 		checkoutIndex, setupIndex, publishIndex := 0, 1, 2
 		if id == "publish" {
 			budget, jobHead = "1", head
@@ -184,8 +184,8 @@ func queuePublisherContract(raw []byte) error {
 			if j.Name != "" || j.Concurrency.Group != "" || j.Concurrency.Cancel.Kind != 0 || j.Concurrency.Queue != "" {
 				return fmt.Errorf("read-only discovery cannot hold a head writer lock")
 			}
-		} else if j.Name != map[string]string{"publish": "publish-", "group": "group-"}[id]+jobHead || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+jobHead || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "max" {
-			return fmt.Errorf("all check writers must share repository and exacthead FIFO lease without cancellation")
+		} else if j.Name != map[string]string{"publish": "publish-", "group": "group-"}[id]+jobHead || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+jobHead || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "" {
+			return fmt.Errorf("all check writers must share repository and exacthead lease without cancelling a running job")
 		}
 		if j.Timeout.Kind != yaml.ScalarNode || j.Timeout.Tag != "!!int" || j.Timeout.Value != budget || !reflect.DeepEqual(j.Permissions, permissions) {
 			return fmt.Errorf("writer/discovery budgets or minimumpermissions changed")
@@ -291,15 +291,15 @@ func queueWorkerContract(raw []byte) error {
 		return err
 	}
 	head := "${{ matrix.work.head }}"
-	if j.Name != "publish-"+head || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+head || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "max" || j.Timeout.Value != "${{ matrix.work.kind == 'group' && 10 || 1 }}" || !reflect.DeepEqual(j.Permissions, map[string]string{"actions": "read", "checks": "write", "contents": "read", "pull-requests": "read"}) {
+	if j.Name != "${{ matrix.work.kind == 'group' && 'group' || 'publish' }}-"+head || j.Concurrency.Group != "queue-check-${{ github.repository_id }}-"+head || j.Concurrency.Cancel.Kind != yaml.ScalarNode || j.Concurrency.Cancel.Tag != "!!bool" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "" || j.Timeout.Value != "${{ matrix.work.kind == 'group' && 10 || 1 }}" || !reflect.DeepEqual(j.Permissions, map[string]string{"actions": "read", "checks": "write", "contents": "read", "pull-requests": "read"}) {
 		return fmt.Errorf("headworker must share exactSHA lease/minimalpermissions and independentgroupbudget")
 	}
 	var strategy map[string]any
 	if err := j.Strategy.Decode(&strategy); err != nil {
 		return err
 	}
-	if !reflect.DeepEqual(strategy, map[string]any{"fail-fast": false, "matrix": map[string]any{"work": "${{ fromJSON(inputs.work) }}"}}) {
-		return fmt.Errorf("complete worker batch must expand exactlyonce withfailfastfalse")
+	if !reflect.DeepEqual(strategy, map[string]any{"fail-fast": false, "max-parallel": 2, "matrix": map[string]any{"work": "${{ fromJSON(inputs.work) }}"}}) {
+		return fmt.Errorf("complete worker batch must expand exactlyonce withfailfastfalse and at most two lanes")
 	}
 	if err := queueBootstrapContract(j.Steps[0].Run, false); err != nil {
 		return err
@@ -327,7 +327,7 @@ fi`
 		return fmt.Errorf("worker compile must remain source-bound to sharedbudget")
 	}
 	final := j.Steps[4]
-	if final.If != "always()" || final.Uses != "" || len(final.With) != 0 || strings.TrimSpace(final.Run) != "test -x \"$RUNNER_TEMP/queue-publisher\"\n\"$RUNNER_TEMP/queue-publisher\" --queue --expected-head \"$HEAD\" --head-worker \"$KIND\"" || !reflect.DeepEqual(final.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_CHECK_NAME": "ci-queue-required", "HEAD": head, "KIND": "${{ matrix.work.kind }}"}) {
+	if final.If != "always()" || final.Uses != "" || len(final.With) != 0 || strings.TrimSpace(final.Run) != "test -x \"$RUNNER_TEMP/queue-publisher\"\nif [ \"$KIND\" = group ]; then\n  PR_GATE_DEADLINE=$(($(date +%s) + 300))\n  export PR_GATE_DEADLINE\nfi\n\"$RUNNER_TEMP/queue-publisher\" --queue --expected-head \"$HEAD\" --head-worker \"$KIND\"" || !reflect.DeepEqual(final.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_CHECK_NAME": "ci-queue-required", "HEAD": head, "KIND": "${{ matrix.work.kind }}"}) {
 		return fmt.Errorf("worker controller must own exactlyitsinputhead withoutPRshellcode")
 	}
 	return nil
@@ -462,7 +462,7 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 		// (runs 43724319276, 43715591698) failed the Go path check, and a looser
 		// publisher guard would send every title or body edit to it again.
 		"foreign ci-feedback workflow path": func(w map[string]any) {
-			queuePublisherJob(w)["if"] = "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))"
+			queuePublisherJob(w)["if"] = "vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))"
 		},
 		"skip controller":           func(w map[string]any) { queuePublisherStep(w, 2)["if"] = "false" },
 		"masked controller failure": func(w map[string]any) { queuePublisherStep(w, 2)["continue-on-error"] = true },
@@ -488,7 +488,7 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 		"lost serialization": func(w map[string]any) {
 			queuePublisherJob(w)["concurrency"].(map[string]any)["cancel-in-progress"] = true
 		},
-		"discarded callbacks": func(w map[string]any) { queuePublisherJob(w)["concurrency"].(map[string]any)["queue"] = "single" },
+		"unbounded pending queue": func(w map[string]any) { queuePublisherJob(w)["concurrency"].(map[string]any)["queue"] = "max" },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -753,8 +753,9 @@ func TestQueueHeadWorkerRejectsUnsafeWorkflowMutations(t *testing.T) {
 		"cancelrunning": func(w map[string]any) {
 			queuePublisherJob(w)["concurrency"].(map[string]any)["cancel-in-progress"] = true
 		},
-		"coalescingdropspending": func(w map[string]any) { queuePublisherJob(w)["concurrency"].(map[string]any)["queue"] = "single" },
-		"failfastdefault":        func(w map[string]any) { delete(queuePublisherJob(w)["strategy"].(map[string]any), "fail-fast") },
+		"unboundedpendingqueue": func(w map[string]any) { queuePublisherJob(w)["concurrency"].(map[string]any)["queue"] = "max" },
+		"failfastdefault":       func(w map[string]any) { delete(queuePublisherJob(w)["strategy"].(map[string]any), "fail-fast") },
+		"unboundedlanes":        func(w map[string]any) { delete(queuePublisherJob(w)["strategy"].(map[string]any), "max-parallel") },
 		"excluderevocations": func(w map[string]any) {
 			queuePublisherJob(w)["strategy"].(map[string]any)["matrix"].(map[string]any)["exclude"] = []any{map[string]any{"kind": "admission"}}
 		},
