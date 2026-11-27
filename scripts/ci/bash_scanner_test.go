@@ -2,6 +2,7 @@ package ci_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -21,14 +21,14 @@ import (
 var (
 	leadingTabs = regexp.MustCompile(`(?m)^\t+`)
 	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?bash|/(?:usr/)?bin/bash)(?:\s|$)`)
-	// An sh script is scanned too, in POSIX mode: on macOS sh is bash 3.2, the shell the scan
-	// guards against. Only a quoted sh heredoc is: an unquoted one's raw text (\$ escapes) is not
-	// what runs, so it may not parse. shortcut: unquoted sh heredocs are unscanned; quote them.
+	// An sh script is scanned too: on macOS sh is bash 3.2, the shell the scan guards against.
+	// Only a quoted sh heredoc is: an unquoted one's raw text (\$ escapes) is not what runs, so
+	// it may not parse. shortcut: unquoted sh heredocs are unscanned; quote them.
 	scriptShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?(?:ba)?sh|/(?:usr/)?bin/(?:ba)?sh)(?:\s|$)`)
-	// A shebang naming bash or sh (env -S -i bash, env --split-string=sh) that the patterns above
-	// miss (quoted, versioned); the walk fails on it rather than skip the file. zsh, dash and the
-	// like do not match.
-	shellMention = regexp.MustCompile(`(?:^|[^a-z])(?:ba)?sh(?:[^a-z]|$)`)
+	// A shebang naming bash or sh that the patterns above miss (env -S -i bash, a quoted,
+	// versioned or upper-case name, rbash, nix-shell); the scan fails on it rather than skip
+	// the file. zsh, dash and the like do not match.
+	shellMention = regexp.MustCompile(`(?:^|[^a-z])[rR]?(?:[bB][aA])?[sS][hH](?:[^a-z]|$)|nix-shell`) // -Ssh: an upper-case flag before
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
 	workflowExpression = regexp.MustCompile(`\$\{\{(?:[^}']|'(?:[^']|'')*')*\}\}`) // a quoted '{0}' does not end it
 )
@@ -98,23 +98,16 @@ func bareTests(script string) ([]int, error) {
 		}
 	}
 	stmts(file.Stmts, false)
-	// A process substitution body is scanned as active. That is conservative: bash 5 ignores
-	// errexit in an argument substitution inside a condition, but not in a redirect one.
+	// Substitution bodies are scanned as active, which is conservative. bash 5 ignores errexit in
+	// a process substitution inside a condition but not in a redirect one. Whether a command
+	// substitution inherits errexit (set -e inside it, inherit_errexit, POSIX mode from sh or a
+	// shell flag, SHELLOPTS, BASH_ENV, a sourced file) cannot be decided from the text, and where
+	// it does not, bash 3.2 and 5 agree.
 	syntax.Walk(file, func(node syntax.Node) bool {
-		if sub, ok := node.(*syntax.ProcSubst); ok {
+		switch sub := node.(type) {
+		case *syntax.ProcSubst:
 			stmts(sub.Stmts, false)
-		}
-		return true
-	})
-	// A command substitution does not inherit errexit, so its body is ordinary code unless
-	// errexit is back on there: through set -e inside it, or shopt -s inherit_errexit or
-	// set -o posix (POSIX mode inherits errexit) in the script, or a sourced file that may do
-	// either. Then it is scanned as active, which is conservative for statements before set -e.
-	firstLine, _, _ := strings.Cut(script, "\n")
-	inherit := callsWith(file, "shopt", func(args []string) bool { return contains(args, "-s") && contains(args, "inherit_errexit") }) ||
-		callsWith(file, "set", setsPosix) || callsWith(file, "source", anyArgs) || callsWith(file, ".", anyArgs) || (scriptShebang.MatchString(firstLine) && !bashShebang.MatchString(firstLine)) // bash as sh runs in POSIX mode
-	syntax.Walk(file, func(node syntax.Node) bool {
-		if sub, ok := node.(*syntax.CmdSubst); ok && (inherit || callsWith(sub, "set", setsErrexit)) {
+		case *syntax.CmdSubst:
 			stmts(sub.Stmts, false)
 		}
 		return true
@@ -125,6 +118,10 @@ func bareTests(script string) ([]int, error) {
 		redirect, ok := node.(*syntax.Redirect)
 		body, isBash := bashHeredoc(script, redirect)
 		if !ok || !isBash {
+			if first, _, _ := strings.Cut(body, "\n"); ok && shebangKind(first) == "unread" {
+				err = fmt.Errorf("heredoc at line %d: shebang %q names bash or sh in a form the scan does not read", redirect.Hdoc.Pos().Line(), first)
+				return false
+			}
 			return true
 		}
 		lines, herr := bareTests(body)
@@ -140,189 +137,6 @@ func bareTests(script string) ([]int, error) {
 	// A substitution inside an unquoted bash heredoc is seen by both walks; report its line once.
 	slices.Sort(found)
 	return slices.Compact(found), err
-}
-
-// callsWith reports whether node contains a call to name whose literal arguments satisfy match.
-func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
-	found := false
-	syntax.Walk(node, func(n syntax.Node) bool {
-		call, ok := n.(*syntax.CallExpr)
-		if !ok {
-			return !found
-		}
-		words := commandWords(call)
-		if len(words) == 0 || literal(words[0]) != name {
-			return !found
-		}
-		args := make([]string, 0, len(words)-1)
-		for _, word := range words[1:] {
-			args = append(args, literal(word))
-		}
-		found = found || match(args)
-		return !found
-	})
-	return found
-}
-
-// commandWords returns call's words from the command it runs: builtin [--] name and
-// command [-p] [--] name run the same builtin as name.
-func commandWords(call *syntax.CallExpr) []*syntax.Word {
-	words := call.Args
-	for len(words) > 1 && (literal(words[0]) == "builtin" || literal(words[0]) == "command") {
-		words = words[1:]
-		for len(words) > 1 && (literal(words[0]) == "-p" || literal(words[0]) == "--") {
-			words = words[1:]
-		}
-	}
-	return words
-}
-
-// literal returns the value bash gives word when it has no expansion, with quotes and
-// backslashes removed (s"et", \set, 'set' and $'set' are all set), or "" when it may expand
-// or holds an escape inside $'...'.
-func literal(word *syntax.Word) string {
-	var value strings.Builder
-	for _, part := range word.Parts {
-		switch part := part.(type) {
-		case *syntax.Lit:
-			value.WriteString(backslashEscape.ReplaceAllString(part.Value, "$1"))
-		case *syntax.SglQuoted:
-			if part.Dollar && strings.Contains(part.Value, `\`) {
-				return "" // an ANSI-C escape; a plain $'...' is the same as '...'
-			}
-			value.WriteString(part.Value)
-		case *syntax.DblQuoted:
-			for _, inner := range part.Parts {
-				lit, ok := inner.(*syntax.Lit)
-				if !ok || strings.Contains(lit.Value, `\`) {
-					return ""
-				}
-				value.WriteString(lit.Value)
-			}
-		default:
-			return ""
-		}
-	}
-	return value.String()
-}
-
-var quoteMarks = strings.NewReplacer(`"`, "", "'", "", `\`, "", "$", "")
-
-var setOrShopt = regexp.MustCompile(`\b(?:set|shopt)\b`)
-
-var backslashEscape = regexp.MustCompile(`\\(.)`)
-
-// setsErrexit reports whether set arguments turn errexit on: an e in a -group (-e, -oe,
-// -euo pipefail) or a -group whose o takes errexit as its name (-o errexit, -uo errexit,
-// -oo pipefail errexit). Each o takes the next word unless that word is an option itself
-// (-o -e lists the options, then sets -e). Options end at -- , - or the first word that
-// is not an option. A word that may expand ("" from literal) may be -e or errexit, so it
-// counts as one. Conservative: odd groups such as
-// -+e count as -e although bash leaves errexit off.
-func setsErrexit(args []string) bool { return setsOption(args, "e", "errexit") }
-
-// setsPosix reports whether set arguments turn POSIX mode on (-o posix; it has no letter).
-func setsPosix(args []string) bool { return setsOption(args, "", "posix") }
-
-// setsOption is setsErrexit for any option: letter is its single-letter flag ("" for none)
-// and name its -o name.
-func setsOption(args []string, letter, name string) bool {
-	unknown := func(word string) bool { return word == "" }
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case unknown(arg):
-			return true
-		case arg == "--" || arg == "-" || (arg[0] != '-' && arg[0] != '+'):
-			return false
-		case letter != "" && arg[0] == '-' && strings.Contains(arg[1:], letter):
-			return true
-		}
-		for range strings.Count(arg[1:], "o") {
-			if i+1 >= len(args) || (!unknown(args[i+1]) && (args[i+1][0] == '-' || args[i+1][0] == '+')) {
-				break
-			}
-			if i++; unknown(args[i]) || (arg[0] == '-' && args[i] == name) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// unscannedErrexitForms are the ways to turn errexit on, or to make command substitutions
-// inherit it, that setsErrexit and the inherit match in bareTests do not read, so a script
-// using one could hide a bare test. None is used in the
-// repository; scanScript rejects them instead of parsing them. literal() already reads plainly
-// quoted or escaped set and shopt words, so the quote and backslash parts of the first two
-// patterns are needed only for spellings it leaves unknown (an escape inside $'...', a
-// backslash inside "...").
-// eval is also found by the parser (unscannedErrexitUses), which reads a quoted or escaped
-// eval. The match is textual, so it also rejects such text in a comment or string, and it
-// cannot see a form built at run time (eval "$cmd", a set or shopt name from a variable), a
-// ${ } or alias spelling, an escape inside $'...' or a brace expansion. shortcut: rejected, not
-// parsed; teach bareTests the form if a script ever needs it.
-var unscannedErrexitForms = []struct {
-	name    string
-	pattern *regexp.Regexp
-}{
-	{"shopt with a quoted, escaped, expanded, grouped or -o argument", regexp.MustCompile(`\bshopt\b[^\n;|&]*(?:["'\\$]|\s[-+][a-z]{2,}|\s-o\b)`)},
-	{"quoted or escaped set or shopt command name", regexp.MustCompile(`(?:\\(?:set|shopt)|"(?:set|shopt)"|'(?:set|shopt)')\s+[-+]`)},
-	{"eval of set or shopt", regexp.MustCompile(`(?:^|[\s;|&(\x60])(eval)\b(?:[^;|&\n"']|\\\n|"[^"]*"|'[^']*')*?(?:\b|"[^"]*\b|'[^']*\b)(?:set|shopt)\b`)},
-	// POSIX mode and inherit_errexit both make substitutions inherit errexit. Running a script
-	// as sh x.sh (POSIX mode on macOS, whose sh is bash 3.2) cannot be seen from the script; a
-	// workflow env: entry is checked by TestNoBareBashTestRelyingOnErrexit.
-	{"errexit inheritance from the environment or the bash command line", regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS|BASH_ENV)\b|\s--posix\b|\bbash\b(?:[^\n;|&]|\\\n)*\s(?:-[a-zA-Z]*o\s+["']?posix|-O\s+["']?inherit_errexit)\b`)},
-}
-
-// unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
-// and for each eval whose arguments' text names set or shopt. An argument is read three ways:
-// as raw source (so $'\n'set keeps its word boundary), and without quote marks, backslashes
-// and $, once with line continuations removed and once with them kept, since an escaped
-// backslash before a newline ends a command inside the eval string. An eval name or argument
-// built from a variable is not seen.
-func unscannedErrexitUses(script string) []string {
-	var found []string
-	if file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), ""); err == nil {
-		syntax.Walk(file, func(node syntax.Node) bool {
-			// A bash heredoc's commands are text to this parse, so scan its body as a script.
-			if redirect, ok := node.(*syntax.Redirect); ok {
-				if body, isBash := bashHeredoc(script, redirect); isBash {
-					for _, use := range unscannedErrexitUses(body) {
-						line, form, _ := strings.Cut(use, ": ")
-						n, _ := strconv.Atoi(line)
-						found = append(found, fmt.Sprintf("%d: %s", int(redirect.Hdoc.Pos().Line())-1+n, form))
-					}
-				}
-			}
-			if call, ok := node.(*syntax.CallExpr); ok {
-				// Source text, not literal(): $'eval' and "set -$x" have no literal value but still
-				// name eval and set, and the check is textual like the patterns below.
-				raw := func(word *syntax.Word) string { return script[word.Pos().Offset():word.End().Offset()] }
-				source := func(word *syntax.Word) string { return quoteMarks.Replace(strings.ReplaceAll(raw(word), "\\\n", "")) }
-				if words := commandWords(call); len(words) > 1 && source(words[0]) == "eval" {
-					for _, word := range words[1:] {
-						if setOrShopt.MatchString(raw(word)) || setOrShopt.MatchString(source(word)) || setOrShopt.MatchString(quoteMarks.Replace(raw(word))) {
-							found = append(found, fmt.Sprintf("%d: eval of set or shopt", words[0].Pos().Line()))
-							break
-						}
-					}
-				}
-			}
-			return true
-		})
-	}
-	for _, form := range unscannedErrexitForms {
-		if loc := form.pattern.FindStringSubmatchIndex(script); loc != nil {
-			start := loc[0]
-			if len(loc) > 2 {
-				start = loc[2] // a pattern that matches a separator first captures the command
-			}
-			found = append(found, fmt.Sprintf("%d: %s", strings.Count(script[:start], "\n")+1, form.name))
-		}
-	}
-	slices.Sort(found)
-	return slices.Compact(found) // the parser and the eval pattern can both report a line
 }
 
 // bashHeredoc returns the body of redirect's heredoc as bash runs it, when the scan reads it:
@@ -354,92 +168,63 @@ const brokenSourceFixture = "#!/usr/bin/env bash\nfixture_message() { printf 'so
 
 // bareTestCases pin what bareTests flags and allows. Each flagged form fails open on
 // bash 3.2 and exits on bash 5; each allowed form behaves the same on both. The scanner
-// is conservative in one direction: pipeline members, process-substitution bodies, and the final
-// statement of a background or substitution subshell are flagged although bash 3.2 and 5 agree
-// there, and so is a substitution in a script that sources a file, which may not turn on
-// inheritance.
+// is conservative in one direction: pipeline members, substitution bodies, and the final
+// statement of a background subshell are flagged although bash 3.2 and 5 may agree there.
 var bareTestCases = struct{ flagged, allowed map[string]string }{
 	flagged: map[string]string{
-		"top level test":                      "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
-		"top level arith":                     "(( n >= 21 ))\n",
-		"inside a loop":                       "for a in b; do\n  [[ -n $a ]]\ndone\n",
-		"inside then body":                    "if true; then\n  [[ -n $a ]]\nfi\n",
-		"inside else body":                    "if true; then :; else\n  [[ -n $a ]]\nfi\n",
-		"last in a function":                  "f() {\n  ((a == 1 || b == 2))\n}\n",
-		"function called with or":             "f() { [[ a == b ]]; }\nf || die\n", // conservative: bodies are active
-		"test with comment":                   "[[ -n $a ]] # why\n",
-		"semicolon":                           "[[ -n $a ]];\n",
-		"quoted bracket":                      "[[ \"$a ]] b\" == x ]]\n",
-		"nested bash heredoc":                 "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
-		"continued test":                      "[[ -n $a &&\n  -n $b ]]\n",
-		"after semicolon":                     "x=1; [[ -n $x ]]\n",
-		"brace group":                         "{ [[ -n $a ]]; }\n",
-		"subshell":                            "( [[ -n $a ]] )\n",
-		"inline then":                         "if c; then [[ -n $a ]]; fi\n",
-		"inline else":                         "if c; then :; else [[ -n $a ]]; fi\n",
-		"inline then and else":                "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
-		"inline do":                           "for a in b; do [[ -n $a ]]; done\n",
-		"inline do arith":                     "while c; do ((n > 0)); done\n",
-		"case arm":                            "case $x in a) [[ -n $x ]] ;; esac\n",
-		"case arm last":                       "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
-		"case arm leading paren":              "case $x in (a) [[ a == b ]] ;; esac\n",
-		"function one-liner":                  "f() { [[ -n $1 ]]; }\n",
-		"and tail":                            "a &&\n  [[ -n $b ]]\n",
-		"and tail inline":                     "true && [[ a == b ]]\n",
-		"or tail":                             "false || [[ a == b ]]\n",
-		"test and test":                       "[[ a == a ]] && [[ a == b ]]\n",
-		"arith and tail":                      "true && (( 0 ))\n",
-		"tab after bracket":                   "[[\t-n $a ]]\n",
-		"comment ending in or":                "# explain ||\n[[ -n $a ]]\n",
-		"comment ending in and":               "# explain &&\n[[ -n $a ]]\n",
-		"comment ending in pipe":              "# explain |\n((a))\n",
-		"redirect after test":                 "[[ a == b ]] >/dev/null\n",
-		"stderr redirect after":               "[[ a == b ]] 2>/dev/null\n",
-		"time prefix":                         "time [[ a == b ]]\n",
-		"after quoted paren":                  "x=$(echo \")\")\n[[ a == b ]]\n",
-		"after quoted brace":                  "x=${y:-\"}\"}\n[[ a == b ]]\n",
-		"after ansi-c quote":                  "x=$'it\\'s'\n[[ a == b ]]\n",
-		"after grep with quotes":              "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
-		"group closed by plain end":           "{ [[ -n $a ]]; other; }\n",
-		"background group":                    "{ [[ a == b ]]; echo x; } &\n",
-		"background subshell":                 "( [[ a == b ]]; echo x ) &\n",
-		"process substitution":                "cat <( [[ a == b ]]; echo x )\n",
-		"set -e in a substitution":            "value=$(set -e; [[ a == b ]]; echo accepted)\n",
-		"set -eo in a substitution":           "value=$(set -eo pipefail; [[ a == b ]]; echo accepted)\n",
-		"set -oe in a substitution":           "value=$(set -oe pipefail; [[ a == b ]]; echo accepted)\n",
-		"set -uo errexit in a substitution":   "value=$(set -uo errexit; [[ a == b ]]; echo accepted)\n",
-		"quoted set -e in a substitution":     "value=$(set \"-e\"; [[ a == b ]]; echo accepted)\n",
-		"quoted errexit in a substitution":    "value=$(set -o \"errexit\"; [[ a == b ]]; echo accepted)\n",
-		"expanded option in a substitution":   "value=$(set -uo \"$x\"; [[ a == b ]]; echo accepted)\n",
-		"set -o -e in a substitution":         "value=$(set -o -e; [[ a == b ]]; echo accepted)\n",
-		"second o names errexit":              "value=$(set -oo pipefail errexit; [[ a == b ]]; echo accepted)\n",
-		"ansi-c quoted set option":            "value=$(set $'\\x2de'; [[ a == b ]]; echo accepted)\n",
-		"expanded set option in quotes":       "value=$(set \"-$x\"; [[ a == b ]]; echo accepted)\n",
-		"expanded set -o name in quotes":      "value=$(set -o \"err$x\"; [[ a == b ]]; echo accepted)\n",
-		"partly quoted set in a substitution": "value=$(s\"et\" -e; [[ a == b ]]; echo accepted)\n",
-		"escaped set name in a substitution":  "value=$(se\\t -e; [[ a == b ]]; echo accepted)\n",
-		"quoted inherit_errexit":              "shopt -s \"inherit_errexit\"\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"escaped set -e in a substitution":    "value=$(set \\-e; [[ a == b ]]; echo accepted)\n",
-		"escaped errexit in a substitution":   "value=$(set -o err\\exit; [[ a == b ]]; echo accepted)\n",
-		"builtin set -e in a substitution":    "value=$(builtin set -e; [[ a == b ]]; echo accepted)\n",
-		"$'builtin' set -e in a substitution": "value=$($'builtin' set -e; [[ a == b ]]; echo accepted)\n",
-		"sh script inherits errexit":          "#!/bin/sh\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
-		"quoted sh heredoc":                   "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
-		"partly quoted sh heredoc":            "cat >f <<E\"O\"F\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
-		"set -o posix inherits errexit":       "set -e\nset -o posix\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"set -eo posix inherits errexit":      "set -eo posix\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"set +o expanded in a substitution":   "value=$(set +o \"$x\"; [[ a == b ]]; echo accepted)\n", // x=-e: bash lists the options, then sets -e
-		"command -- set -e in a substitution": "value=$(command -- set -e; [[ a == b ]]; echo accepted)\n",
-		"command -p set -e in a substitution": "value=$(command -p set -e; [[ a == b ]]; echo accepted)\n",
-		"inherited errexit":                   "shopt -s inherit_errexit\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"a sourced file may set inheritance":  "source ./lib.sh\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"a dot-sourced file may too":          ". ./lib.sh\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"tab-indented bash heredoc":           "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
+		"top level test":             "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
+		"top level arith":            "(( n >= 21 ))\n",
+		"inside a loop":              "for a in b; do\n  [[ -n $a ]]\ndone\n",
+		"inside then body":           "if true; then\n  [[ -n $a ]]\nfi\n",
+		"inside else body":           "if true; then :; else\n  [[ -n $a ]]\nfi\n",
+		"last in a function":         "f() {\n  ((a == 1 || b == 2))\n}\n",
+		"function called with or":    "f() { [[ a == b ]]; }\nf || die\n", // conservative: bodies are active
+		"test with comment":          "[[ -n $a ]] # why\n",
+		"semicolon":                  "[[ -n $a ]];\n",
+		"quoted bracket":             "[[ \"$a ]] b\" == x ]]\n",
+		"nested bash heredoc":        "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
+		"continued test":             "[[ -n $a &&\n  -n $b ]]\n",
+		"after semicolon":            "x=1; [[ -n $x ]]\n",
+		"brace group":                "{ [[ -n $a ]]; }\n",
+		"subshell":                   "( [[ -n $a ]] )\n",
+		"inline then":                "if c; then [[ -n $a ]]; fi\n",
+		"inline else":                "if c; then :; else [[ -n $a ]]; fi\n",
+		"inline then and else":       "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
+		"inline do":                  "for a in b; do [[ -n $a ]]; done\n",
+		"inline do arith":            "while c; do ((n > 0)); done\n",
+		"case arm":                   "case $x in a) [[ -n $x ]] ;; esac\n",
+		"case arm last":              "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
+		"case arm leading paren":     "case $x in (a) [[ a == b ]] ;; esac\n",
+		"function one-liner":         "f() { [[ -n $1 ]]; }\n",
+		"and tail":                   "a &&\n  [[ -n $b ]]\n",
+		"and tail inline":            "true && [[ a == b ]]\n",
+		"or tail":                    "false || [[ a == b ]]\n",
+		"test and test":              "[[ a == a ]] && [[ a == b ]]\n",
+		"arith and tail":             "true && (( 0 ))\n",
+		"tab after bracket":          "[[\t-n $a ]]\n",
+		"comment ending in or":       "# explain ||\n[[ -n $a ]]\n",
+		"comment ending in and":      "# explain &&\n[[ -n $a ]]\n",
+		"comment ending in pipe":     "# explain |\n((a))\n",
+		"redirect after test":        "[[ a == b ]] >/dev/null\n",
+		"stderr redirect after":      "[[ a == b ]] 2>/dev/null\n",
+		"time prefix":                "time [[ a == b ]]\n",
+		"after quoted paren":         "x=$(echo \")\")\n[[ a == b ]]\n",
+		"after quoted brace":         "x=${y:-\"}\"}\n[[ a == b ]]\n",
+		"after ansi-c quote":         "x=$'it\\'s'\n[[ a == b ]]\n",
+		"after grep with quotes":     "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
+		"group closed by plain end":  "{ [[ -n $a ]]; other; }\n",
+		"background group":           "{ [[ a == b ]]; echo x; } &\n",
+		"background subshell":        "( [[ a == b ]]; echo x ) &\n",
+		"process substitution":       "cat <( [[ a == b ]]; echo x )\n",
+		"plain substitution":         "value=$([[ a == b ]]; echo x)\n", // conservative unless errexit reaches $( )
+		"set -e in a substitution":   "value=$(set -e; [[ a == b ]]; echo accepted)\n",
+		"sh script inherits errexit": "#!/bin/sh\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
+		"quoted sh heredoc":          "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"partly quoted sh heredoc":   "cat >f <<E\"O\"F\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"tab-indented bash heredoc":  "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
 	},
 	allowed: map[string]string{
-		"bash shebang substitution":       "#!/bin/bash\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
 		"unquoted sh heredoc (unscanned)": "cat >f <<EOF\n#!/bin/sh\n[[ -n \\$a ]]\nEOF\n",
-		"set +o posix does not inherit":   "set -e\nset +o posix\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"or exit":                         "[[ -n $a ]] || exit 1\n",
 		"or return":                       "((a == 1)) || return 1\n",
 		"or brace":                        "[[ $a =~ x ]] || { echo no >&2; exit 1; }\n",
@@ -464,15 +249,6 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"multi-line test":                 "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
 		"test in condition":               "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
 		"plain heredoc":                   "cat <<EOF\n[[ -n $a ]]\nEOF\n",
-		"plain substitution":              "value=$([[ a == b ]]; echo x)\n", // errexit is off in $( ) on every bash
-		"set +e substitution":             "value=$(set +e; [[ a == b ]]; echo x)\n",
-		"set -- -e substitution":          "value=$(set -- -e; [[ a == b ]]; echo x)\n", // -e is a positional parameter
-		"set -o pipefail substitution":    "value=$(set -o pipefail; [[ a == b ]]; echo x)\n",
-		"command -v set substitution":     "value=$(command -v set -e; [[ a == b ]]; echo x)\n", // only prints how set resolves
-		"set - -e substitution":           "value=$(set - -e; [[ a == b ]]; echo x)\n",
-		"set x -e substitution":           "value=$(set x -e; [[ a == b ]]; echo x)\n", // options end at the first positional word
-		"set +o errexit substitution":     "value=$(set +o errexit; [[ a == b ]]; echo x)\n",
-		"set -o emacs substitution":       "value=$(set -o emacs; [[ a == b ]]; echo x)\n",
 		"here string":                     "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
 		"arith expansion":                 "x=$((a + 1))\n",
 		"command":                         "test -n \"$a\"\n",
@@ -541,6 +317,9 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 	if _, err := bareTests("cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ a == b ]]\ng() {\nEOF\n"); err == nil {
 		t.Error("an unparsable bash heredoc must be returned as an error, not skipped")
 	}
+	if _, err := bareTests("cat >f <<'EOF'\n#!/bin/bash5\n[[ a == b ]]\nEOF\n"); err == nil || !strings.Contains(err.Error(), "does not read") {
+		t.Errorf("a heredoc whose shebang the scan does not read must be an error: %v", err)
+	}
 	if _, err := bareTests("cat >f <<'EOF'\n" + brokenSourceFixture + "EOF\n"); err != nil {
 		t.Errorf("the deliberately broken fast-feedback fixture must stay accepted: %v", err)
 	}
@@ -560,9 +339,6 @@ func scanScript(t *testing.T, name, script, hint string) {
 func scanProblems(name, script, hint string) []string {
 	var problems []string
 	errorf := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
-	for _, found := range unscannedErrexitUses(script) {
-		errorf("%s:%s; bareTests cannot see whether it turns errexit on, so spell it as a plain set or shopt -s inherit_errexit call (the check matches text: reword a comment or string that trips it)", name, found)
-	}
 	lines, err := bareTests(script)
 	if err != nil {
 		errorf("%s: cannot parse as bash: %v", name, err)
@@ -610,124 +386,46 @@ func containsLine(lines []int, want int) bool {
 	return false
 }
 
-// TestUnscannedErrexitFormsAreRejected pins what unscannedErrexitUses rejects and allows.
-func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
-	matches := unscannedErrexitUses
-	for _, script := range []string{
-		"shopt -s \"inherit_errexit\"\n", "shopt '-s' inherit_errexit\n", "shopt -sq inherit_errexit\n", "shopt -so errexit\n",
-		"shopt -s -o errexit\n", "\"set\" -e\n", "'set' -e\n", "\\set -e\n", "\\shopt -s inherit_errexit\n",
-		"eval set -e\n", "eval 'set -e'\n", "eval \"shopt -s inherit_errexit\"\n",
-		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "\"eval\" set -e\n", "\\eval set -e\n", "'eval' set -e\n", "e\"val\" set -e\n", "x=$(\"eval\" set -e)\n",
-		"$'eval' set -e\n", "\"eval\" \"set -$x\"\n", "builtin \"eval\" set -e\n", "\"eval\" -- set -e\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n", "e\\\nval set -e\n", "\"e\\\nval\" set -e\n", "eval s\\\net -e\n", "eval \"s\\\net -e\"\n",
-		"$'e'\\\nval set -e\n", "eval $'s'\\\net -e\n", "eval \"s\\\net -$x\"\n", "eval 's\\\net -e'\n",
-		"eval $(:;) 'x\\\\\nset -e'\n", "eval $(:;) \"x\\\\\\\\\nset -e\"\n",
-		"\"eval\" $'\\n'set -e\n", "\\eval $'\\t'set -e\n", "\"eval\" $(:;) 'x\\\\\ns'et -e\n",
-		"$'builtin' \"eval\" set -e\n", "\"com\"$'mand' \"eval\" set -e\n", "\"eval\" shopt -s inherit_errexit\n",
-		"POSIXLY_CORRECT=1 ./x.sh\n", "bash --posix x.sh\n", "SHELLOPTS=posix ./x.sh\n", "export SHELLOPTS\n", "BASH_ENV=./posix.sh ./x.sh\n",
-		"BASHOPTS=inherit_errexit ./x.sh\n", "bash -o posix x.sh\n", "bash -eo posix x.sh\n", "bash -O inherit_errexit x.sh\n",
-		"bash -o 'posix' x.sh\n", "bash -O \"inherit_errexit\" x.sh\n", "bash \\\n  -o posix x.sh\n",
-		"cat >f <<'EOF'\n#!/usr/bin/env bash\nvalue=$(\"eval\" set -e; [[ a == b ]]; echo accepted)\nEOF\n",
-	} {
-		if len(matches(script)) == 0 {
-			t.Errorf("not rejected: %q", script)
-		}
-	}
-	for _, script := range []string{
-		"shopt -s nullglob\n", "shopt -s extglob inherit_errexit\n", "set -euo pipefail\n", "echo \"set -e is on\"\n",
-		"printf 'set -e\\n'\n", "eval \"$(ssh-agent -s)\"\n", "reset -e\n", "x=set; echo $x\n", "set -o posix\n", "set -eo posix\n", "bash +o posix x.sh\n",
-		"eval \"$(dircolors)\"; set -e\n", "shopt -s -q inherit_errexit\n", "node --eval 'x.set(1)'\n", "\"eval\" reset -e\n",
-	} {
-		if got := matches(script); len(got) != 0 {
-			t.Errorf("rejected %q as %v", script, got)
-		}
-	}
-	if got := scanProblems("fixture.sh", "#!/usr/bin/env bash\neval set -e\n", "hint"); len(got) == 0 || !strings.HasPrefix(got[0], "fixture.sh:2: eval of set or shopt") {
-		t.Errorf("scanScript must report an unscanned form: got %q", got)
-	}
-	if got := matches("x=1 \\\neval set -e\n"); !reflect.DeepEqual(got, []string{"2: eval of set or shopt"}) {
-		t.Errorf("an eval after a continued assignment: got %v, want [2: eval of set or shopt] once", got)
-	}
-	if got := matches("x\ncat >f <<'EOF'\n#!/usr/bin/env bash\n\"eval\" set -e\nEOF\n"); !reflect.DeepEqual(got, []string{"4: eval of set or shopt"}) {
-		t.Errorf("an eval in a bash heredoc: got %v, want [4: eval of set or shopt]", got)
-	}
-	if got := matches("a\nb\neval set -e\n"); !reflect.DeepEqual(got, []string{"3: eval of set or shopt"}) {
-		t.Errorf("line numbers: got %v, want [3: eval of set or shopt]", got)
-	}
-}
-
-// TestRepositoryScanSelectors pins what the repository scan reads: sh files are scanned (macOS
-// sh is bash 3.2), a step under any shell but plain bash is read in POSIX mode, and a workflow
-// env: entry that makes substitutions inherit errexit is caught.
+// TestRepositoryScanSelectors pins what the repository scan reads: which shebangs it scans,
+// and which workflow steps run bash (the step's shell over the job's default over the
+// workflow's), each distinct step scanned once.
 func TestRepositoryScanSelectors(t *testing.T) {
-	for line, want := range map[string]bool{"#!/bin/sh": true, "#!/usr/bin/env sh": true, "#!/bin/bash -e": true, "#!/bin/zsh": false, "#!/usr/bin/env python3": false, "#!/usr/bin/env -S bash -e": true, "#!/usr/bin/env -S sh": true} {
-		if got := scriptShebang.MatchString(line); got != want {
-			t.Errorf("scriptShebang(%q) = %v, want %v", line, got, want)
-		}
-	}
 	for line, want := range map[string]string{
-		"#!/usr/bin/env bash": "bash", "#!/usr/bin/env -S bash -e": "bash", "#!/bin/sh -e": "sh", "#!/usr/bin/env -S sh": "sh",
+		"#!/usr/bin/env bash": "bash", "#!/bin/bash -e": "bash", "#!/usr/bin/env -S bash -e": "bash",
+		"#!/bin/sh": "sh", "#!/bin/sh -e": "sh", "#!/usr/bin/env sh": "sh", "#!/usr/bin/env -S sh": "sh",
 		"#!/usr/bin/env -S -i bash": "unread", "#!/usr/bin/env -S VAR=1 sh": "unread", "#!/usr/bin/env -Ssh": "unread",
 		"#!/usr/bin/env --split-string=sh": "unread", "#!/usr/bin/env -S 'bash' -e": "unread", "#!/usr/bin/env -S \"sh\"": "unread",
-		"#!/bin/bash5": "unread", "#!/usr/bin/env bash-5.2": "unread",
-		"#!/bin/zsh": "", "#!/bin/dash": "", "#!/usr/bin/env -S uv run --script": "", "#!/usr/bin/env python3": "",
+		"#!/bin/bash5": "unread", "#!/usr/bin/env bash-5.2": "unread", "#!/bin/rbash": "unread", "#!/bin/BASH": "unread",
+		"#!/usr/bin/env nix-shell": "unread",
+		"#!/bin/zsh":               "", "#!/bin/dash": "", "#!/usr/bin/env -S uv run --script": "", "#!/usr/bin/env python3": "",
 	} {
 		if got := shebangKind(line); got != want {
 			t.Errorf("shebangKind(%q) = %q, want %q", line, got, want)
 		}
 	}
-	for line, want := range map[string]bool{"#!/usr/bin/env -S bash -e": true, "#!/bin/bash": true, "#!/usr/bin/env -S sh": false} {
-		if got := bashShebang.MatchString(line); got != want {
-			t.Errorf("bashShebang(%q) = %v, want %v", line, got, want)
-		}
-	}
-	for _, shell := range []string{"sh -e {0}", "/usr/bin/env sh {0}", "env sh -e {0}", "bash --posix {0}", "bash -o posix {0}", "${{ matrix.shell }}", "bash ${{ matrix.flags }} {0}", "bash -eo pipefail -O inherit_errexit {0}", "bash -c \"shopt -s inherit_errexit; . {0}\""} {
-		if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", shell)); err != nil || !reflect.DeepEqual(got, []int{2}) {
-			t.Errorf("a %q step's substitution: got %v, %v; want line 2 flagged (POSIX mode and inherit_errexit inherit errexit)", shell, got, err)
-		}
-	}
-	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\nfoo \\", "sh -e {0}")); err != nil || !reflect.DeepEqual(got, []int{2}) {
-		t.Errorf("an sh step ending in a continuation: got %v, %v; want line 2 flagged", got, err)
-	}
-	for _, shell := range []string{"bash", "bash -e {0}", ""} {
-		if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", shell)); err != nil || len(got) != 0 {
-			t.Errorf("a %q step's substitution: got %v, %v; want none flagged", shell, got, err)
-		}
-	}
-	// The same step under bash and sh (the step's shell over the job's bash default) is two scans, two
-	// unnamed steps are two scans, and an env: entry is reported.
-	fixture := "env:\n  SHELLOPTS: posix\njobs:\n" +
-		"  a:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: bash\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
-		"      - run: echo ok\n      - run: '[[ -n $a ]]'\n" +
-		"  b:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - name: s\n        shell: sh\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
+	fixture := "defaults:\n  run:\n    shell: pwsh\njobs:\n" +
+		"  a:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: pwsh\n    steps:\n" +
+		"      - name: step-over-job\n        shell: bash\n        run: '[[ -n $a ]]'\n" +
+		"      - name: job-default\n        run: '[[ -n $a ]]'\n" +
+		"  b:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n" +
+		"      - name: job-over-workflow\n        run: '[[ -n $a ]]'\n" +
+		"      - name: step-pwsh\n        shell: pwsh\n        run: '[[ -n $a ]]'\n" +
+		"  c:\n    runs-on: ubuntu-latest\n    steps:\n      - name: workflow-default\n        run: '[[ -n $a ]]'\n" +
+		"  d:\n    runs-on: ubuntu-latest\n    steps:\n" +
+		"      - shell: bash\n        run: echo ok\n      - shell: bash\n        run: '[[ -n $b ]]'\n"
 	problems, err := workflowProblems("fixture.yml", []byte(fixture))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var shStep, unnamed, env int
+	var steps []string
 	for _, problem := range problems {
-		if strings.HasPrefix(problem, "fixture.yml:2: SHELLOPTS") {
-			env++
-		}
-		if strings.Contains(problem, "job b step \"s\"") && strings.Contains(problem, ":2: bare test") {
-			shStep++
-		}
-		if strings.Contains(problem, "job a step \"\"") && strings.Contains(problem, ":1: bare test") {
-			unnamed++
+		if match := regexp.MustCompile(`job (\S+) step "([^"]*)"`).FindStringSubmatch(problem); match != nil {
+			steps = append(steps, match[1]+"/"+match[2])
 		}
 	}
-	if shStep != 1 || unnamed != 1 || env != 1 {
-		t.Errorf("fixture workflow: got %d sh-step, %d unnamed-step and %d env problems, want 1 each:\n%s", shStep, unnamed, env, strings.Join(problems, "\n"))
-	}
-	// A workflow-level default shell reaches the step too, unless the job's default overrides it.
-	topLevel := "defaults:\n  run:\n    shell: sh\njobs:\n  c:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
-		"  d:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - name: d\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
-	if problems, err := workflowProblems("top.yml", []byte(topLevel)); err != nil || len(problems) != 1 || !strings.Contains(problems[0], "job c ") || !strings.Contains(problems[0], ":2: bare test") {
-		t.Errorf("workflow defaults shell: sh: got %v, %v; want one line-2 problem in job c", problems, err)
-	}
-	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  BASH_ENV: ./posix.sh\n": true, "  SHELL: bash\n": false} {
-		if got := len(workflowEnvProblems([]byte(text))) > 0; got != want {
-			t.Errorf("workflowEnvProblems(%q) found = %v, want %v", text, got, want)
-		}
+	slices.Sort(steps)
+	if want := []string{"a/step-over-job", "b/job-over-workflow", "d/"}; !reflect.DeepEqual(steps, want) {
+		t.Errorf("fixture workflow: problems in %v, want %v:\n%s", steps, want, strings.Join(problems, "\n"))
 	}
 }
 
@@ -745,67 +443,133 @@ func shebangKind(firstLine string) string {
 	return ""
 }
 
-func anyArgs([]string) bool { return true }
-
-var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS|BASH_ENV)\b`) // BASH_ENV: a file non-interactive bash reads first
-
-// scannedStepScript is a workflow step's script as the scan reads it: expressions replaced, and
-// under any shell but plain bash (sh, env sh, an expression anywhere, bash --posix, bash -O
-// inherit_errexit) set -o posix put before line 1, since such a shell may make substitutions
-// inherit errexit and POSIX mode only adds substitution bodies to the scan. Prepended on the same
-// line, so line numbers stay put and a trailing continuation cannot swallow it.
-func scannedStepScript(run, shell string) string {
-	script := workflowExpression.ReplaceAllString(run, "GITHUB_EXPRESSION")
-	if exe := shellExecutable(shell); (exe != "" && exe != "bash") || strings.Contains(shell, "posix") || strings.Contains(shell, "inherit_errexit") || strings.Contains(shell, "${{") {
-		script = "set -o posix; " + script
-	}
-	return script
-}
-
-// workflowEnvProblems returns "line: name ..." for each name in a workflow file that makes
-// command substitutions inherit errexit, or can: an env: entry reaches every step unseen by its script.
-func workflowEnvProblems(raw []byte) []string {
-	var problems []string
-	for _, loc := range inheritanceEnv.FindAllIndex(raw, -1) {
-		problems = append(problems, fmt.Sprintf("%d: %s makes or can make command substitutions inherit errexit, which the scan does not follow", bytes.Count(raw[:loc[0]], []byte("\n"))+1, raw[loc[0]:loc[1]]))
-	}
-	return problems
-}
-
-// workflowProblems returns the scan problems of one workflow file: its env: entries and each
-// bash step's script, a step repeated by a YAML anchor scanned once.
+// workflowProblems returns the scan problems of each bash step in one workflow file, a step
+// repeated by a YAML anchor scanned once.
 func workflowProblems(name string, raw []byte) ([]string, error) {
-	var problems []string
-	for _, problem := range workflowEnvProblems(raw) {
-		problems = append(problems, name+":"+problem)
-	}
 	var workflow failClosedWorkflow
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return nil, err
 	}
+	var problems []string
 	scanned := map[string]bool{}
 	for jobName, job := range workflow.Jobs {
 		for _, step := range job.Steps {
 			shell := firstNonEmpty(step.Shell, job.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
-			script := scannedStepScript(step.Run, shell)
-			key := step.Name + "\x00" + script // the shell changes the text, so it is part of the key
+			key := step.Name + "\x00" + step.Run
 			if step.Run == "" || !isBashShell(shell, string(job.RunsOn)) || scanned[key] {
 				continue
 			}
 			scanned[key] = true
+			script := workflowExpression.ReplaceAllString(step.Run, "GITHUB_EXPRESSION")
 			problems = append(problems, scanProblems(fmt.Sprintf("%s job %s step %q (line of its script)", name, jobName, step.Name), script, "append `|| exit 1`")...)
 		}
 	}
 	return problems, nil
 }
 
+// repositoryScripts returns the bash and sh scripts under root that git does not ignore, by
+// path relative to root with the kind shebangKind gives them, and the paths whose shebang
+// names bash or sh in a form the scan does not read. Untracked files are included, so a new
+// script is checked before it is committed.
+func repositoryScripts(root string) (map[string]string, []string, error) {
+	// precomposeunicode off: on macOS git would otherwise report a decomposed name composed.
+	out, err := exec.Command("git", "-C", root, "-c", "core.precomposeunicode=false", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory").Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exit.Stderr))
+		}
+		return nil, nil, fmt.Errorf("listing ignored files: %w", err)
+	}
+	ignored := map[string]bool{}
+	for _, name := range strings.Split(string(out), "\x00") {
+		ignored[filepath.FromSlash(strings.TrimSuffix(name, "/"))] = true // --directory lists an ignored tree as dir/
+	}
+	scripts := map[string]string{}
+	var unread []string
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || ignored[rel] {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() || ignored[rel] {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || !bytes.HasPrefix(raw, []byte("#!")) {
+			return err
+		}
+		firstLine, _, _ := strings.Cut(string(raw), "\n")
+		switch kind := shebangKind(firstLine); kind {
+		case "unread":
+			unread = append(unread, rel)
+		case "bash", "sh":
+			scripts[rel] = kind
+		}
+		return nil
+	})
+	return scripts, unread, err
+}
+
+func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	root := t.TempDir()
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	files := map[string]string{
+		".gitignore": "ignored/\n*.log\n", "a.sh": "#!/usr/bin/env bash\n", "b.sh": "#!/bin/sh\n",
+		"ignored/c.sh": "#!/usr/bin/env bash\n", "with space.log": "#!/usr/bin/env bash\n",
+		"new\nline.log": "#!/usr/bin/env bash\n", "u.sh": "#!/bin/rbash\n", "py": "#!/usr/bin/env python3\n",
+	}
+	for name, body := range files {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scripts, unread, err := repositoryScripts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]string{"a.sh": "bash", "b.sh": "sh"}; !reflect.DeepEqual(scripts, want) {
+		t.Errorf("scripts = %v, want %v", scripts, want)
+	}
+	if !reflect.DeepEqual(unread, []string{"u.sh"}) {
+		t.Errorf("unread = %v, want [u.sh]", unread)
+	}
+	if _, _, err := repositoryScripts(t.TempDir()); err == nil || !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("outside a repository: got %v, want git's own error", err)
+	}
+}
+
 // Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
 // explicit failure branch: bash before 4.1 ignores errexit for it and fails open.
 func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 	root := repositoryRoot(t)
-	workflows, err := filepath.Glob(filepath.Join(root, ".github/workflows/*.yml"))
-	if err != nil || len(workflows) == 0 {
-		t.Fatalf("workflows: %v", err)
+	var workflows []string
+	for _, pattern := range []string{"*.yml", "*.yaml"} {
+		matches, err := filepath.Glob(filepath.Join(root, ".github/workflows", pattern))
+		if err != nil {
+			t.Fatal(err)
+		}
+		workflows = append(workflows, matches...)
+	}
+	if len(workflows) == 0 {
+		t.Fatal("no workflows found")
 	}
 	for _, path := range workflows {
 		raw, err := os.ReadFile(path)
@@ -820,55 +584,27 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 			t.Error(problem)
 		}
 	}
-	// Ignored files (build output, a local tool's cache) are not the repository's scripts. Untracked
-	// ones are still scanned, so a new script is checked before it is committed.
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard").Output()
-	if err != nil {
-		t.Fatalf("listing ignored files: %v", err)
-	}
-	ignored := map[string]bool{}
-	for _, name := range strings.Split(string(out), "\x00") {
-		ignored[filepath.FromSlash(name)] = true
-	}
-	scripts, shScripts := 0, 0
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", ".claude", "node_modules", "graphify-out":
-				return fs.SkipDir
-			}
-			return nil
-		}
-		rel, _ := filepath.Rel(root, path)
-		if !d.Type().IsRegular() || ignored[rel] {
-			return nil
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil || !bytes.HasPrefix(raw, []byte("#!")) {
-			return err
-		}
-		firstLine, _, _ := strings.Cut(string(raw), "\n")
-		switch shebangKind(firstLine) {
-		case "unread":
-			t.Errorf("%s: shebang %q names bash or sh in a form the scan does not read; use #!/usr/bin/env bash or #!/bin/sh", path, firstLine)
-			return nil
-		case "":
-			return nil
-		case "sh":
-			shScripts++
-		}
-		scripts++
-		scanScript(t, rel, string(raw), "append `|| exit 1` (or `|| return 1` in a function)")
-		return nil
-	})
+	scripts, unread, err := repositoryScripts(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Just under the repository's counts, so losing a tree of scripts is noticed.
-	if scripts < 200 || shScripts < 150 {
-		t.Fatalf("found only %d bash scripts, %d of them sh; the scan is not seeing the repository", scripts, shScripts)
+	for _, rel := range unread {
+		t.Errorf("%s: its shebang names bash or sh in a form the scan does not read; use #!/usr/bin/env bash or #!/bin/sh", rel)
+	}
+	sh := 0
+	for rel, kind := range scripts {
+		if kind == "sh" {
+			sh++
+		}
+		raw, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scanScript(t, rel, string(raw), "append `|| exit 1` (or `|| return 1` in a function)")
+	}
+	// About 5% under the repository's counts, so losing a few scripts is noticed; lower it when
+	// scripts are deleted on purpose.
+	if len(scripts) < 240 || sh < 180 {
+		t.Fatalf("found only %d bash scripts, %d of them sh; the scan is not seeing the repository", len(scripts), sh)
 	}
 }
