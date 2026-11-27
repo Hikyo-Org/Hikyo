@@ -499,8 +499,9 @@ export function rulesFromServer(items: readonly ServerRule[]): Rule[] {
       envs: names === undefined ? { mode, items: envItems } : { mode, items: envItems, names },
       keys: { mode: item.where.keys.mode, items: item.where.keys.items.map(keyItemOf) },
     };
-    // A disabled rule never merges with a working one of the same Where.
-    const id = `${item.principal_id}#${whereKey(base)}${item.fault === undefined ? '' : '#fault'}`;
+    // A disabled rule never merges with a working one of the same Where, nor
+    // with a disabled one for another reason: each reason stays shown.
+    const id = `${item.principal_id}#${whereKey(base)}${item.fault === undefined ? '' : `#fault#${item.fault}`}`;
     const group = groups.get(id);
     if (group === undefined) {
       const fault = item.fault === undefined ? {} : { fault: item.fault };

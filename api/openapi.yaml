@@ -23694,12 +23694,11 @@ components:
         single keys, under every project. Its environment axis selects by
         name like any rule's.
 
-        The 500 bound counts the rule as it can be listed: its projects (for
-        `project_mode` `all`, every current project), its environment
-        `names`, one environment item per name under each project, and its
-        key items (for `project_mode` `all`, its folder items repeated under
-        each project). A create that would list more is refused with 409
-        `limit_exceeded`. A project creation that
+        The 500 bound counts the rule as it can be listed. A rule over named
+        projects counts `projects × (1 + names) + key items`; a rule with
+        `project_mode` `all` counts `projects × (1 + folders + names)` over
+        every current project. A create that would list more is refused with
+        409 `limit_exceeded`. A project creation that
         would list an existing rule over all projects past it is refused with
         409 `conflict`, whose detail names the blocking rules to a member
         manager. A listing is never truncated.

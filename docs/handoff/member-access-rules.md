@@ -326,6 +326,18 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   a delegation check resolves each key item of a held manage rule in an
   existing project, which the missing-project decoy does not, so a caller
   holding such a rule can tell the two apart by query work.
+- **Known limits, fail-closed by design.** Each of these asks for a
+  confirmation, or refuses, where an exact check would not. Loosening any of
+  them would admit something refused today, so they stay.
+  - A definitions plan that moves a key and deletes the environment the move
+    gave access in still asks to confirm that gain, though it never becomes
+    reachable.
+  - A pre-revision-22 `all` create without names is refused while any of the
+    principal's manageable `all` rules over the project excepts a name no
+    environment carries, even when the new rule would not replace it.
+  - A plan's environment census reads the rules before the plan runs, so a
+    rule the plan revokes or prunes (for example by deleting its last key)
+    still counts, and its principal must be confirmed.
 - **Refusal uniformity.** Checks before the caller is proved read only the
   request (one stand-in name per sent environment id); a refused caller gets
   the same not-found whatever ids exist

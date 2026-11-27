@@ -578,4 +578,10 @@ describe('environments by name (#1447)', () => {
     expect(rules).toHaveLength(2);
     expect(rules.map((r) => r.fault)).toEqual([undefined, 'Disabled by the upgrade to environment names: prod is named differently across projects.']);
   });
+
+  it('disabled rules with different reasons stay apart', () => {
+    const envs = { mode: 'only' as const, names: [], items: [] };
+    const rules = rulesFromServer([server(envs, 'Reason one.'), { ...server(envs, 'Reason two.'), id: 'rul_off2', capability: 'read' as const }]);
+    expect(rules.map((r) => r.fault)).toEqual(['Reason one.', 'Reason two.']);
+  });
 });

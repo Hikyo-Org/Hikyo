@@ -501,6 +501,61 @@ func TestEnvironmentNameWideningGatesMachinesOnOneDecision(t *testing.T) {
 	})
 }
 
+// One environment can be current for one gaining machine and historical-only
+// for another (#1447). The gate's union keeps both classes: a caller holding
+// reveal but not reveal-history is refused naming reveal-history, and with
+// both it passes on one decision.
+func TestEnvironmentNameWideningGatesMixedDisclosureClasses(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		ctx := t.Context()
+		execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
+		execRaw(t, db, `DELETE FROM grant_origins WHERE grant_id = 'g_idr_rh'`) // the caller starts without reveal-history
+		execRaw(t, db, `DELETE FROM grants WHERE id = 'g_idr_rh'`)
+		for _, c := range []string{"definitions-edit", "read", "edit", "publish", "reveal"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		identities := identitySvc(db)
+		var confirm []domain.PrincipalID
+		for name, disclosure := range map[string]string{"mixed-current": "reveal", "mixed-history": "reveal-history"} {
+			sa, err := identities.CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), name, domain.ClassAutomation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_"+name+"', '"+string(sa.Principal)+"', '"+disclosure+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+			if _, err := (&service.Rules{DB: db, Auth: authWithWindow(db)}).Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
+				Target: sa.Principal, Capability: domain.CapRead, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"staging"}, KeyMode: domain.AxisAll}}); err != nil {
+				t.Fatalf("named rule: %v", err)
+			}
+			confirm = append(confirm, sa.Principal)
+		}
+		slices.Sort(confirm)
+		token := service.Bearer(sessionWithWindows(t, db, identRevatr))
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+		dev := envScope(envA1)
+		openWindow(t, db, "usr_idrev", envA1)
+		if _, err := envs.RenameConfirming(ctx, token, dev, "staging", nil, confirm); !errors.Is(err, service.ErrDisclosureAuthority) ||
+			!strings.Contains(err.Error(), string(domain.CapRevealHistory)) {
+			t.Fatalf("a rename one machine gains historical plaintext through, by a caller without reveal-history = %v, want ErrDisclosureAuthority naming %s", err, domain.CapRevealHistory)
+		}
+		for _, sa := range confirm {
+			if reachesEnv(t, db, sa, dev) {
+				t.Fatalf("machine %s reaches the environment after a refused rename", sa)
+			}
+		}
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_reveal-history', 'usr_idrev', 'reveal-history', 'org_a', 'prj_a1', NULL, "+ts+")")
+		if _, err := envs.RenameConfirming(ctx, token, dev, "staging", nil, confirm); err != nil {
+			t.Fatalf("a rename by a caller holding both disclosure capabilities: %v", err)
+		}
+		for _, sa := range confirm {
+			if !reachesEnv(t, db, sa, dev) {
+				t.Fatalf("machine %s does not reach the renamed environment", sa)
+			}
+		}
+	})
+}
+
 // D7 with environment names (#1446, #1447): an all-projects rule also
 // reaches projects created later, so its names must be held over the
 // future-project witness too, by an org grant or another all-projects rule
@@ -1069,7 +1124,18 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 			bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
 			bundle.Environments = slices.DeleteFunc(bundle.Environments, func(e definitions.Environment) bool { return e.Name == "prod" })
 			bundle.Environments[0].Name = "qa"
-			planRefused(t, f, planDefinitions(t, svc, f, encodeDefinitions(t, bundle)), excepting)
+			plan := planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
+			// The refusal shows the manager both scopes: the project gain is
+			// not merged into the environment gain of the same capability.
+			var widening *service.EnvWideningError
+			if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
+				!slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool { return g.Principal == excepting && len(g.Envs) == 0 }) ||
+				!slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool {
+					return g.Principal == excepting && slices.Equal(g.Envs, []domain.EnvID{domain.EnvID(f.env)})
+				}) {
+				t.Fatalf("unconfirmed apply = %v, gains %+v, want a project gain and a gain on %s", err, widening, f.env)
+			}
+			planRefused(t, f, plan, excepting)
 			confirmedOnly(t, "env_def_envjoint_prod", excepting)
 			confirmedOnly(t, string(f.env), excepting)
 		})

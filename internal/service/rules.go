@@ -165,7 +165,11 @@ func gainedPrincipals(gains []WideningGain) []domain.PrincipalID {
 // moveWidening produces.
 func mergeGains(a, b []WideningGain) []WideningGain {
 	for _, g := range b {
-		i := slices.IndexFunc(a, func(x WideningGain) bool { return x.Principal == g.Principal && x.Capability == g.Capability })
+		// A project-wide gain (no environments) stays its own entry, so a
+		// merge with an environment gain does not hide the project scope.
+		i := slices.IndexFunc(a, func(x WideningGain) bool {
+			return x.Principal == g.Principal && x.Capability == g.Capability && (len(x.Envs) == 0) == (len(g.Envs) == 0)
+		})
 		if i < 0 {
 			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs)})
 			continue
@@ -181,7 +185,10 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 		if c := strings.Compare(string(x.Principal), string(y.Principal)); c != 0 {
 			return c
 		}
-		return strings.Compare(string(x.Capability), string(y.Capability))
+		if c := strings.Compare(string(x.Capability), string(y.Capability)); c != 0 {
+			return c
+		}
+		return len(x.Envs) - len(y.Envs) // the project gain first
 	})
 	return a
 }
