@@ -177,21 +177,25 @@ apply-time revocation list (options (a) and (c) on
   another list's signature. Losing known
   revocations must never widen admission, so stored state that exists but does not
   verify (a damaged file, a list signed by another
-  key) is unusable: bridge routes refuse under `off`, when the endpoint is unreachable
-  and when the fetched list is stale, with a message naming the files and the way out.
-  An unreachable endpoint needs reaching again, and the list it then serves replaces the
-  state only if it is not stale. A stale list cannot be fixed that way, because lists are
-  not re-signed on a schedule, so the operator waits for a newer signed list, with no bound
-  on that wait. Either way the operator may instead remove both files, losing the revocations only
-  they held and the floor. Only a fresh,
-  non-stale, verified online list replaces it, and its sequence must be at or above
+  key) is unusable: bridge routes refuse under `off` and when the endpoint is unreachable,
+  with a message naming the files and the way out. **Owner decision 2026-11-27 on #1561
+  (option A):** a verified list fetched online replaces unusable state whatever its age,
+  provided its sequence is at or above a readable floor and, at the floor's sequence, its
+  digest is the floor's. Lists are signed only when something is revoked, so the endpoint
+  routinely serves an old list; refusing it would leave the operator a wait with no bound.
+  A list that replaces the state may still be reported `stale`, and its revocations apply.
+  Every other refusal stands: a bad signature, another root, an unreadable floor, a list
+  below the floor and another digest at the floor's sequence. The decision is made under
+  the persistence lock, from the state read there. The operator may instead remove both
+  files, losing the revocations only they held and the floor. The replacing list's
+  sequence must be at or above
   the high-water floor (`bridge-revocations-floor.json`: the highest sequence and its
   digest, raised only when a list is stored, under the lock, never lowered and kept apart
   from the outcome log; a different list at the floor's sequence is equivocation). A
   host with no floor record is on its first run, and an unreadable record refuses. A list that is
   correctly signed by the current recovery key but bound to another (older) root was never
   issued for this root, so it is unusable too (neither its revocations nor their absence can
-  be applied) until a fresh list for this root replaces it. The floor is bound to the trust
+  be applied) until a verified list for this root replaces it. The floor is bound to the trust
   root and enforced whenever it exists: a removed store, a store behind the floor (a crash
   between the two writes) and a list that differs from the floor at its sequence are
   unusable. The persistence lock is an operating system file lock, not a lock file. The way out is operator

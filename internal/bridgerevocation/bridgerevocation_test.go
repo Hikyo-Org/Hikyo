@@ -133,9 +133,10 @@ func TestCheckerFailsClosedOnEveryInvalidAnswerAndFallsBackOnlyWhenUnreachable(t
 
 // Stored state that exists but does not verify (a list beside another list's signature, a
 // damaged file, a list signed by another key) must never widen admission: the
-// revocations it held are lost, so bridge routes refuse under off, unreachable and stale.
-// Only a fresh, non-stale, verified online list replaces it, and it keeps the recorded floor.
-func TestUnusableStoredStateRefusesUntilAFreshVerifiedListReplacesIt(t *testing.T) {
+// revocations it held are lost, so bridge routes refuse under off and with an unreachable
+// endpoint. A verified online list replaces it whatever its age (lists are signed only when
+// something is revoked), and it is the new floor.
+func TestUnusableStoredStateRefusesUntilAVerifiedListReplacesIt(t *testing.T) {
 	f := testfixture.New(t)
 	other := testfixture.New(t)
 	snapshot := f.Snapshot(t)
@@ -166,16 +167,10 @@ func TestUnusableStoredStateRefusesUntilAFreshVerifiedListReplacesIt(t *testing.
 				t.Fatalf("an unreachable endpoint must refuse, not fall back: %v", err)
 			}
 			fetcher.err = nil
-			fetcher.list, fetcher.signature = signedListAt(t, f, testNow.Add(-bridgerevocation.MaxListAge-time.Hour), 8)
-			// The endpoint answered, and lists are not re-signed on a schedule, so the advice is to
-			// wait for a newer list or remove the files, never to restore access.
-			if _, err := online.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) || strings.Contains(err.Error(), "Restore access") || !strings.Contains(err.Error(), "wait for the release owner to sign and publish a newer list") || !strings.Contains(err.Error(), "that wait has no bound") || !strings.Contains(err.Error(), filepath.Join(directory, "bridge-revocations-floor.json")) || !strings.Contains(err.Error(), "accepts any validly signed list the endpoint serves, even an older one") {
-				t.Fatalf("a stale list must not replace unusable state, with advice that can work: %v", err)
-			}
-			fetcher.list, fetcher.signature = signedList(t, f, 2)
+			fetcher.list, fetcher.signature = signedListAt(t, f, testNow.Add(-bridgerevocation.MaxListAge-time.Hour), 2)
 			result, err := online.Check(t.Context(), snapshot)
-			if err != nil || result.Outcome != bridgerevocation.Checked || result.Sequence != 2 {
-				t.Fatalf("a fresh verified list replaces unusable state: %+v %v", result, err)
+			if err != nil || result.Outcome != bridgerevocation.Stale || result.Sequence != 2 {
+				t.Fatalf("a stale verified list replaces unusable state and is reported stale: %+v %v", result, err)
 			}
 			fetcher.list, fetcher.signature = signedList(t, f, 1)
 			if _, err := online.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
@@ -207,6 +202,112 @@ func TestUnusableStoredStateKeepsTheRecordedFloor(t *testing.T) {
 	fetcher.list, fetcher.signature = signedList(t, f, 5)
 	if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 5 {
 		t.Fatalf("a list at the floor replaces it: %+v %v", result, err)
+	}
+}
+
+// A list may replace unusable state whatever its age, provided it is at or above a readable
+// floor and, at the floor's sequence, has the floor's digest. Every list here is older than
+// MaxListAge, so age decides none of the outcomes.
+func TestAnOldListReplacesUnusableStateOnlyAtOrAboveAReadableFloor(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	bridge := releaseidentity.Hash([]byte("bridge"))
+	old := testNow.Add(-bridgerevocation.MaxListAge - 30*24*time.Hour)
+	setup := func(t *testing.T) (string, *scripted, bridgerevocation.Checker) {
+		directory := t.TempDir()
+		fetcher := &scripted{}
+		fetcher.list, fetcher.signature = signedListAt(t, f, old, 5)
+		checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+		if _, err := checker.Check(t.Context(), snapshot); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), []byte("torn"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return directory, fetcher, checker
+	}
+	t.Run("below the floor is refused", func(t *testing.T) {
+		_, fetcher, checker := setup(t)
+		fetcher.list, fetcher.signature = signedListAt(t, f, old, 4)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+			t.Fatalf("an old list below the floor must not replace unusable state: %v", err)
+		}
+	})
+	t.Run("an unreadable floor is refused", func(t *testing.T) {
+		directory, fetcher, checker := setup(t)
+		if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-floor.json"), []byte("{"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fetcher.list, fetcher.signature = signedListAt(t, f, old, 9)
+		if _, err := checker.Check(t.Context(), snapshot); !errors.Is(err, bridgerevocation.ErrUnusableState) || !strings.Contains(err.Error(), "repair or remove") {
+			t.Fatalf("an old list must not replace unusable state while the floor cannot be read: %v", err)
+		}
+	})
+	t.Run("another digest at the floor's sequence is refused", func(t *testing.T) {
+		_, fetcher, checker := setup(t)
+		fetcher.list, fetcher.signature = signedListAt(t, f, old, 5, bridge)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "equivocation") {
+			t.Fatalf("an old list at the floor's sequence with another digest must be refused: %v", err)
+		}
+	})
+	t.Run("the floor's own list replaces it", func(t *testing.T) {
+		_, _, checker := setup(t)
+		if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Outcome != bridgerevocation.Stale || result.Sequence != 5 {
+			t.Fatalf("the list the floor records replaces unusable state, reported stale: %+v %v", result, err)
+		}
+	})
+	t.Run("an old list above the floor replaces it", func(t *testing.T) {
+		_, fetcher, checker := setup(t)
+		fetcher.list, fetcher.signature = signedListAt(t, f, old, 7, bridge)
+		result, err := checker.Check(t.Context(), snapshot)
+		if err != nil || result.Outcome != bridgerevocation.Stale || result.Sequence != 7 || len(result.Revoked) != 1 {
+			t.Fatalf("an old list above the floor replaces unusable state, reported stale: %+v %v", result, err)
+		}
+		fetcher.list, fetcher.signature = signedListAt(t, f, old, 6)
+		if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+			t.Fatalf("the replacement is the new floor: %v", err)
+		}
+	})
+}
+
+// A writer that crashed after raising the floor to list 2 but before storing it leaves list 1
+// behind floor 2. Lists are signed only when something is revoked, so the endpoint keeps
+// serving that same, now stale, list 2: it is exactly what the floor records, so it recovers.
+func TestACrashAfterTheFloorRecoversFromTheSameStaleList(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	stale := testNow.Add(-bridgerevocation.MaxListAge - 24*time.Hour)
+	check := func(directory string, fetcher *scripted) (bridgerevocation.Result, error) {
+		return (bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}).Check(t.Context(), snapshot)
+	}
+	two := &scripted{}
+	two.list, two.signature = signedListAt(t, f, stale, 2)
+	ahead := t.TempDir()
+	if _, err := check(ahead, two); err != nil {
+		t.Fatal(err)
+	}
+	one := &scripted{}
+	one.list, one.signature = signedListAt(t, f, stale, 1)
+	directory := t.TempDir()
+	if _, err := check(directory, one); err != nil {
+		t.Fatal(err)
+	}
+	floor, err := os.ReadFile(filepath.Join(ahead, "bridge-revocations-floor.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-floor.json"), floor, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := check(directory, &scripted{err: bridgerevocation.ErrUnreachable}); !errors.Is(err, bridgerevocation.ErrUnusableState) {
+		t.Fatalf("the store behind the floor is unusable until a list replaces it: %v", err)
+	}
+	result, err := check(directory, two)
+	if err != nil || result.Outcome != bridgerevocation.Stale || result.Sequence != 2 {
+		t.Fatalf("the stale list the floor records must recover the crashed state: %+v %v", result, err)
+	}
+	if result, err := check(directory, &scripted{err: bridgerevocation.ErrUnreachable}); err != nil || result.Outcome != bridgerevocation.Unreachable || result.Sequence != 2 {
+		t.Fatalf("after recovery an unreachable endpoint falls back to the stored list 2: %+v %v", result, err)
 	}
 }
 

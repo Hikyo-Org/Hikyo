@@ -156,7 +156,7 @@ func TestATornReadIsDecidedOnlyUnderTheLock(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := <-done
-			if !errors.Is(a.err, ErrUnusableState) || !strings.Contains(a.err.Error(), "is behind the floor") || !strings.Contains(a.err.Error(), m.advice) || !strings.Contains(a.err.Error(), "a stale list cannot") || !strings.Contains(a.err.Error(), filepath.Join(directory, storeFile)) || !strings.Contains(a.err.Error(), filepath.Join(directory, floorFile)) {
+			if !errors.Is(a.err, ErrUnusableState) || !strings.Contains(a.err.Error(), "is behind the floor") || !strings.Contains(a.err.Error(), m.advice) || !strings.Contains(a.err.Error(), filepath.Join(directory, storeFile)) || !strings.Contains(a.err.Error(), filepath.Join(directory, floorFile)) {
 				t.Fatalf("a store truly behind the floor must refuse, naming what to repair: %+v %v", a.result, a.err)
 			}
 		})
