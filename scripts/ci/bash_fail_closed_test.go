@@ -135,7 +135,16 @@ func isBashShell(shell, runsOn string) bool {
 		// value or group mapping we cannot resolve is treated as bash, which fails safe.
 		return !strings.HasPrefix(strings.ToLower(runsOn), "windows")
 	}
-	return shell == "bash" || strings.HasPrefix(shell, "bash ")
+	// A custom template (/bin/bash -e {0}) runs its first word, so compare that word's basename,
+	// looking through env (/usr/bin/env bash {0}).
+	if strings.Contains(shell, "${{") {
+		return true // an expression we cannot resolve is scanned as bash, which fails safe
+	}
+	words := strings.Fields(shell)
+	if len(words) > 1 && filepath.Base(words[0]) == "env" {
+		words = words[1:]
+	}
+	return len(words) == 0 || filepath.Base(words[0]) == "bash" // a blank shell is the default
 }
 
 func firstNonEmpty(values ...string) string {
@@ -349,6 +358,11 @@ func TestIsBashShellTreatsWindowsDefaultAsPowerShell(t *testing.T) {
 		{"", "${{ matrix.os }}", true}, // unresolvable: scanned as bash, which fails safe
 		{"bash", "windows-latest", true},
 		{"bash -e {0}", "windows-latest", true},
+		{"/bin/bash -e {0}", "ubuntu-latest", true},
+		{"/usr/bin/env bash {0}", "ubuntu-latest", true},
+		{"${{ matrix.shell }}", "ubuntu-latest", true},
+		{"pwsh -command \". '{0}'\"", "ubuntu-latest", false},
+		{"/bin/sh -e {0}", "ubuntu-latest", false},
 		{"pwsh", "ubuntu-latest", false},
 		{"sh", "", false},
 	} {
