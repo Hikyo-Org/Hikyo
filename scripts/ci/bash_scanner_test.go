@@ -199,6 +199,8 @@ func literal(word *syntax.Word) string {
 	return value.String()
 }
 
+var quoteMarks = strings.NewReplacer(`"`, "", "'", "", `\`, "", "$", "")
+
 var setOrShopt = regexp.MustCompile(`\b(?:set|shopt)\b`)
 
 var backslashEscape = regexp.MustCompile(`\\(.)`)
@@ -254,16 +256,20 @@ var unscannedErrexitForms = []struct {
 }
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
-// and for each eval, however quoted, whose literal arguments name set or shopt.
+// and for each eval, spelled with any quotes, backslashes or $'...', whose arguments' text
+// names set or shopt. An eval name or argument built from a variable is not seen.
 func unscannedErrexitUses(script string) []string {
 	var found []string
 	if file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), ""); err == nil {
 		syntax.Walk(file, func(node syntax.Node) bool {
 			if call, ok := node.(*syntax.CallExpr); ok {
-				if words := commandWords(call); len(words) > 1 && literal(words[0]) == "eval" {
+				// Source text, not literal(): $'eval' and "set -$x" have no literal value but still
+				// name eval and set, and the check is textual like the patterns below.
+				source := func(word *syntax.Word) string { return script[word.Pos().Offset():word.End().Offset()] }
+				if words := commandWords(call); len(words) > 1 && quoteMarks.Replace(source(words[0])) == "eval" {
 					for _, word := range words[1:] {
-						if setOrShopt.MatchString(literal(word)) {
-							found = append(found, fmt.Sprintf("%d: eval of set or shopt", call.Pos().Line()))
+						if setOrShopt.MatchString(source(word)) {
+							found = append(found, fmt.Sprintf("%d: eval of set or shopt", words[0].Pos().Line()))
 							break
 						}
 					}
@@ -542,7 +548,8 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"shopt -s \"inherit_errexit\"\n", "shopt '-s' inherit_errexit\n", "shopt -sq inherit_errexit\n", "shopt -so errexit\n",
 		"shopt -s -o errexit\n", "\"set\" -e\n", "'set' -e\n", "\\set -e\n", "\\shopt -s inherit_errexit\n",
 		"eval set -e\n", "eval 'set -e'\n", "eval \"shopt -s inherit_errexit\"\n",
-		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "\"eval\" set -e\n", "\\eval set -e\n", "'eval' set -e\n", "e\"val\" set -e\n", "x=$(\"eval\" set -e)\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n",
+		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "\"eval\" set -e\n", "\\eval set -e\n", "'eval' set -e\n", "e\"val\" set -e\n", "x=$(\"eval\" set -e)\n",
+		"$'eval' set -e\n", "\"eval\" \"set -$x\"\n", "builtin \"eval\" set -e\n", "\"eval\" -- set -e\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n",
 	} {
 		if len(matches(script)) == 0 {
 			t.Errorf("not rejected: %q", script)
@@ -551,7 +558,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 	for _, script := range []string{
 		"shopt -s nullglob\n", "shopt -s extglob inherit_errexit\n", "set -euo pipefail\n", "echo \"set -e is on\"\n",
 		"printf 'set -e\\n'\n", "eval \"$(ssh-agent -s)\"\n", "reset -e\n", "x=set; echo $x\n",
-		"eval \"$(dircolors)\"; set -e\n", "shopt -s -q inherit_errexit\n", "node --eval 'x.set(1)'\n",
+		"eval \"$(dircolors)\"; set -e\n", "shopt -s -q inherit_errexit\n", "node --eval 'x.set(1)'\n", "\"eval\" reset -e\n",
 	} {
 		if got := matches(script); len(got) != 0 {
 			t.Errorf("rejected %q as %v", script, got)
@@ -559,6 +566,9 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 	}
 	if got := scanProblems("fixture.sh", "#!/usr/bin/env bash\neval set -e\n", "hint"); len(got) == 0 || !strings.HasPrefix(got[0], "fixture.sh:2: eval of set or shopt") {
 		t.Errorf("scanScript must report an unscanned form: got %q", got)
+	}
+	if got := matches("x=1 \\\neval set -e\n"); !reflect.DeepEqual(got, []string{"2: eval of set or shopt"}) {
+		t.Errorf("an eval after a continued assignment: got %v, want [2: eval of set or shopt] once", got)
 	}
 	if got := matches("a\nb\neval set -e\n"); !reflect.DeepEqual(got, []string{"3: eval of set or shopt"}) {
 		t.Errorf("line numbers: got %v, want [3: eval of set or shopt]", got)
