@@ -658,9 +658,9 @@ func TestRepositoryScanSelectors(t *testing.T) {
 			t.Errorf("scriptShebang(%q) = %v, want %v", line, got, want)
 		}
 	}
-	for line, want := range map[string]bool{"#!/usr/bin/env -S -i bash": true, "#!/usr/bin/env -S VAR=1 sh": true, "#!/usr/bin/env -Ssh": true, "#!/usr/bin/env --split-string=sh": true, "#!/bin/zsh": false, "#!/bin/dash": false, "#!/usr/bin/env -S uv run --script": false} {
-		if got := shellMention.MatchString(line); got != want {
-			t.Errorf("shellMention(%q) = %v, want %v", line, got, want)
+	for line, want := range map[string]bool{"#!/usr/bin/env -S -i bash": true, "#!/bin/sh -e": false, "#!/usr/bin/env bash": false, "#!/usr/bin/env -S VAR=1 sh": true, "#!/usr/bin/env -Ssh": true, "#!/usr/bin/env --split-string=sh": true, "#!/bin/zsh": false, "#!/bin/dash": false, "#!/usr/bin/env -S uv run --script": false} {
+		if got := unreadShebang(line); got != want {
+			t.Errorf("unreadShebang(%q) = %v, want %v", line, got, want)
 		}
 	}
 	for line, want := range map[string]bool{"#!/usr/bin/env -S bash -e": true, "#!/bin/bash": true, "#!/usr/bin/env -S sh": false} {
@@ -717,6 +717,11 @@ func TestRepositoryScanSelectors(t *testing.T) {
 			t.Errorf("workflowEnvProblems(%q) found = %v, want %v", text, got, want)
 		}
 	}
+}
+
+// unreadShebang reports a first line that names bash or sh in a form the scan does not read.
+func unreadShebang(firstLine string) bool {
+	return !scriptShebang.MatchString(firstLine) && shellMention.MatchString(firstLine)
 }
 
 var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS|BASH_ENV)\b`) // BASH_ENV: a file every bash reads first
@@ -814,7 +819,7 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		}
 		firstLine, _, _ := strings.Cut(string(raw), "\n")
 		if !scriptShebang.MatchString(firstLine) {
-			if shellMention.MatchString(firstLine) {
+			if unreadShebang(firstLine) {
 				t.Errorf("%s: shebang %q names bash or sh in a form the scan does not read; use #!/usr/bin/env bash or #!/bin/sh", path, firstLine)
 			}
 			return nil
