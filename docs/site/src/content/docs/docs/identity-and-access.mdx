@@ -63,7 +63,9 @@ covers, including environments created or renamed to it later. `--only-env`
 and `--except-env` still take environment ids, whose names become the rule's.
 A rule that the upgrade to names could not keep exactly is listed as
 disabled, with the reason; it reaches no environment until it is removed and
-created again.
+created again. Only a member manager over the whole project, or over the
+organization for a rule covering all projects, can remove it: its selection
+can no longer be checked against a manager's own rules.
 
 Renaming, creating or cloning an environment can therefore give people or
 machines access through their rules: renamed out of an *except*, or renamed or

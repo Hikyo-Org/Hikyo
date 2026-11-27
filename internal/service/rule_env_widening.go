@@ -100,6 +100,10 @@ type envChange struct {
 // with is the census for one change of a plan whose environments after it
 // are after.
 func (c envChange) with(after []domain.EnvRef, env domain.EnvID, from, to string) envChange {
+	// A plan may leave no environment: nil afterRefs means "not a plan".
+	if after == nil {
+		after = []domain.EnvRef{}
+	}
 	c.afterRefs, c.env, c.from, c.to = after, env, from, to
 	return c
 }
@@ -205,7 +209,7 @@ func (c envChange) gainAtoms() map[gainAtom]bool {
 		if before[a] || before[every] {
 			continue
 		}
-		gained[gainAtom{a.principal, a.capability, a.env}] = true
+		gained[gainAtom{a.principal, a.capability, a.env, a.keys}] = true
 	}
 	return gained
 }
@@ -215,25 +219,36 @@ func (c envChange) gainAtoms() map[gainAtom]bool {
 // sends every gaining machine through the machine widening gate.
 func (c envChange) confirm(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, auth *Auth,
 	caller authz.Identity, confirmed []domain.PrincipalID, now time.Time) error {
+	gained, err := c.record(ctx, r, az, p, caller, confirmed)
+	if err != nil || len(gained) == 0 {
+		return err
+	}
+	return c.gateMachines(ctx, r, az, p, auth, caller, gained, now)
+}
+
+// record is confirm without the machine gate, for a definitions plan, which
+// gates each machine once over the whole plan: it returns the principals
+// whose confirmation it recorded.
+func (c envChange) record(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
+	caller authz.Identity, confirmed []domain.PrincipalID) ([]domain.PrincipalID, error) {
 	gains := c.gained
 	if gains == nil {
 		gains = c.gains()
 	}
 	gained := gainedPrincipals(gains)
 	if len(gained) == 0 {
-		return nil
+		return nil, nil
 	}
 	want := slices.Clone(confirmed)
 	slices.Sort(want)
 	want = slices.Compact(want)
-	refuse := func() error { return c.refusal(ctx, az, caller.Principal, gains) }
 	if !slices.Equal(want, gained) {
-		return refuse()
+		return nil, c.refusal(ctx, az, caller.Principal, gains)
 	}
 	if ok, err := mayConfirmWidening(ctx, az, caller.Principal, c.scope); err != nil {
-		return err
+		return nil, err
 	} else if !ok {
-		return refuse()
+		return nil, c.refusal(ctx, az, caller.Principal, gains)
 	}
 	names := make([]string, 0, len(gained))
 	for _, g := range gained {
@@ -246,12 +261,9 @@ func (c envChange) confirm(ctx context.Context, r store.Repos, az *authz.TxAutho
 		"principals": names,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
-		return err
-	}
-	return c.gateMachines(ctx, r, az, p, auth, caller, gained, now)
+	return gained, r.Audit().InsertTenant(ctx, p, ev)
 }
 
 // gateMachines sends each gaining machine principal through the machine

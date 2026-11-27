@@ -456,7 +456,7 @@ func finishSSHLifecycle(t *testing.T, db *store.DB, node *sshHarness, admin serv
 		t.Fatalf("profile delete left %d live certificates (revoked %d)", left, n)
 	}
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-	if err := envs.Delete(ctx, admin, env); !errors.Is(err, store.ErrSSHLiveCA) {
+	if err := envs.DeleteConfirming(ctx, admin, env, nil); !errors.Is(err, store.ErrSSHLiveCA) {
 		t.Fatalf("environment delete with a live SSH CA: %v", err)
 	}
 	if err := node.svc.DeleteCA(ctx, admin, env, caID); err != nil {

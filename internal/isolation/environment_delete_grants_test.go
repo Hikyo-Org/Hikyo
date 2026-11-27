@@ -29,7 +29,7 @@ func TestEnvironmentDeletionReleasesOnlyScopedGrants(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					if err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()); err != nil {
+					if err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil); err != nil {
 						t.Fatal(err)
 					}
 				}

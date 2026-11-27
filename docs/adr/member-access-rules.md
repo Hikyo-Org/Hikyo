@@ -230,8 +230,8 @@ on these points describe, continues.
   ([permission-model.md](./permission-model.md)). A workload rule therefore names explicit
   environments; an automation rule may also use *all* or *all, except* in its project. Without key
   narrowing, the machine widening gate's per-environment count stays exact when a rule is written;
-  whether the gate's reauthentication conjunct also applies to a later environment rename is left to
-  #1473. Key narrowing for machines would need the gate to count per key and is not decided. The
+  whether the gate's reauthentication conjunct also applies to a later environment rename was
+  settled 2026-11-26, below: it does. Key narrowing for machines would need the gate to count per key and is not decided. The
   permission ADR's machine allowlists are unchanged, and D11's placement on Machine access stands.
 - **The resolver gets a server-side operation
   ([#1474](https://github.com/Hikyo-Org/Hikyo/issues/1474)).** D10's "Who can…?" becomes an additive `/api/v1`

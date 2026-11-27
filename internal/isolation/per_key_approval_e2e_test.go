@@ -20,7 +20,7 @@ func TestPerKeyApprovalPublish(t *testing.T) {
 		approvals := &service.Approvals{DB: db, Auth: auth, Keyring: kr}
 		revisions := &service.Revisions{DB: db, Auth: auth, Keyring: kr}
 		project := scopeProject(orgA, prjA1)
-		env, err := (&service.Environments{DB: db, Keyring: kr}).Create(ctx, service.LocalPrincipal(custodian), project, "per-key-approval", nil)
+		env, err := (&service.Environments{DB: db, Keyring: kr}).CreateConfirming(ctx, service.LocalPrincipal(custodian), project, "per-key-approval", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

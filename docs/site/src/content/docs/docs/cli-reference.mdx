@@ -353,9 +353,9 @@ not spell out.
   the rule covers, including with `--all-projects`. `--only-env` and
   `--except-env` take environment ids, whose names become the rule's; the two
   spellings do not mix. `access rule list` shows a name as `name:N` and a rule
-  the upgrade disabled as `disabled: <reason>`. `env create` and `env rename`
-  take `--confirm-widening <principal>`, repeated, to confirm a name that gives
-  those principals access through their rules. See
+  the upgrade disabled as `disabled: <reason>`. `env create`, `env rename`
+  and `env delete` take `--confirm-widening <principal>`, repeated, to confirm
+  a change that gives those principals access through their rules. See
   [Identity and access](/docs/identity-and-access/#access-rules).
 - **Restores.** `instance-config apply` takes
   `--confirm-restored-credentials` (adopt refuses it) to confirm you reviewed the restored

@@ -46,7 +46,7 @@ func TestMCPEnvironmentPageMatchesList(t *testing.T) {
 		_, _, envSvc := services(t, db)
 		scope := scopeProject(orgA, prjA1)
 		for i := range 5 {
-			if _, err := envSvc.Create(t.Context(), service.LocalPrincipal(custodian), scope, fmt.Sprintf("mcp-env-%02d", 4-i), nil); err != nil {
+			if _, err := envSvc.CreateConfirming(t.Context(), service.LocalPrincipal(custodian), scope, fmt.Sprintf("mcp-env-%02d", 4-i), nil, nil); err != nil {
 				t.Fatalf("create env %d: %v", i, err)
 			}
 		}

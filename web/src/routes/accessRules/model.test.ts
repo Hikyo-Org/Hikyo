@@ -227,11 +227,23 @@ describe('all-projects rules from the listings (#1446)', () => {
     });
   });
 
-  it('leaving all projects starts the Where afresh', () => {
-    // (the environment names go with it, as every other part of the Where)
-    const all = toggleAllProjects({ ...newRule(IDS.chen), keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } }, [PAY, IDS.web]);
-    expect(toggleAllProjects(all, [PAY, IDS.web])).toMatchObject({ projects: [], envs: ALL, keys: ALL });
-    expect(toggleProject(all, IDS.web)).toMatchObject({ projects: [IDS.web], envs: ALL, keys: ALL });
+  it('leaving all projects keeps the environment names', () => {
+    // An except name dropped here would widen the rule (#1447).
+    const all = toggleAllProjects(
+      { ...newRule(IDS.chen), envs: { mode: 'all', items: [], names: ['prod'] }, keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } },
+      [PAY, IDS.web],
+    );
+    expect(toggleAllProjects(all, [PAY, IDS.web])).toMatchObject({ projects: [], envs: { mode: 'all', names: ['prod'], items: [] }, keys: ALL });
+    // Without names (a legacy grant), the items are the names and stay.
+    const legacy: Rule = { ...all, envs: { mode: 'all', items: [{ project: PAY, environment: STAGING }] } };
+    expect(toggleAllProjects(legacy, [PAY, IDS.web]).envs).toEqual(legacy.envs);
+    expect(toggleProject(legacy, IDS.web).envs).toEqual(legacy.envs);
+    // Picking one project keeps the names and that project's folders.
+    expect(toggleProject(all, IDS.web)).toMatchObject({
+      projects: [IDS.web],
+      envs: { mode: 'all', names: ['prod'], items: [] },
+      keys: { mode: 'all', items: [{ project: IDS.web, folder: 'db' }] },
+    });
   });
 });
 

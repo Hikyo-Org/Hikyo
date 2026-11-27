@@ -868,10 +868,14 @@ export const listEnvironments = <ThrowOnError extends boolean = false>(options: 
  * Member access rules select environments by name, so a new environment
  * is reached by every rule whose `only` list names its name. Such a
  * creation is refused with 409 `conflict` carrying `widening` until it
- * is resent with `confirm_widening` naming exactly those principals; a
- * machine gaining access also needs the caller's fresh
- * reauthentication. A rule reaching every environment, or every one
- * except other names, reaches the new one without confirmation.
+ * is resent with `confirm_widening` naming exactly those principals. A
+ * creation that gives a machine plaintext access through an `only` name
+ * is always refused with 409 `conflict` asking for reauthentication:
+ * the gate asks for a window over the new environment's id, which no
+ * session can hold before the environment exists. Create it under a
+ * name no `only` list names, reauthenticate over it, then rename it. A
+ * rule reaching every environment, or every one except other names,
+ * reaches the new one without confirmation.
  *
  */
 export const createEnvironment = <ThrowOnError extends boolean = false>(options: Options<CreateEnvironmentData, ThrowOnError>): RequestResult<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError>({
@@ -901,6 +905,12 @@ export const createEnvironment = <ThrowOnError extends boolean = false>(options:
  * under a `mode: all` rule ABORTS the creation, naming the keys, because
  * an environment born invalid is exactly what the atomicity rule
  * forbids.
+ *
+ * Access rules gain the clone as they gain any new environment, with
+ * the same `confirm_widening` refusal: a clone that gives a machine
+ * plaintext access through an `only` name is always refused with
+ * 409 `conflict` asking for reauthentication. Clone under another name,
+ * reauthenticate over it, then rename it.
  *
  * It is a separate route rather than a flag on `createEnvironment`
  * because its RESPONSE is different: a clone has to report what it could

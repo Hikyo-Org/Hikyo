@@ -41,15 +41,15 @@ func scenarioAdvisoryTopologyMutations(t *testing.T, db *store.DB) {
 			var err error
 			switch mutation {
 			case "create":
-				_, err = envs.Create(t.Context(), actor, scope, "new", nil)
+				_, err = envs.CreateConfirming(t.Context(), actor, scope, "new", nil, nil)
 			case "clone":
-				_, _, err = envs.Clone(t.Context(), actor, scope, "cloned", string(dev.Env), nil)
+				_, _, err = envs.CloneConfirming(t.Context(), actor, scope, "cloned", string(dev.Env), nil, nil)
 			case "rename":
-				_, err = envs.Rename(t.Context(), actor, dev, "renamed", nil)
+				_, err = envs.RenameConfirming(t.Context(), actor, dev, "renamed", nil, nil)
 			case "reorder":
 				_, err = envs.Reorder(t.Context(), actor, scope, []string{string(prod.Env), string(dev.Env)})
 			case "delete":
-				err = envs.Delete(t.Context(), actor, dev)
+				err = envs.DeleteConfirming(t.Context(), actor, dev, nil)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -96,23 +96,29 @@ func scenarioAdvisoryTopologyFailures(t *testing.T, db *store.DB) {
 	// The missing clone source aborts after inserting its destination, proving
 	// a rolled-back write cannot notify readers about an uncommitted topology.
 	for _, attempt := range []func() error{
-		func() error { _, err := envs.Create(t.Context(), actor, scope, "dev", nil); return err },
+		func() error { _, err := envs.CreateConfirming(t.Context(), actor, scope, "dev", nil, nil); return err },
 		func() error {
-			_, _, err := envs.Clone(t.Context(), actor, scope, "rolled-back", "env_missing", nil)
+			_, _, err := envs.CloneConfirming(t.Context(), actor, scope, "rolled-back", "env_missing", nil, nil)
 			return err
 		},
-		func() error { _, err := envs.Rename(t.Context(), actor, dev, "prod", nil); return err },
+		func() error { _, err := envs.RenameConfirming(t.Context(), actor, dev, "prod", nil, nil); return err },
 		func() error {
 			_, err := envs.Reorder(t.Context(), actor, scope, []string{string(dev.Env), string(dev.Env)})
 			return err
 		},
-		func() error { return envs.Delete(t.Context(), denied, dev) },
-		func() error { _, err := envs.Create(t.Context(), denied, scope, "unauthorized", nil); return err },
+		func() error { return envs.DeleteConfirming(t.Context(), denied, dev, nil) },
 		func() error {
-			_, _, err := envs.Clone(t.Context(), denied, scope, "unauthorized-clone", string(dev.Env), nil)
+			_, err := envs.CreateConfirming(t.Context(), denied, scope, "unauthorized", nil, nil)
 			return err
 		},
-		func() error { _, err := envs.Rename(t.Context(), denied, dev, "unauthorized", nil); return err },
+		func() error {
+			_, _, err := envs.CloneConfirming(t.Context(), denied, scope, "unauthorized-clone", string(dev.Env), nil, nil)
+			return err
+		},
+		func() error {
+			_, err := envs.RenameConfirming(t.Context(), denied, dev, "unauthorized", nil, nil)
+			return err
+		},
 		func() error {
 			_, err := envs.Reorder(t.Context(), denied, scope, []string{string(prod.Env), string(dev.Env)})
 			return err
@@ -128,7 +134,7 @@ func scenarioAdvisoryTopologyFailures(t *testing.T, db *store.DB) {
 	}
 	// The successful rename is an ordered barrier after every failed attempt.
 	// Any earlier notification is observable before this barrier's event.
-	if _, err := envs.Rename(t.Context(), actor, dev, "barrier", nil); err != nil {
+	if _, err := envs.RenameConfirming(t.Context(), actor, dev, "barrier", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	awaitTopology(t, events, scope)
@@ -177,7 +183,7 @@ func scenarioAdvisoryTopologyIsolation(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	siblingScope := domain.Scope{Org: scope.Org, Project: domain.ProjectID(sibling.ID)}
-	if _, err := envs.Create(t.Context(), actor, siblingScope, "hidden-sibling", nil); err != nil {
+	if _, err := envs.CreateConfirming(t.Context(), actor, siblingScope, "hidden-sibling", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	otherWho, otherScope, _, otherEnvs, _ := valueFixture(t, db, "topologyforeign")
@@ -185,10 +191,10 @@ func scenarioAdvisoryTopologyIsolation(t *testing.T, db *store.DB) {
 	if _, err := revisions.Watch(t.Context(), service.LocalPrincipal(reader), otherScope); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("foreign project watch = %v", err)
 	}
-	if _, err := otherEnvs.Create(t.Context(), service.LocalPrincipal(otherWho), otherScope, "hidden", nil); err != nil {
+	if _, err := otherEnvs.CreateConfirming(t.Context(), service.LocalPrincipal(otherWho), otherScope, "hidden", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := envs.Rename(t.Context(), actor, dev, "visible-to-owner", nil); err != nil {
+	if _, err := envs.RenameConfirming(t.Context(), actor, dev, "visible-to-owner", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	awaitTopology(t, ownerEvents, scope)
@@ -321,14 +327,14 @@ func scenarioAdvisoryTopologyRevokedSessions(t *testing.T, db *store.DB) {
 			events := watchTopology(t, db, envs.Advisory, service.Bearer(artifact), scope)
 			// Positive control: the real bearer receives project metadata before
 			// revocation, then the same stream closes on its next topology event.
-			if _, err := envs.Rename(t.Context(), actor, dev, "before-revocation", nil); err != nil {
+			if _, err := envs.RenameConfirming(t.Context(), actor, dev, "before-revocation", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			awaitTopology(t, events, scope)
 			if err := (&service.Auth{DB: db}).Logout(t.Context(), artifact); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := envs.Rename(t.Context(), actor, dev, "after-revocation", nil); err != nil {
+			if _, err := envs.RenameConfirming(t.Context(), actor, dev, "after-revocation", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -387,7 +393,7 @@ func scenarioAdvisoryAuthorityChanges(t *testing.T, db *store.DB) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := envs.Rename(t.Context(), actor, dev, "first-event", nil); err != nil {
+			if _, err := envs.RenameConfirming(t.Context(), actor, dev, "first-event", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			awaitTopology(t, events, scope)
@@ -400,7 +406,7 @@ func scenarioAdvisoryAuthorityChanges(t *testing.T, db *store.DB) {
 				execConformance(t, db, `INSERT INTO grants(id,principal_id,capability,org_id,project_id,env_id,created_at)
                  VALUES ($1,$2,'read',$3,$4,$5,'2026-01-01T00:00:00Z')`, "grt_advisory_between_dev", string(reader), string(scope.Org), string(scope.Project), string(dev.Env))
 			}
-			if _, err := envs.Rename(t.Context(), actor, dev, "second-event", nil); err != nil {
+			if _, err := envs.RenameConfirming(t.Context(), actor, dev, "second-event", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if mutation == "expired" {

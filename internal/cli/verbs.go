@@ -323,8 +323,8 @@ hierarchy:
   hikyo env param delete --env <id> --name <NAME>
   hikyo env create --name <name> [--clone-from <env>]   clone copies that env's values
   hikyo env rename <env> --name <new-name>
-      env create and rename take [--confirm-widening <principal>]...: the
-      principals the name gives access through access rules selecting it
+      env create, rename and delete take [--confirm-widening <principal>]...:
+      the principals the change gives access through their access rules
   hikyo env reorder <env-id,env-id,...>             the whole ordered set, once each
   hikyo folder list|show|create|rename|delete       --org/--project select the project
   hikyo folder create --path <path>

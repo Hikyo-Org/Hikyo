@@ -71,7 +71,7 @@ func newWorkflowBenchmarkDrafts(b *testing.B, count int, drafts bool) workflowBe
 		keyIDs[name] = key.ID
 		entries[i] = ImportEntry{Key: name, Value: "https://service.example.test/path?setting=" + name}
 	}
-	env, err := (&Environments{DB: self.DB, Keyring: self.Keyring}).Create(ctx, actor, scope, "development", nil)
+	env, err := (&Environments{DB: self.DB, Keyring: self.Keyring}).CreateConfirming(ctx, actor, scope, "development", nil, nil)
 	if err != nil {
 		b.Fatal(err)
 	}

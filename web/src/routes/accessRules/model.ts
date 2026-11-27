@@ -571,7 +571,15 @@ export function toggleItems<T extends EnvItem | KeyItem>(axis: Axis<T>, items: r
 
 /** Toggle a project; its environment and key items leave with it (the server refuses items outside the projects). */
 export function toggleProject(rule: Rule, project: string): Rule {
-  if (rule.projects === '*') return { ...rule, projects: [project], envs: ALL, keys: ALL };
+  if (rule.projects === '*')
+    return {
+      ...rule,
+      projects: [project],
+      // Its environment names and folders stay: dropping an except one would widen the rule.
+      // Without names (a legacy grant) its items are its names, so they all stay.
+      envs: rule.envs.names === undefined ? rule.envs : { ...rule.envs, items: rule.envs.items.filter((e) => e.project === project) },
+      keys: { mode: rule.keys.mode, items: rule.keys.items.filter((k) => k.project === project) },
+    };
   const list = rule.projects;
   if (!list.includes(project)) return { ...rule, projects: [...list, project] };
   return {
@@ -590,7 +598,8 @@ export function toggleProject(rule: Rule, project: string): Rule {
  * in every project.
  */
 export function toggleAllProjects(rule: Rule, projects: readonly string[]): Rule {
-  if (rule.projects === '*') return { ...rule, projects: [], envs: ALL, keys: ALL };
+  // Its environment names stay (#1447): dropping an except name would widen the rule.
+  if (rule.projects === '*') return { ...rule, projects: [], envs: rule.envs.names === undefined ? rule.envs : { ...rule.envs, items: [] }, keys: ALL };
   const folders = folderNames(rule);
   const keys = folders.length === 0 && rule.keys.mode === 'only' ? ALL : { mode: rule.keys.mode, items: everyProject(projects, folders) };
   return { ...rule, projects: '*', keys };

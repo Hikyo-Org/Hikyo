@@ -349,7 +349,7 @@ func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 	owner, scope := tenantFixture(t, db, "candeclare")
 	var envIDs []string
 	for _, name := range []string{"dev", "prod"} {
-		env, err := envs.Create(t.Context(), service.LocalPrincipal(owner), scope, name, nil)
+		env, err := envs.CreateConfirming(t.Context(), service.LocalPrincipal(owner), scope, name, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -615,7 +615,7 @@ func scenarioPresenceRules(t *testing.T, db *store.DB) {
 	who, scope := tenantFixture(t, db, "presence")
 	actor := service.LocalPrincipal(who)
 
-	env, err := envs.Create(t.Context(), actor, scope, "prod", nil)
+	env, err := envs.CreateConfirming(t.Context(), actor, scope, "prod", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +695,7 @@ func scenarioPresenceRules(t *testing.T, db *store.DB) {
 	}
 	envScope := scope
 	envScope.Env = domain.EnvID(env.ID)
-	if err := envs.Delete(t.Context(), actor, envScope); err != nil {
+	if err := envs.DeleteConfirming(t.Context(), actor, envScope, nil); err != nil {
 		t.Fatalf("environment delete did not cascade its presence rows: %v", err)
 	}
 	after, err := keys.Get(t.Context(), actor, scope, created.ID)
@@ -736,7 +736,7 @@ func scenarioKeyGroups(t *testing.T, db *store.DB) {
 	who, scope := tenantFixture(t, db, "groups")
 	actor := service.LocalPrincipal(who)
 
-	env, err := envs.Create(t.Context(), actor, scope, "prod", nil)
+	env, err := envs.CreateConfirming(t.Context(), actor, scope, "prod", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -870,7 +870,7 @@ func scenarioGroupMembershipRebuildsPublishIndex(t *testing.T, db *store.DB) {
 	who, scope := tenantFixture(t, db, "group-index-rebuild")
 	actor := service.LocalPrincipal(who)
 
-	env, err := envs.Create(t.Context(), actor, scope, "prod", nil)
+	env, err := envs.CreateConfirming(t.Context(), actor, scope, "prod", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

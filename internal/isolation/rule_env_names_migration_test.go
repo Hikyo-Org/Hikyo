@@ -20,12 +20,15 @@ import (
 // (audited with the old and new ids), and undecidable ones fail closed.
 
 type envMigrationDB struct {
-	cfg    store.Config
-	exec   func(string) error
-	count  func(string) int
-	text   func(string) string
-	rules  *authn.Resolver
-	events func(where string) []migratedEvent
+	cfg  store.Config
+	exec func(string) error
+	// unchecked runs one statement with foreign keys unenforced, as data
+	// written without them was.
+	unchecked func(string) error
+	count     func(string) int
+	text      func(string) string
+	rules     *authn.Resolver
+	events    func(where string) []migratedEvent
 	// historical is the guarded-recovery resolver bound to a source schema.
 	historical func(version uint64) *authn.Resolver
 }
@@ -66,6 +69,10 @@ func envNamesMigrationDB(t *testing.T, engine store.Engine) envMigrationDB {
 	return envMigrationDB{
 		cfg:  cfg,
 		exec: func(s string) error { _, err := db.ExecContext(ctx, s); return err },
+		unchecked: func(s string) error {
+			_, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF; "+s+"; PRAGMA foreign_keys = ON")
+			return err
+		},
 		count: func(s string) int {
 			var n int
 			if err := db.QueryRowContext(ctx, s).Scan(&n); err != nil {
@@ -111,6 +118,10 @@ func envNamesMigrationPostgres(t *testing.T) envMigrationDB {
 	return envMigrationDB{
 		cfg:  cfg,
 		exec: func(s string) error { _, err := conn.Exec(ctx, s); return err },
+		unchecked: func(s string) error {
+			_, err := conn.Exec(ctx, "BEGIN; SET LOCAL session_replication_role = replica; "+s+"; COMMIT")
+			return err
+		},
 		count: func(s string) int {
 			var n int
 			if err := conn.QueryRow(ctx, s).Scan(&n); err != nil {
@@ -212,6 +223,14 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	stmts = append(stmts, item("rul_allp_e1", "rul_allp", "env", "prj_a", "env_a_prod", ""))
 	stmts = append(stmts, rule("rul_out", "usr_out", "read", "only", "only", "all")...)
 	stmts = append(stmts, item("rul_out_pa", "rul_out", "project", "prj_a", "", ""), item("rul_out_e1", "rul_out", "env", "prj_b", "env_b_prod", ""))
+	// Fail closed: an item naming an environment that is gone (seeded below,
+	// past the foreign key), and one environment listed twice (the same name
+	// twice in one project).
+	stmts = append(stmts, rule("rul_gone", "usr_gone", "read", "only", "only", "all")...)
+	stmts = append(stmts, item("rul_gone_pa", "rul_gone", "project", "prj_a", "", ""))
+	stmts = append(stmts, rule("rul_twice", "usr_twice", "read", "only", "only", "all")...)
+	stmts = append(stmts, item("rul_twice_pa", "rul_twice", "project", "prj_a", "", ""),
+		item("rul_twice_e1", "rul_twice", "env", "prj_a", "env_a_prod", ""), item("rul_twice_e2", "rul_twice", "env", "prj_a", "env_a_prod", ""))
 	// Consistent but too large once names match in every project: 125 names
 	// unique to each of c and d list 2 + 250 items by id, yet 2 * (1 + 250)
 	// by name, past MaxRuleItems. It splits so every part can be saved again.
@@ -232,6 +251,12 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		if err := db.exec(stmt); err != nil {
 			t.Fatalf("seed %d %s: %v", i, stmt, err)
 		}
+	}
+	if err := db.unchecked(item("rul_gone_e1", "rul_gone", "env", "prj_a", "env_a_gone", "")); err != nil {
+		t.Fatalf("seed an item naming a gone environment: %v", err)
+	}
+	if n := db.count(`SELECT COUNT(*) FROM rule_items WHERE id = 'rul_gone_e1'`); n != 1 {
+		t.Fatalf("the gone-environment item was not seeded: %d", n)
 	}
 	// The 99/102 recovery boundary: bound to schema 99, recovery cannot read
 	// id-bound environment items as names, so those rules fail closed while
@@ -275,24 +300,45 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		}
 		return out
 	}
+	// reachedProjects is every project a principal's rules reach whole: every
+	// environment of it, including later ones.
+	reachedProjects := func(principal domain.PrincipalID, capability domain.Capability, key *domain.RuleKey) []domain.ProjectID {
+		rules, err := db.rules.Rules(ctx, principal)
+		if err != nil {
+			t.Fatalf("rules of %s: %v", principal, err)
+		}
+		var out []domain.ProjectID
+		for _, project := range []domain.ProjectID{"prj_a", "prj_b"} {
+			scope := domain.Scope{Org: "org_en", Project: project}
+			if slices.ContainsFunc(rules, func(r domain.Rule) bool { return r.Reaches(capability, domain.LevelProject, scope, key) }) {
+				out = append(out, project)
+			}
+		}
+		return out
+	}
 	for _, c := range []struct {
 		principal  domain.PrincipalID
 		capability domain.Capability
 		key        *domain.RuleKey
 		want       []domain.EnvID
+		projects   []domain.ProjectID
 	}{
-		{"usr_cons", domain.CapRead, nil, []domain.EnvID{"env_a_prod", "env_b_prod"}},
-		{"usr_only", domain.CapRead, nil, []domain.EnvID{"env_a_prod"}},
-		{"usr_exc", domain.CapEdit, nil, []domain.EnvID{"env_a_dev", "env_b_prod", "env_b_dev"}},
-		{"usr_fr", domain.CapRead, nil, []domain.EnvID{"env_a_prod", "env_b_prod", "env_b_dev"}},
-		{"usr_allp", domain.CapRead, nil, nil},
-		{"usr_out", domain.CapRead, nil, nil},
+		{"usr_cons", domain.CapRead, nil, []domain.EnvID{"env_a_prod", "env_b_prod"}, nil},
+		{"usr_only", domain.CapRead, nil, []domain.EnvID{"env_a_prod"}, nil},
+		// Except prod in a only: b, which excepted nothing, stays whole.
+		{"usr_exc", domain.CapEdit, nil, []domain.EnvID{"env_a_dev", "env_b_prod", "env_b_dev"}, []domain.ProjectID{"prj_b"}},
+		{"usr_fr", domain.CapRead, nil, []domain.EnvID{"env_a_prod", "env_b_prod", "env_b_dev"}, []domain.ProjectID{"prj_b"}},
+		{"usr_allp", domain.CapRead, nil, nil, nil},
+		{"usr_out", domain.CapRead, nil, nil, nil},
 		// The Edit folder rule reaches a key in svc/ where it did before: a's
 		// environments but dev, and nothing in b.
-		{"usr_fe", domain.CapEdit, &domain.RuleKey{ID: "key_svc", Folder: "svc/"}, []domain.EnvID{"env_a_prod"}},
+		{"usr_fe", domain.CapEdit, &domain.RuleKey{ID: "key_svc", Folder: "svc/"}, []domain.EnvID{"env_a_prod"}, nil},
 	} {
 		if got := reached(c.principal, c.capability, c.key); !slices.Equal(got, c.want) {
 			t.Errorf("%s reaches %v after 00102, want %v as before", c.principal, got, c.want)
+		}
+		if got := reachedProjects(c.principal, c.capability, c.key); !slices.Equal(got, c.projects) {
+			t.Errorf("%s reaches projects %v whole after 00102, want %v as before", c.principal, got, c.projects)
 		}
 	}
 
@@ -389,8 +435,27 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 			t.Errorf("%s has %d rule.disabled events, want 1", id, n)
 		}
 	}
-	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 7 {
-		t.Errorf("%d migration audit events, want 7", n)
+	for id, fault := range map[string]string{
+		"rul_gone":  "Disabled by the upgrade to environment names: it names an environment that no longer exists, so its reach cannot be kept exactly. It reaches no environment; revoke it and create it again.",
+		"rul_twice": "Disabled by the upgrade to environment names: it names one environment name twice in a project. It reaches no environment; revoke it and create it again.",
+	} {
+		if got := db.text(`SELECT env_fault FROM rules WHERE id = '` + id + `' AND env_mode = 'only'`); got != fault {
+			t.Errorf("%s fault = %q, want %q", id, got, fault)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM rule_items WHERE rule_id = '` + id + `' AND axis = 'env'`); n != 0 {
+			t.Errorf("%s kept %d environment items", id, n)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.disabled' AND object_id = '` + id + `'`); n != 1 {
+			t.Errorf("%s has %d rule.disabled events, want 1", id, n)
+		}
+	}
+	for _, p := range []domain.PrincipalID{"usr_gone", "usr_twice"} {
+		if got := reached(p, domain.CapRead, nil); len(got) != 0 {
+			t.Errorf("disabled rule of %s reaches %v", p, got)
+		}
+	}
+	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 9 {
+		t.Errorf("%d migration audit events, want 9", n)
 	}
 	// Each migration event reads back as the store reads it and passes the
 	// closed registry, like any event the application writes.

@@ -4876,8 +4876,9 @@ export type RuleList = {
 
 /**
  * A key folder move (member-access-rules ADR D9), or an environment
- * rename or creation (revision 22), that gives principals access through
- * their member access rules. `count` is always present; the people and
+ * rename, creation or deletion (revision 22), alone or in a definitions
+ * plan, that gives principals access through their member access
+ * rules. `count` is always present; the people and
  * machines and what they gain are named only to a caller holding
  * `manage-members` on the project, who confirms by resending the request
  * with `confirm_widening` listing exactly those principal ids.
@@ -4893,7 +4894,10 @@ export type WideningGainer = {
     principal_name?: string;
     capability: RuleCapability;
     /**
-     * The environment ids newly reached; empty for a project-wide capability only.
+     * The environment ids newly reached; empty when only the project
+     * is, as for a project-wide capability or a deletion that leaves no
+     * environment the rule excepts.
+     *
      */
     environments: Array<Id>;
 };

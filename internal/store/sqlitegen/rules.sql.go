@@ -407,7 +407,6 @@ type ListRuleIDsForKeyParams struct {
 // environment is named by name, which outlives the environment, so its
 // deletion has none (#1447).
 // hikyo:authn-resolution
-// hikyo:authn-resolution
 func (q *Queries) ListRuleIDsForKey(ctx context.Context, arg ListRuleIDsForKeyParams) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, listRuleIDsForKey, arg.OrgID, arg.ProjectID, arg.KeyID)
 	if err != nil {
@@ -810,8 +809,9 @@ type ListRulesForProjectRow struct {
 // Every rule that names one project, or covers every project of the org (an
 // all-projects rule names every project), with its principal's kind, for the
 // widening censuses: the folder-move census (ADR D9) reads the human rules,
-// the environment rename and create census (#1447) reads every rule, and the
-// caller applies the machine class's live rule check to a machine's rows. The census must be a SUPERSET of what
+// the environment rename, create and delete census (#1447) reads every rule,
+// a machine's unchecked by its class's live rule check (the machine widening
+// gate re-reads them through it). The census must be a SUPERSET of what
 // authorize() could ever honour, so it deliberately omits the chokepoint's
 // privacy and restore-epoch gates: a principal restricted today whose rule
 // gains on this move would otherwise regain that access later with nobody

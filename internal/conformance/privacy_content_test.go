@@ -61,7 +61,7 @@ func scenarioPrivacyEnvironmentDeletion(t *testing.T, db *store.DB) {
 		(id,principal_id,capability,org_id,project_id,env_id,created_at)
 		VALUES ('grt_privacy_content_dependency','%s','read','%s','%s','%s','2026-01-01T00:00:00Z')`,
 		workload, target.Org, target.Project, target.Env)})
-	if err := envs.Delete(t.Context(), actor, target); err == nil {
+	if err := envs.DeleteConfirming(t.Context(), actor, target, nil); err == nil {
 		t.Fatal("deletion accepted unresolved environment grant")
 	}
 	for _, table := range tables {
@@ -73,7 +73,7 @@ func scenarioPrivacyEnvironmentDeletion(t *testing.T, db *store.DB) {
 		t.Fatalf("refused deletion recorded %d successful erasures", got)
 	}
 	seed(t, db, []string{"DELETE FROM grants WHERE id='grt_privacy_content_dependency'"})
-	if err := envs.Delete(t.Context(), actor, target); err != nil {
+	if err := envs.DeleteConfirming(t.Context(), actor, target, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range tables {

@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -158,5 +159,35 @@ func TestRuleHiddenExceptionsOnlyFromManageableRules(t *testing.T) {
 		// Replacing the manageable rule by a legacy one is refused the same way.
 		_, err = f.rules.Replace(t.Context(), service.LocalPrincipal(frank), service.ReplaceRulesSpec{Org: orgA, Target: gina, Revoke: []string{spectre}, Create: []service.RuleSpec{legacy}})
 		namesOnly(t, err)
+	})
+}
+
+// An environment grant follows its id, so it never stands in for the name of
+// a future environment (#1447): a manager excepting prod by rule while holding
+// a grant on today's prod may delegate prod itself, but not every environment.
+func TestRuleDelegationAllEnvironmentsIgnoresEnvironmentGrants(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		exceptProd := whereIn(domain.AxisAll, nil, domain.AxisAll)
+		exceptProd.EnvNames = []string{"prod"}
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapManageMembers, Org: orgA, Where: exceptProd})
+		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_frank_mm_prod', '%s', 'manage-members', 'org_a', '%s', '%s', %s)", frank, prjA1, envProd, ts))
+		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_frank_read', '%s', 'read', 'org_a', '%s', NULL, %s)", frank, prjA1, ts))
+		seedOrigins(t, db)
+		delegate := func(w domain.Where) error {
+			_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), service.RuleSpec{Target: gina, Capability: domain.CapRead, Org: orgA, Where: w})
+			return err
+		}
+		onlyProd := whereIn(domain.AxisOnly, nil, domain.AxisAll)
+		onlyProd.EnvNames = []string{"prod"}
+		if err := delegate(onlyProd); err != nil {
+			t.Fatalf("delegating today's prod under the grant: %v", err)
+		}
+		if err := delegate(exceptProd); err != nil {
+			t.Fatalf("delegating the rule's own reach: %v", err)
+		}
+		if err := delegate(whereIn(domain.AxisAll, nil, domain.AxisAll)); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("delegating every environment = %v, want the uniform not found", err)
+		}
 	})
 }

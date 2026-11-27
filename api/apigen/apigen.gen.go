@@ -8000,8 +8000,9 @@ type Error struct {
 		Message string `json:"message"`
 
 		// Widening A key folder move (member-access-rules ADR D9), or an environment
-		// rename or creation (revision 22), that gives principals access through
-		// their member access rules. `count` is always present; the people and
+		// rename, creation or deletion (revision 22), alone or in a definitions
+		// plan, that gives principals access through their member access
+		// rules. `count` is always present; the people and
 		// machines and what they gain are named only to a caller holding
 		// `manage-members` on the project, who confirms by resending the request
 		// with `confirm_widening` listing exactly those principal ids.
@@ -13239,7 +13240,9 @@ type WideningGainer struct {
 	// whole project.
 	Capability RuleCapability `json:"capability"`
 
-	// Environments The environment ids newly reached; empty for a project-wide capability only.
+	// Environments The environment ids newly reached; empty when only the project
+	// is, as for a project-wide capability or a deletion that leaves no
+	// environment the rule excepts.
 	Environments []ID `json:"environments"`
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -13248,8 +13251,9 @@ type WideningGainer struct {
 }
 
 // WideningRefusal A key folder move (member-access-rules ADR D9), or an environment
-// rename or creation (revision 22), that gives principals access through
-// their member access rules. `count` is always present; the people and
+// rename, creation or deletion (revision 22), alone or in a definitions
+// plan, that gives principals access through their member access
+// rules. `count` is always present; the people and
 // machines and what they gain are named only to a caller holding
 // `manage-members` on the project, who confirms by resending the request
 // with `confirm_widening` listing exactly those principal ids.

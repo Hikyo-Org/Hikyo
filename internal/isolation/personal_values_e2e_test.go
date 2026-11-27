@@ -493,7 +493,7 @@ func TestPersonalValueSameNameRenameKeepsAndEnvironmentDeleteAudits(t *testing.T
 			t.Fatal("a same-name rename removed the personal value")
 		}
 		execRaw(t, db, `DELETE FROM value_entries WHERE environment_id='env_a1'`)
-		if err := (&service.Environments{DB: db, Keyring: e.values.Keyring}).Delete(ctx, actor, envScope(envA1)); err != nil {
+		if err := (&service.Environments{DB: db, Keyring: e.values.Keyring}).DeleteConfirming(ctx, actor, envScope(envA1), nil); err != nil {
 			t.Fatal(err)
 		}
 		if queryInt(t, db, `SELECT COUNT(*) FROM personal_values`) != 0 {

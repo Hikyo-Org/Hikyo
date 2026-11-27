@@ -46,7 +46,7 @@ func newAccessHarness(t *testing.T, db *store.DB) *accessHarness {
 	auth.ReauthWindow = 15 * time.Minute
 	environments := &service.Environments{DB: db, Keyring: kr}
 	proj := domain.Scope{Org: orgA, Project: prjA1}
-	env, err := environments.Create(t.Context(), service.LocalPrincipal(alice), proj, "access-env", nil)
+	env, err := environments.CreateConfirming(t.Context(), service.LocalPrincipal(alice), proj, "access-env", nil, nil)
 	if err != nil {
 		t.Fatalf("create access env: %v", err)
 	}
@@ -541,7 +541,7 @@ func runAccessLifecycle(t *testing.T, db *store.DB) {
 
 	// 18. Deleting the environment cascades its requests and rows away.
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), h.scope); err != nil {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), h.scope, nil); err != nil {
 		t.Fatalf("delete env: %v", err)
 	}
 	if queryInt(t, db, "SELECT COUNT(*) FROM access_grants WHERE env_id = '"+h.env+"'") != 0 ||

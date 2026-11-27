@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -822,23 +823,18 @@ func (s *Environments) now() time.Time { return nowOr(s.Now) }
 // Create/List/Reorder address the parent project (Org+Project); the rest
 // address the environment (full chain).
 
-// Create appends an environment at the end of the project's display order.
-// The count that bounds it is read under the same proof in the same
-// transaction as the insert, so the cap cannot be walked past by two
-// concurrent creates.
-func (s *Environments) Create(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string) (Environment, error) {
-	return s.CreateConfirming(ctx, actor, scope, name, acks, nil)
-}
-
-// CreateConfirming is Create with confirm, the principals the caller confirms
-// the new environment gives access through member access rules naming its
-// name (#1447); see envChange.
+// CreateConfirming appends an environment at the end of the project's
+// display order. The count that bounds it is read under the same proof in the
+// same transaction as the insert, so the cap cannot be walked past by two
+// concurrent creates. confirm is the principals the caller confirms the new
+// environment gives access through member access rules naming its name
+// (#1447); see envChange.
 func (s *Environments) CreateConfirming(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string, confirm []domain.PrincipalID) (Environment, error) {
 	env, _, err := s.create(ctx, actor, scope, name, "", acks, confirm)
 	return env, err
 }
 
-// Clone is create-with-clone-at-creation (#50, flat-model ADR § Ergonomics):
+// CloneConfirming is create-with-clone-at-creation (#50, flat-model ADR § Ergonomics):
 // the new environment is born holding a copy of another environment's values.
 //
 // It is ONE act. The environment row, every copied value and the audit records
@@ -849,11 +845,8 @@ func (s *Environments) CreateConfirming(ctx context.Context, actor Actor, scope 
 // The copy is preflighted, and the preflight can ABORT the creation: see
 // cloneInto. What could not be copied comes back enumerated by name, never
 // silently absent.
-func (s *Environments) Clone(ctx context.Context, actor Actor, scope domain.Scope, name, sourceEnvID string, acks []string) (Environment, CloneResult, error) {
-	return s.CloneConfirming(ctx, actor, scope, name, sourceEnvID, acks, nil)
-}
-
-// CloneConfirming is Clone with a widening confirmation, as CreateConfirming.
+//
+// confirm is the widening confirmation, as for CreateConfirming.
 func (s *Environments) CloneConfirming(ctx context.Context, actor Actor, scope domain.Scope, name, sourceEnvID string, acks []string, confirm []domain.PrincipalID) (Environment, CloneResult, error) {
 	if sourceEnvID == "" {
 		return Environment{}, CloneResult{}, fmt.Errorf("%w: clone names a source environment", domain.ErrInvalid)
@@ -963,6 +956,10 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 			return err
 		}
 		if err := change.confirm(ctx, r, az, p, s.Auth, caller, confirm, s.now()); err != nil {
+			if errors.Is(err, ErrReauthRequired) {
+				// No session can hold a window over an environment minted here.
+				return &detailErr{detail: fmt.Sprintf(NewEnvironmentReauthDetail, created.ID), err: err}
+			}
 			return err
 		}
 		// § 151 schema-revision rate: an environment create advances the project's
@@ -1060,12 +1057,9 @@ func (s *Environments) List(ctx context.Context, actor Actor, scope domain.Scope
 	return list, nil
 }
 
-func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string) (Environment, error) {
-	return s.RenameConfirming(ctx, actor, scope, name, acks, nil)
-}
-
-// RenameConfirming is Rename with confirm, the principals the caller confirms
-// the rename gives access through member access rules (#1447); see envChange.
+// RenameConfirming renames an environment. confirm is the principals the
+// caller confirms the rename gives access through member access rules
+// (#1447); see envChange.
 func (s *Environments) RenameConfirming(ctx context.Context, actor Actor, scope domain.Scope, name string, acks []string, confirm []domain.PrincipalID) (Environment, error) {
 	if err := checkName("environment name", name); err != nil {
 		return Environment{}, err
@@ -1212,15 +1206,11 @@ func (s *Environments) Reorder(ctx context.Context, actor Actor, scope domain.Sc
 	return list, nil
 }
 
-// Delete removes an environment. The remaining environments keep their
-// positions: display order is a property of each row, not an invariant over
-// the set, so a gap is not a defect and closing it would be an unrequested
-// write to rows the operator did not name.
-func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Scope) error {
-	return s.DeleteConfirming(ctx, actor, scope, nil)
-}
-
-// DeleteConfirming is Delete with confirm, the principals the caller confirms
+// DeleteConfirming removes an environment. The remaining environments keep
+// their positions: display order is a property of each row, not an invariant
+// over the set, so a gap is not a defect and closing it would be an
+// unrequested write to rows the operator did not name. confirm is the
+// principals the caller confirms
 // the delete gives access through member access rules (#1447): deleting the
 // environment an `all, except` rule names lets the rule reach the project's
 // other atoms, so it fails closed unless confirmed; see envChange.

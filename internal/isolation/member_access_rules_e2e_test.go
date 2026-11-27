@@ -513,7 +513,7 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 		// A throwaway environment in an only-list and an except-list.
 		_, _, envs := services(t, db)
-		env, err := envs.Create(t.Context(), service.LocalPrincipal(alice), project, "tmp", nil)
+		env, err := envs.CreateConfirming(t.Context(), service.LocalPrincipal(alice), project, "tmp", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -525,7 +525,7 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		// The except-list rule would reach the whole project once tmp is gone:
 		// the delete fails closed until that gain is confirmed (2026-11-27).
 		var widening *service.EnvWideningError
-		if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, prjA1, envID)); !errors.As(err, &widening) || widening.Count != 1 {
+		if err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, prjA1, envID), nil); !errors.As(err, &widening) || widening.Count != 1 {
 			t.Fatalf("unconfirmed delete env: %v, want a widening refusal for one principal", err)
 		}
 		// Only a member manager may confirm it.
@@ -542,8 +542,8 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 				t.Fatalf("rule %s naming the deleted environment was removed", id)
 			}
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.revoked'"); n < 2 {
-			t.Fatalf("rule.revoked recorded %d times, want the revoke and the emptied key rule", n)
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.revoked' AND object_id = '"+onlyKey+"' AND payload LIKE '%\"cause\":\"emptied-by-deletion\"%'"); n != 1 {
+			t.Fatalf("rule.revoked for the emptied key rule recorded %d times, want 1 with cause emptied-by-deletion", n)
 		}
 		// No item references a key that no longer exists (environments are
 		// named, not referenced, since #1447).
@@ -551,7 +551,8 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 			i.key_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM keys k WHERE k.id = i.key_id)`); n != 0 {
 			t.Fatalf("%d rule items reference deleted objects", n)
 		}
-		// Leave gina rule-less for the query-count checks below.
+		// Leave gina only the read rule frank delegated, for the query-count
+		// checks below.
 		for _, id := range []string{exceptKey, onlyEnv, exceptEnv} {
 			if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, id); err != nil {
 				t.Fatal(err)
@@ -567,7 +568,8 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 			t.Fatalf("rule-authorized env read: %d queries, err %v; want 4", n, err)
 		}
 		// A key-aware denial costs chain + grants + rules + environment
-		// names + key, whether the key exists or not.
+		// names (gina's delegated read rule binds) + key, whether the key
+		// exists or not.
 		for _, key := range []string{"DB_PASSWORD", "NO_SUCH_KEY"} {
 			n, err := countedAuthorizeKey(t, db, gina, dev, authz.KeyByName(key))
 			if !errors.Is(err, domain.ErrNotFound) || n != 5 {

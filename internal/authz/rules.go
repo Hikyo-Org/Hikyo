@@ -214,10 +214,12 @@ func (a *TxAuthorizer) RulesForProject(ctx context.Context, org domain.OrgID, pr
 // CensusRule is re-exported for the environment widening census.
 type CensusRule = authn.CensusRule
 
-// RuleCensusForProject is the environment rename and create census (#1447):
-// every rule naming this project, people's and machines', with the same
-// superset gates as RulesForProject. The caller applies the machine class's
-// live rule check to a machine's rules.
+// RuleCensusForProject is the environment rename, create and delete census
+// (#1447): every rule naming this project, people's and machines', with the
+// same superset gates as RulesForProject. A machine's rules are counted
+// without its class's live rule check, so a rule the check refuses today is
+// still confirmed; the machine widening gate re-reads them through
+// MachineRulesOf, which applies it.
 func (a *TxAuthorizer) RuleCensusForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]CensusRule, error) {
 	return a.r.RulesForProject(ctx, string(org), string(project))
 }

@@ -236,7 +236,10 @@ func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain doma
 	var selectors []domain.Where
 	allFolders := map[string]string{}
 	for _, grant := range grants {
-		if grant.Scope.Env == "" {
+		// A grant follows its environment's id while an all-environments
+		// target follows names, including environments created later: a
+		// grant's current name must not stand in for a future one.
+		if grant.Scope.Env == "" || target.EnvMode == domain.AxisAll {
 			continue
 		}
 		s := chain

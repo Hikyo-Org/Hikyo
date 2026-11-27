@@ -31,6 +31,7 @@ const (
 	apInstance = domain.PrincipalID("usr_apinstance") // manage-members at instance scope
 	apPrjOnly  = domain.PrincipalID("usr_apprjonly")  // manage-projects at org_ap, no member management
 	apRuleMgr  = domain.PrincipalID("usr_aprulemgr")  // manage-members and read through project-bound rules only
+	apDevMgr   = domain.PrincipalID("usr_apdevmgr")   // manage-members and read through all-projects rules over dev only
 )
 
 type allProjectsFixture struct {
@@ -41,7 +42,7 @@ type allProjectsFixture struct {
 func seedAllProjectsFixture(t *testing.T, db *store.DB) allProjectsFixture {
 	t.Helper()
 	execRaw(t, db, `INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ('org_ap', 'org-ap', TRUE, '{}', `+ts+`)`)
-	for _, p := range []domain.PrincipalID{apAdmin, apPrjAdmin, apHolder, apInstance, apPrjOnly, apRuleMgr} {
+	for _, p := range []domain.PrincipalID{apAdmin, apPrjAdmin, apHolder, apInstance, apPrjOnly, apRuleMgr, apDevMgr} {
 		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+string(p)+"', 'human', "+ts+")")
 	}
 	execRaw(t, db, "INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_ap', 'machine', 'automation', "+ts+")")
@@ -320,6 +321,64 @@ func runAllProjectsRules(t *testing.T, db *store.DB) {
 		if err := f.rules.Revoke(ctx, service.LocalPrincipal(apRuleMgr), orgAP, explicit.ID); err != nil {
 			t.Fatalf("rule-delegated manager revokes the explicit rule: %v", err)
 		}
+	})
+
+	// D7 with environment names (#1447): naming environments does not lift
+	// the future-project witness, on create, revoke or replace, and an
+	// all-projects manager over dev does not cover a rule naming prod.
+	t.Run("named_all_projects_rules_keep_the_witness", func(t *testing.T) {
+		w := allProjectsWhere(domain.AxisAll)
+		w.EnvMode, w.EnvNames = domain.AxisOnly, []string{"prod"}
+		named := read(w)
+		held, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), named)
+		if err != nil {
+			t.Fatalf("named all-projects rule: %v", err)
+		}
+		every := read(domain.Where{Projects: []domain.ProjectID{p1, p2}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll})
+		dev := allProjectsWhere(domain.AxisAll)
+		dev.EnvMode, dev.EnvNames = domain.AxisOnly, []string{"dev"}
+		// The dev manager holds prod in every current project by grants; only
+		// its all-projects rules, over dev, speak for later projects.
+		var devRules []string
+		for _, c := range []domain.Capability{domain.CapManageMembers, domain.CapRead} {
+			v, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), claimAll(t, db, service.RuleSpec{Target: apDevMgr, Capability: c, Org: orgAP, Where: dev}))
+			if err != nil {
+				t.Fatalf("give the dev manager %s over dev in every project: %v", c, err)
+			}
+			devRules = append(devRules, v.ID)
+			for _, p := range []domain.ProjectID{p1, p2} {
+				execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_apdev_%s_%s', 'usr_apdevmgr', '%s', 'org_ap', '%s', NULL, %s)", c, p, c, p, ts))
+			}
+		}
+		seedOrigins(t, db)
+		for _, manager := range []domain.PrincipalID{apPrjAdmin, apRuleMgr, apDevMgr} {
+			actor := service.LocalPrincipal(manager)
+			if _, err := f.rules.Create(ctx, actor, named); !errors.Is(err, service.ErrRuleAllProjectsAuthority) {
+				t.Errorf("%s creates a named all-projects rule = %v, want ErrRuleAllProjectsAuthority", manager, err)
+			}
+			if err := f.rules.Revoke(ctx, actor, orgAP, held.ID); !errors.Is(err, service.ErrRuleAllProjectsAuthority) {
+				t.Errorf("%s revokes a named all-projects rule = %v, want ErrRuleAllProjectsAuthority", manager, err)
+			}
+			if manager == apDevMgr {
+				continue // it holds no explicit rule over every project to replace with
+			}
+			if _, err := f.rules.Replace(ctx, actor, service.ReplaceRulesSpec{Org: orgAP, Target: apHolder, Revoke: []string{held.ID}, Create: []service.RuleSpec{every}}); !errors.Is(err, service.ErrRuleAllProjectsAuthority) {
+				t.Errorf("%s replaces a named all-projects rule = %v, want ErrRuleAllProjectsAuthority", manager, err)
+			}
+			if _, err := f.rules.Replace(ctx, actor, service.ReplaceRulesSpec{Org: orgAP, Target: apHolder, Create: []service.RuleSpec{named}}); !errors.Is(err, service.ErrRuleAllProjectsAuthority) {
+				t.Errorf("%s replaces into a named all-projects rule = %v, want ErrRuleAllProjectsAuthority", manager, err)
+			}
+		}
+		if ruleCount(t, db, held.ID) != 1 {
+			t.Fatal("a refused revoke or replace removed the named rule")
+		}
+		for _, id := range append(devRules, held.ID) {
+			if err := f.rules.Revoke(ctx, service.LocalPrincipal(apAdmin), orgAP, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE principal_id = 'usr_apdevmgr')")
+		execRaw(t, db, "DELETE FROM grants WHERE principal_id = 'usr_apdevmgr'")
 	})
 
 	t.Run("a_project_created_later_is_reached", func(t *testing.T) {

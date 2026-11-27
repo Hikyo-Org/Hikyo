@@ -82,7 +82,7 @@ func scenarioScanningPreflightNoOrphanKey(t *testing.T, db *store.DB) {
 	keys := &service.Keys{DB: db, Keyring: kr, Scan: rs}
 
 	// Blocked environment create: the env name carries a credential.
-	_, envErr := envs.Create(ctx, actor, scope, planted, nil)
+	_, envErr := envs.CreateConfirming(ctx, actor, scope, planted, nil, nil)
 	if !errors.Is(envErr, domain.ErrInvalid) {
 		t.Fatalf("credential-named env create: err = %v, want invalid refusal", envErr)
 	}
@@ -131,7 +131,7 @@ func scenarioScanningKeyDeleteDropsDismissals(t *testing.T, db *store.DB) {
 	kr := sharedKeyring(t, db)
 	actor := service.LocalPrincipal(who)
 
-	env, err := (&service.Environments{DB: db, Keyring: kr}).Create(ctx, actor, scope, "scandel-env", nil)
+	env, err := (&service.Environments{DB: db, Keyring: kr}).CreateConfirming(ctx, actor, scope, "scandel-env", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func scenarioScanningKeyRotation(t *testing.T, db *store.DB) {
 	})
 	kr := sharedKeyring(t, db)
 	actor := service.LocalPrincipal(who)
-	env, err := (&service.Environments{DB: db, Keyring: kr}).Create(ctx, actor, scope, "scanrot-env", nil)
+	env, err := (&service.Environments{DB: db, Keyring: kr}).CreateConfirming(ctx, actor, scope, "scanrot-env", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func scenarioScanningDismissals(t *testing.T, db *store.DB) {
 	envs := &service.Environments{DB: db, Keyring: kr}
 	keys := &service.Keys{DB: db, Keyring: kr}
 
-	env, err := envs.Create(ctx, actor, scope, "scanning-env", nil)
+	env, err := envs.CreateConfirming(ctx, actor, scope, "scanning-env", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

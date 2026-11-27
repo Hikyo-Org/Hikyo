@@ -3113,8 +3113,9 @@ export const zWideningGainer = z.object({
 
 /**
  * A key folder move (member-access-rules ADR D9), or an environment
- * rename or creation (revision 22), that gives principals access through
- * their member access rules. `count` is always present; the people and
+ * rename, creation or deletion (revision 22), alone or in a definitions
+ * plan, that gives principals access through their member access
+ * rules. `count` is always present; the people and
  * machines and what they gain are named only to a caller holding
  * `manage-members` on the project, who confirms by resending the request
  * with `confirm_widening` listing exactly those principal ids.

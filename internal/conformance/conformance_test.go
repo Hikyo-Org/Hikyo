@@ -405,7 +405,7 @@ func scenarioTenantChain(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	envScope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(proj.ID)}
-	created, err := envs.Create(t.Context(), service.LocalPrincipal(tenant), envScope, "dev", nil)
+	created, err := envs.CreateConfirming(t.Context(), service.LocalPrincipal(tenant), envScope, "dev", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +541,7 @@ func scenarioHierarchyCRUD(t *testing.T, db *store.DB) {
 	// Environments: created in order, appended at the end.
 	var created []service.Environment
 	for _, name := range []string{"dev", "staging", "prod"} {
-		env, err := envs.Create(t.Context(), actor, scope, name, nil)
+		env, err := envs.CreateConfirming(t.Context(), actor, scope, name, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -606,7 +606,7 @@ func scenarioHierarchyCRUD(t *testing.T, db *store.DB) {
 	// Environment rename, read back through the full chain.
 	envScope := scope
 	envScope.Env = domain.EnvID(created[0].ID)
-	if _, err := envs.Rename(t.Context(), actor, envScope, "development", nil); err != nil {
+	if _, err := envs.RenameConfirming(t.Context(), actor, envScope, "development", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	gotEnv, err := envs.Get(t.Context(), actor, envScope)
@@ -618,7 +618,7 @@ func scenarioHierarchyCRUD(t *testing.T, db *store.DB) {
 	}
 
 	// A duplicate name among live siblings is a conflict, on both engines.
-	if _, err := envs.Create(t.Context(), actor, scope, "prod", nil); !errors.Is(err, domain.ErrConflict) {
+	if _, err := envs.CreateConfirming(t.Context(), actor, scope, "prod", nil, nil); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate environment name: err = %v, want ErrConflict", err)
 	}
 
@@ -662,7 +662,7 @@ func scenarioHierarchyCRUD(t *testing.T, db *store.DB) {
 	for _, env := range stillOrdered {
 		s := scope
 		s.Env = domain.EnvID(env.ID)
-		if err := envs.Delete(t.Context(), actor, s); err != nil {
+		if err := envs.DeleteConfirming(t.Context(), actor, s, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -694,11 +694,11 @@ func scenarioEnvironmentCap(t *testing.T, db *store.DB) {
 	who, scope := tenantFixture(t, db, "envcap")
 	actor := service.LocalPrincipal(who)
 	for i := range service.MaxEnvironmentsPerProject {
-		if _, err := envs.Create(t.Context(), actor, scope, fmt.Sprintf("env-%02d", i), nil); err != nil {
+		if _, err := envs.CreateConfirming(t.Context(), actor, scope, fmt.Sprintf("env-%02d", i), nil, nil); err != nil {
 			t.Fatalf("creating environment %d of the cap: %v", i, err)
 		}
 	}
-	_, err := envs.Create(t.Context(), actor, scope, "one-too-many", nil)
+	_, err := envs.CreateConfirming(t.Context(), actor, scope, "one-too-many", nil, nil)
 	if !errors.Is(err, domain.ErrLimitExceeded) {
 		t.Fatalf("environment %d: err = %v, want ErrLimitExceeded", service.MaxEnvironmentsPerProject+1, err)
 	}
@@ -721,7 +721,7 @@ func scenarioDeleteRefusesChildren(t *testing.T, db *store.DB) {
 	who, scope := tenantFixture(t, db, "nocascade")
 	actor := service.LocalPrincipal(who)
 
-	env, err := envs.Create(t.Context(), actor, scope, "dev", nil)
+	env, err := envs.CreateConfirming(t.Context(), actor, scope, "dev", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,7 +730,7 @@ func scenarioDeleteRefusesChildren(t *testing.T, db *store.DB) {
 	}
 	envScope := scope
 	envScope.Env = domain.EnvID(env.ID)
-	if err := envs.Delete(t.Context(), actor, envScope); err != nil {
+	if err := envs.DeleteConfirming(t.Context(), actor, envScope, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -762,7 +762,7 @@ func scenarioOrderAfterDeletion(t *testing.T, db *store.DB) {
 
 	var created []service.Environment
 	for _, name := range []string{"first", "second", "third"} {
-		env, err := envs.Create(t.Context(), actor, scope, name, nil)
+		env, err := envs.CreateConfirming(t.Context(), actor, scope, name, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -770,10 +770,10 @@ func scenarioOrderAfterDeletion(t *testing.T, db *store.DB) {
 	}
 	middle := scope
 	middle.Env = domain.EnvID(created[1].ID)
-	if err := envs.Delete(t.Context(), actor, middle); err != nil {
+	if err := envs.DeleteConfirming(t.Context(), actor, middle, nil); err != nil {
 		t.Fatal(err)
 	}
-	appended, err := envs.Create(t.Context(), actor, scope, "fourth", nil)
+	appended, err := envs.CreateConfirming(t.Context(), actor, scope, "fourth", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

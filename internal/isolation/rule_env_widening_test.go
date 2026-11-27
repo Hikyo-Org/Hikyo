@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -172,6 +173,8 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 		})
 
 		t.Run("a_rename_into_an_only_list_needs_confirmation", func(t *testing.T) {
+			// The narrowing rename above, should a focused run skip it.
+			execRaw(t, db, "UPDATE environments SET name = 'production' WHERE id = '"+string(envProd)+"'")
 			_, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA1, "prod", nil, nil)
 			_ = refusedFor(t, err, envOnly)
 			if reachesEnv(t, db, envOnly, prodA1) {
@@ -353,11 +356,15 @@ func TestEnvironmentNameWideningGatesMachines(t *testing.T) {
 			windowed = append(windowed, domain.EnvID(id))
 		}
 		windows := service.Bearer(sessionWithWindows(t, db, identRevatr, windowed...))
-		if _, err := envs.CreateConfirming(ctx, windows, prjScope(), "staging", nil, confirm); !errors.Is(err, service.ErrReauthRequired) {
-			t.Fatalf("create widening a machine = %v, want ErrReauthRequired", err)
+		// The refusal says how to get there; the CLI and the browser show it.
+		var detail interface{ SafeDetail() string }
+		if _, err := envs.CreateConfirming(ctx, windows, prjScope(), "staging", nil, confirm); !errors.Is(err, service.ErrReauthRequired) ||
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "create it under another name, reauthenticate over it, then rename it") {
+			t.Fatalf("create widening a machine = %v, want ErrReauthRequired saying to rename", err)
 		}
-		if _, _, err := envs.CloneConfirming(ctx, windows, prjScope(), "staging", string(envA1), nil, confirm); !errors.Is(err, service.ErrReauthRequired) {
-			t.Fatalf("clone widening a machine = %v, want ErrReauthRequired", err)
+		if _, _, err := envs.CloneConfirming(ctx, windows, prjScope(), "staging", string(envA1), nil, confirm); !errors.Is(err, service.ErrReauthRequired) ||
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "then rename it") {
+			t.Fatalf("clone widening a machine = %v, want ErrReauthRequired saying to rename", err)
 		}
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE project_id = 'prj_a1' AND name = 'staging'"); n != 0 {
 			t.Fatalf("a refused create or clone wrote %d environments", n)
@@ -631,7 +638,7 @@ func TestEnvironmentDeleteWideningExceptRules(t *testing.T) {
 			t.Fatal("the re-created prod is not excepted again")
 		}
 		// Deleting an environment no rule excepts needs none.
-		if err := envs.Delete(ctx, service.LocalPrincipal(envMgr), scopeEnv(orgA, prjA1, "env_a1")); err != nil {
+		if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(envMgr), scopeEnv(orgA, prjA1, "env_a1"), nil); err != nil {
 			t.Fatalf("deleting dev: %v", err)
 		}
 	})
@@ -762,11 +769,11 @@ func TestEnvironmentDeleteWideningShapes(t *testing.T) {
 			except(envExcpt, "prod", "dev")
 			except(envOnly, "dev")
 			// dev still carries an exception of envExcpt's rule: no gain.
-			if err := envs.Delete(ctx, as, scopeEnv(orgA, prjA1, envProd)); err != nil {
+			if err := envs.DeleteConfirming(ctx, as, scopeEnv(orgA, prjA1, envProd), nil); err != nil {
 				t.Fatalf("deleting prod while dev is excepted too: %v", err)
 			}
 			dev := scopeEnv(orgA, prjA1, "env_a1")
-			refused(t, envs.Delete(ctx, as, dev), envExcpt, envOnly)
+			refused(t, envs.DeleteConfirming(ctx, as, dev, nil), envExcpt, envOnly)
 			for _, wrong := range [][]domain.PrincipalID{{envExcpt}, {envExcpt, envOnly, envMgr}} {
 				refused(t, envs.DeleteConfirming(ctx, as, dev, wrong), envExcpt, envOnly)
 			}
@@ -799,7 +806,7 @@ func TestEnvironmentDeleteWideningShapes(t *testing.T) {
 				t.Fatalf("all-projects all-except-prod rule: %v", err)
 			}
 			prodScope := domain.Scope{Org: orgAP, Project: p1, Env: domain.EnvID(prod.ID)}
-			refused(t, envs.Delete(ctx, as, prodScope), apHolder)
+			refused(t, envs.DeleteConfirming(ctx, as, prodScope, nil), apHolder)
 			if err := envs.DeleteConfirming(ctx, as, prodScope, []domain.PrincipalID{apHolder}); err != nil {
 				t.Fatalf("confirmed delete: %v", err)
 			}
@@ -939,18 +946,32 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 			}
 		}
 
+		// confirmedOnly asserts env has exactly one confirmation, naming exactly want.
+		confirmedOnly := func(t *testing.T, env string, want ...domain.PrincipalID) {
+			t.Helper()
+			q := "FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '" + env + "'"
+			if n := queryInt(t, db, "SELECT COUNT(*) "+q); n != 1 {
+				t.Fatalf("confirmations on %s = %d, want 1", env, n)
+			}
+			var payload struct {
+				Principals []domain.PrincipalID `json:"principals"`
+			}
+			if err := json.Unmarshal([]byte(queryString(t, db, "SELECT payload "+q)), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(payload.Principals, want) {
+				t.Fatalf("confirmation on %s names %v, want %v", env, payload.Principals, want)
+			}
+		}
+
 		t.Run("two_renames", func(t *testing.T) {
 			f := seedDefinitionsProject(t, db, "envtwo", true)
 			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envtwo_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
 			read(excepting, f.project, domain.AxisAll, "prod")
 			read(onlyQA, f.project, domain.AxisOnly, "qa")
 			planRefused(t, f, renamed(f, false), excepting, onlyQA)
-			for env, own := range map[string][2]domain.PrincipalID{"env_def_envtwo_prod": {excepting, onlyQA}, string(f.env): {onlyQA, excepting}} {
-				q := "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '" + env + "'"
-				if n := queryInt(t, db, q+" AND payload LIKE '%"+string(own[0])+"%' AND payload NOT LIKE '%"+string(own[1])+"%'"); n != 1 {
-					t.Fatalf("confirmation on %s recording only %s = %d, want 1", env, own[0], n)
-				}
-			}
+			confirmedOnly(t, "env_def_envtwo_prod", excepting)
+			confirmedOnly(t, string(f.env), onlyQA)
 		})
 
 		// The rename alone gains qa's environment; the project needs the
@@ -964,9 +985,8 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 			bundle.Environments = slices.DeleteFunc(bundle.Environments, func(e definitions.Environment) bool { return e.Name == "prod" })
 			bundle.Environments[0].Name = "qa"
 			planRefused(t, f, planDefinitions(t, svc, f, encodeDefinitions(t, bundle)), excepting)
-			if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = 'env_def_envjoint_prod'"); n != 1 {
-				t.Fatalf("the plan's project gain recorded on the delete %d times, want 1", n)
-			}
+			confirmedOnly(t, "env_def_envjoint_prod", excepting)
+			confirmedOnly(t, string(f.env), excepting)
 		})
 
 		t.Run("a_move_beside_a_rename", func(t *testing.T) {
@@ -980,5 +1000,166 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 			}
 			planRefused(t, f, renamed(f, true), mover, excepting)
 		})
+	})
+}
+
+// A plan deleting every environment of the project still compares against
+// the empty project after it (#1447): deleting prod and staging together
+// widens an all-except-both rule though neither delete does alone.
+func TestDefinitionsApplyDeletingEveryEnvironmentWidens(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		const reader = domain.PrincipalID("usr_envplan")
+		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('usr_envplan', 'human', "+ts+")")
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm', 'usr_alice', 'manage-members', 'org_a', NULL, NULL, "+ts+")")
+		f := seedDefinitionsProject(t, db, "envnone", true)
+		execRaw(t, db, fmt.Sprintf("UPDATE environments SET name = 'prod' WHERE id = '%s'", f.env))
+		execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envnone_staging', 'org_a', '%s', 'staging', '', %s, 1)", f.project, ts))
+		if _, err := (&service.Rules{DB: db}).Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: reader, Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{f.project}, EnvMode: domain.AxisAll, EnvNames: []string{"prod", "staging"}, KeyMode: domain.AxisAll}}); err != nil {
+			t.Fatalf("all-except-prod-and-staging rule: %v", err)
+		}
+		svc := definitionsService(t, db)
+		bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+		bundle.Environments = nil
+		plan := planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
+		var widening *service.EnvWideningError
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
+			!slices.Equal(widening.Principals, []domain.PrincipalID{reader}) {
+			t.Fatalf("unconfirmed apply deleting every environment = %v, want a refusal naming %s", err, reader)
+		}
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true, ConfirmWidening: []domain.PrincipalID{reader}}); err != nil {
+			t.Fatalf("confirmed apply: %v", err)
+		}
+	})
+}
+
+// A plan whose changes each give the same machine access gates that machine
+// once (#1447): its reach before and after the whole plan, one
+// reauthentication over the environments it newly reaches and one
+// identity.grant_widened record, not one per change.
+func TestDefinitionsApplyGatesEachMachineOnce(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		ctx := t.Context()
+		execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
+		for _, c := range []string{"definitions-edit", "edit", "publish"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_reveal_prj', 'usr_idrev', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+		sa, err := identitySvc(db).CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), "plan-reader", domain.ClassAutomation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_plan_reveal', '"+string(sa.Principal)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+		if _, err := (&service.Rules{DB: db, Auth: authWithWindow(db)}).Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
+			Target: sa.Principal, Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"staging", "qa"}, KeyMode: domain.AxisAll}}); err != nil {
+			t.Fatalf("only-staging-and-qa rule: %v", err)
+		}
+		svc := definitionsService(t, db)
+		svc.Auth = authWithWindow(db)
+		f := definitionsFixture{project: prjA1}
+		bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+		for i := range bundle.Environments {
+			bundle.Environments[i].Name = map[string]string{"dev": "staging", "prod": "qa"}[bundle.Environments[i].Name]
+		}
+		plan := planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
+		windows := service.Bearer(sessionWithWindows(t, db, identRevatr, envA1, "env_prod"))
+		if _, err := svc.Apply(ctx, windows, f.scope(), plan.ID, service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{sa.Principal}}); err != nil {
+			t.Fatalf("confirmed apply widening a machine twice: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'identity.grant_widened' AND object_id = '"+string(sa.Principal)+"'"); n != 1 {
+			t.Fatalf("identity.grant_widened rows for the machine = %d, want 1", n)
+		}
+	})
+}
+
+// A rule the upgrade to environment names disabled (#1447) lists with its
+// fault and reaches nothing. Its selector is not evaluable, so a manager
+// narrowed by rules cannot show it lies inside their reach: only a manager
+// over the whole project may revoke it (the fail-closed cleanup path).
+func TestDisabledRuleListsAndRevokes(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		const fault = "Disabled by the upgrade to environment names: it names one environment name twice in a project. It reaches no environment; revoke it and create it again."
+		const narrowed = domain.PrincipalID("usr_dismgr")
+		for _, p := range []string{"usr_disabled", string(narrowed)} {
+			execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+p+"', 'human', "+ts+")")
+		}
+		execRaw(t, db, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at, env_fault) VALUES ('rul_disabled', 'usr_disabled', 'read', 'org_a', 'only', 'only', 'all', 'usr_orgadmin', "+ts+", '"+fault+"')")
+		execRaw(t, db, "INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('rul_disabled_p', 'rul_disabled', 'org_a', 'project', 'prj_a1')")
+		rules := &service.Rules{DB: db}
+		listed, err := rules.List(ctx, service.LocalPrincipal(orgAdmin), domain.Scope{Org: orgA, Project: prjA1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i := slices.IndexFunc(listed, func(v service.RuleView) bool { return v.ID == "rul_disabled" }); i < 0 || listed[i].Fault != fault {
+			t.Fatalf("listing %+v, want rul_disabled with its fault", listed)
+		}
+		if reachesEnv(t, db, "usr_disabled", envScope(envA1)) {
+			t.Fatal("a disabled rule reaches an environment")
+		}
+		// Manage access over dev only, the project's one environment today.
+		for _, c := range []domain.Capability{domain.CapManageMembers, domain.CapRead} {
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: narrowed, Capability: c, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"dev"}, KeyMode: domain.AxisAll}}); err != nil {
+				t.Fatalf("narrowed %s rule: %v", c, err)
+			}
+		}
+		// Positive control: the same manager revokes a rule inside its reach.
+		dev, err := rules.Create(ctx, service.LocalPrincipal(narrowed), service.RuleSpec{Target: "usr_disabled", Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"dev"}, KeyMode: domain.AxisAll}})
+		if err != nil {
+			t.Fatalf("narrowed manager's own rule: %v", err)
+		}
+		if err := rules.Revoke(ctx, service.LocalPrincipal(narrowed), orgA, dev.ID); err != nil {
+			t.Fatalf("narrowed manager revokes a rule inside its reach: %v", err)
+		}
+		if err := rules.Revoke(ctx, service.LocalPrincipal(narrowed), orgA, "rul_disabled"); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("narrowed manager revokes a disabled rule = %v, want not found", err)
+		}
+		if err := rules.Revoke(ctx, service.LocalPrincipal(prjAdmin), orgA, "rul_disabled"); err != nil {
+			t.Fatalf("project manager revokes the disabled rule: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE id = 'rul_disabled'"); n != 0 {
+			t.Fatal("the revoked disabled rule is still stored")
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.revoked' AND object_id = 'rul_disabled'"); n != 1 {
+			t.Fatalf("rule.revoked for the disabled rule = %d, want 1", n)
+		}
+	})
+}
+
+// Attribution keeps the key selector (#1447): deleting prod alone gains the
+// project over folder alpha, but over folder beta only with staging deleted
+// too, so no single delete explains the plan and the refusal is the plan's.
+func TestDefinitionsApplyAttributionKeepsKeySelectors(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		const editor = domain.PrincipalID("usr_envplan")
+		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('usr_envplan', 'human', "+ts+")")
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm', 'usr_alice', 'manage-members', 'org_a', NULL, NULL, "+ts+")")
+		f := seedDefinitionsProject(t, db, "envkeys", true)
+		for i, name := range []string{"prod", "staging"} {
+			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envkeys_%s', 'org_a', '%s', '%s', '', %s, %d)", name, f.project, name, ts, i+1))
+		}
+		rules := &service.Rules{DB: db}
+		for folder, except := range map[string][]string{"alpha": {"prod"}, "beta": {"prod", "staging"}} {
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: editor, Capability: domain.CapEdit, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{f.project}, EnvMode: domain.AxisAll, EnvNames: except, KeyMode: domain.AxisOnly,
+					Keys: map[domain.ProjectID][]domain.RuleKeyItem{f.project: {folderItem(folder)}}}}); err != nil {
+				t.Fatalf("%s rule: %v", folder, err)
+			}
+		}
+		svc := definitionsService(t, db)
+		bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+		bundle.Environments = slices.DeleteFunc(bundle.Environments, func(e definitions.Environment) bool { return e.Name != "dev" })
+		plan := planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
+		var widening *service.EnvWideningError
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
+			!widening.Plan || !slices.Equal(widening.Principals, []domain.PrincipalID{editor}) {
+			t.Fatalf("unconfirmed apply = %v, want a plan-level refusal naming %s", err, editor)
+		}
 	})
 }

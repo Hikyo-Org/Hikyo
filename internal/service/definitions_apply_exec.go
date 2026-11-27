@@ -800,11 +800,18 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 		if len(c.gained) == 0 {
 			continue
 		}
-		if err := c.confirm(ctx, r, az, p, s.Auth, caller, gainedPrincipals(c.gained), s.now()); err != nil {
+		if _, err := c.record(ctx, r, az, p, caller, gainedPrincipals(c.gained)); err != nil {
 			return err
 		}
 	}
-	return nil
+	// Every change compares the environments before the plan with those
+	// after it, so the machine gate runs once, not once per change: twice
+	// would spend a single-decision reauthentication window and audit the
+	// machine's widening twice.
+	if len(envGains) == 0 {
+		return nil
+	}
+	return changes[0].gateMachines(ctx, r, az, p, s.Auth, caller, gainedPrincipals(envGains), s.now())
 }
 
 // deleteEnvironment authorizes an env-scoped OpEnvDelete and cascades the

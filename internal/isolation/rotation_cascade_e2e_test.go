@@ -136,7 +136,7 @@ func runRotationEnvironmentDeleteBlockedByRuns(t *testing.T, db *store.DB) {
 	created := f.create(rotPasswordKey, rotUsernameKey)
 
 	// A live rotation is named in the refusal.
-	err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope)
+	err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil)
 	if !errors.Is(err, service.ErrEnvironmentHasLiveRotation) || !strings.Contains(safeError(err), created.ID) {
 		t.Fatalf("delete with a live rotation = %v (%q)", err, safeError(err))
 	}
@@ -158,7 +158,7 @@ func runRotationEnvironmentDeleteBlockedByRuns(t *testing.T, db *store.DB) {
 
 	// Quarantine blocks, and the refusal names the owning rotation.
 	blocked("quarantine", "", "quarantine")
-	err = envs.Delete(ctx, service.LocalPrincipal(alice), f.scope)
+	err = envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil)
 	if !errors.Is(err, service.ErrEnvironmentHasLiveRotation) || !strings.Contains(safeError(err), created.ID) {
 		t.Fatalf("delete with a quarantined run = %v (%q)", err, safeError(err))
 	}
@@ -166,27 +166,27 @@ func runRotationEnvironmentDeleteBlockedByRuns(t *testing.T, db *store.DB) {
 
 	// A failed run that never published still blocks until its candidate drop is
 	// recorded as confirmed.
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 		t.Fatalf("delete with an unconfirmed pre-publish failure = %v", err)
 	}
 	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, outcome_audit_id, outcome, created_at, finished_at) VALUES ('rfx_blk_drop','org_a','prj_a1','`+string(f.env)+`','run_blk_quarantine','drop_candidate','aud_blk_i','aud_blk_o','success',`+ts+`,`+ts+`)`)
 
 	// A failed run that had published may hold the live role.
 	blocked("failed", "5", "failed_published")
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 		t.Fatalf("delete with a failed run that had published = %v", err)
 	}
 	execRaw(t, db, `UPDATE rotation_runs SET phase='done' WHERE id='run_blk_failed_published'`)
 
 	// A revoke the provider refused is non-terminal and blocks as well.
 	blocked("revoke_refused", "6", "revoke_refused")
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 		t.Fatalf("delete with a revoke_refused run = %v", err)
 	}
 	execRaw(t, db, `UPDATE rotation_runs SET phase='done' WHERE id='run_blk_revoke_refused'`)
 
 	// Done runs and a pre-publish failure (candidate confirmed dropped) are purgeable.
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); err != nil {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); err != nil {
 		t.Fatalf("delete with only done and pre-publish failed runs: %v", err)
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM rotation_runs WHERE environment_id='"+string(f.env)+"'"); got != 0 {
@@ -576,7 +576,7 @@ func runRotationEnvironmentDeleteNamesEveryBlockingRotation(t *testing.T, db *st
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	refusal := func() string {
 		t.Helper()
-		err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope)
+		err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil)
 		if !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 			t.Fatalf("delete = %v, want the live-rotation refusal", err)
 		}

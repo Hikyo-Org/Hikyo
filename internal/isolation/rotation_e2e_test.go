@@ -67,7 +67,7 @@ func newRotationFixture(t *testing.T, db *store.DB) *rotationFixture {
 
 	// A fresh environment of its own, so protected or approval-covered state set up
 	// by one test never leaks into another through the shared audit database.
-	env, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Create(ctx, service.LocalPrincipal(alice), prjScope(), "rotation", nil)
+	env, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).CreateConfirming(ctx, service.LocalPrincipal(alice), prjScope(), "rotation", nil, nil)
 	if err != nil {
 		t.Fatalf("create rotation environment: %v", err)
 	}
@@ -814,14 +814,14 @@ func runRotationEnvironmentDelete(t *testing.T, db *store.DB) {
 	f := newRotationFixture(t, db)
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	created := f.create(rotPasswordKey, rotUsernameKey)
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 		t.Fatalf("delete with an active rotation = %v", err)
 	}
 	if _, err := f.transition(f.actor, "pause", created.ID); err != nil {
 		t.Fatal(err)
 	}
 	// A paused rotation is still live: it can be resumed.
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 		t.Fatalf("delete with a paused rotation = %v", err)
 	}
 	if _, err := f.transition(f.actor, "delete", created.ID); err != nil {
@@ -830,7 +830,7 @@ func runRotationEnvironmentDelete(t *testing.T, db *store.DB) {
 	// A disabled rotation with run and effect history goes with the environment.
 	rotationRunRow(t, db, f, "run_env_done", created.ID, "done", "7", "")
 	execRaw(t, db, `INSERT INTO rotation_effects (id, org_id, project_id, environment_id, run_id, kind, intent_audit_id, created_at) VALUES ('rfx_env_1','org_a','prj_a1','`+string(f.env)+`','run_env_done','mint','aud_env_1',`+ts+`)`)
-	if err := envs.Delete(ctx, service.LocalPrincipal(alice), f.scope); err != nil {
+	if err := envs.DeleteConfirming(ctx, service.LocalPrincipal(alice), f.scope, nil); err != nil {
 		t.Fatalf("delete with only a disabled rotation: %v", err)
 	}
 	for _, table := range []string{"rotations", "rotation_runs", "rotation_effects", "rotation_key_claims"} {

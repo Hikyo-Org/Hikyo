@@ -820,7 +820,7 @@ func runRotationAbandonPastPublish(t *testing.T, db *store.DB) {
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='rotation.quarantined' AND correlation_id='"+run2+"'"); n != 1 {
 		t.Fatalf("%d quarantine audits for the abandoned run", n)
 	}
-	if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+	if err := envs.DeleteConfirming(tctx(t), service.LocalPrincipal(alice), x.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 		t.Fatalf("environment delete with an owed revoke = %v", err)
 	}
 
@@ -841,7 +841,7 @@ func runRotationAbandonPastPublish(t *testing.T, db *store.DB) {
 	if !x.ctl.has(role2) || x.ctl.count("drop:"+role2) != 0 {
 		t.Fatal("the delivered candidate must survive both loops")
 	}
-	if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); err != nil {
+	if err := envs.DeleteConfirming(tctx(t), service.LocalPrincipal(alice), x.scope, nil); err != nil {
 		t.Fatalf("environment delete after the obligation settled: %v", err)
 	}
 }
@@ -1279,13 +1279,13 @@ func TestRotationExecutorUnconfirmedDropBlocksEnvironmentDelete(t *testing.T) {
 		if _, err := x.svc.Delete(tctx(t), x.actor, x.scope, service.RotationStateRequest{RotationID: rot.ID, Abandon: true}); err != nil {
 			t.Fatal(err)
 		}
-		if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
+		if err := envs.DeleteConfirming(tctx(t), service.LocalPrincipal(alice), x.scope, nil); !errors.Is(err, service.ErrEnvironmentHasLiveRotation) {
 			t.Fatalf("environment delete with an unconfirmed candidate = %v", err)
 		}
 		x.ctl.set(func() { x.ctl.dropErr = nil })
 		x.advance(rotationLeaseTermForTest + time.Second)
 		x.drain()
-		if err := envs.Delete(tctx(t), service.LocalPrincipal(alice), x.scope); err != nil {
+		if err := envs.DeleteConfirming(tctx(t), service.LocalPrincipal(alice), x.scope, nil); err != nil {
 			t.Fatalf("environment delete after the reconciler confirmed the drop: %v", err)
 		}
 	})

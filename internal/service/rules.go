@@ -186,15 +186,19 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 	return a
 }
 
-// gainAtom is one (principal, capability, environment) gain; env "" is the
-// project.
+// gainAtom is one (principal, capability, environment, key selector) gain;
+// env "" is the project.
 type gainAtom struct {
 	principal  domain.PrincipalID
 	capability domain.Capability
 	env        domain.EnvID
+	// keys is the key selector, kept so a plan attributes a gain over one
+	// selector to the change causing it; "" is every key.
+	keys string
 }
 
-// gainsOf merges atoms into gains for display and confirmation.
+// gainsOf merges atoms into gains for display and confirmation, over every
+// key selector.
 func gainsOf(atoms map[gainAtom]bool) []WideningGain {
 	var out []WideningGain
 	for a := range atoms {

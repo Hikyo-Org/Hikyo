@@ -78,6 +78,9 @@ var (
 	// WideningReauthDetail is the wire detail of a widening refusal; the CLI's
 	// inline ceremony parses the environment out of it (tied by a CLI test).
 	WideningReauthDetail = "reauthenticate over the environments this operation makes reachable, then retry (%s)"
+	// NewEnvironmentReauthDetail extends it for a create or clone, whose new
+	// environment no reauthentication can cover yet (#1447).
+	NewEnvironmentReauthDetail = WideningReauthDetail + "; the environment does not exist yet, so create it under another name, reauthenticate over it, then rename it"
 	// ErrMachineProject refuses a machine grant in a project other than the
 	// one the principal's existing grants already sit in. The ADR bounds
 	// automation to "one project's scope"; the first grant fixes which.
