@@ -55,6 +55,9 @@ INSERT INTO rule_items_work (id, rule_id, org_id, axis, project_id, env_id, env_
 SELECT id, rule_id, org_id, axis, project_id, env_id, NULL, key_id, folder_path FROM rule_items;
 DROP TABLE rule_items;
 ALTER TABLE rule_items_work RENAME TO rule_items;
+-- The conversion below looks rule items up by rule; the rebuild dropped
+-- rule_items_rule, and the second rebuild drops this index with its table.
+CREATE INDEX rule_items_work_rule ON rule_items (rule_id);
 
 UPDATE rule_items SET env_name = (SELECT e.name FROM environments AS e
   WHERE e.org_id = rule_items.org_id AND e.project_id = rule_items.project_id AND e.id = rule_items.env_id)

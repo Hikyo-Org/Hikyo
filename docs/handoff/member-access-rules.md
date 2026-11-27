@@ -292,7 +292,9 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   closed: the service delete and a definitions apply delete are refused like a
   widening rename until `confirm_widening` names exactly the gainers, audited
   as `rule.env_widening_confirmed` with an empty `to_name`. The rule keeps the
-  name, so a later environment of it is excepted again without confirmation.
+  name, so a later environment of it is excepted again and widens nothing
+  through that rule; another rule naming it, such as an *only* rule, still
+  needs its gainers confirmed.
   Project and organization deletions never cascade into environments.
 - **Wire.** API revision 22, additive: `where.environments.names` and
   `fault`, `confirm_widening` on environment create, rename and clone, and as a

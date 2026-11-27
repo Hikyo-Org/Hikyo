@@ -708,7 +708,7 @@ func TestDefinitionsApplyEnvironmentChangesWidenTogether(t *testing.T) {
 		var widening *service.EnvWideningError
 		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
 			!widening.Plan || widening.EnvName != "" || !slices.Equal(widening.Principals, []domain.PrincipalID{reader}) ||
-			!strings.HasPrefix(widening.SafeDetail(), "this plan's environment changes together widen access") {
+			!strings.HasPrefix(widening.SafeDetail(), "this plan's changes widen access") {
 			t.Fatalf("unconfirmed apply = %v, want a plan-level refusal naming %s", err, reader)
 		}
 		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true, ConfirmWidening: []domain.PrincipalID{reader}}); err != nil {
@@ -834,5 +834,123 @@ func TestDefinitionsApplyEnvironmentDeleteAndRenameNarrows(t *testing.T) {
 		if reachesProject(t, db, reader, domain.Scope{Org: orgA, Project: f.project}) || reachesEnv(t, db, reader, f.envScope()) {
 			t.Fatal("the renamed prod is not excepted")
 		}
+	})
+}
+
+// A rename that gives a principal other keys of an environment it already
+// reaches through another rule widens too (#1447): the census keeps each
+// key-narrowed rule's key selector rather than counting the environment once.
+func TestEnvironmentRenameWideningKeepsKeySelectors(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		for _, p := range []domain.PrincipalID{envMgr, envExcpt} {
+			execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+string(p)+"', 'human', "+ts+")")
+		}
+		for _, c := range []string{"definitions-edit", "manage-members", "read", "edit", "publish"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_em_"+c+"', 'usr_envmgr', '"+c+"', 'org_a', NULL, NULL, "+ts+")")
+		}
+		rules := &service.Rules{DB: db}
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+		edit := func(mode domain.AxisMode, names []string, folder string) {
+			t.Helper()
+			w := domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: mode, EnvNames: names, KeyMode: domain.AxisOnly,
+				Keys: map[domain.ProjectID][]domain.RuleKeyItem{prjA1: {folderItem(folder)}}}
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: envExcpt, Capability: domain.CapEdit, Org: orgA, Where: w}); err != nil {
+				t.Fatalf("edit rule over %s: %v", folder, err)
+			}
+		}
+		edit(domain.AxisAll, nil, "shared")
+		edit(domain.AxisOnly, []string{"qa"}, "restricted")
+		dev := scopeEnv(orgA, prjA1, "env_a1")
+		var widening *service.EnvWideningError
+		_, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, nil)
+		if !errors.As(err, &widening) || !slices.Equal(widening.Principals, []domain.PrincipalID{envExcpt}) {
+			t.Fatalf("renaming dev into the restricted rule's qa = %v, want a refusal naming %s", err, envExcpt)
+		}
+		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, []domain.PrincipalID{envExcpt}); err != nil {
+			t.Fatalf("confirmed rename: %v", err)
+		}
+		// The same selector held already in every environment gains nothing.
+		edit(domain.AxisAll, nil, "restricted")
+		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "dev", nil, nil); err != nil {
+			t.Fatalf("renaming back: %v", err)
+		}
+		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, nil); err != nil {
+			t.Fatalf("renaming into qa with the restricted keys held everywhere: %v, want no confirmation", err)
+		}
+	})
+}
+
+// Changes of one definitions plan that widen for different principals each
+// record only their own gainers, and the refusal names the plan rather than
+// one change; so does a plan whose key move and environment rename both widen
+// (#1447).
+func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		const excepting, onlyQA, mover = domain.PrincipalID("usr_envplan"), domain.PrincipalID("usr_envqa"), domain.PrincipalID("usr_envmove")
+		for _, p := range []domain.PrincipalID{excepting, onlyQA, mover} {
+			execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+string(p)+"', 'human', "+ts+")")
+		}
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm', 'usr_alice', 'manage-members', 'org_a', NULL, NULL, "+ts+")")
+		rules := &service.Rules{DB: db}
+		svc := definitionsService(t, db)
+		read := func(target domain.PrincipalID, project domain.ProjectID, mode domain.AxisMode, names ...string) {
+			t.Helper()
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: target, Capability: domain.CapRead, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{project}, EnvMode: mode, EnvNames: names, KeyMode: domain.AxisAll}}); err != nil {
+				t.Fatalf("rule for %s: %v", target, err)
+			}
+		}
+		renamed := func(f definitionsFixture, moveKey bool) service.PlanView {
+			t.Helper()
+			bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+			for i := range bundle.Environments {
+				bundle.Environments[i].Name = map[string]string{"prod": "production", "dev": "qa"}[bundle.Environments[i].Name]
+			}
+			if moveKey {
+				for i := range bundle.Keys {
+					bundle.Keys[i].FolderPath = "moved"
+				}
+			}
+			return planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
+		}
+		planRefused := func(t *testing.T, f definitionsFixture, plan service.PlanView, want ...domain.PrincipalID) {
+			t.Helper()
+			var widening *service.EnvWideningError
+			if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
+				!widening.Plan || !slices.Equal(widening.Principals, want) {
+				t.Fatalf("unconfirmed apply = %v, want a plan-level refusal naming %v", err, want)
+			}
+			if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true, ConfirmWidening: want}); err != nil {
+				t.Fatalf("confirmed apply: %v", err)
+			}
+		}
+
+		t.Run("two_renames", func(t *testing.T) {
+			f := seedDefinitionsProject(t, db, "envtwo", true)
+			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envtwo_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
+			read(excepting, f.project, domain.AxisAll, "prod")
+			read(onlyQA, f.project, domain.AxisOnly, "qa")
+			planRefused(t, f, renamed(f, false), excepting, onlyQA)
+			for env, own := range map[string][2]domain.PrincipalID{"env_def_envtwo_prod": {excepting, onlyQA}, string(f.env): {onlyQA, excepting}} {
+				q := "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '" + env + "'"
+				if n := queryInt(t, db, q+" AND payload LIKE '%"+string(own[0])+"%' AND payload NOT LIKE '%"+string(own[1])+"%'"); n != 1 {
+					t.Fatalf("confirmation on %s recording only %s = %d, want 1", env, own[0], n)
+				}
+			}
+		})
+
+		t.Run("a_move_beside_a_rename", func(t *testing.T) {
+			f := seedDefinitionsProject(t, db, "envmove", true)
+			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envmove_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
+			read(excepting, f.project, domain.AxisAll, "prod")
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: mover, Capability: domain.CapEdit, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{f.project}, EnvMode: domain.AxisAll, KeyMode: domain.AxisOnly,
+					Keys: map[domain.ProjectID][]domain.RuleKeyItem{f.project: {folderItem("moved")}}}}); err != nil {
+				t.Fatalf("moved-folder rule: %v", err)
+			}
+			planRefused(t, f, renamed(f, true), mover, excepting)
+		})
 	})
 }

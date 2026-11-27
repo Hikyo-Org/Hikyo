@@ -187,9 +187,22 @@ export function RuleEditorDialog({
               }))}
             >
               {unmatchedEnvNames(world, draft).length > 0 ? (
-                <p className="access-hint">
-                  Also names, matching no environment yet: <bdi>{unmatchedEnvNames(world, draft).join(', ')}</bdi>
-                </p>
+                <>
+                  <p className="access-hint">Also names, matching no environment yet; tap one to remove it:</p>
+                  <div className="access-picks">
+                    {unmatchedEnvNames(world, draft).map((name) => (
+                      <ToggleChip
+                        key={name}
+                        mono
+                        pressed
+                        mode={draft.envs.mode === 'all' ? 'exclude' : 'include'}
+                        onClick={() => setDraft({ ...draft, envs: { ...draft.envs, names: (draft.envs.names ?? []).filter((n) => n !== name) } })}
+                      >
+                        <bdi>{name}</bdi>
+                      </ToggleChip>
+                    ))}
+                  </div>
+                </>
               ) : null}
             </AxisEditor>
             {machine !== undefined ? (

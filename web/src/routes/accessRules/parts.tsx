@@ -4,7 +4,7 @@ import { Alert } from '../../ui/Alert.tsx';
 import { Badge } from '../../ui/Badge.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { dotted } from '../dotted.tsx';
-import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, unmatchedEnvNames, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
+import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
 
 /** The icon on each Values permission's tag. */
 const VALUE_ICON: Partial<Record<PermId, GlyphName>> = { read: 'reveal', edit: 'edit', publish: 'arrow-up', pin: 'pin' };
@@ -122,8 +122,19 @@ function WherePart({ label, title, children }: { label: string; title: string; c
 export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   const { envs, keys } = rule;
   const projects = rule.projects === '*' ? 'all' : rule.projects.map((p) => projectName(world, p)).join(', ');
-  // A name no environment carries yet still selects (D3, #1447): list it too.
-  const envList = [...envLabels(world, rule, envs.items), ...unmatchedEnvNames(world, rule).map((name) => ({ label: name, flag: false }))];
+  // Names are the selector (D3, #1447): one label per name across every
+  // project, a name no environment carries yet included; only a legacy
+  // selector without names is labelled by its project-bound items.
+  const envList: Labels =
+    envs.names === undefined
+      ? envLabels(world, rule, envs.items)
+      : envs.names.map((name) => ({
+          label: name,
+          flag: envs.items.some((item) => {
+            const env = envById(world, item.environment);
+            return env?.name === name && env.protected === true;
+          }),
+        }));
   const keyList = keyLabels(world, rule, keys.items);
   const envText = labelsText(envList, 'protected');
   const keyText = labelsText(keyList, 'secret');

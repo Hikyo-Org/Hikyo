@@ -400,7 +400,8 @@ environment must fail closed: it must never widen a rule silently.
   already uses, so delete and rename behave the same.
 - **A later environment with the same name.** A confirmed delete changes no rule: the rule keeps
   the name it excepts. An environment later created, cloned or renamed to that name is excepted
-  again. That change only narrows, so it needs no confirmation. This is the reason to confirm
+  again, so it widens nothing through that rule. Other rules are counted as for any create or
+  rename: an *only* rule naming it still needs a confirmation for its gainers. This is the reason to confirm
   rather than to make the manager remove the exception first: removing it would let the later
   environment be reached.
 - **Sibling paths.** Only an environment delete removes an `environments` row: the service delete

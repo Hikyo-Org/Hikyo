@@ -723,50 +723,45 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 	}
 	// Every change is evaluated against the whole plan's environments, so a
 	// project-wide gain shows on a harmless change beside the one that causes
-	// it. Attribute gains to the changes that widen on their own; when none
-	// does, the plan's changes widen only together and one change, a delete
-	// first, carries the plan's gains.
-	var envGains []WideningGain
-	causers := []int{}
+	// it. Each change keeps only the gains it causes on its own; a gain no
+	// single change causes is recorded once, on one change (a delete first).
+	var envGains, attributed []WideningGain
+	causers := 0
 	for i := range changes {
-		changes[i].gained = changes[i].gains()
-		envGains = mergeGains(envGains, changes[i].gained)
+		planned := changes[i].gains()
+		envGains = mergeGains(envGains, planned)
 		solo := changes[i]
 		solo.afterRefs = nil
-		if len(changes[i].gained) > 0 && len(solo.gains()) > 0 {
-			causers = append(causers, i)
+		changes[i].gained = intersectGains(planned, solo.gains())
+		if len(changes[i].gained) > 0 {
+			causers++
+			attributed = mergeGains(attributed, changes[i].gained)
 		}
 	}
-	carrier := -1
-	if len(causers) > 0 {
-		carrier = causers[0]
-	} else if len(envGains) > 0 {
+	if residual := subtractGains(envGains, attributed); len(residual) > 0 {
+		carrier := -1
 		for i, c := range changes {
-			if len(c.gained) > 0 && (carrier < 0 || (c.to == "" && changes[carrier].to != "")) {
+			if carrier < 0 || c.to == "" && changes[carrier].to != "" {
 				carrier = i
 			}
 		}
-	}
-	if carrier >= 0 {
-		carried := mergeGains(nil, changes[carrier].gained)
-		for i := range changes {
-			if !slices.Contains(causers, i) && i != carrier {
-				carried = mergeGains(carried, changes[i].gained)
-				changes[i].gained = nil
-			}
-		}
-		changes[carrier].gained = carried
+		changes[carrier].gained = mergeGains(mergeGains(nil, changes[carrier].gained), residual)
+		causers = 0 // no single change explains the plan's gains
 	}
 	union = mergeGains(union, envGains)
 	if len(union) == 0 {
 		return nil
 	}
 	refuse := func() error {
-		if len(moves) > 0 {
+		switch {
+		case len(moves) > 0 && len(envGains) == 0:
 			return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
-		}
-		if len(causers) > 0 {
-			return changes[causers[0]].refusal(ctx, az, caller.Principal, union)
+		case len(moves) == 0 && causers == 1:
+			for _, c := range changes {
+				if len(c.gained) > 0 {
+					return c.refusal(ctx, az, caller.Principal, union)
+				}
+			}
 		}
 		return planWideningError(ctx, az, caller.Principal, scope, union)
 	}

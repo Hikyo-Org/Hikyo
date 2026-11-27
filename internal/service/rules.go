@@ -186,6 +186,47 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 	return a
 }
 
+// gainAtom is one (principal, capability, environment) gain; env "" is the
+// project.
+type gainAtom struct {
+	principal  domain.PrincipalID
+	capability domain.Capability
+	env        domain.EnvID
+}
+
+func gainAtoms(gains []WideningGain) map[gainAtom]bool {
+	out := map[gainAtom]bool{}
+	for _, g := range gains {
+		if len(g.Envs) == 0 {
+			out[gainAtom{g.Principal, g.Capability, ""}] = true
+		}
+		for _, env := range g.Envs {
+			out[gainAtom{g.Principal, g.Capability, env}] = true
+		}
+	}
+	return out
+}
+
+// filterGains keeps the atoms of a whose presence in b is keep.
+func filterGains(a, b []WideningGain, keep bool) []WideningGain {
+	in := gainAtoms(b)
+	var out []WideningGain
+	for atom := range gainAtoms(a) {
+		if in[atom] != keep {
+			continue
+		}
+		g := WideningGain{Principal: atom.principal, Capability: atom.capability}
+		if atom.env != "" {
+			g.Envs = []domain.EnvID{atom.env}
+		}
+		out = mergeGains(out, []WideningGain{g})
+	}
+	return out
+}
+
+func intersectGains(a, b []WideningGain) []WideningGain { return filterGains(a, b, true) }
+func subtractGains(a, b []WideningGain) []WideningGain  { return filterGains(a, b, false) }
+
 // MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
 // mirroring MaxGrantsPerOrg: it makes runaway rule minting loud.
 const MaxRulesPerOrg = 1000

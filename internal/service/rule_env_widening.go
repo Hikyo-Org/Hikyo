@@ -30,8 +30,9 @@ type EnvWideningError struct {
 	EnvName string
 	// Deleting is set when the refused change deletes EnvName.
 	Deleting bool
-	// Plan is set when no single change of a definitions plan widens on its
-	// own, only the plan's changes together; EnvName is then empty.
+	// Plan is set when no single environment change of a definitions plan
+	// explains its gains: several changes, a key move beside them, or only
+	// the changes together widen. EnvName is then empty.
 	Plan       bool
 	Count      int
 	Principals []domain.PrincipalID
@@ -49,7 +50,7 @@ func (e *EnvWideningError) SafeDetail() string {
 	change, widens := fmt.Sprintf("naming an environment %q", e.EnvName), "widens"
 	switch {
 	case e.Plan:
-		change, widens = "this plan's environment changes together", "widen"
+		change, widens = "this plan's changes", "widen"
 	case e.Deleting:
 		change = fmt.Sprintf("deleting the environment %q", e.EnvName)
 	}
@@ -146,13 +147,17 @@ func (c envChange) after() []domain.EnvRef {
 // environment gains nothing itself, but an `all` rule excepting only it gains
 // the project. Other environments keep their names, so their reach cannot
 // change.
-// Key-narrowed rules count as reaching the environment when they reach any
-// key in it.
+// A key-narrowed rule reaches the environment over its key selector: the atom
+// keeps the selector, so a rule reaching other keys of an environment the
+// principal reaches already still gains. It is held already only by the same
+// selector or by reach over every key; overlapping selectors are not merged,
+// which may ask for a confirmation that is not strictly needed, never miss one.
 func (c envChange) gains() []WideningGain {
 	type atom struct {
 		principal  domain.PrincipalID
 		capability domain.Capability
 		env        domain.EnvID
+		keys       string // the key selector; "" is every key
 	}
 	after := c.after()
 	// A deleted environment has no reach left to gain.
@@ -167,18 +172,21 @@ func (c envChange) gains() []WideningGain {
 				if cap == domain.CapManageMembers && rule.Capability == cap {
 					evaluated.Capability, capability = domain.CapEdit, domain.CapEdit
 				}
+				keys := ""
 				if capability != domain.CapRead && evaluated.Where.KeyNarrowedIn(c.scope.Project) {
-					if evaluated.Where.KeyMode == domain.AxisOnly && len(evaluated.Where.KeysIn(c.scope.Project)) == 0 {
+					items := evaluated.Where.KeysIn(c.scope.Project)
+					if evaluated.Where.KeyMode == domain.AxisOnly && len(items) == 0 {
 						continue
 					}
+					keys = keySelector(evaluated.Where.KeyMode, items)
 					evaluated.Where.KeyMode, evaluated.Where.Keys = domain.AxisAll, nil
 				}
 				if evaluated.Reaches(capability, domain.LevelProject, c.scope, nil) {
-					out[atom{rule.Principal, cap, ""}] = true
+					out[atom{rule.Principal, cap, "", keys}] = true
 				}
 				s := domain.Scope{Org: c.scope.Org, Project: c.scope.Project, Env: c.env}
 				if !gone && evaluated.Reaches(capability, domain.LevelEnv, s, nil) {
-					out[atom{rule.Principal, cap, c.env}] = true
+					out[atom{rule.Principal, cap, c.env, keys}] = true
 				}
 			}
 		}
@@ -188,7 +196,9 @@ func (c envChange) gains() []WideningGain {
 	now := reach(func(w domain.Where) domain.Where { return w.BindEnvs(after) })
 	var gains []WideningGain
 	for a := range now {
-		if before[a] {
+		every := a
+		every.keys = ""
+		if before[a] || before[every] {
 			continue
 		}
 		g := WideningGain{Principal: a.principal, Capability: a.capability}
@@ -358,4 +368,19 @@ func firstErr(err error, otherwise error) error {
 		return err
 	}
 	return otherwise
+}
+
+// keySelector is a canonical form of a rule's key selector in one project, so
+// two rules selecting the same keys compare equal.
+func keySelector(mode domain.AxisMode, items []domain.RuleKeyItem) string {
+	parts := make([]string, 0, len(items))
+	for _, it := range items {
+		if it.IsFolder {
+			parts = append(parts, "folder:"+it.Folder)
+		} else {
+			parts = append(parts, "key:"+it.KeyID)
+		}
+	}
+	slices.Sort(parts)
+	return fmt.Sprintf("%s|%s", mode, strings.Join(slices.Compact(parts), "\x00"))
 }
