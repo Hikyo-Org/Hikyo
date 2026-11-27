@@ -186,22 +186,34 @@ apply-time revocation list (options (a) and (c) on
   A list that replaces the state may still be reported `stale`, and its revocations apply.
   Every other refusal stands: a bad signature, another root, an unreadable floor, a list
   below the floor and another digest at the floor's sequence. The decision is made under
-  the persistence lock, from the state read there. The operator may instead remove both
-  files, losing the revocations only they held and the floor. The replacing list's
-  sequence must be at or above
-  the high-water floor (`bridge-revocations-floor.json`: the highest sequence and its
-  digest, raised only when a list is stored, under the lock, never lowered and kept apart
-  from the outcome log; a different list at the floor's sequence is equivocation). A
-  host with no floor record is on its first run, and an unreadable record refuses. A list that is
+  the persistence lock, from the state read there. Accepting a list of any age is safe only
+  because each trust root keeps its own floor. Two binaries pinning different roots can
+  share one state directory (a security rollback across a root rotation, then a bridge
+  upgrade): a root-A run stores its own list over root B's, and with one shared floor it
+  also rebound the floor to A, so B then treated the state as a first run and accepted an
+  old B list that drops a revocation B had stored (review of 255cbbd18). With a floor per
+  root, the A run raises only A's record; B's record stays, so B refuses (off, unreachable,
+  or a list below B's floor) until it fetches a list at or above its own floor. The operator
+  may instead remove both files, losing the revocations only they held and every root's
+  floor. The replacing list's sequence must be at or above
+  the high-water floor (`bridge-revocations-floor.json`: one record per trust root, each the
+  highest sequence and its digest, raised only when a list is stored under that root, under
+  the lock, never lowered and kept apart from the outcome log; a different list at the
+  floor's sequence is equivocation; the earlier single-record file is read as the floor of
+  the root it records). A root with no floor record is on its first run under that root, and
+  an unreadable file refuses. A list that is
   correctly signed by the current recovery key but bound to another (older) root was never
   issued for this root, so it is unusable too (neither its revocations nor their absence can
-  be applied) until a verified list for this root replaces it. The floor is bound to the trust
-  root and enforced whenever it exists: a removed store, a store behind the floor (a crash
+  be applied) until a verified list for this root replaces it. This root's floor is enforced
+  whenever it exists: a removed store, a store behind the floor (a crash
   between the two writes) and a list that differs from the floor at its sequence are
-  unusable. The persistence lock is an operating system file lock, not a lock file. The way out is operator
-  action, never automatic: reach the endpoint so a valid list replaces it, or stop the
-  service and remove the named files (including the floor record), accepting that revocations known only to that
-  list are lost. A security rollback is never blocked.
+  unusable. The persistence lock is an operating system file lock, not a lock file.
+  Replacement is automatic: the next online check whose endpoint serves a verified list at
+  or above this root's floor replaces the state. Operator action is needed only when the
+  check is off, the endpoint is unreachable or the floor is unreadable: turn the check on,
+  restore access, or stop the service and remove the named files (including the floor
+  record), accepting that revocations known only to that list and every root's floor are
+  lost. A security rollback is never blocked.
 - **Admission time (F3).** A bridge's `not_after` and its revocation limit what
   may be *admitted*, not what an admitted upgrade may finish. Every site that
   holds the journaled route digest of an upgrade (the gate's in-flight and

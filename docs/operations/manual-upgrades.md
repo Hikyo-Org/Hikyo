@@ -164,10 +164,10 @@ does not verify (a damaged file or a list signed by another key), is behind the 
 under `off` and when the endpoint is unreachable, because the revocations it held
 are lost. The way out: restore access so a verified list replaces it, whatever its age (lists are signed only when something
 is revoked, so an old list is normal and is only reported `stale`). It must not be below the
-floor in `bridge-revocations-floor.json`, which only a stored list raises and which is bound to the trust root, and at the floor's
+trust root's floor in `bridge-revocations-floor.json`, which holds one record per trust root and which only a list stored under that root raises, and at the floor's
 sequence it must be the list the floor records. Otherwise, as an explicit operator action, stop the service and remove
 `bridge-revocations-store.json` and `bridge-revocations-floor.json`,
-accepting that revocations known only to that state are lost and that, without the floor, the next check accepts any
+accepting that revocations known only to that state are lost and that, without the floor (it holds every trust root's floor), the next check accepts any
 validly signed list the endpoint serves, even an older one (an old list is only reported `stale`). A security rollback is never blocked. `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` from the service environment file reach the upgrade child, so a proxy-only host can reach the endpoint. Ordinary upgrades never
 contact the endpoint.
 

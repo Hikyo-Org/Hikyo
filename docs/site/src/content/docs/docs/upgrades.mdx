@@ -354,9 +354,14 @@ and its sequence floor are kept there.
 
 If the list is not published (404) or the endpoint is unreachable, or the list is older
 than the maximum age, the check falls back to the bridge's expiry and says so in the log.
-A revoked bridge, or a stored list or floor that cannot be read, always refuses the bridge
-route; repair or remove the damaged state file under the state directory. A newer
-stored list is never replaced by an older one.
+A revoked bridge always refuses the bridge route. A stored list that cannot be read or
+cannot be used refuses the bridge route only when the check is off or the endpoint is
+unreachable: online, the next verified list at or above the trust root's floor replaces it
+automatically, whatever its age. A floor that cannot be read refuses until it is repaired.
+Removing the state files under the state directory is the fallback, and it loses the floor.
+Within one trust root an older list never replaces a newer one: each root keeps its own
+floor, so a binary pinning another root can replace the stored list but not this root's
+floor, and this root then refuses until it fetches a list at or above its floor.
 
 A genuinely fresh empty installation omits evidence and backup paths. Ordinary
 healthy same-release restarts need no new receipt; remove the evidence, backup

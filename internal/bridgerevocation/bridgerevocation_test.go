@@ -414,7 +414,7 @@ func TestSequenceFloorIsAMonotonicRecordSeparateFromTheOutcomeLog(t *testing.T) 
 
 // A list bound to another trust root (after a root rotation, correctly signed or not) is
 // never applied, and its absence of revocations is not an answer either: bridge routes
-// refuse under off and when unreachable, and only a fresh list for this root replaces it.
+// refuse under off and when unreachable, and only a verified list for this root replaces it.
 func TestListBoundToAnotherRootIsUnusableUntilAFreshListReplacesIt(t *testing.T) {
 	f := testfixture.New(t)
 	other := testfixture.New(t)
@@ -441,20 +441,21 @@ func TestListBoundToAnotherRootIsUnusableUntilAFreshListReplacesIt(t *testing.T)
 			fetcher.err = nil
 			fetcher.list, fetcher.signature = signedList(t, f, 1)
 			if result, err := online.Check(t.Context(), snapshot); err != nil || result.Sequence != 1 {
-				t.Fatalf("a fresh list for this root replaces it, whatever its sequence: %+v %v", result, err)
+				t.Fatalf("a verified list for this root replaces it, whatever its sequence (no floor for this root yet): %+v %v", result, err)
 			}
 		})
 	}
 }
 
-// The floor is bound to the trust root it was recorded under: after a rotation it does not
-// hold the new root's lists to the old root's sequence.
+// Each trust root keeps its own floor. A floor recorded under another root (here in the
+// earlier single-record form, which is read as the floor of the root it names) does not hold
+// this root's lists to its sequence, and storing this root's list keeps that root's floor.
 func TestFloorBoundToAnotherRootDoesNotApply(t *testing.T) {
 	f := testfixture.New(t)
 	other := testfixture.New(t)
 	directory := t.TempDir()
-	digest := releaseidentity.Hash([]byte("old list"))
-	floor := `{"sequence":9,"digest":"` + string(digest) + `","root":"` + string(releaseidentity.Hash(other.Pinned.Root)) + `"}`
+	otherList, otherSignature := signedList(t, other, 9)
+	floor := `{"sequence":9,"digest":"` + string(releaseidentity.Hash(otherList)) + `","root":"` + string(releaseidentity.Hash(other.Pinned.Root)) + `"}`
 	if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-floor.json"), []byte(floor), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -464,9 +465,91 @@ func TestFloorBoundToAnotherRootDoesNotApply(t *testing.T) {
 	if result, err := checker.Check(t.Context(), f.Snapshot(t)); err != nil || result.Sequence != 1 {
 		t.Fatalf("another root's floor must not refuse this root's first list: %+v %v", result, err)
 	}
-	raw, err := os.ReadFile(filepath.Join(directory, "bridge-revocations-floor.json"))
-	if err != nil || !strings.Contains(string(raw), string(releaseidentity.Hash(f.Pinned.Root))) || !strings.Contains(string(raw), `"sequence":1`) {
-		t.Fatalf("the floor is rebound to this root: %s %v", raw, err)
+	otherChecker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: &scripted{}, Directory: directory, Now: func() time.Time { return testNow }}
+	otherChecker.Fetcher.(*scripted).list, otherChecker.Fetcher.(*scripted).signature = signedListAt(t, other, testNow.Add(-90*24*time.Hour), 8)
+	if _, err := otherChecker.Check(t.Context(), other.Snapshot(t)); err == nil || !strings.Contains(err.Error(), "rollback") || !strings.Contains(err.Error(), "floor (sequence 9)") {
+		t.Fatalf("storing this root's list must keep the other root's legacy floor at 9: %v", err)
+	}
+	otherChecker.Fetcher.(*scripted).list, otherChecker.Fetcher.(*scripted).signature = otherList, otherSignature
+	if result, err := otherChecker.Check(t.Context(), other.Snapshot(t)); err != nil || result.Sequence != 9 {
+		t.Fatalf("the other root's own list at its floor replaces the state: %+v %v", result, err)
+	}
+}
+
+// The earlier single-record floor file is this root's floor when it names this root: a stored
+// list lost under it cannot be replaced by a lower one.
+func TestALegacySingleFloorIsReadAsTheFloorOfItsRoot(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	directory := t.TempDir()
+	five, fiveSignature := signedList(t, f, 5)
+	floor := `{"sequence":5,"digest":"` + string(releaseidentity.Hash(five)) + `","root":"` + string(releaseidentity.Hash(f.Pinned.Root)) + `"}`
+	if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-floor.json"), []byte(floor), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "bridge-revocations-store.json"), []byte("torn"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fetcher := &scripted{}
+	fetcher.list, fetcher.signature = signedListAt(t, f, testNow.Add(-90*24*time.Hour), 4)
+	checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}
+	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") || !strings.Contains(err.Error(), "floor (sequence 5)") {
+		t.Fatalf("a legacy floor at 5 must refuse list 4: %v", err)
+	}
+	fetcher.list, fetcher.signature = five, fiveSignature
+	if result, err := checker.Check(t.Context(), snapshot); err != nil || result.Sequence != 5 {
+		t.Fatalf("the list the legacy floor records replaces the state: %+v %v", result, err)
+	}
+	fetcher.list, fetcher.signature = signedList(t, f, 4)
+	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "rollback") {
+		t.Fatalf("the migrated floor still holds at 5: %v", err)
+	}
+}
+
+// Two binaries pinning different roots share one state directory (for example a security
+// rollback across a root rotation, then a bridge upgrade). Root B stored list 3, which revokes
+// X; a root-A run stores an old A list. Back on root B, the old B list 1 must not replace the
+// state and drop X: B's floor survives the A run, so B refuses until it fetches list 3 or above.
+func TestARunUnderAnotherRootNeverLowersThisRootsFloor(t *testing.T) {
+	a, b := testfixture.New(t), testfixture.New(t)
+	x := releaseidentity.Hash([]byte("revoked bridge"))
+	old := testNow.Add(-90 * 24 * time.Hour)
+	// The A list's sequence is below B's floor in the reviewer's probe, and above it in the
+	// second case, so a run that overwrote another root's record would lower B's floor too.
+	for name, aSequence := range map[string]int64{"the A list is below B's floor": 1, "the A list is above B's floor": 5} {
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			check := func(mode bridgerevocation.Mode, f *testfixture.Fixture, list, signature []byte, err error) (bridgerevocation.Result, error) {
+				fetcher := &scripted{list: list, signature: signature, err: err}
+				return (bridgerevocation.Checker{Mode: mode, Fetcher: fetcher, Directory: directory, Now: func() time.Time { return testNow }}).Check(t.Context(), f.Snapshot(t))
+			}
+			b1, b1Signature := signedListAt(t, b, old, 1)
+			b2, b2Signature := signedListAt(t, b, old, 2)
+			b3, b3Signature := signedList(t, b, 3, x)
+			if r, err := check(bridgerevocation.Online, b, b3, b3Signature, nil); err != nil || !bridgerevocation.Contains(r.Revoked, []releaseidentity.Digest{x}) {
+				t.Fatalf("setup: B stores list 3 revoking X: %+v %v", r, err)
+			}
+			aList, aSignature := signedListAt(t, a, old, aSequence)
+			if r, err := check(bridgerevocation.Online, a, aList, aSignature, nil); err != nil || r.Sequence != aSequence {
+				t.Fatalf("the first run under root A has no floor and stores its list: %+v %v", r, err)
+			}
+			for _, low := range []struct{ list, signature []byte }{{b1, b1Signature}, {b2, b2Signature}} {
+				if r, err := check(bridgerevocation.Online, b, low.list, low.signature, nil); err == nil || !strings.Contains(err.Error(), "rollback") || !strings.Contains(err.Error(), "floor (sequence 3)") {
+					t.Fatalf("an old B list below B's floor must not replace the state and drop X: %+v %v", r, err)
+				}
+			}
+			floorPath := filepath.Join(directory, "bridge-revocations-floor.json")
+			if _, err := check(bridgerevocation.Off, b, nil, nil, nil); !errors.Is(err, bridgerevocation.ErrUnusableState) || !strings.Contains(err.Error(), "this trust root's sequence floor") || !strings.Contains(err.Error(), floorPath) {
+				t.Fatalf("off, B must refuse the A list it finds, naming the floor: %v", err)
+			}
+			if _, err := check(bridgerevocation.Online, b, nil, nil, bridgerevocation.ErrUnreachable); !errors.Is(err, bridgerevocation.ErrUnusableState) || !strings.Contains(err.Error(), "unreachable") {
+				t.Fatalf("unreachable, B must refuse until it fetches a list at or above its floor: %v", err)
+			}
+			r, err := check(bridgerevocation.Online, b, b3, b3Signature, nil)
+			if err != nil || r.Sequence != 3 || !bridgerevocation.Contains(r.Revoked, []releaseidentity.Digest{x}) {
+				t.Fatalf("B's list at its floor replaces the state and X is revoked again: %+v %v", r, err)
+			}
+		})
 	}
 }
 

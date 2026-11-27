@@ -1,7 +1,9 @@
 // Package bridgerevocation checks, at apply time, whether the recovery bridge a
 // route uses has been revoked. The list is signed by the pinned recovery key and
 // bound to the pinned root, so the endpoint is only a transport: it can withhold
-// an answer but cannot forge, roll back or redirect one. An unreachable endpoint
+// an answer but cannot forge or redirect one, nor roll back below the highest list
+// this installation stored under that root (each root keeps its own floor; the
+// first run under a root has none). An unreachable endpoint
 // falls back to the bridge's own signed expiry; a reachable endpoint that answers
 // wrongly fails closed.
 package bridgerevocation
@@ -19,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"encoding/json/v2"
@@ -363,19 +366,20 @@ var errFloorUnreadable = errors.New("the sequence floor record is unreadable")
 func (c Checker) unusable(cause error) error {
 	store, floor := filepath.Join(c.Directory, storeFile), filepath.Join(c.Directory, floorFile)
 	if errors.Is(cause, errFloorUnreadable) {
-		return fmt.Errorf("%w (%w); bridge routes are refused, and no fetched list can replace this while the floor record cannot be read. As an explicit operator action, stop the service and repair or remove %s (the next verified list recreates it), accepting that the recorded sequence floor is lost, so the next check accepts any validly signed list the endpoint serves, even an older one",
+		return fmt.Errorf("%w (%w); bridge routes are refused, and no fetched list can replace this while the floor record cannot be read. As an explicit operator action, stop the service and repair or remove %s (the next verified list recreates it), accepting that the recorded sequence floor of every trust root is lost, so the next check accepts any validly signed list the endpoint serves, even an older one",
 			ErrUnusableState, cause, floor)
 	}
-	way := "Restore access to the revocation endpoint so a verified list at or above the sequence floor replaces it, whatever its age"
+	way := "Restore access to the revocation endpoint so a verified list at or above this trust root's sequence floor replaces it, whatever its age"
 	if c.Mode == Off {
-		way = "The check is off, so nothing is fetched: set HIKYO_UPGRADE_REVOCATION_CHECK to online so a verified list at or above the sequence floor replaces it, whatever its age"
+		way = "The check is off, so nothing is fetched: set HIKYO_UPGRADE_REVOCATION_CHECK to online so a verified list at or above this trust root's sequence floor replaces it, whatever its age"
 	}
-	return fmt.Errorf("%w (%w); bridge routes are refused. %s, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state are lost",
+	return fmt.Errorf("%w (%w); bridge routes are refused. %s, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state and the sequence floor of every trust root are lost",
 		ErrUnusableState, cause, way, store, floor)
 }
 
-// state is what the directory holds. The floor applies only when it is bound to this
-// snapshot's trust root. unusable is non-nil when the stored list cannot be relied on.
+// state is what the directory holds: the stored list and this snapshot's root's floor
+// (other roots' floors never apply). unusable is non-nil when the stored list cannot be
+// relied on.
 type state struct {
 	known     releasetrust.VerifiedRevocations
 	have      bool
@@ -384,11 +388,13 @@ type state struct {
 	unusable  error
 }
 
-// load reads the stored list and the floor and decides whether they agree. A floor with no
-// matching stored list (removed store, a list bound to another root), a list behind the floor
+// load reads the stored list and this root's floor and decides whether they agree. A floor
+// with no matching stored list (removed store, or a run under another root stored its own
+// list), a list behind the floor
 // (a crash between the two writes) and a list that differs from the floor at its sequence
 // are all unusable: the floor proves a higher list was accepted, so its revocations can no
-// longer be honoured. Only a genuine first run (neither file) is "nothing stored".
+// longer be honoured. Only a first run under this root (no list stored for it and no floor
+// for it) is "nothing stored".
 func (c Checker) load(snapshot releasetrust.Snapshot) (state, error) {
 	var st state
 	list, signature, found, err := c.readStored()
@@ -405,7 +411,7 @@ func (c Checker) load(snapshot releasetrust.Snapshot) (state, error) {
 			st.known, st.have = verified, true
 		}
 	}
-	floor, haveFloor, floorErr := c.readFloor()
+	floor, haveFloor, floorErr := c.readFloor(snapshot.RevocationRoot())
 	switch {
 	case floorErr != nil:
 		// Keep the floor error beside a store error: the floor is what the operator must repair.
@@ -414,7 +420,7 @@ func (c Checker) load(snapshot releasetrust.Snapshot) (state, error) {
 		} else {
 			st.unusable = fmt.Errorf("%w; %w: %w", st.unusable, errFloorUnreadable, floorErr)
 		}
-	case haveFloor && floor.Root == snapshot.RevocationRoot():
+	case haveFloor:
 		st.floor, st.haveFloor = floor, true
 	}
 	if st.unusable != nil || !st.haveFloor {
@@ -484,12 +490,12 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 		// is a first run; an unreadable one is as unusable as the list.
 		floor, found := st.floor, st.haveFloor
 		if !found {
-			if _, _, floorErr := c.readFloor(); floorErr != nil {
+			if _, _, floorErr := c.readFloor(snapshot.RevocationRoot()); floorErr != nil {
 				return releasetrust.VerifiedRevocations{}, c.unusable(fmt.Errorf("%w; %w: %w", st.unusable, errFloorUnreadable, floorErr))
 			}
 		}
 		if found && fresh.Sequence() < floor.Sequence {
-			return releasetrust.VerifiedRevocations{}, errors.New("revocation list rollback refused")
+			return releasetrust.VerifiedRevocations{}, fmt.Errorf("revocation list rollback refused: sequence %d is below this trust root's floor (sequence %d)", fresh.Sequence(), floor.Sequence)
 		}
 		if found && fresh.Sequence() == floor.Sequence && fresh.Digest() != floor.Digest {
 			return releasetrust.VerifiedRevocations{}, errors.New("revocation list equivocation refused")
@@ -512,52 +518,92 @@ func (c Checker) persist(snapshot releasetrust.Snapshot, fresh releasetrust.Veri
 const floorFile = "bridge-revocations-floor.json"
 
 // floorRecord is the highest list this installation accepted under one trust root. Only
-// persist and ensureFloor write it, under the persistence lock, and never lower it within a
-// root; the outcome log is separate. A floor bound to another root does not apply.
+// persist and ensureFloor write it, under the persistence lock, and never lower it; the
+// outcome log is separate.
 type floorRecord struct {
 	Sequence int64                  `json:"sequence"`
 	Digest   releaseidentity.Digest `json:"digest"`
 	Root     releaseidentity.Digest `json:"root"`
 }
 
-func (c Checker) readFloor() (floorRecord, bool, error) {
+// floorSet is the floor file: one record per trust root this installation has stored a list
+// under, so a run under one root never lowers or rebinds another root's floor.
+type floorSet struct {
+	Floors []floorRecord `json:"floors"`
+}
+
+// readFloors reads every root's floor. A file holding one bare record is the earlier
+// single-slot form, read as the floor of the root it records.
+func (c Checker) readFloors() ([]floorRecord, error) {
 	raw, err := os.ReadFile(filepath.Join(c.Directory, floorFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return floorRecord{}, false, nil
+		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	var set floorSet
+	if definitions.DecodeStrict(raw, &set) != nil {
+		var single floorRecord
+		if definitions.DecodeStrict(raw, &single) != nil {
+			return nil, errors.New("sequence floor record is malformed")
+		}
+		set.Floors = []floorRecord{single}
+	}
+	roots := map[releaseidentity.Digest]bool{}
+	for _, floor := range set.Floors {
+		if floor.Sequence < 1 || floor.Digest.Validate() != nil || floor.Root.Validate() != nil || roots[floor.Root] {
+			return nil, errors.New("sequence floor record is malformed")
+		}
+		roots[floor.Root] = true
+	}
+	if len(set.Floors) == 0 {
+		return nil, errors.New("sequence floor record is malformed")
+	}
+	return set.Floors, nil
+}
+
+// readFloor is root's floor; another root's record never applies to it.
+func (c Checker) readFloor(root releaseidentity.Digest) (floorRecord, bool, error) {
+	floors, err := c.readFloors()
 	if err != nil {
 		return floorRecord{}, false, err
 	}
-	var floor floorRecord
-	if err := definitions.DecodeStrict(raw, &floor); err != nil || floor.Sequence < 1 || floor.Digest.Validate() != nil || floor.Root.Validate() != nil {
-		return floorRecord{}, false, errors.New("sequence floor record is malformed")
+	if i := slices.IndexFunc(floors, func(floor floorRecord) bool { return floor.Root == root }); i >= 0 {
+		return floors[i], true, nil
 	}
-	return floor, true, nil
+	return floorRecord{}, false, nil
 }
 
-// raiseFloor stores max(existing, new) within the snapshot's root; a floor bound to another
-// root is replaced. The caller holds the lock. An unreadable or malformed record is an error:
+// raiseFloor stores max(existing, new) for the snapshot's root and keeps every other root's
+// record as it is. The caller holds the lock. An unreadable or malformed file is an error:
 // load and persist refuse before they get here, so overwriting it would only hide a lost floor.
 func (c Checker) raiseFloor(snapshot releasetrust.Snapshot, sequence int64, digest releaseidentity.Digest) error {
 	root := snapshot.RevocationRoot()
-	existing, found, err := c.readFloor()
+	floors, err := c.readFloors()
 	if err != nil {
 		return err
 	}
-	if found && existing.Root == root && existing.Sequence >= sequence {
+	raised := floorRecord{Sequence: sequence, Digest: digest, Root: root}
+	if i := slices.IndexFunc(floors, func(floor floorRecord) bool { return floor.Root == root }); i < 0 {
+		floors = append(floors, raised)
+	} else if floors[i].Sequence >= sequence {
 		return nil
+	} else {
+		floors[i] = raised
 	}
-	raw, err := json.Marshal(floorRecord{Sequence: sequence, Digest: digest, Root: root}, jsonwire.Stable)
+	slices.SortFunc(floors, func(a, b floorRecord) int { return strings.Compare(string(a.Root), string(b.Root)) })
+	raw, err := json.Marshal(floorSet{Floors: floors}, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
 	return writeAtomic(filepath.Join(c.Directory, floorFile), raw)
 }
 
-// ensureFloor restores a missing floor (the file is absent, or bound to another root) from the
-// stored list, so losing the list later cannot lower it.
+// ensureFloor restores a missing floor for this root (none recorded yet, or the file is
+// absent) from the stored list, so losing the list later cannot lower it.
 func (c Checker) ensureFloor(snapshot releasetrust.Snapshot, known releasetrust.VerifiedRevocations) error {
-	if existing, found, err := c.readFloor(); err == nil && found && existing.Root == snapshot.RevocationRoot() && existing.Sequence >= known.Sequence() {
+	if existing, found, err := c.readFloor(snapshot.RevocationRoot()); err == nil && found && existing.Sequence >= known.Sequence() {
 		return nil
 	}
 	release, err := c.lock()

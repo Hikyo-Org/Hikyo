@@ -1,6 +1,9 @@
 package bridgerevocation
 
 import (
+	"encoding/json/v2"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -21,8 +24,16 @@ func TestRaiseFloorNeverLowersAFloorRaisedMeanwhile(t *testing.T) {
 	if err := checker.raiseFloor(snapshot, 5, low); err != nil {
 		t.Fatal(err)
 	}
-	floor, found, err := checker.readFloor()
-	if err != nil || !found || floor.Sequence != 9 || floor.Digest != high {
-		t.Fatalf("a lower raise must leave the floor at 9: %+v %v %v", floor, found, err)
+	// The file is decoded here, not through the package's reader, so whole-file overlays of an
+	// earlier bridgerevocation.go still build against this test.
+	raw, err := os.ReadFile(filepath.Join(checker.Directory, floorFile))
+	var set struct {
+		Floors []struct {
+			Sequence int64                  `json:"sequence"`
+			Digest   releaseidentity.Digest `json:"digest"`
+		} `json:"floors"`
+	}
+	if err != nil || json.Unmarshal(raw, &set) != nil || len(set.Floors) != 1 || set.Floors[0].Sequence != 9 || set.Floors[0].Digest != high {
+		t.Fatalf("a lower raise must leave the floor at 9: %s %v", raw, err)
 	}
 }

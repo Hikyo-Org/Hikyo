@@ -109,9 +109,12 @@ workflow (full `check-compatibility-unchanged.sh`).
   never sign or publish this. The rehearsal does not yet exercise a legacy statement.
 - Revocation state (#1561 review): the accepted list and signature are one file
   (`bridge-revocations-store.json`, fsync plus one rename); unusable stored state refuses
-  bridge routes (off, unreachable, stale) until a fresh verified list at or above the
-  recorded floor replaces it or the operator removes the named files (runbook and
-  `manual-upgrades.md`; a rollback is never blocked). The
+  bridge routes under off and with an unreachable endpoint. Online, a verified list of any
+  age at or above this trust root's readable floor (with the floor's digest at its
+  sequence) replaces it automatically (owner decision, option A); otherwise the operator
+  removes the named files (runbook and `manual-upgrades.md`; a rollback is never blocked).
+  The floor file keeps one record per trust root, so a run under another root never lowers
+  or rebinds this root's floor. The
   native security maintenance service reads the revocation policy from the host's
   `hikyo.env`, proxy variables included. The fetcher honors the proxy environment.
 

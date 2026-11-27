@@ -261,9 +261,10 @@ scripts/release/recovery-bridge.sh check-revocations "$WORK/new-trust" "$WORK/st
 The list is signed by the pinned recovery key and bound to the root, so a host
 compromise can withhold it but not forge or redirect it. The last two verifier
 arguments pin the committed root and recovery key (take them from the committed
-tree, not from a proposal). An instance that has stored a list refuses a lower
-sequence and a different list at the same sequence. An instance that has stored
-nothing (a v1.0.0 install applying the bridge) cannot tell a replay by sequence,
+tree, not from a proposal). An instance that has stored a list under a trust root refuses
+a lower sequence and a different list at the same sequence under that root. An instance
+that has stored nothing under the root (a v1.0.0 install applying the bridge) cannot tell
+a replay by sequence,
 so the list carries a signed `issued_at`: anything older than 7 days is stale and
 behaves like an unreachable endpoint (the bridge's own `not_after` decides; the
 list's entries still apply). Sign a list when a bridge is published and again
@@ -274,17 +275,21 @@ list only makes the recorded outcome (`stale-fell-back-to-expiry`) honest. The
 verifier refuses a list dated in the future and a list older than the newest
 catalogued bridge it covers (that bridge's `not_after` minus 30 days), and has no
 other age limit. Residual: a host can replay an older validly signed list to such
-an instance, delaying a newer revocation until the bridge's `not_after`. `check-revocations`
+an instance, delaying a newer revocation until the bridge's `not_after`. Two binaries
+pinning different roots on one state directory do not widen that residual: each root keeps
+its own floor record, so a run under root A that stores its list leaves root B's floor as
+it was, and B then refuses (off, unreachable, or a list below B's floor) until it fetches a
+list at or above its own floor. `check-revocations`
 runs the real checker against a local list directory (`-` for the unreachable case).
 
 Operator recovery for stored state: an installation keeps the last accepted list in
 `HIKYO_UPGRADE_STATE_DIR/bridge-revocations-store.json` (one file, fsynced and replaced by one
 rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
-unreachable endpoint (a security rollback is never blocked); a verified list, whatever its age, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list and bound to the trust root; an unreadable one refuses), replaces it; at the floor's sequence it must be the list the floor records. Lists are signed only when something is
+unreachable endpoint (a security rollback is never blocked); a verified list, whatever its age, not below this trust root's sequence floor (`bridge-revocations-floor.json`, one record per trust root, raised only by a list stored under that root; an unreadable file refuses), replaces it; at the floor's sequence it must be the list the floor records. Lists are signed only when something is
 revoked, so the list the endpoint serves is often old: it still replaces the state and is reported `stale`. The floor is enforced whenever it exists: a removed store, or a store behind the floor, is unusable too. When the
 endpoint is unreachable, reach it again so the list it serves replaces the state. Otherwise stop the service and
 remove that file and the floor record as an explicit operator action, accepting that revocations known only to
-that state are lost and that, without the floor, the next check accepts any validly signed list the endpoint
+that state are lost and that, without the floor (it holds every trust root's floor), the next check accepts any validly signed list the endpoint
 serves, even an older one (an old list is only reported `stale`). A list bound to another (older) trust root is unusable too until a verified
 list for this root replaces it. The fetcher honors `HTTPS_PROXY` and `NO_PROXY` (on the native security path, from
 the host's `hikyo.env`); the signature, not the path, is the authority.
