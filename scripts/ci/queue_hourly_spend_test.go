@@ -97,8 +97,9 @@ func maxParallelLanes(t *testing.T) int {
 }
 
 // TestReserveSizingIsPinnedAndDocumented pins the sizing behind the interim exception of
-// 2026-11-26 (#1598). The owner accepted the pinned worst case of 1,396 requests an hour (39.6% over
-// the window, above the 25% of Q2) on 2026-11-26 for the interim only: it ends when #1598 lands.
+// 2026-11-26 (#1598). The pinned worst case is 1,401 requests an hour (40.1% over
+// the window, above the 25% of Q2). Marc accepted 1,396 (39.6%) for the #1598 interim; on 2026-11-26
+// the coordinator accepted figures up to a ceiling of about 1,420 an hour (42%). The exception ends when #1598 lands.
 // R = 480 is below the honest bound, so ungated spend can exceed it in a
 // busy hour while a group is in flight and a merge group can then be dequeued and
 // re-queued. Every figure is measured (M) or estimated (E); docs/development/ci.md must
@@ -110,7 +111,14 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	// (suite-aware listing, 3 reads), so a dev pass costs the gate's 42 plus 3. It runs inside the pass,
 	// after enforceReserve, so it is gated spend and belongs in the margin, not in the ungated rows.
 	const postWriteReads = 3
-	devPassCost := nonGroupCost + postWriteReads
+	// E: the one ancestry read (compare main...head) of the backmerge exception in devPublisherContract,
+	// spent only where dev's copy of the publisher differs from main's. A pass that takes it costs 42 + 3 + 1.
+	const backmergeReads = 1
+	// E: dev lists a second feedback source (ci-feedback-retarget), 4 more reads per pass than main.
+	// The owner accepted ~1,425/h (42.5%) on dev on 2026-11-27 as an interim exception, ceiling ~1,430/h;
+	// the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598.
+	const retargetFeedbackReads = 4
+	devPassCost := nonGroupCost + postWriteReads + backmergeReads + retargetFeedbackReads
 	margin := maxParallelLanes(t) * devPassCost // E: lanes past the check at once, capped by max-parallel
 	const (
 		discovery   = 102 // M: 34 event discovers x 3 reads, incident hour 2026-11-23 21:00-22:00 UTC
@@ -126,40 +134,49 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		revokeHeads  = 7
 		// M: one pass per hour, spent ungated at the final attempt, whose confirmation listing never
 		// catches up. Counted on the dev fixture by TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing:
-		// 87 requests, 82 reads and 5 writes = the pass 38 + 2, the confirmation listing 12, the
+		// 95 requests, 90 reads and 5 writes on dev (87 and 82 on main) = the pass 38 + 2, the confirmation listing 12, the
 		// fail-closed POST with its fail-safe re-list and re-POST 6 + 2, and the admission-reserve
 		// refusal phase (withAdmissionBudget, refuseAdmission) 26 + 1. It costs this on every
 		// attempt; attempts 1 and 2 are gated by the reserve like any pass. A created-record
-		// pass that confirms costs 41 + 2, within the 45 of the margin.
-		attempt3 = 87
+		// pass that confirms costs 41 + 2, within the 45 of the margin. A pass that takes the backmerge
+		// exception reads the head's ancestry once more: 96 on dev (88 on main), counted by
+		// TestDevBackmergeAttempt3UnconfirmedPassCostIsPinnedForTheSizing, which is the figure pinned here.
+		attempt3 = 96
 	)
 	revoke := revokeEvents * (revokeFixed + revokeHeads)
 	groups := 2 * 3 * groupCost // M: two overlapping groups, three attempts each
 	measured := discovery + retryFirst + groups + requested + margin
 	honest := measured + waitSweeps + attempt3 + inRepoOther + revoke
-	if measured != 639 || revoke != 70 || attempt3 != 87 || honest != 918 {
-		t.Fatalf("sizing changed: measured %d (want 639), honest lower bound %d (want 918: 639 plus 62, 87 (attempt-3 bypass with a lagging confirmation), 60 and the 70 of the revocation first pass)", measured, honest)
+	if measured != 659 || revoke != 70 || attempt3 != 96 || honest != 947 {
+		t.Fatalf("sizing changed: measured %d (want 659), honest lower bound %d (want 947: 659 plus 62, 96 (attempt-3 bypass of a backmerge pass with a lagging confirmation), 60 and the 70 of the revocation first pass)", measured, honest)
 	}
 	if reserve >= honest {
 		t.Fatalf("R=%d now covers the honest bound %d: drop the interim exception from the PR body and docs", reserve, honest)
 	}
 	gatedBound := limit - (reserve + nonGroupCost) + margin
 	worst := gatedBound + (honest - margin)
-	if gatedBound != 658 || worst != 1396 {
-		t.Fatalf("pinned figures changed: gated bound %d (want 658), worst %d (want 1396)", gatedBound, worst)
+	if gatedBound != 678 || worst != 1425 {
+		t.Fatalf("pinned figures changed: gated bound %d (want 678), worst %d (want 1425)", gatedBound, worst)
 	}
 	measuredIn, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "dev_revoke_test.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(measuredIn), "const attempt3PassRequests = 87") {
+	if !strings.Contains(string(measuredIn), "const attempt3PassRequests = 95") {
 		t.Fatal("the attempt-3 cost pinned here must be the one scripts/ci/pr-gate/dev_revoke_test.go counts")
+	}
+	backmergeIn, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "dev_backmerge_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(backmergeIn), "attempt3BackmergePassRequests = 96") || !strings.Contains(string(backmergeIn), "backmergePassReads            = 46") {
+		t.Fatal("the backmerge pass cost pinned here must be the one scripts/ci/pr-gate/dev_backmerge_test.go counts")
 	}
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs", "development", "ci.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "639", "918", "dequeued and re-queued", "1,396", "39.6%", "accepted this figure on 2026-11-26", "dev-revoke"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "659", "947", "dequeued and re-queued", "1,425", "42.5%", "accepted this figure on 2026-11-26", "the owner accepted ~1,425/h (42.5%) on dev on 2026-11-27 as an interim exception, ceiling ~1,430/h; the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}
