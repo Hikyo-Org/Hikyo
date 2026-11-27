@@ -1413,7 +1413,7 @@
     "name": "GetMachineCredentialInProject",
     "annotation": "authn-resolution",
     "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a",
-    "reason": "Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered."
+    "reason": "Incident revoke confirmation reads one credential of one project by id behind the org credential-reset operation of the incident; no bearer can be recovered."
   },
   {
     "engine": "postgres",
@@ -1615,6 +1615,13 @@
     "name": "GetSCIMCredentialByVerifier",
     "annotation": "authn-resolution",
     "hash": "8a4ec2b5caca72e1fa21ec5bb175a945bf3df9651ec85b1cb064be2130ddebb0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSCIMCredentialInOrg",
+    "annotation": "authn-resolution",
+    "hash": "93b1c2d9ac0b531df8a5d364a9756f6102fa0066b57143fc5ac9c399d079da94",
+    "reason": "Incident revoke confirmation reads one SCIM credential of one org by id behind the SCIM credential-revoke operation at that org; the org_id predicate comes from the proof, and no verifier or bearer is selected."
   },
   {
     "engine": "postgres",
@@ -2637,7 +2644,7 @@
     "name": "MachineCredentialExistsInOrg",
     "annotation": "authn-resolution",
     "hash": "24a466e957390ff3303b88d5748b17db48c48f6d7757e48c1cd55fb15a8a4d23",
-    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned."
+    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned."
   },
   {
     "engine": "postgres",
@@ -5373,7 +5380,7 @@
     "name": "GetMachineCredentialInProject",
     "annotation": "authn-resolution",
     "hash": "4099a309b6f8f0befb9232930f842be0326e0e4f3ed3da45a7391f9217ee146a",
-    "reason": "Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered."
+    "reason": "Incident revoke confirmation reads one credential of one project by id behind the org credential-reset operation of the incident; no bearer can be recovered."
   },
   {
     "engine": "sqlite",
@@ -5575,6 +5582,13 @@
     "name": "GetSCIMCredentialByVerifier",
     "annotation": "authn-resolution",
     "hash": "b52ec134279a86d5bc767790425f2d54768cef99ca11232e4ee4bf0ebe28d037"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSCIMCredentialInOrg",
+    "annotation": "authn-resolution",
+    "hash": "3a64c8cdc9a8d1684815c9684e3a9d2c426a60cb3e70ae32fc73eb6c801c18d7",
+    "reason": "Incident revoke confirmation reads one SCIM credential of one org by id behind the SCIM credential-revoke operation at that org; the org_id predicate comes from the proof, and no verifier or bearer is selected."
   },
   {
     "engine": "sqlite",
@@ -6597,7 +6611,7 @@
     "name": "MachineCredentialExistsInOrg",
     "annotation": "authn-resolution",
     "hash": "24a466e957390ff3303b88d5748b17db48c48f6d7757e48c1cd55fb15a8a4d23",
-    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned."
+    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned."
   },
   {
     "engine": "sqlite",

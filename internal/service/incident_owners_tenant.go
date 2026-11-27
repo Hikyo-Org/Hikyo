@@ -72,8 +72,11 @@ func (o *incidentOwners) machineCredentialRevoke(ctx context.Context, actor Acto
 	if scope.Project == "" {
 		return OwnerUnconfirmed, domain.ErrInvalid
 	}
-	saID, live, err := o.machineCredentialState(ctx, scope, item.ObjectID)
+	saID, live, err := o.machineCredentialState(ctx, actor, scope, item.ObjectID)
 	if err != nil {
+		if res, ok := ownerRefused(err); ok {
+			return res, nil
+		}
 		return OwnerUnconfirmed, err
 	}
 	if saID == "" {
@@ -87,17 +90,23 @@ func (o *incidentOwners) machineCredentialRevoke(ctx context.Context, actor Acto
 			return OwnerUnconfirmed, err
 		}
 	}
-	_, live, err = o.machineCredentialState(ctx, scope, item.ObjectID)
+	_, live, err = o.machineCredentialState(ctx, actor, scope, item.ObjectID)
+	if res, ok := ownerRefused(err); ok {
+		return res, nil
+	}
 	return confirm(err == nil && !live), err
 }
 
 // machineCredentialState finds the credential's service account in the project
 // and whether the credential is still live. An empty account id means no service
 // account of the org holds it; one held in another project of the org is
-// ErrNotFound.
-func (o *incidentOwners) machineCredentialState(ctx context.Context, scope domain.Scope, id string) (saID string, live bool, err error) {
-	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+// ErrNotFound. The reads run under the incident's org operation.
+func (o *incidentOwners) machineCredentialState(ctx context.Context, actor Actor, scope domain.Scope, id string) (saID string, live bool, err error) {
+	err = tx.Read(ctx, o.s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		saID, live = "", false
+		if _, err := o.authorizeIncidentOrg(ctx, az, actor, scope.Org); err != nil {
+			return err
+		}
 		epoch, err := az.CredentialEpoch(ctx)
 		if err != nil {
 			return err
@@ -152,8 +161,8 @@ func (o *incidentOwners) invitationRevoke(ctx context.Context, actor Actor, item
 	return confirm(err == nil && !present), err
 }
 
-// scimCredentialRevoke revokes one SCIM bearer credential. The binding is found
-// through the org's own listings, in the acting operator's name.
+// scimCredentialRevoke revokes one SCIM bearer credential. The binding is read
+// from the credential itself, by id within the org.
 func (o *incidentOwners) scimCredentialRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
 	scope, blocked, err := o.tenantScope(ctx, actor, item, domain.ObjectKindSCIMCredential, authz.OpSCIMCredentialRevoke)
 	if err != nil {
@@ -184,26 +193,37 @@ func (o *incidentOwners) scimCredentialRevoke(ctx context.Context, actor Actor, 
 		}
 	}
 	_, live, err = o.scimCredentialState(ctx, actor, scope.Org, item.ObjectID)
+	if res, ok := ownerRefused(err); ok {
+		return res, nil
+	}
 	return confirm(err == nil && !live), err
 }
 
+// scimCredentialState reads the one credential the item names, by id within the
+// org, under the owner's own operation: its binding and whether it is live. An
+// empty binding means the org holds no such credential. The read writes no audit
+// row and refreshes no binding state.
 func (o *incidentOwners) scimCredentialState(ctx context.Context, actor Actor, org domain.OrgID, id string) (binding string, live bool, err error) {
-	bindings, err := o.svc.SCIM.ListBindings(ctx, actor, org)
-	if err != nil {
-		return "", false, err
-	}
-	for _, b := range bindings {
-		creds, err := o.svc.SCIM.ListCredentials(ctx, actor, org, b.ID)
+	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		binding, live = "", false
+		_, proof, err := authorize(ctx, az, actor, authz.OpSCIMCredentialRevoke, domain.Scope{Org: org}, o.s.now())
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("%w: authority over the SCIM credential was lost", domain.ErrUnauthorized)
+		}
 		if err != nil {
-			return "", false, err
+			return err
 		}
-		for _, c := range creds {
-			if c.ID == id {
-				return b.ID, c.Live, nil
-			}
+		c, err := r.SCIM().CredentialInOrg(ctx, proof, id)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
 		}
-	}
-	return "", false, nil
+		if err != nil {
+			return err
+		}
+		binding, live = c.BindingID, c.Live(o.s.now())
+		return nil
+	})
+	return binding, live, err
 }
 
 // leaseRevoke asks the dynamic provider to revoke one lease. Revocation is
@@ -310,10 +330,7 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 // under the incident's own org operation, so a refusal is ErrUnauthorized.
 func (o *incidentOwners) goneFromOrg(ctx context.Context, actor Actor, org domain.OrgID, exists func(context.Context, store.ReadRepos, authz.Proof) (bool, error)) error {
 	return tx.Read(ctx, o.s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		_, proof, err := authorize(ctx, az, actor, authz.OpIncidentOrg, domain.Scope{Org: org}, o.s.now())
-		if errors.Is(err, domain.ErrNotFound) {
-			return fmt.Errorf("%w: authority over the incident org was lost", domain.ErrUnauthorized)
-		}
+		proof, err := o.authorizeIncidentOrg(ctx, az, actor, org)
 		if err != nil {
 			return err
 		}
@@ -351,4 +368,15 @@ func pauseTargetFlow(pause func() (paused bool, err error), absent func() (bool,
 		return OwnerUnconfirmed, err
 	}
 	return confirm(paused), nil
+}
+
+// authorizeIncidentOrg authorizes the incident's org operation for an owner's own
+// probe. The authorizer masks a refusal as not found; here it is ErrUnauthorized,
+// so the item ends blocked rather than read as absent.
+func (o *incidentOwners) authorizeIncidentOrg(ctx context.Context, az *authz.TxAuthorizer, actor Actor, org domain.OrgID) (authz.Proof, error) {
+	_, proof, err := authorize(ctx, az, actor, authz.OpIncidentOrg, domain.Scope{Org: org}, o.s.now())
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("%w: authority over the incident org was lost", domain.ErrUnauthorized)
+	}
+	return proof, err
 }

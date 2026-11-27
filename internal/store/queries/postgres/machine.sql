@@ -203,7 +203,7 @@ ORDER BY id LIMIT sqlc.arg(row_limit);
 
 -- One credential of one project by id, so the incident path's cost does not grow
 -- with the project's service accounts.
--- hikyo:reason Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered.
+-- hikyo:reason Incident revoke confirmation reads one credential of one project by id behind the org credential-reset operation of the incident; no bearer can be recovered.
 -- hikyo:authn-resolution
 -- name: GetMachineCredentialInProject :one
 SELECT mc.id, mc.service_account_id, mc.kind, mc.prefix_hint, mc.lifetime, mc.expires_at,
@@ -215,7 +215,7 @@ WHERE sa.org_id = sqlc.arg(org_id) AND sa.project_id = sqlc.arg(project_id) AND 
 
 -- Whether a credential id is placed anywhere in the org, so incident confirmation
 -- tells one deleted apart from one held by another project's service account.
--- hikyo:reason Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned.
+-- hikyo:reason Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned.
 -- hikyo:authn-resolution
 -- name: MachineCredentialExistsInOrg :one
 SELECT COUNT(*) FROM machine_credentials mc

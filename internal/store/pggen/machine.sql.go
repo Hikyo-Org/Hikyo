@@ -271,7 +271,7 @@ type GetMachineCredentialInProjectRow struct {
 
 // One credential of one project by id, so the incident path's cost does not grow
 // with the project's service accounts.
-// hikyo:reason Incident revoke confirmation reads one credential of one project by id after the operation authorized credential-revoke at that project; no bearer can be recovered.
+// hikyo:reason Incident revoke confirmation reads one credential of one project by id behind the org credential-reset operation of the incident; no bearer can be recovered.
 // hikyo:authn-resolution
 func (q *Queries) GetMachineCredentialInProject(ctx context.Context, arg GetMachineCredentialInProjectParams) (GetMachineCredentialInProjectRow, error) {
 	row := q.db.QueryRow(ctx, getMachineCredentialInProject, arg.OrgID, arg.ProjectID, arg.ID)
@@ -803,7 +803,7 @@ type MachineCredentialExistsInOrgParams struct {
 
 // Whether a credential id is placed anywhere in the org, so incident confirmation
 // tells one deleted apart from one held by another project's service account.
-// hikyo:reason Incident revoke confirmation reads only whether one credential id exists in one org after the operation authorized credential-revoke at the item's project; no metadata or bearer is returned.
+// hikyo:reason Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned.
 // hikyo:authn-resolution
 func (q *Queries) MachineCredentialExistsInOrg(ctx context.Context, arg MachineCredentialExistsInOrgParams) (int64, error) {
 	row := q.db.QueryRow(ctx, machineCredentialExistsInOrg, arg.OrgID, arg.ID)

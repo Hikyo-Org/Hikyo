@@ -80,6 +80,10 @@ func TestIncidentContainRefusesAMemberOutsideTheIncidentOrg(t *testing.T) {
 		if s := w.containmentState(t, "usr_bnd_member"); s == "contained" {
 			t.Fatal("an org A incident contained an org B member")
 		}
+		// Already contained, the member is still outside the incident: the same not
+		// found, so the answer tells nothing about its containment state.
+		execRaw(t, db, `UPDATE principals SET containment_state='contained' WHERE id='usr_bnd_member'`)
+		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_bnd_member", "org_a")
 	})
 }
 

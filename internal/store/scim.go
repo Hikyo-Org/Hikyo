@@ -288,6 +288,9 @@ type SCIMRepo interface {
 	// beside a caller-controlled id.
 	CreateCredential(ctx context.Context, p authz.Proof, c NewSCIMCredential) error
 	Credential(ctx context.Context, p authz.Proof, bindingID, id string) (SCIMCredential, error)
+	// CredentialInOrg reads one credential of the proof's org by id, whatever
+	// its binding, for incident confirmation.
+	CredentialInOrg(ctx context.Context, p authz.Proof, id string) (SCIMCredential, error)
 	Credentials(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMCredential, error)
 	RevokeCredential(ctx context.Context, p authz.Proof, bindingID, id string, at time.Time) (bool, error)
 	RevokeCredentialsForBinding(ctx context.Context, p authz.Proof, bindingID string, at time.Time) (int64, error)
@@ -1508,6 +1511,35 @@ func (r scimRepo) Credential(ctx context.Context, p authz.Proof, bindingID, id s
 		return SCIMCredential{}, err
 	}
 	return pgCredential(row), nil
+}
+
+func (r scimRepo) CredentialInOrg(ctx context.Context, p authz.Proof, id string) (SCIMCredential, error) {
+	chain, err := authz.Verify(p, authz.StoreSCIMCredentialInOrg, r.tok)
+	if err != nil {
+		return SCIMCredential{}, err
+	}
+	if chain.Org == "" || chain.Project != "" || id == "" {
+		return SCIMCredential{}, ErrNotFound
+	}
+	arg := sqlitegen.GetSCIMCredentialInOrgParams{OrgID: string(chain.Org), ID: id}
+	if r.sq != nil {
+		row, err := r.sq.GetSCIMCredentialInOrg(ctx, arg)
+		if errors.Is(err, sql.ErrNoRows) {
+			return SCIMCredential{}, ErrNotFound
+		}
+		if err != nil {
+			return SCIMCredential{}, err
+		}
+		return sqliteCredential(sqlitegen.GetSCIMCredentialRow(row))
+	}
+	row, err := r.pg.GetSCIMCredentialInOrg(ctx, pggen.GetSCIMCredentialInOrgParams(arg))
+	if noRows(err) {
+		return SCIMCredential{}, ErrNotFound
+	}
+	if err != nil {
+		return SCIMCredential{}, err
+	}
+	return pgCredential(pggen.GetSCIMCredentialRow(row)), nil
 }
 
 func (r scimRepo) Credentials(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMCredential, error) {

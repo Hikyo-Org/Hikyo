@@ -179,8 +179,9 @@ func (o *incidentOwners) accountContain(ctx context.Context, actor Actor, item a
 }
 
 // containAccount is the containment write, run inside the caller's transaction.
-// It locks the principal row first (the lock reset, grant writers and privacy
-// take), refuses the last manager of any org, then sets the state, which
+// It checks the incident boundary and authorizes first, then locks the principal
+// row (the lock reset, grant writers and privacy take), refuses the last manager
+// of any org, then sets the state, which
 // advances the generation and consumes outstanding authorities in the same
 // transaction. It ends the principal's sessions and revokes its developer
 // delegations like reset does, so nothing minted before the commit survives it.
@@ -204,11 +205,36 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	if target == w.caller.Principal {
 		return OwnerUnconfirmed, ErrIncidentSelfContainment
 	}
+	// The boundary and the authorization come before any lock or state read, so a
+	// principal outside the incident answers not found whatever its state.
+	footprint, err := w.az.PrincipalFootprintOrgs(ctx, target)
+	if err != nil {
+		return OwnerUnconfirmed, err
+	}
+	if w.inc.ScopeKind == domain.IncidentScopeOrg && !slices.Contains(footprint, w.inc.OrgID) {
+		return OwnerUnconfirmed, domain.ErrNotFound
+	}
+	grants, err := w.az.GrantsForResetTarget(ctx, target)
+	if err != nil {
+		return OwnerUnconfirmed, err
+	}
+	org, instanceCap, orgCount := classifyResetTarget(grants, footprint)
+	if instanceCap {
+		// An instance-capability target is contained host-local only (ADR O2, O3).
+		return OwnerBlocked, nil
+	}
+	owning := domain.OrgID("")
+	if orgCount == 1 {
+		owning = domain.OrgID(org)
+	}
+	if _, err := authorizeIncidentOp(ctx, w.az, w.caller, owning); err != nil {
+		return OwnerUnconfirmed, err
+	}
 	// The target and the managers of every org it manages are locked in one sorted
 	// pass, so two concurrent containments of the last two managers cannot deadlock.
-	// The grants it returns were read before the locks, in this transaction's
-	// serializable snapshot.
-	grants, holders, err := lockTargetAndManagers(ctx, w.az, target)
+	// The census it returns was read in this transaction's serializable snapshot,
+	// the same snapshot as the grants above.
+	_, holders, err := lockTargetAndManagers(ctx, w.az, target)
 	if err != nil {
 		return OwnerUnconfirmed, err
 	}
@@ -218,25 +244,6 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 		return OwnerConfirmed, nil
 	}
 	if _, err := w.az.AccountByPrincipal(ctx, target); err != nil {
-		return OwnerUnconfirmed, err
-	}
-	footprint, err := w.az.PrincipalFootprintOrgs(ctx, target)
-	if err != nil {
-		return OwnerUnconfirmed, err
-	}
-	org, instanceCap, orgCount := classifyResetTarget(grants, footprint)
-	if instanceCap {
-		// An instance-capability target is contained host-local only (ADR O2, O3).
-		return OwnerBlocked, nil
-	}
-	if w.inc.ScopeKind == domain.IncidentScopeOrg && !slices.Contains(footprint, w.inc.OrgID) {
-		return OwnerUnconfirmed, domain.ErrNotFound
-	}
-	owning := domain.OrgID("")
-	if orgCount == 1 {
-		owning = domain.OrgID(org)
-	}
-	if _, err := authorizeIncidentOp(ctx, w.az, w.caller, owning); err != nil {
 		return OwnerUnconfirmed, err
 	}
 	if !hasAlternativeManager(target, holders) {

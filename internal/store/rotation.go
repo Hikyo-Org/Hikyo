@@ -255,8 +255,10 @@ type RotationRepo interface {
 	ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error
 	// HaltForIncident halts one active or paused rotation with a named reason,
 	// bumping its generation so a run past its gate settles against a stale fence.
-	// It reports false, with no error, when the rotation is already halted or
-	// deleted, or held by a restore: the incident ledger then reads its state. A rotation outside the proof's environment is ErrNotFound.
+	// It reports false, with no error, when the rotation exists but is already
+	// halted, disabled or held by a restore: the incident ledger then reads its
+	// state. A rotation that no longer exists, or lies outside the proof's
+	// environment, is ErrNotFound.
 	HaltForIncident(ctx context.Context, p authz.Proof, rotationID, reason string, at time.Time) (bool, error)
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider

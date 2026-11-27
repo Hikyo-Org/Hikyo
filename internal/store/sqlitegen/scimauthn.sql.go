@@ -92,6 +92,48 @@ func (q *Queries) GetSCIMCredentialByVerifier(ctx context.Context, verifier []by
 	return i, err
 }
 
+const getSCIMCredentialInOrg = `-- name: GetSCIMCredentialInOrg :one
+SELECT id, binding_id, principal_id, credential_epoch, created_at, expires_at,
+       revoked_at, last_used_at
+FROM scim_credentials WHERE org_id = ? AND id = ?
+`
+
+type GetSCIMCredentialInOrgParams struct {
+	OrgID string
+	ID    string
+}
+
+type GetSCIMCredentialInOrgRow struct {
+	ID              string
+	BindingID       string
+	PrincipalID     string
+	CredentialEpoch int64
+	CreatedAt       string
+	ExpiresAt       sql.NullString
+	RevokedAt       sql.NullString
+	LastUsedAt      sql.NullString
+}
+
+// Incident confirmation: one SCIM credential of one org by id, whatever its
+// binding, so the owner reads the credential it names and nothing else.
+// hikyo:reason Incident revoke confirmation reads one SCIM credential of one org by id behind the SCIM credential-revoke operation at that org; the org_id predicate comes from the proof, and no verifier or bearer is selected.
+// hikyo:authn-resolution
+func (q *Queries) GetSCIMCredentialInOrg(ctx context.Context, arg GetSCIMCredentialInOrgParams) (GetSCIMCredentialInOrgRow, error) {
+	row := q.db.QueryRowContext(ctx, getSCIMCredentialInOrg, arg.OrgID, arg.ID)
+	var i GetSCIMCredentialInOrgRow
+	err := row.Scan(
+		&i.ID,
+		&i.BindingID,
+		&i.PrincipalID,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+	)
+	return i, err
+}
+
 const insertSCIMCredential = `-- name: InsertSCIMCredential :exec
 
 INSERT INTO scim_credentials

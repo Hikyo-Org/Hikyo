@@ -77,3 +77,12 @@ FROM grants AS g
 INNER JOIN grant_origins AS o ON o.grant_id = g.id
 WHERE o.kind = 'lockout-retention' AND g.org_id = $1
 ORDER BY g.id, o.subject;
+
+-- Incident confirmation: one SCIM credential of one org by id, whatever its
+-- binding, so the owner reads the credential it names and nothing else.
+-- hikyo:reason Incident revoke confirmation reads one SCIM credential of one org by id behind the SCIM credential-revoke operation at that org; the org_id predicate comes from the proof, and no verifier or bearer is selected.
+-- hikyo:authn-resolution
+-- name: GetSCIMCredentialInOrg :one
+SELECT id, binding_id, principal_id, credential_epoch, created_at, expires_at,
+       revoked_at, last_used_at
+FROM scim_credentials WHERE org_id = $1 AND id = $2;

@@ -141,6 +141,9 @@ func TestIncidentOwnersContainAccountEndToEnd(t *testing.T) {
 		if n := w.correlated(t, "identity.developer_credential_revoked", id); n == 0 {
 			t.Errorf("no developer revocation event carries the incident id as correlation")
 		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='incident.principal_contained' AND correlation_id='`+id+`' AND CAST(payload AS TEXT) LIKE '%`+string(incTarget)+`%'`); n != 1 {
+			t.Errorf("principal_contained events for %s carrying the incident id = %d, want 1", incTarget, n)
+		}
 	})
 }
 
@@ -980,6 +983,133 @@ func TestIncidentRotationHaltConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
 		execRaw(t, db, `DELETE FROM rotations WHERE id='`+r.rot.ID+`'`)
 		if res := w.callOwner(t, incResponder, acc.Incident.ID, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, r.scope()); res != service.OwnerConfirmed {
 			t.Errorf("a deleted rotation = %v, want confirmed", res)
+		}
+	})
+}
+
+// ---- owner refusals and re-reads --------------------------------------------
+
+// grantLossClock is a service clock that deletes one org grant of the principal on
+// its call number `at`. The call runs inside a transaction whose snapshot is
+// already taken, so the loss shows from the next transaction on.
+func grantLossClock(t *testing.T, db *store.DB, p domain.PrincipalID, capability string, at int32) func() time.Time {
+	var calls atomic.Int32
+	return func() time.Time {
+		if calls.Add(1) == at {
+			where := `principal_id='` + string(p) + `' AND capability='` + capability + `' AND org_id='org_a'`
+			execRaw(t, db, `DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE `+where+`)`)
+			execRaw(t, db, `DELETE FROM grants WHERE `+where)
+		}
+		return time.Now()
+	}
+}
+
+// The placement probe runs under the incident's org operation. With that grant lost
+// during the lease read (the Dynamic clock), the probe after it is refused and a
+// lease absent from its environment is blocked, never read as gone.
+func TestIncidentLeaseOwnerBlocksWhenTheOrgGrantIsLostAtTheProbe(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		seedIncidentLeases(t, db)
+		w.svc.Owners = service.NewIncidentOwners(w.svc, service.IncidentOwnerServices{
+			Dynamic: &service.Dynamic{DB: db, Now: grantLossClock(t, db, incResponder, "credential-reset", 1)},
+		})
+		inc := w.openOrg(t, incResponder)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_missing", "org_a/prj_a1/env_a1"); res != service.OwnerBlocked {
+			t.Errorf("a lease probe without the org grant = %v, want blocked", res)
+		}
+	})
+}
+
+// The machine credential reads run under the incident's org operation. With that
+// grant lost during the first read (the second incident clock read, after
+// tenantScope), the revoke still runs under manage-identities, but the confirming
+// read is refused: the owner ends blocked, not confirmed.
+func TestIncidentMachineCredentialOwnerBlocksWhenTheOrgGrantIsLost(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO machine_credentials (id, service_account_id, kind, verifier, prefix_hint, lifetime, credential_epoch, created_at, created_by) VALUES ('mcr_it', 'sa_it', 'hikyo-token', `+blobLit(db, []byte("verifier-mcr-it"))+`, 'hk', 'indefinite', (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`, 'usr_itarget')`)
+		inc := w.openOrg(t, incResponder)
+		w.svc.Now = grantLossClock(t, db, incResponder, "credential-reset", 2)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerMachineCredential, domain.ObjectKindMachineCredential, "mcr_it", "org_a/prj_a1"); res != service.OwnerBlocked {
+			t.Errorf("a confirming read without the org grant = %v, want blocked", res)
+		}
+	})
+}
+
+// A project delegation needs the project owner's own revoke: a responder with the
+// incident's credential-reset but no manage-identities is refused and the
+// delegation stays live.
+func TestIncidentDeveloperRevokeRefusesAProjectDelegationWithoutManageIdentities(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		inc := w.openOrg(t, incLimited)
+		res, err := w.svc.Owners[domain.OwnerDeveloperRevoke](t.Context(), w.as(incLimited), authz.IncidentItem{IncidentID: inc, OwnerFunction: domain.OwnerDeveloperRevoke, ObjectKind: domain.ObjectKindDeveloperCred, ObjectID: "devc_it", Scope: "org_a/prj_a1/env_a1"})
+		if res == service.OwnerConfirmed || err == nil {
+			t.Errorf("a project delegation without manage-identities = %v, %v; want refused", res, err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_it' AND revoked_at IS NULL`); n != 1 {
+			t.Errorf("a refused owner revoked the project delegation")
+		}
+	})
+}
+
+// The SCIM owner reads the one credential it names: the first call writes exactly
+// the revocation event, a retry writes nothing, whatever other bindings the org has.
+func TestIncidentSCIMOwnerWritesOnlyTheRevocationEvent(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		for _, b := range []string{"sbn_one", "sbn_two", "sbn_three"} {
+			execRaw(t, db, `INSERT INTO scim_bindings(id,org_id,provider_kind,provider_id,provider_slug,provider_issuer,subject_source,connection_principal_id,created_at) VALUES ('`+b+`','org_a','oidc','`+b+`','`+b+`','https://idp.example','externalId','mch_it',`+ts+`)`)
+		}
+		execRaw(t, db, `INSERT INTO scim_credentials (id, org_id, binding_id, principal_id, verifier, credential_epoch, created_at) VALUES ('scc_three','org_a','sbn_three','mch_it',`+blobLit(db, []byte("verifier-scc-three"))+`, (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`)`)
+		inc := w.openOrg(t, incResponder)
+		rows := func() int64 { return queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events`) }
+		revoked := func() int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='scim.credential_revoked'`)
+		}
+		before, beforeRevoked := rows(), revoked()
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, "scc_three", "org_a"); res != service.OwnerConfirmed {
+			t.Fatalf("revoke = %v, want confirmed", res)
+		}
+		if d, r := rows()-before, revoked()-beforeRevoked; d != 1 || r != 1 {
+			t.Errorf("first call wrote %d tenant audit rows (%d revocations), want exactly the one revocation", d, r)
+		}
+		mid := rows()
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, "scc_three", "org_a"); res != service.OwnerConfirmed {
+			t.Fatalf("retry = %v, want confirmed", res)
+		}
+		if d := rows() - mid; d != 0 {
+			t.Errorf("retry wrote %d tenant audit rows, want none", d)
+		}
+	})
+}
+
+// The session owner confirms by re-reading the account's sessions. A session the
+// revoke did not remove (a test trigger ignores its delete) is still listed, so the
+// item stays open; once the delete goes through, it is confirmed.
+func TestIncidentSessionOwnerConfirmsOnlyWhenTheReReadDropsTheSession(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+			`VALUES ('ses_keep', '`+string(incTarget)+`', `+blobLit(db, []byte("verifier-ses-keep"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
+		if db.Engine() == store.EnginePostgres {
+			execRaw(t, db, `CREATE FUNCTION keep_session() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`)
+			execRaw(t, db, `CREATE TRIGGER keep_ses_keep BEFORE DELETE ON sessions FOR EACH ROW WHEN (OLD.id = 'ses_keep') EXECUTE FUNCTION keep_session()`)
+		} else {
+			execRaw(t, db, `CREATE TRIGGER keep_ses_keep BEFORE DELETE ON sessions WHEN old.id = 'ses_keep' BEGIN SELECT RAISE(IGNORE); END`)
+		}
+		inc := w.openAccount(t, incResponder).Incident.ID
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerSessionRevoke, domain.ObjectKindSession, "ses_keep", "instance"); res == service.OwnerConfirmed {
+			t.Errorf("a session still listed after the revoke was confirmed")
+		}
+		execRaw(t, db, `DROP TRIGGER keep_ses_keep`+map[bool]string{true: ` ON sessions`, false: ``}[db.Engine() == store.EnginePostgres])
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerSessionRevoke, domain.ObjectKindSession, "ses_keep", "instance"); res != service.OwnerConfirmed {
+			t.Errorf("a revoked session = %v, want confirmed", res)
 		}
 	})
 }

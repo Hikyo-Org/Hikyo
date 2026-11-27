@@ -1496,8 +1496,10 @@ const (
 	// directory write it.
 	StoreSCIMLockBinding StoreOp = "scim.LockBinding"
 
-	StoreSCIMCreateCredential            StoreOp = "scim.CreateCredential"
-	StoreSCIMCredential                  StoreOp = "scim.Credential"
+	StoreSCIMCreateCredential StoreOp = "scim.CreateCredential"
+	StoreSCIMCredential       StoreOp = "scim.Credential"
+	// Incident confirmation: one credential of the org by id, any binding.
+	StoreSCIMCredentialInOrg             StoreOp = "scim.CredentialInOrg"
 	StoreSCIMCredentials                 StoreOp = "scim.Credentials"
 	StoreSCIMRevokeCredential            StoreOp = "scim.RevokeCredential"
 	StoreSCIMRevokeCredentialsForBinding StoreOp = "scim.RevokeCredentialsForBinding"
@@ -1594,6 +1596,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreDynamicLeaseExistsInOrg:   true,
 	StoreAdaptersTargetExistsInOrg: true,
 	StoreRotationsExistsInOrg:      true,
+	StoreSCIMCredentialInOrg:       true,
 	// SSH reads of public trust material and certificate metadata (#155).
 	StoreSSHGetCA:            true,
 	StoreSSHListCAs:          true,
@@ -5089,11 +5092,13 @@ var operationTable = map[Operation]opSpec{
 		storeOps: scimOps(scimBase, scimCredentialOps),
 		events:   []audit.EventType{audit.EventSCIMAdminRead},
 	},
+	// The incident owner confirms a revoke by one by-id read of the org's
+	// credential under this operation (#1039).
 	OpSCIMCredentialRevoke: {
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
 		formula:  scimAdminFormula,
-		storeOps: scimOps(scimBase, scimCredentialOps),
+		storeOps: scimOps(scimBase, scimCredentialOps, map[StoreOp]bool{StoreSCIMCredentialInOrg: true}),
 		events:   []audit.EventType{audit.EventSCIMCredentialRevoked},
 	},
 

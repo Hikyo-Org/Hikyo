@@ -498,6 +498,12 @@ remain to be delivered by the implementation.
   item for the operator that is always refused, so it cannot close clean while the operator's
   own rotations (halted by their independent items) stay halted. The operator hands the
   incident to another responder.
+- **An object outside the item stays live.** An owner whose item names an object outside
+  the incident, or one placed elsewhere than the item says (another project or environment
+  of the org), answers not found and leaves the object live. Only an object gone from the
+  org is confirmed.
+- **A delegation id with no row stays unknown.** A developer delegation the item names but
+  no row holds at the item's placement is not confirmed: the item stays open as unknown.
 
 ## Review record
 
