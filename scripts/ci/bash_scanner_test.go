@@ -223,7 +223,7 @@ func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, st
 				args = args[1:]
 			}
 		}
-		if len(args) > 1 { // an action and a signal; trap -p and trap -l take none
+		if len(args) > 0 { // a lone signal name or -p scans as a harmless command
 			return name, codeText(args[0]), args[0], false
 		}
 	case "bash", "sh":
