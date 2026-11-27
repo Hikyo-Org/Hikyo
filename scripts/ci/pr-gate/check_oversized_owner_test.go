@@ -297,6 +297,9 @@ func TestOwnedChecksOfHeadBeyondRESTSuiteCapRefuseForeignAppRecords(t *testing.T
 		{name: "foreign record with any identity, queue verdict", owners: "group", wantErr: true},
 		{name: "another app id under the actions slug, queue verdict", owners: "group", appID: 99, slug: "github-actions", wantErr: true},
 		{name: "the actions app id under another slug, queue verdict", owners: "group", appID: actionsAppID, slug: "other-app", wantErr: true},
+		// A listing by commit refused these as ambiguous same-name Actions checks.
+		{name: "another app id under the actions slug, owner listing", owners: "owned", appID: 99, slug: "github-actions", wantErr: true},
+		{name: "the actions app id under another slug, owner listing", owners: "owned", appID: actionsAppID, slug: "other-app", wantErr: true},
 		// Unchanged from a listing by commit: owners ignore it unless it claims to be theirs.
 		{name: "foreign record with another identity, owner listing", owners: "owned"},
 	} {
