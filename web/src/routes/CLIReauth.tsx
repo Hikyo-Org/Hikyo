@@ -58,11 +58,11 @@ export function CLIReauth() {
     )
       ? firstEnvironment
       : undefined;
-  const names = useConsentNames(
-    owner?.org_id ?? '',
-    owner?.project_id ?? '',
-    transaction.data?.purpose !== 'adapter' && transaction.data?.purpose !== 'self-config',
-  );
+  // Only a decision that lists bound keys reads the key catalogue, so an
+  // environment-wide approval never waits on it.
+  const purpose = transaction.data?.purpose;
+  const listsKeys = purpose !== undefined && purpose !== 'adapter' && purpose !== 'self-config' && purpose !== 'mint' && purpose !== 'access';
+  const names = useConsentNames(owner?.org_id ?? '', owner?.project_id ?? '', listsKeys);
   const approve = useSensitiveMutation({
     mutationFn: async (strategy: 'factor' | 'oidc') => {
       const code = totp;
@@ -202,14 +202,39 @@ export function CLIReauth() {
                   Approve <span className="mono">{transaction.data.operation}</span> for the
                   environments below.
                 </>
+              ) : transaction.data.purpose === 'mint' ? (
+                <>
+                  A Hikyo client you started asks to <strong>mint a machine credential</strong> whose
+                  service account can decrypt secret values in the environment below. The approval
+                  is for the environment as a whole, not for individual keys.
+                  {offersTOTP
+                    ? ' At a protected or 0-window environment a passkey authorises this one decision; otherwise it opens the environment\'s reauthentication window for its duration. Where the window is above 0, a code from your authenticator also opens it, for its duration.'
+                    : ' At a protected or 0-window environment a passkey authorises this one decision; otherwise it opens the environment\'s reauthentication window for its duration.'}
+                  {offersOIDC
+                    ? ' Re-authenticate once per sliding-window environment with your identity provider.'
+                    : ''}
+                </>
+              ) : transaction.data.purpose === 'access' ? (
+                <>
+                  A Hikyo client you started asks to <strong>take emergency temporary access</strong>{' '}
+                  in the environment below without the approval its policy normally requires. The
+                  access is time-bound and its reason is audited. The approval is for the
+                  environment as a whole, not for individual keys.
+                  {offersTOTP
+                    ? ' At a protected or 0-window environment a passkey authorises this one decision; otherwise it opens the environment\'s reauthentication window for its duration. Where the window is above 0, a code from your authenticator also opens it, for its duration.'
+                    : ' At a protected or 0-window environment a passkey authorises this one decision; otherwise it opens the environment\'s reauthentication window for its duration.'}
+                  {offersOIDC
+                    ? ' Re-authenticate once per sliding-window environment with your identity provider.'
+                    : ''}
+                </>
               ) : (
                 <>
                   A Hikyo client you started asks to <strong>{transaction.data.purpose}</strong>{' '}
                   {transaction.data.key_ids.length} key
                   {transaction.data.key_ids.length === 1 ? '' : 's'} in the environments below.
                   {offersTOTP
-                    ? ' A passkey authorises one decision over exactly those keys. A code from your authenticator instead opens the environment-wide window the policy allows, for its duration.'
-                    : ' A passkey authorises one decision over exactly those keys.'}
+                    ? ' At a protected or 0-window environment a passkey authorises one decision over exactly those keys; otherwise it opens the environment\'s reauthentication window for its duration. Where the window is above 0, a code from your authenticator also opens it, for its duration.'
+                    : ' At a protected or 0-window environment a passkey authorises one decision over exactly those keys; otherwise it opens the environment\'s reauthentication window for its duration.'}
                   {offersOIDC
                     ? ' Re-authenticate once per sliding-window environment with your identity provider.'
                     : ''}
@@ -227,7 +252,7 @@ export function CLIReauth() {
               </p>
             )}
             <EnvironmentList environments={transaction.data.environments} />
-            {disclosure || developerCredential ? (
+            {listsKeys ? (
               <ConsentKeys keys={names.keys(transaction.data.key_ids)} />
             ) : null}
             {noProof ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {requiresPasskey ? 'This policy requires an enrolled passkey.' : 'Provider sign-in alone cannot authorise this operation.'}</Alert> : null}

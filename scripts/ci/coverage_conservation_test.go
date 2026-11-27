@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
@@ -125,6 +124,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeDynamicRenewalFixture(workflow.Jobs["isolation_shard"]); err != nil {
 		return err
 	}
+	if err := normalizeOldPostgresFixture(workflow.Jobs); err != nil {
+		return err
+	}
 	if err := normalizeFlociEmulatorAddition(workflow.Jobs["isolation_shard"]); err != nil {
 		return err
 	}
@@ -132,6 +134,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		return err
 	}
 	if err := normalizeGoReuseDiskPreparation(workflow.Jobs); err != nil {
+		return err
+	}
+	if err := normalizeReleaseSnapshotReuseRemoval(workflow.Jobs["release-snapshot"]); err != nil {
 		return err
 	}
 	if err := normalizeAWSSandboxShellcheck(workflow.Jobs["lint"]); err != nil {
@@ -144,9 +149,6 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		return err
 	}
 	if err := normalizeTestCoreSerial(workflow.Jobs); err != nil {
-		return err
-	}
-	if err := normalizeDesktopJob(workflow.Jobs); err != nil {
 		return err
 	}
 	if err := normalizeGitOpsFixtureAddition(workflow.Jobs["supply-chain-checks"]); err != nil {
@@ -458,13 +460,9 @@ func TestFullValidationConservesBaselineCoverage(t *testing.T) {
 	if err = json.Unmarshal(data, &registry); err != nil {
 		t.Fatal(err)
 	}
-	// #1215 adds the macOS desktop domain. It is additive: every baseline domain
-	// must still be present, in order, and nothing else may join them.
-	if !slices.Contains(registry.Classes["full"], "desktop") {
-		t.Fatal("full validation lost the desktop domain")
-	}
-	baselineDomains := slices.DeleteFunc(slices.Clone(registry.Classes["full"]), func(domain string) bool { return domain == "desktop" })
-	if !reflect.DeepEqual(baselineDomains, baseline.Domains) {
+	// The desktop domain (#1215) left full validation on 2026-11-25; the baseline
+	// domains are exactly what remains.
+	if !reflect.DeepEqual(registry.Classes["full"], baseline.Domains) {
 		t.Fatal("full validation must preserve all baseline validation domains")
 	}
 	if err = requireBaselineCoverage(raw, baseline); err != nil {

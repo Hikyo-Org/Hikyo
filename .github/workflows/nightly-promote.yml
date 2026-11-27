@@ -1,8 +1,12 @@
-# Lands the last green dev commit on main through the merge queue, so nightly
-# builds and signs it from main exactly as before. Run it by hand with:
+# Keeps main and dev in step so the nightly can build from main. Run it by hand
+# with:
 #   gh workflow run nightly-promote.yml --ref main
-# Only trusted main tooling runs here. Dev is read as a commit id, never checked
-# out or executed. A failed promotion leaves main unchanged.
+# Every night it first back-merges main into dev (a hotfix changes CI files on
+# main, and promotion refuses a dev whose CI definitions differ), then lands the
+# last green dev commit on main through the merge queue. A hotfix merged to main
+# also opens the back-merge at once. Only trusted main tooling runs here. Dev is
+# read as a commit id, never checked out or executed. A failed promotion leaves
+# main unchanged.
 name: nightly-promote
 
 on:
@@ -26,8 +30,10 @@ jobs:
     concurrency:
       group: nightly-promote
       cancel-in-progress: false
+      queue: max
     permissions:
       actions: read
+      checks: read
       contents: read
       pull-requests: read
     steps:
@@ -51,12 +57,67 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-pull-requests: write
+      - name: Back-merge main into dev
+        # Leaves promotion time inside the job's deadline if an API call stalls.
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/release/nightly-backmerge.sh
+      # Runs even when the back-merge failed, so neither hides the other; the job
+      # fails if either does.
       - name: Promote the last green dev commit through the merge queue
+        if: ${{ !cancelled() && steps.app.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           APP_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: ./scripts/release/nightly-promote.sh
+
+  # Dev catches up right after each hotfix, long before the night's promotion.
+  # Branches other than release/nightly-* are hotfixes and anything else that
+  # lands on main without passing through dev.
+  backmerge:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main' &&
+      !startsWith(github.event.pull_request.head.ref, 'release/nightly-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: nightly-release
+    # Shared with promote, so the two never race to open duplicates.
+    concurrency:
+      group: nightly-promote
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Mint scoped back-merge app token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NIGHTLY_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NIGHTLY_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Back-merge main into dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/release/nightly-backmerge.sh
 
   # Start the nightly as soon as a promotion lands, instead of waiting for the
   # 02:23 run. Its concurrency group, dedupe and schedule absorb any overlap.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -14,6 +15,8 @@ import (
 // it. Group job 43743778985 re-listed under a second after its POST and saw
 // nothing, though the record (id 132902584288) existed.
 type laggingListAPI struct {
+	// mu serializes the wrapper: a pass reads from several goroutines, and the swap below is not atomic.
+	mu    sync.Mutex
 	inner *fakeAPI
 	lag   int
 	// stale is what lagging listings show; nil until armed by the first write.
@@ -28,16 +31,26 @@ type laggingListAPI struct {
 }
 
 func (a *laggingListAPI) read(ctx context.Context, path string, result any) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.armed && a.lag > 0 && strings.Contains(path, "/check-runs?") {
 		a.lag--
+		a.inner.mu.Lock()
 		live := a.inner.checks
 		a.inner.checks = a.stale
-		defer func() { a.inner.checks = live }()
+		a.inner.mu.Unlock()
+		defer func() {
+			a.inner.mu.Lock()
+			a.inner.checks = live
+			a.inner.mu.Unlock()
+		}()
 	}
 	return a.inner.read(ctx, path, result)
 }
 
 func (a *laggingListAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.perWrite != nil {
 		a.armed, a.stale, a.lag = true, slices.Clone(a.inner.checks), 0
 		if a.writes < len(a.perWrite) {

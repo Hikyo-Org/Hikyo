@@ -1021,6 +1021,7 @@ func (e CLILoginTransactionTransport) Valid() bool {
 
 // Defines values for CLIReauthStartRequestOperation.
 const (
+	CLIReauthStartRequestOperationAccessBypass            CLIReauthStartRequestOperation = "access.bypass"
 	CLIReauthStartRequestOperationAdapterAdopt            CLIReauthStartRequestOperation = "adapter.adopt"
 	CLIReauthStartRequestOperationAdapterConfigure        CLIReauthStartRequestOperation = "adapter.configure"
 	CLIReauthStartRequestOperationAdapterCredentialSet    CLIReauthStartRequestOperation = "adapter.credential-set"
@@ -1028,6 +1029,7 @@ const (
 	CLIReauthStartRequestOperationApprovalBypass          CLIReauthStartRequestOperation = "approval.bypass"
 	CLIReauthStartRequestOperationApprovalVote            CLIReauthStartRequestOperation = "approval.vote"
 	CLIReauthStartRequestOperationDeveloperCredentialMint CLIReauthStartRequestOperation = "developer-credential.mint"
+	CLIReauthStartRequestOperationIdentityCredentialMint  CLIReauthStartRequestOperation = "identity.credential-mint"
 	CLIReauthStartRequestOperationSelfConfigAdopt         CLIReauthStartRequestOperation = "self-config.adopt"
 	CLIReauthStartRequestOperationSelfConfigApply         CLIReauthStartRequestOperation = "self-config.apply"
 	CLIReauthStartRequestOperationSelfConfigTest          CLIReauthStartRequestOperation = "self-config.test"
@@ -1039,6 +1041,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestOperation enum.
 func (e CLIReauthStartRequestOperation) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestOperationAccessBypass:
+		return true
 	case CLIReauthStartRequestOperationAdapterAdopt:
 		return true
 	case CLIReauthStartRequestOperationAdapterConfigure:
@@ -1052,6 +1056,8 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 	case CLIReauthStartRequestOperationApprovalVote:
 		return true
 	case CLIReauthStartRequestOperationDeveloperCredentialMint:
+		return true
+	case CLIReauthStartRequestOperationIdentityCredentialMint:
 		return true
 	case CLIReauthStartRequestOperationSelfConfigAdopt:
 		return true
@@ -1072,11 +1078,13 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
+	CLIReauthStartRequestPurposeAccess              CLIReauthStartRequestPurpose = "access"
 	CLIReauthStartRequestPurposeAdapter             CLIReauthStartRequestPurpose = "adapter"
 	CLIReauthStartRequestPurposeApprove             CLIReauthStartRequestPurpose = "approve"
 	CLIReauthStartRequestPurposeBypass              CLIReauthStartRequestPurpose = "bypass"
 	CLIReauthStartRequestPurposeCopy                CLIReauthStartRequestPurpose = "copy"
 	CLIReauthStartRequestPurposeDeveloperCredential CLIReauthStartRequestPurpose = "developer-credential"
+	CLIReauthStartRequestPurposeMint                CLIReauthStartRequestPurpose = "mint"
 	CLIReauthStartRequestPurposePublish             CLIReauthStartRequestPurpose = "publish"
 	CLIReauthStartRequestPurposeReject              CLIReauthStartRequestPurpose = "reject"
 	CLIReauthStartRequestPurposeReveal              CLIReauthStartRequestPurpose = "reveal"
@@ -1086,6 +1094,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
 func (e CLIReauthStartRequestPurpose) Valid() bool {
 	switch e {
+	case CLIReauthStartRequestPurposeAccess:
+		return true
 	case CLIReauthStartRequestPurposeAdapter:
 		return true
 	case CLIReauthStartRequestPurposeApprove:
@@ -1095,6 +1105,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 	case CLIReauthStartRequestPurposeCopy:
 		return true
 	case CLIReauthStartRequestPurposeDeveloperCredential:
+		return true
+	case CLIReauthStartRequestPurposeMint:
 		return true
 	case CLIReauthStartRequestPurposePublish:
 		return true
@@ -1111,6 +1123,7 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 
 // Defines values for CLIReauthTransactionOperation.
 const (
+	CLIReauthTransactionOperationAccessBypass            CLIReauthTransactionOperation = "access.bypass"
 	CLIReauthTransactionOperationAdapterAdopt            CLIReauthTransactionOperation = "adapter.adopt"
 	CLIReauthTransactionOperationAdapterConfigure        CLIReauthTransactionOperation = "adapter.configure"
 	CLIReauthTransactionOperationAdapterCredentialSet    CLIReauthTransactionOperation = "adapter.credential-set"
@@ -1118,6 +1131,7 @@ const (
 	CLIReauthTransactionOperationApprovalBypass          CLIReauthTransactionOperation = "approval.bypass"
 	CLIReauthTransactionOperationApprovalVote            CLIReauthTransactionOperation = "approval.vote"
 	CLIReauthTransactionOperationDeveloperCredentialMint CLIReauthTransactionOperation = "developer-credential.mint"
+	CLIReauthTransactionOperationIdentityCredentialMint  CLIReauthTransactionOperation = "identity.credential-mint"
 	CLIReauthTransactionOperationSelfConfigAdopt         CLIReauthTransactionOperation = "self-config.adopt"
 	CLIReauthTransactionOperationSelfConfigApply         CLIReauthTransactionOperation = "self-config.apply"
 	CLIReauthTransactionOperationSelfConfigTest          CLIReauthTransactionOperation = "self-config.test"
@@ -1129,6 +1143,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionOperation enum.
 func (e CLIReauthTransactionOperation) Valid() bool {
 	switch e {
+	case CLIReauthTransactionOperationAccessBypass:
+		return true
 	case CLIReauthTransactionOperationAdapterAdopt:
 		return true
 	case CLIReauthTransactionOperationAdapterConfigure:
@@ -1142,6 +1158,8 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 	case CLIReauthTransactionOperationApprovalVote:
 		return true
 	case CLIReauthTransactionOperationDeveloperCredentialMint:
+		return true
+	case CLIReauthTransactionOperationIdentityCredentialMint:
 		return true
 	case CLIReauthTransactionOperationSelfConfigAdopt:
 		return true
@@ -1162,11 +1180,13 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
+	CLIReauthTransactionPurposeAccess              CLIReauthTransactionPurpose = "access"
 	CLIReauthTransactionPurposeAdapter             CLIReauthTransactionPurpose = "adapter"
 	CLIReauthTransactionPurposeApprove             CLIReauthTransactionPurpose = "approve"
 	CLIReauthTransactionPurposeBypass              CLIReauthTransactionPurpose = "bypass"
 	CLIReauthTransactionPurposeCopy                CLIReauthTransactionPurpose = "copy"
 	CLIReauthTransactionPurposeDeveloperCredential CLIReauthTransactionPurpose = "developer-credential"
+	CLIReauthTransactionPurposeMint                CLIReauthTransactionPurpose = "mint"
 	CLIReauthTransactionPurposePublish             CLIReauthTransactionPurpose = "publish"
 	CLIReauthTransactionPurposeReject              CLIReauthTransactionPurpose = "reject"
 	CLIReauthTransactionPurposeReveal              CLIReauthTransactionPurpose = "reveal"
@@ -1176,6 +1196,8 @@ const (
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
 func (e CLIReauthTransactionPurpose) Valid() bool {
 	switch e {
+	case CLIReauthTransactionPurposeAccess:
+		return true
 	case CLIReauthTransactionPurposeAdapter:
 		return true
 	case CLIReauthTransactionPurposeApprove:
@@ -1185,6 +1207,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeCopy:
 		return true
 	case CLIReauthTransactionPurposeDeveloperCredential:
+		return true
+	case CLIReauthTransactionPurposeMint:
 		return true
 	case CLIReauthTransactionPurposePublish:
 		return true
@@ -3212,6 +3236,24 @@ func (e RuleCapability) Valid() bool {
 	}
 }
 
+// Defines values for RuleProjectMode.
+const (
+	RuleProjectModeAll  RuleProjectMode = "all"
+	RuleProjectModeOnly RuleProjectMode = "only"
+)
+
+// Valid indicates whether the value is a known member of the RuleProjectMode enum.
+func (e RuleProjectMode) Valid() bool {
+	switch e {
+	case RuleProjectModeAll:
+		return true
+	case RuleProjectModeOnly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RuntimeStatusPhase.
 const (
 	RuntimeStatusPhaseBackup       RuntimeStatusPhase = "backup"
@@ -4817,6 +4859,21 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 // AccessCapability The closed set of capabilities temporary access may confer.
 type AccessCapability string
 
+// AccessExcept defines model for AccessExcept.
+type AccessExcept struct {
+	// Environments The excepted environments that leave this place out.
+	Environments []ID `json:"environments"`
+
+	// KeyLimited No key was named and the rule reaches only some keys of the environment.
+	KeyLimited bool `json:"key_limited"`
+
+	// Keys The excepted folders or keys that leave the named key out.
+	Keys []RuleKeyItem `json:"keys"`
+
+	// Rule A prefixed UUIDv7, e.g. `org_0198…`.
+	Rule ID `json:"rule"`
+}
+
 // AccessOffer What may be requested in this environment. The approver roster is deliberately absent.
 type AccessOffer struct {
 	// CallerMayBypass Whether the caller is a named emergency-access principal of this policy.
@@ -4881,6 +4938,27 @@ type AccessPolicyInput struct {
 // AccessPolicyList defines model for AccessPolicyList.
 type AccessPolicyList struct {
 	Items []AccessPolicy `json:"items"`
+}
+
+// AccessPrincipal defines model for AccessPrincipal.
+type AccessPrincipal struct {
+	// Excepts On `excepted`, each rule that would reach and what of it leaves this place out.
+	Excepts []AccessExcept `json:"excepts"`
+
+	// Grants The scopes of the grants that give the permission here.
+	Grants []GrantScope `json:"grants"`
+
+	// Kind Closed set — the human/machine distinction is structural in audit attribution.
+	Kind PrincipalKind `json:"kind"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Current display name or username of the person, or the service account's name; not an identifier.
+	PrincipalName *string `json:"principal_name,omitzero"`
+
+	// Rules The ids of the rules that give the permission here.
+	Rules []ID `json:"rules"`
 }
 
 // AccessQueue defines model for AccessQueue.
@@ -4959,6 +5037,35 @@ type AccessRequestInput struct {
 
 	// Reason Why the access is needed. Recorded in the audit trail.
 	Reason string `json:"reason"`
+}
+
+// AccessResolution defines model for AccessResolution.
+type AccessResolution struct {
+	// Can Principals that hold the permission here. For `reveal` and `reveal-history` they also hold See.
+	Can []AccessPrincipal `json:"can"`
+
+	// Environment A prefixed UUIDv7, e.g. `org_0198…`.
+	Environment ID `json:"environment"`
+
+	// Excepted Principals a rule would reach, but an except of that rule leaves this place out.
+	Excepted []AccessPrincipal `json:"excepted"`
+
+	// Key A prefixed UUIDv7, e.g. `org_0198…`.
+	Key *ID `json:"key,omitzero"`
+
+	// NeedsSee Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
+	NeedsSee []AccessPrincipal `json:"needs_see"`
+
+	// None Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
+	None []AccessPrincipal `json:"none"`
+
+	// Permission The capabilities a member access rule may carry (member-access-rules
+	// ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+	// `publish` and `manage-members` accept key selectors. Member management
+	// delegates only within its selector and the caller's held capabilities.
+	// `manage-identities`, `manage-adapters` and `project-settings` need a
+	// whole project.
+	Permission RuleCapability `json:"permission"`
 }
 
 // AccessVoteRequest defines model for AccessVoteRequest.
@@ -5048,7 +5155,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
@@ -5251,7 +5358,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -6109,14 +6216,15 @@ type CLIReauthStart struct {
 }
 
 // CLIReauthStartRequest `adapter` carries an adapter-routing decision over an environment set.
-// Every non-adapter purpose carries an exact environment and key set. The
-// browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-// names exactly the unit the decision covers.
+// Every other purpose carries an exact environment and key set, except
+// `mint` and `access`, whose unit is their one environment and which carry
+// no keys. The browser runs the same purpose-bound ceremony the UI runs,
+// so `key_ids` names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
 	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitzero"`
 	EnvironmentIds      []ID                             `json:"environment_ids"`
 
-	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
 	KeyIds        *[]ID                          `json:"key_ids,omitzero"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
@@ -6153,7 +6261,7 @@ type CLIReauthTransaction struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 
-	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`.
+	// KeyIds The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
 	KeyIds      []ID                          `json:"key_ids"`
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`
@@ -6455,7 +6563,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
@@ -6776,6 +6884,23 @@ type CreateRuleRequest struct {
 	// environment and key item names the project it belongs to, which must be
 	// one of `projects`. A rule names at most 500 projects, environments and
 	// keys together.
+	//
+	// With `project_mode` `all` the rule reaches every project of the
+	// organisation, including projects created later. A response lists the
+	// organisation's current projects (a project listing: only that
+	// project), with the rule's folder items repeated under each, so
+	// `projects` is never empty; an organisation listing's or a create's
+	// `where` is a valid create request. A create lists exactly the organisation's current
+	// projects (otherwise 409), keeps the environment axis `all` without
+	// items, and repeats the same folder items, never single keys, under
+	// every project.
+	//
+	// The 500 bound counts the rule as it is listed: every current project
+	// plus its folder items repeated under each. A create that would list
+	// more is refused with 409 `limit_exceeded`. A project creation that
+	// would list an existing rule over all projects past it is refused with
+	// 409 `conflict`, whose detail names the blocking rules to a member
+	// manager. A listing is never truncated.
 	Where RuleWhere `json:"where"`
 }
 
@@ -11107,6 +11232,23 @@ type Rule struct {
 	// environment and key item names the project it belongs to, which must be
 	// one of `projects`. A rule names at most 500 projects, environments and
 	// keys together.
+	//
+	// With `project_mode` `all` the rule reaches every project of the
+	// organisation, including projects created later. A response lists the
+	// organisation's current projects (a project listing: only that
+	// project), with the rule's folder items repeated under each, so
+	// `projects` is never empty; an organisation listing's or a create's
+	// `where` is a valid create request. A create lists exactly the organisation's current
+	// projects (otherwise 409), keeps the environment axis `all` without
+	// items, and repeats the same folder items, never single keys, under
+	// every project.
+	//
+	// The 500 bound counts the rule as it is listed: every current project
+	// plus its folder items repeated under each. A create that would list
+	// more is refused with 409 `limit_exceeded`. A project creation that
+	// would list an existing rule over all projects past it is refused with
+	// 409 `conflict`, whose detail names the blocking rules to a member
+	// manager. A listing is never truncated.
 	Where RuleWhere `json:"where"`
 }
 
@@ -11169,14 +11311,42 @@ type RuleList struct {
 	Items []Rule `json:"items"`
 }
 
+// RuleProjectMode `only` reaches the listed `projects`. `all` reaches every project of
+// the organisation, including projects created later; such a rule covers
+// every environment and narrows keys by folder only. Omitted, a rule's
+// project mode is `only`. The default is stated here rather than as a
+// schema `default`, so generated clients never add the property to a
+// request: a server before revision 21 refuses it.
+type RuleProjectMode string
+
 // RuleWhere Where a rule reaches: projects, then environments, then keys. Every
 // environment and key item names the project it belongs to, which must be
 // one of `projects`. A rule names at most 500 projects, environments and
 // keys together.
+//
+// With `project_mode` `all` the rule reaches every project of the
+// organisation, including projects created later. A response lists the
+// organisation's current projects (a project listing: only that
+// project), with the rule's folder items repeated under each, so
+// `projects` is never empty; an organisation listing's or a create's
+// `where` is a valid create request. A create lists exactly the organisation's current
+// projects (otherwise 409), keeps the environment axis `all` without
+// items, and repeats the same folder items, never single keys, under
+// every project.
+//
+// The 500 bound counts the rule as it is listed: every current project
+// plus its folder items repeated under each. A create that would list
+// more is refused with 409 `limit_exceeded`. A project creation that
+// would list an existing rule over all projects past it is refused with
+// 409 `conflict`, whose detail names the blocking rules to a member
+// manager. A listing is never truncated.
 type RuleWhere struct {
 	Environments RuleEnvironmentAxis `json:"environments"`
 	Keys         RuleKeyAxis         `json:"keys"`
-	Projects     []ID                `json:"projects"`
+
+	// ProjectMode The project axis's mode; omitted, `only`.
+	ProjectMode *RuleProjectMode `json:"project_mode,omitzero"`
+	Projects    []ID             `json:"projects"`
 }
 
 // RunRotationNowRequest defines model for RunRotationNowRequest.
@@ -13878,6 +14048,15 @@ type DeleteDynamicProviderParams struct {
 	RevokeAll *bool `form:"revoke_all" json:"revoke_all,omitzero"`
 }
 
+// ResolveAccessParams defines parameters for ResolveAccess.
+type ResolveAccessParams struct {
+	// Permission The permission to answer for.
+	Permission RuleCapability `form:"permission" json:"permission"`
+
+	// Key One key of the project, by id. Absent asks about every key of the environment.
+	Key *ID `form:"key" json:"key,omitzero"`
+}
+
 // QueryEnvAuditParams defines parameters for QueryEnvAudit.
 type QueryEnvAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
@@ -16517,6 +16696,9 @@ type ServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ResolveAccess Answer who can use one permission in an environment.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access)
+	ResolveAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ResolveAccessParams)
 	// ListAccessRequests The environment's temporary-access requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
 	ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -18542,6 +18724,12 @@ func (_ Unimplemented) GetEnvironment(w http.ResponseWriter, r *http.Request, or
 // RenameEnvironment Rename an environment.
 // (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 func (_ Unimplemented) RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResolveAccess Answer who can use one permission in an environment.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access)
+func (_ Unimplemented) ResolveAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ResolveAccessParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -26787,6 +26975,79 @@ func (siw *ServerInterfaceWrapper) RenameEnvironment(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameEnvironment(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveAccess operation middleware
+func (siw *ServerInterfaceWrapper) ResolveAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveAccessParams
+
+	// ------------- Required query parameter "permission" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "permission", r.URL.Query(), &params.Permission, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "permission"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "permission", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "key" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "key", r.URL.Query(), &params.Key, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "key"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveAccess(w, r, org, project, environment, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -37190,6 +37451,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.RenameEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access", wrapper.ResolveAccess)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.ListAccessRequests)
@@ -64840,6 +65104,131 @@ func (response RenameEnvironment503JSONResponse) VisitRenameEnvironmentResponse(
 	return err
 }
 
+type ResolveAccessRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Params      ResolveAccessParams
+}
+
+type ResolveAccessResponseObject interface {
+	VisitResolveAccessResponse(w http.ResponseWriter) error
+}
+
+type ResolveAccess200JSONResponse AccessResolution
+
+func (response ResolveAccess200JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResolveAccess400JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResolveAccess401JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ResolveAccess403JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResolveAccess404JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ResolveAccess429JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess500JSONResponse struct{ InternalJSONResponse }
+
+func (response ResolveAccess500JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccess503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResolveAccess503JSONResponse) VisitResolveAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAccessRequestsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -88151,6 +88540,9 @@ type StrictServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(ctx context.Context, request RenameEnvironmentRequestObject) (RenameEnvironmentResponseObject, error)
+	// ResolveAccess Answer who can use one permission in an environment.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access)
+	ResolveAccess(ctx context.Context, request ResolveAccessRequestObject) (ResolveAccessResponseObject, error)
 	// ListAccessRequests The environment's temporary-access requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
 	ListAccessRequests(ctx context.Context, request ListAccessRequestsRequestObject) (ListAccessRequestsResponseObject, error)
@@ -95622,6 +96014,35 @@ func (sh *strictHandler) RenameEnvironment(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameEnvironmentResponseObject); ok {
 		if err := validResponse.VisitRenameEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveAccess operation middleware
+func (sh *strictHandler) ResolveAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ResolveAccessParams) {
+	var request ResolveAccessRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveAccess(ctx, request.(ResolveAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveAccessResponseObject); ok {
+		if err := validResponse.VisitResolveAccessResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

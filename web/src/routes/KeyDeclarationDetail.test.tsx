@@ -771,11 +771,18 @@ describe('KeyDeclarationDetail', () => {
     await act(async () => buttonBy(view.container, 'Reclassify as secret…').click());
     const dialogText = confirmDialog(view.container).textContent ?? '';
     expect(dialogText).toContain('dismissals are dropped');
+    const advisory =
+      'Tightening cannot un-disclose: this key’s values were readable as config, so treat them as exposed and rotate them. ' +
+      'Old values stay readable in history to anyone with read access.';
+    expect(dialogText).toContain(advisory);
     // Tightening does not disclose, so it names no second-factor requirement.
     expect(dialogText.toLowerCase()).not.toContain('second-factor');
 
     await act(async () => dialogButton(view.container, 'Reclassify as secret').click());
-    expect(textOf(view.container)).toContain('Reclassified as secret.');
+    expect(textOf(view.container)).toContain(`Reclassified as secret. ${advisory}`);
+    const notice = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent?.includes(advisory));
+    expect(notice).toBeInstanceOf(HTMLElement);
+    expect(notice?.querySelector('[data-glyph="warn"]') ?? null).not.toBeNull();
 
     await view.unmount();
   });
@@ -883,7 +890,7 @@ describe('KeyDeclarationDetail JSON Schema builder', () => {
   /** A presence-only edit: the rule fields are never touched. */
   async function editPresenceOnly(container: HTMLElement): Promise<void> {
     const required = [...container.querySelectorAll('select')].find((select) =>
-      select.closest('label')?.textContent?.startsWith('Required in'),
+      select.labels?.[0]?.textContent === 'Required in',
     );
     if (required === undefined) throw new Error('Required in select missing');
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;

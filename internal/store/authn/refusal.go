@@ -19,8 +19,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
 
-// RefusalDeadlineError reports a server-side lock/statement timeout (55P03,
-// 57014) as a deadline error that still wraps the PgError. The server bound is
+// RefusalDeadlineError reports a server-side lock, statement or transaction
+// timeout (55P03, 57014, 25P04) as a deadline error that still wraps the PgError. The server bound is
 // the remaining time rounded down to whole milliseconds (up to ~1 ms short) and
 // the Go context timer can fire late on a loaded runner, so the server may
 // report first; callers classify both the same way. An administrator's
@@ -30,7 +30,7 @@ import (
 // server timeout during COMMIT is left as the raw PgError.
 func RefusalDeadlineError(err error) error {
 	var pgErr *pgconn.PgError
-	if err == nil || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pgErr) || (pgErr.Code != "55P03" && pgErr.Code != "57014") {
+	if err == nil || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pgErr) || (pgErr.Code != "55P03" && pgErr.Code != "57014" && pgErr.Code != "25P04") {
 		return err
 	}
 	return fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
@@ -53,8 +53,8 @@ func (r *Resolver) UpdateRequestRefusals(ctx context.Context, sample *audit.Refu
 		start, now, encoded = row.WindowStart, row.NowSeconds, row.State
 	} else {
 		// Cancelling the client does not stop a lock wait or statement the server already
-		// has, so the remaining deadline also bounds each wait/statement server-side
-		// (per statement, not per transaction; 0 would disable the timeout).
+		// has, so the remaining deadline also bounds each lock wait, each statement and the whole
+		// transaction server-side (0 would disable the timeout).
 		if dl, ok := ctx.Deadline(); ok {
 			if err := r.pg.BoundAuthRefusalTransaction(ctx, strconv.FormatInt(max(1, time.Until(dl).Milliseconds()), 10)); err != nil {
 				return 0, err

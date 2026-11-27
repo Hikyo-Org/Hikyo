@@ -39,6 +39,7 @@ const request = (id: number, accountId = 'mch_first'): MintRequest => ({
   accountId,
   accountName: accountId === 'mch_first' ? 'first worker' : 'second worker',
   rotating: false,
+  lifetimeId: 'default',
   reach: [{ id: 'env_prod', name: 'production', current: true, historical: false }],
 });
 
@@ -177,5 +178,18 @@ describe('MintLifecycle', () => {
     const closed = transitionMintLifecycle(stored, { type: 'dismiss' });
     expect(closed).toEqual({ kind: 'idle' });
     expect(JSON.stringify(closed)).not.toContain(SENTINEL);
+  });
+});
+
+describe('set-lifetime', () => {
+  it('rewrites the reviewed request only, and survives submit', () => {
+    const reviewing = transitionMintLifecycle<MintRequest, MintResult>(idleMintLifecycle, {
+      type: 'review',
+      request: request(1),
+    });
+    const chosen = transitionMintLifecycle(reviewing, { type: 'set-lifetime', lifetimeId: '90d' });
+    const sent = transitionMintLifecycle(chosen, { type: 'submit' });
+    expect(sent.kind === 'submitting' && sent.request.lifetimeId).toBe('90d');
+    expect(transitionMintLifecycle(sent, { type: 'set-lifetime', lifetimeId: '1y' })).toBe(sent);
   });
 });

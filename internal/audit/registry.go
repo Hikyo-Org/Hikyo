@@ -1688,7 +1688,7 @@ var registry = map[EventType]TypeSpec{
 		"action":  {Kind: KindString, Required: true, Enum: []string{"add", "delete"}},
 	}),
 	EventEnvRenamed: hierarchyEvent(renameSchema("name")),
-	EventEnvDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventEnvDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}, "purged_certificates": {Kind: KindInt, NonNegative: true}}),
 	// The resulting order, not only its length: an investigator must be able to
 	// tell "production and staging swapped" from any other permutation of the
 	// same set. audit.Schema has no list kind, so the order is one
@@ -4220,11 +4220,14 @@ func adapterLifecycleEvent(schema Schema) TypeSpec {
 var ruleSchema = Schema{
 	"target_principal": {Kind: KindString, Required: true},
 	"capability":       {Kind: KindString, Required: true},
-	"projects":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
-	"env_mode":         {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
-	"envs":             {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
-	"key_mode":         {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
-	"keys":             {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 1024},
+	// project_mode is the project axis (#1446): "all" covers every project of
+	// the org, including later ones, and then "projects" is empty.
+	"project_mode": {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"projects":     {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+	"env_mode":     {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"envs":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+	"key_mode":     {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"keys":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 1024},
 }
 
 var grantSchema = Schema{

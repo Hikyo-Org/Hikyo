@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -25,6 +25,7 @@ import { Glyph } from '../ui/Glyph.tsx';
 import { NamedId } from '../ui/NamedId.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { ConsentKeys, consentKeys, type ConsentKey } from './ConsentScope.tsx';
@@ -99,6 +100,7 @@ export function ChangeApprovals() {
 }
 
 function ScopedChangeApprovals({ org, project }: { org: string; project: string }) {
+  const policiesCaptionId = useId();
   const ref = { org, project };
 
   const environments = useEnvironments(org, project);
@@ -235,8 +237,9 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                 <p>No approval policies. Changes in every environment publish directly.</p>
               ) : null}
               {policies.data !== undefined && policies.data.items.length > 0 ? (
-                <div className="table-scroll">
+                <TableScroll aria-labelledby={policiesCaptionId}>
                   <table className="change-approvals__policies">
+                    <caption id={policiesCaptionId} className="visually-hidden">Approval policies for this project</caption>
                     <thead>
                       <tr>
                         <th>Environment</th>
@@ -284,7 +287,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               ) : null}
 
               {formOpen ? (

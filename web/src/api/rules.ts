@@ -7,6 +7,7 @@ import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { createBody, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError, parsed, transportRefusalText } from './client.ts';
+import { runPasskeyCeremony } from './values.ts';
 
 /**
  * Member access rules (member-access-rules ADR) as the Members surface reads
@@ -72,21 +73,70 @@ export class RuleSaveFailure extends Error {
   }
 }
 
-/** Save one card with no intermediate permission union. */
-export async function saveRule(org: string, before: Rule | null, draft: Rule): Promise<void> {
+/** A machine rule change was refused until the caller reauthenticates, and the passkey ceremony over `environment` did not complete. Nothing was written. */
+export class RuleReauthFailure extends Error {
+  override readonly cause: unknown;
+
+  constructor(
+    readonly environment: string,
+    cause: unknown,
+  ) {
+    super(`reauthentication over ${environment} did not complete`, { cause });
+    this.name = 'RuleReauthFailure';
+    this.cause = cause;
+  }
+}
+
+const WIDENING = /reauthenticate over the environments this operation makes reachable, then retry \(([^)\s]+)\)/;
+
+/**
+ * The environment a refused machine rule change makes newly reachable in
+ * plaintext, which the caller must reauthenticate over before a retry (the
+ * machine widening gate's 409), or undefined for any other outcome.
+ */
+export function wideningEnvironment(error: unknown): string | undefined {
+  if (!(error instanceof ApiError) || error.operation !== replaceRulesOp || error.status !== 409) return undefined;
+  return WIDENING.exec(error.detail ?? '')?.[1];
+}
+
+/**
+ * Save one card with no intermediate permission union. A machine rule that
+ * makes plaintext newly reachable is refused once per such environment until
+ * the caller reauthenticates over it; each named environment takes one
+ * passkey reauthentication and the same change is sent again. A ceremony that
+ * does not complete throws RuleReauthFailure with the ceremony error as its
+ * cause, which proves nothing was written; a second refusal over the same
+ * environment is thrown as the server's own 409.
+ */
+export async function saveRule(org: string, before: Rule | null, draft: Rule, orgProjects: readonly string[] = []): Promise<void> {
   const plan = savePlan(before, draft);
   if (plan.create.length === 0 && plan.revoke.length === 0) return;
-  try {
-    await parsed(replaceRulesOp, { path: { org }, body: {
-      principal: draft.member,
-      revoke: [...plan.revoke],
-      create: plan.create.map((capability) => createBody(draft, capability)),
-    } });
-  } catch (error) {
-    // A 4xx from this transaction proves atomic refusal. A session check can
-    // itself return ApiError after a successful write, so preserve provenance.
-    if (error instanceof ApiError && error.operation === replaceRulesOp && error.status >= 400 && error.status < 500) throw error;
-    throw new RuleSaveFailure('atomic', error);
+  const body = {
+    principal: draft.member,
+    revoke: [...plan.revoke],
+    create: plan.create.map((capability) => createBody(draft, capability, orgProjects)),
+  };
+  const reauthenticated = new Set<string>();
+  for (;;) {
+    try {
+      await parsed(replaceRulesOp, { path: { org }, body });
+      return;
+    } catch (error) {
+      const environment = wideningEnvironment(error);
+      if (environment !== undefined && !reauthenticated.has(environment)) {
+        reauthenticated.add(environment);
+        try {
+          await runPasskeyCeremony({ operation: 'mint', environmentId: environment, keyIds: [] });
+        } catch (ceremonyError) {
+          throw new RuleReauthFailure(environment, ceremonyError);
+        }
+        continue;
+      }
+      // A 4xx from this transaction proves atomic refusal. A session check can
+      // itself return ApiError after a successful write, so preserve provenance.
+      if (error instanceof ApiError && error.operation === replaceRulesOp && error.status >= 400 && error.status < 500) throw error;
+      throw new RuleSaveFailure('atomic', error);
+    }
   }
 }
 
@@ -132,7 +182,10 @@ export function useRuleMutations(org: string) {
     }
   };
   return {
-    save: useMutation({ mutationFn: (input: { before: Rule | null; draft: Rule }) => saveRule(org, input.before, input.draft), onSettled: settle }),
+    save: useMutation({
+      mutationFn: (input: { before: Rule | null; draft: Rule; orgProjects?: readonly string[] }) => saveRule(org, input.before, input.draft, input.orgProjects),
+      onSettled: settle,
+    }),
     remove: useMutation({ mutationFn: (rule: Rule) => removeRule(org, rule), onSettled: settle }),
   };
 }

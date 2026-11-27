@@ -579,6 +579,68 @@ func (q *Queries) ListManageMembersHoldersForOrg(ctx context.Context, orgID sql.
 	return items, nil
 }
 
+const listOrgLevelGrantsWithOriginsForCapability = `-- name: ListOrgLevelGrantsWithOriginsForCapability :many
+SELECT g.id, g.principal_id, g.capability, g.org_id, g.project_id, g.env_id,
+       g.created_at, o.kind, o.subject
+FROM grants AS g
+INNER JOIN grant_origins AS o ON o.grant_id = g.id
+WHERE g.org_id = ? AND g.project_id IS NULL
+  AND g.capability = ?
+ORDER BY g.principal_id, g.capability, g.id, o.kind, o.subject
+`
+
+type ListOrgLevelGrantsWithOriginsForCapabilityParams struct {
+	OrgID      sql.NullString
+	Capability string
+}
+
+type ListOrgLevelGrantsWithOriginsForCapabilityRow struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       sql.NullString
+	ProjectID   sql.NullString
+	EnvID       sql.NullString
+	CreatedAt   string
+	Kind        string
+	Subject     string
+}
+
+// hikyo:reason rule.resolve reads only the grant lines scoped AT one org (project_id IS NULL), filtered to the asked capability (the only line that can decide a principal's answer; See is read from the principal's own grants), so org-level holders reach the "Who can...?" population without reading sibling-project membership; instance grants and every project or env row stay out.
+// hikyo:authn-resolution
+func (q *Queries) ListOrgLevelGrantsWithOriginsForCapability(ctx context.Context, arg ListOrgLevelGrantsWithOriginsForCapabilityParams) ([]ListOrgLevelGrantsWithOriginsForCapabilityRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOrgLevelGrantsWithOriginsForCapability, arg.OrgID, arg.Capability)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrgLevelGrantsWithOriginsForCapabilityRow
+	for rows.Next() {
+		var i ListOrgLevelGrantsWithOriginsForCapabilityRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.CreatedAt,
+			&i.Kind,
+			&i.Subject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPrincipalFootprintOrgs = `-- name: ListPrincipalFootprintOrgs :many
 SELECT g.org_id FROM grants g WHERE g.principal_id = ?1
 UNION

@@ -1304,7 +1304,10 @@ paths:
         Not idempotent: each call creates a distinct project. The name must be
         unused among the organisation's live projects; a collision is a
         `conflict`, decided after authorization so it discloses nothing a
-        caller could not already read.
+        caller could not already read. A project that would list one of the
+        organisation's rules over all projects past the 500-item bound of a
+        rule's `where` is a `conflict` too; its detail names the blocking rules
+        to a member manager of the organisation.
       x-hikyo-class: tenant
       x-hikyo-operation: project.create
       x-hikyo-formula: [manage-projects@org]
@@ -2905,12 +2908,17 @@ paths:
       tags: [access]
       summary: Create one member access rule.
       description: |
-        One capability for one person, with a `where` of projects,
+        One capability for one principal, with a `where` of projects,
         environments and keys. The caller needs `manage-members` covering the
         complete selector on every project and may delegate only capabilities
         held there, unless org or instance authority permits unheld grants.
-        Rules are for people: a machine principal is refused. Use replaceRules
-        to edit a grouped rule card atomically.
+        A workload or automation principal may hold a rule under its class's
+        allowlist and depth, in its owning project only, and never narrowed by
+        keys. A machine rule that makes plaintext newly reachable also needs
+        `manage-identities` on the project, the matching disclosure capability
+        and a live reauthentication window over each newly reachable
+        environment; a 409 names the environment to reauthenticate over. Use
+        replaceRules to edit a grouped rule card atomically.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -2960,6 +2968,8 @@ paths:
         top-level principal. At least one revoke or create item is required.
         A missing removal refuses the whole batch.
         Sessions are invalidated only after all authorization checks succeed.
+        For a machine principal the machine widening gate judges the complete
+        change, as on createRule.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -3505,6 +3515,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RuleList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: resolveAccess
+      tags: [access]
+      summary: Answer who can use one permission in an environment.
+      description: |
+        "Who can...?" (member-access-rules ADR D10), evaluated by the
+        authorization chokepoint for the principals with a grant in the
+        project, an organisation-wide grant of the asked permission, or a
+        project rule the caller may manage, people and machines alike.
+        Instance operators are not listed, and grants above organisation
+        scope are not shown. It answers
+        who can, who an except of a rule leaves out (naming the rule and the
+        excepts), who has Reveal without See, and whom no grant or rule of
+        theirs reaches. Rules the caller cannot manage are never named, and
+        nothing from a sibling project appears. Without
+        `key` the question is about the whole environment, so a rule limited
+        to some keys does not reach and is listed as `key_limited`. A machine
+        whose project has machine reveal turned off holds no Reveal. The
+        answer discloses membership, so it needs `manage-members` at the
+        project and is audited as a membership read.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.resolve
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 21
+      parameters:
+        - name: permission
+          in: query
+          required: true
+          description: The permission to answer for.
+          schema:
+            $ref: "#/components/schemas/RuleCapability"
+        - name: key
+          in: query
+          required: false
+          description: One key of the project, by id. Absent asks about every key of the environment.
+          schema:
+            $ref: "#/components/schemas/ID"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The answer, in four groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessResolution"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
@@ -17873,7 +17948,7 @@ components:
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
         sealed-webhook binds only to an origin an instance admin activated in
-        the server's sealed webhook registry.
+        the server's encrypted webhook registry.
       x-extensible-enum: [forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, gitlab]
 
     AdapterTargetInput:
@@ -19736,9 +19811,10 @@ components:
       required: [purpose, operation, environment_ids, pkce_challenge, redirect_uri]
       description: |
         `adapter` carries an adapter-routing decision over an environment set.
-        Every non-adapter purpose carries an exact environment and key set. The
-        browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
-        names exactly the unit the decision covers.
+        Every other purpose carries an exact environment and key set, except
+        `mint` and `access`, whose unit is their one environment and which carry
+        no keys. The browser runs the same purpose-bound ceremony the UI runs,
+        so `key_ids` names exactly the unit the decision covers.
       anyOf:
         - properties: {purpose: {enum: [developer-credential]}}
         - properties:
@@ -19747,15 +19823,15 @@ components:
       properties:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config, developer-credential]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, access, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, access.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environment_ids: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
         key_ids:
           type: array
           uniqueItems: true
           maxItems: 10000
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
         pkce_challenge: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}
         redirect_uri:
           type: string
@@ -19807,13 +19883,13 @@ components:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
         state: {type: string, minLength: 1}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config, developer-credential]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, mint, access, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, identity.credential-mint, access.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environments: {type: array, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit the ceremony binds; empty for `adapter`.
+          description: The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
         redirect_uri: {type: string, format: uri}
         expires_at: {$ref: "#/components/schemas/Timestamp"}
 
@@ -23512,6 +23588,17 @@ components:
       description: "`all` reads the axis's items as exceptions, `only` as the complete list."
       enum: [all, only]
 
+    RuleProjectMode:
+      type: string
+      description: |
+        `only` reaches the listed `projects`. `all` reaches every project of
+        the organisation, including projects created later; such a rule covers
+        every environment and narrows keys by folder only. Omitted, a rule's
+        project mode is `only`. The default is stated here rather than as a
+        schema `default`, so generated clients never add the property to a
+        request: a server before revision 21 refuses it.
+      enum: [all, only]
+
     RuleWhere:
       type: object
       additionalProperties: false
@@ -23521,7 +23608,27 @@ components:
         environment and key item names the project it belongs to, which must be
         one of `projects`. A rule names at most 500 projects, environments and
         keys together.
+
+        With `project_mode` `all` the rule reaches every project of the
+        organisation, including projects created later. A response lists the
+        organisation's current projects (a project listing: only that
+        project), with the rule's folder items repeated under each, so
+        `projects` is never empty; an organisation listing's or a create's
+        `where` is a valid create request. A create lists exactly the organisation's current
+        projects (otherwise 409), keeps the environment axis `all` without
+        items, and repeats the same folder items, never single keys, under
+        every project.
+
+        The 500 bound counts the rule as it is listed: every current project
+        plus its folder items repeated under each. A create that would list
+        more is refused with 409 `limit_exceeded`. A project creation that
+        would list an existing rule over all projects past it is refused with
+        409 `conflict`, whose detail names the blocking rules to a member
+        manager. A listing is never truncated.
       properties:
+        project_mode:
+          $ref: "#/components/schemas/RuleProjectMode"
+          description: The project axis's mode; omitted, `only`.
         projects:
           type: array
           minItems: 1
@@ -23585,6 +23692,87 @@ components:
           $ref: "#/components/schemas/KeyFolderPath"
         key:
           $ref: "#/components/schemas/ID"
+
+    AccessResolution:
+      type: object
+      additionalProperties: false
+      required: [permission, environment, can, excepted, needs_see, none]
+      properties:
+        permission:
+          $ref: "#/components/schemas/RuleCapability"
+        environment:
+          $ref: "#/components/schemas/ID"
+        key:
+          $ref: "#/components/schemas/ID"
+        can:
+          type: array
+          description: Principals that hold the permission here. For `reveal` and `reveal-history` they also hold See.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+        excepted:
+          type: array
+          description: Principals a rule would reach, but an except of that rule leaves this place out.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+        needs_see:
+          type: array
+          description: Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+        none:
+          type: array
+          description: Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
+          items:
+            $ref: "#/components/schemas/AccessPrincipal"
+
+    AccessPrincipal:
+      type: object
+      additionalProperties: false
+      required: [principal_id, kind, grants, rules, excepts]
+      properties:
+        principal_id:
+          $ref: "#/components/schemas/ID"
+        principal_name:
+          type: string
+          description: Current display name or username of the person, or the service account's name; not an identifier.
+        kind:
+          $ref: "#/components/schemas/PrincipalKind"
+        grants:
+          type: array
+          description: The scopes of the grants that give the permission here.
+          items:
+            $ref: "#/components/schemas/GrantScope"
+        rules:
+          type: array
+          description: The ids of the rules that give the permission here.
+          items:
+            $ref: "#/components/schemas/ID"
+        excepts:
+          type: array
+          description: On `excepted`, each rule that would reach and what of it leaves this place out.
+          items:
+            $ref: "#/components/schemas/AccessExcept"
+
+    AccessExcept:
+      type: object
+      additionalProperties: false
+      required: [rule, environments, keys, key_limited]
+      properties:
+        rule:
+          $ref: "#/components/schemas/ID"
+        environments:
+          type: array
+          description: The excepted environments that leave this place out.
+          items:
+            $ref: "#/components/schemas/ID"
+        keys:
+          type: array
+          description: The excepted folders or keys that leave the named key out.
+          items:
+            $ref: "#/components/schemas/RuleKeyItem"
+        key_limited:
+          type: boolean
+          description: No key was named and the rule reaches only some keys of the environment.
 
     Rule:
       type: object

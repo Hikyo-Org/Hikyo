@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+
 import { zRuleCapability } from '@hikyo/zod';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
-import { grantRows, IDS, makeWorld, PAYMENTS_KEYS } from './fixture.ts';
+import { grantRows, IDS, makeWorld, PAYMENTS_KEYS, WEB_KEYS } from './fixture.ts';
 import {
   ALL,
   allowed,
@@ -9,15 +12,22 @@ import {
   availability,
   createBody,
   effective,
+  machineRefusal,
+  machineWhereRefusal,
   newRule,
+  overProjects,
   perm,
   PERMS,
   PRESETS,
   presetOf,
   reachOf,
   resolve,
+  ruleHolders,
   rulesFromGrants,
+  rulesFromServer,
   savePlan,
+  toggleAllProjects,
+  toggleProject,
   type Key,
   type PermId,
   type Rule,
@@ -119,6 +129,101 @@ describe('from the listings', () => {
     expect(state(world, IDS.ci, 'publish', STAGING, DB_PASSWORD)).toBe('yes');
     expect(state(world, IDS.ci, 'publish', PROD, DB_PASSWORD)).toBe('no');
     expect(state(world, 'prn_x', 'edit', DEV, LOG_LEVEL)).toBe('yes');
+  });
+});
+
+describe('all-projects rules from the listings (#1446)', () => {
+  it('reads project_mode all as all projects, with the expanded folder items evaluated per project', () => {
+    const where = (project: string) => ({ project, folder: 'db' });
+    const [rule] = rulesFromServer([
+      {
+        id: 'rul_all',
+        principal_id: IDS.chen,
+        capability: 'edit',
+        other_projects: false,
+        where: {
+          project_mode: 'all',
+          projects: [PAY, IDS.web],
+          environments: { mode: 'all', items: [] },
+          keys: { mode: 'all', items: [where(PAY), where(IDS.web)] },
+        },
+      },
+    ]);
+    expect(rule?.projects).toBe('*');
+    const world = { ...makeWorld(), rules: rule === undefined ? [] : [rule] };
+    expect(state(world, IDS.chen, 'edit', PROD, STRIPE_SECRET)).toBe('yes');
+    expect(state(world, IDS.chen, 'edit', PROD, DB_PASSWORD)).toBe('excepted');
+    expect(resolve(world, IDS.chen, 'edit', IDS.web, IDS.webProd, undefined).state).not.toBe('no');
+  });
+
+  it('keeps a rule without project_mode, from a server before revision 21, on its listed projects', () => {
+    const [rule] = rulesFromServer([
+      {
+        id: 'rul_old',
+        principal_id: IDS.chen,
+        capability: 'read',
+        other_projects: false,
+        where: { projects: [PAY], environments: { mode: 'all', items: [] }, keys: { mode: 'all', items: [] } },
+      },
+    ]);
+    expect(rule?.projects).toEqual([PAY]);
+  });
+
+  it('creates over the listed projects with project_mode all, the folders repeated under each (R2)', () => {
+    const picked = toggleAllProjects(
+      {
+        ...newRule(IDS.chen),
+        perms: ['edit'],
+        projects: [PAY],
+        envs: { mode: 'only', items: [{ project: PAY, environment: STAGING }] },
+        keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: PAY, key: IDS.stripeSecret }] },
+      },
+      [PAY, IDS.web],
+    );
+    expect(picked.projects).toBe('*');
+    expect(picked.envs).toEqual(ALL);
+    expect(createBody(picked, 'edit', [PAY, IDS.web])).toEqual({
+      principal: IDS.chen,
+      capability: 'edit',
+      where: {
+        project_mode: 'all',
+        projects: [PAY, IDS.web],
+        environments: { mode: 'all', items: [] },
+        keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
+      },
+    });
+    // Without the listed projects there is nothing to send.
+    expect(() => createBody(picked, 'edit')).toThrow();
+  });
+
+  it('round-trips: a listed all-projects rule saves back as the same create', () => {
+    const [rule] = rulesFromServer([
+      {
+        id: 'rul_all',
+        principal_id: IDS.chen,
+        capability: 'edit',
+        other_projects: false,
+        where: {
+          project_mode: 'all',
+          projects: [PAY, IDS.web],
+          environments: { mode: 'all', items: [] },
+          keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
+        },
+      },
+    ]);
+    if (rule === undefined) throw new Error('no rule');
+    expect(createBody(rule, 'edit', [PAY, IDS.web]).where).toEqual({
+      project_mode: 'all',
+      projects: [PAY, IDS.web],
+      environments: { mode: 'all', items: [] },
+      keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }, { project: IDS.web, folder: 'db' }] },
+    });
+  });
+
+  it('leaving all projects starts the Where afresh', () => {
+    const all = toggleAllProjects({ ...newRule(IDS.chen), keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } }, [PAY, IDS.web]);
+    expect(toggleAllProjects(all, [PAY, IDS.web])).toMatchObject({ projects: [], envs: ALL, keys: ALL });
+    expect(toggleProject(all, IDS.web)).toMatchObject({ projects: [IDS.web], envs: ALL, keys: ALL });
   });
 });
 
@@ -307,5 +412,95 @@ describe('where labels', () => {
   });
   it('a one-project rule never qualifies', () => {
     expect(mergeByName([{ project: 'p1', name: 'db/', flag: false }], ['p1'], label)).toEqual([{ label: 'db/', flag: false }]);
+  });
+});
+
+describe('machine rules (D11)', () => {
+  const where = { projects: [PAY], envs: { mode: 'only' as const, items: [{ project: PAY, environment: STAGING }] }, keys: ALL };
+  it('pins what each class may hold to internal/domain CheckMachineRule', () => {
+    const fixture = z
+      .object({ machine_rule_capabilities: z.record(z.string(), z.array(z.string())) })
+      .parse(JSON.parse(readFileSync(new URL('../../../../internal/domain/testdata/capabilities.json', import.meta.url), 'utf8')));
+    expect(Object.keys(fixture.machine_rule_capabilities).sort()).toEqual(['automation', 'workload']);
+    for (const machine of ['workload', 'automation'] as const) {
+      const held = PERMS.map((p) => p.id).filter((id) => allowed(id, where, machine));
+      expect(held.sort()).toEqual(fixture.machine_rule_capabilities[machine]);
+    }
+  });
+  it('a permission the class may not hold is refused with its reason, before any Where reason', () => {
+    expect(availability('edit', where, 'workload')).toEqual({ ok: false, why: 'Not for a workload account: it holds See only.' });
+    expect(availability('manage-identities', where, 'automation')).toEqual({ ok: false, why: machineRefusal('manage-identities', 'automation') });
+    expect(machineRefusal('reveal', 'automation')).toContain('environment grant');
+    expect(machineRefusal('reveal', undefined)).toBeUndefined();
+  });
+  it('effective drops what the class may not hold', () => {
+    expect(effective({ ...where, perms: ['read', 'edit', 'reveal'] }, 'workload')).toEqual(['read']);
+    expect(effective({ ...where, perms: ['read', 'edit', 'reveal'] })).toEqual(['read', 'edit', 'reveal']);
+  });
+  it('a machine rule names one project, no keys, and a workload lists its environments', () => {
+    expect(machineWhereRefusal(where, 'workload')).toBeUndefined();
+    expect(machineWhereRefusal({ ...where, envs: ALL }, 'workload')).toContain('lists its environments');
+    expect(machineWhereRefusal({ ...where, envs: ALL }, 'automation')).toBeUndefined();
+    expect(machineWhereRefusal({ ...where, projects: [PAY, IDS.web] }, 'automation')).toContain('own project');
+    expect(machineWhereRefusal({ ...where, keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }] } }, 'automation')).toContain('every key');
+    expect(machineWhereRefusal({ ...where, projects: [PAY, IDS.web] }, undefined)).toBeUndefined();
+  });
+});
+
+it('re-derives an all-projects rule over the current project list (#1446)', () => {
+  const rule = { ...newRule(IDS.chen), projects: '*' as const, keys: { mode: 'all' as const, items: [{ project: IDS.payments, folder: 'db' }] } };
+  expect(overProjects(rule, [IDS.payments, IDS.web]).keys.items).toEqual([
+    { project: IDS.payments, folder: 'db' },
+    { project: IDS.web, folder: 'db' },
+  ]);
+  const named = { ...newRule(IDS.chen), projects: [IDS.payments] };
+  expect(overProjects(named, [IDS.payments, IDS.web])).toBe(named);
+  // The create body uses the list as it is at save time, not the draft's copy.
+  expect(createBody(rule, 'edit', [IDS.payments, IDS.web]).where.keys.items).toHaveLength(2);
+});
+
+it('keeps an all-projects rule unchanged when there is no project to spread it over (#1446)', () => {
+  const rule = { ...newRule(IDS.chen), projects: '*' as const, keys: { mode: 'all' as const, items: [{ project: IDS.payments, folder: 'db' }] } };
+  expect(overProjects(rule, [])).toBe(rule);
+});
+
+describe("an all-projects rule from a project's listing (#1446)", () => {
+  // A project's listing spreads the rule's folders over that project only
+  // (other_projects true); the server applies them in every project.
+  const [rule] = rulesFromServer([
+    {
+      id: 'rul_all',
+      principal_id: IDS.chen,
+      capability: 'edit',
+      other_projects: true,
+      where: {
+        project_mode: 'all',
+        projects: [IDS.payments],
+        environments: { mode: 'all', items: [] },
+        keys: { mode: 'all', items: [{ project: IDS.payments, folder: 'app' }] },
+      },
+    },
+  ]);
+  if (rule === undefined) throw new Error('no rule');
+  const world = { ...makeWorld(), rules: [rule] };
+  const webSecret = WEB_KEYS.find((k) => k.name === 'COOKIE_SECRET');
+  if (webSecret === undefined) throw new Error('no web key');
+
+  it('excepts the folder in every covered project, not only the listed one', () => {
+    expect(resolve(world, IDS.chen, 'edit', IDS.web, IDS.webProd, webSecret).state).toBe('excepted');
+    expect(resolve(world, IDS.chen, 'edit', IDS.payments, IDS.payProd, STRIPE_SECRET).state).toBe('yes');
+    // Every web key is in app/, so the rule reaches none of them; payments
+    // keeps its six keys outside app/.
+    expect(reachOf(world, rule).keys).toBe(PAYMENTS_KEYS.filter((k) => k.folder !== 'app').length);
+  });
+
+  it('answers no org-scope holder, as the server does: a rule reaches projects and environments only', () => {
+    const unnarrowed = { ...rule, keys: ALL };
+    const all = { ...world, rules: [unnarrowed] };
+    const org = { value: 'org', label: 'org', scope: { kind: 'org', org: IDS.org }, level: 'org', group: '', isProtected: null } as const;
+    expect(ruleHolders(all, 'edit', org)).toEqual([]);
+    // The same rule does answer a project scope, so the empty org answer is the scope's.
+    const project = { ...org, scope: { kind: 'project', org: IDS.org, project: IDS.web } } as const;
+    expect(ruleHolders(all, 'edit', project)).toHaveLength(1);
   });
 });

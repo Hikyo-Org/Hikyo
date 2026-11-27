@@ -67,6 +67,10 @@ func testIO(t *testing.T, env map[string]string) (cli.IO, *bytes.Buffer, *bytes.
 		if k == "HIKYO_STATE_DIR" {
 			return state
 		}
+		// A graphical session, so a chosen browser is not refused as headless.
+		if k == "DISPLAY" {
+			return ":0"
+		}
 		return ""
 	}
 	return cli.IO{

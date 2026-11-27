@@ -38,6 +38,12 @@ Ergonomics for shared values are three explicit operations with no ongoing relat
 - **Instance connection** — instance-owned machine principal for the multi-instance directory, holds exactly `instance-directory` ([multi-instance.md](../adr/multi-instance.md)).
 - **Grant**: `(principal, capability, scope)` triple with origins (`manual | scim | lockout-retention | structural | registration`); the only authorization input ([permission-model.md](../adr/permission-model.md)).
 
+## Action approval vocabulary (proposed)
+
+- **Action approval**: a server-side record that the human who started one exact action approved it: one operation, its target ids and request digest, single use, short-lived ([action-approval.md](../adr/action-approval.md)). Distinct from a **secret-change approval** ([#151](https://github.com/Hikyo-Org/Hikyo/issues/151): an approval request, voted on by the approvers an approval policy names, which may include the requester where the policy permits self-approval, before a change set merges).
+- **Approvable operation**: an operation whose registry row is marked approvable; only these can be named by an action-approval policy.
+- **Instance floor**: the instance-wide set of approvable operations (and environments; this ADR's reading: for publish and copy, protected environments as a class) that require an action approval. Instance admins set it; project admins add coverage for their project on top of it and never remove from it ([#1532](https://github.com/Hikyo-Org/Hikyo/issues/1532)). Which capabilities make someone those admins is open ([action-approval.md](../adr/action-approval.md) Open item 8).
+
 ## Canonical key grammar (restated per import-paths.md's delegation)
 
 A key name matches **`\A[A-Z_][A-Z0-9_]*\z`** — uppercase ASCII letters, digits, underscore; no leading digit. This is the environment-variable-safe grammar every delivery surface assumes: Compose exec/dotenv delivery, K8s Secret data keys, adapter effective names (which additionally refuse non-uppercase *effective* names arising from a lowercase `name_prefix` — [deployment-adapter.md](../adr/deployment-adapter.md), [github-adapter.md](../adr/github-adapter.md)). Maximum name length is an ops-spec bound ([ops-catalogue.md](./ops-catalogue.md)). Names are unique among live keys per project; identity is the immutable id, so rename never breaks references. Import behavior relative to this grammar (byte-preserve valid, deterministic transform, hard-stop otherwise): [import-paths.md](../adr/import-paths.md) § Renames.
@@ -65,6 +71,7 @@ One row per persisted entity class; the owning ADR holds the authoritative shape
 | Adapter outbox job | [system-architecture.md](../adr/system-architecture.md) |
 | Remote (directory entry), instance-connection credential | [multi-instance.md](../adr/multi-instance.md) |
 | Key hierarchy (wrapped master, DEKs, token key, scanning key) | [encryption-model.md](../adr/encryption-model.md) |
+| Action approval, action-approval policy (floor + project additions) (proposed) | [action-approval.md](../adr/action-approval.md) |
 | Audit events (tenant + instance tables) | [audit-model.md](../adr/audit-model.md) |
 | Scanning dismissal row | [secret-scanning.md](../adr/secret-scanning.md) |
 | Import plan / run manifest | [import-paths.md](../adr/import-paths.md), [source-of-truth.md](../adr/source-of-truth.md) |

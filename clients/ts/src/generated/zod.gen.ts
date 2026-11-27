@@ -448,7 +448,7 @@ export const zAdapterVisibility = z.enum([
 ]);
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
  */
 export const zAdapterProvider = z.string();
 
@@ -1492,6 +1492,8 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'approve',
         'reject',
         'bypass',
+        'mint',
+        'access',
         'self-config',
         'developer-credential'
     ]),
@@ -1505,6 +1507,8 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
+        'access.bypass',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',
@@ -1554,6 +1558,8 @@ export const zCliReauthTransaction = z.object({
         'approve',
         'reject',
         'bypass',
+        'mint',
+        'access',
         'self-config',
         'developer-credential'
     ]),
@@ -1567,6 +1573,8 @@ export const zCliReauthTransaction = z.object({
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
+        'access.bypass',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',
@@ -3071,6 +3079,17 @@ export const zRuleCapability = z.enum([
  */
 export const zRuleAxisMode = z.enum(['all', 'only']);
 
+/**
+ * `only` reaches the listed `projects`. `all` reaches every project of
+ * the organisation, including projects created later; such a rule covers
+ * every environment and narrows keys by folder only. Omitted, a rule's
+ * project mode is `only`. The default is stated here rather than as a
+ * schema `default`, so generated clients never add the property to a
+ * request: a server before revision 21 refuses it.
+ *
+ */
+export const zRuleProjectMode = z.enum(['all', 'only']);
+
 export const zRuleEnvironmentItem = z.object({
     project: zId,
     environment: zId
@@ -3741,8 +3760,26 @@ export const zRuleKeyAxis = z.object({
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * With `project_mode` `all` the rule reaches every project of the
+ * organisation, including projects created later. A response lists the
+ * organisation's current projects (a project listing: only that
+ * project), with the rule's folder items repeated under each, so
+ * `projects` is never empty; an organisation listing's or a create's
+ * `where` is a valid create request. A create lists exactly the organisation's current
+ * projects (otherwise 409), keeps the environment axis `all` without
+ * items, and repeats the same folder items, never single keys, under
+ * every project.
+ *
+ * The 500 bound counts the rule as it is listed: every current project
+ * plus its folder items repeated under each. A create that would list
+ * more is refused with 409 `limit_exceeded`. A project creation that
+ * would list an existing rule over all projects past it is refused with
+ * 409 `conflict`, whose detail names the blocking rules to a member
+ * manager. A listing is never truncated.
+ *
  */
 export const zRuleWhere = z.object({
+    project_mode: zRuleProjectMode.optional(),
     projects: z.array(zId).min(1).max(500),
     environments: zRuleEnvironmentAxis,
     keys: zRuleKeyAxis
@@ -3766,6 +3803,32 @@ export const zReplaceRulesRequest = z.intersection(z.union([
     revoke: z.array(zId).max(32).optional(),
     create: z.array(zCreateRuleRequest).max(32).optional()
 }));
+
+export const zAccessExcept = z.object({
+    rule: zId,
+    environments: z.array(zId),
+    keys: z.array(zRuleKeyItem),
+    key_limited: z.boolean()
+});
+
+export const zAccessPrincipal = z.object({
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    kind: zPrincipalKind,
+    grants: z.array(zGrantScope),
+    rules: z.array(zId),
+    excepts: z.array(zAccessExcept)
+});
+
+export const zAccessResolution = z.object({
+    permission: zRuleCapability,
+    environment: zId,
+    key: zId.optional(),
+    can: z.array(zAccessPrincipal),
+    excepted: z.array(zAccessPrincipal),
+    needs_see: z.array(zAccessPrincipal),
+    none: z.array(zAccessPrincipal)
+});
 
 export const zRule = z.object({
     id: zId,
@@ -6646,6 +6709,22 @@ export const zListProjectRulesPath = z.object({
  * The project's rules.
  */
 export const zListProjectRulesResponse = zRuleList;
+
+export const zResolveAccessPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+export const zResolveAccessQuery = z.object({
+    permission: zRuleCapability,
+    key: zId.optional()
+});
+
+/**
+ * The answer, in four groups.
+ */
+export const zResolveAccessResponse = zAccessResolution;
 
 export const zApplyProjectTemplateBody = zApplyTemplateRequest;
 

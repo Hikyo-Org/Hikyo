@@ -66,6 +66,9 @@ Each is the fail-closed reading; widen only by owner decision.
 
 - **Humans only:** rules for machines are refused (the machine widening gate
   counts per environment and would undercount a key-narrowed machine reveal).
+  The API, the CLI and the Machine access rule editor accept
+  workload and automation rules under the conditions in the ADR's *Machine
+  rules* section.
 - **Publish cannot be key-narrowed:** publishing is environment-wide, so a
   key-narrowed publish could never take effect.
 - **See cannot be key-narrowed** on a rule (refused rather than widened).
@@ -192,4 +195,50 @@ running product.
 - **Still open after stage C:** a person with neither a grant nor a rule is
   not listed on Members, so the first access for an invitee comes from the
   invite template or a grant; a server-side resolver operation (ADR
-  *First implementation slice*); Machine access rules (refused server-side).
+  *First implementation slice*). The Machine access rule editor exists
+  (#1482).
+
+## All-projects rules (#1446, owner decisions A, S1 and R2, 2026-11-25)
+
+Branch `feat/1446-all-projects-rules`. The decision is recorded in the ADR's
+[Owner decisions, 2026-11-25](../adr/member-access-rules.md#owner-decisions-2026-11-25).
+
+- **Storage (migration 00099, both engines).** `rules.project_mode` (`all` or
+  `only`, default `only`) and a nullable `rule_items.project_id`, allowed only
+  for folder items; SQLite rebuilds `rule_items`. An all-projects rule stores
+  no project item; its folder items carry no project.
+- **Reads.** Every `rule_items` read is a LEFT JOIN, so an item-less
+  all-projects rule is still loaded, listed and revocable. `ListRulesForProject`
+  and the project listing include `project_mode = 'all'` rules, so evaluation,
+  the D9 move-widening census and navigation (`project.list`, org reach) see
+  them. Project, environment and key pruning match `project_id = ?` and never
+  touch an all-projects rule.
+- **Domain.** `Where.AllProjects`, `Names`, `KeysIn` and `AnyProject`;
+  `Validate` refuses environment items (`ErrRuleAllProjectsEnvironments`, until
+  #1447), single keys (`ErrRuleAllProjectsKeys`) and named projects.
+  Containment evaluates the future-project witness `~future-project`.
+- **Authority (D7).** Create and revoke prove the caller in every current
+  project (`AuthorizeRule`, `RuleCapabilityHeld`) and in the witness
+  (`RuleFutureProjectsHeld`): only an org or instance grant, or another
+  all-projects rule, reaches it.
+- **Zero projects.** Create in an org without projects is a 409
+  (`ErrRuleAllProjectsNoProject`). Project deletion locks the org's projects
+  FOR UPDATE (rule creation takes them FOR SHARE) and refuses the last one
+  while all-projects rules exist, naming their ids in the 409 detail.
+- **Wire.** API revision 21. Responses carry `project_mode` and expand an
+  all-projects rule over the org's current projects (only the addressed one on
+  a project listing, with `other_projects`). The CLI table shows it once.
+- **Create spelling (R2).** The create keeps `where`; `project_mode: all`
+  comes with the org's current projects and the folder items repeated under
+  each. The server collapses that to the stored folder list (uneven folders
+  are a 400) and `service.checkClaimedProjects` compares the list with the
+  org's projects, locked FOR SHARE in the create transaction once Manage is
+  proved in each: a missing, extra, deleted or duplicate project is a 409
+  (`ErrRuleAllProjectsStale`) naming the difference. An org listing's or a
+  create response's `where` is a valid create; a project listing's is not (it
+  shows one project). Outside the org-wide Members page the editor cannot save
+  an all-projects rule as is. The last-project 409 names the blocking rule ids
+  only to a caller who also manages the org's members. `hikyo access rule add --all-projects` and the Members editor's
+  "All projects" choice list the projects first.
+- **Tests.** `internal/isolation/member_access_rules_all_projects_test.go`
+  (both engines; the concurrent-deletion test is PostgreSQL only).

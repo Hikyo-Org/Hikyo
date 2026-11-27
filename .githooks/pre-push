@@ -26,6 +26,13 @@ case "${HIKYO_PREPUSH_GOLANGCI:-}" in
 		exit 1
 		;;
 esac
+case "${HIKYO_PREPUSH_GOTEST:-}" in
+	'' | skip) ;;
+	*)
+		printf 'pre-push: HIKYO_PREPUSH_GOTEST must be unset or "skip", got "%s"\n' "$HIKYO_PREPUSH_GOTEST" >&2
+		exit 1
+		;;
+esac
 # Inputs of the new-code golangci-lint ratchet besides **/*.go; the script
 # lints everything when one of these changes. ci-golangci.yml triggers on
 # exactly these plus **/*.go and itself; a Go test keeps them equal.
@@ -118,6 +125,7 @@ require_golangci() {
 		unset $(git rev-parse --local-env-vars)
 		# The Go build cache keys on source paths; -trimpath makes the fresh
 		# directory of every push hit the cache of the last one.
+		# shellcheck disable=SC2030 # each subshell sets its own
 		GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath"
 		export GOFLAGS
 		tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-golangci.XXXXXX") || exit 64
@@ -136,6 +144,98 @@ require_golangci() {
 		printf 'pre-push: the golangci-lint ratchet could not start or finish its setup (worktree, merge base or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
 	else
 		printf 'pre-push: golangci-lint reported issues or could not run; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$ratchet" "$2" >&2
+	fi
+	return 1
+}
+
+# Run the Go tests the pushed changes can affect (scripts/ci/go-affected-test.sh)
+# for the pushed commit $1 against merge base $2, with the commit's own script
+# when it has one. They run in a detached worktree at exactly that commit, so
+# the checkout you push from never changes the verdict. The worktree is kept
+# between pushes and moved to the next commit: the Go build and test caches key
+# on the source path, so a fresh directory per push would recompile everything.
+# (No -trimpath here: tests locate repository files through their own paths.)
+# The selection runs inside it because it needs `go list` at the pushed commit,
+# so a push that affects no package still checks it out.
+# Exit 64 is the setup failing, 130 an interrupt; any other non-zero code is a
+# failing test.
+require_gotest() {
+	# Checked up front: under macOS sh a missing or non-executable runner makes the
+	# subshell below exit 1, which would read as a failing test.
+	committed=$(git ls-tree "$1" -- scripts/ci/go-affected-test.sh) || return 1
+	if [ -n "$committed" ]; then
+		runner=scripts/ci/go-affected-test.sh
+		case "$committed" in
+			'100755 '*) ;;
+			*)
+				printf 'pre-push: %s does not commit scripts/ci/go-affected-test.sh as an executable file (mode 100755)\n' "$1" >&2
+				return 1
+				;;
+		esac
+	else
+		runner=$repo_root/scripts/ci/go-affected-test.sh
+		[ -f "$runner" ] && [ -x "$runner" ] || {
+			printf 'pre-push: %s neither commits scripts/ci/go-affected-test.sh nor has an executable copy at %s\n' "$1" "$runner" >&2
+			return 1
+		}
+	fi
+	status=0
+	(
+		# shellcheck disable=SC2046 # a list of variable names
+		unset $(git rev-parse --local-env-vars)
+		# Before any lock is taken: dash runs no EXIT trap when a signal kills it.
+		trap 'exit 130' HUP INT TERM
+		tree=$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-gotest-tree || exit 64
+		# One run at a time owns the tree: lock=<tree>.lock, holding "pid host", the
+		# pid of this subshell, which runs the tests ($$ would be the hook's shell).
+		lock=$tree.lock
+		host=$(uname -n)
+		refuse() { # REASON
+			printf 'pre-push: %s; wait and push again, or if no push is running clear it with: rm -rf "%s" "%s.takeover" "%s".stale.*\n' "$1" "$lock" "$lock" "$lock" >&2
+			exit 64
+		}
+		# Refuse unless the lock is stale: its recorded owner on this host is gone.
+		# A lock with no owner yet is never taken over, however old: its creator may
+		# only be stalled (a suspended machine) and would then share the tree.
+		require_stale() {
+			owner=$(cat "$lock/owner" 2>/dev/null || :)
+			[ -n "$owner" ] || refuse "another push is taking the Go test lock $lock (no owner recorded yet)"
+			[ "${owner#* }" = "$host" ] || refuse "a push on host ${owner#* } holds the Go test lock $lock"
+			! kill -0 "${owner%% *}" 2>/dev/null || refuse "another push (pid ${owner%% *}) is running the Go tests, holding $lock"
+		}
+		if ! mkdir "$lock" 2>/dev/null; then
+			require_stale
+			# Only the takeover holder may remove a stale lock, so two pushes that saw
+			# the same dead owner cannot remove each other's new lock.
+			mkdir "$lock.takeover" 2>/dev/null || refuse "another push is taking over the stale Go test lock $lock"
+			trap 'rmdir "$lock.takeover" 2>/dev/null' EXIT
+			if [ -d "$lock" ]; then
+				require_stale
+				mv "$lock" "$lock.stale.$$" || exit 64
+				rm -rf "$lock.stale.$$"
+			fi
+			mkdir "$lock" 2>/dev/null || refuse "another push took the Go test lock $lock"
+			rmdir "$lock.takeover"
+		fi
+		# shellcheck disable=SC2329 # run by the EXIT trap
+		cleanup() { rm -rf "$lock"; }
+		trap cleanup EXIT
+		{ sh -c 'printf %s "$PPID"' && printf ' %s\n' "$host"; } >"$lock/owner.new" && mv "$lock/owner.new" "$lock/owner" || exit 64
+		# A dirty, half-removed or corrupted kept tree is rebuilt from scratch.
+		if [ ! -e "$tree/.git" ] || ! { git -C "$tree" checkout -q -f --detach "$1" && git -C "$tree" clean -q -f -d -x; } 2>/dev/null; then
+			rm -rf "$tree"
+			git worktree prune
+			git worktree add -q --detach "$tree" "$1" || exit 64
+		fi
+		cd "$tree" && "$runner" "$2" </dev/null
+	) || status=$?
+	[ "$status" -ne 0 ] || return 0
+	if [ "$status" -eq 130 ]; then
+		printf 'pre-push: the Go tests were interrupted\n' >&2
+	elif [ "$status" -eq 64 ]; then
+		printf 'pre-push: the Go tests could not start or finish their setup (worktree, lock or package listing); reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
+	else
+		printf 'pre-push: Go tests failed; see the output above, or reproduce: check out %s (detached) and run %s %s\n' "$1" "$runner" "$2" >&2
 	fi
 	return 1
 }
@@ -173,6 +273,17 @@ while read -r local_ref local_oid remote_ref _remote_oid; do
 			printf 'pre-push: WARNING: skipping the golangci-lint ratchet for %s; the advisory PR check still runs it\n' "$local_ref" >&2
 		else
 			require_golangci "$local_oid" "$range_base" || exit 1
+		fi
+	fi
+
+	# Any change can reach a Go test (an embedded file, go.mod); the selector
+	# decides, and prints nothing to run for a push that affects no package.
+	changed=$(git diff --name-only "$merge_base" "$local_oid") || exit 1
+	if [ -n "$changed" ]; then
+		if [ "${HIKYO_PREPUSH_GOTEST:-}" = skip ]; then
+			printf 'pre-push: WARNING: skipping the affected Go tests for %s; CI still runs the full suites\n' "$local_ref" >&2
+		else
+			require_gotest "$local_oid" "$merge_base" || exit 1
 		fi
 	fi
 

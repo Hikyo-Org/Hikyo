@@ -26,6 +26,7 @@ type retirementDiscoveryScan struct {
 	restRequests        atomic.Int64
 	restPages           atomic.Int64
 	suitePages          atomic.Int64
+	suiteCounts         atomic.Int64
 }
 
 func newRetirementDiscoveryScan() *retirementDiscoveryScan {
@@ -66,6 +67,7 @@ func (s *retirementDiscoveryScan) report(out io.Writer, scanErr error) error {
 		RESTRequests        int64  `json:"rest_requests"`
 		RESTPages           int64  `json:"rest_pages"`
 		SuitePages          int64  `json:"suite_pages"`
+		SuiteCounts         int64  `json:"suite_counts"`
 		ElapsedMS           int64  `json:"elapsed_ms"`
 		Status              string `json:"status"`
 		WorkerLimit         int    `json:"worker_limit"`
@@ -73,7 +75,7 @@ func (s *retirementDiscoveryScan) report(out io.Writer, scanErr error) error {
 		Event: "retirement_discovery_scan", Snapshot: s.snapshot,
 		CommitsExamined: s.commitsExamined, HistoryPages: s.historyPages,
 		CandidatesAttempted: s.candidatesAttempted.Load(), CandidatesCompleted: s.candidatesCompleted.Load(),
-		RESTRequests: s.restRequests.Load(), RESTPages: s.restPages.Load(), SuitePages: s.suitePages.Load(),
+		RESTRequests: s.restRequests.Load(), RESTPages: s.restPages.Load(), SuitePages: s.suitePages.Load(), SuiteCounts: s.suiteCounts.Load(),
 		ElapsedMS: time.Since(s.started).Milliseconds(), Status: status, WorkerLimit: retirementDiscoveryWorkers,
 	}
 	body, err := json.Marshal(record, stableJSON)
@@ -115,6 +117,11 @@ func (a retirementDiscoveryReadAPI) read(ctx context.Context, path string, out a
 	// Oversized commits' GraphQL suite pages dominate their scan time.
 	if err == nil && strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuites(") {
 		a.scan.suitePages.Add(1)
+	}
+	// The recount after each commit listing is a serial GraphQL read too.
+	// The history query also selects checkSuites{totalCount}, but not straight off the commit.
+	if err == nil && strings.HasPrefix(path, "graphql:") && strings.Contains(path, "... on Commit{oid checkSuites{totalCount}}") {
+		a.scan.suiteCounts.Add(1)
 	}
 	return err
 }

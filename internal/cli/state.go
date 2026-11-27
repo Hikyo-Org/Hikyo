@@ -29,6 +29,9 @@ type Env struct {
 // State locates the client state directory.
 type State struct {
 	dir string
+	// forceBrowser is this invocation's --approve-in-browser: set once by
+	// parseCommon, the one flag-registration path of every ceremony verb.
+	forceBrowser bool
 }
 
 // NewState resolves the state directory: $HIKYO_STATE_DIR, else

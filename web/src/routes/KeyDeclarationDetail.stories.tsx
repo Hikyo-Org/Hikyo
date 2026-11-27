@@ -177,6 +177,65 @@ export const ReclassifyConfirm: Story = {
   },
 };
 
+// The reclassify confirm at phone width: the dialog fits, its actions stay reachable.
+export const PhoneReclassifyConfirm: Story = {
+  ...ReclassifyConfirm,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async (context) => {
+    await ReclassifyConfirm.play?.(context);
+    const dialog = context.canvasElement.ownerDocument.querySelector('dialog[open]');
+    if (!(dialog instanceof HTMLElement)) throw new Error('dialog missing');
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+  },
+};
+
+// An any_of declaration in the rule editor: one fieldset per alternative,
+// each with its own Remove, then the add row and the summary.
+const anyOf = {
+  ...record,
+  classification: 'config',
+  declaration: {
+    any_of: [
+      { type: 'url', schemes: ['postgres'] },
+      { type: 'string', min_length: 12, allow_empty: false, pattern: '^dsn:' },
+    ],
+  },
+} satisfies z.input<typeof zKey>;
+
+export const AnyOfEditor: Story = {
+  parameters: app({ key: { body: anyOf } }),
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('heading', { name: 'Edit value rules & presence' })).toBeVisible();
+    await expect(canvas.getByRole('group', { name: 'Alternative 2' })).toBeVisible();
+    await expect(canvas.getAllByRole('button', { name: 'Remove alternative' })).toHaveLength(2);
+    await expect(canvas.getByLabelText('Add alternative of type')).toBeVisible();
+  },
+};
+
+// The any_of editor at phone width: the add row wraps instead of overflowing the panel.
+export const PhoneAnyOfEditor: Story = {
+  ...AnyOfEditor,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async (context) => {
+    await AnyOfEditor.play?.(context);
+    // The panel body is the scroller, so an overflowing row widens it, not the aside.
+    const body = context.canvas.getByRole('complementary', { name: 'Key declaration' }).querySelector('.side-panel__body');
+    if (!(body instanceof HTMLElement)) throw new Error('panel body missing');
+    await expect(body.scrollWidth).toBeLessThanOrEqual(body.clientWidth);
+  },
+};
+
+// Tightening a config key: the confirm states what reclassification cannot undo.
+export const TightenConfirm: Story = {
+  parameters: app({ key: { body: { ...record, classification: 'config' } } }),
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reclassify as secret…' }));
+    const dialog = within(await canvas.findByRole('dialog', { name: 'Reclassify this key as secret?' }));
+    await expect(dialog.getByText(/Tightening cannot un-disclose/)).toBeVisible();
+    await expect(dialog.getByText(/Old values stay readable in history/)).toBeVisible();
+  },
+};
+
 // A Git-managed project: declarations read-only behind the notice and the
 // last-applied provenance labels, each fact after the actor joined by the
 // real `<Sep/>` separator (" · "), not three bare dots concatenated by hand.

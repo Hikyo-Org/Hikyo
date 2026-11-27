@@ -35,7 +35,7 @@ func TestSealedWebhookFactoryBuildsOnlyInstanceAdminOrigins(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := newAdapterModuleFactory(nil, endpoints, adapterProviderPolicy{})
-	lease, err := factory.Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding")
+	lease, err := factory.Build(adapter.EncryptedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +43,10 @@ func TestSealedWebhookFactoryBuildsOnlyInstanceAdminOrigins(t *testing.T) {
 	if _, ok := lease.Module.(*sealedwebhook.Module); !ok {
 		t.Fatalf("module = %T", lease.Module)
 	}
-	if _, err := factory.Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://tenant-chosen.example"}, "binding"); err == nil || !strings.Contains(err.Error(), "instance-admin") {
+	if _, err := factory.Build(adapter.EncryptedWebhookProvider, adapter.Config{Origin: "https://tenant-chosen.example"}, "binding"); err == nil || !strings.Contains(err.Error(), "instance-admin") {
 		t.Fatalf("tenant-chosen origin accepted: %v", err)
 	}
-	if _, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding"); err == nil {
+	if _, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.EncryptedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding"); err == nil {
 		t.Fatal("no registry must mean no sealed-webhook endpoint")
 	}
 }
@@ -101,7 +101,7 @@ func TestSealedWebhookMixedRegistryActivatesEachTargetUnderItsOwnProtocol(t *tes
 		t.Fatalf("protocols = %d %d", endpoints["https://recv.example"].Protocol(), endpoints["https://recv2.example"].Protocol())
 	}
 	factory := newAdapterModuleFactory(nil, endpoints, adapterProviderPolicy{})
-	lease, err := factory.Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://recv2.example"}, "binding")
+	lease, err := factory.Build(adapter.EncryptedWebhookProvider, adapter.Config{Origin: "https://recv2.example"}, "binding")
 	if err != nil {
 		t.Fatal(err)
 	}

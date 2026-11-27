@@ -39,9 +39,9 @@ feedback_plan_build() {
 			scripts/ops/audit-collector/* | docs/operations/audit-collector.md) audit_collector=true ;;
 		esac
 		# desktop/ is a nested module the root checks cannot load; it has its own compile
-		# check, only where the module exists. The root packages it imports are the same
-		# list as the desktop job in classify-changed-paths.sh (keep both in step by hand;
-		# check-desktop-deps.sh only checks the classifier).
+		# check, only where the module exists. The list below names the root packages it
+		# imports. The nightly check-desktop-deps.sh fails when one is missing from it
+		# (it does not detect stale extras).
 		case "$path" in
 			desktop/* | api/openapi.yaml | api/*.go | internal/audit/* | internal/clientauth/* | internal/clienterr/* | internal/clienttrust/* | internal/crypto/* | internal/delivery/* | internal/domain/* | internal/filedurability/* | internal/freetext/* | internal/jsonwire/* | internal/operation/* | internal/securefile/* | internal/tlspolicy/*) if [ -f desktop/go.mod ]; then desktop=true; fi ;;
 		esac

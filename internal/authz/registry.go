@@ -450,6 +450,7 @@ const (
 	// depth, legacy `manage-members` at that depth.
 	OpRuleListOrg         Operation = "rule.list-org"
 	OpRuleListProject     Operation = "rule.list-project"
+	OpRuleResolve         Operation = "rule.resolve"
 	OpGrantRevokeEnv      Operation = "grant.revoke-env"
 	OpGrantRevokeInstance Operation = "grant.revoke-instance"
 
@@ -1001,6 +1002,9 @@ const (
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
 	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
 	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+	// StoreDynamicLeasesPurgeEnvironment removes a deleted environment's terminal
+	// lease and effect rows, refusing while a lease is live (#1420).
+	StoreDynamicLeasesPurgeEnvironment StoreOp = "dynamic.PurgeEnvironment"
 
 	// Scheduled credential rotation configuration (#148, S1). Proof-carrying,
 	// environment-bound; the run state machine (S2) adds its own ops.
@@ -1125,6 +1129,15 @@ const (
 	StorePKICertificatesCountLive       StoreOp = "pki.CountLiveCertificates"
 	StorePKICertificatesRevokeLive      StoreOp = "pki.RevokeLiveCertificates"
 	StorePKICertificatesRevokedEntries  StoreOp = "pki.RevokedEntries"
+	// StorePKICertificatesPurgeEnvironment purges an environment's terminal
+	// certificate history with its delete, refusing while one is live (#1420).
+	StorePKICertificatesPurgeEnvironment StoreOp = "pki.PurgeEnvironment"
+	// StoreAdaptersGuardEnvironmentDelete refuses an environment delete while it
+	// holds adapter targets or configure fences (#1420).
+	StoreAdaptersGuardEnvironmentDelete StoreOp = "adapters.GuardEnvironmentDelete"
+	// StoreDynamicProvidersPurgeProject removes a deleted project's tombstoned
+	// providers, refusing while one is active (#1420).
+	StoreDynamicProvidersPurgeProject StoreOp = "dynamic.PurgeProjectProviders"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -2517,6 +2530,8 @@ var operationTable = map[Operation]opSpec{
 			// A project's dismissals are removed with it (#74, ADR section 4
 			// lifecycle).
 			StoreScanningDismissalsDeleteByProject: true,
+			// Tombstoned dynamic providers go with it; an active one refuses.
+			StoreDynamicProvidersPurgeProject: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventProjectDeleted},
 	},
@@ -2634,7 +2649,11 @@ var operationTable = map[Operation]opSpec{
 			// Rotation rows (#148) go with it too, but only once no rotation
 			// is live and no run is in flight: the purge refuses otherwise.
 			StoreRotationsPurgeEnvironment: true,
-			StoreEnvironmentsDelete:        true, StoreAuditTenantInsert: true,
+			// Terminal dynamic leases go with it (#1420); a live lease, any
+			// certificate row or any adapter target or configure fence refuses.
+			StoreDynamicLeasesPurgeEnvironment:   true,
+			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
 	},
@@ -2986,8 +3005,10 @@ var operationTable = map[Operation]opSpec{
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
-			StoreRotationsPurgeEnvironment: true,
-			StoreDefinitionsPlanGet:        true, StoreDefinitionsPlanApply: true,
+			StoreRotationsPurgeEnvironment:       true,
+			StoreDynamicLeasesPurgeEnvironment:   true,
+			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
+			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
@@ -4309,7 +4330,9 @@ var operationTable = map[Operation]opSpec{
 		level:    domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRuleCreated},
+		// A machine rule that makes plaintext newly reachable is a second
+		// fact, as on the grant routes.
+		events: []audit.EventType{audit.EventRuleCreated, audit.EventMachineGrantWidened},
 	},
 	OpRuleRevoke: {
 		class:    ClassTenant,
@@ -4330,6 +4353,15 @@ var operationTable = map[Operation]opSpec{
 	OpRuleListProject: {
 		class:    ClassTenant,
 		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	// "Who can...?" (ADR D10) discloses membership like the rule listing,
+	// with the same authority and the same membership read event.
+	OpRuleResolve: {
+		class:    ClassTenant,
+		level:    domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventGrantMembershipRead},

@@ -399,7 +399,8 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(fieldError()?.getAttribute('role')).toBe('alert');
     expect(fieldError()?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
     expect(textarea.getAttribute('aria-invalid')).toBe('true');
-    expect(textarea.getAttribute('aria-describedby')).toBe(fieldError()?.id);
+    // The any_of alternatives stay described alongside the error.
+    expect(textarea.getAttribute('aria-describedby')).toBe(`${textarea.id}-hint ${fieldError()?.id ?? ''}`);
 
     // Typing an invalid value hands the error slot to the live validation; the
     // standing problem steps aside into the alert above the control, where it
@@ -410,6 +411,23 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     const standing = view.container.querySelector('.matrix-row-editor__row .alert');
     expect(standing?.getAttribute('role')).toBe('alert');
     expect(standing?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    await view.unmount();
+  });
+
+  it('names the any_of alternatives before anything is typed', async () => {
+    const view = await renderEditor({ ...keyRecord, declaration: { any_of: [{ type: 'boolean' }, { type: 'integer', min: 5n }] } });
+    const hint = view.container.querySelector('.matrix-row-editor__row .field__hint');
+    expect(hint?.textContent).toBe('Valid as a boolean (true or false), or an integer at least 5.');
+    await view.unmount();
+  });
+
+  it('warns when editing a deprecated key, naming where it still has a value', async () => {
+    const view = await renderEditor({ ...keyRecord, deprecated: true, deprecation_note: 'Use LOG_LEVEL_V2.' });
+    const warning = [...view.container.querySelectorAll('.notice')].find((node) => node.textContent?.includes('deprecated'));
+    expect(warning?.textContent).toBe(
+      'This key is deprecated. Use LOG_LEVEL_V2. It still has 1 live value across development. Remove the values before deleting the key.',
+    );
+    expect(warning?.querySelector('.glyph')).not.toBeNull();
     await view.unmount();
   });
 
@@ -428,7 +446,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     // control and out of its error slot.
     await act(async () => typeInto(textarea, 'true'));
     expect(textarea.getAttribute('aria-invalid')).toBeNull();
-    expect(textarea.getAttribute('aria-describedby')).toBeNull();
+    expect(textarea.getAttribute('aria-describedby')).toBe(`${textarea.id}-hint`);
     expect(view.container.querySelector('.matrix-row-editor__row .field__error')).toBeNull();
     const standing = view.container.querySelector('.matrix-row-editor__row .alert');
     expect(standing?.getAttribute('role')).toBe('alert');

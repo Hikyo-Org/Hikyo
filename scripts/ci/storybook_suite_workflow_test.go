@@ -529,6 +529,14 @@ func TestPrePushHookFixture(t *testing.T) {
 	}
 }
 
+// The affected-package selector the pre-push hook runs its Go tests through.
+func TestGoAffectedPackagesFixture(t *testing.T) {
+	output, err := exec.CommandContext(t.Context(), "sh", filepath.Join(repositoryRoot(t), "scripts/ci/go-affected-packages_test.sh")).CombinedOutput()
+	if err != nil {
+		t.Fatalf("go-affected-packages fixture failed: %v\n%s", err, output)
+	}
+}
+
 // The hook keys on, and the advisory workflow triggers on, the same inputs.
 func TestPrePushKeyPathsMatchAdvisoryTriggerPaths(t *testing.T) {
 	root := repositoryRoot(t)

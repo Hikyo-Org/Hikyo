@@ -75,8 +75,11 @@ var PermittedChanges = map[string]bool{
 	// two apart; leaving the ids off the list is what makes the distinction
 	// hold.
 	//
-	// There is exactly one exception, and it is not in this map: see
-	// MLDSA65EnumGrowth, the one-time amendment of 2026-11-04.
+	// There are exactly three exceptions, and none is in this map: see
+	// MLDSA65EnumGrowth, the one-time amendment of 2026-11-04,
+	// MintReauthEnumGrowth, the one-time amendment of 2026-11-23, and
+	// AccessReauthEnumGrowth, the one-time amendment of the same date for
+	// emergency temporary access.
 
 	// Documentation-only movement. It changes no wire behaviour, and refusing
 	// it would make improving a description a breaking change.
@@ -138,18 +141,67 @@ var MLDSA65EnumGrowth = []EnumGrowth{
 	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/trim", "key/algorithm"},
 }
 
-// permittedEnumGrowth reports whether change is one of MLDSA65EnumGrowth.
-// oasdiff's arguments for both change ids are (value, property, ...).
+// MintReauthEnumGrowth is the second, equally narrow exception, declared by the
+// api-cli-surface amendment of 2026-11-23 (issue #1516, CLI mint and rotate
+// ceremony parity with the web): the CLI reauthentication handoff gains the
+// `mint` purpose and its `identity.credential-mint` operation, so a service
+// account mint that needs a passkey can be handed to the browser. The request
+// enums and the transaction response enums each grow by exactly that pair
+// (`mint` on purpose, `identity.credential-mint` on operation). It sets no
+// precedent, and the document-coordinate layer (MintReauthEnumLocations)
+// refuses the same growth anywhere else. Adding to it is an ADR amendment, not
+// a code edit.
+const (
+	cliReauthStartPath       = "/api/v1/auth/cli-reauth/start"
+	cliReauthTransactionPath = "/api/v1/auth/cli-reauth/transactions/{state}"
+	mintReauthPurpose        = "mint"
+	mintReauthOperation      = "identity.credential-mint"
+)
+
+var MintReauthEnumGrowth = []EnumGrowth{
+	{requestEnumAdded, "POST", cliReauthStartPath, "purpose"},
+	{requestEnumAdded, "POST", cliReauthStartPath, "operation"},
+	{responseEnumAdded, "GET", cliReauthTransactionPath, "purpose"},
+	{responseEnumAdded, "GET", cliReauthTransactionPath, "operation"},
+}
+
+// AccessReauthEnumGrowth is the third, equally narrow exception, declared by
+// the api-cli-surface amendment of 2026-11-23 (issue #1531, browser approval
+// for emergency temporary access): the same four enums gain the `access`
+// purpose and its `access.bypass` operation, each by exactly that one value.
+// It sets no precedent, and AccessReauthEnumLocations refuses the same growth
+// anywhere else. Adding to it is an ADR amendment, not a code edit.
+const (
+	accessReauthPurpose   = "access"
+	accessReauthOperation = "access.bypass"
+)
+
+var AccessReauthEnumGrowth = []EnumGrowth{
+	{requestEnumAdded, "POST", cliReauthStartPath, "purpose"},
+	{requestEnumAdded, "POST", cliReauthStartPath, "operation"},
+	{responseEnumAdded, "GET", cliReauthTransactionPath, "purpose"},
+	{responseEnumAdded, "GET", cliReauthTransactionPath, "operation"},
+}
+
+// permittedEnumGrowth reports whether change is one of MLDSA65EnumGrowth,
+// MintReauthEnumGrowth or AccessReauthEnumGrowth. oasdiff's arguments for all
+// change ids are (value, property, ...). A mint or access finding must also
+// carry the one value its property may gain, so `mint` cannot ride on the
+// operation enum, nor one amendment's value on the other's list.
 func permittedEnumGrowth(change checker.Change) bool {
 	args := change.GetArgs()
-	if len(args) < 2 || fmt.Sprint(args[0]) != mldsa65 {
+	if len(args) < 2 {
 		return false
 	}
-	got := EnumGrowth{change.GetId(), change.GetOperation(), change.GetPath(), fmt.Sprint(args[1])}
-	for _, want := range MLDSA65EnumGrowth {
-		if got == want {
-			return true
-		}
+	value, property := fmt.Sprint(args[0]), fmt.Sprint(args[1])
+	got := EnumGrowth{change.GetId(), change.GetOperation(), change.GetPath(), property}
+	switch {
+	case value == mldsa65:
+		return slices.Contains(MLDSA65EnumGrowth, got)
+	case value == mintReauthPurpose && property == "purpose", value == mintReauthOperation && property == "operation":
+		return slices.Contains(MintReauthEnumGrowth, got)
+	case value == accessReauthPurpose && property == "purpose", value == accessReauthOperation && property == "operation":
+		return slices.Contains(AccessReauthEnumGrowth, got)
 	}
 	return false
 }

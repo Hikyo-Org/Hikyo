@@ -63,6 +63,28 @@ for file in "$@"; do
 				fail 'desktop lint must run on macOS only where the module exists'
 			desktop_lint=true
 			;;
+		nightly-desktop.yml)
+			# Nightly desktop validation (owner decision 2026-11-25): the head resolver
+			# picks each leg's runner, macos-15 only where desktop/go.mod exists, so the
+			# legs take it from the resolver's outputs. No cache; the resolver, the shim check and the
+			# issue reporter are the only fixed Linux jobs.
+			expected_runner=macos-15
+			if grep -E 'actions/cache(@|/)|cache: true' "$file" >/dev/null; then
+				fail 'nightly desktop must not use shared caches'
+			fi
+			require_line "$file" '          cache: false'
+			[ "$(grep -c '^    runs-on: ubuntu-latest$' "$file")" = 3 ] ||
+				fail 'nightly desktop must have exactly three fixed ubuntu-latest jobs (heads, shim and report)'
+			for leg in dev main; do
+				require_line "$file" "    runs-on: \${{ needs.heads.outputs.${leg}_runner }}"
+			done
+			require_line "$file" 'echo macos-15'
+			require_line "$file" 'echo ubuntu-latest'
+			if grep -F 'macos-latest' "$file" >/dev/null; then
+				fail 'nightly desktop must use the pinned macos-15 runner'
+			fi
+			desktop_lint=true
+			;;
 		ops-floor.yml)
 			# The secret-free operations lane measures both native CPU floors.
 			# Keep its matrix closed to these two GitHub-hosted architectures.
@@ -102,7 +124,7 @@ for file in "$@"; do
 	runner_source=$file
 	if [ "$desktop_lint" = true ]; then
 		runner_source=$(mktemp)
-		grep -v '^    runs-on: ubuntu-latest$' "$file" >"$runner_source"
+		grep -v -e '^    runs-on: ubuntu-latest$' -e '^    runs-on: \${{ needs.heads.outputs.[a-z]*_runner }}$' "$file" >"$runner_source"
 	fi
 	case $(basename "$file") in
 		nightly.yml | release.yml)
@@ -245,25 +267,9 @@ for file in "$@"; do
 			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 			!skip { print }
 		' "$file" >"$runner_source"
-		# The desktop shell (#1215) is the one native macOS job: one pinned runner,
-		# no shared caches. Everything else in ci.yml stays on ubuntu-latest.
-		desktop=$(workflow_job_block "$file" desktop)
-		[ -n "$desktop" ] || fail 'ci.yml has no desktop job'
-		printf '%s\n' "$desktop" | grep -Fx "    runs-on: \${{ needs.changes.outputs.desktop_module == 'true' && 'macos-15' || 'ubuntu-latest' }}" >/dev/null ||
-			fail 'desktop must run on the pinned macos-15 runner where the module exists and on ubuntu-latest elsewhere'
-		[ "$(printf '%s\n' "$desktop" | grep -c 'runs-on:')" = 1 ] ||
-			fail 'desktop must declare exactly one runner'
-		if printf '%s\n' "$desktop" | grep -E 'actions/cache(@|/)|cache: true|cache-dependency-path' >/dev/null; then
-			fail 'desktop must not use shared caches'
-		fi
-		without_desktop=$(mktemp)
-		awk '
-			$0 == "  desktop:" { skip = 1; next }
-			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
-			!skip { print }
-		' "$runner_source" >"$without_desktop"
-		rm -f "$runner_source"
-		runner_source=$without_desktop
+		# Desktop validation left ci.yml (owner decision 2026-11-25), so no macOS job
+		# remains here beyond scan-xplat, removed above.
+		[ -z "$(workflow_job_block "$file" desktop)" ] || fail 'ci.yml must not have a desktop job'
 	fi
 	if grep -E '^[[:space:]]+runs-on:' "$runner_source" |
 		sed 's/^[[:space:]]*runs-on:[[:space:]]*//' |
@@ -311,8 +317,21 @@ for file in "$@"; do
 			if (index(block, "path: ~/.cache/go-build") > 0) {
                     build_hash = "hashFiles(\047go.mod\047, \047go.sum\047"
                     if (feedback_cache == "true") build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047"
-				if (index(block, "key: go-") == 0 ||
-					index(block, "-v2-") == 0 ||
+				# The generation belongs to the key line itself; restore-keys or
+				# comments elsewhere in the step must not satisfy it.
+				# The first version segment is the generation, so go-x-v1-v2- fails.
+				key_line = ""
+				line_count = split(block, step_lines, "\n")
+				for (line = 1; line <= line_count; line++) {
+					if (step_lines[line] ~ /^[[:space:]]+key: go-/) {
+						key_line = step_lines[line]
+						sub(/^[[:space:]]+/, "", key_line)
+						break
+					}
+				}
+				generation = ""
+				if (match(key_line, /-v[0-9]+-/)) generation = substr(key_line, RSTART, RLENGTH)
+				if (index(block, "key: go-") == 0 || generation != "-v2-" ||
 					index(block, "${{ runner.os }}") == 0 ||
 					index(block, "${{ runner.arch }}") == 0 ||
 					index(block, "${{ steps.runner-cache-abi.outputs.value }}") == 0 ||
@@ -360,9 +379,10 @@ require_line "$workflow" 'run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT
 grep -F 'key: go-fuzz-v2-' "$workflow" |
 	grep -F 'steps.fuzz-cache-generation.outputs.value' >/dev/null ||
 	fail 'fuzz cache does not rotate by weekly generation'
-grep -F 'key: go-release-snapshot-v2-' "$workflow" |
-	grep -F "hashFiles('go.mod', 'go.sum', '.goreleaser.yaml')" >/dev/null ||
-	fail 'release-snapshot cache does not include GoReleaser configuration'
+# The release snapshot's Go build cache gave its budget to the lint driver seed.
+if grep -F -e 'go-release-snapshot-' -e 'release-snapshot-go-cache' "$@" >/dev/null; then
+	fail 'release-snapshot Go build cache remains'
+fi
 require_line "$repo_root/.github/workflows/reliability.yml" 'name: Restore race Go cache'
 
 # One shared race build cache has a single trusted writer, ci-race-cache.yml.
@@ -384,6 +404,44 @@ fi
 if workflow_job_block "$workflow" race_shard | grep -F 'actions/cache/save' >/dev/null; then
 	fail 'race_shard must not write a cache'
 fi
+
+# One lint driver build cache has a single trusted writer, ci-lint-cache.yml.
+# Its key follows modules, toolchain ABI and the ISO week. test_core_serial and
+# the advisory invariants job read it by module prefix, then runner prefix; no
+# job that names the family writes any cache.
+lint_cache_workflow="$workflows_dir/ci-lint-cache.yml"
+lint_runner_prefix='go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
+lint_module_prefix="$lint_runner_prefix\${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
+lint_key="key: $lint_module_prefix\${{ steps.lint-cache-generation.outputs.value }}"
+require_line "$lint_cache_workflow" "$lint_key"
+require_line "$lint_cache_workflow" "restore-keys: $lint_runner_prefix"
+require_line "$lint_cache_workflow" 'run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"'
+require_line "$lint_cache_workflow" 'lookup-only: true'
+require_line "$lint_cache_workflow" 'key: ${{ steps.lint-driver-seed.outputs.cache-primary-key }}'
+[ "$(grep -c 'actions/cache/save@' "$lint_cache_workflow")" = 1 ] ||
+	fail 'the lint driver seed must have exactly one writer step'
+for reader in "$workflow:test_core_serial" "$workflows_dir/ci-invariants.yml:invariants"; do
+	block=$(workflow_job_block "${reader%:*}" "${reader##*:}")
+	# Readers prefix-match the weekly seed, then fall back to any seed for the ABI.
+	if ! printf '%s\n' "$block" | grep -Fx -A1 "          key: $lint_module_prefix" |
+		grep -Fx "          restore-keys: $lint_runner_prefix" >/dev/null; then
+		fail "${reader##*:} must read the lint driver module prefix, then the runner prefix"
+	fi
+done
+for file in "$@"; do
+	# Every go-lintdriver line is the seed key or one of the two reader lines.
+	grep -F 'go-lintdriver' "$file" | sed 's/^[[:space:]]*//' |
+		grep -Fxv -e "$lint_key" -e "key: $lint_module_prefix" -e "restore-keys: $lint_runner_prefix" >/dev/null &&
+		fail "unexpected lint driver cache key or prefix in $(basename "$file")"
+	[ "$(basename "$file")" != ci-lint-cache.yml ] || continue
+	awk '
+		function finish() { if (lint && save) bad = 1; lint = 0; save = 0 }
+		/^  [A-Za-z0-9_-]+:/ { finish() }
+		/go-lintdriver/ { lint = 1 }
+		/actions\/cache(\/save)?@/ && !/actions\/cache\/restore@/ { save = 1 }
+		END { finish(); if (bad) exit 1 }
+	' "$file" || fail "a lint driver cache reader writes a cache in $(basename "$file")"
+done
 
 # Browser jobs run inside the exact Playwright image matching both lockfiles.
 # No live apt mirror belongs on the critical path.

@@ -41,8 +41,13 @@ An access rule gives one person one capability on a narrower *where* than a
 grant can: a list of projects, then every environment except some (or only
 some), then every key except some folders or keys (or only those). An
 exception narrows only its own rule; access is the union of everything a
-person's grants and rules reach, and there are no deny rules. Rules are for
-people; machines keep their grants.
+person's grants and rules reach, and there are no deny rules. A workload or
+automation machine identity may also hold a rule, with the same command and the
+machine's principal id: within its class's capability allowlist, in its owning
+project only, and never narrowed by keys or folders. A machine rule that makes
+plaintext newly reachable also needs `manage-identities` on the project, the
+matching disclosure capability and a recent reauthentication over each newly
+reachable environment; the CLI prompts for it and retries.
 
 ```bash
 hikyo access rule add --project <project-id> \
@@ -60,6 +65,24 @@ subfolders; an only-pick of a folder is exact. The browser's **Edit rule** repla
 current rule commands add, list and remove rules; removing and then adding is
 two operations.
 
+A rule may also cover **all projects** of the organization, including
+projects created later. Such a rule covers every environment and may narrow
+keys by folder only (*only* or *except* folders); it cannot name environments
+or single keys, and machine identities cannot hold one. Creating or removing it
+needs member management over the whole organization. Listings show it with the
+organization's current projects. An organization without projects cannot get
+one, and its last project cannot be deleted while one exists: the refusal names
+the rules to remove first. To create one, choose **All projects** in the
+Members rule editor or run `hikyo access rule add --all-projects`; both list
+the organization's projects first, and the rule is refused if a project was
+added or removed in the meantime.
+
+Because a listing repeats the rule's folders under every project, a rule
+counts as its projects times one plus its folders, at most 500. A rule that
+would count more is refused, and so is a new project that would take an
+existing rule past 500; that refusal also names the rules to narrow or
+remove.
+
 Moving a key to another folder can give people access through their rules.
 Such a move is refused until it is confirmed with `--confirm-widening`
 naming exactly those people; only a member manager of the project is told who
@@ -75,6 +98,22 @@ to the whole environment, and machines keep scope-wide access. A delegated
 member manager sees and changes only the rules they may manage, and can assign
 only permissions they hold. Assigning See requires management over every key of
 the selected environments, because See itself is environment-wide.
+
+Over the API, `GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access`
+answers "Who can...?" for one permission (`permission`, required) and
+optionally one key (`key`). It lists the people and machines with a grant in
+the project, an organisation-wide grant of the asked permission (an
+organisation admin reaches the project that way) or a rule you may manage
+there, in four groups: `can`, `excepted` (a rule would reach but an except
+removes it, with the excepted environments and keys), `needs_see` (Reveal or
+Reveal history without See) and `none`. Without `key`, a rule limited to some
+keys answers as `key_limited`. Other projects and instance operators are not
+listed. Grants above organisation scope are not shown and rules you cannot
+manage are not named, so a listed principal who can only through those is
+shown with no sources.
+The question needs `manage-members` at the project itself (a rule alone does not
+satisfy it), works for human sessions only, and is audited as a membership
+read. The `hikyo access who-can` command follows.
 
 ## Human onboarding
 
@@ -234,7 +273,17 @@ hikyo access request emergency --env <env-id> --capability reveal --reason "outa
 ```
 
 `emergency` needs a current reauthentication ceremony bound to the environment
-and a reason, and it is audited. `--duration` defaults to 1h, capped by the
+and a reason, and it is audited. The command asks for your authenticator code
+where the environment's window allows one. Where it does not (window 0, a
+protected environment, or no authenticator enrolled), it opens your browser to
+approve the access with a passkey, then continues; the approval covers that
+environment and no keys. If the browser cannot be opened the command fails, and when
+you chose the browser (`--approve-in-browser` or `reauth.method`) where a code would
+have worked, it refuses up front on a host other than macOS or Windows with none of `DISPLAY`,
+`WAYLAND_DISPLAY` and `BROWSER` set. At a 0-window or protected environment the
+handoff is the only way, so it is not refused up front there. The designation
+as a bypasser is checked when the access is taken, not when the browser approval
+is offered. `--duration` defaults to 1h, capped by the
 policy's `--max-duration`; an explicit longer duration is refused. It never
 changes the policy.
 
