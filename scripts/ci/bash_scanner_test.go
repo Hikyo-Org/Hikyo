@@ -20,6 +20,10 @@ import (
 var (
 	leadingTabs = regexp.MustCompile(`(?m)^\t+`)
 	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+bash|/(?:usr/)?bin/bash)(?:\s|$)`)
+	// A repository file with an sh shebang is scanned too: on macOS sh is bash 3.2, the shell the
+	// scan guards against. An sh heredoc is not: its stubs are unquoted, so their raw text (\$
+	// escapes) is not what runs, and a POSIX sh script there uses no bash test anyway.
+	scriptShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:ba)?sh|/(?:usr/)?bin/(?:ba)?sh)(?:\s|$)`)
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
 	workflowExpression = regexp.MustCompile(`\$\{\{(?:[^}']|'(?:[^']|'')*')*\}\}`) // a quoted '{0}' does not end it
 )
@@ -260,8 +264,9 @@ var unscannedErrexitForms = []struct {
 	{"quoted or escaped set or shopt command name", regexp.MustCompile(`(?:\\(?:set|shopt)|"(?:set|shopt)"|'(?:set|shopt)')\s+[-+]`)},
 	{"eval of set or shopt", regexp.MustCompile(`(?:^|[\s;|&(\x60])(eval)\b(?:[^;|&\n"']|\\\n|"[^"]*"|'[^']*')*?(?:\b|"[^"]*\b|'[^']*\b)(?:set|shopt)\b`)},
 	// POSIX mode and inherit_errexit both make substitutions inherit errexit. Running a script
-	// as sh x.sh (POSIX mode on macOS, whose sh is bash 3.2) cannot be seen from the script.
-	{"errexit inheritance from the environment or the bash command line", regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b|\s--posix\b|\bbash\b[^\n;|&]*\s(?:-[a-zA-Z]*o\s+posix|-O\s+inherit_errexit)\b`)},
+	// as sh x.sh (POSIX mode on macOS, whose sh is bash 3.2) cannot be seen from the script; a
+	// workflow env: entry is checked by TestNoBareBashTestRelyingOnErrexit.
+	{"errexit inheritance from the environment or the bash command line", regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b|\s--posix\b|\bbash\b(?:[^\n;|&]|\\\n)*\s(?:-[a-zA-Z]*o\s+["']?posix|-O\s+["']?inherit_errexit)\b`)},
 }
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
@@ -596,6 +601,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"$'builtin' \"eval\" set -e\n", "\"com\"$'mand' \"eval\" set -e\n", "\"eval\" shopt -s inherit_errexit\n",
 		"POSIXLY_CORRECT=1 ./x.sh\n", "bash --posix x.sh\n", "SHELLOPTS=posix ./x.sh\n", "export SHELLOPTS\n",
 		"BASHOPTS=inherit_errexit ./x.sh\n", "bash -o posix x.sh\n", "bash -eo posix x.sh\n", "bash -O inherit_errexit x.sh\n",
+		"bash -o 'posix' x.sh\n", "bash -O \"inherit_errexit\" x.sh\n", "bash \\\n  -o posix x.sh\n",
 		"cat >f <<'EOF'\n#!/usr/bin/env bash\nvalue=$(\"eval\" set -e; [[ a == b ]]; echo accepted)\nEOF\n",
 	} {
 		if len(matches(script)) == 0 {
@@ -604,7 +610,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 	}
 	for _, script := range []string{
 		"shopt -s nullglob\n", "shopt -s extglob inherit_errexit\n", "set -euo pipefail\n", "echo \"set -e is on\"\n",
-		"printf 'set -e\\n'\n", "eval \"$(ssh-agent -s)\"\n", "reset -e\n", "x=set; echo $x\n",
+		"printf 'set -e\\n'\n", "eval \"$(ssh-agent -s)\"\n", "reset -e\n", "x=set; echo $x\n", "set -o posix\n", "set -eo posix\n", "bash +o posix x.sh\n",
 		"eval \"$(dircolors)\"; set -e\n", "shopt -s -q inherit_errexit\n", "node --eval 'x.set(1)'\n", "\"eval\" reset -e\n",
 	} {
 		if got := matches(script); len(got) != 0 {
@@ -627,6 +633,23 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 
 // Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
 // explicit failure branch: bash before 4.1 ignores errexit for it and fails open.
+// TestRepositoryScanSelectors pins what the repository scan reads: sh files are scanned (macOS
+// sh is bash 3.2) and a workflow env: entry that makes substitutions inherit errexit is caught.
+func TestRepositoryScanSelectors(t *testing.T) {
+	for line, want := range map[string]bool{"#!/bin/sh": true, "#!/usr/bin/env sh": true, "#!/bin/bash -e": true, "#!/bin/zsh": false, "#!/usr/bin/env python3": false} {
+		if got := scriptShebang.MatchString(line); got != want {
+			t.Errorf("scriptShebang(%q) = %v, want %v", line, got, want)
+		}
+	}
+	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  SHELL: bash\n": false} {
+		if got := inheritanceEnv.MatchString(text); got != want {
+			t.Errorf("inheritanceEnv(%q) = %v, want %v", text, got, want)
+		}
+	}
+}
+
+var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b`)
+
 func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 	root := repositoryRoot(t)
 	workflows, err := filepath.Glob(filepath.Join(root, ".github/workflows/*.yml"))
@@ -637,6 +660,10 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
+		}
+		// An env: entry reaches every step without appearing in its script.
+		if loc := inheritanceEnv.FindIndex(raw); loc != nil {
+			t.Errorf("%s:%d: %s makes command substitutions inherit errexit, which the scan does not follow", filepath.Base(path), bytes.Count(raw[:loc[0]], []byte("\n"))+1, raw[loc[0]:loc[1]])
 		}
 		var workflow failClosedWorkflow
 		if err := yaml.Unmarshal(raw, &workflow); err != nil {
@@ -675,7 +702,7 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 			return err
 		}
 		firstLine, _, _ := strings.Cut(string(raw), "\n")
-		if !bashShebang.MatchString(firstLine) {
+		if !scriptShebang.MatchString(firstLine) {
 			return nil
 		}
 		scripts++

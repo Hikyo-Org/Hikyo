@@ -138,14 +138,15 @@ func isBashShell(shell, runsOn string) bool {
 	}
 	// A custom template (/bin/bash -e {0}, env FOO=1 bash {0}) may run bash in many ways, so only
 	// a known other interpreter is skipped; anything else, an expression or a blank shell
-	// included, is scanned as bash, which fails safe: a misjudged step fails to parse.
+	// included, is scanned as bash, which fails safe: a misjudged step may fail to parse. sh is
+	// scanned too: on a macOS runner it is bash 3.2.
 	words := strings.Fields(shell)
 	if len(words) == 0 {
 		return true
 	}
 	exe := strings.ToLower(strings.Trim(words[0], `"'`))
 	exe = strings.TrimSuffix(exe[strings.LastIndexAny(exe, `/\`)+1:], ".exe") // a Windows path uses \
-	return !slices.Contains([]string{"sh", "dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
+	return !slices.Contains([]string{"dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
 }
 
 func firstNonEmpty(values ...string) string {
@@ -370,9 +371,10 @@ func TestIsBashShellTreatsWindowsDefaultAsPowerShell(t *testing.T) {
 		{"\"pwsh\" -command \". '{0}'\"", "ubuntu-latest", false},
 		{"C:\\Windows\\cmd.EXE /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\"", "windows-latest", false},
 		{"pwsh -command \". '{0}'\"", "ubuntu-latest", false},
-		{"/bin/sh -e {0}", "ubuntu-latest", false},
+		{"/bin/sh -e {0}", "macos-15", true},
 		{"pwsh", "ubuntu-latest", false},
-		{"sh", "", false},
+		{"sh", "", true},
+		{"powershell", "windows-latest", false},
 	} {
 		if got := isBashShell(tc.shell, tc.runsOn); got != tc.want {
 			t.Errorf("isBashShell(%q, %q) = %v, want %v", tc.shell, tc.runsOn, got, tc.want)
