@@ -138,12 +138,13 @@ jobs:
           # Rerunning only one of several non-group jobs would strand the rest: the next attempt lists
           # only its own jobs, so no later callback sees them. Hold them all for rerun-after-reset, which
           # reruns the set once the window has recovered and the set fits above the reserve. Known limits, routed
-          # to #1598: a set whose full cost exceeds what any fresh window gives non-group work (n x 42 above
-          # limit - reserve: 13 or more publishers on a 1000-request window) stays held and needs the operator;
-          # a run that also failed another job takes the single-job path below, which strands its siblings.
+          # to #1598: a set of 13 or more publishers (n x 42 above limit - reserve on a 1000-request window) never
+          # fits and stays held for the operator, and so is usually a set of 12, because the sweep's own listings
+          # and other callers spend after the reset (a 12-set needs about 984 left); a run that also failed another
+          # job (not the exact set) takes the single-job path below, which strands its siblings.
           combined=$((${#others[@]} * other_cost))
-          if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ $((remaining - combined)) -lt "$reserve" ]; then
-            echo "Held for the group reserve ($remaining of $limit requests left): the ${#others[@]} failed jobs of this run cost $((${#others[@]} * other_cost)) together, more than leaves the reserve. rerun-after-reset reruns them once the window has reset and they fit."
+          if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ "$eligible" = "$total" ] && [ $((remaining - combined)) -lt "$reserve" ]; then
+            echo "Held for the group reserve ($remaining of $limit requests left): the ${#others[@]} failed jobs of this run cost $((${#others[@]} * other_cost)) together, more than leaves the reserve. rerun-after-reset reruns them once the window has reset, if they fit then; a set that never fits (13 or more publishers, usually 12 too) needs the operator: gh workflow run ci-queue-gate.yml -f pr_number=<n>."
             echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
             exit 0
           fi
@@ -358,7 +359,8 @@ jobs:
           done <<<"$runs"
           # Newest run first, and one entry per job name (kind and head): a stale run of an earlier head
           # must not take a release slot ahead of the current one. A run-level entry that covers a head a
-          # newer run already has is cut down to one job of a head that is still unseen.
+          # newer run already has is cut down to one job of a head that is still unseen; its other unseen heads
+          # become "skip" entries, which the release loop holds and names, because a run takes one rerun per pass.
           newest_per_head() {
             sort -k4,4nr | awk '
               NF {
@@ -366,17 +368,21 @@ jobs:
                 fresh = 0
                 for (i = 1; i <= n; i++) {
                   split(pair[i], part, ":")
-                  if (!(part[2] in seen)) { fresh++; if (!first) first = i }
+                  if (!(part[2] in seen)) fresh++
                 }
                 if (fresh == n) {
                   for (i = 1; i <= n; i++) { split(pair[i], part, ":"); seen[part[2]] = 1 }
                   print
                 } else if (fresh > 0) {
-                  split(pair[first], part, ":")
-                  seen[part[2]] = 1
-                  printf "job %s %d %s %s\n", part[1], $3 / n, $4, pair[first]
+                  done = 0
+                  for (i = 1; i <= n; i++) {
+                    split(pair[i], part, ":")
+                    if (part[2] in seen) continue
+                    seen[part[2]] = 1
+                    if (!done) { printf "job %s %d %s %s\n", part[1], $3 / n, $4, pair[i]; done = 1 }
+                    else printf "skip %s 0 %s %s\n", part[1], $4, pair[i]
+                  }
                 }
-                first = 0
               }'
           }
           group_plan=$(printf '%s' "$group_plan" | newest_per_head)
@@ -393,6 +399,11 @@ jobs:
           retry_plan=""
           spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other
             local available floor path rc
+            if [ "$1" = skip ]; then
+              echo "Not rerunning job $2: another job of its run is rerun above, and a run takes one rerun per pass."
+              held="$held job:$2"
+              return 0
+            fi
             if [ $(($(date +%s) - started)) -gt 3960 ]; then
               held="$held $1:$2"
               return 0

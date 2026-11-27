@@ -152,10 +152,10 @@ func (q *queueController) pendingText(number int) outcome {
 // *githubReadError whatever its flag, and a single-%w wrapper around a join hides the join's
 // other branches, so the whole tree is walked directly: any rate-limited branch counts.
 func rateLimitedFailure(err error) bool {
-	if failure, ok := err.(*githubReadError); ok && failure.rateLimited {
+	if failure, ok := err.(*githubReadError); ok && failure.rateLimited { //nolint:errorlint // walks the error tree itself: errors.As stops at the first *githubReadError whatever its flag
 		return true
 	}
-	switch u := err.(type) {
+	switch u := err.(type) { //nolint:errorlint // same walk: errors.Is/As cannot visit every branch of a join
 	case interface{ Unwrap() []error }:
 		for _, part := range u.Unwrap() {
 			if rateLimitedFailure(part) {

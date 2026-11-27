@@ -619,7 +619,7 @@ func (a retryingAPI) read(ctx context.Context, path string, result any) error {
 		}
 		fmt.Fprintf(os.Stderr, "trusted PR gate: retrying GitHub read (attempt %d of %d): %v\n", attempt+2, len(readRetryBackoff)+1, err)
 		if waitErr := readRetryWait(ctx, delay); waitErr != nil {
-			return &githubReadError{path: path, cause: waitErr}
+			return &githubReadError{path: path, cause: waitErr, rateLimited: rateLimitedFailure(err)}
 		}
 	}
 }

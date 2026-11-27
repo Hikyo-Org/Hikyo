@@ -563,6 +563,21 @@ func TestQueueRetryWaitCutsAnOlderOversizedRunAtAFullJobCost(t *testing.T) {
 	}
 }
 
+// A newer run takes head A of an older run that failed A, B and C. One job of the older run is rerun
+// (a run takes one rerun per pass), and the other unseen head is held and named, never dropped.
+func TestQueueRetryWaitNamesEveryUnseenHeadOfACutRun(t *testing.T) {
+	now := int64(1795475603)
+	step := "Reconcile one authenticated head"
+	head := func(i int) string { return "publish-" + fmt.Sprintf("%040x", i) }
+	older := trustedRun("ci-queue-gate.yml", 5, failedGroupJob(51, head(1), step), failedGroupJob(52, head(2), step), failedGroupJob(53, head(3), step))
+	newer := trustedRun("ci-queue-gate.yml", 9, failedGroupJob(91, head(1), step))
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, runs: []waitRun{older, newer}}
+	_, out, err := f.run()
+	if err == nil || !reflect.DeepEqual(f.accepted(), []string{"91", "52"}) || !strings.Contains(out, "Held to protect the window: job:53") {
+		t.Fatalf("job 53 (head C) must be held and named, not dropped: %v %v\n%s", err, f.accepted(), out)
+	}
+}
+
 // A rerun request that backs off past the 66 minutes must not be sent: it is held, not refused.
 func TestQueueRetryWaitSendsNoRerunRequestAfterSixtySixMinutes(t *testing.T) {
 	now := int64(1795475603)

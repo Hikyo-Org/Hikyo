@@ -205,8 +205,10 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		// (known limit, routed to #1598: the operator completes such a set).
 		{"a set no fresh window could afford together is held for the wait, never released here", manyPublishers(13), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
 		{"an oversized set on the last attempts is still held, not released", manyPublishers(13), "2", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
-		{"twelve publishers that a fresh window affords are held while they do not fit", manyPublishers(12), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
+		{"twelve publishers are held while they do not fit (the sweep's listings usually keep them held after the reset)", manyPublishers(12), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
 		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		// A mixed run gains nothing from the hold: the wait would rerun the same single job, so it is rerun now.
+		{"a mixed run whose publishers do not fit together still reruns its first job at once", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "dev-revoke", "failure", "Revoke")}, "1", "563 1000 1795475603", []int{1}, false, ""},
 		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},
 		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
 		// Worker group jobs are named group-<sha> in the worker run and may spend the reserve.
