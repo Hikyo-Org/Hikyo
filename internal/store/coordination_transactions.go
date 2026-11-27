@@ -25,16 +25,21 @@ func (c *Coordination) transaction(ctx context.Context, readonly bool, fn func(*
 			options.IsoLevel = pgx.RepeatableRead
 			options.AccessMode = pgx.ReadOnly
 		}
-		tx, err := c.db.BeginPostgres(ctx, options)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback(ctx)
-		q.pool = tx
-		if err := fn(&coordinationTx{db: q}); err != nil {
-			return err
-		}
-		return tx.Commit(ctx)
+		// The admission guard takes FOR SHARE on upgrade_control, which can abort
+		// with 40001/40P01 against a concurrent writer; the work rolls back with the
+		// attempt, so rerun it on a fresh transaction.
+		return retryPostgresSerialization(ctx, func() error {
+			tx, err := c.db.BeginPostgres(ctx, options)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = tx.Rollback(ctx) }()
+			q.pool = tx
+			if err := fn(&coordinationTx{db: q}); err != nil {
+				return err
+			}
+			return tx.Commit(ctx)
+		})
 	}
 	tx, err := c.db.BeginSQLite(ctx, readonly)
 	if err != nil {
