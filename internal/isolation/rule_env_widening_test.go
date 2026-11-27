@@ -878,6 +878,18 @@ func TestEnvironmentRenameWideningKeepsKeySelectors(t *testing.T) {
 		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, nil); err != nil {
 			t.Fatalf("renaming into qa with the restricted keys held everywhere: %v, want no confirmation", err)
 		}
+		// Reach over every key in every environment holds any selector.
+		if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: envExcpt, Capability: domain.CapEdit, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}}); err != nil {
+			t.Fatalf("every-key edit rule: %v", err)
+		}
+		edit(domain.AxisOnly, []string{"qa"}, "other")
+		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "dev", nil, nil); err != nil {
+			t.Fatalf("renaming back: %v", err)
+		}
+		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, nil); err != nil {
+			t.Fatalf("renaming into qa with every key held everywhere: %v, want no confirmation", err)
+		}
 	})
 }
 
@@ -938,6 +950,22 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 				if n := queryInt(t, db, q+" AND payload LIKE '%"+string(own[0])+"%' AND payload NOT LIKE '%"+string(own[1])+"%'"); n != 1 {
 					t.Fatalf("confirmation on %s recording only %s = %d, want 1", env, own[0], n)
 				}
+			}
+		})
+
+		// The rename alone gains qa's environment; the project needs the
+		// delete too. That project gain is the plan's, recorded on the delete,
+		// though the same principal's environment gain is the rename's.
+		t.Run("a_project_gain_beside_an_environment_gain", func(t *testing.T) {
+			f := seedDefinitionsProject(t, db, "envjoint", true)
+			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envjoint_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
+			read(excepting, f.project, domain.AxisAll, "prod", "dev")
+			bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+			bundle.Environments = slices.DeleteFunc(bundle.Environments, func(e definitions.Environment) bool { return e.Name == "prod" })
+			bundle.Environments[0].Name = "qa"
+			planRefused(t, f, planDefinitions(t, svc, f, encodeDefinitions(t, bundle)), excepting)
+			if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = 'env_def_envjoint_prod'"); n != 1 {
+				t.Fatalf("the plan's project gain recorded on the delete %d times, want 1", n)
 			}
 		})
 

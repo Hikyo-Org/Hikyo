@@ -152,7 +152,11 @@ func (c envChange) after() []domain.EnvRef {
 // principal reaches already still gains. It is held already only by the same
 // selector or by reach over every key; overlapping selectors are not merged,
 // which may ask for a confirmation that is not strictly needed, never miss one.
-func (c envChange) gains() []WideningGain {
+func (c envChange) gains() []WideningGain { return gainsOf(c.gainAtoms()) }
+
+// gainAtoms is gains as unmerged atoms, the project its own atom, so a plan
+// can attribute each one to the change that causes it.
+func (c envChange) gainAtoms() map[gainAtom]bool {
 	type atom struct {
 		principal  domain.PrincipalID
 		capability domain.Capability
@@ -194,20 +198,16 @@ func (c envChange) gains() []WideningGain {
 	}
 	before := reach(func(w domain.Where) domain.Where { return w })
 	now := reach(func(w domain.Where) domain.Where { return w.BindEnvs(after) })
-	var gains []WideningGain
+	gained := map[gainAtom]bool{}
 	for a := range now {
 		every := a
 		every.keys = ""
 		if before[a] || before[every] {
 			continue
 		}
-		g := WideningGain{Principal: a.principal, Capability: a.capability}
-		if a.env != "" {
-			g.Envs = []domain.EnvID{a.env}
-		}
-		gains = mergeGains(gains, []WideningGain{g})
+		gained[gainAtom{a.principal, a.capability, a.env}] = true
 	}
-	return gains
+	return gained
 }
 
 // confirm refuses a widening change unless confirmed names exactly the

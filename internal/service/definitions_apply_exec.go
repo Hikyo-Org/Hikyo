@@ -725,29 +725,45 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 	// project-wide gain shows on a harmless change beside the one that causes
 	// it. Each change keeps only the gains it causes on its own; a gain no
 	// single change causes is recorded once, on one change (a delete first).
-	var envGains, attributed []WideningGain
-	causers := 0
+	all, owns := map[gainAtom]bool{}, make([]map[gainAtom]bool, len(changes))
 	for i := range changes {
-		planned := changes[i].gains()
-		envGains = mergeGains(envGains, planned)
 		solo := changes[i]
 		solo.afterRefs = nil
-		changes[i].gained = intersectGains(planned, solo.gains())
-		if len(changes[i].gained) > 0 {
-			causers++
-			attributed = mergeGains(attributed, changes[i].gained)
+		alone := solo.gainAtoms()
+		owns[i] = map[gainAtom]bool{}
+		for a := range changes[i].gainAtoms() {
+			all[a] = true
+			if alone[a] {
+				owns[i][a] = true
+			}
 		}
 	}
-	if residual := subtractGains(envGains, attributed); len(residual) > 0 {
-		carrier := -1
+	residual := map[gainAtom]bool{}
+	for a := range all {
+		if !slices.ContainsFunc(owns, func(own map[gainAtom]bool) bool { return own[a] }) {
+			residual[a] = true
+		}
+	}
+	causers := 0
+	for i := range owns {
+		if len(owns[i]) > 0 {
+			causers++
+		}
+	}
+	if len(residual) > 0 {
+		carrier := 0
 		for i, c := range changes {
-			if carrier < 0 || c.to == "" && changes[carrier].to != "" {
+			if c.to == "" && changes[carrier].to != "" {
 				carrier = i
 			}
 		}
-		changes[carrier].gained = mergeGains(mergeGains(nil, changes[carrier].gained), residual)
+		maps.Copy(owns[carrier], residual)
 		causers = 0 // no single change explains the plan's gains
 	}
+	for i := range changes {
+		changes[i].gained = gainsOf(owns[i])
+	}
+	envGains := gainsOf(all)
 	union = mergeGains(union, envGains)
 	if len(union) == 0 {
 		return nil

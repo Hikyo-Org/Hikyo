@@ -194,38 +194,18 @@ type gainAtom struct {
 	env        domain.EnvID
 }
 
-func gainAtoms(gains []WideningGain) map[gainAtom]bool {
-	out := map[gainAtom]bool{}
-	for _, g := range gains {
-		if len(g.Envs) == 0 {
-			out[gainAtom{g.Principal, g.Capability, ""}] = true
-		}
-		for _, env := range g.Envs {
-			out[gainAtom{g.Principal, g.Capability, env}] = true
-		}
-	}
-	return out
-}
-
-// filterGains keeps the atoms of a whose presence in b is keep.
-func filterGains(a, b []WideningGain, keep bool) []WideningGain {
-	in := gainAtoms(b)
+// gainsOf merges atoms into gains for display and confirmation.
+func gainsOf(atoms map[gainAtom]bool) []WideningGain {
 	var out []WideningGain
-	for atom := range gainAtoms(a) {
-		if in[atom] != keep {
-			continue
-		}
-		g := WideningGain{Principal: atom.principal, Capability: atom.capability}
-		if atom.env != "" {
-			g.Envs = []domain.EnvID{atom.env}
+	for a := range atoms {
+		g := WideningGain{Principal: a.principal, Capability: a.capability}
+		if a.env != "" {
+			g.Envs = []domain.EnvID{a.env}
 		}
 		out = mergeGains(out, []WideningGain{g})
 	}
 	return out
 }
-
-func intersectGains(a, b []WideningGain) []WideningGain { return filterGains(a, b, true) }
-func subtractGains(a, b []WideningGain) []WideningGain  { return filterGains(a, b, false) }
 
 // MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
 // mirroring MaxGrantsPerOrg: it makes runaway rule minting loud.
