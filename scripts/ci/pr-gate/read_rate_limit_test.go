@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -105,6 +106,20 @@ func TestGitHubGraphQLReadChecksTheGraphQLBucket(t *testing.T) {
 	var result map[string]any
 	if err := retryingGH.read(t.Context(), "graphql:query{repository{name}}", &result); err == nil || len(*waits) != 0 || attempts() != 2 {
 		t.Fatalf("err=%v waits=%v attempts=%d, want no wait on a spent core bucket", err, *waits, attempts())
+	}
+}
+
+// A cancelled reset wait (a sibling read failed, or the deadline raced the wait) is still
+// the rate limit: dropping the flag would publish a terminal refusal on the final attempt.
+func TestCancelledRateLimitWaitKeepsTheRateLimitClassification(t *testing.T) {
+	rateLimitFixture(t, rateLimitCase{resetIn: 30 * time.Second, budget: 10 * time.Minute, failures: 5})
+	old := readRetryWait
+	readRetryWait = func(context.Context, time.Duration) error { return context.Canceled }
+	t.Cleanup(func() { readRetryWait = old })
+	var result map[string]any
+	err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result)
+	if err == nil || !rateLimitedFailure(err) {
+		t.Fatalf("a cancelled reset wait lost the rate-limit classification: %v", err)
 	}
 }
 

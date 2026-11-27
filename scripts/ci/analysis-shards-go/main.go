@@ -949,7 +949,7 @@ var raceTargetSeconds = map[string]map[string]float64{
 		"TestBuildCurrentStatePresenceEquivalence":                                     2.95,
 		"TestCommittedDeploymentCarriesStrictEnvelopeAcrossRenewalBothEngines":         21.58,
 		"TestCommittedDeploymentRenewsUnseenSubmitAndRestoreWithoutNewMFA":             15.57,
-		"TestDeliveryPollWork": 18.97,
+		"TestDeliveryPollWork":                                                         18.97,
 		"TestDeploymentRenewalRejectsChangedDecisionAndStaleRow":                       8.91,
 		"TestDeveloperMintBusinessRefusalsRemainAuditedAfterRollback":                  2.28,
 		"TestDeveloperPolicyClampOnlyCountsLiveCredentials":                            2.35,

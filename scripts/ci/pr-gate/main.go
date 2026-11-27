@@ -589,7 +589,7 @@ func (a retryingAPI) awaitRateLimitReset(ctx context.Context, failure *githubRea
 	}
 	fmt.Fprintf(os.Stderr, "trusted PR gate: GitHub API rate limit exhausted; waiting %s for the reset at %s\n", wait.Round(time.Second), reset.UTC().Format(time.RFC3339))
 	if err := readRetryWait(ctx, wait); err != nil {
-		return &githubReadError{path: failure.path, cause: err}
+		return &githubReadError{path: failure.path, cause: err, rateLimited: true}
 	}
 	return nil
 }
