@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -134,11 +135,12 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 		revokeHeads  = 7
 		// M: one pass per hour, spent ungated at the final attempt, whose confirmation listing never
 		// catches up. Counted on the dev fixture by TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing:
-		// 95 requests, 90 reads and 5 writes on dev (87 and 82 on main) = the pass 38 + 2, the confirmation listing 12, the
+		// 95 requests, 90 reads and 5 writes on dev (87 and 82 on main) = the pass 42 + 2 (38 + 2 on main), the confirmation listing 12, the
 		// fail-closed POST with its fail-safe re-list and re-POST 6 + 2, and the admission-reserve
-		// refusal phase (withAdmissionBudget, refuseAdmission) 26 + 1. It costs this on every
+		// refusal phase (withAdmissionBudget, refuseAdmission) 30 + 1 (26 + 1 on main). The 8 extra reads are the
+		// ci-feedback-retarget listings: 2 reads (run list, workflow) in each of the 4 feedback listings. It costs this on every
 		// attempt; attempts 1 and 2 are gated by the reserve like any pass. A created-record
-		// pass that confirms costs 41 + 2, within the 45 of the margin. A pass that takes the backmerge
+		// pass that confirms costs 45 + 2 (41 + 2 on main), within the 49 of the margin (45 on main). A pass that takes the backmerge
 		// exception reads the head's ancestry once more: 96 on dev (88 on main), counted by
 		// TestDevBackmergeAttempt3UnconfirmedPassCostIsPinnedForTheSizing, which is the figure pinned here.
 		attempt3 = 96
@@ -165,6 +167,14 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	if !strings.Contains(string(measuredIn), "const attempt3PassRequests = 95") {
 		t.Fatal("the attempt-3 cost pinned here must be the one scripts/ci/pr-gate/dev_revoke_test.go counts")
 	}
+	overlapIn, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "queue_overlap_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Main's dev admission spends 41 reads; dev's is 41 plus the retarget feedback reads per pass.
+	if !strings.Contains(string(overlapIn), fmt.Sprintf("if total != %d {", 41+retargetFeedbackReads)) {
+		t.Fatalf("retargetFeedbackReads = %d must match the dev admission read count in scripts/ci/pr-gate/queue_overlap_test.go (41 on main plus these)", retargetFeedbackReads)
+	}
 	backmergeIn, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "dev_backmerge_test.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +186,7 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "659", "947", "dequeued and re-queued", "1,425", "42.5%", "accepted this figure on 2026-11-26", "the owner accepted ~1,425/h (42.5%) on dev on 2026-11-27 as an interim exception, ceiling ~1,430/h; the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598", "dev-revoke"} {
+	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "659", "947", "dequeued and re-queued", "1,425", "42.5%", "accepted this figure on 2026-11-26", "the owner accepted it on 2026-11-27 as an interim exception, ceiling ~1,430/h; the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598", "Dev's ~1,425/h (42.5%) exceeds that 1,420 ceiling", "dev-revoke"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
 		}
