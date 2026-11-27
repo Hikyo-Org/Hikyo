@@ -19,7 +19,7 @@ var (
 	leadingTabs = regexp.MustCompile(`(?m)^\t+`)
 	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+bash|/(?:usr/)?bin/bash)(?:\s|$)`)
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
-	workflowExpression = regexp.MustCompile(`\$\{\{[^}]*\}\}`)
+	workflowExpression = regexp.MustCompile(`\$\{\{(?:[^}']|'(?:[^']|'')*')*\}\}`) // a quoted '{0}' does not end it
 )
 
 // bareTests parses script as bash and returns the 1-based lines of [[ ]] and (( ))
@@ -95,6 +95,16 @@ func bareTests(script string) ([]int, error) {
 		}
 		return true
 	})
+	// A command substitution does not inherit errexit, so its body is ordinary code unless
+	// errexit is back on there: through set -e inside it, or shopt -s inherit_errexit in the
+	// script. Then it is scanned as active, which is conservative for statements before set -e.
+	inherit := callsWith(file, "shopt", func(args []string) bool { return contains(args, "-s") && contains(args, "inherit_errexit") })
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if sub, ok := node.(*syntax.CmdSubst); ok && (inherit || callsWith(sub, "set", setsErrexit)) {
+			stmts(sub.Stmts, false)
+		}
+		return true
+	})
 	// A heredoc that is itself a bash script is scanned too. One that does not parse is an
 	// error, except the single deliberately broken fixture fast-feedback_test.sh writes.
 	syntax.Walk(file, func(node syntax.Node) bool {
@@ -121,6 +131,37 @@ func bareTests(script string) ([]int, error) {
 		return true
 	})
 	return found, err
+}
+
+// callsWith reports whether node contains a call to name whose literal arguments satisfy match.
+func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
+	found := false
+	syntax.Walk(node, func(n syntax.Node) bool {
+		call, ok := n.(*syntax.CallExpr)
+		if !ok || len(call.Args) == 0 || call.Args[0].Lit() != name {
+			return !found
+		}
+		args := make([]string, 0, len(call.Args)-1)
+		for _, word := range call.Args[1:] {
+			args = append(args, word.Lit())
+		}
+		found = found || match(args)
+		return !found
+	})
+	return found
+}
+
+// setsErrexit reports whether set arguments turn errexit on: -e in a short-option group or -o errexit.
+func setsErrexit(args []string) bool {
+	for i, arg := range args {
+		// In a group such as -eo pipefail, an e before any o is the errexit flag.
+		if short := strings.TrimPrefix(arg, "-"); short != arg && !strings.HasPrefix(short, "-") &&
+			strings.Contains(short, "e") && (!strings.Contains(short, "o") || strings.Index(short, "e") < strings.Index(short, "o")) ||
+			(arg == "-o" && i+1 < len(args) && args[i+1] == "errexit") {
+			return true
+		}
+	}
+	return false
 }
 
 // brokenSourceFixture is the one bash heredoc that must not parse: fast-feedback_test.sh
@@ -177,6 +218,9 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"background group":          "{ [[ a == b ]]; echo x; } &\n",
 		"background subshell":       "( [[ a == b ]]; echo x ) &\n",
 		"process substitution":      "cat <( [[ a == b ]]; echo x )\n",
+		"set -e in a substitution":  "value=$(set -e; [[ a == b ]]; echo accepted)\n",
+		"set -eo in a substitution": "value=$(set -eo pipefail; [[ a == b ]]; echo accepted)\n",
+		"inherited errexit":         "shopt -s inherit_errexit\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"tab-indented bash heredoc": "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
 	},
 	allowed: map[string]string{
@@ -204,6 +248,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"multi-line test":       "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
 		"test in condition":     "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
 		"plain heredoc":         "cat <<EOF\n[[ -n $a ]]\nEOF\n",
+		"plain substitution":    "value=$([[ a == b ]]; echo x)\n", // errexit is off in $( ) on every bash
+		"set +e substitution":   "value=$(set +e; [[ a == b ]]; echo x)\n",
 		"sh heredoc":            "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
 		"here string":           "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
 		"arith expansion":       "x=$((a + 1))\n",
@@ -242,8 +288,23 @@ func checkBareTestTable(t *testing.T, scan func(string) ([]int, error)) {
 			t.Errorf("%s: flagged lines %v:\n%s", name, lines, script)
 		}
 	}
+	if got, err := scan("if [[ -z $f ]]\nthen [[ $r == 0 ]]\nelse [[ $r != 0 ]]\nfi\n"); err != nil || !reflect.DeepEqual(got, []int{2, 3}) {
+		t.Errorf("both branches, not the condition: got %v (%v), want [2 3]", got, err)
+	}
 	if got, err := scan("a\n\n[[ -n $a ]]\n"); err != nil || !reflect.DeepEqual(got, []int{3}) {
 		t.Errorf("line numbers: got %v (%v), want [3]", got, err)
+	}
+}
+
+func TestWorkflowExpressionSpansQuotedBraces(t *testing.T) {
+	for _, run := range []string{
+		`echo "${{ github.ref_name }}"`,
+		`echo "${{ format('refs/heads/{0}', github.ref_name) }}"`,
+		`echo "${{ format('it''s {0}', 'x') }}"`,
+	} {
+		if got := workflowExpression.ReplaceAllString(run, "GITHUB_EXPRESSION"); got != `echo "GITHUB_EXPRESSION"` {
+			t.Errorf("%s: replaced to %s", run, got)
+		}
 	}
 }
 
@@ -332,7 +393,7 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		for name, job := range workflow.Jobs {
 			for _, step := range job.Steps {
 				shell := firstNonEmpty(step.Shell, job.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
-				if step.Run == "" || !isBashShell(shell, job.RunsOn) || scanned[step.Name+step.Run] {
+				if step.Run == "" || !isBashShell(shell, string(job.RunsOn)) || scanned[step.Name+step.Run] {
 					continue
 				}
 				scanned[step.Name+step.Run] = true

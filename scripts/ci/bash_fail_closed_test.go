@@ -102,19 +102,37 @@ type failClosedDefaults struct {
 type failClosedWorkflow struct {
 	Defaults failClosedDefaults `yaml:"defaults"`
 	Jobs     map[string]struct {
-		RunsOn   string             `yaml:"runs-on"`
+		RunsOn   runsOnValue        `yaml:"runs-on"`
 		Defaults failClosedDefaults `yaml:"defaults"`
 		Steps    []failClosedStep   `yaml:"steps"`
 	} `yaml:"jobs"`
+}
+
+// runsOnValue decodes runs-on in any YAML form: a scalar keeps its value, a label list
+// is "windows" when any label names a Windows runner, and anything else (a group
+// mapping) is empty, which isBashShell scans as bash and so fails safe.
+type runsOnValue string
+
+func (r *runsOnValue) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		*r = runsOnValue(node.Value)
+	case yaml.SequenceNode:
+		for _, label := range node.Content {
+			if label.Kind == yaml.ScalarNode && strings.HasPrefix(strings.ToLower(label.Value), "windows") {
+				*r = "windows"
+			}
+		}
+	}
+	return nil
 }
 
 // isBashShell reports whether a step runs under bash: an unset shell is bash on the
 // Linux and macOS runners.
 func isBashShell(shell, runsOn string) bool {
 	if shell == "" {
-		// GitHub's default on a Windows runner is pwsh. A runs-on expression or matrix
-		// value we cannot resolve is treated as bash, which fails safe; a list or
-		// mapping runs-on fails the YAML decode loudly instead.
+		// GitHub's default on a Windows runner is pwsh. A runs-on expression, matrix
+		// value or group mapping we cannot resolve is treated as bash, which fails safe.
 		return !strings.HasPrefix(strings.ToLower(runsOn), "windows")
 	}
 	return shell == "bash" || strings.HasPrefix(shell, "bash ")
@@ -289,6 +307,34 @@ func TestGuardsFailClosedOnOldBash(t *testing.T) {
 				assertRefused(run(t, script, tc.args, tc.badGoMod, tc.env), "a go.mod below go 1.21")
 			}
 		})
+	}
+}
+
+func TestRunsOnDecodesEveryYAMLForm(t *testing.T) {
+	raw := `jobs:
+  list:
+    runs-on: [self-hosted, linux]
+    steps:
+      - shell: bash
+        run: echo list
+  windows-list:
+    runs-on: [self-hosted, Windows]
+    steps:
+      - run: echo default
+  group:
+    runs-on: {group: large}
+    steps:
+      - run: echo group
+`
+	var workflow failClosedWorkflow
+	if err := yaml.Unmarshal([]byte(raw), &workflow); err != nil {
+		t.Fatalf("a list or mapping runs-on must decode: %v", err)
+	}
+	for job, want := range map[string]bool{"list": true, "windows-list": false, "group": true} {
+		step := workflow.Jobs[job].Steps[0]
+		if got := isBashShell(step.Shell, string(workflow.Jobs[job].RunsOn)); got != want {
+			t.Errorf("job %s: isBashShell = %v, want %v", job, got, want)
+		}
 	}
 }
 
