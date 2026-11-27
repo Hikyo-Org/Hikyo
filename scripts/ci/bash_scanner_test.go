@@ -664,6 +664,27 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "bash")); err != nil || len(got) != 0 {
 		t.Errorf("a bash step's substitution: got %v, %v; want none flagged", got, err)
 	}
+	// The same step under bash and sh is two scans, and two unnamed steps are two scans.
+	fixture := "jobs:\n" +
+		"  a:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: bash\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
+		"      - run: echo ok\n      - run: '[[ -n $a ]]'\n" +
+		"  b:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: sh\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
+	problems, err := workflowProblems("fixture.yml", []byte(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shStep, unnamed int
+	for _, problem := range problems {
+		if strings.Contains(problem, "job b step \"s\"") && strings.Contains(problem, ":2: bare test") {
+			shStep++
+		}
+		if strings.Contains(problem, "job a step \"\"") && strings.Contains(problem, ":1: bare test") {
+			unnamed++
+		}
+	}
+	if shStep != 1 || unnamed != 1 {
+		t.Errorf("fixture workflow: got %d sh-step and %d unnamed-step problems, want 1 each:\n%s", shStep, unnamed, strings.Join(problems, "\n"))
+	}
 	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  SHELL: bash\n": false} {
 		if got := len(workflowEnvProblems([]byte(text))) > 0; got != want {
 			t.Errorf("workflowEnvProblems(%q) found = %v, want %v", text, got, want)
@@ -694,6 +715,33 @@ func workflowEnvProblems(raw []byte) []string {
 	return problems
 }
 
+// workflowProblems returns the scan problems of one workflow file: its env: entries and each
+// bash step's script, a step repeated by a YAML anchor scanned once.
+func workflowProblems(name string, raw []byte) ([]string, error) {
+	var problems []string
+	for _, problem := range workflowEnvProblems(raw) {
+		problems = append(problems, name+":"+problem)
+	}
+	var workflow failClosedWorkflow
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		return nil, err
+	}
+	scanned := map[string]bool{}
+	for jobName, job := range workflow.Jobs {
+		for _, step := range job.Steps {
+			shell := firstNonEmpty(step.Shell, job.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
+			script := scannedStepScript(step.Run, shell)
+			key := step.Name + "\x00" + script // the shell changes the text, so it is part of the key
+			if step.Run == "" || !isBashShell(shell, string(job.RunsOn)) || scanned[key] {
+				continue
+			}
+			scanned[key] = true
+			problems = append(problems, scanProblems(fmt.Sprintf("%s job %s step %q (line of its script)", name, jobName, step.Name), script, "append `|| exit 1`")...)
+		}
+	}
+	return problems, nil
+}
+
 // Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
 // explicit failure branch: bash before 4.1 ignores errexit for it and fails open.
 func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
@@ -707,24 +755,12 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, problem := range workflowEnvProblems(raw) {
-			t.Errorf("%s:%s", filepath.Base(path), problem)
-		}
-		var workflow failClosedWorkflow
-		if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		problems, err := workflowProblems(filepath.Base(path), raw)
+		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
-		scanned := map[string]bool{} // a YAML anchor repeats one step in many jobs
-		for name, job := range workflow.Jobs {
-			for _, step := range job.Steps {
-				shell := firstNonEmpty(step.Shell, job.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
-				script := scannedStepScript(step.Run, shell)
-				if step.Run == "" || !isBashShell(shell, string(job.RunsOn)) || scanned[step.Name+"\x00"+script] {
-					continue
-				}
-				scanned[step.Name+"\x00"+script] = true // the shell changes the text, so it is part of the key
-				scanScript(t, fmt.Sprintf("%s job %s step %q (line of its script)", filepath.Base(path), name, step.Name), script, "append `|| exit 1`")
-			}
+		for _, problem := range problems {
+			t.Error(problem)
 		}
 	}
 	scripts, shScripts := 0, 0
