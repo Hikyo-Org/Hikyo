@@ -24,7 +24,10 @@ vi.mock('../app/AuthProvider.tsx', () => ({
 vi.mock('../api/settings.ts', async (original) => ({
   ...(await original<typeof import('../api/settings.ts')>()),
   useOrg: () => mocks.metadataRefused ? { data: undefined, isError: true } : { data: { id: org, name: 'Acme' } },
-  useOrgTopology: () => mocks.metadataRefused ? { projects: [], isError: true, isPending: false, ready: false } : { projects: [{ id: project, name: 'Application', environments: [{ id: environment, name: 'Development', isProtected: false }] }], isError: false, isPending: false, ready: true },
+  // Refused metadata still yields a partial topology: a protected `dev` the
+  // rule's name selector matches, and a `Development` it does not. A page
+  // that consulted it would show either.
+  useOrgTopology: () => mocks.metadataRefused ? { projects: [{ id: project, name: 'Application', environments: [{ id: environment, name: 'dev', isProtected: true }, { id: 'env_88888888-8888-4888-8888-888888888888', name: 'Development', isProtected: false }] }], isError: true, isPending: false, ready: false } : { projects: [{ id: project, name: 'Application', environments: [{ id: environment, name: 'Development', isProtected: false }] }], isError: false, isPending: false, ready: true },
 }));
 vi.mock('../ui/useModalDialog.ts', () => ({ useModalDialog: () => ({ current: null }) }));
 vi.mock('./SystemScope.tsx', () => ({ useInSystemScope: () => (mocks.systemOrg ? 'system' : 'ordinary') }));
@@ -121,7 +124,14 @@ it('edits a disclosed rule using stable selector IDs when See and directory meta
     await settleTask();
     await settleTask();
     expect(view.container.querySelector('#members-rules')?.textContent).toContain(keyID);
-    expect(view.container.querySelector('#members-rules')?.textContent).toContain(environment);
+    // The rule's own environment name is its selector (#1447), shown as is;
+    // the protection the See gate hides stays hidden.
+    const envPart = [...view.container.querySelectorAll('#members-rules .access-where__part')].find((part) => part.querySelector('.access-where__label')?.textContent === 'Environments');
+    const envValue = envPart?.querySelector('.access-where__value');
+    expect(envValue?.getAttribute('title')).toBe('dev');
+    expect(envValue?.textContent).toBe('dev');
+    expect(envValue?.querySelector('.glyph, svg')).toBeNull();
+    expect(view.container.querySelector('#members-rules')?.textContent).not.toContain('(protected)');
     expect(view.container.textContent).not.toContain('Application');
     expect(view.container.textContent).not.toContain('Development');
     expect(view.container.textContent).toContain('Names and protection settings are unavailable without See');
