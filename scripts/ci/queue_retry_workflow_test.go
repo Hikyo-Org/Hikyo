@@ -191,6 +191,9 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603", []int{1}, false, ""},
 		// The jobs listing spends requests after the first read, so the decision uses a fresh balance.
+		{"a group job the jobs listing leaves below a tenth is not rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, "99 of 1000"},
+		{"a failed second balance read fails the step", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "900 1000 1795475603|bad 1000 1795475603", nil, true, ""},
+		{"a balance that is not a number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "\"x\" 1000 1795475603", nil, true, ""},
 		{"a non-group job the jobs listing leaves one short is held", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603|521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
 		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve"},
@@ -227,14 +230,19 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
 			// Each "|"-separated balance answers one rate_limit read in turn; the last repeats.
-			for i, balance := range strings.Split(tc.rateLimit, "|") {
+			balances := strings.Split(tc.rateLimit, "|")
+			for i, balance := range append(balances, balances[len(balances)-1]) {
 				rl := strings.Fields(balance)
 				graphql := ""
 				if len(rl) == 6 {
 					graphql = ",\"graphql\":{\"remaining\":" + rl[3] + ",\"limit\":" + rl[4] + ",\"reset\":" + rl[5] + "}"
 				}
 				body := "{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}" + graphql + "}}"
-				if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("rl%d.json", i)), []byte(body), 0o644); err != nil {
+				name := fmt.Sprintf("rl%d.json", i)
+				if i == len(balances) {
+					name = "rl-last.json" // the answer once the list runs out
+				}
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -242,7 +250,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 			stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
 				"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
 				"case \"$*\" in\n" +
-				"  'api rate_limit '*) n=$(cat '" + dir + "/count' 2>/dev/null || echo 0); echo $((n + 1)) > '" + dir + "/count'; f='" + dir + "'/rl$n.json; [ -f \"$f\" ] || f=$(ls '" + dir + "'/rl*.json | tail -n 1); jq -r \"$filter\" < \"$f\" ;;\n" +
+				"  'api rate_limit '*) n=$(cat '" + dir + "/count' 2>/dev/null || echo 0); echo $((n + 1)) > '" + dir + "/count'; f='" + dir + "'/rl$n.json; [ -f \"$f\" ] || f='" + dir + "'/rl-last.json; jq -r \"$filter\" < \"$f\" ;;\n" +
 				"  *--method\\ POST*) ;;\n" +
 				"  api*) printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
 				"esac\n"
