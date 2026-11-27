@@ -663,8 +663,10 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\nfoo \\", "sh -e {0}")); err != nil || !reflect.DeepEqual(got, []int{2}) {
 		t.Errorf("an sh step ending in a continuation: got %v, %v; want line 2 flagged", got, err)
 	}
-	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "bash")); err != nil || len(got) != 0 {
-		t.Errorf("a bash step's substitution: got %v, %v; want none flagged", got, err)
+	for _, shell := range []string{"bash", "bash -e {0}", ""} {
+		if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", shell)); err != nil || len(got) != 0 {
+			t.Errorf("a %q step's substitution: got %v, %v; want none flagged", shell, got, err)
+		}
 	}
 	// The same step under bash and sh (the step's shell over the job's bash default) is two scans, two
 	// unnamed steps are two scans, and an env: entry is reported.
