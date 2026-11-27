@@ -664,8 +664,9 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "bash")); err != nil || len(got) != 0 {
 		t.Errorf("a bash step's substitution: got %v, %v; want none flagged", got, err)
 	}
-	// The same step under bash and sh is two scans, and two unnamed steps are two scans.
-	fixture := "jobs:\n" +
+	// The same step under bash and sh is two scans, two unnamed steps are two scans, and an
+	// env: entry is reported.
+	fixture := "env:\n  SHELLOPTS: posix\njobs:\n" +
 		"  a:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: bash\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
 		"      - run: echo ok\n      - run: '[[ -n $a ]]'\n" +
 		"  b:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: sh\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
@@ -673,8 +674,11 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var shStep, unnamed int
+	var shStep, unnamed, env int
 	for _, problem := range problems {
+		if strings.HasPrefix(problem, "fixture.yml:2: SHELLOPTS") {
+			env++
+		}
 		if strings.Contains(problem, "job b step \"s\"") && strings.Contains(problem, ":2: bare test") {
 			shStep++
 		}
@@ -682,8 +686,8 @@ func TestRepositoryScanSelectors(t *testing.T) {
 			unnamed++
 		}
 	}
-	if shStep != 1 || unnamed != 1 {
-		t.Errorf("fixture workflow: got %d sh-step and %d unnamed-step problems, want 1 each:\n%s", shStep, unnamed, strings.Join(problems, "\n"))
+	if shStep != 1 || unnamed != 1 || env != 1 {
+		t.Errorf("fixture workflow: got %d sh-step, %d unnamed-step and %d env problems, want 1 each:\n%s", shStep, unnamed, env, strings.Join(problems, "\n"))
 	}
 	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  SHELL: bash\n": false} {
 		if got := len(workflowEnvProblems([]byte(text))) > 0; got != want {
