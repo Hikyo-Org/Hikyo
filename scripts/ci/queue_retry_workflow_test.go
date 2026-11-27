@@ -193,7 +193,8 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		// The jobs listing spends requests after the first read, so the decision uses a fresh balance.
 		{"a group job the jobs listing leaves below a tenth is not rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, "99 of 1000"},
 		{"a failed second balance read fails the step", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "900 1000 1795475603|bad 1000 1795475603", nil, true, ""},
-		{"a balance that is not a number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "\"x\" 1000 1795475603", nil, true, ""},
+		// 0x3e8 is 1000 to shell arithmetic, so only the number check stops it.
+		{"a balance that is not a decimal number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "\"0x3e8\" 1000 1795475603", nil, true, ""},
 		{"a non-group job the jobs listing leaves one short is held", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603|521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
 		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve"},
