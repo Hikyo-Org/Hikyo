@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	leadingTabs = regexp.MustCompile(`(?m)^\t+`)
 	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+bash|/(?:usr/)?bin/bash)(?:\s|$)`)
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
 	workflowExpression = regexp.MustCompile(`\$\{\{[^}]*\}\}`)
@@ -86,7 +87,8 @@ func bareTests(script string) ([]int, error) {
 		}
 	}
 	stmts(file.Stmts, false)
-	// A process substitution runs in a subshell that keeps errexit on every bash.
+	// A process substitution body is scanned as active. That is conservative: bash 5 ignores
+	// errexit in an argument substitution inside a condition, but not in a redirect one.
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if sub, ok := node.(*syntax.ProcSubst); ok {
 			stmts(sub.Stmts, false)
@@ -102,6 +104,9 @@ func bareTests(script string) ([]int, error) {
 		}
 		body := script[redirect.Hdoc.Pos().Offset():redirect.Hdoc.End().Offset()]
 		body = body[:strings.LastIndex(body, "\n")+1] // the slice ends with the closing delimiter
+		if redirect.Op == syntax.DashHdoc {
+			body = leadingTabs.ReplaceAllString(body, "") // <<- strips leading tabs from every line
+		}
 		if !bashShebang.MatchString(body) {
 			return true
 		}
@@ -124,8 +129,8 @@ const brokenSourceFixture = "#!/usr/bin/env bash\nfixture_message() { printf 'so
 
 // bareTestCases pin what bareTests flags and allows. Each flagged form fails open on
 // bash 3.2 and exits on bash 5; each allowed form behaves the same on both. The scanner
-// is conservative in one direction: a test that is a pipeline member is flagged although
-// bash 3.2 already enforces errexit on the pipeline.
+// is conservative in one direction: pipeline members, process-substitution bodies, and the final
+// statement of a background or substitution subshell are flagged although bash 3.2 and 5 agree there.
 var bareTestCases = struct{ flagged, allowed map[string]string }{
 	flagged: map[string]string{
 		"top level test":            "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
@@ -172,6 +177,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"background group":          "{ [[ a == b ]]; echo x; } &\n",
 		"background subshell":       "( [[ a == b ]]; echo x ) &\n",
 		"process substitution":      "cat <( [[ a == b ]]; echo x )\n",
+		"tab-indented bash heredoc": "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
 	},
 	allowed: map[string]string{
 		"or exit":               "[[ -n $a ]] || exit 1\n",
