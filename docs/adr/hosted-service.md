@@ -12,7 +12,7 @@ Context: the locked ADRs describe one trusted operator, 1 to 3 orgs, and a full 
 
 ## Vocabulary
 
-The [glossary](../../GLOSSARY.md) settles these terms. On 2026-11-19, round 1 of [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334) renamed terms in this ADR, with no change in meaning: "installation" became **instance**, "Managed" became **Standard**, "holder" became **key holder**, "holder secret" and "presented key" became **holder key**, and "unsealing" became **switching to Standard**.
+The [glossary](../../GLOSSARY.md) settles these terms. On 2026-11-19, round 1 of [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334) renamed terms in this ADR, with no change in meaning: "installation" became **instance**, "Managed" became **Standard**, "holder" became **key holder**, "holder secret" and "presented key" became **holder key**, and "unsealing" became **switching to Standard**. On 2026-11-27, round 2 of the same ticket changed these terms, again with no change in meaning: "locked result" became **key required**, "crypto-shred" became **shred**, "time-limited grant" for support access became **support grant**, "operator" for a person with production access became **production operator**, and "operator" for the hosted-service company became **hoster**. The shipped identifiers `sealed-webhook`, `HIKYO_SEALED_WEBHOOK_FILE` and the `operator` role template are now `encrypted-webhook`, `HIKYO_ENCRYPTED_WEBHOOK_FILE` and `instance-admin`. The old identifiers stay accepted as deprecated aliases until v2.
 
 - **Instance**: one running Hikyo service, made up of its datastore, its root key and its server nodes. This ADR avoids "pod", which already has a meaning in the [k8s-integration ADR](./k8s-integration.md).
 - **Org**: unchanged. The tenant boundary and the billing customer.
@@ -56,7 +56,7 @@ The setting applies only when an org is created. Changing it never alters an exi
 
 **Sealed is enforced by keys, not by a flag.** An environment in a Sealed org has no server slot unless a key holder adds one (decision 11). Without one, if it never had one or has rotated since, changing the setting, self-granting, using break-glass, reading the datastore or holding a backup and the root key together yields none of that environment's plaintext. The project sealer refuses a Sealed org, and the store refuses any update to the mode column, on both engines.
 
-**Sealed protects data at rest and against application-level access. It does not stop capture from production or tampering.** An operator cannot read a Sealed environment that has never had unattended access, or has rotated since, at rest, or through grants or application settings. Anyone with production access can still get in: capturing holder keys in memory or with a modified server, capturing raw service-account tokens or replaying a logged request within its window (decision 12), logging plaintext values in responses at TLS termination, or writing to the live datastore to forge the mode or a key holder's public key, and waiting for the customer's next write, grant or rotation. This is more work and a deliberate act, but this design does not prevent it. An operator able to ship a server can do this regardless, so a protocol defending only the datastore path would add much complexity for little gain against the operator. The owner accepted this on 2026-11-04: as with any hosted service that decrypts on the server, customers trust the operator not to capture or tamper. On 2026-11-06 the owner confirmed that this acceptance covers capture from production, not only tampering. Sealed raises what a breach of that trust takes, from a setting or a grant to deliberately capturing or changing something in production.
+**Sealed protects data at rest and against application-level access. It does not stop capture from production or tampering.** A production operator cannot read a Sealed environment that has never had unattended access, or has rotated since, at rest, or through grants or application settings. Anyone with production access can still get in: capturing holder keys in memory or with a modified server, capturing raw service-account tokens or replaying a logged request within its window (decision 12), logging plaintext values in responses at TLS termination, or writing to the live datastore to forge the mode or a key holder's public key, and waiting for the customer's next write, grant or rotation. This is more work and a deliberate act, but this design does not prevent it. A production operator able to ship a server can do this regardless, so a protocol defending only the datastore path would add much complexity for little gain against the production operator. The owner accepted this on 2026-11-04: as with any hosted service that decrypts on the server, customers trust the hoster not to capture or tamper. On 2026-11-06 the owner confirmed that this acceptance covers capture from production, not only tampering. Sealed raises what a breach of that trust takes, from a setting or a grant to deliberately capturing or changing something in production.
 
 **There is no conversion in either direction.** Retained backups hold the old server-wrapped keys, so sealing an existing org would promise something false, and switching to Standard would need a server slot. A customer who wants a different mode creates a new org and imports, which re-encrypts every value.
 
@@ -76,7 +76,7 @@ The environment key seals `value_entries`, `pending_changes`, `snapshot_entries`
 2. **Outer-layer rotation needs no customer.** A new tier-3 `sealedSlotKey` with its own purpose, wrapped by the master key, forms the outer layer of every slot. The server can rotate it without any key holder. It lies under existing root-key custody and escrow. Losing it destroys every slot in the instance.
 3. **Binding on both layers.** The outer layer's AAD and the inner wrap each bind org, project, environment, key version, slot and key holder, and the environment key has a key commitment. A root-key holder who strips the outer layer cannot reuse one environment's inner wrap in another's slot.
 4. **Key holders can be added while absent where listed below**, so that the server can create a new environment without a holder key: it generates the key, wraps it to the org's recovery key holders, the creating member and members holding all of that project's other environments, and discards it.
-5. **No stored wrap may be derivable from a human-chosen secret alone.** An operator could otherwise brute-force weak passphrases. A passphrase may protect a file on the customer's own device, as an age passphrase file. It never reaches the server.
+5. **No stored wrap may be derivable from a human-chosen secret alone.** A production operator could otherwise brute-force weak passphrases. A passphrase may protect a file on the customer's own device, as an age passphrase file. It never reaches the server.
 6. **No plaintext-derived digest under a server key.** Otherwise a dump plus the root key would let someone test guesses. Each environment has its own change-token key and scanning-fingerprint key under the environment key. Key hygiene therefore causes no rollout wave, and a key holder may deliberately replace them, accepting one wave.
 
 **Key holders in the sketch:**
@@ -98,7 +98,7 @@ A credential presents its holder key with each request needing plaintext. For a 
 
 Secrets arrive in a dedicated header over TLS, encrypted to the instance as decision 12 requires, never in a URL. They use the redacting types, and the envelope package stays the only caller of a cryptographic primitive.
 
-**A key is required in addition to a grant, never instead of one.** The grant table stays the only access policy. A caller with a grant and no key gets a locked result. A caller with a key and no grant gets the uniform nonexistent result. This narrows the tenant-isolation ADR's rejection of per-request key release: release never authorizes.
+**A key is required in addition to a grant, never instead of one.** The grant table stays the only access policy. A caller with a grant and no key gets a key required result. A caller with a key and no grant gets the uniform nonexistent result. This narrows the tenant-isolation ADR's rejection of per-request key release: release never authorizes.
 
 **Which credential presents what.** A service-account token's own body is its holder key. A federated machine credential has no bearer value, so it works only through unattended access (decision 11). Every other artifact (`cli`, `br`, `ws`, `dev`) carries no slot and must present a holder key separately.
 
@@ -116,24 +116,24 @@ Client-side decryption was deferred, not rejected. See [Rejected alternatives](#
 | Copy, compare between environments | Need a key for each environment in one request |
 | Schema publish, key delete, rename, reclassify, declassify, group change | **Need keys for every affected environment in one request, or are refused.** A recovery key or a member holding them all can do this. An automation token spanning all environments must be re-minted after a new environment is created |
 | Rotating or re-encrypting an environment key | Driven by a key holder in batches, each carrying the key. The instance-wide `reencrypt` skips Sealed orgs |
-| Backup | Exports ciphertext. A restore drill must prove `sealedSlotKey` by opening a sampled slot's outer layer, and may not report "no secret" when Sealed orgs exist. It must also decrypt a sampled value of a canary Sealed org that the operator owns, using that org's key holder. Without that, the drill reports Sealed recovery as unverified |
+| Backup | Exports ciphertext. A restore drill must prove `sealedSlotKey` by opening a sampled slot's outer layer, and may not report "no secret" when Sealed orgs exist. It must also decrypt a sampled value of a canary Sealed org that the hoster owns, using that org's key holder. Without that, the drill reports Sealed recovery as unverified |
 | Adapter sync | **Needs unattended access on the target environment** (decision 11, from phase 2), and is refused without it. Refused entirely until phase 2 |
 | OIDC-federated machine credentials, including Kubernetes ServiceAccount federation | **A fetch needs unattended access on the environment fetched** (decision 11, from phase 2). Refused entirely until phase 2. Fetching an environment without it is refused, and other environments are unaffected. For those, the Kubernetes operator uses a bootstrap Secret holding a token |
 | Dynamic-secret providers | **Refused.** They are not a consumer of unattended access at launch |
 | Automatic transit key rotation | **Refused.** Rotation needs a key holder |
 | PKI | **Not offered.** Issuer keys are instance-owned |
 
-**Schema behavior is unchanged.** The schema-model ADR validates and materializes every environment at once, and aborts on any invalid one, with verdicts gated by `reveal`. Requiring all keys keeps those rules as they are. The cost is that a schema editor without keys for all environments gets a locked result.
+**Schema behavior is unchanged.** The schema-model ADR validates and materializes every environment at once, and aborts on any invalid one, with verdicts gated by `reveal`. Requiring all keys keeps those rules as they are. The cost is that a schema editor without keys for all environments gets a key required result.
 
 Self-configuration, upgrade configuration and sign-in factors stay server-held, so taking over an account gains a login and not a key. Names, descriptions, schemas and audit metadata stay unencrypted, as the encryption-model ADR lists.
 
 **On `sealed-only`, adapter sync and Kubernetes workload identity stay available from phase 2, per environment, through unattended access.** An environment without it delivers through the CLI, the compose integration and the Kubernetes operator with a bootstrap Secret. Keeping such an environment sealed while syncing it needs a customer-run path, which is open item 2.
 
-### 6. The operator's reach into a Sealed org
+### 6. The production operator's reach into a Sealed org
 
 Instance-scope grants cover only **org lifecycle** for a Sealed org: its existence, plan, limits, usage totals, suspension and deletion. They do not cover its members, projects, environments, keys, names, values, audit trail or settings. An instance grant also cannot add its grantee to the org, or approve its own support request.
 
-- **Support access** is a time-limited grant approved by an org administrator, and mirrored to the org's audit trail. It conveys no key.
+- **Support access** is a time-limited support grant approved by an org administrator, and mirrored to the org's audit trail. It conveys no key.
 - **Evidence.** Every instance-scope action on a Sealed org is recorded in that org's trail. A direct datastore edit leaves no such record, so this is evidence and not prevention.
 - **Unattended access.** An instance grant or support grant cannot enable it, add a consumer to it or open its slot. Decision 11 lists who can.
 - **Slots.** Adding or removing a key holder needs a holder key. An org can never remove its way below two key holders or one recovery key. **The same holds per environment:** each environment keeps at least two key holders able to open it, and a recovery key counts. Removing a membership, including through SCIM, always proceeds. If it leaves the org or any environment with fewer than two usable key holders, publishes to the affected environments are blocked and org administrators are alerted, until a key holder adds a second one.
@@ -194,10 +194,10 @@ The owner requires adapter sync and Kubernetes workload identity on the hosted s
 
 **It ships after launch, as phase 2.** The hosted service may launch without it. Until it ships, a Sealed org refuses adapter targets, federation bindings and issuers, every Sealed environment is sealed, and the public wording drops the exception, because no customer can have such an environment. Acceptance gate 10 must hold before this decision ships, not before launch.
 
-**This is Standard behavior for that environment, and the product says so.** A datastore dump plus the root key opens an environment with unattended access. The mode stays per org, because the operator's reach (decision 6), the keyring's refusal of project sealers and the per-environment digest keys all stay in force for it.
+**This is Standard behavior for that environment, and the product says so.** A datastore dump plus the root key opens an environment with unattended access. The mode stays per org, because the production operator's reach (decision 6), the keyring's refusal of project sealers and the per-environment digest keys all stay in force for it.
 
 - **Off by default.** Enabling or removing it needs `project-settings(project)`, `reveal(E)`, reauthentication and a holder key for that environment. Machines cannot do it, and a key alone never authorizes it. Enabling lists every adapter target and federated principal that becomes a consumer, and the person confirms them. It then adds an instance key holder and records an event in the org's trail. The UI, `whoami` and the environment listing show the state.
-- **Fixed consumers.** The instance slot opens only for the adapter worker serving a target on that environment, and for a delivery fetch by a federated principal holding grants there. It never opens for a person, an instance-scope principal, a support grant, a `cli`, `br`, `ws` or `dev` artifact, a service-account token, MCP, or a schema change. So decision 4's rule still holds for everyone else: they present a key or get a locked result.
+- **Fixed consumers.** The instance slot opens only for the adapter worker serving a target on that environment, and for a delivery fetch by a federated principal holding grants there. It never opens for a person, an instance-scope principal, a support grant, a `cli`, `br`, `ws` or `dev` artifact, a service-account token, MCP, or a schema change. So decision 4's rule still holds for everyone else: they present a key or get a key required result.
 - **Removal does not seal until rotation.** Removing it deletes the slot, stops its consumers and replaces the environment's digest keys, accepting one rollout wave. Retained backups still hold the old slot, and so the unchanged environment key. Until a key holder rotates that key, the environment shows as exposed, and a backup plus the root key can open values published after removal. After rotation, values from before it stay exposed that way. Rotation does not change the values, so the product also prompts replacing the secrets themselves.
 - **Restore does not revive it.** After any restore, an instance slot stays inert until it is re-confirmed under the enabling formula, listing its consumers again.
 
@@ -216,7 +216,7 @@ The owner requires adapter sync and Kubernetes workload identity on the hosted s
 - Token-based adapters are available: GitHub Actions, GitLab, Forgejo, Vault KV, Cloudflare, and AWS with static keys.
 - `HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY` must stay off, because it would let a tenant act with the server's own AWS identity.
 - `HIKYO_ADAPTER_EGRESS_POLICY_FILE` grants no private ranges, because that file is instance-wide. So a destination on a customer's private network is unreachable, until open item 2.
-- Encrypted webhooks are not offered, because their receivers come from an operator-owned file, `HIKYO_SEALED_WEBHOOK_FILE`.
+- Encrypted webhooks are not offered, because their receivers come from an operator-owned file, `HIKYO_ENCRYPTED_WEBHOOK_FILE`.
 
 **Federation issuers become org-owned.** Today `federation_issuers` is instance-scoped, `issuer` is globally unique, and a binding is unique on issuer and subject. That cannot serve unrelated customers: clusters commonly share a default issuer URL, and ServiceAccount subjects like `system:serviceaccount:default:app` repeat between them, so two customers would collide or be confused for each other.
 
@@ -245,7 +245,7 @@ The owner accepted that anyone with production access can capture holder keys (d
 
 Hikyo's documentation and hosted marketing MUST state this, and may not imply more.
 
-**Protected in a Sealed org, for environments that have never had unattended access, or have rotated their key since it was removed (a backup from before that rotation, plus the root key, still opens the values it holds):** a stolen datastore or backup, even with the root key; an operator or staff member reading data at rest; instance grants, self-grants and break-glass; a cross-tenant authorization bug reaching values. **These protections cover data at rest and application access. Sealed does not stop anyone with production access who captures secrets or tampers.**
+**Protected in a Sealed org, for environments that have never had unattended access, or have rotated their key since it was removed (a backup from before that rotation, plus the root key, still opens the values it holds):** a stolen datastore or backup, even with the root key; a production operator or staff member reading data at rest; instance grants, self-grants and break-glass; a cross-tenant authorization bug reaching values. **These protections cover data at rest and application access. Sealed does not stop anyone with production access who captures secrets or tampers.**
 
 **Not protected in a Sealed org:**
 
@@ -254,7 +254,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 - Direct write access to the live datastore. It can forge a mode, replace a key holder's public key so that a later grant or rotation exposes the data, or roll slots back to an earlier state.
 - Metadata such as names and schemas, at the datastore level.
 - Anything already delivered to a workload, or synced to an adapter's destination.
-- **An environment with unattended access**, and any adapter credential, against a stolen datastore or backup together with the root key, and against an operator reading data at rest. Instance and support grants do not open it through the application. Anyone able to obtain a token for a bound identity, including the issuer or the customer's CI, can fetch it.
+- **An environment with unattended access**, and any adapter credential, against a stolen datastore or backup together with the root key, and against a production operator reading data at rest. Instance and support grants do not open it through the application. Anyone able to obtain a token for a bound identity, including the issuer or the customer's CI, can fetch it.
 - Change tokens seen by a removed member or hostile release can still be used to test guesses, until that environment's digest keys are replaced.
 - A customer who loses every key holder, whose data is gone, apart from what workloads can still fetch through unattended access. Support cannot recover it either way.
 
@@ -264,15 +264,15 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 
 - **One instance per customer.** Simpler to isolate. Rejected by the owner because of the fleet it creates. It stays available to anyone, since an org can have an instance to itself.
 - **One unbounded global instance.** Every customer shares one failure, one write ceiling and one upgrade, with no first-instance canary.
-- **An instance setting that hides environments from the operator.** Whoever holds the setting can reverse it. Kept only as the creation default.
-- **Mode per environment.** The operator's reach and the refusal of project sealers should stay one rule for the whole org. Unattended access is narrower: one visible key holder, with fixed consumers, in an otherwise Sealed org.
+- **An instance setting that hides environments from the production operator.** Whoever holds the setting can reverse it. Kept only as the creation default.
+- **Mode per environment.** The production operator's reach and the refusal of project sealers should stay one rule for the whole org. Unattended access is narrower: one visible key holder, with fixed consumers, in an otherwise Sealed org.
 - **Refusing adapter sync and workload identity on the hosted service.** Rejected by the owner, who requires both. It is the temporary launch state until decision 11 ships as phase 2.
-- **`sealed-default` on the hosted service, with Standard for customers needing sync.** No new protocol, but a trap: a customer who later needs one sync must re-create the org, because modes do not convert, and every environment and the operator's reach would be affected.
+- **`sealed-default` on the hosted service, with Standard for customers needing sync.** No new protocol, but a trap: a customer who later needs one sync must re-create the org, because modes do not convert, and every environment and the production operator's reach would be affected.
 - **A customer-run sync agent as the only path.** It keeps environments sealed, but outbox, ledger and fence logic live in the server, so this is a large refactor, and customers would have to run something. Kept as open item 2.
 - **Signed key holder lists against datastore tampering.** Review found this needs delegated signing, request-level binding to a verified list and a design for clients that cannot verify. It would not stop a modified server, so it only makes sense alongside client-side decryption or attested hardware.
 - **A single symmetric secret per key holder.** The server could not add a key holder who is absent, including at environment creation, and could not rotate a key without all of them present.
-- **Key escrow held by the operator as the default.** That is Standard under another name. Unattended access is that same trade, made by a key holder for one environment, and labeled as such.
-- **Client-side decryption first.** The strongest option, but it requires reimplementing publish, validation and diff in every client, and a browser still trusts JavaScript the operator serves. Deferred.
+- **Key escrow held by the hoster as the default.** That is Standard under another name. Unattended access is that same trade, made by a key holder for one environment, and labeled as such.
+- **Client-side decryption first.** The strongest option, but it requires reimplementing publish, validation and diff in every client, and a browser still trusts JavaScript the hoster serves. Deferred.
 - **Confidential VMs as the baseline.** They may later strengthen Sealed against a modified server, but are too costly as a foundation.
 
 ## Supersession register (normative)
@@ -281,7 +281,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 
 | ADR (ticket) | Superseded | Scope | Unchanged |
 |---|---|---|---|
-| [threat-model](./threat-model.md) (#8) | "Trusted: the instance operator", narrowed for data at rest and application access. An operator who captures secrets from production or tampers stays operator-equivalent | Sealed | Everything for Standard orgs. A running-server compromise remains full compromise. The "revisit if SaaS" residual stays open (open item 1) |
+| [threat-model](./threat-model.md) (#8) | "Trusted: the instance operator", narrowed for data at rest and application access. A production operator who captures secrets from production or tampers stays operator-equivalent | Sealed | Everything for Standard orgs. A running-server compromise remains full compromise. The "revisit if SaaS" residual stays open (open item 1) |
 | [encryption-model](./encryption-model.md) (#14) | Key hierarchy gains environment keys, slots and `sealedSlotKey`. Closed envelope-kind set gains the slot kinds. Primitive set gains X25519 record wrapping and HPKE for holder keys, with a tier-3 `holderTransitKey`, and the envelope-kind set gains the transit envelope. The per-environment DEK rejection. The claim that the server can always decrypt | Sealed | XChaCha20-Poly1305, format, existing kinds, Standard rotation, backups, "never zero knowledge" |
 | [tenant-isolation](./tenant-isolation.md) (#23) | Rejection of per-request key release, narrowed by decision 4. "No per-org backup" (all deployments). Documentation rule, per the honest statement | Sealed, except as marked | Proof-carrying authorization, filter-in-query, CI invariants. Row-level security stays rejected pending open item 1 |
 | [permission-model](./permission-model.md) (#15) | "Instance scope inherits downward", per decision 6. Instance-scope `org.create` remains, with a signup path per decision 7. Adds the formula to enable unattended access, the key requirements of decision 11, and an org-level issuer capability | Sealed | Grants are the only policy |
@@ -298,7 +298,7 @@ Hikyo's documentation and hosted marketing MUST state this, and may not imply mo
 | [revision-model](./revision-model.md) (#11) | The change-token key is per environment | Sealed | Snapshot identity, token semantics |
 | [transit](./transit.md) (#156) | Automatic rotation refused; material under the environment key | Sealed | Everything else |
 | [human-auth](./human-auth.md) (#16) | The `fresh-org` landing gains the recovery-key proof of decision 7. Instance-scoped providers stay, pending open item 3 | `sealed-only` | Everything else |
-| [api-cli-surface](./api-cli-surface.md) (#25) | Adds the holder-key header, which accepts only the decision 12 envelope, its public-key route, and the locked result. Adds routes for unattended access and org-owned issuers | Sealed | Everything else |
+| [api-cli-surface](./api-cli-surface.md) (#25) | Adds the holder-key header, which accepts only the decision 12 envelope, its public-key route, and the key required result. Adds routes for unattended access and org-owned issuers | Sealed | Everything else |
 | [multi-instance](./multi-instance.md) | The remote directory omits Sealed org names | Sealed | Everything else |
 | [deployment-adapter](./deployment-adapter.md), [github-adapter](./github-adapter.md), [gitlab-adapter](./gitlab-adapter.md), [vault-kv-adapter](./vault-kv-adapter.md) | A target needs unattended access. The outbound credential is sealed under `sealedSlotKey`, per decision 11 | Sealed | Seam, converge, fences, egress bounds, provider behavior |
 | [pki](./pki.md) | Nothing in its design. It is unavailable in a Sealed org | None | All of it |

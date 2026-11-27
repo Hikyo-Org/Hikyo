@@ -101,6 +101,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue, DevelopmentOnly: true},
 	{Key: "HIKYO_DIRECTORY_PROXY", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: true, Import: VariableValue},
 	{Key: "HIKYO_DYNAMIC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"},
+	{Key: "HIKYO_ENCRYPTED_WEBHOOK_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
 	{Key: "HIKYO_ENV", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_EXTERNAL_ORIGIN", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_HA", ManagedField: "HIKYO_BOOTSTRAP_SOURCES.topology.ha", Audience: VariableServer, Scope: VariableOwner, Activation: VariableDeployment, Secret: false, Import: VariableExternal},

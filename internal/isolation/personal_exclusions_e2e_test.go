@@ -281,7 +281,7 @@ func TestPersonalValueNoGrantPresetOrRuleReadsAnother(t *testing.T) {
 	})
 }
 
-func mustHolders(t *testing.T, e personalEnv) []service.PersonalHolder {
+func mustHolders(t *testing.T, e personalEnv) []service.PersonalMember {
 	t.Helper()
 	holders, err := e.pv.Members(t.Context(), service.Bearer(e.adminTok), envScope(envA1), ceremonySecretA)
 	if err != nil {

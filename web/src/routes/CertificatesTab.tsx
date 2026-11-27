@@ -439,7 +439,7 @@ function IssueDialog({
               ))}
             </select>
             {profiles.isSuccess && bound.length === 0 ? (
-              <p className="field__hint">No profile is bound to this environment. An operator binds one under Instance settings.</p>
+              <p className="field__hint">No profile is bound to this environment. An instance administrator binds one under Instance settings.</p>
             ) : null}
           </div>
           <Radio name="certificate-method" label="My own key: paste a CSR (the key never leaves your machine)" checked={method === 'csr'} onChange={() => setMethod('csr')} />

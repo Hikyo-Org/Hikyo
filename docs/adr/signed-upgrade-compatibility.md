@@ -1,5 +1,7 @@
 # Signed upgrade compatibility and platform orchestration
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance, "root key file" to root key); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Partial supersession by the [hosted-service ADR](./hosted-service.md) (locked 2026-11-06; not operative until the matching implementation PR merges):** "default is full stop on PostgreSQL HA" and the absence of an N-1 window, for all PostgreSQL HA deployments. The maintenance procedure remains the declared fallback. See its supersession register.
 
 > **Approved container custody exception (2026-09-13):** The owner explicitly
@@ -240,7 +242,7 @@ source identity, backup recoverability or writer exclusion.
 
 For this mode only, the opted-in container may hold a persistent encrypted local
 vault containing the backup identity, attestation private key and root escrow.
-The vault is wrapped with a secret derived from the installation root key, using
+The vault is wrapped with a secret derived from the instance root key, using
 the existing custody implementation. The container can unlock it without human
 input. Whoever controls that runtime and root key therefore obtains recovery
 and attestation authority. Its attestation is local operational evidence, not
@@ -248,7 +250,7 @@ independent evidence against a compromised runtime. This is the expressly
 approved change to the custody boundary; it does not provide an off-host
 disaster-recovery copy.
 
-Persist the encrypted vault, installation identity, upgrade journal and encrypted
+Persist the encrypted vault, instance identity, upgrade journal and encrypted
 backup across container replacement. Keep private material out of command
 arguments, environment values, logs and public evidence. Existing manual and
 systemd separation requirements remain unchanged. No Docker socket, deployment
@@ -282,7 +284,7 @@ explicit exception supersedes the off-host custody requirement below for this
 flow; it does not establish an off-host disaster-recovery copy.
 
 Amended 2026-09-07, operator decision: the vault is wrapped with a secret
-derived from the installation's root key file instead of an interactive
+derived from the instance's root key instead of an interactive
 passphrase. Everything the vault protects is already reachable by whoever can
 read that root-owned file, so a second human-held secret added a prompt without
 adding a boundary, and it prevented unattended upgrades. The vault stays
@@ -297,7 +299,7 @@ encrypted export, real scratch restore and credential proof, installation,
 migration and bounded health checks. Build trust pins and migration policy are
 embedded. The final release signature remains detached because its signed
 manifest covers the final executable bytes; the CLI fetches and verifies it.
-No manual evidence assembly is required. Existing unsigned installations enter
+No manual evidence assembly is required. Existing unsigned instances enter
 through their exact recovery-signed bridge. Intermediate hops remain in
 maintenance, and every executable independently enforces the runtime gate.
 
@@ -325,7 +327,7 @@ instance, epoch, generation, target, issue/expiry times and one-use nonce.
 Attestations expire after 24 hours and are consumed with pending-state creation.
 The signing key is an instance-local operator recovery/attestation key held
 outside the server and deployment controller. Its public key is pinned during
-local installation; rotation requires the prior key or local break-glass custody
+local instance; rotation requires the prior key or local break-glass custody
 and increments the epoch, invalidating pending attestations. Use the configured
 standard signature tooling, not custom cryptographic signing code.
 

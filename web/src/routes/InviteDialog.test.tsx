@@ -77,14 +77,14 @@ describe('InviteDialog', () => {
     expect(options[0]).toBe('');
     expect(options).toContain('viewer');
     expect(options).toContain('admin');
-    expect(options).not.toContain('operator');
+    expect(options).not.toContain('instance-admin');
     await unmount();
 
     const instance = mount({ kind: 'instance' });
     const mounted = await instance.rendered;
     expect([...mounted.container.querySelectorAll('option')].map((option) => option.value)).toEqual([
       '',
-      'operator',
+      'instance-admin',
     ]);
     await mounted.unmount();
   });

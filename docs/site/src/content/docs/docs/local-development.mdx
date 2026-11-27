@@ -24,7 +24,7 @@ second source. Keep it out of version control.
 
 **Run with a developer credential** delegates your current read and reveal
 access to one unprotected environment for a fixed working session. Log in and
-select the trusted instance, organization and project, then mint interactively:
+select the trusted instance, organisation and project, then mint interactively:
 
 ```bash
 hikyo dev session --env <development-env-id> --ttl 8h
@@ -35,7 +35,7 @@ hikyo dev session revoke --id <credential-id>
 hikyo dev session revoke --all
 ```
 
-The selected organization, project and environment must use immutable
+The selected organisation, project and environment must use immutable
 `org_`, `prj_` and `env_` UUID IDs. Log in with the account assurance required by
 your instance; `hikyo account factor step-up` raises a password-only session when
 required. Fresh delegation reauthentication is a separate ceremony.
@@ -136,7 +136,7 @@ its environment, and anyone running as your user can read `/proc/<pid>/environ`.
 
 - Developer `hikyo run` writes no plaintext values and prints none. It replaces
   itself with the child (`exec`), so it cannot filter what the child prints.
-- A service-account offline snapshot changes availability, never disclosure: it is sealed with
+- A service-account offline snapshot changes availability, never disclosure: it is encrypted with
   a local key that the same user can read, and it is served only when the
   server is unavailable and the project file opts in
   ([Docker Compose delivery](/docs/compose/#plaintext-and-offline-operation)).

@@ -1,5 +1,7 @@
 # Scoped incident containment and credential recovery (ADR, accepted 2026-11-12)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Status: accepted by the owner on 2026-11-12 as recommended, options O1 to O8 as listed in the [Decision record](#decision-record). Operative per scope only when the implementation pull requests merge.**
 > Accepting this ADR selects the options. It adds no command, capability or schema today,
 > and it authorizes no implementation, release or production change. The amendments it
@@ -62,7 +64,7 @@ These come from locked ADRs and the issue. Every option below respects them.
 - Hikyo does not claim to recall delivered plaintext, caches or live consumers, and does
   not claim an upstream revocation it did not observe.
 - Host or database compromise is contained outside Hikyo (isolation) and recovered on a
-  clean installation. An in-product state in a datastore the attacker can write is not
+  clean instance. An in-product state in a datastore the attacker can write is not
   containment evidence ([threat-model ADR](./threat-model.md)).
 
 ## Vocabulary
@@ -258,7 +260,7 @@ not yet verified. Detail by credential class, with the owner and evidence per ro
 | **Organisation** | The accounts selected from the enumerated footprint (each as above); org SCIM binding credentials revoked | Everything in the account row, per account; provisioners; consumers. Remote credentials and invitations are instance-scoped, so they appear only under Instance | Each item under its owner's capability |
 | **Project** | Selected service-account credentials and federation bindings revoked; machine-reveal opt-in off; project developer delegations revoked; adapter targets paused | Adapter and provider upstream secrets; leases; project DEK rotation and re-encryption; consumers | Org-scope `credential-reset` opens the incident; project owners' capabilities for the items |
 | **Adapter** (or dynamic provider) | Targets paused, credential jobs retired; local credential cleared only after the replace-before-clear checks | Upstream PAT revocation (attested); remote name scrub; leases to a verified terminal state; existing database sessions | `manage-adapters` / dynamic-provider owner |
-| **Instance** | Nothing automatic in product. Fan-out across every org under one ledger; selected remote credentials and invitations revoked by instance-scope holders | The external fence; host-local resets; root, master and DEK rotation order; recovery on a clean installation | Instance-scope holders and the host operator |
+| **Instance** | Nothing automatic in product. Fan-out across every org under one ledger; selected remote credentials and invitations revoked by instance-scope holders | The external fence; host-local resets; root, master and DEK rotation order; recovery on a clean instance | Instance-scope holders and the host operator |
 
 Irreversible by design: session and delegation revocation, machine, SCIM, remote and
 adapter credential revocation, and local credential clearing. Reversible: the `contained`

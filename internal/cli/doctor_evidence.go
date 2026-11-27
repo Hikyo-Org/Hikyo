@@ -26,7 +26,7 @@ func newDoctorEvidence(result doctorResult, meta apigen.Meta, clientVersion, ori
 		ClientVersion: clientVersion, Measurements: result,
 		NotAssessed: []string{
 			"legal bases, notices, rights decisions and external-copy deletion",
-			"staff and supplier controls, access reviews and organization-wide MFA enforcement",
+			"staff and supplier controls, access reviews and organisation-wide MFA enforcement",
 			"host and backup storage encryption, physical security and independent audit custody",
 			"production network exposure and externally terminated TLS policy",
 			"control effectiveness over an audit period",

@@ -82,7 +82,7 @@ this document or its children say canonical main.
 | 32-byte symmetric key and one envelope algorithm identifier | `internal/crypto/crypto.go`, `internal/crypto/envelope.go` | #1124 retains the hierarchy unless an explicit evidence-backed decision changes it, and states its bounds |
 | Concrete age X25519 readers/writers and classical receipt namespace | `internal/crypto/backup/backup.go`, `internal/crypto/backup/recipients.go`, `internal/backupreceipt/artifacts.go` | #1126 traces export, receipts, custody and recovery together |
 | Native listener permits TLS 1.2 | `internal/app/tls.go` | #1127 traces every actual connection owner and terminator |
-| Sealed delivery protocol v1 uses X25519 and Ed25519 | `internal/crypto/sealedhook/sealedhook.go` | #1128 migrates receiver, sender and acknowledgement together |
+| Sealed delivery protocol v1 uses X25519 and Ed25519 | `internal/crypto/encryptedhook/encryptedhook.go` | #1128 migrates receiver, sender and acknowledgement together |
 | Closed Transit algorithm set and Ed25519 signing | `internal/crypto/transit.go` | #1129 preserves key identity/purpose and custody |
 | 2048-bit SRP and Ed25519 DPoP | `internal/pairing/srp.go`, `internal/pairing/dpop.go` | #1130 retains the separate protocol feasibility/security gate |
 | Ed25519 rollout command authority | `internal/configrollout/transport.go` | #1131 binds enrollment, signer, verifier and reconciliation |

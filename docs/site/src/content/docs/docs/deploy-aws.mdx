@@ -40,7 +40,7 @@ also requires the operator's IAM permissions and a registered, reachable SSM age
 Identify the retained data volume by its volume ID, including on Nitro instances
 where Linux uses NVMe device names instead of the attachment label. Follow
 [AWS's EBS filesystem guidance](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-using-volumes.html)
-and never reformat a disk containing an existing installation.
+and never reformat a disk containing an existing instance.
 
 For a managed database, use RDS PostgreSQL in private subnets. Permit its database
 port from the Hikyo security group, install the current

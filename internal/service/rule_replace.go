@@ -86,7 +86,7 @@ func (s *Rules) Replace(ctx context.Context, actor Actor, spec ReplaceRulesSpec)
 			return err
 		}
 		if len(existing)-len(removes)+len(adds) > MaxRulesPerOrg {
-			return fmt.Errorf("%w: an organization holds at most %d rules", domain.ErrLimitExceeded, MaxRulesPerOrg)
+			return fmt.Errorf("%w: an organisation holds at most %d rules", domain.ErrLimitExceeded, MaxRulesPerOrg)
 		}
 		name, err := newPrincipalNames().get(ctx, az, spec.Target)
 		if err != nil {

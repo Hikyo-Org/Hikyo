@@ -40,7 +40,7 @@ Do not use `--dev` for real secret material or any non-loopback deployment.
 | `HIKYO_ADAPTER_EGRESS_POLICY_FILE` | Optional startup-only adapter origin-to-CIDR exception policy, for any provider. |
 | `HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY` | `allow` lets AWS Secrets Manager adapters use this node's own AWS identity (`ambient`, `assume-role`, `web-identity`). Default `deny`: only static access keys are accepted. |
 | `HIKYO_DIRECTORY_PROXY` | Optional HTTPS forward proxy for outbound traffic to connected instances (directory-tier remotes and pairing). Must be an `https` URL naming a host; default is direct egress. Treated as a secret because the URL may carry credentials. The process environment's `HTTP_PROXY` is never consulted. |
-| `HIKYO_SEALED_WEBHOOK_FILE` | Optional startup-only registry of encrypted webhook receivers; see below. |
+| `HIKYO_ENCRYPTED_WEBHOOK_FILE` | Optional startup-only registry of encrypted webhook receivers; see below. The deprecated name `HIKYO_SEALED_WEBHOOK_FILE` is accepted with a warning until v2; setting both to different values stops startup. |
 
 The server's public origin must use a hostname. WebAuthn 0.18 rejects IP-address
 relying-party IDs, so an explicit IP-address `HIKYO_EXTERNAL_ORIGIN` now stops
@@ -62,7 +62,7 @@ as explicit; unrelated or invalid stale seed values do not replace adopted
 managed configuration. Fresh bootstrap IP statements are refused, including
 ones that happen to match the listener.
 
-Before upgrading an installation with an IP origin, use its existing binary to
+Before upgrading an instance with an IP origin, use its existing binary to
 change the effective [managed configuration](/docs/managed-configuration/) to a
 hostname origin, then update any bootstrap setting. Configure and verify DNS
 and TLS for that hostname. If the new binary already refuses startup because
@@ -98,7 +98,7 @@ registration admission are covered by [social sign-in](/docs/social-signin/).
 | `HIKYO_DEFAULT_KEYS_PER_PROJECT` | `1000` | Declared-key limit inherited by projects without an override, from `1` to `10000`; cannot exceed the instance maximum. |
 | `HIKYO_MAX_KEYS_PER_PROJECT` | `10000` | Operator-controlled ceiling for every project's effective key limit, from `1` to `10000`. |
 
-On an unmanaged installation, these environment variables supply the initial
+On an unmanaged instance, these environment variables supply the initial
 configuration. After adoption, edit the keys in the Hikyo configuration
 project's Matrix, Publish, and Apply the selected revision. An old environment
 variable cannot override the managed settings. In **Project settings > Policy >
@@ -241,8 +241,8 @@ class, status, duration) at debug level. The production handler starts at Info,
 so these Debug request lines are absent unless debug logging is enabled.
 
 Encrypted webhook receivers are listed in the JSON file named by
-`HIKYO_SEALED_WEBHOOK_FILE`. Only origins listed here can be bound by a
-project's encrypted webhook adapter (provider type `sealed-webhook`):
+`HIKYO_ENCRYPTED_WEBHOOK_FILE`. Only origins listed here can be bound by a
+project's encrypted webhook adapter (provider type `encrypted-webhook`):
 
 ```json
 {

@@ -5324,7 +5324,7 @@ export const exportValues = <ThrowOnError extends boolean = false>(options: Opti
  * poll topology even with a healthy connection to observe other-node
  * writes. The SPA polls topology every 30 seconds while mounted. A client
  * that cannot keep up is disconnected rather than buffered. Connection
- * admission is bounded per principal, per organization, and instance-wide;
+ * admission is bounded per principal, per organisation, and instance-wide;
  * a refusal is 429. Accepted streams begin with a jittered `retry:` hint.
  *
  */
@@ -5335,7 +5335,7 @@ export const watchProjectEvents = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * One bounded page of the organization's audit trail.
+ * One bounded page of the organisation's audit trail.
  *
  * Reads one bounded page of the append-only trail in stable
  * commit-sequence order, oldest first. Filtering by principal,
@@ -5366,7 +5366,7 @@ export const queryOrgAudit = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * Stream the organization's audit trail as JSONL.
+ * Stream the organisation's audit trail as JSONL.
  *
  * Streams the filtered slice of the trail as newline-delimited JSON, one
  * schema-versioned event per line, in gap-free commit-sequence order up
@@ -5494,8 +5494,8 @@ export const queryInstanceAudit = <ThrowOnError extends boolean = false>(options
  * `exportOrgAudit`; supported consumers require verified completion.
  *
  * Authorization and artifact eligibility are as for
- * `queryInstanceAudit`. Instance exports have no organization, so the
- * per-organization export concurrency bound does not apply; the
+ * `queryInstanceAudit`. Instance exports have no organisation, so the
+ * per-organisation export concurrency bound does not apply; the
  * per-principal rate and the instance-wide concurrency bound do.
  *
  */

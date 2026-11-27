@@ -1,6 +1,6 @@
-package sealedhook
+package encryptedhook
 
-// Protocol version 2 (docs/spec/sealed-webhook.md section 11, proposed): the
+// Protocol version 2 (docs/spec/encrypted-webhook.md section 11, proposed): the
 // payload is age-encrypted to a hybrid X25519 + ML-KEM-768 recipient and every
 // envelope and acknowledgement carries two required signatures, Ed25519 and
 // ML-DSA-65, over identical suite-bound bytes. Version 1 code paths are not
@@ -77,7 +77,7 @@ const (
 )
 
 // ErrRecipient marks an envelope addressed to another recipient.
-var ErrRecipient = errors.New("sealedhook: envelope is addressed to another recipient")
+var ErrRecipient = errors.New("encryptedhook: envelope is addressed to another recipient")
 
 var (
 	edKeyIDV2    = regexp.MustCompile(`^ed25519-sha256:[0-9a-f]{64}$`)
@@ -103,15 +103,15 @@ type MLDSAPublicKey struct{ key *mldsa.PublicKey }
 func ParseMLDSAPublicKey(raw string) (MLDSAPublicKey, error) {
 	body, ok := strings.CutPrefix(strings.TrimSpace(raw), "mldsa65:")
 	if !ok || len(body) != 2*MLDSA65PublicKeySize || strings.ToLower(body) != body {
-		return MLDSAPublicKey{}, errors.New("sealedhook: public key must be mldsa65:<3904 lowercase hex>")
+		return MLDSAPublicKey{}, errors.New("encryptedhook: public key must be mldsa65:<3904 lowercase hex>")
 	}
 	enc, err := hex.DecodeString(body)
 	if err != nil {
-		return MLDSAPublicKey{}, errors.New("sealedhook: public key must be mldsa65:<3904 lowercase hex>")
+		return MLDSAPublicKey{}, errors.New("encryptedhook: public key must be mldsa65:<3904 lowercase hex>")
 	}
 	key, err := mldsa.NewPublicKey(mldsa.MLDSA65(), enc)
 	if err != nil {
-		return MLDSAPublicKey{}, errors.New("sealedhook: not a valid ML-DSA-65 public key")
+		return MLDSAPublicKey{}, errors.New("encryptedhook: not a valid ML-DSA-65 public key")
 	}
 	return MLDSAPublicKey{key: key}, nil
 }
@@ -142,15 +142,15 @@ func (s *MLDSASigner) Public() MLDSAPublicKey { return s.pub }
 func ParseMLDSASigningKeyPEM(raw []byte) (*MLDSASigner, error) {
 	block, rest := pem.Decode(raw)
 	if block == nil || block.Type != "PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
-		return nil, errors.New("sealedhook: ML-DSA signing key must be exactly one PKCS#8 PRIVATE KEY PEM block")
+		return nil, errors.New("encryptedhook: ML-DSA signing key must be exactly one PKCS#8 PRIVATE KEY PEM block")
 	}
 	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, errors.New("sealedhook: ML-DSA signing key is not valid seed-only PKCS#8")
+		return nil, errors.New("encryptedhook: ML-DSA signing key is not valid seed-only PKCS#8")
 	}
 	key, ok := parsed.(*mldsa.PrivateKey)
 	if !ok || key.PublicKey().Parameters() != mldsa.MLDSA65() {
-		return nil, errors.New("sealedhook: signing key is not ML-DSA-65")
+		return nil, errors.New("encryptedhook: signing key is not ML-DSA-65")
 	}
 	return &MLDSASigner{key: key, pub: MLDSAPublicKey{key: key.PublicKey()}}, nil
 }
@@ -178,7 +178,7 @@ type SignerV2 struct {
 // NewSignerV2 pairs the two signing keys.
 func NewSignerV2(ed *Signer, pq *MLDSASigner) (*SignerV2, error) {
 	if ed == nil || pq == nil {
-		return nil, errors.New("sealedhook: version 2 needs both an Ed25519 and an ML-DSA-65 signing key")
+		return nil, errors.New("encryptedhook: version 2 needs both an Ed25519 and an ML-DSA-65 signing key")
 	}
 	return &SignerV2{ed: ed, pq: pq}, nil
 }
@@ -205,7 +205,7 @@ func GenerateHybridRecipient() (identity, recipient string, err error) {
 func CanonicalHybridRecipient(raw string) (string, error) {
 	r, err := age.ParseHybridRecipient(strings.TrimSpace(raw))
 	if err != nil {
-		return "", errors.New("sealedhook: recipient must be an age hybrid public key (age1pq1...)")
+		return "", errors.New("encryptedhook: recipient must be an age hybrid public key (age1pq1...)")
 	}
 	return r.String(), nil
 }
@@ -224,10 +224,10 @@ func FingerprintV2(origin, recipient string, ackEd PublicKey, ackPQ MLDSAPublicK
 		return "", err
 	}
 	if !ackEd.valid() || !ackPQ.valid() {
-		return "", errors.New("sealedhook: both acknowledgement keys are required")
+		return "", errors.New("encryptedhook: both acknowledgement keys are required")
 	}
 	if generation < 1 {
-		return "", errors.New("sealedhook: generation must be positive")
+		return "", errors.New("encryptedhook: generation must be positive")
 	}
 	hash := newLP(fingerprintDomainV2).str(origin).str(canonical).str(ackEd.String()).str(ackPQ.String()).str(SuiteV2).i64(generation).hexSum()
 	return "swh2-mlkem768x25519-ed25519-mldsa65-sha256:" + hash, nil
@@ -344,7 +344,7 @@ func NewSealerV2(recipient string, signer *SignerV2) (*SealerV2, error) {
 		return nil, err
 	}
 	if signer == nil {
-		return nil, errors.New("sealedhook: signing keys are required")
+		return nil, errors.New("encryptedhook: signing keys are required")
 	}
 	return &SealerV2{recipient: r, recipientID: recipientIDV2(canonical), signer: signer}, nil
 }
@@ -381,7 +381,7 @@ func (s *SealerV2) Seal(d Draft) (Sealed, error) {
 	}
 	clear(plain)
 	if err != nil {
-		return Sealed{}, fmt.Errorf("sealedhook: encrypt: %w", err)
+		return Sealed{}, fmt.Errorf("encryptedhook: encrypt: %w", err)
 	}
 	if ct.Len() > MaxCiphertext {
 		return Sealed{}, ErrTooLarge
@@ -424,15 +424,15 @@ type OpenerV2 struct {
 func NewOpenerV2(identity string, senders []PinnedSenderV2) (*OpenerV2, error) {
 	id, err := age.ParseHybridIdentity(strings.TrimSpace(identity))
 	if err != nil {
-		return nil, errors.New("sealedhook: identity must be an age hybrid secret key")
+		return nil, errors.New("encryptedhook: identity must be an age hybrid secret key")
 	}
 	if len(senders) == 0 {
-		return nil, errors.New("sealedhook: at least one pinned sender pair is required")
+		return nil, errors.New("encryptedhook: at least one pinned sender pair is required")
 	}
 	pinned := make(map[[2]string]PinnedSenderV2, len(senders))
 	for _, k := range senders {
 		if !k.Ed.valid() || !k.PQ.valid() {
-			return nil, errors.New("sealedhook: a pinned sender needs both an Ed25519 and an ML-DSA-65 key")
+			return nil, errors.New("encryptedhook: a pinned sender needs both an Ed25519 and an ML-DSA-65 key")
 		}
 		pinned[[2]string{k.Ed.IDV2(), k.PQ.ID()}] = k
 	}

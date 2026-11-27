@@ -905,7 +905,7 @@ func writeGrantRowState(ctx context.Context, az *authz.TxAuthorizer, spec GrantS
 				return GrantResult{}, err
 			}
 			if n >= MaxGrantsPerOrg {
-				return GrantResult{}, fmt.Errorf("%w: an organization holds at most %d grants",
+				return GrantResult{}, fmt.Errorf("%w: an organisation holds at most %d grants",
 					domain.ErrLimitExceeded, MaxGrantsPerOrg)
 			}
 		}
@@ -1232,6 +1232,7 @@ func (s *Grants) applyTemplate(
 	scope domain.Scope,
 	level domain.Level,
 ) ([]GrantResult, error) {
+	template = template.Canonical() // the deprecated `operator` alias is recorded as instance-admin
 	caps, err := domain.ExpandTemplate(template, level)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", domain.ErrInvalid, err)

@@ -1,5 +1,7 @@
 # Automatic security maintenance (ADR, proposed 2026-11-04)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("installation" to instance); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Status: proposed with [#1068](https://github.com/Hikyo-Org/Hikyo/issues/1068).**
 > It becomes operative when its reviewed PR merges. It authorizes no release,
 > deployment, key generation or feed activation. The items under
@@ -39,7 +41,7 @@ does not leave a GitHub path to maintain for the feed.
 
 - Clients read only `https://hikyo.app/security-feed/metadata/` and `.../targets/`.
   Moving the site means serving the same files at the same paths, without redirects.
-  The URLs are installation configuration, so a mirror keeps the same root and floors.
+  The URLs are instance configuration, so a mirror keeps the same root and floors.
 - A publish re-serves the last built docs site with the new feed, because a broken docs
   build must not stale the feed. Every docs build carries the feed, so neither
   deployment can drop the other.
@@ -55,9 +57,9 @@ new route, delivered through the old one. Owner decision, 2026-11-04: this is tr
 
 ### Consent and who gets this
 
-Owner decision, 2026-11-04: only installations on the release containing this feature,
+Owner decision, 2026-11-04: only instances on the release containing this feature,
 or newer, receive automatic updates, and that release is acceptable as a required normal
-upgrade. More exactly, installations created through the new recipes from that release
+upgrade. More exactly, instances created through the new recipes from that release
 onward can enroll. No adoption path is built for native hosts whose operator key is held
 elsewhere or for populated Compose databases, and they stay refused with an explanation.
 A new native host enrolls from nothing: the ceremony creates its vault and pin with the
@@ -69,7 +71,7 @@ an image never enrolls. There is no registration, heartbeat, instance identifier
 project-held deployment credential.
 
 Owner decision, 2026-11-04: **automatic maintenance is on by default in the chart** for an
-installation that has chosen unattended upgrades, and the recipes enable it too. The chart cannot
+instance that has chosen unattended upgrades, and the recipes enable it too. The chart cannot
 turn on unattended upgrades itself, because they need a scratch database and a state volume only
 the operator can provide. Owner decision, 2026-11-06: this stays so, which means a Kubernetes operator
 sets `upgrade.unattended.enabled` once before fixes apply. Default enrollment happens on `helm install`. An upgrading release
@@ -79,7 +81,7 @@ Rolling the policy back is local: `policy.mode: manual` stops automatic updates,
 ceremony disables the timer. A scheduled `run`, such as the chart's CronJob, still restores a
 source after a failed update (owner decision, 2026-11-04). Removing the policy changes nothing already applied. A restore
 or a changed recovery incarnation invalidates enrollment, so consent is never carried
-across an installation's recovery.
+across an instance's recovery.
 
 ### Upgrade classes and policy
 
@@ -93,7 +95,7 @@ fix is reported as a protection gap. It never produces a backport.
 `urgent_severity`, set to `critical` in the recipes, skips the maintenance window and
 nothing else. Pins, upgrade classes, maintenance consent, signatures and recovery fences
 bind at every severity. A target can stage its rollout through a local hash with no
-reporting, so a bad release can be withdrawn before most installations take it.
+reporting, so a bad release can be withdrawn before most instances take it.
 
 ### Stale knowledge and offline operation
 
@@ -105,7 +107,7 @@ reporting, so a bad release can be withdrawn before most installations take it.
 - Offline mode imports a signed repository through the same TUF verification as online,
   from a local directory. It does not skip any check.
 - A root can rotate past an expired root through its chain while its keys exist. If root
-  keys are lost, an installation must be re-provisioned by hand: a changed bootstrap root
+  keys are lost, an instance must be re-provisioned by hand: a changed bootstrap root
   refuses against retained floors, and the feed state has to be cleared deliberately. The
   rebuilt feed must carry the catalog sequence forward with `--previous-catalog`, or
   clients refuse it as a rollback even then.
@@ -146,7 +148,7 @@ that does not boot after one stay pinned. ECS has no restore and stays pinned.
 
 The scratch drill records `authoritatively-no-credential-scope` only when no
 organisation exists other than the protected configuration organisation (a first
-administrator's installation may have none), so nothing could hold credential
+administrator's instance may have none), so nothing could hold credential
 management. A tenant organisation with no eligible principal refuses, with or
 without a stored secret.
 
@@ -201,7 +203,7 @@ fixed forward, or recovered by an operator's `restore run`, until real use shows
 
 ## Still open
 
-These need the maintainer before any installation can receive a fix:
+These need the maintainer before any instance can receive a fix:
 
 1. The compromise and root-recovery ceremonies.
 2. The key ceremony, the environments, the `security-feed` branch and enabling the workflow, as

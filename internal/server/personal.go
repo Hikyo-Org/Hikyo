@@ -14,7 +14,7 @@ type PersonalValueService interface {
 	Set(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, value string) (service.PersonalEntry, error)
 	Reveal(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) (service.PersonalEntry, error)
 	Delete(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) error
-	Members(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) ([]service.PersonalHolder, error)
+	Members(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) ([]service.PersonalMember, error)
 	DeleteMember(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, member string) error
 	Counts(ctx context.Context, actor service.Actor, scope domain.Scope) (service.PersonalCounts, error)
 	OffboardingReport(ctx context.Context, actor service.Actor, scope domain.Scope, member string) (service.OffboardingReport, error)
@@ -98,9 +98,9 @@ func (a *API) ListPersonalValueMembers(ctx context.Context, req apigen.ListPerso
 	if err != nil {
 		return nil, err
 	}
-	out := apigen.PersonalValueHolderList{Items: make([]apigen.PersonalValueHolder, 0, len(holders))}
+	out := apigen.PersonalValueMemberList{Items: make([]apigen.PersonalValueMember, 0, len(holders))}
 	for _, h := range holders {
-		item := apigen.PersonalValueHolder{PrincipalId: string(h.Principal), Set: h.Set}
+		item := apigen.PersonalValueMember{PrincipalId: string(h.Principal), Set: h.Set}
 		if h.Username != "" {
 			name := h.Username
 			item.Username = &name

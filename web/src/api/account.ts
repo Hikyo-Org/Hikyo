@@ -117,7 +117,7 @@ export function useIdentities(): UseQueryResult<IdentityList> {
 
 /**
  * useAuthMethods loads the public login methods and sign-up door. `org`
- * selects that organization's door; without it the query selects the instance
+ * selects that organisation's door; without it the query selects the instance
  * door. The provider list and local-login flag are instance-wide in either
  * response. A discovery 429 is retried once, using Retry-After when present.
  *

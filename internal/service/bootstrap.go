@@ -56,7 +56,7 @@ import (
 // `reveal-history` AT INSTANCE SCOPE, which is precisely the bundle the ADR
 // forbids: the first administrator held secret access over every org that
 // would ever exist, before any of them did.
-const BootstrapTemplate = domain.TemplateOperator
+const BootstrapTemplate = domain.TemplateInstanceAdmin
 
 // ErrInstanceAlreadyBootstrapped refuses a second first-administrator. It is
 // loud: silently minting another instance-wide admin because a command was

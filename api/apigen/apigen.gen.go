@@ -3019,14 +3019,15 @@ func (e RevisionPinResultAction) Valid() bool {
 
 // Defines values for RoleTemplate.
 const (
-	Admin      RoleTemplate = "admin"
-	Editor     RoleTemplate = "editor"
-	Historian  RoleTemplate = "historian"
-	Maintainer RoleTemplate = "maintainer"
-	Operator   RoleTemplate = "operator"
-	Publisher  RoleTemplate = "publisher"
-	Revealer   RoleTemplate = "revealer"
-	Viewer     RoleTemplate = "viewer"
+	Admin         RoleTemplate = "admin"
+	Editor        RoleTemplate = "editor"
+	Historian     RoleTemplate = "historian"
+	InstanceAdmin RoleTemplate = "instance-admin"
+	Maintainer    RoleTemplate = "maintainer"
+	Operator      RoleTemplate = "operator"
+	Publisher     RoleTemplate = "publisher"
+	Revealer      RoleTemplate = "revealer"
+	Viewer        RoleTemplate = "viewer"
 )
 
 // Valid indicates whether the value is a known member of the RoleTemplate enum.
@@ -3037,6 +3038,8 @@ func (e RoleTemplate) Valid() bool {
 	case Editor:
 		return true
 	case Historian:
+		return true
+	case InstanceAdmin:
 		return true
 	case Maintainer:
 		return true
@@ -5155,7 +5158,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
@@ -5358,7 +5361,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -5623,7 +5626,9 @@ type ApplyTemplateRequest struct {
 	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
 	Principal ID `json:"principal"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -6563,7 +6568,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
@@ -7787,7 +7792,9 @@ type EmailInvitation struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7803,7 +7810,9 @@ type EmailInvitationAcceptance struct {
 	// the current one included, and they must sign in again.
 	SignedOut bool `json:"signed_out"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7828,7 +7837,9 @@ type EmailInvitationListing struct {
 	// InvitedBy A prefixed UUIDv7, e.g. `org_0198…`.
 	InvitedBy ID `json:"invited_by"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7841,7 +7852,9 @@ type EmailInvitationPreview struct {
 	Org     ID     `json:"org"`
 	OrgName string `json:"org_name"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7851,7 +7864,9 @@ type EmailInvitationSendRequest struct {
 	// verified address of an existing account can be reached.
 	Email string `json:"email"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -9798,12 +9813,16 @@ type PersonalOffboardingServiceAccount struct {
 
 // PersonalValueCount defines model for PersonalValueCount.
 type PersonalValueCount struct {
-	// Holders People holding a personal value for this key here.
+	// Holders Deprecated alias of `members`, kept until v2.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Holders int `json:"holders"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
-	KeyId ID     `json:"key_id"`
-	Name  string `json:"name"`
+	KeyId ID `json:"key_id"`
+
+	// Members Members with a value of their own for this key here.
+	Members int    `json:"members"`
+	Name    string `json:"name"`
 
 	// Notices People with an unacknowledged removal notice.
 	Notices int `json:"notices"`
@@ -9848,8 +9867,13 @@ type PersonalValueEntry struct {
 	Warnings *[]string `json:"warnings,omitzero"`
 }
 
-// PersonalValueHolder defines model for PersonalValueHolder.
-type PersonalValueHolder struct {
+// PersonalValueList defines model for PersonalValueList.
+type PersonalValueList struct {
+	Items []PersonalValueEntry `json:"items"`
+}
+
+// PersonalValueMember defines model for PersonalValueMember.
+type PersonalValueMember struct {
 	// Notice Why a personal value disappeared other than by its owner.
 	Notice *PersonalValueNoticeCause `json:"notice,omitzero"`
 
@@ -9860,14 +9884,9 @@ type PersonalValueHolder struct {
 	Username    *string    `json:"username,omitzero"`
 }
 
-// PersonalValueHolderList defines model for PersonalValueHolderList.
-type PersonalValueHolderList struct {
-	Items []PersonalValueHolder `json:"items"`
-}
-
-// PersonalValueList defines model for PersonalValueList.
-type PersonalValueList struct {
-	Items []PersonalValueEntry `json:"items"`
+// PersonalValueMemberList defines model for PersonalValueMemberList.
+type PersonalValueMemberList struct {
+	Items []PersonalValueMember `json:"items"`
 }
 
 // PersonalValueNoticeCause Why a personal value disappeared other than by its owner.
@@ -10381,7 +10400,9 @@ type RegistrationLanding struct {
 	Cap  *int                    `json:"cap,omitzero"`
 	Kind RegistrationLandingKind `json:"kind"`
 
-	// Template The closed v1 role template set.
+	// Template The closed v1 role template set. `operator` is the deprecated name of
+	// `instance-admin`: it is accepted on input until v2, and the server
+	// always answers `instance-admin`.
 	Template *RoleTemplate `json:"template,omitzero"`
 }
 
@@ -11033,7 +11054,9 @@ type RevisionPinResult struct {
 // RevisionPinResultAction defines model for RevisionPinResult.Action.
 type RevisionPinResultAction string
 
-// RoleTemplate The closed v1 role template set.
+// RoleTemplate The closed v1 role template set. `operator` is the deprecated name of
+// `instance-admin`: it is accepted on input until v2, and the server
+// always answers `instance-admin`.
 type RoleTemplate string
 
 // RollbackRequest defines model for RollbackRequest.
@@ -69927,7 +69950,7 @@ type ListPersonalValueMembersResponseObject interface {
 	VisitListPersonalValueMembersResponse(w http.ResponseWriter) error
 }
 
-type ListPersonalValueMembers200JSONResponse PersonalValueHolderList
+type ListPersonalValueMembers200JSONResponse PersonalValueMemberList
 
 func (response ListPersonalValueMembers200JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
 

@@ -86,7 +86,7 @@ export function isNoPublicOrigin(error: unknown): boolean {
 }
 
 export const NO_PUBLIC_ORIGIN_TEXT =
-  'Email invitations need the instance\'s public origin: its operator must set HIKYO_EXTERNAL_ORIGIN. Use Invite to create a new account, SCIM provisioning, or an administrator of both organisations instead.';
+  'Email invitations need the instance\'s public origin: its production operator must set HIKYO_EXTERNAL_ORIGIN. Use Invite to create a new account, SCIM provisioning, or an administrator of both organisations instead.';
 
 export function sendFailureText(error: unknown): string {
   if (isMailerUnconfigured(error)) return MAILER_UNCONFIGURED_TEXT;

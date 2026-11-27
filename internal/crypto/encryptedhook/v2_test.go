@@ -1,4 +1,4 @@
-package sealedhook
+package encryptedhook
 
 import (
 	"bytes"
@@ -478,7 +478,7 @@ func FuzzParseAckV2(f *testing.F) {
 	})
 }
 
-// vectorFile is the published protocol vector (docs/spec/sealed-webhook.md
+// vectorFile is the published protocol vector (docs/spec/encrypted-webhook.md
 // section 11). Keys marked test-only exist only here.
 type vectorFile struct {
 	Description  string            `json:"description"`

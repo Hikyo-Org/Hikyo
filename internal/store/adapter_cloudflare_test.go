@@ -61,7 +61,7 @@ func runCloudflareTargets(t *testing.T, db *store.DB) {
 
 	// Adding Cloudflare must preserve the previously supported sealed webhook
 	// provider after both engines replace the adapters CHECK constraint.
-	if _, err := create("adp_webhook", "sealed-webhook", "https://receiver.example.com", store.AdapterTargetMutation{
+	if _, err := create("adp_webhook", "encrypted-webhook", "https://receiver.example.com", store.AdapterTargetMutation{
 		ID: "tgt_webhook", DestinationKind: "repository", DestinationOwner: "owner",
 		DestinationName: "receiver", DestinationID: 98, NamePrefix: "APP_",
 	}); err != nil {

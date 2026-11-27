@@ -324,9 +324,11 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 	if err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
-	if _, err := adapter.ParseProvider(m.Provider); err != nil {
+	canonicalProvider, err := adapter.ParseProvider(m.Provider)
+	if err != nil {
 		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
 	}
+	m.Provider = string(canonicalProvider)
 	if err := requireCanonicalAdapterOrigin(m.Provider, m.Origin); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}

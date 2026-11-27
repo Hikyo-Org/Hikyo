@@ -33,7 +33,7 @@ func (o *orderedStdin) Read(p []byte) (int, error) {
 // `personal set` states what the guarantee does not cover before it reads or
 // sends a value; `--clear` sends none and states nothing.
 func TestPersonalSetStatesTheGuaranteeBeforeTheValue(t *testing.T) {
-	const want = "Hikyo does not show this to administrators. Your instance operator could read it, and anyone who can " +
+	const want = "Hikyo does not show this to administrators. Your production operator could read it, and anyone who can " +
 		"change shared values here could capture it once your program runs. If someone gave you your password, " +
 		"authenticator or recovery codes, replace them, regenerate your recovery codes and check your linked identities first."
 	if personalSetStatement != want {

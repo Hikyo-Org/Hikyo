@@ -115,13 +115,13 @@ describe('the closed atom table', () => {
     expect(templatesAt('project').map((t) => t.id)).toHaveLength(ROLE_TEMPLATES.length - 1);
   });
 
-  it('offers every human-grantable atom and only operator at instance scope', () => {
+  it('offers every human-grantable atom and only instance-admin at instance scope', () => {
     const atoms = capabilitiesAt('instance').map((atom) => atom.id);
     expect(atoms).toContain('backup-export');
     expect(atoms).toContain('instance-directory');
     expect(atoms).toContain('read');
     expect(atoms).not.toContain('scim-provision');
-    expect(templatesAt('instance').map((template) => template.id)).toEqual(['operator']);
+    expect(templatesAt('instance').map((template) => template.id)).toEqual(['instance-admin']);
   });
 
   it('expands admin differently at org and project scope', () => {

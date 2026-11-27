@@ -1735,17 +1735,17 @@ func TestAdapterAdoptRequiresRevealAcrossEveryAdapterEnvironment(t *testing.T) {
 	}
 }
 
-func TestAdapterAdoptRefusesSealedWebhookTargets(t *testing.T) {
+func TestAdapterAdoptRefusesEncryptedWebhookTargets(t *testing.T) {
 	db := adapterServiceDB(t)
 	recordAdapterPlanArtifact(t, db, "plan_sealed")
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET provider='sealed-webhook' WHERE id='adp_1'`); err != nil {
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET provider='encrypted-webhook' WHERE id='adp_1'`); err != nil {
 		t.Fatal(err)
 	}
 	_, err := (&Adapters{DB: db}).Adopt(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, AdoptAdapterRequest{
 		TargetID: "tgt_one", ArtifactID: "plan_sealed", ExpectedGeneration: 1, ExpectedDestinationID: 42, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "ONE_TOKEN"}},
 	})
 	if !errors.Is(err, domain.ErrInvalid) {
-		t.Fatalf("Adopt(sealed-webhook) = %v, want invalid: the protocol has no adopt intent", err)
+		t.Fatalf("Adopt(encrypted-webhook) = %v, want invalid: the protocol has no adopt intent", err)
 	}
 }
 

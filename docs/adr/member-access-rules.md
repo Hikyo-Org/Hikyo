@@ -1,5 +1,7 @@
 # Hikyo member access rules: scoped rules, rule-local exceptions, key-level limits (ADR, decisions owner-approved 2026-09-28)
 
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) ("organization" to organisation); no decision changed. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+
 > **Status: declared amendment to [permission-model.md](./permission-model.md), operative with the
 > implementing PR ([#838](https://github.com/Hikyo-Org/Hikyo/pull/838)).** The owner took every decision below on
 > 2026-09-28 while iterating the [member-access prototype](../site/public/prototypes/member-access/)
@@ -255,34 +257,34 @@ request merges.
   Machine principals never hold an all-projects rule: a machine rule names its owning project.
 - **API spelling, option S1, additive only.** A rule's `where` gains an optional
   `project_mode: all|only`, default `only`. Storage keeps only the mode and never expands it into a
-  project list. A response for an all-projects rule lists the organization's current projects in
+  project list. A response for an all-projects rule lists the organisation's current projects in
   `projects` at read time, with its folder items repeated under each; an older client that saves
   that list back gets a narrower rule, which fails closed. The API revision is 21.
 - **Create spelling, option R2.** `POST /orgs/{org}/rules` (and the creates of a rule replacement)
   keeps the single `where` shape; `where.project_mode: all` is its only addition, and no schema
   reference changes, so the frozen v1 document stays valid. The client sends `project_mode: all`
-  with the organization's current projects in `projects`, environment axis `all` without items,
+  with the organisation's current projects in `projects`, environment axis `all` without items,
   and the same folder items repeated under every listed project. The server compares the list with
-  the organization's project set inside the create transaction, and refuses anything but the exact
+  the organisation's project set inside the create transaction, and refuses anything but the exact
   set (a missing, extra, deleted or duplicated project) with a conflict whose detail names the
   difference. The set is read again under a project-row lock once Manage access is proved in every
   current project, so the detail discloses nothing new; write transactions are serializable on
   PostgreSQL and serialized on SQLite, so the comparison cannot race a project deletion. Storage
-  keeps only the mode. The `where` of an organization listing or of a create response is therefore
+  keeps only the mode. The `where` of an organisation listing or of a create response is therefore
   itself a valid create request; a project listing shows only its own project, so its `where` fails
   closed as a stale list. A project created concurrently is covered as any later project is, under
   the future-project authority below. The CLI's `access rule add --all-projects` and the
   Members editor's "All projects" choice list the projects first.
 - **Zero projects.** No v1 response may carry an empty `projects`, so the frozen `minItems: 1`
-  stays true for older clients. Creating an all-projects rule in an organization with no project is
-  refused with a conflict. Deleting an organization's last project while an all-projects rule exists
+  stays true for older clients. Creating an all-projects rule in an organisation with no project is
+  refused with a conflict. Deleting an organisation's last project while an all-projects rule exists
   there is refused with a conflict naming the blocking rule ids, so they can be revoked first.
-  Project deletion is the only path that removes a project; an organization is deleted only once
-  empty. The deletion locks the organization's projects so concurrent deletions cannot both pass.
+  Project deletion is the only path that removes a project; an organisation is deleted only once
+  empty. The deletion locks the organisation's projects so concurrent deletions cannot both pass.
 - **Listing bound (owner principle extended, 2026-11-25).** The zero-projects principle, refusing
   the change that would make a v1 response invalid, also covers the frozen 500 bound of a rule's
   `where` (`domain.MaxRuleItems`, projects, environments and keys together). An all-projects rule is
-  listed as the organization's current projects plus its folder items repeated under each, so its
+  listed as the organisation's current projects plus its folder items repeated under each, so its
   listing counts projects × (1 + folders). A create that would list more than 500 is refused with
   `limit_exceeded`. A project creation that would list any existing all-projects rule past 500 is
   refused with a conflict naming the blocking rule ids to a member manager, as the last-project
@@ -291,10 +293,10 @@ request merges.
   create. A listing is never truncated and never leaves a rule out.
 - **Authority (D7).** Creating or revoking an all-projects rule needs Manage access over the
   complete selector in every current project and over projects created later. Only an
-  organization- or instance-scope grant, or another all-projects rule, covers a future project, so a
+  organisation- or instance-scope grant, or another all-projects rule, covers a future project, so a
   manager holding `manage-members` in each current project only, by grants or by project-bound
   Manage-access rules, is refused. The conferred capability follows the same bound, with the
-  unheld-capability allowance of organization authority.
+  unheld-capability allowance of organisation authority.
 - **Project listings.** On a project's Members page an all-projects rule is listed as manageable
   when the viewer manages that project, the same as any rule over several projects. The listing
   only offers the action: every create, revoke or replacement is proved again on the server over

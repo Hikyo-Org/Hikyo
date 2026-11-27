@@ -43,7 +43,7 @@ an account that has a factor (see [Identity and access](/docs/identity-and-acces
 yet. With `required`, a password sign-in succeeds only into a restricted session
 that can enrol a factor (TOTP or passkey), generate recovery codes, read
 `whoami` and sign out, until a factor is enrolled. With `optional`, such an
-account signs in on its password alone. A fresh installation defaults to
+account signs in on its password alone. A fresh instance defaults to
 `required`. Only an instance whose managed configuration was adopted before
 upgrading is seeded `optional`, so its posture does not change until an operator
 changes the managed value. See [managed configuration](/docs/managed-configuration/)

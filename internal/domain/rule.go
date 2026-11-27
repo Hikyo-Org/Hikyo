@@ -191,7 +191,7 @@ func (w Where) KeyNarrowedIn(p ProjectID) bool {
 // every read: a stored row that does not validate reaches nothing.
 func (r Rule) Validate() error {
 	if r.Org == "" {
-		return fmt.Errorf("%w: a rule lives in exactly one organization", ErrInvalid)
+		return fmt.Errorf("%w: a rule lives in exactly one organisation", ErrInvalid)
 	}
 	shape, ok := ruleShapes[r.Capability]
 	if !ok {

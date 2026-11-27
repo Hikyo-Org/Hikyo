@@ -23,7 +23,7 @@ var personalColumns = []string{"KEY", "PRESENCE", "UPDATED", "NOTICE", "STATUS"}
 
 // personalSetStatement is printed before `personal set` reads or sends a value
 // (personal-values ADR, What this guarantee is).
-const personalSetStatement = "Hikyo does not show this to administrators. Your instance operator could read it, " +
+const personalSetStatement = "Hikyo does not show this to administrators. Your production operator could read it, " +
 	"and anyone who can change shared values here could capture it once your program runs. " +
 	"If someone gave you your password, authenticator or recovery codes, replace them, " +
 	"regenerate your recovery codes and check your linked identities first."
@@ -125,17 +125,17 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		if err := client.Do(ctx, http.MethodGet, project+"/environments/"+url.PathEscape(env)+"/personal-value-counts", nil, &counts); err != nil {
 			return err
 		}
-		t := Table{Columns: []string{"KEY", "HOLDERS", "NOTICES", "REQUIRED"}, JSON: counts}
+		t := Table{Columns: []string{"KEY", "MEMBERS", "NOTICES", "REQUIRED"}, JSON: counts}
 		for _, c := range counts.Items {
-			holders := strconv.Itoa(c.Holders)
+			members := strconv.Itoa(c.Members)
 			if c.Required {
-				holders = fmt.Sprintf("%d/%d", c.Holders, counts.Eligible)
+				members = fmt.Sprintf("%d/%d", c.Members, counts.Eligible)
 			}
 			required := "no"
 			if c.Required {
 				required = "yes"
 			}
-			t.Rows = append(t.Rows, []string{c.Name, holders, strconv.Itoa(c.Notices), required})
+			t.Rows = append(t.Rows, []string{c.Name, members, strconv.Itoa(c.Notices), required})
 		}
 		if f == FormatTable {
 			fmt.Fprintf(ios.Stderr, "eligible here (read and reveal): %d\n", counts.Eligible)
@@ -200,7 +200,7 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return Render(ios.Stdout, f, t)
 
 	case "members":
-		var list apigen.PersonalValueHolderList
+		var list apigen.PersonalValueMemberList
 		if err := client.Do(ctx, http.MethodGet, target+"/members", nil, &list); err != nil {
 			return err
 		}

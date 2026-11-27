@@ -17,8 +17,8 @@ See [Configuration rollouts on Kubernetes](/docs/configuration-rollouts/).
 
 ## Set up or adopt
 
-Fresh administrator setup provisions a protected `Hikyo` organization, an
-instance project and its `Production` environment. Existing installations use
+Fresh administrator setup provisions a protected `Hikyo` organisation, an
+instance project and its `Production` environment. Existing instances use
 **Preview adoption**. The preview lists configured key names and any import
 warnings without displaying secret values. Review it, then adopt with fresh
 reauthentication. Adoption imports the server's effective settings once.
@@ -91,7 +91,7 @@ the keys, and a definitions export still lists them without a folder.
 
 These settings apply to every project owned by this logical instance. They count
 declared keys once, regardless of how many environments contain their values.
-The `1000` default is a conservative starting point for small installations;
+The `1000` default is a conservative starting point for small instances;
 it is not a measured Raspberry Pi capacity threshold. Larger values increase
 catalogue, Matrix, validation and publish work. Choose a value appropriate to
 your hardware and verify your workload before relying on the extra capacity.
@@ -207,7 +207,7 @@ actual runtime acknowledgements establish convergence after replacement.
 ## Independent remotes and HA
 
 The root management view groups project references. Each remote owns its
-organization, project, schema, secrets and generation. Open an owner reference
+organisation, project, schema, secrets and generation. Open an owner reference
 to connect through that instance's human workspace session. Requests go directly
 from the browser to the owner. A local administrator or directory credential
 has no remote configuration authority.

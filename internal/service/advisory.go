@@ -217,7 +217,7 @@ var ErrNoAdvisoryChannel = errors.New("service: this instance serves no advisory
 
 var (
 	ErrAdvisoryPrincipalLimit = fmt.Errorf("%w: service: advisory connection cap reached for this principal", admission.ErrOverloaded)
-	ErrAdvisoryOrgLimit       = fmt.Errorf("%w: service: advisory connection cap reached for this organization", admission.ErrOverloaded)
+	ErrAdvisoryOrgLimit       = fmt.Errorf("%w: service: advisory connection cap reached for this organisation", admission.ErrOverloaded)
 	ErrAdvisoryInstanceLimit  = fmt.Errorf("%w: service: instance-wide advisory connection cap reached", admission.ErrOverloaded)
 )
 

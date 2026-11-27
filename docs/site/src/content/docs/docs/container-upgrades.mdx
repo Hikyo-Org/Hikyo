@@ -9,7 +9,7 @@ Use a signed release built after that PR merged; older published images do not
 support this option. Docker and singleton Kubernetes acceptance passed. See the
 [design and acceptance record](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/design/unattended-container-upgrades.md).
 
-Choose unattended upgrades at the first deployment of an empty installation.
+Choose unattended upgrades at the first deployment of an empty instance.
 Later image replacements can then verify the signed release, back up, restore
 to scratch, migrate and resume serving without a terminal or manual approval.
 [Manual upgrades](/docs/upgrades/#manual-upgrade-inputs) remain the default.

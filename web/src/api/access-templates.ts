@@ -8,6 +8,8 @@ export type RoleTemplateId =
   | 'historian'
   | 'maintainer'
   | 'admin'
+  | 'instance-admin'
+  // Deprecated alias of 'instance-admin': the API accepts it until v2, and the UI never offers it.
   | 'operator';
 
 export type RoleTemplate = {
@@ -62,7 +64,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     orgOnly: ['manage-projects'],
   },
   {
-    id: 'operator',
+    id: 'instance-admin',
     levels: ['instance'],
     seeds: [
       'backup-export',
@@ -83,7 +85,8 @@ export function templatesAt(level: Level): readonly RoleTemplate[] {
 }
 
 export function expandTemplate(templateId: RoleTemplateId, level: Level): readonly string[] {
-  const template = ROLE_TEMPLATES.find((candidate) => candidate.id === templateId);
+  const canonicalId = templateId === 'operator' ? 'instance-admin' : templateId;
+  const template = ROLE_TEMPLATES.find((candidate) => candidate.id === canonicalId);
   if (template === undefined || !template.levels.includes(level)) {
     throw new Error(`role template ${templateId} is not admitted at ${level} scope`);
   }

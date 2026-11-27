@@ -412,7 +412,7 @@ func runTemplateExpansion(t *testing.T, db *store.DB) {
 
 	// `operator` seeds NEITHER reveal nor reveal-history: crypto custody is
 	// not data reading, and the encryption-model ADR forbids the bundle.
-	if _, err := g.ApplyTemplate(ctx, service.LocalPrincipal(root), domain.TemplateOperator, grantee, domain.Scope{}); err != nil {
+	if _, err := g.ApplyTemplate(ctx, service.LocalPrincipal(root), domain.TemplateInstanceAdmin, grantee, domain.Scope{}); err != nil {
 		t.Fatalf("apply operator at instance scope: %v", err)
 	}
 	for _, c := range []domain.Capability{domain.CapReveal, domain.CapRevealHistory} {
@@ -421,7 +421,7 @@ func runTemplateExpansion(t *testing.T, db *store.DB) {
 		}
 	}
 	// A template applied at a level its ADR row does not admit is refused.
-	if _, err := g.ApplyTemplate(ctx, service.LocalPrincipal(root), domain.TemplateOperator, grantee, orgAScope); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := g.ApplyTemplate(ctx, service.LocalPrincipal(root), domain.TemplateInstanceAdmin, grantee, orgAScope); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("operator at org scope: got %v, want the invalid-request refusal", err)
 	}
 	if _, err := g.ApplyTemplate(ctx, service.LocalPrincipal(root), domain.TemplateMaintainer, grantee, envScope(envA1)); !errors.Is(err, domain.ErrInvalid) {

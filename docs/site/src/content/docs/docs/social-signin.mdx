@@ -26,7 +26,7 @@ fresh proof; Hikyo never matches accounts by an asserted email address.
 | Google or Microsoft Entra OIDC | `https://hikyo.example.com/api/v1/auth/oidc/work/callback` |
 | GitHub OAuth2 | `https://hikyo.example.com/api/v1/auth/oauth2/github/callback` |
 
-Use separate upstream clients for independent installations. Keep client secrets
+Use separate upstream clients for independent instances. Keep client secrets
 in the write-only provider field. Provider reconfiguration can terminate its
 sessions. An issuer cannot change in place. For an OIDC provider advertising
 only pairwise subjects, changing the client ID is refused while identities

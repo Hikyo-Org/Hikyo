@@ -117,7 +117,7 @@ func IsSystemOrigin(k OriginKind) bool { return systemOrigins[k] }
 
 // IsMappableTemplate reports whether a mapping row may target t.
 func IsMappableTemplate(t Template) bool {
-	spec, ok := templates[t]
+	spec, ok := templates[t.Canonical()]
 	return ok && !spec.applicable[LevelNone]
 }
 

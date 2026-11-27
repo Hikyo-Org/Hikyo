@@ -319,7 +319,7 @@ function ProfileRow({
         >
         {failureAlert}
         <fieldset className="machine__lock" disabled={bind.isPending}>
-          <Input label="Organization id" mono value={target.org} onChange={(event) => setTarget({ ...target, org: event.target.value })} />
+          <Input label="Organisation id" mono value={target.org} onChange={(event) => setTarget({ ...target, org: event.target.value })} />
           <Input label="Project id" mono value={target.project} onChange={(event) => setTarget({ ...target, project: event.target.value })} />
           <Input
             label="Environment id (optional)"

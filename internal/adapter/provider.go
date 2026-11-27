@@ -12,12 +12,16 @@ type Provider string
 const (
 	ForgejoProvider           Provider = "forgejo"
 	GitHubActionsProvider     Provider = "github-actions"
-	EncryptedWebhookProvider  Provider = "sealed-webhook"
+	EncryptedWebhookProvider  Provider = "encrypted-webhook"
 	CloudflareProvider        Provider = "cloudflare"
 	VaultKVProvider           Provider = "vault-kv"
 	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
 	GitLabProvider            Provider = "gitlab"
 )
+
+// LegacySealedWebhookProvider is the pre-rename id of EncryptedWebhookProvider.
+// Input accepts it as a deprecated alias until v2; output never emits it.
+const LegacySealedWebhookProvider = "sealed-webhook"
 
 var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, EncryptedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 
@@ -29,6 +33,9 @@ func SupportedProviders() []Provider {
 // ParseProvider rejects missing and unknown persisted provider identities.
 // API defaults must resolve to an explicit provider before this boundary.
 func ParseProvider(raw string) (Provider, error) {
+	if raw == LegacySealedWebhookProvider {
+		return EncryptedWebhookProvider, nil
+	}
 	provider := Provider(raw)
 	for _, supported := range supportedProviders {
 		if provider == supported {

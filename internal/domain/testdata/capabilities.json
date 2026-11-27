@@ -56,18 +56,18 @@
       }
     },
     {
+      "id": "instance-admin",
+      "levels": ["instance"],
+      "seeds_by_level": {
+        "instance": ["backup-export", "restore", "rotate-root-key", "rotate-master-key", "rotate-dek", "reencrypt", "instance-config", "manage-members"]
+      }
+    },
+    {
       "id": "maintainer",
       "levels": ["org", "project"],
       "seeds_by_level": {
         "org": ["read", "edit", "publish", "pin", "definitions-edit", "manage-identities", "manage-adapters"],
         "project": ["read", "edit", "publish", "pin", "definitions-edit", "manage-identities", "manage-adapters"]
-      }
-    },
-    {
-      "id": "operator",
-      "levels": ["instance"],
-      "seeds_by_level": {
-        "instance": ["backup-export", "restore", "rotate-root-key", "rotate-master-key", "rotate-dek", "reencrypt", "instance-config", "manage-members"]
       }
     },
     {

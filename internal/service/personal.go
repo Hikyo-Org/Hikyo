@@ -95,8 +95,8 @@ type PersonalEntry struct {
 	Value string
 }
 
-// PersonalHolder is metadata about another person's value: never the value.
-type PersonalHolder struct {
+// PersonalMember is metadata about another person's value: never the value.
+type PersonalMember struct {
 	Principal domain.PrincipalID
 	Username  string
 	Set       bool
@@ -472,8 +472,8 @@ func (s *PersonalValues) Delete(ctx context.Context, actor Actor, scope domain.S
 }
 
 // Members lists who holds a value or notice for one key: metadata only.
-func (s *PersonalValues) Members(ctx context.Context, actor Actor, scope domain.Scope, keyName string) ([]PersonalHolder, error) {
-	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalHolder, error) {
+func (s *PersonalValues) Members(ctx context.Context, actor Actor, scope domain.Scope, keyName string) ([]PersonalMember, error) {
+	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) ([]PersonalMember, error) {
 		caller, err := s.caller(ctx, az, actor)
 		if err != nil {
 			return nil, err
@@ -495,7 +495,7 @@ func (s *PersonalValues) Members(ctx context.Context, actor Actor, scope domain.
 	})
 }
 
-func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, keyName string) (store.CatalogueKey, []PersonalHolder, error) {
+func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, keyName string) (store.CatalogueKey, []PersonalMember, error) {
 	keys, err := r.Catalogue().List(ctx, p)
 	if err != nil {
 		return store.CatalogueKey{}, nil, err
@@ -512,15 +512,15 @@ func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 	if err != nil {
 		return key, nil, err
 	}
-	byOwner := map[domain.PrincipalID]*PersonalHolder{}
+	byOwner := map[domain.PrincipalID]*PersonalMember{}
 	var order []domain.PrincipalID
 	// A holder whose account is gone keeps its principal id; any other lookup
 	// failure fails the read.
-	add := func(owner domain.PrincipalID) (*PersonalHolder, error) {
+	add := func(owner domain.PrincipalID) (*PersonalMember, error) {
 		if h, ok := byOwner[owner]; ok {
 			return h, nil
 		}
-		h := &PersonalHolder{Principal: owner}
+		h := &PersonalMember{Principal: owner}
 		account, err := az.AccountByPrincipal(ctx, owner)
 		switch {
 		case err == nil:
@@ -546,7 +546,7 @@ func personalHolders(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		}
 		h.Notice = n.Cause
 	}
-	out := make([]PersonalHolder, len(order))
+	out := make([]PersonalMember, len(order))
 	for i, o := range order {
 		out[i] = *byOwner[o]
 	}
@@ -572,7 +572,7 @@ func (s *PersonalValues) DeleteMember(ctx context.Context, actor Actor, scope do
 		if err != nil {
 			return err
 		}
-		var target *PersonalHolder
+		var target *PersonalMember
 		for i := range holders {
 			if member != "" && (holders[i].Username == member || string(holders[i].Principal) == member) {
 				target = &holders[i]

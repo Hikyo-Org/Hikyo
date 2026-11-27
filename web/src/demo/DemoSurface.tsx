@@ -19,7 +19,7 @@ export function DemoSurface({ id, children }: { id: SurfaceId; children: ReactNo
         <h1>Not available in this demo</h1>
         <p className="page__lede">
           This playground focuses on browsing, editing and publishing sample configuration.
-          {' '}{policy.mode === 'excluded' ? policy.reason : 'Connecting remote instances requires a full Hikyo installation.'}
+          {' '}{policy.mode === 'excluded' ? policy.reason : 'Connecting remote instances requires a full Hikyo instance.'}
         </p>
         <Link className="btn" to={DEMO_MATRIX_PATH}>Back to the environment matrix</Link>
       </section>

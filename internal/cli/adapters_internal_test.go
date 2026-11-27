@@ -244,7 +244,7 @@ func TestAWSTargetInputRoutesSecretAndKMSKey(t *testing.T) {
 	}
 }
 
-func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
+func TestAdapterTargetInputRoutesEncryptedWebhookToNamespaceOnly(t *testing.T) {
 	const env = "env_019c1234-1234-7123-8123-123456789abc"
 	const key = "key_019c1234-1234-7123-8123-123456789abc"
 	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil)

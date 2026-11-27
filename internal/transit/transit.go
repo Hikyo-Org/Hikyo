@@ -5,7 +5,7 @@
 // touches a cryptographic primitive (internal/crypto does).
 //
 // Two providers exist. Software custody seals material under the owning project
-// DEK, so the key hierarchy's rotation, reencrypt and crypto-shred cover it.
+// DEK, so the key hierarchy's rotation, reencrypt and shred cover it.
 // External custody (an HSM, KMIP or a cloud KMS) holds the material itself and
 // Hikyo stores an opaque reference; this release ships only the in-memory mock
 // in transittest, used to prove both providers keep identical semantics.

@@ -49,7 +49,7 @@ export function InstanceMailPanel() {
         <Button type="submit" disabled={!mail.data.configured || send.isPending}>Send test…</Button>
       </form>
       {send.isSuccess ? <Alert tone="done">Test mail sent. Check the recipient inbox.</Alert> : null}
-      <p className="field__hint">Up to five tests per hour per operator, with one send at a time on the instance.</p>
+      <p className="field__hint">Up to five tests per hour per instance administrator, with one send at a time on the instance.</p>
     </> : null}
     {proofing ? <ProofDialog reauth field="code-or-password" lede="To send a test mail, enter the code from your authenticator, or your password if you have no authenticator." pending={send.isPending} failure={send.isError ? mailFailureText(send.error) : null} onCancel={() => setProofing(false)} onSubmit={(proof, clear) => {
       send.mutate({ to: to.trim(), proof }, { onSuccess: () => setProofing(false), onError: () => clear() });

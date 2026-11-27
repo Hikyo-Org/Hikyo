@@ -147,7 +147,7 @@ export function InstanceAdmin() {
                 setOriginFilter(value === 'manual' || value === 'registration' ? value : 'all');
               }}>
                 <option value="all">All organisations</option>
-                <option value="manual">Created by an operator</option>
+                <option value="manual">Created by an instance administrator</option>
                 <option value="registration">Self-served (sign-up)</option>
               </select>
             </div>

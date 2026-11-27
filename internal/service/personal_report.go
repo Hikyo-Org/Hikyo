@@ -27,7 +27,7 @@ var OffboardingLimits = []string{
 type PersonalCount struct {
 	KeyID    string
 	Name     string
-	Holders  int
+	Members  int
 	Notices  int
 	Required bool
 }
@@ -93,8 +93,8 @@ func (s *PersonalValues) Counts(ctx context.Context, actor Actor, scope domain.S
 		}
 		out := PersonalCounts{Eligible: eligible, Items: []PersonalCount{}}
 		for _, k := range keys {
-			c := PersonalCount{KeyID: k.ID, Name: k.Name, Holders: counts.Holders[k.ID], Notices: counts.Notices[k.Name], Required: counts.Required[k.ID]}
-			if c.Holders > 0 || c.Notices > 0 || c.Required {
+			c := PersonalCount{KeyID: k.ID, Name: k.Name, Members: counts.Members[k.ID], Notices: counts.Notices[k.Name], Required: counts.Required[k.ID]}
+			if c.Members > 0 || c.Notices > 0 || c.Required {
 				out.Items = append(out.Items, c)
 			}
 		}

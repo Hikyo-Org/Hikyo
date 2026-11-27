@@ -19,11 +19,11 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
-	"github.com/Hikyo-Org/hikyo/internal/adapter/sealedwebhook"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/encryptedwebhook"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
-	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
+	"github.com/Hikyo-Org/hikyo/internal/encryptedreceiver"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -70,13 +70,13 @@ type swReceiver struct {
 	log     []swRequest
 
 	identityV1, identityV2 string
-	edSender               *sealedhook.Signer
-	pqSender               *sealedhook.MLDSASigner
-	ackEd                  *sealedhook.Signer
-	ackPQ                  *sealedhook.MLDSASigner
+	edSender               *encryptedhook.Signer
+	pqSender               *encryptedhook.MLDSASigner
+	ackEd                  *encryptedhook.Signer
+	ackPQ                  *encryptedhook.MLDSASigner
 	recipientV1            string
 	recipientV2            string
-	receiver               *sealedreceiver.Receiver
+	receiver               *encryptedreceiver.Receiver
 	gate                   func(path string, body []byte) // runs before the handler; may block
 }
 
@@ -112,26 +112,26 @@ func (w *swWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return w.ResponseWriter.(http.Hijacker).Hijack()
 }
 
-func mustEd(t *testing.T) *sealedhook.Signer {
+func mustEd(t *testing.T) *encryptedhook.Signer {
 	t.Helper()
-	pemKey, _, err := sealedhook.GenerateSigningKey()
+	pemKey, _, err := encryptedhook.GenerateSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := sealedhook.ParseSigningKeyPEM(pemKey)
+	s, err := encryptedhook.ParseSigningKeyPEM(pemKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-func mustPQ(t *testing.T) *sealedhook.MLDSASigner {
+func mustPQ(t *testing.T) *encryptedhook.MLDSASigner {
 	t.Helper()
-	pemKey, _, err := sealedhook.GenerateMLDSASigningKey()
+	pemKey, _, err := encryptedhook.GenerateMLDSASigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := sealedhook.ParseMLDSASigningKeyPEM(pemKey)
+	s, err := encryptedhook.ParseMLDSASigningKeyPEM(pemKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,10 +142,10 @@ func newSWReceiver(t *testing.T) *swReceiver {
 	t.Helper()
 	r := &swReceiver{t: t, edSender: mustEd(t), pqSender: mustPQ(t), ackEd: mustEd(t), ackPQ: mustPQ(t)}
 	var err error
-	if r.identityV1, r.recipientV1, err = sealedhook.GenerateRecipient(); err != nil {
+	if r.identityV1, r.recipientV1, err = encryptedhook.GenerateRecipient(); err != nil {
 		t.Fatal(err)
 	}
-	if r.identityV2, r.recipientV2, err = sealedhook.GenerateHybridRecipient(); err != nil {
+	if r.identityV2, r.recipientV2, err = encryptedhook.GenerateHybridRecipient(); err != nil {
 		t.Fatal(err)
 	}
 	r.receiver = r.build(true, true, nil)
@@ -181,22 +181,22 @@ func newSWReceiver(t *testing.T) *swReceiver {
 
 // build returns a receiver serving the selected versions with the given
 // sender pairs pinned (nil pins the current pair).
-func (r *swReceiver) build(v1, v2 bool, pairs []sealedhook.PinnedSenderV2) *sealedreceiver.Receiver {
-	cfg := sealedreceiver.Config{TargetID: swTargetID, InstanceID: swInstance, Generation: 1, Bindings: map[string]string{swNamespace: swBinding}}
+func (r *swReceiver) build(v1, v2 bool, pairs []encryptedhook.PinnedSenderV2) *encryptedreceiver.Receiver {
+	cfg := encryptedreceiver.Config{TargetID: swTargetID, InstanceID: swInstance, Generation: 1, Bindings: map[string]string{swNamespace: swBinding}}
 	if v1 {
-		cfg.Identity, cfg.AckSigner, cfg.Senders = r.identityV1, r.ackEd, []sealedhook.PinnedKey{{Key: r.edSender.Public()}}
+		cfg.Identity, cfg.AckSigner, cfg.Senders = r.identityV1, r.ackEd, []encryptedhook.PinnedKey{{Key: r.edSender.Public()}}
 	}
 	if v2 {
-		signer, err := sealedhook.NewSignerV2(r.ackEd, r.ackPQ)
+		signer, err := encryptedhook.NewSignerV2(r.ackEd, r.ackPQ)
 		if err != nil {
 			r.t.Fatal(err)
 		}
 		if pairs == nil {
-			pairs = []sealedhook.PinnedSenderV2{{Ed: r.edSender.Public(), PQ: r.pqSender.Public()}}
+			pairs = []encryptedhook.PinnedSenderV2{{Ed: r.edSender.Public(), PQ: r.pqSender.Public()}}
 		}
 		cfg.HybridIdentity, cfg.AckSignerV2, cfg.SendersV2 = r.identityV2, signer, pairs
 	}
-	rc, err := sealedreceiver.New(cfg)
+	rc, err := encryptedreceiver.New(cfg)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func (r *swReceiver) build(v1, v2 bool, pairs []sealedhook.PinnedSenderV2) *seal
 }
 
 // swap replaces the handler while keeping the receiver state when asked.
-func (r *swReceiver) swap(next *sealedreceiver.Receiver, keepState bool) {
+func (r *swReceiver) swap(next *encryptedreceiver.Receiver, keepState bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if keepState && r.receiver != nil {
@@ -234,16 +234,16 @@ type swRegistry struct {
 	t        *testing.T
 	recv     *swReceiver
 	mu       sync.Mutex
-	endpoint *sealedwebhook.Endpoint
+	endpoint *encryptedwebhook.Endpoint
 }
 
-func (g *swRegistry) v2(generation int64, ed *sealedhook.Signer, pq *sealedhook.MLDSASigner) *sealedwebhook.Endpoint {
+func (g *swRegistry) v2(generation int64, ed *encryptedhook.Signer, pq *encryptedhook.MLDSASigner) *encryptedwebhook.Endpoint {
 	g.t.Helper()
-	fp, err := sealedhook.FingerprintV2(g.recv.origin, g.recv.recipientV2, g.recv.ackEd.Public(), g.recv.ackPQ.Public(), generation)
+	fp, err := encryptedhook.FingerprintV2(g.recv.origin, g.recv.recipientV2, g.recv.ackEd.Public(), g.recv.ackPQ.Public(), generation)
 	if err != nil {
 		g.t.Fatal(err)
 	}
-	e, err := sealedwebhook.NewEndpoint(sealedwebhook.EndpointConfig{
+	e, err := encryptedwebhook.NewEndpoint(encryptedwebhook.EndpointConfig{
 		ID: swTargetID, InstanceID: swInstance, Origin: g.recv.origin, RecipientKey: g.recv.recipientV2, AckKey: g.recv.ackEd.Public().String(),
 		AckKeyMLDSA65: g.recv.ackPQ.Public().String(), Generation: generation, Timeout: 4 * time.Second, MaxResponseBytes: 16 << 10,
 		ConfirmedFingerprint: fp, Signer: ed, SignerPQ: pq, Protocol: 2,
@@ -254,13 +254,13 @@ func (g *swRegistry) v2(generation int64, ed *sealedhook.Signer, pq *sealedhook.
 	return e
 }
 
-func (g *swRegistry) v1(generation int64) *sealedwebhook.Endpoint {
+func (g *swRegistry) v1(generation int64) *encryptedwebhook.Endpoint {
 	g.t.Helper()
-	fp, err := sealedhook.Fingerprint(g.recv.origin, g.recv.recipientV1, g.recv.ackEd.Public().String(), generation)
+	fp, err := encryptedhook.Fingerprint(g.recv.origin, g.recv.recipientV1, g.recv.ackEd.Public().String(), generation)
 	if err != nil {
 		g.t.Fatal(err)
 	}
-	e, err := sealedwebhook.NewEndpoint(sealedwebhook.EndpointConfig{
+	e, err := encryptedwebhook.NewEndpoint(encryptedwebhook.EndpointConfig{
 		ID: swTargetID, InstanceID: swInstance, Origin: g.recv.origin, RecipientKey: g.recv.recipientV1, AckKey: g.recv.ackEd.Public().String(),
 		Generation: generation, Timeout: 4 * time.Second, MaxResponseBytes: 16 << 10, ConfirmedFingerprint: fp, Signer: g.recv.edSender,
 	})
@@ -270,7 +270,7 @@ func (g *swRegistry) v1(generation int64) *sealedwebhook.Endpoint {
 	return e
 }
 
-func (g *swRegistry) set(e *sealedwebhook.Endpoint) {
+func (g *swRegistry) set(e *encryptedwebhook.Endpoint) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.endpoint = e
@@ -281,16 +281,16 @@ func (g *swRegistry) build(origin, credential string) (adapter.Module, func(), e
 	endpoint := g.endpoint
 	g.mu.Unlock()
 	if origin != endpoint.Origin() {
-		return nil, nil, errors.New("sealed-webhook: origin is not an instance-admin configured endpoint")
+		return nil, nil, errors.New("encrypted-webhook: origin is not an instance-admin configured endpoint")
 	}
 	cfg := endpoint.ClientConfig()
 	cfg.AllowedCIDRs = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}
 	cfg.RootCAs = g.recv.roots
-	client, err := sealedwebhook.NewClient(cfg)
+	client, err := encryptedwebhook.NewClient(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	return &sealedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, client.Forget, nil
+	return &encryptedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, client.Forget, nil
 }
 
 // swLoader is the production loader's shape: kvLoader opens the credential and
@@ -305,11 +305,11 @@ func (l swLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Jou
 	return out, err
 }
 
-func TestAdapterSealedWebhookProtocolTwoEndToEnd(t *testing.T) {
-	forEngines(t, runSealedWebhookProtocolTwo)
+func TestAdapterEncryptedWebhookProtocolTwoEndToEnd(t *testing.T) {
+	forEngines(t, runEncryptedWebhookProtocolTwo)
 }
 
-func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
+func runEncryptedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	ctx := tctx(t)
 	recv := newSWReceiver(t)
 	reg := &swRegistry{t: t, recv: recv}
@@ -340,7 +340,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("create sealed-webhook adapter: %v", err)
+		t.Fatalf("create encrypted-webhook adapter: %v", err)
 	}
 	target := created.Targets[0]
 	if want := endpointA.DestinationID(swNamespace); target.DestinationID != want {
@@ -438,7 +438,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 		t.Fatalf("receiver decrypted %q, want %q", value(), swPlain1)
 	}
 	for _, p := range recv.paths() {
-		if p != sealedhook.SyncPathV2 {
+		if p != encryptedhook.SyncPathV2 {
 			t.Fatalf("a request left the version 2 route: %s", p)
 		}
 	}
@@ -463,7 +463,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 		if e.status != http.StatusOK {
 			return fmt.Sprintf("http-%d", e.status)
 		}
-		ack, err := sealedhook.ParseAckV2(e.resp)
+		ack, err := encryptedhook.ParseAckV2(e.resp)
 		if err != nil {
 			return "unparsed"
 		}
@@ -485,9 +485,9 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 		t.Helper()
 		applies := map[string]int{}
 		for _, e := range logFrom(0) {
-			if e.path == sealedhook.SyncPathV2 && statusOf(e) == string(sealedhook.AckApplied) {
+			if e.path == encryptedhook.SyncPathV2 && statusOf(e) == string(encryptedhook.AckApplied) {
 				if e.resp != nil {
-					if env, err := sealedhook.ParseEnvelopeV2(e.body); err == nil && env.Op != sealedhook.OpProbe {
+					if env, err := encryptedhook.ParseEnvelopeV2(e.body); err == nil && env.Op != encryptedhook.OpProbe {
 						applies[env.IdempotencyKey]++
 					}
 				}
@@ -504,10 +504,10 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	// already_applied without a second effect.
 	captured := logFrom(recv.requests() - 1)[0]
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPathV2, bytes.NewReader(captured.body))
-	req.Header.Set("Content-Type", sealedhook.ContentTypeV2)
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPathV2, bytes.NewReader(captured.body))
+	req.Header.Set("Content-Type", encryptedhook.ContentTypeV2)
 	recv.receiver.ServeHTTP(rec, req)
-	if ack, err := sealedhook.ParseAckV2(rec.Body.Bytes()); err != nil || ack.Status != sealedhook.AckAlreadyApplied {
+	if ack, err := encryptedhook.ParseAckV2(rec.Body.Bytes()); err != nil || ack.Status != encryptedhook.AckAlreadyApplied {
 		t.Fatalf("duplicate delivery answered %q (%v)", rec.Body.String(), err)
 	}
 	if applied() != appliedAfterFirst || value() != swPlain1 {
@@ -565,7 +565,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 			answers = append(answers, statusOf(e))
 		}
 	}
-	if len(answers) < 2 || answers[0] != "unparsed" && answers[0] != "http-0" || answers[len(answers)-1] != string(sealedhook.AckAlreadyApplied) {
+	if len(answers) < 2 || answers[0] != "unparsed" && answers[0] != "http-0" || answers[len(answers)-1] != string(encryptedhook.AckAlreadyApplied) {
 		t.Fatalf("answers for the key whose acknowledgement was lost = %v, want the dropped attempt then already_applied", answers)
 	}
 	if got := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects e JOIN audit_tenant_events o ON o.id=e.outcome_audit_id WHERE e.target_id='%s' AND e.outcome='unknown' AND o.type='adapter.push_outcome'`, target.ID)); got == 0 {
@@ -601,7 +601,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("the first revision 3 request never reached the receiver")
 	}
-	recv.swap(recv.build(false, true, []sealedhook.PinnedSenderV2{
+	recv.swap(recv.build(false, true, []encryptedhook.PinnedSenderV2{
 		{Ed: recv.edSender.Public(), PQ: recv.pqSender.Public(), NotAfter: time.Now().Add(-time.Hour)}, // the receiver judges with real time
 		{Ed: nextEd.Public(), PQ: nextPQ.Public()},
 	}), true)
@@ -636,8 +636,8 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 			break
 		}
 	}
-	retryEnv, err := sealedhook.ParseEnvelopeV2(retry.body)
-	if err != nil || retryEnv.KeyIDEd25519 != nextEd.Public().IDV2() || retryEnv.KeyIDMLDSA65 != nextPQ.Public().ID() || statusOf(retry) != string(sealedhook.AckApplied) {
+	retryEnv, err := encryptedhook.ParseEnvelopeV2(retry.body)
+	if err != nil || retryEnv.KeyIDEd25519 != nextEd.Public().IDV2() || retryEnv.KeyIDMLDSA65 != nextPQ.Public().ID() || statusOf(retry) != string(encryptedhook.AckApplied) {
 		t.Fatalf("retry of the held key under the new pair = %+v, status %q", retryEnv.KeyIDEd25519, statusOf(retry))
 	}
 
@@ -683,7 +683,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	stalledKey := keyOf(logFrom(takeoverFrom)[0])
 	var sawAlreadyApplied bool
 	for _, e := range logFrom(takeoverFrom) {
-		sawAlreadyApplied = sawAlreadyApplied || keyOf(e) == stalledKey && statusOf(e) == string(sealedhook.AckAlreadyApplied)
+		sawAlreadyApplied = sawAlreadyApplied || keyOf(e) == stalledKey && statusOf(e) == string(encryptedhook.AckAlreadyApplied)
 	}
 	if !sawAlreadyApplied {
 		t.Fatal("node 2's retry of the applied-but-unacknowledged effect was not answered already_applied")
@@ -698,8 +698,8 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	// retries as version 2; no version 1 request is ever sent. Re-upgrading
 	// the receiver converges it. The retired sender pair stays pinned with a
 	// not_after in the past from here on.
-	retiredPin := sealedhook.PinnedSenderV2{Ed: recv.edSender.Public(), PQ: recv.pqSender.Public(), NotAfter: time.Now().Add(-time.Hour)}
-	currentPin := sealedhook.PinnedSenderV2{Ed: nextEd.Public(), PQ: nextPQ.Public()}
+	retiredPin := encryptedhook.PinnedSenderV2{Ed: recv.edSender.Public(), PQ: recv.pqSender.Public(), NotAfter: time.Now().Add(-time.Hour)}
+	currentPin := encryptedhook.PinnedSenderV2{Ed: nextEd.Public(), PQ: nextPQ.Public()}
 	recv.swap(recv.build(true, false, nil), true)
 	skewFrom := recv.requests()
 	publish("sw-plaintext-skew")
@@ -709,12 +709,12 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 		t.Fatal("no delivery attempt reached the version 1 only receiver: the phase proved nothing")
 	}
 	for _, e := range skewed {
-		if e.path != sealedhook.SyncPathV2 || e.status != http.StatusNotFound {
+		if e.path != encryptedhook.SyncPathV2 || e.status != http.StatusNotFound {
 			t.Fatalf("a protocol 2 target sent %s and was answered %d: it must send only version 2 and be refused", e.path, e.status)
 		}
 	}
 	outboxPending("version 1 only receiver")
-	recv.swap(recv.build(true, true, []sealedhook.PinnedSenderV2{retiredPin, currentPin}), true)
+	recv.swap(recv.build(true, true, []encryptedhook.PinnedSenderV2{retiredPin, currentPin}), true)
 	advance(adapter.LeaseTime + time.Minute)
 	drain(worker)
 	converged(5, "after the receiver is upgraded again")
@@ -741,7 +741,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 		t.Fatal("the retired pair never reached the receiver: the phase proved nothing")
 	}
 	for _, e := range retired {
-		env, err := sealedhook.ParseEnvelopeV2(e.body)
+		env, err := encryptedhook.ParseEnvelopeV2(e.body)
 		if err != nil || env.KeyIDEd25519 != recv.edSender.Public().IDV2() || statusOf(e) != "http-400" {
 			t.Fatalf("retired pair request answered %q", statusOf(e))
 		}
@@ -772,7 +772,7 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 
 func idemOfV2Body(t *testing.T, body []byte) string {
 	t.Helper()
-	e, err := sealedhook.ParseEnvelopeV2(body)
+	e, err := encryptedhook.ParseEnvelopeV2(body)
 	if err != nil {
 		t.Fatal(err)
 	}

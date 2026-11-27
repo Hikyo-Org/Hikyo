@@ -18,15 +18,27 @@ import (
 type Template string
 
 const (
-	TemplateViewer     Template = "viewer"
-	TemplateEditor     Template = "editor"
-	TemplatePublisher  Template = "publisher"
-	TemplateRevealer   Template = "revealer"
-	TemplateHistorian  Template = "historian"
-	TemplateMaintainer Template = "maintainer"
-	TemplateAdmin      Template = "admin"
-	TemplateOperator   Template = "operator"
+	TemplateViewer        Template = "viewer"
+	TemplateEditor        Template = "editor"
+	TemplatePublisher     Template = "publisher"
+	TemplateRevealer      Template = "revealer"
+	TemplateHistorian     Template = "historian"
+	TemplateMaintainer    Template = "maintainer"
+	TemplateAdmin         Template = "admin"
+	TemplateInstanceAdmin Template = "instance-admin"
 )
+
+// TemplateOperatorAlias is the pre-rename name of TemplateInstanceAdmin.
+// Input accepts it until v2; Canonical maps it, and output never emits it.
+const TemplateOperatorAlias Template = "operator"
+
+// Canonical maps a deprecated template alias to its current name.
+func (t Template) Canonical() Template {
+	if t == TemplateOperatorAlias {
+		return TemplateInstanceAdmin
+	}
+	return t
+}
 
 // templateSpec is one row of the ADR's template table.
 type templateSpec struct {
@@ -80,7 +92,7 @@ var templates = map[Template]templateSpec{
 		},
 		orgOnly: []Capability{CapManageProjects},
 	},
-	TemplateOperator: {
+	TemplateInstanceAdmin: {
 		applicable: instanceOnly,
 		creates:    append(append([]Capability{}, OperatorSet...), CapManageMembers),
 	},
@@ -109,7 +121,7 @@ var (
 // template name exists, so a wrong level must fail here rather than silently
 // seed a shorter list.
 func ExpandTemplate(t Template, at Level) ([]Capability, error) {
-	spec, ok := templates[t]
+	spec, ok := templates[t.Canonical()]
 	if !ok {
 		return nil, ErrNoSuchTemplate
 	}

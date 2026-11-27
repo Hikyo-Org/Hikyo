@@ -58,7 +58,7 @@ describe('EmailInviteDialog', () => {
     const options = [...container.querySelectorAll('option')].map((option) => option.value);
     expect(options).toContain('viewer');
     expect(options).toContain('admin');
-    expect(options).not.toContain('operator');
+    expect(options).not.toContain('instance-admin');
     await fill(container, 'dana@example.com', '');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Choose a role template');
     expect(mocks.send).not.toHaveBeenCalled();

@@ -219,7 +219,7 @@ func adapterProvider(ctx context.Context, client *Client, base, adapterID string
 }
 
 // adapterTargetInput validates target routing for the adapter's provider. A
-// sealed-webhook target routes to a receiver namespace only: --kind
+// encrypted-webhook target routes to a receiver namespace only: --kind
 // organization with --owner, and no repository, environment, or visibility.
 func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, aws adapterAWSDestination, gitlab *gitLabTargetFlags) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
@@ -236,9 +236,9 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 	if err != nil {
 		return apigen.AdapterTargetInput{}, err
 	}
-	sealed := provider == "sealed-webhook"
-	if sealed && kind != "organization" {
-		return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+	encrypted := provider == string(adapter.EncryptedWebhookProvider) || provider == adapter.LegacySealedWebhookProvider
+	if encrypted && kind != "organization" {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "encrypted-webhook target takes --kind organization and --owner <receiver namespace> only")
 	}
 	switch kind {
 	case "repository":
@@ -246,9 +246,9 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "repository target requires --repo and refuses environment/visibility routing")
 		}
 	case "organization":
-		if sealed {
+		if encrypted {
 			if repo != "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
-				return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+				return apigen.AdapterTargetInput{}, failf(ExitUsage, "encrypted-webhook target takes --kind organization and --owner <receiver namespace> only")
 			}
 			break
 		}
@@ -449,11 +449,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		targetFlagSet = fs
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, https://api.cloudflare.com, AWS Secrets Manager endpoint, GitLab base URL, or Vault/OpenBao address with optional /namespace")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin encrypted-webhook origin, https://api.cloudflare.com, AWS Secrets Manager endpoint, GitLab base URL, or Vault/OpenBao address with optional /namespace")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, or gitlab")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, encrypted-webhook, cloudflare, vault-kv, aws-secrets-manager, or gitlab")
 			fs.StringVar(&spkiPin, "spki-pin", "", "GitLab: base64(sha256(SubjectPublicKeyInfo)) the server must present")
 			fs.StringVar(&caBundleFile, "ca-bundle-file", "", "GitLab: PEM file of extra trust anchors for a self-hosted instance")
 			fs.BoolVar(&allowPersonalToken, "allow-personal-token", false, "GitLab: accept a personal access token, which can act as its owner everywhere they have access (refused by default)")
@@ -465,7 +465,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "create" || sub == "update" {
 			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, per-key, project, or group")
-			fs.StringVar(&owner, "owner", "", "provider owner, GitLab namespace or group path, organization, or AWS account id (sealed-webhook: receiver namespace)")
+			fs.StringVar(&owner, "owner", "", "provider owner, GitLab namespace or group path, organization, or AWS account id (encrypted-webhook: receiver namespace)")
 			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository or GitLab project path")
 			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
@@ -584,9 +584,14 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if _, err := adapter.ParseProvider(provider); err != nil {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, gitlab, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
+		canonicalProvider, err := adapter.ParseProvider(provider)
+		if err != nil {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, gitlab, encrypted-webhook, cloudflare, vault-kv, or aws-secrets-manager")
 		}
+		if provider == adapter.LegacySealedWebhookProvider {
+			fmt.Fprintf(ios.Stderr, "warning: --provider %s is deprecated and will be removed in v2; use --provider %s\n", provider, canonicalProvider)
+		}
+		provider = string(canonicalProvider)
 		awsKind := kind == "json-object" || kind == "per-key"
 		if (provider == string(adapter.AWSSecretsManagerProvider)) != awsKind {
 			return failf(ExitUsage, "aws-secrets-manager takes exactly the json-object and per-key kinds")
@@ -890,7 +895,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if sub == "add" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
 			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, per-key, project, or group")
-			fs.StringVar(&owner, "owner", "", "provider owner, GitLab namespace or group path, organization, or AWS account id (sealed-webhook: receiver namespace)")
+			fs.StringVar(&owner, "owner", "", "provider owner, GitLab namespace or group path, organization, or AWS account id (encrypted-webhook: receiver namespace)")
 			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository or GitLab project path")
 			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")

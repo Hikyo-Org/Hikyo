@@ -1,4 +1,4 @@
-package sealedwebhook
+package encryptedwebhook
 
 import (
 	"bytes"
@@ -16,12 +16,12 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
+	"github.com/Hikyo-Org/hikyo/internal/encryptedreceiver"
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
-	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
 )
 
-// Protocol 2 (docs/spec/sealed-webhook.md section 11) end to end: the real
+// Protocol 2 (docs/spec/encrypted-webhook.md section 11) end to end: the real
 // sender module, client, egress dialer and TLS against the in-tree reference
 // receiver, with a fake journal standing in for the service fences (the real
 // service, outbox and stores are driven by internal/isolation).
@@ -29,10 +29,10 @@ import (
 // v2Keys is everything protocol 2 adds to the version 1 harness.
 type v2Keys struct {
 	identity, recip string
-	senderPQ        *sealedhook.MLDSASigner
-	ackPQ           *sealedhook.MLDSASigner
-	ackPQPub        sealedhook.MLDSAPublicKey
-	acker           *sealedhook.SignerV2
+	senderPQ        *encryptedhook.MLDSASigner
+	ackPQ           *encryptedhook.MLDSASigner
+	ackPQPub        encryptedhook.MLDSAPublicKey
+	acker           *encryptedhook.SignerV2
 }
 
 // serves selects which protocol versions the receiver speaks.
@@ -44,13 +44,13 @@ const (
 	servesBoth = servesV1 | servesV2
 )
 
-func mustMLDSA(t testing.TB) *sealedhook.MLDSASigner {
+func mustMLDSA(t testing.TB) *encryptedhook.MLDSASigner {
 	t.Helper()
-	p, _, err := sealedhook.GenerateMLDSASigningKey()
+	p, _, err := encryptedhook.GenerateMLDSASigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := sealedhook.ParseMLDSASigningKeyPEM(p)
+	s, err := encryptedhook.ParseMLDSASigningKeyPEM(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,22 +64,22 @@ func newHarnessV2(t *testing.T, which serves) *harness {
 	t.Helper()
 	h := &harness{t: t, k: &v2Keys{}}
 	var err error
-	h.identity, h.recip, err = sealedhook.GenerateRecipient()
+	h.identity, h.recip, err = encryptedhook.GenerateRecipient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	signerPEM, _, _ := sealedhook.GenerateSigningKey()
-	h.signer, _ = sealedhook.ParseSigningKeyPEM(signerPEM)
-	ackPEM, ackPubText, _ := sealedhook.GenerateSigningKey()
-	h.ackKey, _ = sealedhook.ParseSigningKeyPEM(ackPEM)
-	h.ackPub, _ = sealedhook.ParsePublicKey(ackPubText)
+	signerPEM, _, _ := encryptedhook.GenerateSigningKey()
+	h.signer, _ = encryptedhook.ParseSigningKeyPEM(signerPEM)
+	ackPEM, ackPubText, _ := encryptedhook.GenerateSigningKey()
+	h.ackKey, _ = encryptedhook.ParseSigningKeyPEM(ackPEM)
+	h.ackPub, _ = encryptedhook.ParsePublicKey(ackPubText)
 	k := h.k
-	if k.identity, k.recip, err = sealedhook.GenerateHybridRecipient(); err != nil {
+	if k.identity, k.recip, err = encryptedhook.GenerateHybridRecipient(); err != nil {
 		t.Fatal(err)
 	}
 	k.senderPQ, k.ackPQ = mustMLDSA(t), mustMLDSA(t)
 	k.ackPQPub = k.ackPQ.Public()
-	if k.acker, err = sealedhook.NewSignerV2(h.ackKey, k.ackPQ); err != nil {
+	if k.acker, err = encryptedhook.NewSignerV2(h.ackKey, k.ackPQ); err != nil {
 		t.Fatal(err)
 	}
 	h.receiver = h.newReceiver(which, nil)
@@ -90,27 +90,27 @@ func newHarnessV2(t *testing.T, which serves) *harness {
 }
 
 // newReceiver builds a reference receiver from the harness keys.
-func (h *harness) newReceiver(which serves, edit func(*sealedreceiver.Config)) *sealedreceiver.Receiver {
-	cfg := sealedreceiver.Config{TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding, "stage": binding}}
+func (h *harness) newReceiver(which serves, edit func(*encryptedreceiver.Config)) *encryptedreceiver.Receiver {
+	cfg := encryptedreceiver.Config{TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding, "stage": binding}}
 	if which&servesV1 != 0 {
-		cfg.Identity, cfg.AckSigner, cfg.Senders = h.identity, h.ackKey, []sealedhook.PinnedKey{{Key: h.signer.Public()}}
+		cfg.Identity, cfg.AckSigner, cfg.Senders = h.identity, h.ackKey, []encryptedhook.PinnedKey{{Key: h.signer.Public()}}
 	}
 	if which&servesV2 != 0 {
 		cfg.HybridIdentity, cfg.AckSignerV2 = h.k.identity, h.k.acker
-		cfg.SendersV2 = []sealedhook.PinnedSenderV2{{Ed: h.signer.Public(), PQ: h.k.senderPQ.Public()}}
+		cfg.SendersV2 = []encryptedhook.PinnedSenderV2{{Ed: h.signer.Public(), PQ: h.k.senderPQ.Public()}}
 	}
 	if edit != nil {
 		edit(&cfg)
 	}
-	r, err := sealedreceiver.New(cfg)
+	r, err := encryptedreceiver.New(cfg)
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	return r
 }
 
-func (h *harness) newEndpointV2(generation int64, ed *sealedhook.Signer, pq *sealedhook.MLDSASigner) *Endpoint {
-	fp, err := sealedhook.FingerprintV2(h.origin, h.k.recip, h.ackPub, h.k.ackPQPub, generation)
+func (h *harness) newEndpointV2(generation int64, ed *encryptedhook.Signer, pq *encryptedhook.MLDSASigner) *Endpoint {
+	fp, err := encryptedhook.FingerprintV2(h.origin, h.k.recip, h.ackPub, h.k.ackPQPub, generation)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func (h *harness) paths() []string {
 
 func idemOfV2(t *testing.T, body []byte) string {
 	t.Helper()
-	e, err := sealedhook.ParseEnvelopeV2(body)
+	e, err := encryptedhook.ParseEnvelopeV2(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,16 +164,16 @@ func TestV2EndToEndConvergeUpdatePruneAndTeardown(t *testing.T) {
 		t.Fatal("receiver did not decrypt the exact value")
 	}
 	for _, p := range h.paths() {
-		if p != sealedhook.SyncPathV2 {
+		if p != encryptedhook.SyncPathV2 {
 			t.Fatalf("a request left the v2 route: %s", p)
 		}
 	}
 	h.mu.Lock()
 	for _, r := range h.log {
-		if r.header.Get("Content-Type") != sealedhook.ContentTypeV2 || r.header.Get("Accept") != sealedhook.AckContentTypeV2 {
+		if r.header.Get("Content-Type") != encryptedhook.ContentTypeV2 || r.header.Get("Accept") != encryptedhook.AckContentTypeV2 {
 			t.Fatalf("headers = %v", r.header)
 		}
-		if ack, err := sealedhook.ParseAckV2(r.resp); err != nil || ack.Status != sealedhook.AckApplied {
+		if ack, err := encryptedhook.ParseAckV2(r.resp); err != nil || ack.Status != encryptedhook.AckApplied {
 			t.Fatalf("receiver answered %q (%v)", r.resp, err)
 		}
 	}
@@ -225,7 +225,7 @@ func TestV2CrashWindowReplayReusesIdempotencyKey(t *testing.T) {
 	if idemOfV2(t, h.log[1].body) != first {
 		t.Fatal("retry did not reuse the idempotency key")
 	}
-	if ack, _ := sealedhook.ParseAckV2(h.log[1].resp); ack.Status != sealedhook.AckAlreadyApplied {
+	if ack, _ := encryptedhook.ParseAckV2(h.log[1].resp); ack.Status != encryptedhook.AckAlreadyApplied {
 		t.Fatalf("replayed effect ack = %q, want already_applied", ack.Status)
 	}
 	if j.states["secret:MANAGED_BY_HIKYO"] != adapter.Owned {
@@ -237,15 +237,15 @@ func TestV2CrashWindowReplayReusesIdempotencyKey(t *testing.T) {
 // respond runs the real receiver and returns its acknowledgement body.
 func respond(h *harness, body []byte) []byte {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPathV2, bytes.NewReader(body))
-	req.Header.Set("Content-Type", sealedhook.ContentTypeV2)
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPathV2, bytes.NewReader(body))
+	req.Header.Set("Content-Type", encryptedhook.ContentTypeV2)
 	h.receiver.ServeHTTP(rec, req)
 	return rec.Body.Bytes()
 }
 
-func editAck(t *testing.T, raw []byte, edit func(*sealedhook.AckV2)) []byte {
+func editAck(t *testing.T, raw []byte, edit func(*encryptedhook.AckV2)) []byte {
 	t.Helper()
-	var a sealedhook.AckV2
+	var a encryptedhook.AckV2
 	if err := json.Unmarshal(raw, &a); err != nil {
 		t.Fatalf("receiver answer %q: %v", raw, err)
 	}
@@ -257,30 +257,30 @@ func editAck(t *testing.T, raw []byte, edit func(*sealedhook.AckV2)) []byte {
 func TestV2ForgedAndStrippedAcknowledgements(t *testing.T) {
 	forged := map[string]func(h *harness, body []byte) []byte{
 		"wrong ml-dsa key": func(h *harness, body []byte) []byte {
-			other, _ := sealedhook.NewSignerV2(h.ackKey, mustMLDSA(t))
-			ack, _ := other.SignAck(sealedhook.Digest(body), idemOfV2(t, body), sealedhook.AckApplied, "")
+			other, _ := encryptedhook.NewSignerV2(h.ackKey, mustMLDSA(t))
+			ack, _ := other.SignAck(encryptedhook.Digest(body), idemOfV2(t, body), encryptedhook.AckApplied, "")
 			return ack
 		},
 		"wrong ed25519 key": func(h *harness, body []byte) []byte {
-			rogue, _ := sealedhook.ParseSigningKeyPEM(mustPEM(t))
-			other, _ := sealedhook.NewSignerV2(rogue, h.k.ackPQ)
-			ack, _ := other.SignAck(sealedhook.Digest(body), idemOfV2(t, body), sealedhook.AckApplied, "")
+			rogue, _ := encryptedhook.ParseSigningKeyPEM(mustPEM(t))
+			other, _ := encryptedhook.NewSignerV2(rogue, h.k.ackPQ)
+			ack, _ := other.SignAck(encryptedhook.Digest(body), idemOfV2(t, body), encryptedhook.AckApplied, "")
 			return ack
 		},
 		"classical forger: valid ed25519, forged ml-dsa": func(h *harness, body []byte) []byte {
-			return editAck(t, respond(h, body), func(a *sealedhook.AckV2) {
-				a.SigMLDSA65 = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, sealedhook.MLDSA65SignatureSize))
+			return editAck(t, respond(h, body), func(a *encryptedhook.AckV2) {
+				a.SigMLDSA65 = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, encryptedhook.MLDSA65SignatureSize))
 			})
 		},
 		"tampered status": func(h *harness, body []byte) []byte {
 			return bytes.Replace(respond(h, body), []byte(`"status":"applied"`), []byte(`"status":"already_applied"`), 1)
 		},
 		"wrong digest": func(h *harness, body []byte) []byte {
-			ack, _ := h.k.acker.SignAck(sealedhook.Digest([]byte("x")), idemOfV2(t, body), sealedhook.AckApplied, "")
+			ack, _ := h.k.acker.SignAck(encryptedhook.Digest([]byte("x")), idemOfV2(t, body), encryptedhook.AckApplied, "")
 			return ack
 		},
 		"wrong idempotency key": func(h *harness, body []byte) []byte {
-			ack, _ := h.k.acker.SignAck(sealedhook.Digest(body), strings.Repeat("0", 64), sealedhook.AckApplied, "")
+			ack, _ := h.k.acker.SignAck(encryptedhook.Digest(body), strings.Repeat("0", 64), encryptedhook.AckApplied, "")
 			return ack
 		},
 	}
@@ -289,7 +289,7 @@ func TestV2ForgedAndStrippedAcknowledgements(t *testing.T) {
 			h := newHarnessV2(t, servesV2)
 			h.override = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
-				w.Header().Set("Content-Type", sealedhook.AckContentTypeV2)
+				w.Header().Set("Content-Type", encryptedhook.AckContentTypeV2)
 				_, _ = w.Write(forge(h, body))
 			})
 			j := newJournal()
@@ -309,16 +309,16 @@ func TestV2ForgedAndStrippedAcknowledgements(t *testing.T) {
 	// ambiguous, so the effect stays unknown and is retried as version 2.
 	stripped := map[string]func(h *harness, body []byte) []byte{
 		"ml-dsa signature stripped": func(h *harness, body []byte) []byte {
-			return editAck(t, respond(h, body), func(a *sealedhook.AckV2) { a.SigMLDSA65 = "" })
+			return editAck(t, respond(h, body), func(a *encryptedhook.AckV2) { a.SigMLDSA65 = "" })
 		},
 		"ed25519 signature stripped": func(h *harness, body []byte) []byte {
-			return editAck(t, respond(h, body), func(a *sealedhook.AckV2) { a.SigEd25519 = "" })
+			return editAck(t, respond(h, body), func(a *encryptedhook.AckV2) { a.SigEd25519 = "" })
 		},
 		"suite stripped to ed25519": func(h *harness, body []byte) []byte {
-			return editAck(t, respond(h, body), func(a *sealedhook.AckV2) { a.Suite = "ed25519" })
+			return editAck(t, respond(h, body), func(a *encryptedhook.AckV2) { a.Suite = "ed25519" })
 		},
 		"version 1 acknowledgement": func(h *harness, body []byte) []byte {
-			ack, _ := h.ackKey.SignAck(sealedhook.Digest(body), idemOfV2(t, body), sealedhook.AckApplied, "")
+			ack, _ := h.ackKey.SignAck(encryptedhook.Digest(body), idemOfV2(t, body), encryptedhook.AckApplied, "")
 			return ack
 		},
 	}
@@ -327,7 +327,7 @@ func TestV2ForgedAndStrippedAcknowledgements(t *testing.T) {
 			h := newHarnessV2(t, servesV2)
 			h.override = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
-				w.Header().Set("Content-Type", sealedhook.AckContentTypeV2)
+				w.Header().Set("Content-Type", encryptedhook.AckContentTypeV2)
 				_, _ = w.Write(strip(h, body))
 			})
 			j := newJournal()
@@ -347,14 +347,14 @@ func TestV2AmbiguousResponsesStayUnknownAndNeverDowngrade(t *testing.T) {
 		"version 1 only receiver": nil,
 		"server error":            func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) },
 		"redirect to the v1 path": func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, sealedhook.SyncPath, http.StatusTemporaryRedirect)
+			http.Redirect(w, r, encryptedhook.SyncPath, http.StatusTemporaryRedirect)
 		},
 		"v1 media type": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", sealedhook.AckContentType)
+			w.Header().Set("Content-Type", encryptedhook.AckContentType)
 			_, _ = w.Write([]byte(`{"v":1,"status":"applied"}`))
 		},
 		"oversized": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", sealedhook.AckContentTypeV2)
+			w.Header().Set("Content-Type", encryptedhook.AckContentTypeV2)
 			_, _ = w.Write(bytes.Repeat([]byte("a"), 16384))
 		},
 	} {
@@ -375,7 +375,7 @@ func TestV2AmbiguousResponsesStayUnknownAndNeverDowngrade(t *testing.T) {
 					t.Fatalf("completion = %+v, want unknown", c)
 				}
 			}
-			if got := h.paths(); len(got) != 2 || got[0] != sealedhook.SyncPathV2 || got[1] != sealedhook.SyncPathV2 {
+			if got := h.paths(); len(got) != 2 || got[0] != encryptedhook.SyncPathV2 || got[1] != encryptedhook.SyncPathV2 {
 				t.Fatalf("requests = %v: a protocol 2 target must send only version 2 requests, once per attempt", got)
 			}
 			if len(h.receiver.Keys(namespace)) != 0 {
@@ -419,9 +419,9 @@ func TestV2VersionSkewMatrix(t *testing.T) {
 			if !errors.Is(err, adapter.ErrIndeterminate) || len(h.receiver.Keys(namespace)) != 0 {
 				t.Fatalf("sync = %v, receiver %v: skew must leave the effect unknown and apply nothing", err, h.receiver.Keys(namespace))
 			}
-			want := sealedhook.SyncPath
+			want := encryptedhook.SyncPath
 			if tc.sender == 2 {
-				want = sealedhook.SyncPathV2
+				want = encryptedhook.SyncPathV2
 			}
 			for _, p := range h.paths() {
 				if p != want {
@@ -440,7 +440,7 @@ func TestV2ReceiverRefusesWithoutAcknowledgement(t *testing.T) {
 	}
 	captured := h.log[2].body
 	before := h.receiver.Snapshot(namespace)
-	rec := func(path, ctype string, body []byte, r *sealedreceiver.Receiver) *httptest.ResponseRecorder {
+	rec := func(path, ctype string, body []byte, r *encryptedreceiver.Receiver) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 		req.Header.Set("Content-Type", ctype)
@@ -448,8 +448,8 @@ func TestV2ReceiverRefusesWithoutAcknowledgement(t *testing.T) {
 		return w
 	}
 	// Replay inside the window: acknowledged as already applied, no double effect.
-	ack, err := sealedhook.VerifyAckV2(rec(sealedhook.SyncPathV2, sealedhook.ContentTypeV2, captured, h.receiver).Body.Bytes(), h.ackPub, h.k.ackPQPub, sealedhook.Digest(captured), idemOfV2(t, captured))
-	if err != nil || ack.Status != sealedhook.AckAlreadyApplied {
+	ack, err := encryptedhook.VerifyAckV2(rec(encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, captured, h.receiver).Body.Bytes(), h.ackPub, h.k.ackPQPub, encryptedhook.Digest(captured), idemOfV2(t, captured))
+	if err != nil || ack.Status != encryptedhook.AckAlreadyApplied {
 		t.Fatalf("replay ack = %+v, %v", ack, err)
 	}
 	if len(h.receiver.Snapshot(namespace)) != len(before) {
@@ -466,25 +466,25 @@ func TestV2ReceiverRefusesWithoutAcknowledgement(t *testing.T) {
 		raw, _ := json.Marshal(m, jsonwire.Stable)
 		return raw
 	}
-	late := h.newReceiver(servesV2, func(c *sealedreceiver.Config) {
+	late := h.newReceiver(servesV2, func(c *encryptedreceiver.Config) {
 		c.Now = func() time.Time { return time.Now().Add(10 * time.Minute) }
 	})
-	oversize := bytes.Repeat([]byte(" "), sealedhook.MaxEnvelopeV2+1)
+	oversize := bytes.Repeat([]byte(" "), encryptedhook.MaxEnvelopeV2+1)
 	for name, tc := range map[string]struct {
 		path, ctype string
 		body        []byte
-		r           *sealedreceiver.Receiver
+		r           *encryptedreceiver.Receiver
 		want        int
 	}{
-		"expired":                   {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, captured, late, http.StatusBadRequest},
-		"ml-dsa signature missing":  {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, mutated(func(m map[string]any) { delete(m, "sig_mldsa65") }), h.receiver, http.StatusBadRequest},
-		"ed25519 signature missing": {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, mutated(func(m map[string]any) { delete(m, "sig_ed25519") }), h.receiver, http.StatusBadRequest},
-		"suite downgraded":          {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, mutated(func(m map[string]any) { m["suite"] = "ed25519" }), h.receiver, http.StatusBadRequest},
-		"route tampered":            {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, mutated(func(m map[string]any) { m["route"] = "tgt_9" }), h.receiver, http.StatusBadRequest},
-		"v1 media type on v2":       {sealedhook.SyncPathV2, sealedhook.ContentType, captured, h.receiver, http.StatusUnsupportedMediaType},
-		"v2 body on the v1 path":    {sealedhook.SyncPath, sealedhook.ContentType, captured, h.receiver, http.StatusNotFound},
-		"oversize body":             {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, oversize, h.receiver, http.StatusRequestEntityTooLarge},
-		"garbage":                   {sealedhook.SyncPathV2, sealedhook.ContentTypeV2, []byte("not json"), h.receiver, http.StatusBadRequest},
+		"expired":                   {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, captured, late, http.StatusBadRequest},
+		"ml-dsa signature missing":  {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, mutated(func(m map[string]any) { delete(m, "sig_mldsa65") }), h.receiver, http.StatusBadRequest},
+		"ed25519 signature missing": {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, mutated(func(m map[string]any) { delete(m, "sig_ed25519") }), h.receiver, http.StatusBadRequest},
+		"suite downgraded":          {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, mutated(func(m map[string]any) { m["suite"] = "ed25519" }), h.receiver, http.StatusBadRequest},
+		"route tampered":            {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, mutated(func(m map[string]any) { m["route"] = "tgt_9" }), h.receiver, http.StatusBadRequest},
+		"v1 media type on v2":       {encryptedhook.SyncPathV2, encryptedhook.ContentType, captured, h.receiver, http.StatusUnsupportedMediaType},
+		"v2 body on the v1 path":    {encryptedhook.SyncPath, encryptedhook.ContentType, captured, h.receiver, http.StatusNotFound},
+		"oversize body":             {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, oversize, h.receiver, http.StatusRequestEntityTooLarge},
+		"garbage":                   {encryptedhook.SyncPathV2, encryptedhook.ContentTypeV2, []byte("not json"), h.receiver, http.StatusBadRequest},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := rec(tc.path, tc.ctype, tc.body, tc.r)
@@ -494,9 +494,9 @@ func TestV2ReceiverRefusesWithoutAcknowledgement(t *testing.T) {
 		})
 	}
 	// A declared length over the bound is refused before any read.
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPathV2, io.LimitReader(zeros{}, 1))
-	req.ContentLength = sealedhook.MaxEnvelopeV2 + 1
-	req.Header.Set("Content-Type", sealedhook.ContentTypeV2)
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPathV2, io.LimitReader(zeros{}, 1))
+	req.ContentLength = encryptedhook.MaxEnvelopeV2 + 1
+	req.Header.Set("Content-Type", encryptedhook.ContentTypeV2)
 	w := httptest.NewRecorder()
 	h.receiver.ServeHTTP(w, req)
 	if w.Code != http.StatusRequestEntityTooLarge {
@@ -510,14 +510,14 @@ func (zeros) Read(p []byte) (int, error) { clear(p); return len(p), nil }
 
 func TestV2SenderPairRotationOverlapAndRetirement(t *testing.T) {
 	h := newHarnessV2(t, servesV2)
-	nextPEM, nextEd := mustPEM(t), (*sealedhook.Signer)(nil)
-	nextEd, _ = sealedhook.ParseSigningKeyPEM(nextPEM)
+	nextPEM, nextEd := mustPEM(t), (*encryptedhook.Signer)(nil)
+	nextEd, _ = encryptedhook.ParseSigningKeyPEM(nextPEM)
 	nextPQ := mustMLDSA(t)
 	retiring := time.Now().Add(-time.Second)
 	// The receiver pins the new pair and retires the old one: a pair rotates
 	// as a unit, so a half-rotated pair matches nothing.
-	h.override = h.newReceiver(servesV2, func(c *sealedreceiver.Config) {
-		c.SendersV2 = []sealedhook.PinnedSenderV2{
+	h.override = h.newReceiver(servesV2, func(c *encryptedreceiver.Config) {
+		c.SendersV2 = []encryptedhook.PinnedSenderV2{
 			{Ed: h.signer.Public(), PQ: h.k.senderPQ.Public(), NotAfter: retiring},
 			{Ed: nextEd.Public(), PQ: nextPQ.Public()},
 		}
@@ -526,7 +526,7 @@ func TestV2SenderPairRotationOverlapAndRetirement(t *testing.T) {
 		_, err := m.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: h.target().Destination, Gate: gate})
 		return err
 	}
-	with := func(ed *sealedhook.Signer, pq *sealedhook.MLDSASigner) *Module {
+	with := func(ed *encryptedhook.Signer, pq *encryptedhook.MLDSASigner) *Module {
 		return &Module{API: h.module.API, Endpoint: h.newEndpointV2(1, ed, pq), Binding: binding}
 	}
 	if err := probe(h.module); !errors.Is(err, ErrNoAck) {
@@ -544,8 +544,8 @@ func TestV2SenderPairRotationOverlapAndRetirement(t *testing.T) {
 		}
 	}
 	// Overlap: both pairs verify while the old pair's window is open.
-	h.override = h.newReceiver(servesV2, func(c *sealedreceiver.Config) {
-		c.SendersV2 = []sealedhook.PinnedSenderV2{
+	h.override = h.newReceiver(servesV2, func(c *encryptedreceiver.Config) {
+		c.SendersV2 = []encryptedhook.PinnedSenderV2{
 			{Ed: h.signer.Public(), PQ: h.k.senderPQ.Public(), NotAfter: time.Now().Add(time.Hour)},
 			{Ed: nextEd.Public(), PQ: nextPQ.Public()},
 		}
@@ -595,9 +595,9 @@ func TestV2EndpointActivationRequiresConfirmedFingerprintAndConsistentMaterial(t
 	if _, err := NewEndpoint(base); err != nil {
 		t.Fatal(err)
 	}
-	_, x25519, _ := sealedhook.GenerateRecipient()
-	_, otherHybrid, _ := sealedhook.GenerateHybridRecipient()
-	v1fp, _ := sealedhook.Fingerprint(h.origin, x25519, h.ackPub.String(), 1)
+	_, x25519, _ := encryptedhook.GenerateRecipient()
+	_, otherHybrid, _ := encryptedhook.GenerateHybridRecipient()
+	v1fp, _ := encryptedhook.Fingerprint(h.origin, x25519, h.ackPub.String(), 1)
 	for name, mutate := range map[string]func(*EndpointConfig){
 		"no confirmation":              func(c *EndpointConfig) { c.ConfirmedFingerprint = "" },
 		"v1 fingerprint on v2":         func(c *EndpointConfig) { c.ConfirmedFingerprint = v1fp },
@@ -625,7 +625,7 @@ func TestV2EndpointActivationRequiresConfirmedFingerprintAndConsistentMaterial(t
 	// Client construction refuses a half-configured protocol too.
 	cfg := h.endpoint.ClientConfig()
 	for name, mutate := range map[string]func(*ClientConfig){
-		"protocol 2 without the ml-dsa ack key":     func(c *ClientConfig) { c.AckKeyMLDSA65 = sealedhook.MLDSAPublicKey{} },
+		"protocol 2 without the ml-dsa ack key":     func(c *ClientConfig) { c.AckKeyMLDSA65 = encryptedhook.MLDSAPublicKey{} },
 		"protocol 1 with the ml-dsa ack key":        func(c *ClientConfig) { c.Protocol = 1 },
 		"protocol 3":                                func(c *ClientConfig) { c.Protocol = 3 },
 		"protocol 2 with a bound under the minimum": func(c *ClientConfig) { c.MaxResponseBytes = 4096 },
@@ -663,7 +663,7 @@ func TestV2BindingConflictAndFencedWorker(t *testing.T) {
 
 func TestV2ReceiverPersistFailureRollsBackAndRetriesWithTheSameKey(t *testing.T) {
 	h := newHarnessV2(t, servesV2)
-	h.receiver.SetPersist(func(sealedreceiver.State) error { return errors.New("disk full") })
+	h.receiver.SetPersist(func(encryptedreceiver.State) error { return errors.New("disk full") })
 	j := newJournal()
 	if _, err := h.sync(j, 1, manifest(marker), false); !errors.Is(err, adapter.ErrIndeterminate) {
 		t.Fatalf("persist failure error = %v, want indeterminate", err)

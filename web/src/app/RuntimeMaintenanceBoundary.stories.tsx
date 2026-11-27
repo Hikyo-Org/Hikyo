@@ -52,7 +52,7 @@ export const RecoveryRequired: Story = {
   },
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByRole('heading', { name: 'Recovery needs an operator' }),
+      await canvas.findByRole('heading', { name: 'Recovery needs a production operator' }),
     ).toBeVisible();
     await expect(canvas.getByRole('status')).toHaveTextContent(/an operator must recover it/i);
   },

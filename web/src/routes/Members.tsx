@@ -478,7 +478,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                   <p className="visually-hidden">
                     Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
                     by inheritance and are deliberately absent: this page has no authority over an instance
-                    operator, so it does not offer to revoke one.
+                    administrator, so it does not offer to revoke one.
                   </p>
                 ) : null}
 

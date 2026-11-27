@@ -681,7 +681,7 @@ func (s *Projects) Delete(ctx context.Context, actor Actor, scope domain.Scope) 
 // ErrLastProjectUnderAllProjectsRules refuses deleting an org's last project
 // while a rule over all projects exists: a v1 rule response would otherwise
 // list no project (owner decision 2026-11-25, #1446).
-var ErrLastProjectUnderAllProjectsRules = fmt.Errorf("%w: service: the organization's last project cannot be deleted while rules over all projects exist", domain.ErrConflict)
+var ErrLastProjectUnderAllProjectsRules = fmt.Errorf("%w: service: the organisation's last project cannot be deleted while rules over all projects exist", domain.ErrConflict)
 
 // refuseLastProjectUnderAllProjectsRules locks the org's projects FOR UPDATE,
 // so a concurrent rule create (FOR SHARE) or a second delete cannot slip past
@@ -710,9 +710,9 @@ func refuseLastProjectUnderAllProjectsRules(ctx context.Context, az *authz.TxAut
 	if err != nil {
 		return err
 	}
-	detail := "the organization's last project cannot be deleted while rules over all projects exist; a member manager of the organization must revoke them first"
+	detail := "the organisation's last project cannot be deleted while rules over all projects exist; a member manager of the organisation must revoke them first"
 	if holds(rows, domain.CapManageMembers, domain.Scope{Org: scope.Org}) {
-		detail = "the organization's last project cannot be deleted while rules over all projects exist; revoke rules " + strings.Join(ids, ", ") + " first"
+		detail = "the organisation's last project cannot be deleted while rules over all projects exist; revoke rules " + strings.Join(ids, ", ") + " first"
 	}
 	return &detailErr{err: ErrLastProjectUnderAllProjectsRules, detail: detail}
 }
@@ -755,7 +755,7 @@ func refuseProjectAboveAllProjectsRules(ctx context.Context, az *authz.TxAuthori
 		return err
 	}
 	head := fmt.Sprintf("another project would list rules over all projects past the %d projects and folder items a rule carries", domain.MaxRuleItems)
-	detail := head + "; a member manager of the organization must narrow or revoke them first"
+	detail := head + "; a member manager of the organisation must narrow or revoke them first"
 	if holds(rows, domain.CapManageMembers, domain.Scope{Org: org}) {
 		detail = head + "; narrow or revoke rules " + strings.Join(blocking, ", ") + " first"
 	}

@@ -859,7 +859,7 @@ test.describe('personal values', () => {
     await page.goto(`${MATRIX_PATH}/keys/${keyID}`);
     await page.getByRole('tab', { name: 'development' }).click();
     const holders = page.getByRole('list', { name: `Personal values for ${key}` });
-    await expect(holders).toContainText('holds a value');
+    await expect(holders).toContainText('has a value');
     await holders.getByRole('button', { name: /^Delete the personal value of / }).click();
     const confirm = page.getByRole('dialog', { name: /^Delete the personal value of / });
     await expect(confirm).toContainText('leaves them a notice');

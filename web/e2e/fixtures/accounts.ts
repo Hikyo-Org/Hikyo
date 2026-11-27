@@ -89,7 +89,7 @@ export async function enrolledAccount(
   const password = randomBytes(24).toString('base64url');
   const invitation = await withSharedAdmin(browser, (page) =>
     grant === 'instance'
-      ? browserApi(page, 'POST', '/api/v1/instance/invitations', zInvitationResult, { username, template: 'operator' })
+      ? browserApi(page, 'POST', '/api/v1/instance/invitations', zInvitationResult, { username, template: 'instance-admin' })
       : browserApi(page, 'POST', `/api/v1/orgs/${readSeed().org}/invitations`, zInvitationResult, {
           username,
           ...(grant === 'org-admin' ? { template: 'admin' } : {}),

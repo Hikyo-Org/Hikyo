@@ -358,7 +358,7 @@ four label-free gauges appear on `/metrics` as `hikyo_adapter_targets_failed`,
 **Crash windows.** If a worker dies between a push's INTENT and its OUTCOME,
 the next claim of that target settles the effect as OUTCOME `unknown`,
 correlated to the job that opened it; the ownership row stays presumed
-written and the retry converges it. On a multi-node installation every worker
+written and the retry converges it. On a multi-node instance every worker
 competes for jobs under the outbox lease; a worker that loses its lease can no
 longer push, mark success, retry, or scrub.
 
@@ -473,7 +473,7 @@ must be valid UTF-8 without NUL; per-key values must be non-empty and at most
 
 ### Authentication
 
-The adapter credential is a JSON access descriptor that is sealed on save and
+The adapter credential is a JSON access descriptor that is encrypted on save and
 never returned. The CLI assembles workload descriptors from nonsecret flags or
 reads a complete descriptor through protected input. The web form assembles it;
 the API takes it as the
@@ -487,7 +487,7 @@ the API takes it as the
 | `static` | An access key id, secret access key, and optional session token. | The complete credential tuple uses protected input only |
 
 `ambient`, `assume-role`, and `web-identity` act with the server's own AWS
-identity, so they are refused until the node operator sets
+identity, so they are refused until the production operator sets
 `HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow`. Without that opt-in a project
 administrator cannot borrow the server's IAM role. Scope the role's trust and
 permissions accordingly, and prefer `assume-role` with an `external_id` per
@@ -655,18 +655,19 @@ For a private Vault address, add an egress exception keyed by
 ## Encrypted webhook receivers
 
 The encrypted webhook adapter pushes values to your own HTTPS service. Its
-provider type is `sealed-webhook`, the name that the CLI, the API and the
-stored adapter keep. Each
+provider type is `encrypted-webhook`. The old name `sealed-webhook` is a
+deprecated alias that the CLI and the API still accept until v2; stored adapters
+and responses use the new name. Each
 value is encrypted to the receiver's pinned age key and each request is
 signed by the Hikyo instance, so the values never appear in a URL, header,
 log, audit payload, or response. The receiver answers with a signed
 acknowledgement bound to the exact request. The wire contract is
-[the receiver protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/sealed-webhook.md),
+[the receiver protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/encrypted-webhook.md),
 and `cmd/hikyo-receiver-example` is a reference receiver.
 
 **Endpoints are instance configuration.** A project cannot point Hikyo at an
 arbitrary URL. The instance administrator lists receivers in the file named by
-`HIKYO_SEALED_WEBHOOK_FILE` (see [server configuration](/docs/configuration/)):
+`HIKYO_ENCRYPTED_WEBHOOK_FILE` (see [server configuration](/docs/configuration/)):
 
 1. The receiver operator runs `hikyo-receiver-example keygen -dir DIR`, which
    writes the receiver's secret keys with mode `0600` and prints the public
@@ -694,7 +695,7 @@ activated origin, the receiver namespace as `--owner`, and a binding
 credential the receiver operator issued for that namespace:
 
 ```sh
-hikyo adapter create --provider sealed-webhook --origin https://recv.example \
+hikyo adapter create --provider encrypted-webhook --origin https://recv.example \
   --env prod --kind organization --owner payments-prod --prefix "" --keys KEY_ID,KEY_ID
 ```
 

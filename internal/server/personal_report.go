@@ -15,9 +15,15 @@ func (a *API) ListPersonalValueCounts(ctx context.Context, req apigen.ListPerson
 	}
 	out := apigen.PersonalValueCounts{Eligible: counts.Eligible, Items: make([]apigen.PersonalValueCount, 0, len(counts.Items))}
 	for _, c := range counts.Items {
-		out.Items = append(out.Items, apigen.PersonalValueCount{KeyId: c.KeyID, Name: c.Name, Holders: c.Holders, Notices: c.Notices, Required: c.Required})
+		out.Items = append(out.Items, personalValueCountView(c))
 	}
 	return apigen.ListPersonalValueCounts200JSONResponse(out), nil
+}
+
+// personalValueCountView answers the count under both names: `holders` is the
+// deprecated alias of `members`, kept until v2 so existing clients keep working.
+func personalValueCountView(c service.PersonalCount) apigen.PersonalValueCount {
+	return apigen.PersonalValueCount{KeyId: c.KeyID, Name: c.Name, Members: c.Members, Holders: c.Members, Notices: c.Notices, Required: c.Required}
 }
 
 func (a *API) GetPersonalOffboardingReport(ctx context.Context, req apigen.GetPersonalOffboardingReportRequestObject) (apigen.GetPersonalOffboardingReportResponseObject, error) {

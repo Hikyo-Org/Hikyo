@@ -512,7 +512,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['PersonalValueHolder']['properties']['username','updated_at','notice']
+  - target: $['components']['schemas']['PersonalValueMember']['properties']['username','updated_at','notice']
     update:
       x-omitempty: false
       x-omitzero: true

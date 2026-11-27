@@ -1,4 +1,4 @@
-package sealedhook
+package encryptedhook
 
 import (
 	"bytes"

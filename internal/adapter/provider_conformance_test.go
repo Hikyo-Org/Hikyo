@@ -29,8 +29,11 @@ func TestProviderSetIsPinnedAcrossSurfaces(t *testing.T) {
 	if match == nil {
 		t.Fatal("api/openapi.yaml has no AdapterProvider x-extensible-enum")
 	}
-	if got := splitList(string(match[1]), ","); !slices.Equal(got, want) {
-		t.Errorf("OpenAPI AdapterProvider = %v, want %v", got, want)
+	// The open enum also lists the deprecated alias accepted on input until v2.
+	wantOpenAPI := append(slices.Clone(want), LegacySealedWebhookProvider)
+	sort.Strings(wantOpenAPI)
+	if got := splitList(string(match[1]), ","); !slices.Equal(got, wantOpenAPI) {
+		t.Errorf("OpenAPI AdapterProvider = %v, want %v", got, wantOpenAPI)
 	}
 
 	check := regexp.MustCompile(`provider IN \(([^)]*)\)`)

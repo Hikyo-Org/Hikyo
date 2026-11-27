@@ -1,4 +1,4 @@
-package sealedreceiver
+package encryptedreceiver
 
 import (
 	"net/http"
@@ -6,27 +6,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
 )
 
 // The protocol behavior of the reference receiver is exercised end to end in
-// internal/adapter/sealedwebhook and internal/isolation; these tests pin the
+// internal/adapter/encryptedwebhook and internal/isolation; these tests pin the
 // package's own contract: which versions it serves and that State is a copy.
 
 func v2Config(t *testing.T) Config {
 	t.Helper()
-	identity, _, err := sealedhook.GenerateHybridRecipient()
+	identity, _, err := encryptedhook.GenerateHybridRecipient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	edPEM, _, _ := sealedhook.GenerateSigningKey()
-	ed, _ := sealedhook.ParseSigningKeyPEM(edPEM)
-	pqPEM, _, _ := sealedhook.GenerateMLDSASigningKey()
-	pq, _ := sealedhook.ParseMLDSASigningKeyPEM(pqPEM)
-	acker, _ := sealedhook.NewSignerV2(ed, pq)
+	edPEM, _, _ := encryptedhook.GenerateSigningKey()
+	ed, _ := encryptedhook.ParseSigningKeyPEM(edPEM)
+	pqPEM, _, _ := encryptedhook.GenerateMLDSASigningKey()
+	pq, _ := encryptedhook.ParseMLDSASigningKeyPEM(pqPEM)
+	acker, _ := encryptedhook.NewSignerV2(ed, pq)
 	return Config{
 		HybridIdentity: identity, AckSignerV2: acker, TargetID: "payments", InstanceID: "hikyo", Generation: 1,
-		SendersV2: []sealedhook.PinnedSenderV2{{Ed: ed.Public(), PQ: pq.Public()}},
+		SendersV2: []encryptedhook.PinnedSenderV2{{Ed: ed.Public(), PQ: pq.Public()}},
 	}
 }
 
@@ -37,13 +37,13 @@ func TestNewRequiresAVersionAndItsMaterial(t *testing.T) {
 	}
 	// Real, parseable classical material, so each refusal below is the
 	// receiver's own rule and not a parse error.
-	identityV1, _, err := sealedhook.GenerateRecipient()
+	identityV1, _, err := encryptedhook.GenerateRecipient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	edPEM, _, _ := sealedhook.GenerateSigningKey()
-	ed, _ := sealedhook.ParseSigningKeyPEM(edPEM)
-	pinnedV1 := []sealedhook.PinnedKey{{Key: ed.Public()}}
+	edPEM, _, _ := encryptedhook.GenerateSigningKey()
+	ed, _ := encryptedhook.ParseSigningKeyPEM(edPEM)
+	pinnedV1 := []encryptedhook.PinnedKey{{Key: ed.Public()}}
 	// A complete version 1 receiver is accepted too.
 	v1Only := Config{Identity: identityV1, AckSigner: ed, Senders: pinnedV1, TargetID: "payments", InstanceID: "hikyo", Generation: 1}
 	if _, err := New(v1Only); err != nil {
@@ -75,18 +75,18 @@ func TestAPQRequiredReceiverDoesNotServeVersionOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{sealedhook.SyncPath, "/hikyo/v3/sync", sealedhook.SyncPathV2 + "?x=1"} {
+	for _, path := range []string{encryptedhook.SyncPath, "/hikyo/v3/sync", encryptedhook.SyncPathV2 + "?x=1"} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
-		req.Header.Set("Content-Type", sealedhook.ContentTypeV2)
+		req.Header.Set("Content-Type", encryptedhook.ContentTypeV2)
 		r.ServeHTTP(rec, req)
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("%s answered %d, want 404", path, rec.Code)
 		}
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPathV2, strings.NewReader("{}"))
-	req.Header.Set("Content-Type", sealedhook.ContentType) // version 1 media type on the version 2 path
+	req := httptest.NewRequest(http.MethodPost, encryptedhook.SyncPathV2, strings.NewReader("{}"))
+	req.Header.Set("Content-Type", encryptedhook.ContentType) // version 1 media type on the version 2 path
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnsupportedMediaType {
 		t.Errorf("wrong media type answered %d", rec.Code)

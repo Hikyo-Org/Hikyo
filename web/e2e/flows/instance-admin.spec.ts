@@ -496,11 +496,11 @@ test.describe('instance administration', () => {
     // Instance scope admits exactly one template.
     await expect(dialog.getByLabel('Role template').locator('option')).toHaveText([
       'No initial grants',
-      'operator',
+      'instance-admin',
     ]);
     await dialog.getByLabel('Username').fill(username);
     await dialog.getByLabel('Display name (optional)').fill('Second Operator');
-    await dialog.getByLabel('Role template').selectOption('operator');
+    await dialog.getByLabel('Role template').selectOption('instance-admin');
     await dialog.getByRole('button', { name: 'Invite', exact: true }).click();
     const principal = (await dialog.getByTestId('issued-principal').textContent()) ?? '';
     expect(principal).toMatch(/^(prn|usr)_/);
@@ -670,7 +670,7 @@ test.describe('instance administration', () => {
       await dialog.getByLabel('Principal').fill(principal);
       await expect(dialog.getByLabel('Scope')).toHaveValue('instance');
       await dialog.getByRole('radio', { name: 'Apply a role template' }).check();
-      await dialog.getByLabel('Role template', { exact: true }).selectOption('operator');
+      await dialog.getByLabel('Role template', { exact: true }).selectOption('instance-admin');
       await dialog.getByRole('button', { name: 'Grant', exact: true }).click();
       await expect(page.locator('.notice').filter({ hasText: 'Applied operator to' })).toContainText(
         principal,
@@ -868,7 +868,7 @@ test.describe('instance administration', () => {
       'POST',
       '/api/v1/instance/invitations',
       zInvitationResult,
-      { username, display_name: displayName, template: 'operator' },
+      { username, display_name: displayName, template: 'instance-admin' },
     );
     const established = await fetch(`${BASE_URL}/api/v1/auth/credential/establish`, {
       method: 'POST',

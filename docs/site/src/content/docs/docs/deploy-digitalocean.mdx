@@ -88,7 +88,7 @@ The shared guide uses `https://hikyo.example.com:8443`. For port 443, configure
 the documented reverse proxy path and update the external origin. Verify
 readiness locally and HTTPS from an allowed client before storing real data.
 On a Docker Marketplace host, also review its existing host firewall and
-published container ports; retain only access needed for this installation.
+published container ports; retain only access needed for this instance.
 
 ## Updates
 
@@ -110,7 +110,7 @@ Before replacing a Droplet, stop Hikyo and unmount the volume before detaching
 it. Reattach within its supported region and mount its existing filesystem
 without reformatting. Restore the verified binary, public release artifacts,
 protected root key, service configuration, and DNS/firewall association as
-needed. Attaching a volume alone does not recreate a working installation.
+needed. Attaching a volume alone does not recreate a working instance.
 
 Review deletion options carefully: deleting a Droplet can leave separately
 managed volumes, snapshots, and other resources billable. Retain recovery

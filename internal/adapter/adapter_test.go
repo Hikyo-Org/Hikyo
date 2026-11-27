@@ -172,7 +172,7 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 			t.Fatalf("ParseProvider(%q) = %q, %v", provider, got, err)
 		}
 	}
-	for _, raw := range []string{"", "gitlab-ci", "GITLAB", "FORGEJO", "webhook", "sealed_webhook"} {
+	for _, raw := range []string{"", "gitlab-ci", "GITLAB", "FORGEJO", "webhook", "encrypted_webhook"} {
 		if _, err := ParseProvider(raw); err == nil {
 			t.Fatalf("ParseProvider(%q) accepted unknown provider", raw)
 		}
@@ -355,5 +355,12 @@ func TestGitLabManifestReservesSentinelCaseInsensitively(t *testing.T) {
 		if err := ValidateGitLabManifest(prefix, []ManifestEntry{{CanonicalName: "MANAGED_BY_HIKYO_OTHER", Classification: ConfigClassification}}, false); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestParseProviderAcceptsDeprecatedSealedWebhookAlias(t *testing.T) {
+	got, err := ParseProvider("sealed-webhook")
+	if err != nil || got != EncryptedWebhookProvider || string(got) != "encrypted-webhook" {
+		t.Fatalf("ParseProvider(sealed-webhook) = %q, %v; want encrypted-webhook", got, err)
 	}
 }

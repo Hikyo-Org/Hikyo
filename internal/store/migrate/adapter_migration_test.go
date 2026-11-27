@@ -26,7 +26,7 @@ func runAdapterEnvironmentChainRefusal(t *testing.T, cfg store.Config) {
 			`INSERT INTO principals (id,kind,created_at) VALUES ('usr_adapter','human','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_1','org_adapter','prj_adapter','forgejo','https://git.example','usr_adapter','active','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_github','org_adapter','prj_adapter','github-actions','https://api.github.com','usr_adapter','active','2026-08-17T00:00:00Z')`,
-			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sealed','org_adapter','prj_adapter','sealed-webhook','https://recv.example','usr_adapter','active','2026-08-17T00:00:00Z')`,
+			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sealed','org_adapter','prj_adapter','encrypted-webhook','https://recv.example','usr_adapter','active','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_1','org_adapter','prj_adapter','env_adapter_a','adp_1','repository','acme','app',42,'',1,'active','never','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_2','org_adapter','prj_adapter','env_adapter_b','adp_1','repository','acme','app',42,'TWO_',1,'active','never','2026-08-17T00:00:00Z')`,
 		}
@@ -209,7 +209,7 @@ func TestAdapterEnvironmentChainRefusalPostgres(t *testing.T) {
 	runAdapterEnvironmentChainRefusal(t, postgresTestConfig(t, "adapter_migration"))
 }
 
-func runSealedWebhookProviderMigration(t *testing.T, cfg store.Config) {
+func runEncryptedWebhookProviderMigration(t *testing.T, cfg store.Config) {
 	t.Helper()
 	if err := RunUpTo(t.Context(), cfg, 59); err != nil {
 		t.Fatal(err)
@@ -244,19 +244,19 @@ func runSealedWebhookProviderMigration(t *testing.T, cfg store.Config) {
 		if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapters a JOIN adapter_targets t ON t.adapter_id=a.id WHERE a.id='adp_fj' AND a.provider='forgejo'`).Scan(&carried); err != nil || carried != 1 {
 			return fmt.Errorf("existing adapter and its target were not carried across the rebuild: %d %v", carried, err)
 		}
-		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sw','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`); err != nil {
-			return fmt.Errorf("sealed-webhook provider refused: %w", err)
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sw','org_sw','prj_sw','encrypted-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`); err != nil {
+			return fmt.Errorf("encrypted-webhook provider refused: %w", err)
 		}
 		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_bad','org_sw','prj_sw','webhook','https://other.example','usr_sw','active','2026-09-26T00:00:00Z')`); err == nil {
 			return fmt.Errorf("unknown provider accepted")
 		}
-		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_dup','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`); err == nil {
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_dup','org_sw','prj_sw','encrypted-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`); err == nil {
 			return fmt.Errorf("active origin uniqueness was lost in the rebuild")
 		}
 		if _, err := db.ExecContext(t.Context(), `UPDATE adapters SET state='tombstoned' WHERE id='adp_sw'`); err != nil {
 			return err
 		}
-		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sw2','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:01Z')`); err != nil {
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sw2','org_sw','prj_sw','encrypted-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:01Z')`); err != nil {
 			return fmt.Errorf("tombstoned origin still reserved after the rebuild: %w", err)
 		}
 		if cfg.Engine == store.EngineSQLite {
@@ -276,10 +276,61 @@ func runSealedWebhookProviderMigration(t *testing.T, cfg store.Config) {
 	}
 }
 
-func TestSealedWebhookProviderMigrationSQLite(t *testing.T) {
-	runSealedWebhookProviderMigration(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "sealed.db")})
+func TestEncryptedWebhookProviderMigrationSQLite(t *testing.T) {
+	runEncryptedWebhookProviderMigration(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "sealed.db")})
 }
 
-func TestSealedWebhookProviderMigrationPostgres(t *testing.T) {
-	runSealedWebhookProviderMigration(t, postgresTestConfig(t, "sealed_webhook_migration"))
+func TestEncryptedWebhookProviderMigrationPostgres(t *testing.T) {
+	runEncryptedWebhookProviderMigration(t, postgresTestConfig(t, "encrypted_webhook_migration"))
+}
+
+func runEncryptedWebhookProviderIDRewrite(t *testing.T, cfg store.Config) {
+	t.Helper()
+	if err := RunUpTo(t.Context(), cfg, 99); err != nil {
+		t.Fatal(err)
+	}
+	err := withProvider(t.Context(), cfg, func(_ *goose.Provider, db *sql.DB) error {
+		for _, statement := range []string{
+			`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_rw','RW',TRUE,'{}','2026-11-27T00:00:00Z')`,
+			`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_rw','org_rw','RW','2026-11-27T00:00:00Z')`,
+			`INSERT INTO principals (id,kind,created_at) VALUES ('usr_rw','human','2026-11-27T00:00:00Z')`,
+			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_old','org_rw','prj_rw','sealed-webhook','https://recv.example','usr_rw','active','2026-11-27T00:00:00Z')`,
+			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_fj','org_rw','prj_rw','forgejo','https://git.example','usr_rw','active','2026-11-27T00:00:00Z')`,
+		} {
+			if _, err := db.ExecContext(t.Context(), statement); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	err = withProvider(t.Context(), cfg, func(_ *goose.Provider, db *sql.DB) error {
+		var old, kept string
+		if err := db.QueryRowContext(t.Context(), `SELECT provider FROM adapters WHERE id='adp_old'`).Scan(&old); err != nil || old != "encrypted-webhook" {
+			return fmt.Errorf("stored sealed-webhook id not rewritten: %q %v", old, err)
+		}
+		if err := db.QueryRowContext(t.Context(), `SELECT provider FROM adapters WHERE id='adp_fj'`).Scan(&kept); err != nil || kept != "forgejo" {
+			return fmt.Errorf("other provider changed: %q %v", kept, err)
+		}
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_new','org_rw','prj_rw','sealed-webhook','https://other.example','usr_rw','active','2026-11-27T00:00:00Z')`); err == nil {
+			return fmt.Errorf("the retired id is still storable")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEncryptedWebhookProviderIDRewriteSQLite(t *testing.T) {
+	runEncryptedWebhookProviderIDRewrite(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "rewrite.db")})
+}
+
+func TestEncryptedWebhookProviderIDRewritePostgres(t *testing.T) {
+	runEncryptedWebhookProviderIDRewrite(t, postgresTestConfig(t, "encrypted_webhook_id_rewrite"))
 }

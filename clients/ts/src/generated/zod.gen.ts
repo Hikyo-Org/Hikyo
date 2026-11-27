@@ -448,7 +448,7 @@ export const zAdapterVisibility = z.enum([
 ]);
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
  */
 export const zAdapterProvider = z.string();
 
@@ -2248,7 +2248,7 @@ export const zPersonalValueList = z.object({
     items: z.array(zPersonalValueEntry)
 });
 
-export const zPersonalValueHolder = z.object({
+export const zPersonalValueMember = z.object({
     principal_id: zId,
     username: z.string().optional(),
     set: z.boolean(),
@@ -2259,6 +2259,7 @@ export const zPersonalValueHolder = z.object({
 export const zPersonalValueCount = z.object({
     key_id: zId,
     name: z.string().max(256),
+    members: z.int().gte(0),
     holders: z.int().gte(0),
     notices: z.int().gte(0),
     required: z.boolean()
@@ -2296,8 +2297,8 @@ export const zPersonalOffboardingReport = z.object({
     limits: z.array(z.string().max(512))
 });
 
-export const zPersonalValueHolderList = z.object({
-    items: z.array(zPersonalValueHolder)
+export const zPersonalValueMemberList = z.object({
+    items: z.array(zPersonalValueMember)
 });
 
 export const zSetValueRequest = z.object({
@@ -2985,7 +2986,10 @@ export const zCredentialPolicyResult = z.object({
 export const zCapability = z.string().min(1).max(64).regex(/^[a-z][a-z-]{0,63}$/);
 
 /**
- * The closed v1 role template set.
+ * The closed v1 role template set. `operator` is the deprecated name of
+ * `instance-admin`: it is accepted on input until v2, and the server
+ * always answers `instance-admin`.
+ *
  */
 export const zRoleTemplate = z.enum([
     'viewer',
@@ -2995,6 +2999,7 @@ export const zRoleTemplate = z.enum([
     'historian',
     'maintainer',
     'admin',
+    'instance-admin',
     'operator'
 ]);
 
@@ -7321,9 +7326,9 @@ export const zListPersonalValueMembersPath = z.object({
 });
 
 /**
- * The holders.
+ * The members with a value.
  */
-export const zListPersonalValueMembersResponse = zPersonalValueHolderList;
+export const zListPersonalValueMembersResponse = zPersonalValueMemberList;
 
 export const zDeletePersonalValueMemberPath = z.object({
     org: zId,

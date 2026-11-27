@@ -180,7 +180,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			return err
 		})
 	})
-	sealedEndpoints, err := activateSealedWebhookEndpoints(cfg.SealedWebhook)
+	sealedEndpoints, err := activateEncryptedWebhookEndpoints(cfg.EncryptedWebhook)
 	if err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 	}

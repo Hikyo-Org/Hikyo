@@ -446,7 +446,7 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
  */
 export type AdapterProvider = string;
 
@@ -3251,7 +3251,7 @@ export type PersonalValueList = {
     items: Array<PersonalValueEntry>;
 };
 
-export type PersonalValueHolder = {
+export type PersonalValueMember = {
     principal_id: Id;
     username?: string;
     set: boolean;
@@ -3263,7 +3263,13 @@ export type PersonalValueCount = {
     key_id: Id;
     name: string;
     /**
-     * People holding a personal value for this key here.
+     * Members with a value of their own for this key here.
+     */
+    members: number;
+    /**
+     * Deprecated alias of `members`, kept until v2.
+     *
+     * @deprecated
      */
     holders: number;
     /**
@@ -3323,8 +3329,8 @@ export type PersonalOffboardingReport = {
     limits: Array<string>;
 };
 
-export type PersonalValueHolderList = {
-    items: Array<PersonalValueHolder>;
+export type PersonalValueMemberList = {
+    items: Array<PersonalValueMember>;
 };
 
 export type SetValueRequest = {
@@ -4613,9 +4619,12 @@ export type CredentialPolicyResult = {
 export type Capability = string;
 
 /**
- * The closed v1 role template set.
+ * The closed v1 role template set. `operator` is the deprecated name of
+ * `instance-admin`: it is accepted on input until v2, and the server
+ * always answers `instance-admin`.
+ *
  */
-export type RoleTemplate = 'viewer' | 'editor' | 'publisher' | 'revealer' | 'historian' | 'maintainer' | 'admin' | 'operator';
+export type RoleTemplate = 'viewer' | 'editor' | 'publisher' | 'revealer' | 'historian' | 'maintainer' | 'admin' | 'instance-admin' | 'operator';
 
 export type CreateGrantRequest = {
     principal: Id;
@@ -17489,9 +17498,9 @@ export type ListPersonalValueMembersError = ListPersonalValueMembersErrors[keyof
 
 export type ListPersonalValueMembersResponses = {
     /**
-     * The holders.
+     * The members with a value.
      */
-    200: PersonalValueHolderList;
+    200: PersonalValueMemberList;
 };
 
 export type ListPersonalValueMembersResponse = ListPersonalValueMembersResponses[keyof ListPersonalValueMembersResponses];

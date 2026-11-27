@@ -1,4 +1,4 @@
-package sealedwebhook
+package encryptedwebhook
 
 import (
 	"context"
@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/encryptedhook"
 )
 
 // ConnectionVersion is reported by TestConnection for a protocol 1 endpoint.
 const ConnectionVersion = "sealed-webhook/v1"
 
 // envelopeLifetime is how long a sealed envelope stays acceptable. It is well
-// under sealedhook.MaxLifetime and longer than any delivery round trip.
+// under encryptedhook.MaxLifetime and longer than any delivery round trip.
 const envelopeLifetime = time.Minute
 
 // probeRoute names a connection probe, which belongs to no target yet.
 const probeRoute = "probe"
 
-// Receiver reasons with a defined Hikyo meaning (docs/spec/sealed-webhook.md).
+// Receiver reasons with a defined Hikyo meaning (docs/spec/encrypted-webhook.md).
 const (
 	ReasonUnauthorized  = "unauthorized"
 	ReasonExistsUnowned = "exists_unowned"
@@ -47,7 +47,7 @@ func (m *Module) now() time.Time {
 
 func (m *Module) ready() error {
 	if m.API == nil || m.Endpoint == nil {
-		return errors.New("sealed-webhook: module is not configured")
+		return errors.New("encrypted-webhook: module is not configured")
 	}
 	if m.Binding == "" {
 		return adapter.ErrProviderAuth
@@ -58,14 +58,14 @@ func (m *Module) ready() error {
 // ValidateConfig accepts only the activated endpoint's exact origin.
 func (m *Module) ValidateConfig(cfg adapter.Config) error {
 	if m.Endpoint == nil {
-		return errors.New("sealed-webhook: module is not configured")
+		return errors.New("encrypted-webhook: module is not configured")
 	}
 	origin, err := CanonicalOrigin(cfg.Origin)
 	if err != nil {
 		return err
 	}
 	if origin != m.Endpoint.origin {
-		return errors.New("sealed-webhook: origin is not an instance-admin configured endpoint")
+		return errors.New("encrypted-webhook: origin is not an instance-admin configured endpoint")
 	}
 	return nil
 }
@@ -74,10 +74,10 @@ func (m *Module) ValidateConfig(cfg adapter.Config) error {
 // destination whose owner names the receiver namespace.
 func Namespace(d adapter.Destination) (string, error) {
 	if d.Kind != adapter.Organization || d.Name != "" || d.Environment != "" || d.Visibility != "" || len(d.SelectedRepositoryIDs) != 0 || d.RepositoryID != 0 {
-		return "", errors.New("sealed-webhook: destination must be kind organization with only the receiver namespace as owner")
+		return "", errors.New("encrypted-webhook: destination must be kind organization with only the receiver namespace as owner")
 	}
-	if !sealedhook.ValidID(d.Owner) {
-		return "", errors.New("sealed-webhook: namespace must match [a-z0-9][a-z0-9._-]{0,62}")
+	if !encryptedhook.ValidID(d.Owner) {
+		return "", errors.New("encrypted-webhook: namespace must match [a-z0-9][a-z0-9._-]{0,62}")
 	}
 	return d.Owner, nil
 }
@@ -112,7 +112,7 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 		return adapter.Connection{}, adapter.ErrUnauthorized
 	}
 	if req.AllowEnvironmentCreate {
-		return adapter.Connection{}, errors.New("sealed-webhook: receivers have no environments to create")
+		return adapter.Connection{}, errors.New("encrypted-webhook: receivers have no environments to create")
 	}
 	namespace, id, err := m.destinationID(req.Destination)
 	if err != nil {
@@ -121,11 +121,11 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	if req.Destination.NumericID != 0 && req.Destination.NumericID != id {
 		return adapter.Connection{}, fmt.Errorf("%w: endpoint trust boundary changed since this target was bound", adapter.ErrDestinationID)
 	}
-	key, err := sealedhook.NewProbeKey()
+	key, err := encryptedhook.NewProbeKey()
 	if err != nil {
 		return adapter.Connection{}, err
 	}
-	sealed, err := m.seal(namespace, probeRoute, sealedhook.Source{}, sealedhook.OpProbe, nil, nil, key)
+	sealed, err := m.seal(namespace, probeRoute, encryptedhook.Source{}, encryptedhook.OpProbe, nil, nil, key)
 	if err != nil {
 		return adapter.Connection{}, err
 	}
@@ -146,24 +146,24 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 }
 
 // ackError maps a verified non-success ack to the seam's error vocabulary.
-func ackError(ack sealedhook.Ack, what string) error {
+func ackError(ack encryptedhook.Ack, what string) error {
 	switch ack.Status {
-	case sealedhook.AckApplied, sealedhook.AckAlreadyApplied:
+	case encryptedhook.AckApplied, encryptedhook.AckAlreadyApplied:
 		return nil
-	case sealedhook.AckConflict:
+	case encryptedhook.AckConflict:
 		return fmt.Errorf("%w: %s (%s)", adapter.ErrConflict, what, ack.Reason)
 	}
 	if ack.Reason == ReasonUnauthorized {
 		return fmt.Errorf("%w: receiver refused the binding for %s", adapter.ErrProviderAuth, what)
 	}
-	return fmt.Errorf("sealed-webhook: receiver rejected %s (%s)", what, ack.Reason)
+	return fmt.Errorf("encrypted-webhook: receiver rejected %s (%s)", what, ack.Reason)
 }
 
 // Plan is value-blind and network-free: a receiver exposes no read, so an
 // unclaimed name's existence is unknown until the receiver answers a sync.
 func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Plan, error) {
 	if m.Endpoint == nil {
-		return adapter.Plan{}, errors.New("sealed-webhook: module is not configured")
+		return adapter.Plan{}, errors.New("encrypted-webhook: module is not configured")
 	}
 	if err := adapter.ValidateEncryptedWebhookManifest(req.Target.NamePrefix, req.Manifest, false); err != nil {
 		return adapter.Plan{}, err
@@ -190,11 +190,11 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	return adapter.Plan{Changes: changes}, nil
 }
 
-func (m *Module) seal(namespace, route string, source sealedhook.Source, op sealedhook.Op, names []sealedhook.Name, values []sealedhook.Value, key string) (Delivery, error) {
+func (m *Module) seal(namespace, route string, source encryptedhook.Source, op encryptedhook.Op, names []encryptedhook.Name, values []encryptedhook.Value, key string) (Delivery, error) {
 	if names == nil {
-		names = []sealedhook.Name{}
+		names = []encryptedhook.Name{}
 	}
-	sealed, err := m.Endpoint.sealer.Seal(sealedhook.Draft{
+	sealed, err := m.Endpoint.sealer.Seal(encryptedhook.Draft{
 		TargetID: m.Endpoint.id, InstanceID: m.Endpoint.instanceID, Namespace: namespace, Route: route,
 		Generation: m.Endpoint.generation, Source: source, Op: op, Names: names, Binding: m.Binding,
 		Values: values, IdempotencyKey: key, IssuedAt: m.now(), Lifetime: envelopeLifetime,
@@ -208,20 +208,20 @@ func (m *Module) seal(namespace, route string, source sealedhook.Source, op seal
 type syncContext struct {
 	namespace string
 	route     string
-	source    sealedhook.Source
+	source    encryptedhook.Source
 	target    adapter.Target
 	revision  int64
 }
 
-func (m *Module) delivery(sc syncContext, op sealedhook.Op, surface adapter.Surface, name, value string) (Delivery, error) {
-	key := m.Endpoint.idempotencyKey(sealedhook.IdempotencyParts{
+func (m *Module) delivery(sc syncContext, op encryptedhook.Op, surface adapter.Surface, name, value string) (Delivery, error) {
+	key := m.Endpoint.idempotencyKey(encryptedhook.IdempotencyParts{
 		TargetID: m.Endpoint.id, Fingerprint: m.Endpoint.fingerprint, Route: sc.route, Generation: sc.target.Generation,
 		Revision: sc.revision, Op: op, Surface: string(surface), Name: name,
 	})
-	names := []sealedhook.Name{{Surface: string(surface), Name: name}}
-	var values []sealedhook.Value
-	if op == sealedhook.OpUpsert {
-		values = []sealedhook.Value{{Surface: string(surface), Name: name, Value: value}}
+	names := []encryptedhook.Name{{Surface: string(surface), Name: name}}
+	var values []encryptedhook.Value
+	if op == encryptedhook.OpUpsert {
+		values = []encryptedhook.Value{{Surface: string(surface), Name: name, Value: value}}
 	}
 	return m.seal(sc.namespace, sc.route, sc.source, op, names, values, key)
 }
@@ -231,7 +231,7 @@ func (m *Module) delivery(sc syncContext, op sealedhook.Op, surface adapter.Surf
 // provider-write fence is taken except the single POST.
 func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adapter.Journal) (adapter.SyncResult, error) {
 	if journal == nil {
-		return adapter.SyncResult{}, errors.New("sealed-webhook: durable journal is required")
+		return adapter.SyncResult{}, errors.New("encrypted-webhook: durable journal is required")
 	}
 	if err := m.ready(); err != nil {
 		return adapter.SyncResult{}, err
@@ -240,7 +240,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		return adapter.SyncResult{}, err
 	}
 	if req.Source.Revision < 0 || req.Source.OrgID == "" || req.Source.ProjectID == "" || req.Source.EnvironmentID == "" {
-		return adapter.SyncResult{}, errors.New("sealed-webhook: sync requires a pinned source revision")
+		return adapter.SyncResult{}, errors.New("encrypted-webhook: sync requires a pinned source revision")
 	}
 	inspect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "*", Disposition: adapter.Update}
 	if err := journal.Gate(ctx, inspect); err != nil {
@@ -257,11 +257,11 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			return adapter.SyncResult{}, nil
 		}
 		// Pruning held names needs a signed revision >= 1.
-		return adapter.SyncResult{}, errors.New("sealed-webhook: sync requires a pinned source revision")
+		return adapter.SyncResult{}, errors.New("encrypted-webhook: sync requires a pinned source revision")
 	}
 	sc := syncContext{
 		namespace: namespace, route: req.Target.ID, target: req.Target, revision: req.Source.Revision,
-		source: sealedhook.Source{Org: req.Source.OrgID, Project: req.Source.ProjectID, Environment: req.Source.EnvironmentID, Revision: req.Source.Revision},
+		source: encryptedhook.Source{Org: req.Source.OrgID, Project: req.Source.ProjectID, Environment: req.Source.EnvironmentID, Revision: req.Source.Revision},
 	}
 	ledger, err := adapter.IndexLedger(req.Ledger)
 	if err != nil {
@@ -288,7 +288,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			record = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: state}
 			ledger[key] = record
 		}
-		delivery, err := m.delivery(sc, sealedhook.OpUpsert, row.Surface, row.EffectiveName, row.Value)
+		delivery, err := m.delivery(sc, encryptedhook.OpUpsert, row.Surface, row.EffectiveName, row.Value)
 		if err != nil {
 			return result, err
 		}
@@ -327,7 +327,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	for _, row := range prunes {
 		effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
 		change := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
-		delivery, err := m.delivery(sc, sealedhook.OpPrune, row.Surface, row.EffectiveName, "")
+		delivery, err := m.delivery(sc, encryptedhook.OpPrune, row.Surface, row.EffectiveName, "")
 		if err != nil {
 			return result, err
 		}
@@ -350,7 +350,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 
 // sent is the result of one POST: a verified ack or the delivery error.
 type sent struct {
-	ack sealedhook.Ack
+	ack encryptedhook.Ack
 	err error
 }
 
@@ -386,7 +386,7 @@ func (m *Module) dispatch(ctx context.Context, journal adapter.Journal, effect a
 //   - verified conflict: a bare reservation is released with a conflict
 //     artifact; a claimed name keeps its state;
 //   - verified rejection: failure, reservation released.
-func upsertCompletion(ack sealedhook.Ack, err error, state adapter.LedgerState, missing bool, row adapter.DesiredRow) (adapter.Completion, error) {
+func upsertCompletion(ack encryptedhook.Ack, err error, state adapter.LedgerState, missing bool, row adapter.DesiredRow) (adapter.Completion, error) {
 	withMissing := func(c adapter.Completion) adapter.Completion {
 		if missing && !c.ReleaseLedger && (c.State == adapter.Owned || c.State == adapter.Dispatched) {
 			c.Missing, c.Finding = true, "owned_missing"
@@ -408,7 +408,7 @@ func upsertCompletion(ack sealedhook.Ack, err error, state adapter.LedgerState, 
 	if outErr == nil {
 		return adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned, ProviderStatus: 200}, nil
 	}
-	completion := adapter.Completion{Outcome: adapter.OutcomeFailure, ProviderStatus: 200, Conflict: ack.Status == sealedhook.AckConflict}
+	completion := adapter.Completion{Outcome: adapter.OutcomeFailure, ProviderStatus: 200, Conflict: ack.Status == encryptedhook.AckConflict}
 	if state == adapter.Reserved {
 		completion.ReleaseLedger = true
 	} else {
@@ -417,7 +417,7 @@ func upsertCompletion(ack sealedhook.Ack, err error, state adapter.LedgerState, 
 	return withMissing(completion), outErr
 }
 
-func pruneCompletion(ack sealedhook.Ack, err error, row adapter.LedgerEntry) (adapter.Completion, error) {
+func pruneCompletion(ack encryptedhook.Ack, err error, row adapter.LedgerEntry) (adapter.Completion, error) {
 	switch {
 	case errors.Is(err, adapter.ErrAckForged):
 		return adapter.Completion{Outcome: adapter.OutcomeFailure, State: row.State, ProviderStatus: 200}, err
@@ -426,7 +426,7 @@ func pruneCompletion(ack sealedhook.Ack, err error, row adapter.LedgerEntry) (ad
 			fmt.Errorf("%w: prune %s %s: %w", adapter.ErrIndeterminate, row.Surface, row.EffectiveName, err)
 	}
 	if outErr := ackError(ack, "prune "+string(row.Surface)+" "+row.EffectiveName); outErr != nil {
-		return adapter.Completion{Outcome: adapter.OutcomeFailure, State: row.State, ProviderStatus: 200, Conflict: ack.Status == sealedhook.AckConflict}, outErr
+		return adapter.Completion{Outcome: adapter.OutcomeFailure, State: row.State, ProviderStatus: 200, Conflict: ack.Status == encryptedhook.AckConflict}, outErr
 	}
 	return adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released, ProviderStatus: 200}, nil
 }

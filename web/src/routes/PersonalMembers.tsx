@@ -8,7 +8,7 @@ import {
   NOTICE_CAUSE_TEXT,
   useDeletePersonalMember,
   usePersonalMembers,
-  type PersonalValueHolder,
+  type PersonalValueMember,
 } from '../api/personal.ts';
 import { commonRefusalText, statusText } from '../api/statusText.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
@@ -52,7 +52,7 @@ export function PersonalMembers({
         onSelect={setSelected}
       />
       <TabPanel idPrefix="key-detail-personal" selected={selected}>
-        <Holders key={selected} refData={refData} environment={selected} keyName={keyName} />
+        <MembersWithValue key={selected} refData={refData} environment={selected} keyName={keyName} />
         <p>
           <Link className="btn btn--quiet" to={ownPath}>Your own personal values in this environment</Link>
         </p>
@@ -61,45 +61,45 @@ export function PersonalMembers({
   );
 }
 
-function Holders({ refData, environment, keyName }: { refData: MatrixRef; environment: string; keyName: string }) {
+function MembersWithValue({ refData, environment, keyName }: { refData: MatrixRef; environment: string; keyName: string }) {
   const env = { ...refData, environment };
-  const holders = usePersonalMembers(env, keyName);
+  const members = usePersonalMembers(env, keyName);
   const remove = useDeletePersonalMember(env, keyName);
-  const [confirming, setConfirming] = useState<PersonalValueHolder | null>(null);
+  const [confirming, setConfirming] = useState<PersonalValueMember | null>(null);
   const [outcome, setOutcome] = useState<{ readonly tone: 'done' | 'danger'; readonly text: string } | null>(null);
 
-  if (holders.isPending) return <p role="status">Loading who holds a personal value…</p>;
-  if (holders.isError) {
-    // Not a manager here: the server answers without saying who holds one.
-    if (holders.error instanceof ApiError && (holders.error.status === 403 || holders.error.status === 404)) return null;
-    return <Alert>Who holds a personal value could not be loaded. Reload to try again.</Alert>;
+  if (members.isPending) return <p role="status">Loading the members with a personal value…</p>;
+  if (members.isError) {
+    // Not a manager here: the server answers without saying which members have one.
+    if (members.error instanceof ApiError && (members.error.status === 403 || members.error.status === 404)) return null;
+    return <Alert>The members with a personal value could not be loaded. Reload to try again.</Alert>;
   }
-  const nameOf = (holder: PersonalValueHolder) => holder.username ?? holder.principal_id;
+  const nameOf = (member: PersonalValueMember) => member.username ?? member.principal_id;
   return (
     <>
       {outcome === null ? null : <Alert tone={outcome.tone}>{outcome.text}</Alert>}
-      {holders.data.length === 0 ? (
-        <p>Nobody holds a personal value or a notice for this key here.</p>
+      {members.data.length === 0 ? (
+        <p>No member has a personal value or a notice for this key here.</p>
       ) : (
         <ul className="personal-members__list" aria-label={`Personal values for ${keyName}`}>
-          {holders.data.map((holder) => (
-            <li key={holder.principal_id} className="personal-members__row">
+          {members.data.map((member) => (
+            <li key={member.principal_id} className="personal-members__row">
               <span>
-                <span className="mono">{nameOf(holder)}</span>{' '}
-                {holder.set ? <Badge>holds a value</Badge> : null}
-                {holder.notice === undefined ? null : (
-                  <Badge tone="changed" icon="minus">notice: {NOTICE_CAUSE_TEXT[holder.notice]}</Badge>
+                <span className="mono">{nameOf(member)}</span>{' '}
+                {member.set ? <Badge>has a value</Badge> : null}
+                {member.notice === undefined ? null : (
+                  <Badge tone="changed" icon="minus">notice: {NOTICE_CAUSE_TEXT[member.notice]}</Badge>
                 )}
-                {holder.updated_at === undefined ? null : (
-                  <span className="personal-members__when"> changed {new Date(holder.updated_at).toLocaleString()}</span>
+                {member.updated_at === undefined ? null : (
+                  <span className="personal-members__when"> changed {new Date(member.updated_at).toLocaleString()}</span>
                 )}
               </span>
-              {holder.set ? (
+              {member.set ? (
                 <Button
                   type="button"
                   variant="danger"
-                  aria-label={`Delete the personal value of ${nameOf(holder)}`}
-                  onClick={() => { setOutcome(null); setConfirming(holder); }}
+                  aria-label={`Delete the personal value of ${nameOf(member)}`}
+                  onClick={() => { setOutcome(null); setConfirming(member); }}
                 >
                   Delete
                 </Button>
@@ -121,9 +121,9 @@ function Holders({ refData, environment, keyName }: { refData: MatrixRef; enviro
                 variant="danger"
                 disabled={remove.isPending}
                 onClick={() => {
-                  const holder = confirming;
-                  remove.mutate(holder.principal_id, {
-                    onSuccess: () => setOutcome({ tone: 'done', text: `The personal value of ${nameOf(holder)} is deleted. They have a notice.` }),
+                  const member = confirming;
+                  remove.mutate(member.principal_id, {
+                    onSuccess: () => setOutcome({ tone: 'done', text: `The personal value of ${nameOf(member)} is deleted. They have a notice.` }),
                     onError: (error) => setOutcome({ tone: 'danger', text: statusText(error, {
                       401: commonRefusalText.sessionEnded,
                       404: 'That value is already gone.',

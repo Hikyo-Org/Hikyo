@@ -19,7 +19,7 @@ import (
 
 // PersonalCounts is one environment's personal state, counted.
 type PersonalCounts struct {
-	Holders  map[string]int  // by key id
+	Members  map[string]int  // by key id
 	Notices  map[string]int  // by key name
 	Required map[string]bool // by key id
 }
@@ -79,13 +79,13 @@ func (r sqlitePersonalReport) Counts(ctx context.Context, p authz.Proof) (Person
 		return PersonalCounts{}, err
 	}
 	org, project := string(chain.Org), string(chain.Project)
-	out := PersonalCounts{Holders: map[string]int{}, Notices: map[string]int{}, Required: map[string]bool{}}
+	out := PersonalCounts{Members: map[string]int{}, Notices: map[string]int{}, Required: map[string]bool{}}
 	holders, err := r.q.PersonalValueHolderCounts(ctx, sqlitegen.PersonalValueHolderCountsParams{ChainOrgID: org, ChainProjectID: project, ChainEnvID: env})
 	if err != nil {
 		return PersonalCounts{}, err
 	}
 	for _, h := range holders {
-		out.Holders[h.KeyID] = int(h.Holders)
+		out.Members[h.KeyID] = int(h.Holders)
 	}
 	notices, err := r.q.PersonalValueNoticeCounts(ctx, sqlitegen.PersonalValueNoticeCountsParams{ChainOrgID: org, ChainProjectID: project, ChainEnvID: env})
 	if err != nil {
@@ -204,13 +204,13 @@ func (r pgPersonalReport) Counts(ctx context.Context, p authz.Proof) (PersonalCo
 		return PersonalCounts{}, err
 	}
 	org, project := string(chain.Org), string(chain.Project)
-	out := PersonalCounts{Holders: map[string]int{}, Notices: map[string]int{}, Required: map[string]bool{}}
+	out := PersonalCounts{Members: map[string]int{}, Notices: map[string]int{}, Required: map[string]bool{}}
 	holders, err := r.q.PersonalValueHolderCounts(ctx, pggen.PersonalValueHolderCountsParams{ChainOrgID: org, ChainProjectID: project, ChainEnvID: env})
 	if err != nil {
 		return PersonalCounts{}, err
 	}
 	for _, h := range holders {
-		out.Holders[h.KeyID] = int(h.Holders)
+		out.Members[h.KeyID] = int(h.Holders)
 	}
 	notices, err := r.q.PersonalValueNoticeCounts(ctx, pggen.PersonalValueNoticeCountsParams{ChainOrgID: org, ChainProjectID: project, ChainEnvID: env})
 	if err != nil {

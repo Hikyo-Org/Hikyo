@@ -62,7 +62,8 @@ export function providerLabel(provider: string): string {
       return 'Forgejo';
     case 'github-actions':
       return 'GitHub Actions';
-    case 'sealed-webhook':
+    case 'encrypted-webhook':
+    case 'sealed-webhook': // deprecated alias until v2
       return 'Encrypted webhook';
     case 'vault-kv':
       return 'Vault / OpenBao KV';
@@ -200,7 +201,7 @@ function useInvalidateAdapters(ref: ProjectRef) {
 }
 
 /** The providers this build can create; responses may name others. */
-export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv' | 'aws-secrets-manager' | 'gitlab';
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'encrypted-webhook' | 'cloudflare' | 'vault-kv' | 'aws-secrets-manager' | 'gitlab';
 
 export type CreateAdapterInput = {
   readonly provider: AdapterProviderKind;

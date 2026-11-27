@@ -1,7 +1,7 @@
 # Handoff: #163 Sealed webhook synchronization protocol and adapter
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/163 (blocked by #157, merged).
-Normative contract: [docs/spec/sealed-webhook.md](../spec/sealed-webhook.md).
+Normative contract: [docs/spec/encrypted-webhook.md](../spec/encrypted-webhook.md).
 ADR gate: declared amendment banner in
 [deployment-adapter.md](../adr/deployment-adapter.md) and declared amendment 5
 in [mvp-boundary.md](../adr/mvp-boundary.md). This handoff describes the

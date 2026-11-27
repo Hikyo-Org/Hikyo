@@ -23,7 +23,7 @@ is [the private-PKI ADR](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/p
 | **Certificate**: one issued leaf | environment | `issue-certificate` on that environment |
 
 - **CA private keys are non-exportable.** They are generated inside Hikyo (or
-  supplied once as protected input), sealed under the instance key, and never
+  supplied once as protected input), encrypted under the instance key, and never
   returned by any API, CLI command, audit event, log line or metric. There is
   no export operation. Backups carry only the ciphertext.
 - **Profiles are policy, not regular expressions.** A profile names its

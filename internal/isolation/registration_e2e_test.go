@@ -122,7 +122,7 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("noemail")}, Landing: orgTemplateLanding()}},
 		{string(service.PreconditionTemplateNotOrgApplicable), reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")},
-				Landing: service.RegistrationLanding{Kind: service.LandingOrgTemplate, Template: domain.TemplateOperator}}},
+				Landing: service.RegistrationLanding{Kind: service.LandingOrgTemplate, Template: domain.TemplateInstanceAdmin}}},
 		{string(service.PreconditionCapZero), reg, instanceReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")},
 				Landing: service.RegistrationLanding{Kind: service.LandingFreshOrg}}},

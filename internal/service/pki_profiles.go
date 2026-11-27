@@ -360,7 +360,7 @@ func (s *PKI) DeleteProfile(ctx context.Context, actor Actor, name string) error
 // BindProfile reaches a profile into one project, or one environment of it.
 func (s *PKI) BindProfile(ctx context.Context, actor Actor, name, orgID, projectID, environmentID string) (PKIProfileView, error) {
 	if orgID == "" || projectID == "" {
-		return PKIProfileView{}, fmt.Errorf("%w: a binding names an organization and a project", domain.ErrInvalid)
+		return PKIProfileView{}, fmt.Errorf("%w: a binding names an organisation and a project", domain.ErrInvalid)
 	}
 	var out PKIProfileView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
