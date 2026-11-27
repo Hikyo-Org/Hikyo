@@ -530,7 +530,8 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 	files := map[string]string{
 		".gitignore": "ignored/\n*.log\n", "a.sh": "#!/usr/bin/env bash\n", "b.sh": "#!/bin/sh\n",
 		"ignored/c.sh": "#!/usr/bin/env bash\n", "with space.log": "#!/usr/bin/env bash\n",
-		"new\nline.log": "#!/usr/bin/env bash\n", "u.sh": "#!/bin/rbash\n", "py": "#!/usr/bin/env python3\n",
+		"new\nline.log": "#!/usr/bin/env bash\n", "cafe\u0301.log": "#!/usr/bin/env bash\n", // decomposed é
+		"u.sh": "#!/bin/rbash\n", "py": "#!/usr/bin/env python3\n",
 	}
 	for name, body := range files {
 		path := filepath.Join(root, name)
