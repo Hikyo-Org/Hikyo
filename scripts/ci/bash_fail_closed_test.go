@@ -140,13 +140,19 @@ func isBashShell(shell, runsOn string) bool {
 	// a known other interpreter is skipped; anything else, an expression or a blank shell
 	// included, is scanned as bash, which fails safe: a misjudged step may fail to parse. sh is
 	// scanned too: on a macOS runner it is bash 3.2.
+	exe := shellExecutable(shell)
+	return exe == "" || !slices.Contains([]string{"dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
+}
+
+// shellExecutable returns the lowercased basename of a shell template's first word, without
+// quotes or .exe, or "" for a blank shell.
+func shellExecutable(shell string) string {
 	words := strings.Fields(shell)
 	if len(words) == 0 {
-		return true
+		return ""
 	}
 	exe := strings.ToLower(strings.Trim(words[0], `"'`))
-	exe = strings.TrimSuffix(exe[strings.LastIndexAny(exe, `/\`)+1:], ".exe") // a Windows path uses \
-	return !slices.Contains([]string{"dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
+	return strings.TrimSuffix(exe[strings.LastIndexAny(exe, `/\`)+1:], ".exe") // a Windows path uses \
 }
 
 func firstNonEmpty(values ...string) string {
