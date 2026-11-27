@@ -136,17 +136,18 @@ func TestIncidentContainBlocksAnInstanceCapabilityAccount(t *testing.T) {
 	})
 }
 
-// account.contain ends the account's sessions itself: run alone, without the
-// session items, it leaves none.
-func TestIncidentContainAloneEndsTheAccountsSessions(t *testing.T) {
+// account.contain ends the account's sessions and revokes its developer
+// delegations itself: run alone, without the session and delegation items, it
+// leaves neither live.
+func TestIncidentContainAloneEndsTheAccountsSessionsAndDelegations(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		w.realOwners()
 		sessions := func() int64 {
 			return queryInt(t, db, `SELECT COUNT(*) FROM sessions WHERE principal_id='`+string(incTarget)+`'`)
 		}
-		if sessions() == 0 {
-			t.Fatal("the world seeds no session for the target")
+		if sessions() == 0 || queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_it' AND revoked_at IS NULL`) != 1 {
+			t.Fatal("the world seeds no live session or delegation for the target")
 		}
 		inc := w.openAccount(t, incResponder).Incident.ID
 		if res := w.callOwner(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, string(incTarget), "org_a"); res != service.OwnerConfirmed {
@@ -154,6 +155,9 @@ func TestIncidentContainAloneEndsTheAccountsSessions(t *testing.T) {
 		}
 		if n := sessions(); n != 0 {
 			t.Errorf("%d sessions survive account.contain run alone", n)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM developer_credentials WHERE id='devc_it' AND revoked_at IS NULL`); n != 0 {
+			t.Errorf("the account's developer delegation survives account.contain run alone")
 		}
 	})
 }
