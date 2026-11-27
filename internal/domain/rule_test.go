@@ -298,6 +298,24 @@ func TestRuleEnvironmentNamesMatchAcrossProjects(t *testing.T) {
 	if bound.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
 		t.Fatal("except prod reached a project that has prod")
 	}
+	// Bound within payments alone, the rule knows no web environment, so it
+	// must reach nothing in web: unconfined, web's prod would be unknown and
+	// "all, except prod" would reach it. EnvName and WithEnvNames keep the
+	// confinement.
+	within := except
+	within.Where = except.Where.BindEnvsWithin(pay, refs[:2])
+	if !within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: pay, Env: "e2"}, nil) || within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: pay, Env: "e1"}, nil) {
+		t.Fatal("a rule bound within payments lost its payments reach")
+	}
+	if within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: web, Env: "e3"}, nil) || within.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
+		t.Fatal("a rule bound within payments reached web")
+	}
+	if within.Where = within.Where.WithEnvNames(nil); within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: web, Env: "e4"}, nil) {
+		t.Fatal("WithEnvNames dropped the confinement")
+	}
+	if _, ok := within.Where.EnvName(web, "e3"); ok {
+		t.Fatal("EnvName answered for a project outside the binding")
+	}
 	bound.Where = except.Where.BindEnvs(slices.DeleteFunc(slices.Clone(refs), func(e EnvRef) bool { return e.ID == "e3" }))
 	if !bound.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
 		t.Fatal("except prod did not reach web once its prod was deleted")

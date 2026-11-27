@@ -62,6 +62,8 @@ type Where struct {
 	// bound is set by BindEnvs and BoundEnvs; refs are what BindEnvs bound against.
 	bound bool
 	refs  []EnvRef
+	// within, set by BindEnvsWithin, is the one project refs cover.
+	within ProjectID
 }
 
 // EnvRef is one environment as name binding sees it.
@@ -85,6 +87,17 @@ func (w Where) BindEnvs(refs []EnvRef) Where {
 			w.Envs[e.Project] = append(w.Envs[e.Project], e.ID)
 		}
 	}
+	return w
+}
+
+// BindEnvsWithin binds the names against refs, the environments of project
+// alone, and confines the Where to project: it reaches nothing elsewhere
+// (Reaches), since its Envs and refs know no other project. The chokepoint
+// binds a single-project check this way, reading one project's environments
+// rather than the org's.
+func (w Where) BindEnvsWithin(project ProjectID, refs []EnvRef) Where {
+	w = w.BindEnvs(refs)
+	w.within = project
 	return w
 }
 
@@ -403,7 +416,8 @@ func (r Rule) validateAllProjects(shape RuleShape) error {
 //   - Org and instance atoms are never satisfied: rules cover listed projects
 //     only.
 //   - A Where narrowed by environment names must have been bound
-//     (Where.BindEnvs); unbound, it reaches nothing.
+//     (Where.BindEnvs); unbound, it reaches nothing. A Where bound within
+//     one project (Where.BindEnvsWithin) reaches nothing in another.
 //   - A project atom needs every environment of the project (all, with no
 //     environment of the project carrying an excepted name).
 //   - An environment atom needs the environment on the axis, by its name.
@@ -419,7 +433,7 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 		return false
 	}
 	w := r.Where
-	if !w.Names(s.Project) || w.EnvNarrowed() && !w.bound {
+	if !w.Names(s.Project) || w.EnvNarrowed() && !w.bound || w.within != "" && s.Project != w.within {
 		return false
 	}
 	envs := w.Envs[s.Project]

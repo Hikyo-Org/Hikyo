@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -562,18 +563,30 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 
 	t.Run("query_counts", func(t *testing.T) {
 		// A grant-less principal authorized by a rule costs two reads more
-		// than a grant-authorized one: chain + grants + rules + the org's
-		// environment names the rules bind to (D3, #1447; no cache).
+		// than a grant-authorized one: chain + grants + rules + the checked
+		// project's environment names the rules bind to (D3, #1447; no cache).
 		if n, err := countedAuthorize(t, db, carol, dev); err != nil || n != 4 {
 			t.Fatalf("rule-authorized env read: %d queries, err %v; want 4", n, err)
 		}
 		// A key-aware denial costs chain + grants + rules + environment
 		// names (gina's delegated read rule binds) + key, whether the key
-		// exists or not.
-		for _, key := range []string{"DB_PASSWORD", "NO_SUCH_KEY"} {
-			n, err := countedAuthorizeKey(t, db, gina, dev, authz.KeyByName(key))
-			if !errors.Is(err, domain.ErrNotFound) || n != 5 {
-				t.Fatalf("key-aware denial on %s: %d queries, err %v; want 5 and not found", key, n, err)
+		// exists or not. The names are the checked project's environments,
+		// never the org's: a publish checks every changed key, so an org-wide
+		// read would cost keys x org environments (#1447).
+		want, err := countedAuthorizeKey(t, db, gina, dev, authz.KeyByName("DB_PASSWORD"))
+		if !errors.Is(err, domain.ErrNotFound) || len(want) != 5 || !slices.Contains(want, "ListRuleEnvRefsInProject") || slices.Contains(want, "ListRuleEnvRefsInOrg") {
+			t.Fatalf("key-aware denial: statements %v, err %v; want 5 reading one project's environments, not found", want, err)
+		}
+		// A missing key, and a missing project (the decoy), issue the same
+		// statements.
+		missing := scopeEnv(orgA, "prj_missing", "env_missing")
+		for name, c := range map[string]struct {
+			scope domain.Scope
+			key   string
+		}{"missing key": {dev, "NO_SUCH_KEY"}, "missing project": {missing, "DB_PASSWORD"}} {
+			got, err := countedAuthorizeKey(t, db, gina, c.scope, authz.KeyByName(c.key))
+			if !errors.Is(err, domain.ErrNotFound) || !slices.Equal(got, want) {
+				t.Fatalf("key-aware denial, %s: statements %v, err %v; want %v and not found", name, got, err, want)
 			}
 		}
 	})
@@ -581,10 +594,11 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 
 // countedAuthorizeKey is countedAuthorize for the key-aware entry point, on
 // value.reveal.
-func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget, classes ...domain.PrincipalClass) (int, error) {
+func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget, classes ...domain.PrincipalClass) ([]string, error) {
 	t.Helper()
 	ctx := t.Context()
 	count := 0
+	var names []string
 	tok := authz.NewTxToken()
 	defer tok.Invalidate()
 	var r *authn.Resolver
@@ -594,7 +608,7 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 			t.Fatal(err)
 		}
 		defer func() { _ = pgtx.Rollback(ctx) }()
-		var dbtx pggen.DBTX = countingPGTx{tx: pgtx, n: &count}
+		var dbtx pggen.DBTX = countingPGTx{tx: pgtx, n: &count, names: &names}
 		r = authn.NewPG(dbtx)
 	} else {
 		sqtx, err := db.SQLiteRead().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -602,7 +616,7 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 			t.Fatal(err)
 		}
 		defer func() { _ = sqtx.Rollback() }()
-		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count}
+		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count, names: &names}
 		r = authn.NewSQLite(dbtx)
 	}
 	caller := authz.Identity{Principal: principal}
@@ -610,7 +624,7 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 		caller.Class = classes[0]
 	}
 	_, err := authz.NewTxAuthorizer(r, tok).AuthorizeKey(ctx, caller, authz.OpValueReveal, scope, key)
-	return count, err
+	return names, err
 }
 
 // runRuleAuditLifecycle drives every rule audit event once for the

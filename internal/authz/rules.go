@@ -94,14 +94,24 @@ func rulesApply(caller Identity) bool {
 	return caller.Class == "" || caller.Class == domain.ClassHuman || domain.IsServiceAccountKind(caller.Class)
 }
 
-// callerRules reads the rules the chokepoint may honour for caller. A machine
-// rule that fails its class's check reaches nothing, like a rule that does
-// not validate.
-func (a *TxAuthorizer) callerRules(ctx context.Context, caller Identity) ([]domain.Rule, error) {
+// callerRules reads the rules the chokepoint may honour for caller, bound
+// within project when it is set (authn.Resolver.RulesWithin), else to the
+// org. A machine rule that fails its class's check reaches nothing, like a
+// rule that does not validate.
+func (a *TxAuthorizer) callerRules(ctx context.Context, caller Identity, project domain.ProjectID) ([]domain.Rule, error) {
 	if !domain.IsServiceAccountKind(caller.Class) {
+		if project != "" {
+			return a.r.RulesWithin(ctx, caller.Principal, project)
+		}
 		return a.r.Rules(ctx, caller.Principal)
 	}
-	rules, err := a.r.MachineRules(ctx, caller.Principal)
+	var rules []domain.Rule
+	var err error
+	if project != "" {
+		rules, err = a.r.MachineRulesWithin(ctx, caller.Principal, project)
+	} else {
+		rules, err = a.r.MachineRules(ctx, caller.Principal)
+	}
 	if err != nil {
 		return nil, err
 	}

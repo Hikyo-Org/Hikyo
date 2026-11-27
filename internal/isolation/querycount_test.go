@@ -33,10 +33,22 @@ import (
 type countingSqliteTx struct {
 	tx *sql.Tx
 	n  *int
+	// names, when set, records each statement's sqlc name in order.
+	names *[]string
+}
+
+// recordStatement appends q's sqlc name ("-- name: X :kind") to names.
+func recordStatement(names *[]string, q string) {
+	if names == nil {
+		return
+	}
+	name, _, _ := strings.Cut(strings.TrimPrefix(q, "-- name: "), " ")
+	*names = append(*names, name)
 }
 
 func (c countingSqliteTx) ExecContext(ctx context.Context, q string, args ...interface{}) (sql.Result, error) {
 	*c.n++
+	recordStatement(c.names, q)
 	return c.tx.ExecContext(ctx, q, args...)
 }
 func (c countingSqliteTx) PrepareContext(ctx context.Context, q string) (*sql.Stmt, error) {
@@ -44,28 +56,34 @@ func (c countingSqliteTx) PrepareContext(ctx context.Context, q string) (*sql.St
 }
 func (c countingSqliteTx) QueryContext(ctx context.Context, q string, args ...interface{}) (*sql.Rows, error) {
 	*c.n++
+	recordStatement(c.names, q)
 	return c.tx.QueryContext(ctx, q, args...)
 }
 func (c countingSqliteTx) QueryRowContext(ctx context.Context, q string, args ...interface{}) *sql.Row {
 	*c.n++
+	recordStatement(c.names, q)
 	return c.tx.QueryRowContext(ctx, q, args...)
 }
 
 type countingPGTx struct {
-	tx pgx.Tx
-	n  *int
+	tx    pgx.Tx
+	n     *int
+	names *[]string
 }
 
 func (c countingPGTx) Exec(ctx context.Context, q string, args ...interface{}) (pgconn.CommandTag, error) {
 	*c.n++
+	recordStatement(c.names, q)
 	return c.tx.Exec(ctx, q, args...)
 }
 func (c countingPGTx) Query(ctx context.Context, q string, args ...interface{}) (pgx.Rows, error) {
 	*c.n++
+	recordStatement(c.names, q)
 	return c.tx.Query(ctx, q, args...)
 }
 func (c countingPGTx) QueryRow(ctx context.Context, q string, args ...interface{}) pgx.Row {
 	*c.n++
+	recordStatement(c.names, q)
 	return c.tx.QueryRow(ctx, q, args...)
 }
 
@@ -159,8 +177,8 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			}
 			for _, principal := range []domain.PrincipalID{bob, root} {
 				for _, key := range []authz.KeyTarget{authz.KeyByName("SHARED_KEY"), authz.KeyByName("NO_SUCH_KEY")} {
-					n, err := countedAuthorizeKey(t, db, principal, m.scope, key)
-					if !errors.Is(err, domain.ErrNotFound) || n != 4 {
+					stmts, err := countedAuthorizeKey(t, db, principal, m.scope, key)
+					if n := len(stmts); !errors.Is(err, domain.ErrNotFound) || n != 4 {
 						t.Fatalf("missing key-aware chain issued %d queries, error=%v; want foreign denial's 4 and never a proof", n, err)
 					}
 				}
@@ -179,19 +197,19 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 		}
 	})
 	t.Run("machine_key_aware_missing_and_foreign_parity", func(t *testing.T) {
-		counts := map[int]bool{}
+		counts := map[string]bool{}
 		for _, scope := range []domain.Scope{
 			{Org: orgB, Project: prjB1, Env: envB1},
 			{Org: "org_missing", Project: prjB1, Env: envB1},
 		} {
-			n, err := countedAuthorizeKey(t, db, mchA1, scope, authz.KeyByName("SHARED_KEY"), domain.ClassAutomation)
+			stmts, err := countedAuthorizeKey(t, db, mchA1, scope, authz.KeyByName("SHARED_KEY"), domain.ClassAutomation)
 			if !errors.Is(err, domain.ErrNotFound) {
 				t.Fatalf("machine key-aware refusal = %v, want ErrNotFound", err)
 			}
-			counts[n] = true
+			counts[strings.Join(stmts, ",")] = true
 		}
 		if len(counts) != 1 {
-			t.Fatalf("machine key-aware refusals cost different query counts %v; a foreign org and a missing one must match", counts)
+			t.Fatalf("machine key-aware refusals issue different statements %v; a foreign org and a missing one must match", counts)
 		}
 	})
 	t.Run("personal_owner_fallback_parity", func(t *testing.T) {
