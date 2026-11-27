@@ -1,7 +1,12 @@
-# A publisher job that overruns its sixty-second budget (or fails on a read)
-# leaves a blocking, non-terminal check and fails its run. GitHub throttles the
-# discovery cron to hours, so rerun that run's failed jobs here: each rerun is a
-# new job with its own budget. The run attempt is the only loop bound, so this
+# A publisher job that overruns its sixty-second budget (or fails on a read), or a
+# group job that fails its proof, leaves a blocking, non-terminal check and fails its
+# run. GitHub throttles the discovery cron to hours, so rerun exactly those jobs
+# here: each rerun is a new job with its own budget. Nothing is rerun while the
+# shared token's rate limit is nearly spent; rerun-after-reset then waits for the reset and
+# reruns them. A merge-group head must not lose the shared window to everything else, so
+# the last 480 requests of it (the reserve, see docs/development/ci.md) are for group
+# jobs: any other job is rerun only while its cost (42 reads) still leaves that many, and group jobs go
+# first. The run attempt is the only loop bound, so this
 # can neither loop nor multiply: attempt 3 publishes the terminal refusal. This
 # workflow runs no repository code and checks nothing out.
 name: gate-queue-retry
@@ -37,10 +42,13 @@ jobs:
       (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'dev')))
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    outputs:
+      exhausted: ${{ steps.retry.outputs.exhausted }}
     permissions:
       actions: write
     steps:
-      - name: Rerun failed head publishers with a new budget
+      - name: Rerun failed head publisher and group jobs with a new budget
+        id: retry
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -51,15 +59,375 @@ jobs:
           [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           test "$RUN_ATTEMPT" -lt 3
-          # Only a publisher job whose reconcile step failed is worth another budget.
-          # Worker group jobs share the publish- name, and reconcile always runs, so a
-          # failed setup counts too. Discovery and the gate's group- job are left alone.
-          failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-            --jq '[.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.name | test("^(dev-)?publish-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure"))] | length' |
-            awk '{ n += $1 } END { print n + 0 }')
-          if [ "$failed" -eq 0 ]; then
-            echo "No head publisher failed while reconciling; nothing to rerun."
+          # Never rerun into an exhausted window: a rerun reconcile spends the same shared
+          # budget that just failed it. Reading rate_limit does not count against the limit.
+          # Keep a tenth of it free (about one reconcile's worth of reads on the 1000 per hour
+          # repository token) and, for any job that does not gate a merge-queue head, the
+          # reserve (480 requests, the original derivation, superseded by the honest bound in the
+          # sizing table of docs/development/ci.md: the 232 that nothing can defer, plus two overlapping merge
+          # groups of three attempts at about 41 reads each) for group jobs: it is rerun only while its expected cost (42 reads)
+          # still leaves the reserve, the same rule the job itself defers on. Below that, hand
+          # the run to rerun-after-reset, which reruns it after the reset, or leave it to the
+          # operator (gh workflow run ci-queue-gate.yml -f pr_number=<n>). The core and graphql
+          # buckets are separate; the one with the fewest requests left decides, the
+          # absolute count the Go gate checks per bucket.
+          reserve=480
+          other_cost=42
+          read -r remaining limit reset < <(gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset | todate)"')
+          [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]]
+          if [ $((remaining * 10)) -lt "$limit" ]; then
+            echo "Rate limit has $remaining of $limit requests left; not rerunning now. It resets at $reset; rerun-after-reset retries once it has."
+            echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
             exit 0
           fi
-          echo "Rerunning $failed failed head publisher(s) of run $RUN_ID (attempt $RUN_ATTEMPT)."
-          gh run rerun "$RUN_ID" --failed
+          # Every failed or cancelled job of the attempt, with whether it is a publisher or
+          # group job whose reconcile step failed (the only kind worth another budget). Worker
+          # worker jobs are named by kind (group-<sha> for a group job, publish-<sha> otherwise), and reconcile always runs, so a failed setup
+          # counts too. Discovery is left alone, and so is dev-revoke: it counts in the failed total but never
+          # qualifies, so its presence forces job-level reruns of the publishers (the run-level rerun skips the per-job reserve
+          # gating), and it is never rerun itself, because rerunning a job reruns every job that needs it and every dev publisher does.
+          # A pending job that a newer one replaced ends
+          # cancelled without running a step, so it never qualifies.
+          failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end)"')
+          total=0
+          groups=()
+          others=()
+          held=""
+          while read -r id kind qualifies; do
+            [ -n "$id" ] || continue
+            total=$((total + 1))
+            [ "$qualifies" = 1 ] || continue
+            [[ "$id" =~ ^[1-9][0-9]*$ ]]
+            if [ "$kind" = group ]; then
+              groups+=("$id")
+            elif [ $((remaining - other_cost)) -ge "$reserve" ]; then
+              others+=("$id")
+            else
+              held="$held $id"
+            fi
+          done <<<"$failed"
+          if [ -n "$held" ]; then
+            echo "Held for the group reserve ($remaining of $limit requests left):$held. rerun-after-reset reruns them once the window has reset."
+            echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+          fi
+          eligible=$((${#groups[@]} + ${#others[@]}))
+          if [ "$eligible" = 0 ]; then
+            if [ -z "$held" ]; then echo "No head publisher or group job failed while reconciling; nothing to rerun."; fi
+            exit 0
+          fi
+          # GitHub refuses a rerun of another job while the run is active again, so at most one
+          # rerun is requested per run per pass (the retry fires again when that rerun
+          # completes or fails, within the attempt bound). Several jobs go together through the
+          # run-level endpoint, which reruns exactly the run's failed (and cancelled) jobs,
+          # only when that set is exactly the set wanted and all of one kind. Otherwise the
+          # highest-priority job (group first) is rerun and the rest wait for that rerun's
+          # own completion. A rerun request is an idempotent re-request, not a gate write, so
+          # a refusal is retried twice with backoff (8 seconds in all, well inside this job's
+          # two minutes) before it is reported. Only ids are printed, never GitHub's response text.
+          rerun_post() {
+            local delay
+            for delay in 0 2 6; do
+              if [ "$delay" != 0 ]; then sleep "$delay"; fi
+              if gh api --method POST "$1" >/dev/null 2>&1; then return 0; fi
+            done
+            return 1
+          }
+          if [ "$eligible" -ge 2 ] && [ "$eligible" = "$total" ] && { [ "${#groups[@]}" = 0 ] || [ "${#others[@]}" = 0 ]; }; then
+            echo "Rerunning the $eligible failed jobs of run $RUN_ID (attempt $RUN_ATTEMPT) together."
+            target="repos/$GH_REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
+            named="run $RUN_ID"
+          else
+            if [ "${#groups[@]}" -gt 0 ]; then pick=${groups[0]}; else pick=${others[0]}; fi
+            echo "Rerunning job $pick of run $RUN_ID (attempt $RUN_ATTEMPT)."
+            if [ "$eligible" -gt 1 ]; then
+              echo "The other $((eligible - 1)) failed job(s) of this run are left for that rerun's own completion."
+            fi
+            target="repos/$GH_REPO/actions/jobs/$pick/rerun"
+            named="job $pick"
+          fi
+          if ! rerun_post "$target"; then
+            echo "The rerun of $named was refused. Reconcile it with: gh workflow run ci-queue-gate.yml -f pr_number=<n>"
+            exit 1
+          fi
+
+  rerun-after-reset:
+    # A designed wait, not a timeout bump. The shared token's core limit is one fixed
+    # window of at most 60 minutes, and a merge-group head gets no later event, so a
+    # rate-limited group or publish job that nobody retries leaves ci-queue-required
+    # queued until the 120-minute queue timeout. This job sleeps until the window resets
+    # (at most 61 minutes, refusing a reset beyond that; it skips only the sleep when the
+    # window has recovered by the time it starts), then reruns, group jobs first,
+    # every trusted failed publisher or group job of the last three hours by id. It
+    # pages through every failed and cancelled run of that period for each workflow.
+    # At most one rerun is requested per run (GitHub refuses a second while the run is
+    # active again), through the run-level endpoint when the run's failed set is exactly
+    # the set wanted. Reruns are spaced, and each is counted at its expected cost (41 reads
+    # for a group job, 42 otherwise) against the remaining budget before it is released,
+    # because a released rerun spends only after it starts: it stops while that projection
+    # would cross a fifth of the window (non-group jobs: the 480-request reserve), so the
+    # burst cannot re-exhaust the window it waited for. Jobs it stops before stay failed with
+    # their check pending. Only another failed gate run starts a new wait, so nothing
+    # completes a held job automatically: the operator command, gh workflow run
+    # ci-queue-gate.yml -f pr_number=<n>, is the completer for a merge-group head.
+    # Listings are retried; one that still fails is named and skipped, not fatal.
+    # 70 minutes is the longest wait plus the sweep; the job stops starting reruns after 66
+    # minutes, and the queue timeout stays untouched. The concurrency group lets one
+    # sleeper run and one wait behind it: a pending sleeper replaced by a newer one loses
+    # nothing, because the survivor sweeps every recent failed run. The attempt bound still
+    # applies, so a run is rerun at most twice in total.
+    needs: rerun
+    if: ${{ always() && (needs.rerun.outputs.exhausted == 'true' || needs.rerun.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    concurrency:
+      group: queue-retry-after-reset
+      cancel-in-progress: false
+    permissions:
+      actions: write
+    steps:
+      - name: Wait for the rate-limit reset, then rerun failed head jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          started=$(date +%s)
+          # Requests kept for merge-group jobs: two overlapping merge groups (CI takes 36 to 73
+          # minutes, so at most two groups finish within one window) of three attempts at about
+          # 41 reads each is 246, plus the 232 requests a window spends on work that cannot defer
+          # (event discovery, retry listings, other workflows) is 478, rounded to 480. That is the
+          # original derivation; the honest bound is in the sizing table of docs/development/ci.md.
+          # Keep in step with groupReserve in
+          # scripts/ci/pr-gate/reserve.go and the other readers of rate_limit.
+          reserve=480
+          group_cost=41
+          other_cost=42
+          budget() { # sets remaining, limit and reset (epoch seconds) of the bucket (core or graphql) with the fewest requests left, from the free rate_limit read; returns 1 when that read fails
+            local line r l rs
+            line=$(read_retry gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset)"') || return 1
+            read -r r l rs <<<"$line"
+            [[ "$r" =~ ^[0-9]+$ && "$l" =~ ^[0-9]+$ && "$rs" =~ ^[1-9][0-9]*$ ]] || return 1
+            remaining=$r
+            limit=$l
+            reset=$rs
+          }
+          # An idempotent read is retried with the same backoff as a rerun request; the caller
+          # reports a read that still fails, skips it and carries on with the rest.
+          read_retry() {
+            local delay out
+            for delay in 0 5 15 45; do
+              if [ "$delay" != 0 ]; then sleep "$delay"; fi
+              if out=$("$@" 2>/dev/null); then printf '%s\n' "$out"; return 0; fi
+            done
+            return 1
+          }
+          # A rerun request is an idempotent re-request, not a gate write: a refusal is retried
+          # with backoff (65 seconds at most) before the job is reported not rerun.
+          rerun_post() {
+            local delay
+            for delay in 0 5 15 45; do
+              if [ "$delay" != 0 ]; then sleep "$delay"; fi
+              if gh api --method POST "$1" >/dev/null 2>&1; then return 0; fi
+            done
+            return 1
+          }
+          # Sleeps to the reset, then re-reads; returns 1, saying why, when no rerun may follow.
+          wait_for_reset() {
+            local wait cap
+            wait=$((reset + 5 - $(date +%s)))
+            # One window at most, and never so late that the budget read that follows (65 seconds of backoff at most) ends past the 66 minutes after which no rerun starts.
+            cap=$((started + 3960 - 65 - $(date +%s)))
+            if [ "$cap" -gt 3660 ]; then cap=3660; fi
+            if [ "$wait" -gt "$cap" ]; then
+              echo "The rate limit resets in $wait seconds, beyond the $cap this job can still wait; not waiting."
+              return 1
+            fi
+            echo "Rate limit has $remaining of $limit requests left; waiting $wait seconds for the reset."
+            if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+            if ! budget; then
+              echo "Could not read the rate limit after the reset; not rerunning."
+              return 1
+            fi
+            if [ $((remaining * 10)) -lt "$limit" ]; then
+              echo "Rate limit still has only $remaining of $limit requests left after the reset; not rerunning."
+              return 1
+            fi
+          }
+          budget || { echo "Could not read the rate limit."; exit 1; }
+          slept=0
+          if [ $((remaining * 10)) -ge "$limit" ] && [ "$remaining" -ge "$reserve" ]; then
+            # Recovered already (a reset passed since the handoff, or this sleeper queued behind
+            # another): skip only the sleep, the inventory and reruns still follow. A non-group
+            # job that does not fit above the reserve still waits for the reset, below.
+            echo "Rate limit has $remaining of $limit requests left; no wait needed."
+          else
+            wait_for_reset || exit 1
+            slept=1
+          fi
+          # What the window held when releasing began; reruns released since have not spent yet.
+          budget_at_start=$remaining
+          # Same trust rule as the rerun job's `if`, applied to listed runs: a branch can
+          # edit these workflows, so only their real triggers on protected branches count.
+          since=$(jq -nr --argjson at "$(($(date +%s) - 10800))" '$at | todate')
+          list_runs() { # $1 workflow, $2 status
+            gh api --paginate --method GET "repos/$GH_REPO/actions/workflows/$1/runs" \
+              -f status="$2" -f created=">=$since" -F per_page=100 --jq '.workflow_runs[]' |
+              jq -r --arg repo "$GH_REPO" 'select(.run_attempt < 3 and (.event == "pull_request_target" or ((.event == "push" or .event == "workflow_run" or .event == "workflow_dispatch" or .event == "schedule") and .head_repository.full_name == $repo and (.head_branch == "main" or .head_branch == "dev")))) | "\(.id) \(.run_attempt)"'
+          }
+          list_jobs() { # $1 run id, $2 attempt: every failed or cancelled job, and whether it qualifies
+            gh api --paginate "repos/$GH_REPO/actions/runs/$1/attempts/$2/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end) \(.name)"'
+          }
+          # A listing that still fails after its retries is named and skipped, so one bad read
+          # cannot cost every other rerun; the job then fails visibly at the end.
+          unread=""
+          runs=""
+          for workflow in ci-queue-gate.yml ci-queue-worker.yml ci-dev-gate.yml; do
+            for status in failure cancelled; do
+              if listed=$(read_retry list_runs "$workflow" "$status"); then
+                runs="$runs$listed"$'\n'
+              else
+                echo "Could not list $status runs of $workflow."
+                unread="$unread $workflow/$status"
+              fi
+            done
+          done
+          # One rerun per run: the run-level endpoint when the run's failed set is exactly the
+          # qualifying set and all of one kind, otherwise its highest-priority job (group first).
+          # Entries are "type id cost"; group entries are released first.
+          group_plan=""
+          other_plan=""
+          plan_run() { # $1 run id, $2 job lines
+            local id kind qualifies name total=0 g=() o=() gh=() oh=() count
+            while read -r id kind qualifies name; do
+              [ -n "$id" ] || continue
+              total=$((total + 1))
+              [ "$qualifies" = 1 ] || continue
+              [[ "$id" =~ ^[1-9][0-9]*$ && "$name" =~ ^((dev-)?publish|group)-[0-9a-f]{40}$ ]]
+              if [ "$kind" = group ]; then
+                g+=("$id")
+                gh+=("$name")
+              else
+                o+=("$id")
+                oh+=("$name")
+              fi
+            done <<<"$2"
+            count=$((${#g[@]} + ${#o[@]}))
+            [ "$count" -gt 0 ] || return 0
+            # Entries are "type id cost run key": the key is the job name (kind and head), or the run for a run-level rerun.
+            if [ "$count" -ge 2 ] && [ "$count" = "$total" ] && { [ "${#g[@]}" = 0 ] || [ "${#o[@]}" = 0 ]; }; then
+              if [ "${#g[@]}" -gt 0 ]; then
+                group_plan="${group_plan}run $1 $((count * group_cost)) $1 run$1"$'\n'
+              else
+                other_plan="${other_plan}run $1 $((count * other_cost)) $1 run$1"$'\n'
+              fi
+            elif [ "${#g[@]}" -gt 0 ]; then
+              group_plan="${group_plan}job ${g[0]} $group_cost $1 ${gh[0]}"$'\n'
+            else
+              other_plan="${other_plan}job ${o[0]} $other_cost $1 ${oh[0]}"$'\n'
+            fi
+          }
+          while read -r run_id attempt; do
+            [ -n "$run_id" ] || continue
+            [[ "$run_id" =~ ^[1-9][0-9]*$ && "$attempt" =~ ^[1-9][0-9]*$ ]]
+            if ! found=$(read_retry list_jobs "$run_id" "$attempt"); then
+              echo "Could not list the jobs of run $run_id (attempt $attempt)."
+              unread="$unread run:$run_id"
+              continue
+            fi
+            plan_run "$run_id" "$found"
+          done <<<"$runs"
+          # Newest run first, and one entry per job name (kind and head): a stale run of an earlier head
+          # must not take a release slot ahead of the current one.
+          newest_per_head() { sort -k4,4nr | awk 'NF && !seen[$5]++'; }
+          group_plan=$(printf '%s' "$group_plan" | newest_per_head)
+          other_plan=$(printf '%s' "$other_plan" | newest_per_head)
+          # Space the reruns and count each one at its expected cost before it is released: a
+          # released rerun spends only after it starts, so the live budget does not yet show
+          # it. A group job may spend down to a fifth of the window; any other job leaves the
+          # reserve as well.
+          refused=""
+          held=""
+          released=0
+          second=0
+          budget_down=0
+          retry_plan=""
+          spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other
+            local available floor path
+            if [ $(($(date +%s) - started)) -gt 3960 ]; then
+              held="$held $1:$2"
+              return 0
+            fi
+            # A rate_limit read that still fails after its retries is not a reason to guess: this
+            # and every later job is named as not read, and the job fails visibly at the end.
+            if [ "$budget_down" = 1 ] || ! budget; then
+              budget_down=1
+              echo "Could not read the rate limit; not rerunning $1 $2."
+              unread="$unread $1:$2"
+              return 0
+            fi
+            available=$remaining
+            if [ $((budget_at_start - released)) -lt "$available" ]; then available=$((budget_at_start - released)); fi
+            floor=$((limit / 5))
+            if [ "$4" = other ] && [ "$reserve" -gt "$floor" ]; then floor=$reserve; fi
+            if [ $((available - $3)) -lt "$floor" ]; then
+              echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning $1 $2 yet."
+              if [ "$second" = 1 ]; then held="$held $1:$2"; else retry_plan="${retry_plan}$1 $2 $3 $4"$'\n'; fi
+              return 0
+            fi
+            echo "Rerunning $1 $2 (about $3 requests of the $available left)."
+            if [ "$1" = run ]; then path="repos/$GH_REPO/actions/runs/$2/rerun-failed-jobs"; else path="repos/$GH_REPO/actions/jobs/$2/rerun"; fi
+            released=$((released + $3))
+            if ! rerun_post "$path"; then
+              echo "The rerun of $1 $2 was refused."
+              refused="$refused $1:$2"
+            fi
+            sleep 15
+          }
+          hold_retry_plan() {
+            local type id cost kind
+            while read -r type id cost kind; do
+              [ -n "$id" ] || continue
+              held="$held $type:$id"
+            done <<<"$retry_plan"
+            retry_plan=""
+          }
+          while read -r type id cost rest; do
+            [ -n "$id" ] || continue
+            spend_rerun "$type" "$id" "$cost" group
+          done <<<"$group_plan"
+          while read -r type id cost rest; do
+            [ -n "$id" ] || continue
+            spend_rerun "$type" "$id" "$cost" other
+          done <<<"$other_plan"
+          # A window that had recovered when this job started skipped the sleep, but a job that
+          # did not fit above its floor (the reserve for a non-group job, a fifth of the window
+          # for a group job, or the projection of the reruns just released) fits after the
+          # reset: wait for it once and release the held set once. Nothing else completes a
+          # held merge-group job.
+          if [ -n "$retry_plan" ] && [ "$slept" = 0 ]; then
+            echo "Held for the reserve: waiting for the reset to release them once."
+            if wait_for_reset; then
+              budget_at_start=$remaining
+              released=0
+              second=1
+              plan=$retry_plan
+              retry_plan=""
+              while read -r type id cost kind; do
+                [ -n "$id" ] || continue
+                spend_rerun "$type" "$id" "$cost" "$kind"
+              done <<<"$plan"
+            fi
+          fi
+          hold_retry_plan
+          if [ -n "$held" ]; then
+            echo "Held to protect the window:$held. Their checks stay pending. Nothing completes a held job automatically unless another gate run fails and starts a new wait; a merge-group head needs the operator: gh workflow run ci-queue-gate.yml -f pr_number=<n>"
+          fi
+          if [ -n "$unread" ]; then
+            echo "Not read:$unread. Their failed jobs were not rerun; reconcile with: gh workflow run ci-queue-gate.yml -f pr_number=<n>"
+          fi
+          if [ -n "$refused$held$unread" ]; then
+            echo "Not rerun:$refused$held."
+            exit 1
+          fi

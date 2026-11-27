@@ -34,7 +34,6 @@ expect_reject() {
 all_plan='{
 	"client":true,
 	"compose-demo":true,
-	"desktop":true,
 	"docs":true,
 	"floor-bench":true,
 	"freeze-guard":true,
@@ -55,7 +54,6 @@ all_success='{
 	"changes":{"result":"success"},
 	"client":{"result":"success"},
 	"compose-demo":{"result":"success"},
-	"desktop":{"result":"success"},
 	"docs":{"result":"success"},
 	"floor-bench":{"result":"success"},
 	"fuzz_shard":{"result":"success"},
@@ -80,7 +78,6 @@ docs_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .docs = true')
 docs_success=$(printf '%s' "$all_success" | jq '
 	.client.result = "skipped" |
 	.["compose-demo"].result = "skipped" |
-	.desktop.result = "skipped" |
 	.["floor-bench"].result = "skipped" |
 	.fuzz_shard.result = "skipped" |
 	.["headline-guarantee"].result = "skipped" |
@@ -118,7 +115,7 @@ for result in failure cancelled skipped; do
 done
 expect_accept 'main push' push "$all_success" "$all_plan"
 
-for job in client compose-demo desktop fuzz_shard isolation_shard preflight race_shard scan-xplat source-artifact-security test_core test_core_serial; do
+for job in client compose-demo fuzz_shard isolation_shard preflight race_shard scan-xplat source-artifact-security test_core test_core_serial; do
 	for result in failure cancelled skipped; do
 		expect_reject "selected $job with $result result" pull_request \
 			"$(printf '%s' "$all_success" | jq --arg job "$job" --arg result "$result" '.[ $job ].result = $result')" \
@@ -137,14 +134,12 @@ expect_reject 'missing cross-platform proof while Linux tests pass' pull_request
 expect_reject 'unplanned cross-platform proof ran' pull_request \
 	"$(printf '%s' "$docs_success" | jq '.["scan-xplat"].result = "success"')" "$docs_plan"
 
-# The macOS desktop job is a direct gate, and an unselected one must not run.
-expect_reject 'unplanned desktop job ran' pull_request \
-	"$(printf '%s' "$docs_success" | jq '.desktop.result = "success"')" "$docs_plan"
-desktop_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .desktop = true')
-desktop_success=$(printf '%s' "$docs_success" | jq '.docs.result = "skipped" | .desktop.result = "success"')
-expect_accept 'successful desktop-only pull request' pull_request "$desktop_success" "$desktop_plan"
-expect_reject 'desktop-only pull request with the desktop job skipped' pull_request \
-	"$(printf '%s' "$desktop_success" | jq '.desktop.result = "skipped"')" "$desktop_plan"
+# Desktop validation moved to nightly-desktop.yml (owner decision 2026-11-25): it is
+# no longer a gate, and a stray desktop result is a shape mismatch, not an extra pass.
+expect_reject 'retired desktop job result present' pull_request \
+	"$(printf '%s' "$all_success" | jq '.desktop.result = "success"')" "$all_plan"
+expect_reject 'retired desktop plan key present' pull_request \
+	"$all_success" "$(printf '%s' "$all_plan" | jq '.desktop = true')"
 
 expect_reject 'unselected web job unexpectedly ran' pull_request \
 	"$(printf '%s' "$docs_success" | jq '.web.result = "success"')" "$docs_plan"

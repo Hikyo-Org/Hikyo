@@ -81,6 +81,7 @@ func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBu
 	q.queueDeadline = b.Deadline
 	defer func() { q.queueDeadline = oldDeadline }()
 	q.admissions = make(map[int]*admissionTrace)
+	defer func() { q.rateLimited, q.unconfirmed = false, false }()
 	work, cancel := context.WithDeadline(ctx, b.Deadline.Add(-admissionReserve))
 	err := invoke(work)
 	workErr := work.Err()
@@ -95,6 +96,8 @@ func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBu
 	}
 	// This is a new bounded context, never the cancelled validation context. It
 	// does not extend the shared deadline and is shared by all routed PRs.
+	q.rateLimited = rateLimitedFailure(err)
+	q.unconfirmed = errors.As(err, new(*unconfirmedSuccess))
 	reserveEnd := time.Now().Add(admissionReserve)
 	if b.Deadline.Before(reserveEnd) {
 		reserveEnd = b.Deadline
@@ -142,6 +145,33 @@ const unfinished = "The publisher did not finish: it failed or ran out of its bu
 
 func (q *queueController) pendingText(number int) outcome {
 	return pending(unfinished + " A failed run is rerun only while attempts remain. " + q.reassessedBy(number))
+}
+
+// rateLimitedFailure reports a failure that ended on an exhausted GitHub API window,
+// including a reset the job's budget could not wait out. Reconcile joins its work error
+// before its block error, and errors.As stops at the first *githubReadError whatever its
+// flag, so every branch of a joined or wrapped error is walked: any rate-limited branch counts.
+func rateLimitedFailure(err error) bool {
+	var failure *githubReadError
+	if errors.As(err, &failure) && failure.rateLimited {
+		return true
+	}
+	if many, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, part := range many.Unwrap() {
+			if rateLimitedFailure(part) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (q *queueController) rateLimitedText(number int) outcome {
+	return pending(unfinished + " GitHub's API rate limit stopped this run, which says nothing about the PR; the record stays blocking until a later run reassesses it. " + q.reassessedBy(number))
+}
+
+func (q *queueController) unconfirmedText(number int) outcome {
+	return pending(unfinished + " A published success could not be confirmed against the check listing, which says nothing about the PR; the record stays blocking until a later run reassesses it. " + q.reassessedBy(number))
 }
 
 func (q *queueController) refusalText(number int) outcome {
@@ -223,7 +253,15 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 		}
 	}
 	result := q.refusalText(final.Number)
-	if admissionRetryRemains() {
+	if q.rateLimited {
+		// A spent API window is not a verdict on the PR, and a final attempt must not
+		// turn it into one: stay blocking and pending for a later window.
+		result = q.rateLimitedText(final.Number)
+	} else if q.unconfirmed {
+		// The success was proven and written; only its confirmation listing failed. That says
+		// nothing about the PR, so it is never a refusal, whatever the attempt.
+		result = q.unconfirmedText(final.Number)
+	} else if admissionRetryRemains() {
 		// Still blocking, but not a verdict: a rerun follows while attempts remain.
 		result = q.pendingText(final.Number)
 	}
