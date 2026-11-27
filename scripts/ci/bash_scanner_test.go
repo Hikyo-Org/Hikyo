@@ -141,11 +141,22 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 	found := false
 	syntax.Walk(node, func(n syntax.Node) bool {
 		call, ok := n.(*syntax.CallExpr)
-		if !ok || len(call.Args) == 0 || call.Args[0].Lit() != name {
+		if !ok {
 			return !found
 		}
-		args := make([]string, 0, len(call.Args)-1)
-		for _, word := range call.Args[1:] {
+		words := call.Args
+		// builtin name and command [-p] name run the same builtin.
+		for len(words) > 1 && (words[0].Lit() == "builtin" || words[0].Lit() == "command") {
+			words = words[1:]
+			for len(words) > 1 && words[0].Lit() == "-p" {
+				words = words[1:]
+			}
+		}
+		if len(words) == 0 || words[0].Lit() != name {
+			return !found
+		}
+		args := make([]string, 0, len(words)-1)
+		for _, word := range words[1:] {
 			args = append(args, word.Lit())
 		}
 		found = found || match(args)
@@ -155,21 +166,29 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 }
 
 // setsErrexit reports whether set arguments turn errexit on: an e in a -group (-e, -oe,
-// -euo pipefail) or a -group with o naming errexit (-o errexit, -uo errexit). Options end
-// at -- , - or the first word that is not an option; a non-literal word ("" here: quoted
-// or expanded) may be -e, so it counts as one.
+// -euo pipefail) or a -group whose o takes errexit as its name (-o errexit, -uo errexit,
+// -oo pipefail errexit). Each o takes the next word unless that word is an option itself
+// (-o -e lists the options, then sets -e). Options end at -- , - or the first word that
+// is not an option. A non-literal word ("" here: quoted or expanded) or one with a
+// backslash may be -e or errexit, so it counts as one. Conservative: odd groups such as
+// -+e count as -e although bash leaves errexit off.
 func setsErrexit(args []string) bool {
+	unknown := func(word string) bool { return word == "" || strings.Contains(word, `\`) }
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "":
+		case unknown(arg):
 			return true
 		case arg == "--" || arg == "-" || (arg[0] != '-' && arg[0] != '+'):
 			return false
 		case arg[0] == '-' && strings.Contains(arg[1:], "e"):
 			return true
-		case strings.Contains(arg[1:], "o"):
-			if i++; i < len(args) && args[i] == "errexit" && arg[0] == '-' {
+		}
+		for range strings.Count(arg[1:], "o") {
+			if i+1 >= len(args) || (!unknown(args[i+1]) && (args[i+1][0] == '-' || args[i+1][0] == '+')) {
+				break
+			}
+			if i++; arg[0] == '-' && (args[i] == "errexit" || unknown(args[i])) {
 				return true
 			}
 		}
@@ -187,107 +206,117 @@ const brokenSourceFixture = "#!/usr/bin/env bash\nfixture_message() { printf 'so
 // statement of a background or substitution subshell are flagged although bash 3.2 and 5 agree there.
 var bareTestCases = struct{ flagged, allowed map[string]string }{
 	flagged: map[string]string{
-		"top level test":                    "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
-		"top level arith":                   "(( n >= 21 ))\n",
-		"inside a loop":                     "for a in b; do\n  [[ -n $a ]]\ndone\n",
-		"inside then body":                  "if true; then\n  [[ -n $a ]]\nfi\n",
-		"inside else body":                  "if true; then :; else\n  [[ -n $a ]]\nfi\n",
-		"last in a function":                "f() {\n  ((a == 1 || b == 2))\n}\n",
-		"function called with or":           "f() { [[ a == b ]]; }\nf || die\n", // conservative: bodies are active
-		"test with comment":                 "[[ -n $a ]] # why\n",
-		"semicolon":                         "[[ -n $a ]];\n",
-		"quoted bracket":                    "[[ \"$a ]] b\" == x ]]\n",
-		"nested bash heredoc":               "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
-		"continued test":                    "[[ -n $a &&\n  -n $b ]]\n",
-		"after semicolon":                   "x=1; [[ -n $x ]]\n",
-		"brace group":                       "{ [[ -n $a ]]; }\n",
-		"subshell":                          "( [[ -n $a ]] )\n",
-		"inline then":                       "if c; then [[ -n $a ]]; fi\n",
-		"inline else":                       "if c; then :; else [[ -n $a ]]; fi\n",
-		"inline then and else":              "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
-		"inline do":                         "for a in b; do [[ -n $a ]]; done\n",
-		"inline do arith":                   "while c; do ((n > 0)); done\n",
-		"case arm":                          "case $x in a) [[ -n $x ]] ;; esac\n",
-		"case arm last":                     "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
-		"case arm leading paren":            "case $x in (a) [[ a == b ]] ;; esac\n",
-		"function one-liner":                "f() { [[ -n $1 ]]; }\n",
-		"and tail":                          "a &&\n  [[ -n $b ]]\n",
-		"and tail inline":                   "true && [[ a == b ]]\n",
-		"or tail":                           "false || [[ a == b ]]\n",
-		"test and test":                     "[[ a == a ]] && [[ a == b ]]\n",
-		"arith and tail":                    "true && (( 0 ))\n",
-		"tab after bracket":                 "[[\t-n $a ]]\n",
-		"comment ending in or":              "# explain ||\n[[ -n $a ]]\n",
-		"comment ending in and":             "# explain &&\n[[ -n $a ]]\n",
-		"comment ending in pipe":            "# explain |\n((a))\n",
-		"redirect after test":               "[[ a == b ]] >/dev/null\n",
-		"stderr redirect after":             "[[ a == b ]] 2>/dev/null\n",
-		"time prefix":                       "time [[ a == b ]]\n",
-		"after quoted paren":                "x=$(echo \")\")\n[[ a == b ]]\n",
-		"after quoted brace":                "x=${y:-\"}\"}\n[[ a == b ]]\n",
-		"after ansi-c quote":                "x=$'it\\'s'\n[[ a == b ]]\n",
-		"after grep with quotes":            "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
-		"group closed by plain end":         "{ [[ -n $a ]]; other; }\n",
-		"background group":                  "{ [[ a == b ]]; echo x; } &\n",
-		"background subshell":               "( [[ a == b ]]; echo x ) &\n",
-		"process substitution":              "cat <( [[ a == b ]]; echo x )\n",
-		"set -e in a substitution":          "value=$(set -e; [[ a == b ]]; echo accepted)\n",
-		"set -eo in a substitution":         "value=$(set -eo pipefail; [[ a == b ]]; echo accepted)\n",
-		"set -oe in a substitution":         "value=$(set -oe pipefail; [[ a == b ]]; echo accepted)\n",
-		"set -uo errexit in a substitution": "value=$(set -uo errexit; [[ a == b ]]; echo accepted)\n",
-		"quoted set -e in a substitution":   "value=$(set \"-e\"; [[ a == b ]]; echo accepted)\n",
-		"inherited errexit":                 "shopt -s inherit_errexit\nvalue=$([[ a == b ]]; echo accepted)\n",
-		"tab-indented bash heredoc":         "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
+		"top level test":                      "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
+		"top level arith":                     "(( n >= 21 ))\n",
+		"inside a loop":                       "for a in b; do\n  [[ -n $a ]]\ndone\n",
+		"inside then body":                    "if true; then\n  [[ -n $a ]]\nfi\n",
+		"inside else body":                    "if true; then :; else\n  [[ -n $a ]]\nfi\n",
+		"last in a function":                  "f() {\n  ((a == 1 || b == 2))\n}\n",
+		"function called with or":             "f() { [[ a == b ]]; }\nf || die\n", // conservative: bodies are active
+		"test with comment":                   "[[ -n $a ]] # why\n",
+		"semicolon":                           "[[ -n $a ]];\n",
+		"quoted bracket":                      "[[ \"$a ]] b\" == x ]]\n",
+		"nested bash heredoc":                 "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
+		"continued test":                      "[[ -n $a &&\n  -n $b ]]\n",
+		"after semicolon":                     "x=1; [[ -n $x ]]\n",
+		"brace group":                         "{ [[ -n $a ]]; }\n",
+		"subshell":                            "( [[ -n $a ]] )\n",
+		"inline then":                         "if c; then [[ -n $a ]]; fi\n",
+		"inline else":                         "if c; then :; else [[ -n $a ]]; fi\n",
+		"inline then and else":                "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
+		"inline do":                           "for a in b; do [[ -n $a ]]; done\n",
+		"inline do arith":                     "while c; do ((n > 0)); done\n",
+		"case arm":                            "case $x in a) [[ -n $x ]] ;; esac\n",
+		"case arm last":                       "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
+		"case arm leading paren":              "case $x in (a) [[ a == b ]] ;; esac\n",
+		"function one-liner":                  "f() { [[ -n $1 ]]; }\n",
+		"and tail":                            "a &&\n  [[ -n $b ]]\n",
+		"and tail inline":                     "true && [[ a == b ]]\n",
+		"or tail":                             "false || [[ a == b ]]\n",
+		"test and test":                       "[[ a == a ]] && [[ a == b ]]\n",
+		"arith and tail":                      "true && (( 0 ))\n",
+		"tab after bracket":                   "[[\t-n $a ]]\n",
+		"comment ending in or":                "# explain ||\n[[ -n $a ]]\n",
+		"comment ending in and":               "# explain &&\n[[ -n $a ]]\n",
+		"comment ending in pipe":              "# explain |\n((a))\n",
+		"redirect after test":                 "[[ a == b ]] >/dev/null\n",
+		"stderr redirect after":               "[[ a == b ]] 2>/dev/null\n",
+		"time prefix":                         "time [[ a == b ]]\n",
+		"after quoted paren":                  "x=$(echo \")\")\n[[ a == b ]]\n",
+		"after quoted brace":                  "x=${y:-\"}\"}\n[[ a == b ]]\n",
+		"after ansi-c quote":                  "x=$'it\\'s'\n[[ a == b ]]\n",
+		"after grep with quotes":              "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
+		"group closed by plain end":           "{ [[ -n $a ]]; other; }\n",
+		"background group":                    "{ [[ a == b ]]; echo x; } &\n",
+		"background subshell":                 "( [[ a == b ]]; echo x ) &\n",
+		"process substitution":                "cat <( [[ a == b ]]; echo x )\n",
+		"set -e in a substitution":            "value=$(set -e; [[ a == b ]]; echo accepted)\n",
+		"set -eo in a substitution":           "value=$(set -eo pipefail; [[ a == b ]]; echo accepted)\n",
+		"set -oe in a substitution":           "value=$(set -oe pipefail; [[ a == b ]]; echo accepted)\n",
+		"set -uo errexit in a substitution":   "value=$(set -uo errexit; [[ a == b ]]; echo accepted)\n",
+		"quoted set -e in a substitution":     "value=$(set \"-e\"; [[ a == b ]]; echo accepted)\n",
+		"quoted errexit in a substitution":    "value=$(set -o \"errexit\"; [[ a == b ]]; echo accepted)\n",
+		"expanded option in a substitution":   "value=$(set -uo \"$x\"; [[ a == b ]]; echo accepted)\n",
+		"set -o -e in a substitution":         "value=$(set -o -e; [[ a == b ]]; echo accepted)\n",
+		"second o names errexit":              "value=$(set -oo pipefail errexit; [[ a == b ]]; echo accepted)\n",
+		"escaped set -e in a substitution":    "value=$(set \\-e; [[ a == b ]]; echo accepted)\n",
+		"escaped errexit in a substitution":   "value=$(set -o err\\exit; [[ a == b ]]; echo accepted)\n",
+		"builtin set -e in a substitution":    "value=$(builtin set -e; [[ a == b ]]; echo accepted)\n",
+		"command -p set -e in a substitution": "value=$(command -p set -e; [[ a == b ]]; echo accepted)\n",
+		"inherited errexit":                   "shopt -s inherit_errexit\nvalue=$([[ a == b ]]; echo accepted)\n",
+		"tab-indented bash heredoc":           "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
 	},
 	allowed: map[string]string{
-		"or exit":                     "[[ -n $a ]] || exit 1\n",
-		"or return":                   "((a == 1)) || return 1\n",
-		"or brace":                    "[[ $a =~ x ]] || { echo no >&2; exit 1; }\n",
-		"and chain":                   "[[ $a == b ]] && x=1\n",
-		"or inside the test":          "[[ $a == b || $c == d ]] || exit 1\n",
-		"or in a regex":               "[[ $a =~ ^(x\\|y)$ ]] || exit 1\n",
-		"if":                          "if [[ -n $a ]]; then :; fi\n",
-		"elif":                        "if true; then :; elif ((a)); then :; fi\n",
-		"while":                       "while ((n > 0)); do n=$((n - 1)); done\n",
-		"until":                       "until [[ -n $a ]]; do :; done\n",
-		"bare if keyword":             "if\n  [[ -n $a ]]\nthen :; fi\n",
-		"and tail then":               "if a && [[ -n $b ]]; then :; fi\n",
-		"or tail then":                "while a || ((n)); do :; done\n",
-		"read loop condition":         "while read -r l && [[ -n $l ]]; do :; done\n",
-		"tail then or":                "a && [[ -n $b ]] || exit 1\n",
-		"inline then or":              "if c; then [[ -n $a ]] || exit 1; else [[ -n $b ]] || return 1; fi\n",
-		"case arm or":                 "case $x in a) [[ -n $x ]] || exit 1 ;; esac\n",
-		"redirect ampersand":          "cmd 2>&1 || exit 1\n[[ -n $a ]] || exit 1\n",
-		"array and subst":             "a=(1 2); b=$([[ -n $a ]] && echo y); cat <(echo) >/dev/null; [[ -n $a ]] || exit 1\n",
-		"function header":             "f() {\n  [[ -n $1 ]] || return 1\n}\n",
-		"wrapped or":                  "[[ -n $a ]] \\\n  || exit 1\n",
-		"multi-line test":             "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
-		"test in condition":           "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
-		"plain heredoc":               "cat <<EOF\n[[ -n $a ]]\nEOF\n",
-		"plain substitution":          "value=$([[ a == b ]]; echo x)\n", // errexit is off in $( ) on every bash
-		"set +e substitution":         "value=$(set +e; [[ a == b ]]; echo x)\n",
-		"set -- -e substitution":      "value=$(set -- -e; [[ a == b ]]; echo x)\n", // -e is a positional parameter
-		"set - -e substitution":       "value=$(set - -e; [[ a == b ]]; echo x)\n",
-		"set x -e substitution":       "value=$(set x -e; [[ a == b ]]; echo x)\n", // options end at the first positional word
-		"set +o errexit substitution": "value=$(set +o errexit; [[ a == b ]]; echo x)\n",
-		"set -o emacs substitution":   "value=$(set -o emacs; [[ a == b ]]; echo x)\n",
-		"sh heredoc":                  "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
-		"here string":                 "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
-		"arith expansion":             "x=$((a + 1))\n",
-		"command":                     "test -n \"$a\"\n",
-		"comment":                     "# [[ -n $a ]]\n",
-		"subshell list":               "(cd x && ls)\n",
-		"negated test":                "! [[ -e f ]]\n", // errexit ignores a ! pipeline on every bash
-		"negated group":               "! { [[ -n $a ]]; }\n",
-		"group then or":               "{ [[ -n $a ]]; other; } || die x\n",
-		"subshell then or":            "( [[ a == b ]] ) || exit 1\n",
-		"group tail then or":          "{ true && [[ a == b ]]; } || exit 1\n",
-		"group redirect or":           "{ read -r a && [[ -z $a ]]; } <\"$f\" ||\n  die x\n",
-		"group then and":              "{ [[ -n $a ]]; } && x\n",
-		"group in condition":          "if { [[ -n $a ]]; }; then :; fi\n",
-		"subshell in condition":       "if ( [[ -n $a ]] ); then :; fi\n",
-		"background":                  "[[ -n $a ]] &\n",
-		"quoted bracket text":         "echo '[[ -n $a ]]' \"[[ x ]]\"\n",
+		"or exit":                      "[[ -n $a ]] || exit 1\n",
+		"or return":                    "((a == 1)) || return 1\n",
+		"or brace":                     "[[ $a =~ x ]] || { echo no >&2; exit 1; }\n",
+		"and chain":                    "[[ $a == b ]] && x=1\n",
+		"or inside the test":           "[[ $a == b || $c == d ]] || exit 1\n",
+		"or in a regex":                "[[ $a =~ ^(x\\|y)$ ]] || exit 1\n",
+		"if":                           "if [[ -n $a ]]; then :; fi\n",
+		"elif":                         "if true; then :; elif ((a)); then :; fi\n",
+		"while":                        "while ((n > 0)); do n=$((n - 1)); done\n",
+		"until":                        "until [[ -n $a ]]; do :; done\n",
+		"bare if keyword":              "if\n  [[ -n $a ]]\nthen :; fi\n",
+		"and tail then":                "if a && [[ -n $b ]]; then :; fi\n",
+		"or tail then":                 "while a || ((n)); do :; done\n",
+		"read loop condition":          "while read -r l && [[ -n $l ]]; do :; done\n",
+		"tail then or":                 "a && [[ -n $b ]] || exit 1\n",
+		"inline then or":               "if c; then [[ -n $a ]] || exit 1; else [[ -n $b ]] || return 1; fi\n",
+		"case arm or":                  "case $x in a) [[ -n $x ]] || exit 1 ;; esac\n",
+		"redirect ampersand":           "cmd 2>&1 || exit 1\n[[ -n $a ]] || exit 1\n",
+		"array and subst":              "a=(1 2); b=$([[ -n $a ]] && echo y); cat <(echo) >/dev/null; [[ -n $a ]] || exit 1\n",
+		"function header":              "f() {\n  [[ -n $1 ]] || return 1\n}\n",
+		"wrapped or":                   "[[ -n $a ]] \\\n  || exit 1\n",
+		"multi-line test":              "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
+		"test in condition":            "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
+		"plain heredoc":                "cat <<EOF\n[[ -n $a ]]\nEOF\n",
+		"plain substitution":           "value=$([[ a == b ]]; echo x)\n", // errexit is off in $( ) on every bash
+		"set +e substitution":          "value=$(set +e; [[ a == b ]]; echo x)\n",
+		"set -- -e substitution":       "value=$(set -- -e; [[ a == b ]]; echo x)\n", // -e is a positional parameter
+		"set -o pipefail substitution": "value=$(set -o pipefail; [[ a == b ]]; echo x)\n",
+		"set +o expanded substitution": "value=$(set +o \"$x\"; [[ a == b ]]; echo x)\n",
+		"set - -e substitution":        "value=$(set - -e; [[ a == b ]]; echo x)\n",
+		"set x -e substitution":        "value=$(set x -e; [[ a == b ]]; echo x)\n", // options end at the first positional word
+		"set +o errexit substitution":  "value=$(set +o errexit; [[ a == b ]]; echo x)\n",
+		"set -o emacs substitution":    "value=$(set -o emacs; [[ a == b ]]; echo x)\n",
+		"sh heredoc":                   "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"here string":                  "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
+		"arith expansion":              "x=$((a + 1))\n",
+		"command":                      "test -n \"$a\"\n",
+		"comment":                      "# [[ -n $a ]]\n",
+		"subshell list":                "(cd x && ls)\n",
+		"negated test":                 "! [[ -e f ]]\n", // errexit ignores a ! pipeline on every bash
+		"negated group":                "! { [[ -n $a ]]; }\n",
+		"group then or":                "{ [[ -n $a ]]; other; } || die x\n",
+		"subshell then or":             "( [[ a == b ]] ) || exit 1\n",
+		"group tail then or":           "{ true && [[ a == b ]]; } || exit 1\n",
+		"group redirect or":            "{ read -r a && [[ -z $a ]]; } <\"$f\" ||\n  die x\n",
+		"group then and":               "{ [[ -n $a ]]; } && x\n",
+		"group in condition":           "if { [[ -n $a ]]; }; then :; fi\n",
+		"subshell in condition":        "if ( [[ -n $a ]] ); then :; fi\n",
+		"background":                   "[[ -n $a ]] &\n",
+		"quoted bracket text":          "echo '[[ -n $a ]]' \"[[ x ]]\"\n",
 	},
 }
 
