@@ -178,8 +178,8 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	if !found {
 		t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", heading)
 	}
-	if end := strings.Index(section, "\n#### "); end >= 0 {
-		section = section[:end]
+	if end := regexp.MustCompile(`\n#{1,4} `).FindStringIndex(section); end != nil {
+		section = section[:end[0]]
 	}
 	for _, want := range []string{"https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "643", "923", "dequeued and re-queued", "1,401", "40.1%", "accepted this figure on 2026-11-26", "dev-revoke", "With " + strconv.Itoa(gatedBound) + " allowed to gated work"} {
 		if !strings.Contains(section, want) {

@@ -135,6 +135,14 @@ jobs:
           }
           # The run-level rerun starts every failed job at once, so a set of non-group jobs must
           # afford their combined cost above the reserve, not each one alone.
+          # Rerunning only one of several non-group jobs would strand the rest: the next attempt lists
+          # only its own jobs, so no later callback sees them. Hold them all for rerun-after-reset,
+          # which reruns the set together once the window has recovered.
+          if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ $((remaining - ${#others[@]} * other_cost)) -lt "$reserve" ]; then
+            echo "Held for the group reserve ($remaining of $limit requests left): the ${#others[@]} failed jobs of this run cost $((${#others[@]} * other_cost)) together, more than leaves the reserve. rerun-after-reset reruns them together once the window has reset."
+            echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+            exit 0
+          fi
           if [ "$eligible" -ge 2 ] && [ "$eligible" = "$total" ] && { [ "${#others[@]}" = 0 ] || { [ "${#groups[@]}" = 0 ] && [ $((remaining - ${#others[@]} * other_cost)) -ge "$reserve" ]; }; }; then
             echo "Rerunning the $eligible failed jobs of run $RUN_ID (attempt $RUN_ATTEMPT) together."
             target="repos/$GH_REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
