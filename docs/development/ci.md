@@ -577,7 +577,7 @@ Sizing, per hour (M measured, E estimated; the incident hour is 2026-11-23 21:00
 
 R = 480 is below 947. With 678 allowed to gated work (1000 - 522 + 200), the pinned
 worst case at the lower bound is 678 + (947 - 200) = 1,425 requests, 42.5% over the window (main: 662 + 739 = 1,401, 40.1%). That is
-above the 25% over-window the owner accepted for the exception (Q2), by 17.5 points. The following describes main's figure (1,401). The
+above the 25% over-window the owner accepted for the exception (Q2), by 17.5 points. For main's figure (1,401): the
 coordinator accepted this figure on 2026-11-26 as part of the dated interim exception, which ends when #1598 lands. The owner accepted 1,396 (39.6%) for the #1598 interim; on 2026-11-26 the coordinator accepted figures up to a ceiling of about 1,420 requests an hour (42%). The dev-publisher backmerge admission hotfix adds 5 requests (1 ancestry read in each of 4 lanes, 1 in the attempt-3 bypass), within that ceiling on main. Dev's ~1,425/h (42.5%) exceeds that 1,420 ceiling; the owner accepted it on 2026-11-27 as an interim exception, ceiling ~1,430/h; the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598. The post-write
 confirmation listing is gated spend, inside the dev pass after the reserve check, so it is in
 the margin (49 per pass on dev, 50 on the backmerge path; 45 and 46 on main) and not an ungated row: a created-record pass that confirms costs 45 + 2 on dev (41 + 2 on main)
