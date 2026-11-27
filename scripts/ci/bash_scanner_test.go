@@ -320,7 +320,8 @@ func unscannedErrexitUses(script string) []string {
 	return slices.Compact(found) // the parser and the eval pattern can both report a line
 }
 
-// bashHeredoc returns the body of redirect's heredoc as bash runs it, when it is a bash script.
+// bashHeredoc returns the body of redirect's heredoc as bash runs it, when the scan reads it:
+// a bash script, or an sh script behind a quoted delimiter.
 func bashHeredoc(script string, redirect *syntax.Redirect) (string, bool) {
 	if redirect == nil || redirect.Hdoc == nil {
 		return "", false
@@ -417,6 +418,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"$'builtin' set -e in a substitution": "value=$($'builtin' set -e; [[ a == b ]]; echo accepted)\n",
 		"sh script inherits errexit":          "#!/bin/sh\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
 		"quoted sh heredoc":                   "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"partly quoted sh heredoc":            "cat >f <<E\"O\"F\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
 		"set -o posix inherits errexit":       "set -e\nset -o posix\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"set -eo posix inherits errexit":      "set -eo posix\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"set +o expanded in a substitution":   "value=$(set +o \"$x\"; [[ a == b ]]; echo accepted)\n", // x=-e: bash lists the options, then sets -e
@@ -426,6 +428,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"tab-indented bash heredoc":           "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
 	},
 	allowed: map[string]string{
+		"bash shebang substitution":       "#!/bin/bash\nset -e\nx=$([[ a == b ]]; echo leaked)\n",
 		"unquoted sh heredoc (unscanned)": "cat >f <<EOF\n#!/bin/sh\n[[ -n \\$a ]]\nEOF\n",
 		"set +o posix does not inherit":   "set -e\nset +o posix\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"or exit":                         "[[ -n $a ]] || exit 1\n",
@@ -644,7 +647,8 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 }
 
 // TestRepositoryScanSelectors pins what the repository scan reads: sh files are scanned (macOS
-// sh is bash 3.2) and a workflow env: entry that makes substitutions inherit errexit is caught.
+// sh is bash 3.2), an sh step is read in POSIX mode, and a workflow env: entry that makes
+// substitutions inherit errexit is caught.
 func TestRepositoryScanSelectors(t *testing.T) {
 	for line, want := range map[string]bool{"#!/bin/sh": true, "#!/usr/bin/env sh": true, "#!/bin/bash -e": true, "#!/bin/zsh": false, "#!/usr/bin/env python3": false} {
 		if got := scriptShebang.MatchString(line); got != want {
@@ -653,6 +657,9 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	}
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "sh -e {0}")); err != nil || !reflect.DeepEqual(got, []int{2}) {
 		t.Errorf("an sh step's substitution: got %v, %v; want line 2 flagged (POSIX mode inherits errexit)", got, err)
+	}
+	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\nfoo \\", "sh -e {0}")); err != nil || !reflect.DeepEqual(got, []int{2}) {
+		t.Errorf("an sh step ending in a continuation: got %v, %v; want line 2 flagged", got, err)
 	}
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "bash")); err != nil || len(got) != 0 {
 		t.Errorf("a bash step's substitution: got %v, %v; want none flagged", got, err)
@@ -667,11 +674,12 @@ func TestRepositoryScanSelectors(t *testing.T) {
 var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b`)
 
 // scannedStepScript is a workflow step's script as the scan reads it: expressions replaced, and under
-// an sh shell set -o posix appended (bash as sh runs in POSIX mode; appended, so lines stay put).
+// an sh shell set -o posix put before line 1 (bash as sh runs in POSIX mode). Prepended on the
+// same line, so line numbers stay put and a trailing continuation cannot swallow it.
 func scannedStepScript(run, shell string) string {
 	script := workflowExpression.ReplaceAllString(run, "GITHUB_EXPRESSION")
 	if shellExecutable(shell) == "sh" {
-		script += "\nset -o posix\n"
+		script = "set -o posix; " + script
 	}
 	return script
 }
@@ -710,11 +718,12 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		for name, job := range workflow.Jobs {
 			for _, step := range job.Steps {
 				shell := firstNonEmpty(step.Shell, job.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
-				if step.Run == "" || !isBashShell(shell, string(job.RunsOn)) || scanned[step.Name+step.Run] {
+				script := scannedStepScript(step.Run, shell)
+				if step.Run == "" || !isBashShell(shell, string(job.RunsOn)) || scanned[step.Name+"\x00"+script] {
 					continue
 				}
-				scanned[step.Name+step.Run] = true
-				scanScript(t, fmt.Sprintf("%s job %s step %q (line of its script)", filepath.Base(path), name, step.Name), scannedStepScript(step.Run, shell), "append `|| exit 1`")
+				scanned[step.Name+"\x00"+script] = true // the shell changes the text, so it is part of the key
+				scanScript(t, fmt.Sprintf("%s job %s step %q (line of its script)", filepath.Base(path), name, step.Name), script, "append `|| exit 1`")
 			}
 		}
 	}
