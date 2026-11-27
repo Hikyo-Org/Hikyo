@@ -1049,6 +1049,34 @@ func TestIncidentMachineCredentialOwnerBlocksWhenTheOrgGrantIsLost(t *testing.T)
 	})
 }
 
+// The SCIM credential reads run under the incident's org operation too. A trigger on
+// the revoke drops that grant in the revoke's own transaction, so the revoke (under
+// manage-members) still lands, but the confirming read is refused: the owner ends
+// blocked, not confirmed.
+func TestIncidentSCIMOwnerBlocksWhenTheOrgGrantIsLost(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO scim_bindings(id,org_id,provider_kind,provider_id,provider_slug,provider_issuer,subject_source,connection_principal_id,created_at) VALUES ('sbn_gl','org_a','oidc','sbn_gl','sbn_gl','https://idp.example','externalId','mch_it',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO scim_credentials (id, org_id, binding_id, principal_id, verifier, credential_epoch, created_at) VALUES ('scc_gl','org_a','sbn_gl','mch_it',`+blobLit(db, []byte("verifier-scc-gl"))+`, (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`)`)
+		where := `principal_id='` + string(incResponder) + `' AND capability='credential-reset' AND org_id='org_a'`
+		drop := `DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE ` + where + `); DELETE FROM grants WHERE ` + where + `;`
+		if db.Engine() == store.EnginePostgres {
+			execRaw(t, db, `CREATE FUNCTION lose_org_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN `+drop+` RETURN NEW; END $$`)
+			execRaw(t, db, `CREATE TRIGGER lose_on_revoke AFTER UPDATE ON scim_credentials FOR EACH ROW WHEN (NEW.id = 'scc_gl' AND NEW.revoked_at IS NOT NULL) EXECUTE FUNCTION lose_org_grant()`)
+		} else {
+			execRaw(t, db, `CREATE TRIGGER lose_on_revoke AFTER UPDATE ON scim_credentials WHEN new.id = 'scc_gl' AND new.revoked_at IS NOT NULL BEGIN `+drop+` END`)
+		}
+		inc := w.openOrg(t, incResponder)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, "scc_gl", "org_a"); res != service.OwnerBlocked {
+			t.Errorf("a confirming read without the org grant = %v, want blocked", res)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM scim_credentials WHERE id='scc_gl' AND revoked_at IS NOT NULL`); n != 1 {
+			t.Errorf("the revoke under manage-members did not land")
+		}
+	})
+}
+
 // A project delegation needs the project owner's own revoke: a responder with the
 // incident's credential-reset but no manage-identities is refused and the
 // delegation stays live.

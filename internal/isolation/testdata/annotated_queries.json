@@ -3759,7 +3759,7 @@
     "name": "SessionExistsInInstance",
     "annotation": "authn-resolution",
     "hash": "db0bb4f13de48fb4cb0cbbefbf2868aa84af8f6a1c5ebbca421250ff28f24071",
-    "reason": "Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
+    "reason": "Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id held by any principal keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -7733,7 +7733,7 @@
     "name": "SessionExistsInInstance",
     "annotation": "authn-resolution",
     "hash": "db0bb4f13de48fb4cb0cbbefbf2868aa84af8f6a1c5ebbca421250ff28f24071",
-    "reason": "Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
+    "reason": "Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id held by any principal keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",

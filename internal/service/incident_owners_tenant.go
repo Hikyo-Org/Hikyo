@@ -215,10 +215,15 @@ func (o *incidentOwners) scimCredentialRevoke(ctx context.Context, actor Actor, 
 // scimCredentialState reads the one credential the item names, by id within the
 // org, under the owner's own operation: its binding and whether it is live. An
 // empty binding means the instance holds no such credential; one held by another
-// org is ErrNotFound. The read writes no audit row and refreshes no binding state.
+// org is ErrNotFound. The instance-wide probe runs under the incident's org
+// operation, authorized first as for machine credentials. The read writes no
+// audit row and refreshes no binding state.
 func (o *incidentOwners) scimCredentialState(ctx context.Context, actor Actor, org domain.OrgID, id string) (binding string, live bool, err error) {
 	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		binding, live = "", false
+		if _, err := o.authorizeIncidentOrg(ctx, az, actor, org); err != nil {
+			return err
+		}
 		_, proof, err := authorize(ctx, az, actor, authz.OpSCIMCredentialRevoke, domain.Scope{Org: org}, o.s.now())
 		if errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("%w: authority over the SCIM credential was lost", domain.ErrUnauthorized)
@@ -279,7 +284,9 @@ func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item auth
 // reads authorize first, so ErrNotFound is not what tells absence apart: absent is
 // the reads' own answer and a lost grant is ErrUnauthorized, which ends blocked at
 // every step. The revoke masks a lost grant as not found too, so its not found is
-// settled by the confirming read rather than trusted.
+// settled by the confirming read rather than trusted. Its conflict means the lease
+// left the revocable states after the first read (a concurrent revoke, or the
+// worker settling it), so the confirming read settles that too.
 func revokeLeaseFlow(read func() (state string, absent bool, err error), revoke func() error) (IncidentOwnerResult, error) {
 	fail := func(err error) (IncidentOwnerResult, error) {
 		if res, ok := ownerRefused(err); ok {
@@ -296,7 +303,7 @@ func revokeLeaseFlow(read func() (state string, absent bool, err error), revoke 
 		return OwnerConfirmed, nil
 	}
 	if state != "revoking" {
-		if err := revoke(); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		if err := revoke(); err != nil && !errors.Is(err, domain.ErrNotFound) && !errors.Is(err, domain.ErrConflict) {
 			return fail(err)
 		}
 	}

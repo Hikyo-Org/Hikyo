@@ -2439,7 +2439,8 @@ var operationTable = map[Operation]opSpec{
 	// incident there and nobody else. The ledger rides the resolution surface
 	// and the events ride the instance trail. Its store ops are the read-only
 	// placement probes: a lease or target absent from the item's placement is
-	// confirmed only when it is gone from the org, not held by another project.
+	// confirmed only when it is gone from the instance, not held by another
+	// project or org.
 	OpIncidentOrg: {
 		class:    ClassTenant,
 		level:    domain.LevelOrg,

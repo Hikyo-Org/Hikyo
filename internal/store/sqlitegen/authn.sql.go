@@ -3079,7 +3079,7 @@ SELECT COUNT(*) FROM sessions WHERE id = ?1
 
 // Incident confirmation: whether a session id exists anywhere in the instance, so
 // one absent from the item is confirmed only when it is gone.
-// hikyo:reason Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+// hikyo:reason Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id held by any principal keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
 // hikyo:authn-resolution
 func (q *Queries) SessionExistsInInstance(ctx context.Context, id string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, sessionExistsInInstance, id)
