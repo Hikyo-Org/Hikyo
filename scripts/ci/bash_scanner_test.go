@@ -196,6 +196,30 @@ func setsErrexit(args []string) bool {
 	return false
 }
 
+// unscannedErrexitForms are the ways to turn errexit on that setsErrexit and the shopt match in
+// bareTests do not read, so a script using one could hide a bare test. None is used in the
+// repository; scanScript rejects them instead of parsing them. shortcut: rejected, not parsed;
+// teach bareTests the form if a script ever needs it.
+var unscannedErrexitForms = []struct {
+	name    string
+	pattern *regexp.Regexp
+}{
+	{"shopt with a quoted, grouped or -o argument", regexp.MustCompile(`\bshopt\b[^\n;|&]*(["']|\s[-+][a-z]{2,}|\s-o\b)`)},
+	{"quoted or escaped set or shopt command name", regexp.MustCompile(`(?:\\(?:set|shopt)|"(?:set|shopt)"|'(?:set|shopt)')\s+[-+]`)},
+	{"eval of set or shopt", regexp.MustCompile(`\beval\b[^\n;|&]*\b(?:set|shopt)\b`)},
+}
+
+// unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script.
+func unscannedErrexitUses(script string) []string {
+	var found []string
+	for _, form := range unscannedErrexitForms {
+		if loc := form.pattern.FindStringIndex(script); loc != nil {
+			found = append(found, fmt.Sprintf("%d: %s", strings.Count(script[:loc[0]], "\n")+1, form.name))
+		}
+	}
+	return found
+}
+
 // brokenSourceFixture is the one bash heredoc that must not parse: fast-feedback_test.sh
 // writes it so ShellCheck reports a sourced-file parse failure.
 const brokenSourceFixture = "#!/usr/bin/env bash\nfixture_message() { printf 'source fixture reached\\n'; }\nfixture_invalid() {\n"
@@ -381,6 +405,9 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 // top-level commands, must both be flagged.
 func scanScript(t *testing.T, name, script, hint string) {
 	t.Helper()
+	for _, found := range unscannedErrexitUses(script) {
+		t.Errorf("%s:%s; bareTests cannot see whether it turns errexit on, so spell it as a plain set or shopt -s inherit_errexit call", name, found)
+	}
 	lines, err := bareTests(script)
 	if err != nil {
 		t.Errorf("%s: cannot parse as bash: %v", name, err)
@@ -429,6 +456,30 @@ func containsLine(lines []int, want int) bool {
 
 // Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
 // explicit failure branch: bash before 4.1 ignores errexit for it and fails open.
+func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
+	matches := unscannedErrexitUses
+	for _, script := range []string{
+		"shopt -s \"inherit_errexit\"\n", "shopt '-s' inherit_errexit\n", "shopt -sq inherit_errexit\n", "shopt -so errexit\n",
+		"shopt -s -o errexit\n", "\"set\" -e\n", "'set' -e\n", "\\set -e\n", "\\shopt -s inherit_errexit\n",
+		"eval set -e\n", "eval 'set -e'\n", "eval \"shopt -s inherit_errexit\"\n",
+	} {
+		if len(matches(script)) == 0 {
+			t.Errorf("not rejected: %q", script)
+		}
+	}
+	for _, script := range []string{
+		"shopt -s nullglob\n", "shopt -s extglob inherit_errexit\n", "set -euo pipefail\n", "echo \"set -e is on\"\n",
+		"printf 'set -e\\n'\n", "eval \"$(ssh-agent -s)\"\n", "reset -e\n", "x=set; echo $x\n",
+	} {
+		if got := matches(script); len(got) != 0 {
+			t.Errorf("rejected %q as %v", script, got)
+		}
+	}
+	if got := matches("a\nb\neval set -e\n"); !reflect.DeepEqual(got, []string{"3: eval of set or shopt"}) {
+		t.Errorf("line numbers: got %v, want [3: eval of set or shopt]", got)
+	}
+}
+
 func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 	root := repositoryRoot(t)
 	workflows, err := filepath.Glob(filepath.Join(root, ".github/workflows/*.yml"))
