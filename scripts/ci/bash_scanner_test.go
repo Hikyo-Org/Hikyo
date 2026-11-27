@@ -664,12 +664,12 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "bash")); err != nil || len(got) != 0 {
 		t.Errorf("a bash step's substitution: got %v, %v; want none flagged", got, err)
 	}
-	// The same step under bash and sh is two scans, two unnamed steps are two scans, and an
+	// The same step under bash and sh (from the job's defaults) is two scans, two unnamed steps are two scans, and an
 	// env: entry is reported.
 	fixture := "env:\n  SHELLOPTS: posix\njobs:\n" +
 		"  a:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: bash\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
 		"      - run: echo ok\n      - run: '[[ -n $a ]]'\n" +
-		"  b:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: sh\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
+		"  b:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: sh\n    steps:\n      - name: s\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
 	problems, err := workflowProblems("fixture.yml", []byte(fixture))
 	if err != nil {
 		t.Fatal(err)
@@ -688,6 +688,11 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	}
 	if shStep != 1 || unnamed != 1 || env != 1 {
 		t.Errorf("fixture workflow: got %d sh-step, %d unnamed-step and %d env problems, want 1 each:\n%s", shStep, unnamed, env, strings.Join(problems, "\n"))
+	}
+	// A workflow-level default shell reaches the step too.
+	topLevel := "defaults:\n  run:\n    shell: sh\njobs:\n  c:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
+	if problems, err := workflowProblems("top.yml", []byte(topLevel)); err != nil || len(problems) != 1 || !strings.Contains(problems[0], ":2: bare test") {
+		t.Errorf("workflow defaults shell: sh: got %v, %v; want one line-2 problem", problems, err)
 	}
 	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  SHELL: bash\n": false} {
 		if got := len(workflowEnvProblems([]byte(text))) > 0; got != want {
