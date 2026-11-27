@@ -94,7 +94,6 @@ func TestCheckBashRefusesOldBash(t *testing.T) {
 var (
 	heredocStart = regexp.MustCompile(`(?:^|[^<])<<-?\s*['"]?([A-Za-z_]\w*)['"]?`)
 	loopOrThen   = regexp.MustCompile(`^;\s*(then|do)\b`)
-	trailingNote = regexp.MustCompile(`\s#.*$`)
 	bashShebang  = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+bash|/(?:usr/)?bin/bash)(?:\s|$)`)
 )
 
@@ -130,73 +129,245 @@ func testEnd(stmt string) int {
 	return -1
 }
 
-// bareTests returns the 1-based lines of statements that begin with [[ or ((, are not
-// part of an if/while/until condition or an &&/|| chain, and so rely on errexit alone.
-// Heredoc bodies are skipped, except one that is itself a bash script.
+// bareTests returns the 1-based lines of [[ ]] and (( )) commands that rely on errexit
+// alone: a test in any command position (line start, or after ; & && || | ( ) { then do
+// else ! and a case-arm )) that is not followed by && or ||, and not an if/while/until
+// condition. A test that ENDS an and-or list (`a && [[ x ]]`) is flagged too. Heredoc
+// bodies are skipped, except one that is itself a bash script.
 func bareTests(script string) []int {
-	lines := strings.Split(script, "\n")
 	var found []int
-	continued := false
-	for i := 0; i < len(lines); i++ {
-		first := i
-		joined := lines[i]
-		for strings.HasSuffix(strings.TrimRight(joined, " \t"), `\`) && i+1 < len(lines) {
+	n := len(script)
+	atStart, condOpen, sub := true, false, 0
+	var pending []string // heredoc terminators waiting for the next newline
+	line := func(idx int) int { return 1 + strings.Count(script[:idx], "\n") }
+	isSpace := func(c byte) bool { return c == ' ' || c == '\t' }
+	for i := 0; i < n; {
+		c := script[i]
+		switch {
+		case c == '\\':
+			if i+1 < n && script[i+1] != '\n' {
+				atStart = false
+			}
+			i += 2
+		case c == '\n':
 			i++
-			joined = strings.TrimSuffix(strings.TrimRight(joined, " \t"), `\`) + " " + strings.TrimSpace(lines[i])
-		}
-		stmt := strings.TrimSpace(joined)
-		code := strings.TrimSpace(trailingNote.ReplaceAllString(stmt, ""))
-		if !continued && !strings.HasPrefix(stmt, "#") {
-			body := strings.TrimPrefix(stmt, "! ")
-			if strings.HasPrefix(body, "[[ ") || strings.HasPrefix(body, "((") {
-				end := testEnd(body)
-				for end < 0 && i+1 < len(lines) { // a test may span several lines
+			atStart = true
+			for _, tag := range pending {
+				start := i
+				for i < n {
+					end := strings.IndexByte(script[i:], '\n')
+					if end < 0 {
+						end = n - i
+					}
+					text := script[i : i+end]
+					i += end
+					if i < n {
+						i++
+					}
+					if strings.TrimSpace(text) == tag {
+						break
+					}
+				}
+				if start < n && bashShebang.MatchString(script[start:min(n, start+80)]) {
+					for _, l := range bareTests(script[start:i]) {
+						found = append(found, line(start)-1+l)
+					}
+				}
+			}
+			pending = nil
+		case isSpace(c):
+			i++
+		case c == '#' && (i == 0 || strings.IndexByte(" \t\n;&|(", script[i-1]) >= 0):
+			for i < n && script[i] != '\n' {
+				i++
+			}
+		case c == '\'':
+			end := strings.IndexByte(script[i+1:], '\'')
+			i = map[bool]int{true: n, false: i + 1 + end + 1}[end < 0]
+			atStart = false
+		case c == '"':
+			i++
+			for i < n && script[i] != '"' {
+				if script[i] == '\\' {
 					i++
-					body += " " + strings.TrimSpace(strings.TrimSuffix(strings.TrimRight(lines[i], " \t"), `\`))
-					end = testEnd(body)
 				}
-				rest := ""
-				if end >= 0 {
-					rest = strings.TrimSpace(body[end:])
+				i++
+			}
+			i++
+			atStart = false
+		case c == '`':
+			end := strings.IndexByte(script[i+1:], '`')
+			i = map[bool]int{true: n, false: i + 1 + end + 1}[end < 0]
+			atStart = false
+		case c == '$' && i+1 < n && (script[i+1] == '(' || script[i+1] == '{'):
+			i = skipGroup(script, i+1)
+			atStart = false
+		case c == ';':
+			i++
+			if i < n && script[i] == ';' {
+				i++
+			}
+			atStart = true
+		case c == '&' && (i > 0 && (script[i-1] == '>' || script[i-1] == '<') || i+1 < n && script[i+1] == '>'):
+			i++ // a redirection such as 2>&1 or &>file
+		case c == '&' || c == '|':
+			i++
+			if i < n && (script[i] == c || script[i] == '&') {
+				i++
+			}
+			atStart = true
+		case c == '(' && (!atStart || !strings.HasPrefix(script[i:], "((")):
+			switch {
+			case i > 0 && (script[i-1] == '<' || script[i-1] == '>'):
+				i = skipGroup(script, i)
+				atStart = false
+			case atStart:
+				sub++
+				i++
+			default:
+				j := i + 1
+				for j < n && isSpace(script[j]) {
+					j++
 				}
-				if end < 0 || rest == "" || rest == "}" || strings.HasPrefix(rest, "#") || (strings.HasPrefix(rest, ";") && !loopOrThen.MatchString(rest)) {
-					found = append(found, first+1)
+				if j < n && script[j] == ')' { // f() { ...; }
+					i, atStart = j+1, true
+				} else {
+					i = skipGroup(script, i)
 				}
 			}
-		}
-		continued = strings.HasSuffix(code, "&&") || strings.HasSuffix(code, "||") || strings.HasSuffix(code, "|") ||
-			code == "if" || code == "while" || code == "until" || code == "elif"
-		if match := heredocStart.FindStringSubmatch(stmt); match != nil && !strings.HasPrefix(stmt, "#") {
-			start := i + 1
-			end := start
-			for end < len(lines) && strings.TrimSpace(lines[end]) != match[1] {
-				end++
+		case c == ')':
+			if sub > 0 {
+				sub--
+				atStart = false
+			} else {
+				atStart = true // a case arm ends here
 			}
-			if start < len(lines) && bashShebang.MatchString(lines[start]) {
-				for _, line := range bareTests(strings.Join(lines[start:end], "\n")) {
-					found = append(found, start+line)
+			i++
+		case c == '<' && strings.HasPrefix(script[i:], "<<") && !strings.HasPrefix(script[i:], "<<<"):
+			if match := heredocStart.FindStringSubmatch(script[i:min(n, i+80)]); match != nil {
+				pending = append(pending, match[1])
+				i += strings.Index(script[i:], match[1]) + len(match[1])
+				if i < n && (script[i] == '\'' || script[i] == '"') {
+					i++ // the closing quote of <<'TAG'
+				}
+			} else {
+				i += 2
+			}
+		default:
+			if atStart && (strings.HasPrefix(script[i:], "((") ||
+				strings.HasPrefix(script[i:], "[[") && i+2 < n && strings.IndexByte(" \t\n", script[i+2]) >= 0) {
+				end := testEnd(script[i:])
+				if end < 0 {
+					found = append(found, line(i))
+					i = n
+					break
+				}
+				j := i + end
+				for j < n && (isSpace(script[j]) || strings.HasPrefix(script[j:], "\\\n")) {
+					j += map[bool]int{true: 2, false: 1}[script[j] == '\\']
+				}
+				bare := false
+				switch {
+				case j >= n || strings.IndexByte("\n})#", script[j]) >= 0:
+					bare = true
+				case script[j] == '&':
+					bare = !strings.HasPrefix(script[j:], "&&")
+				case script[j] == ';':
+					bare = !loopOrThen.MatchString(script[j:min(n, j+20)])
+				}
+				if bare && !condOpen {
+					found = append(found, line(i))
+				}
+				i, atStart = j, false
+				break
+			}
+			start := i
+			for i < n && strings.IndexByte(" \t\n;&|()<>'\"`$\\#", script[i]) < 0 {
+				i++
+			}
+			if i == start {
+				i++
+				atStart = false
+				break
+			}
+			if atStart {
+				switch script[start:i] {
+				case "then", "do":
+					condOpen = false
+				case "if", "elif", "while", "until":
+					condOpen = true
+				case "else", "{", "!":
+				default:
+					atStart = false
 				}
 			}
-			i = end
 		}
 	}
 	return found
 }
 
+// skipGroup returns the index just past the (...) or {...} group opening at i.
+func skipGroup(s string, i int) int {
+	open := s[i]
+	closer := byte(')')
+	if open == '{' {
+		closer = '}'
+	}
+	depth := 0
+	for ; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			i++
+		case '\'':
+			if end := strings.IndexByte(s[i+1:], '\''); end >= 0 {
+				i += end + 1
+			}
+		case open:
+			depth++
+		case closer:
+			if depth--; depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return len(s)
+}
+
 func TestBareTestScannerClassifiesStatements(t *testing.T) {
 	flagged := map[string]string{
-		"top level test":      "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
-		"top level arith":     "(( n >= 21 ))\n",
-		"negated test":        "! [[ -e f ]]\n",
-		"inside a loop":       "for a in b; do\n  [[ -n $a ]]\ndone\n",
-		"inside then body":    "if true; then\n  [[ -n $a ]]\nfi\n",
-		"inside else body":    "if true; then :; else\n  [[ -n $a ]]\nfi\n",
-		"last in a function":  "f() {\n  ((a == 1 || b == 2))\n}\n",
-		"test with comment":   "[[ -n $a ]] # why\n",
-		"semicolon":           "[[ -n $a ]];\n",
-		"quoted bracket":      "[[ \"$a ]] b\" == x ]]\n",
-		"nested bash heredoc": "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
-		"continued test":      "[[ -n $a &&\n  -n $b ]]\n",
+		"top level test":            "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
+		"top level arith":           "(( n >= 21 ))\n",
+		"negated test":              "! [[ -e f ]]\n",
+		"inside a loop":             "for a in b; do\n  [[ -n $a ]]\ndone\n",
+		"inside then body":          "if true; then\n  [[ -n $a ]]\nfi\n",
+		"inside else body":          "if true; then :; else\n  [[ -n $a ]]\nfi\n",
+		"last in a function":        "f() {\n  ((a == 1 || b == 2))\n}\n",
+		"test with comment":         "[[ -n $a ]] # why\n",
+		"semicolon":                 "[[ -n $a ]];\n",
+		"quoted bracket":            "[[ \"$a ]] b\" == x ]]\n",
+		"nested bash heredoc":       "cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ -n $a ]]\nEOF\n",
+		"continued test":            "[[ -n $a &&\n  -n $b ]]\n",
+		"after semicolon":           "x=1; [[ -n $x ]]\n",
+		"brace group":               "{ [[ -n $a ]]; }\n",
+		"subshell":                  "( [[ -n $a ]] )\n",
+		"inline then":               "if c; then [[ -n $a ]]; fi\n",
+		"inline else":               "if c; then :; else [[ -n $a ]]; fi\n",
+		"inline then and else":      "if [[ -z $f ]]; then [[ $r == 0 ]]; else [[ $r != 0 ]]; fi\n",
+		"inline do":                 "for a in b; do [[ -n $a ]]; done\n",
+		"inline do arith":           "while c; do ((n > 0)); done\n",
+		"case arm":                  "case $x in a) [[ -n $x ]] ;; esac\n",
+		"case arm last":             "case $x in\n  a) [[ -n $x ]]\n  ;;\nesac\n",
+		"function one-liner":        "f() { [[ -n $1 ]]; }\n",
+		"command substitution then": "if c; then x=1; [[ -n $x ]]; fi\n",
+		"and tail":                  "a &&\n  [[ -n $b ]]\n",
+		"and tail inline":           "true && [[ a == b ]]\n",
+		"or tail":                   "false || [[ a == b ]]\n",
+		"test and test":             "[[ a == a ]] && [[ a == b ]]\n",
+		"arith and tail":            "true && (( 0 ))\n",
+		"tab after bracket":         "[[\t-n $a ]]\n",
+		"comment ending in or":      "# explain ||\n[[ -n $a ]]\n",
+		"comment ending in and":     "# explain &&\n[[ -n $a ]]\n",
+		"comment ending in pipe":    "# explain |\n((a))\n",
 	}
 	for name, script := range flagged {
 		if len(bareTests(script)) == 0 {
@@ -215,17 +386,23 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"while":              "while ((n > 0)); do n=$((n - 1)); done\n",
 		"until":              "until [[ -n $a ]]; do :; done\n",
 		"bare if keyword":    "if\n  [[ -n $a ]]\nthen :; fi\n",
-		"and tail":           "a &&\n  [[ -n $b ]]\n",
-		"wrapped or":         "[[ -n $a ]] \\\n  || exit 1\n",
-		"multi-line test":    "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
-		"test in condition":  "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
-		"plain heredoc":      "cat <<EOF\n[[ -n $a ]]\nEOF\n",
-		"sh heredoc":         "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
-		"here string":        "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
-		"arith expansion":    "x=$((a + 1))\n",
-		"command":            "test -n \"$a\"\n",
-		"comment":            "# [[ -n $a ]]\n",
-		"subshell":           "(cd x && ls)\n",
+		"and tail then":      "if a && [[ -n $b ]]; then :; fi\n",
+		"or tail then":       "while a || ((n)); do :; done\n",
+		"tail then or":       "a && [[ -n $b ]] || exit 1\n",
+		"inline then or":     "if c; then [[ -n $a ]] || exit 1; else [[ -n $b ]] || return 1; fi\n",
+		"case arm or":        "case $x in a) [[ -n $x ]] || exit 1 ;; esac\n",
+		"redirect ampersand": "cmd 2>&1 || exit 1\n[[ -n $a ]] || exit 1\n",
+		"array and subst":    "a=(1 2); b=$([[ -n $a ]] && echo y); c=<(cat) ; [[ -n $c ]] || exit 1\n",
+		"function header":    "f() {\n  [[ -n $1 ]] || return 1\n}\n", "wrapped or": "[[ -n $a ]] \\\n  || exit 1\n",
+		"multi-line test":   "[[ -n $a &&\n  -n $b ]] ||\n  fail x\n",
+		"test in condition": "if ! x ||\n  [[ -n $a ]]; then :; fi\n",
+		"plain heredoc":     "cat <<EOF\n[[ -n $a ]]\nEOF\n",
+		"sh heredoc":        "cat >f <<'EOF'\n#!/bin/sh\n[[ -n $a ]]\nEOF\n",
+		"here string":       "read -r a <<<\"$b\"\n[[ -n $a ]] || exit 1\n",
+		"arith expansion":   "x=$((a + 1))\n",
+		"command":           "test -n \"$a\"\n",
+		"comment":           "# [[ -n $a ]]\n",
+		"subshell":          "(cd x && ls)\n",
 	}
 	for name, script := range allowed {
 		if lines := bareTests(script); len(lines) != 0 {
@@ -252,15 +429,21 @@ type failClosedDefaults struct {
 type failClosedWorkflow struct {
 	Defaults failClosedDefaults `yaml:"defaults"`
 	Jobs     map[string]struct {
+		RunsOn   string             `yaml:"runs-on"`
 		Defaults failClosedDefaults `yaml:"defaults"`
 		Steps    []failClosedStep   `yaml:"steps"`
 	} `yaml:"jobs"`
 }
 
-// isBashShell reports whether a step shell is bash; an unset shell is bash on the
-// Linux and macOS runners, and a Windows leg that needs bash must name it.
-func isBashShell(shell string) bool {
-	return shell == "" || shell == "bash" || strings.HasPrefix(shell, "bash ")
+// isBashShell reports whether a step runs under bash: an unset shell is bash on the
+// Linux and macOS runners.
+func isBashShell(shell, runsOn string) bool {
+	if shell == "" {
+		// GitHub's default on a Windows runner is pwsh. A runs-on we cannot resolve
+		// (an expression, a matrix or a list) is treated as bash, which fails safe.
+		return !strings.HasPrefix(strings.ToLower(runsOn), "windows")
+	}
+	return shell == "bash" || strings.HasPrefix(shell, "bash ")
 }
 
 // Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
@@ -284,7 +467,7 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		for name, job := range workflow.Jobs {
 			for _, step := range job.Steps {
 				shell := firstNonEmpty(step.Shell, job.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
-				if step.Run == "" || !isBashShell(shell) {
+				if step.Run == "" || !isBashShell(shell, job.RunsOn) {
 					continue
 				}
 				for _, line := range bareTests(step.Run) {
@@ -505,5 +688,25 @@ func TestGuardsFailClosedOnOldBash(t *testing.T) {
 				assertRefused(run(t, script, tc.args, tc.badGoMod, tc.env), "a go.mod below go 1.21")
 			}
 		})
+	}
+}
+
+func TestIsBashShellTreatsWindowsDefaultAsPowerShell(t *testing.T) {
+	for _, tc := range []struct {
+		shell, runsOn string
+		want          bool
+	}{
+		{"", "ubuntu-latest", true},
+		{"", "macos-15", true},
+		{"", "windows-latest", false},
+		{"", "${{ matrix.os }}", true}, // unresolvable: scanned as bash, which fails safe
+		{"bash", "windows-latest", true},
+		{"bash -e {0}", "windows-latest", true},
+		{"pwsh", "ubuntu-latest", false},
+		{"sh", "", false},
+	} {
+		if got := isBashShell(tc.shell, tc.runsOn); got != tc.want {
+			t.Errorf("isBashShell(%q, %q) = %v, want %v", tc.shell, tc.runsOn, got, tc.want)
+		}
 	}
 }

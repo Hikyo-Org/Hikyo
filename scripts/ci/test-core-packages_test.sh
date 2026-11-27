@@ -83,7 +83,7 @@ for mode in '' pool serial; do
     case "${mode:-pool}:$failure" in
       pool:concurrent | serial:app-skip | serial:app-run | serial:lint) failing=1 ;;
     esac
-    if [[ -z "$failing" ]]; then [[ "$result" == 0 ]]; else [[ "$result" != 0 ]]; fi
+    if [[ -z "$failing" ]]; then [[ "$result" == 0 ]] || exit 1; else [[ "$result" != 0 ]] || exit 1; fi
     cmp "$expected" "$CORE_TEST_EXECUTED"
   done
 done

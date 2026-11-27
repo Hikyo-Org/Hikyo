@@ -8,6 +8,9 @@ effective `go version`, `node --version`, `corepack --version`, and
 `pnpm --version` after selection. Select Node before installing Corepack because
 Node selection can change npm's global tool location.
 
+On macOS, the `scripts/ci` Go tests need bash 4.1 or newer first on `PATH`
+(`brew install bash`); the stock 3.2 makes the package refuse to start.
+
 `fnm` is mandatory for the current `scripts/dev/preflight.sh`, even with the
 correct Node already installed. Install it using the platform's supported
 installer when that preflight is needed. With fnm available, from the root:
