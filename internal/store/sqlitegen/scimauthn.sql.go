@@ -456,6 +456,21 @@ func (q *Queries) RevokeSCIMCredentialsForBinding(ctx context.Context, arg Revok
 	return result.RowsAffected()
 }
 
+const sCIMCredentialExistsInInstance = `-- name: SCIMCredentialExistsInInstance :one
+SELECT COUNT(*) FROM scim_credentials WHERE id = ?1
+`
+
+// Incident confirmation: whether a SCIM credential id exists anywhere in the instance, so
+// one absent from the item is confirmed only when it is gone.
+// hikyo:reason Incident revoke confirmation reads only whether one SCIM credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+// hikyo:authn-resolution
+func (q *Queries) SCIMCredentialExistsInInstance(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sCIMCredentialExistsInInstance, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const touchSCIMCredential = `-- name: TouchSCIMCredential :exec
 UPDATE scim_credentials SET last_used_at = ? WHERE id = ?
 `

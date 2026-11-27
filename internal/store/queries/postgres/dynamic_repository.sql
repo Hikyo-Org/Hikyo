@@ -93,9 +93,9 @@ SELECT id FROM dynamic_providers WHERE org_id=sqlc.arg(chain_org) AND project_id
 -- name: DynamicPurgeTombstonedProvidersForProject :exec
 DELETE FROM dynamic_providers WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='tombstoned';
 
--- Incident confirmation: whether a lease id exists anywhere in one org, so a
+-- Incident confirmation: whether a lease id exists anywhere in the instance, so a
 -- lease absent from the item's environment is confirmed only when it is gone.
--- hikyo:reason Incident lease confirmation reads only whether one lease id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned.
+-- hikyo:reason Incident lease confirmation reads only whether one lease id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
 -- hikyo:instance-scoped
--- name: DynamicLeaseExistsInOrg :one
-SELECT COUNT(*) FROM dynamic_leases WHERE id=sqlc.arg(lease_id) AND org_id=sqlc.arg(chain_org);
+-- name: DynamicLeaseExistsInInstance :one
+SELECT COUNT(*) FROM dynamic_leases WHERE id=sqlc.arg(lease_id);

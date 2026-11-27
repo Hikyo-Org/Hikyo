@@ -499,9 +499,15 @@ remain to be delivered by the implementation.
   own rotations (halted by their independent items) stay halted. The operator hands the
   incident to another responder.
 - **An object outside the item stays live.** An owner whose item names an object outside
-  the incident, or one placed elsewhere than the item says (another project or environment
-  of the org), answers not found and leaves the object live. Only an object gone from the
-  org is confirmed.
+  the incident, or one placed elsewhere than the item says (another project, environment
+  or org), answers not found and leaves the object live.
+- **Gone means gone from the whole instance** (2026-11-27, option A of the #1538 review).
+  An object absent from the item's placement is confirmed only when no row for it exists
+  anywhere in the instance. This holds for machine credentials, email invitations, SCIM
+  credentials, leases, adapter targets and rotations; an id found in another org answers
+  not found and stays live. A session is confirmed only when no principal holds it, so
+  another principal's live session answers not found and stays live. The probes run after
+  the owner authorizes at the incident's own scope and answer only confirmed or not found.
 - **A delegation id with no row stays unknown.** A developer delegation the item names but
   no row holds at the item's placement is not confirmed: the item stays open as unknown.
 

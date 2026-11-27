@@ -99,8 +99,8 @@ func (o *incidentOwners) machineCredentialRevoke(ctx context.Context, actor Acto
 
 // machineCredentialState finds the credential's service account in the project
 // and whether the credential is still live. An empty account id means no service
-// account of the org holds it; one held in another project of the org is
-// ErrNotFound. The reads run under the incident's org operation.
+// account of the instance holds it; one held anywhere else (another project, or
+// another org) is ErrNotFound. The reads run under the incident's org operation.
 func (o *incidentOwners) machineCredentialState(ctx context.Context, actor Actor, scope domain.Scope, id string) (saID string, live bool, err error) {
 	err = tx.Read(ctx, o.s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		saID, live = "", false
@@ -113,9 +113,9 @@ func (o *incidentOwners) machineCredentialState(ctx context.Context, actor Actor
 		}
 		c, err := az.MachineCredentialInProject(ctx, scope, id)
 		if errors.Is(err, domain.ErrNotFound) {
-			// Absent in this project. Gone from the org, it holds no authority; held by
-			// another project's account, it is outside the item and stays live.
-			elsewhere, err := az.MachineCredentialExistsInOrg(ctx, scope.Org, id)
+			// Absent in this project. Gone from the instance, it holds no authority;
+			// held by any other account, it is outside the item and stays live.
+			elsewhere, err := az.MachineCredentialExistsInInstance(ctx, id)
 			if err == nil && elsewhere {
 				err = domain.ErrNotFound
 			}
@@ -150,14 +150,27 @@ func (o *incidentOwners) invitationRevoke(ctx context.Context, actor Actor, item
 		return OwnerUnconfirmed, err
 	}
 	var present bool
-	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.Read(ctx, o.s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		present = false
+		if _, err := o.authorizeIncidentOrg(ctx, az, actor, scope.Org); err != nil {
+			return err
+		}
 		_, err := az.OrgEmailInvitationInOrg(ctx, item.ObjectID, scope.Org)
 		present = err == nil
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil
+		if !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		// Absent from the org. Gone from the instance, it admits no one; held by
+		// another org, it is outside the item and stays live.
+		elsewhere, err := az.OrgEmailInvitationExistsInInstance(ctx, item.ObjectID)
+		if err == nil && elsewhere {
+			err = domain.ErrNotFound
 		}
 		return err
 	})
+	if res, ok := ownerRefused(err); ok {
+		return res, nil
+	}
 	return confirm(err == nil && !present), err
 }
 
@@ -201,8 +214,8 @@ func (o *incidentOwners) scimCredentialRevoke(ctx context.Context, actor Actor, 
 
 // scimCredentialState reads the one credential the item names, by id within the
 // org, under the owner's own operation: its binding and whether it is live. An
-// empty binding means the org holds no such credential. The read writes no audit
-// row and refreshes no binding state.
+// empty binding means the instance holds no such credential; one held by another
+// org is ErrNotFound. The read writes no audit row and refreshes no binding state.
 func (o *incidentOwners) scimCredentialState(ctx context.Context, actor Actor, org domain.OrgID, id string) (binding string, live bool, err error) {
 	err = tx.Write(ctx, o.s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		binding, live = "", false
@@ -215,7 +228,11 @@ func (o *incidentOwners) scimCredentialState(ctx context.Context, actor Actor, o
 		}
 		c, err := r.SCIM().CredentialInOrg(ctx, proof, id)
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil
+			elsewhere, err := az.SCIMCredentialExistsInInstance(ctx, id)
+			if err == nil && elsewhere {
+				err = domain.ErrNotFound
+			}
+			return err
 		}
 		if err != nil {
 			return err
@@ -245,8 +262,8 @@ func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item auth
 		func() (string, bool, error) {
 			state, absent, err := o.svc.Dynamic.LeaseStateIfAuthorized(ctx, actor, scope, item.ObjectID)
 			if err == nil && absent {
-				err = o.goneFromOrg(ctx, actor, scope.Org, func(ctx context.Context, r store.ReadRepos, p authz.Proof) (bool, error) {
-					return r.Dynamic().LeaseExistsInOrg(ctx, p, item.ObjectID)
+				err = o.goneFromInstance(ctx, actor, scope.Org, func(ctx context.Context, r store.ReadRepos, p authz.Proof) (bool, error) {
+					return r.Dynamic().LeaseExistsInInstance(ctx, p, item.ObjectID)
 				})
 			}
 			return state, absent, err
@@ -315,8 +332,8 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 		func() (bool, error) {
 			absent, err := o.svc.Adapters.TargetAbsentIfAuthorized(ctx, actor, scope, item.ObjectID)
 			if err == nil && absent {
-				err = o.goneFromOrg(ctx, actor, scope.Org, func(ctx context.Context, r store.ReadRepos, p authz.Proof) (bool, error) {
-					return r.Adapters().TargetExistsInOrg(ctx, p, item.ObjectID)
+				err = o.goneFromInstance(ctx, actor, scope.Org, func(ctx context.Context, r store.ReadRepos, p authz.Proof) (bool, error) {
+					return r.Adapters().TargetExistsInInstance(ctx, p, item.ObjectID)
 				})
 			}
 			return absent, err
@@ -324,11 +341,12 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 	)
 }
 
-// goneFromOrg settles an object absent from the item's placement. Gone from the
-// org, it holds nothing and the item is confirmed (nil); placed in another project
-// of the org, it is outside the item and stays live (ErrNotFound). The probe runs
-// under the incident's own org operation, so a refusal is ErrUnauthorized.
-func (o *incidentOwners) goneFromOrg(ctx context.Context, actor Actor, org domain.OrgID, exists func(context.Context, store.ReadRepos, authz.Proof) (bool, error)) error {
+// goneFromInstance settles an object absent from the item's placement. Gone from
+// the instance, it holds nothing and the item is confirmed (nil); placed anywhere
+// else (another project or another org), it is outside the item and stays live
+// (ErrNotFound). The probe runs under the incident's own org operation, so a
+// refusal is ErrUnauthorized.
+func (o *incidentOwners) goneFromInstance(ctx context.Context, actor Actor, org domain.OrgID, exists func(context.Context, store.ReadRepos, authz.Proof) (bool, error)) error {
 	return tx.Read(ctx, o.s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		proof, err := o.authorizeIncidentOrg(ctx, az, actor, org)
 		if err != nil {
@@ -376,7 +394,7 @@ func pauseTargetFlow(pause func() (paused bool, err error), absent func() (bool,
 func (o *incidentOwners) authorizeIncidentOrg(ctx context.Context, az *authz.TxAuthorizer, actor Actor, org domain.OrgID) (authz.Proof, error) {
 	_, proof, err := authorize(ctx, az, actor, authz.OpIncidentOrg, domain.Scope{Org: org}, o.s.now())
 	if errors.Is(err, domain.ErrNotFound) {
-		return nil, fmt.Errorf("%w: authority over the incident org was lost", domain.ErrUnauthorized)
+		err = fmt.Errorf("%w: authority over the incident org was lost", domain.ErrUnauthorized)
 	}
 	return proof, err
 }

@@ -113,3 +113,10 @@ ORDER BY g.id, o.subject;
 SELECT id, binding_id, principal_id, credential_epoch, created_at, expires_at,
        revoked_at, last_used_at
 FROM scim_credentials WHERE org_id = ? AND id = ?;
+
+-- Incident confirmation: whether a SCIM credential id exists anywhere in the instance, so
+-- one absent from the item is confirmed only when it is gone.
+-- hikyo:reason Incident revoke confirmation reads only whether one SCIM credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+-- hikyo:authn-resolution
+-- name: SCIMCredentialExistsInInstance :one
+SELECT COUNT(*) FROM scim_credentials WHERE id = sqlc.arg(id);

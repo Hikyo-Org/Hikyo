@@ -2335,21 +2335,16 @@ func (q *Queries) AdapterTargetEnvironments(ctx context.Context, arg AdapterTarg
 	return items, nil
 }
 
-const adapterTargetExistsInOrg = `-- name: AdapterTargetExistsInOrg :one
-SELECT COUNT(*) FROM adapter_targets WHERE id=$1 AND org_id=$2
+const adapterTargetExistsInInstance = `-- name: AdapterTargetExistsInInstance :one
+SELECT COUNT(*) FROM adapter_targets WHERE id=$1
 `
 
-type AdapterTargetExistsInOrgParams struct {
-	TargetID string
-	ChainOrg string
-}
-
-// Incident confirmation: whether an adapter target id exists anywhere in one org,
-// so a target absent from the item's project is confirmed only when it is gone.
-// hikyo:reason Incident target confirmation reads only whether one adapter target id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned.
+// Incident confirmation: whether an adapter target id exists anywhere in the
+// instance, so a target absent from the item's project is confirmed only when it is gone.
+// hikyo:reason Incident target confirmation reads only whether one adapter target id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
 // hikyo:instance-scoped
-func (q *Queries) AdapterTargetExistsInOrg(ctx context.Context, arg AdapterTargetExistsInOrgParams) (int64, error) {
-	row := q.db.QueryRow(ctx, adapterTargetExistsInOrg, arg.TargetID, arg.ChainOrg)
+func (q *Queries) AdapterTargetExistsInInstance(ctx context.Context, targetID string) (int64, error) {
+	row := q.db.QueryRow(ctx, adapterTargetExistsInInstance, targetID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

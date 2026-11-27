@@ -206,9 +206,9 @@ SELECT id,project_id,environment_id FROM rotations WHERE org_id=sqlc.arg(chain_o
 -- name: RotationListByAuthorityInInstance :many
 SELECT id,org_id,project_id,environment_id FROM rotations WHERE authority_principal_id=sqlc.arg(authority_principal_id) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(row_limit);
 
--- Incident confirmation: whether a rotation id exists anywhere in one org, so a
--- rotation absent from the item's environment is confirmed only when it is gone.
--- hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned.
+-- Incident confirmation: whether a rotation id exists anywhere in the instance, so
+-- a rotation absent from the item's environment is confirmed only when it is gone.
+-- hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
 -- hikyo:instance-scoped
--- name: RotationExistsInOrg :one
-SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org);
+-- name: RotationExistsInInstance :one
+SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id);

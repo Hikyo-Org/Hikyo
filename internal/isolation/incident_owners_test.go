@@ -924,7 +924,7 @@ func TestIncidentDeveloperRevokeRecordsOneEventPerRow(t *testing.T) {
 // from the org. One placed in another project of the org is outside the item: the
 // owner answers not found and leaves it live.
 
-func TestIncidentOwnerLeaseConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
+func TestIncidentOwnerLeaseConfirmsOnlyWhenGoneFromTheInstance(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		w.realOwners()
@@ -944,7 +944,7 @@ func TestIncidentOwnerLeaseConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
 	})
 }
 
-func TestIncidentOwnerTargetConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
+func TestIncidentOwnerTargetConfirmsOnlyWhenGoneFromTheInstance(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		w.realOwners()
@@ -965,7 +965,7 @@ func TestIncidentOwnerTargetConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
 	})
 }
 
-func TestIncidentRotationHaltConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
+func TestIncidentRotationHaltConfirmsOnlyWhenGoneFromTheInstance(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		r := newRotationIncident(t, db)
 		w := r.w
@@ -977,6 +977,17 @@ func TestIncidentRotationHaltConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
 		w.ownerRefusedNotFound(t, incResponder, acc.Incident.ID, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, "org_a/prj_a2/env_a2")
 		if r.state(t) != store.RotationStateActive {
 			t.Fatalf("a rotation of another project changed: %q", r.state(t))
+		}
+		// Named on another org's incident, it is still not that item's: not found,
+		// and it stays active (owner decision: gone means gone from the instance).
+		grantOrgB(t, db, incResponder)
+		ob, err := w.svc.Open(t.Context(), w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeOrg, Scope: domain.Scope{Org: "org_b"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.ownerRefusedNotFound(t, incResponder, ob.Incident.ID, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, "org_b/prj_b1/env_b1")
+		if r.state(t) != store.RotationStateActive {
+			t.Fatalf("a rotation of another org changed: %q", r.state(t))
 		}
 		// A new rotation has no runs; its key claims go with it.
 		execRaw(t, db, `DELETE FROM rotation_key_claims WHERE rotation_id='`+r.rot.ID+`'`)

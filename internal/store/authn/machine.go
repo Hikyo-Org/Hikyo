@@ -1150,15 +1150,37 @@ func (r *Resolver) MachineCredentialInProject(ctx context.Context, scope domain.
 	return credentialFromPG(pggen.ListMachineCredentialsRow(row)), nil
 }
 
-// MachineCredentialExistsInOrg reports whether a credential id is held by any
-// service account of the org, revoked or not.
-func (r *Resolver) MachineCredentialExistsInOrg(ctx context.Context, org domain.OrgID, id string) (bool, error) {
-	var n int64
-	var err error
+// MachineCredentialExistsInInstance reports whether a credential id is held by
+// any service account of the instance, revoked or not.
+func (r *Resolver) MachineCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.MachineCredentialExistsInInstance, r.pg.MachineCredentialExistsInInstance, id)
+}
+
+// countByID runs one by-id count query on the open engine and reports whether
+// the id has a row.
+func (r *Resolver) countByID(ctx context.Context, sq, pg func(context.Context, string) (int64, error), id string) (bool, error) {
+	run := pg
 	if r.sq != nil {
-		n, err = r.sq.MachineCredentialExistsInOrg(ctx, sqlitegen.MachineCredentialExistsInOrgParams{OrgID: string(org), ID: id})
-	} else {
-		n, err = r.pg.MachineCredentialExistsInOrg(ctx, pggen.MachineCredentialExistsInOrgParams{OrgID: string(org), ID: id})
+		run = sq
 	}
+	n, err := run(ctx, id)
 	return n > 0, err
+}
+
+// OrgEmailInvitationExistsInInstance reports whether an invitation id has a row
+// in any org of the instance.
+func (r *Resolver) OrgEmailInvitationExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.OrgEmailInvitationExistsInInstance, r.pg.OrgEmailInvitationExistsInInstance, id)
+}
+
+// SCIMCredentialExistsInInstance reports whether a SCIM credential id has a row
+// in any org of the instance, revoked or not.
+func (r *Resolver) SCIMCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.SCIMCredentialExistsInInstance, r.pg.SCIMCredentialExistsInInstance, id)
+}
+
+// SessionExistsInInstance reports whether a session id has a row, whichever
+// principal holds it.
+func (r *Resolver) SessionExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.SessionExistsInInstance, r.pg.SessionExistsInInstance, id)
 }

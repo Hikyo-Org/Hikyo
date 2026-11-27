@@ -15,10 +15,10 @@
   },
   {
     "engine": "postgres",
-    "name": "AdapterTargetExistsInOrg",
+    "name": "AdapterTargetExistsInInstance",
     "annotation": "instance-scoped",
-    "hash": "19d29bae02b7e43ed02eff1ef5061cee5d0f7affb2f0b187304d7b8433a7571d",
-    "reason": "Incident target confirmation reads only whether one adapter target id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+    "hash": "3217b8a1a0003bbd7dbff5ab61a4d5c120bab90e3a4e1a10d535bdd5d09cd26d",
+    "reason": "Incident target confirmation reads only whether one adapter target id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -1158,10 +1158,10 @@
   },
   {
     "engine": "postgres",
-    "name": "DynamicLeaseExistsInOrg",
+    "name": "DynamicLeaseExistsInInstance",
     "annotation": "instance-scoped",
-    "hash": "1bf7125d16759f216b911b6e5ff8c5cdcbd92229880a62f80acad475ae5e4ac1",
-    "reason": "Incident lease confirmation reads only whether one lease id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+    "hash": "5c848efa5258a8af4b7468e32a938f0d008ade70c2cd7f0cd67c478f06824689",
+    "reason": "Incident lease confirmation reads only whether one lease id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -2641,10 +2641,10 @@
   },
   {
     "engine": "postgres",
-    "name": "MachineCredentialExistsInOrg",
+    "name": "MachineCredentialExistsInInstance",
     "annotation": "authn-resolution",
-    "hash": "24a466e957390ff3303b88d5748b17db48c48f6d7757e48c1cd55fb15a8a4d23",
-    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned."
+    "hash": "d3cd2b7447a3917f5a7320c7a89a89854d4ddb87ad32381a184e0dc339e873f7",
+    "reason": "Incident revoke confirmation reads only whether one credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -2687,6 +2687,13 @@
     "name": "NextSelfConfigRolloutSequence",
     "annotation": "instance-scoped",
     "hash": "142b9b25c38d010c00fd479d5d7e745140a8bb81c872e40eb2f1c7c7e50c1065"
+  },
+  {
+    "engine": "postgres",
+    "name": "OrgEmailInvitationExistsInInstance",
+    "annotation": "authn-resolution",
+    "hash": "0746cece69b2a07118160eb9455145c835b8d3f6156183a1de53ea582e48388a",
+    "reason": "Incident revoke confirmation reads only whether one invitation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -3516,10 +3523,10 @@
   },
   {
     "engine": "postgres",
-    "name": "RotationExistsInOrg",
+    "name": "RotationExistsInInstance",
     "annotation": "instance-scoped",
-    "hash": "2ba16de3ca0f9125a56f047476cd045e7dc23c873e7106b5e6f382c8b690e05d",
-    "reason": "Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+    "hash": "11055ff9c3d1fc9d2866288b0e17494257a0d3013cc5cefb0293beca81c85f36",
+    "reason": "Incident rotation confirmation reads only whether one rotation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -3705,6 +3712,13 @@
   },
   {
     "engine": "postgres",
+    "name": "SCIMCredentialExistsInInstance",
+    "annotation": "authn-resolution",
+    "hash": "cded7976530b5b96dbad1c2f1814a2c5361cd586aabbdb726b7960c65198735a",
+    "reason": "Incident revoke confirmation reads only whether one SCIM credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
+  },
+  {
+    "engine": "postgres",
     "name": "SampleSecretValueEntry",
     "annotation": "instance-scoped",
     "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
@@ -3739,6 +3753,13 @@
     "name": "SelectExpiredDeliveryTargetReports",
     "annotation": "instance-scoped",
     "hash": "dda1a132ba2a7add5ac2167dc87a92a73adb69ec8f90873392cdea9c6e66aa65"
+  },
+  {
+    "engine": "postgres",
+    "name": "SessionExistsInInstance",
+    "annotation": "authn-resolution",
+    "hash": "db0bb4f13de48fb4cb0cbbefbf2868aa84af8f6a1c5ebbca421250ff28f24071",
+    "reason": "Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -4045,10 +4066,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "AdapterTargetExistsInOrg",
+    "name": "AdapterTargetExistsInInstance",
     "annotation": "instance-scoped",
-    "hash": "19d29bae02b7e43ed02eff1ef5061cee5d0f7affb2f0b187304d7b8433a7571d",
-    "reason": "Incident target confirmation reads only whether one adapter target id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+    "hash": "3217b8a1a0003bbd7dbff5ab61a4d5c120bab90e3a4e1a10d535bdd5d09cd26d",
+    "reason": "Incident target confirmation reads only whether one adapter target id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -5125,10 +5146,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "DynamicLeaseExistsInOrg",
+    "name": "DynamicLeaseExistsInInstance",
     "annotation": "instance-scoped",
-    "hash": "1bf7125d16759f216b911b6e5ff8c5cdcbd92229880a62f80acad475ae5e4ac1",
-    "reason": "Incident lease confirmation reads only whether one lease id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+    "hash": "5c848efa5258a8af4b7468e32a938f0d008ade70c2cd7f0cd67c478f06824689",
+    "reason": "Incident lease confirmation reads only whether one lease id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -6608,10 +6629,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "MachineCredentialExistsInOrg",
+    "name": "MachineCredentialExistsInInstance",
     "annotation": "authn-resolution",
-    "hash": "24a466e957390ff3303b88d5748b17db48c48f6d7757e48c1cd55fb15a8a4d23",
-    "reason": "Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned."
+    "hash": "d3cd2b7447a3917f5a7320c7a89a89854d4ddb87ad32381a184e0dc339e873f7",
+    "reason": "Incident revoke confirmation reads only whether one credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -6654,6 +6675,13 @@
     "name": "NextSelfConfigRolloutSequence",
     "annotation": "instance-scoped",
     "hash": "142b9b25c38d010c00fd479d5d7e745140a8bb81c872e40eb2f1c7c7e50c1065"
+  },
+  {
+    "engine": "sqlite",
+    "name": "OrgEmailInvitationExistsInInstance",
+    "annotation": "authn-resolution",
+    "hash": "0746cece69b2a07118160eb9455145c835b8d3f6156183a1de53ea582e48388a",
+    "reason": "Incident revoke confirmation reads only whether one invitation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -7469,10 +7497,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "RotationExistsInOrg",
+    "name": "RotationExistsInInstance",
     "annotation": "instance-scoped",
-    "hash": "2ba16de3ca0f9125a56f047476cd045e7dc23c873e7106b5e6f382c8b690e05d",
-    "reason": "Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+    "hash": "11055ff9c3d1fc9d2866288b0e17494257a0d3013cc5cefb0293beca81c85f36",
+    "reason": "Incident rotation confirmation reads only whether one rotation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -7658,6 +7686,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "SCIMCredentialExistsInInstance",
+    "annotation": "authn-resolution",
+    "hash": "cded7976530b5b96dbad1c2f1814a2c5361cd586aabbdb726b7960c65198735a",
+    "reason": "Incident revoke confirmation reads only whether one SCIM credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
+  },
+  {
+    "engine": "sqlite",
     "name": "SampleSecretValueEntry",
     "annotation": "instance-scoped",
     "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
@@ -7692,6 +7727,13 @@
     "name": "SelectExpiredDeliveryTargetReports",
     "annotation": "instance-scoped",
     "hash": "dda1a132ba2a7add5ac2167dc87a92a73adb69ec8f90873392cdea9c6e66aa65"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SessionExistsInInstance",
+    "annotation": "authn-resolution",
+    "hash": "db0bb4f13de48fb4cb0cbbefbf2868aa84af8f6a1c5ebbca421250ff28f24071",
+    "reason": "Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned."
   },
   {
     "engine": "sqlite",

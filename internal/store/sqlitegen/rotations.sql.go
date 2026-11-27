@@ -398,21 +398,16 @@ func (q *Queries) RotationCredentialExpiry(ctx context.Context, arg RotationCred
 	return i, err
 }
 
-const rotationExistsInOrg = `-- name: RotationExistsInOrg :one
-SELECT COUNT(*) FROM rotations WHERE id=?1 AND org_id=?2
+const rotationExistsInInstance = `-- name: RotationExistsInInstance :one
+SELECT COUNT(*) FROM rotations WHERE id=?1
 `
 
-type RotationExistsInOrgParams struct {
-	RotationID string
-	ChainOrg   string
-}
-
-// Incident confirmation: whether a rotation id exists anywhere in one org, so a
-// rotation absent from the item's environment is confirmed only when it is gone.
-// hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned.
+// Incident confirmation: whether a rotation id exists anywhere in the instance, so
+// a rotation absent from the item's environment is confirmed only when it is gone.
+// hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
 // hikyo:instance-scoped
-func (q *Queries) RotationExistsInOrg(ctx context.Context, arg RotationExistsInOrgParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, rotationExistsInOrg, arg.RotationID, arg.ChainOrg)
+func (q *Queries) RotationExistsInInstance(ctx context.Context, rotationID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationExistsInInstance, rotationID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

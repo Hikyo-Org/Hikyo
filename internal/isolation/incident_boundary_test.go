@@ -288,3 +288,77 @@ func TestIncidentListingsSkipDisabledRotationsAndExpiredDelegations(t *testing.T
 		}
 	})
 }
+
+// Owner decision (gone means gone from the instance): an item scoped to the
+// incident's own org that names another org's object answers not found and leaves
+// that object live, though the responder holds nothing in the other org. Deleted
+// from the instance, the same ids confirm.
+func TestIncidentOwnersKeepAnObjectOfAnotherOrgLive(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		epoch := `(SELECT credential_epoch FROM auth_instance_state WHERE id = 1)`
+		seedIncidentLeases(t, db) // lse_it_b1 is active in org_b/prj_b1/env_b1
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_xo_b','org_b','prj_b1','forgejo','https://git.example','usr_bob','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_xo_b','org_b','prj_b1','env_b1','adp_xo_b','repository','acme','app',41,'',1,'active','converged',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_xo_b', 'machine', 'workload', `+ts+`)`)
+		execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) VALUES ('sa_xo_b', 'mch_xo_b', 'org_b', 'prj_b1', 'xo-sa', 'workload', `+ts+`, 'usr_itarget')`)
+		execRaw(t, db, `INSERT INTO machine_credentials (id, service_account_id, kind, verifier, prefix_hint, lifetime, credential_epoch, created_at, created_by) VALUES ('mcr_xo_b', 'sa_xo_b', 'hikyo-token', `+blobLit(db, []byte("verifier-mcr-xo"))+`, 'hk', 'indefinite', `+epoch+`, `+ts+`, 'usr_itarget')`)
+		execRaw(t, db, `INSERT INTO org_email_invitations (id, org_id, email, template, inviter_principal_id, account_id, token_verifier, credential_epoch, created_at, expires_at) VALUES ('ein_xo_b', 'org_b', 'xo-b@example.test', 'viewer', 'usr_irsp', NULL, `+blobLit(db, []byte("verifier-ein-xo"))+`, 0, `+ts+`, '2099-01-01T00:00:00.000000Z')`)
+		execRaw(t, db, `INSERT INTO scim_bindings(id,org_id,provider_kind,provider_id,provider_slug,provider_issuer,subject_source,connection_principal_id,created_at) VALUES ('sbn_xo_b','org_b','oidc','sbn_xo_b','sbn_xo_b','https://idp.example','externalId','mch_xo_b',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO scim_credentials (id, org_id, binding_id, principal_id, verifier, credential_epoch, created_at) VALUES ('scc_xo_b','org_b','sbn_xo_b','mch_xo_b',`+blobLit(db, []byte("verifier-scc-xo"))+`, `+epoch+`, `+ts+`)`)
+		inc := w.openOrg(t, incResponder) // org A
+		items := []struct{ owner, kind, id, scope, del string }{
+			{domain.OwnerMachineCredential, domain.ObjectKindMachineCredential, "mcr_xo_b", "org_a/prj_a1", `DELETE FROM machine_credentials WHERE id='mcr_xo_b'`},
+			{domain.OwnerEmailInvitation, domain.ObjectKindEmailInvitation, "ein_xo_b", "org_a", `DELETE FROM org_email_invitations WHERE id='ein_xo_b'`},
+			{domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, "scc_xo_b", "org_a", `DELETE FROM scim_credentials WHERE id='scc_xo_b'`},
+			{domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_b1", "org_a/prj_a1/env_a1", `DELETE FROM dynamic_leases WHERE id='lse_it_b1'`},
+			{domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, "tgt_xo_b", "org_a/prj_a1", `DELETE FROM adapter_targets WHERE id='tgt_xo_b'`},
+		}
+		for _, c := range items {
+			w.ownerRefusedNotFound(t, incResponder, inc, c.owner, c.kind, c.id, c.scope)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM machine_credentials WHERE id='mcr_xo_b' AND revoked_at IS NULL`); n != 1 {
+			t.Errorf("the org B machine credential was revoked")
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM org_email_invitations WHERE id='ein_xo_b'`); n != 1 {
+			t.Errorf("the org B invitation was deleted")
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM scim_credentials WHERE id='scc_xo_b' AND revoked_at IS NULL`); n != 1 {
+			t.Errorf("the org B SCIM credential was revoked")
+		}
+		if got := queryString(t, db, `SELECT state FROM dynamic_leases WHERE id='lse_it_b1'`); got != "active" {
+			t.Errorf("the org B lease changed: %s", got)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_xo_b' AND paused_at IS NULL`); n != 1 {
+			t.Errorf("the org B target was paused")
+		}
+		for _, c := range items {
+			execRaw(t, db, c.del)
+			if res := w.callOwner(t, incResponder, inc, c.owner, c.kind, c.id, c.scope); res != service.OwnerConfirmed {
+				t.Errorf("%s on %s deleted from the instance = %v, want confirmed", c.owner, c.id, res)
+			}
+		}
+	})
+}
+
+// Owner decision (gone means gone from the instance): another principal's live
+// session named on an account incident answers not found and stays live. Deleted,
+// it confirms.
+func TestIncidentSessionOwnerLeavesAnotherPrincipalsSessionLive(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+			`VALUES ('ses_xo_alice', '`+string(alice)+`', `+blobLit(db, []byte("verifier-xo-alice"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
+		inc := w.openAccount(t, incResponder).Incident.ID // incTarget's incident
+		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerSessionRevoke, domain.ObjectKindSession, "ses_xo_alice", "instance")
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM sessions WHERE id='ses_xo_alice'`); n != 1 {
+			t.Fatalf("another principal's session was revoked")
+		}
+		execRaw(t, db, `DELETE FROM sessions WHERE id='ses_xo_alice'`)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerSessionRevoke, domain.ObjectKindSession, "ses_xo_alice", "instance"); res != service.OwnerConfirmed {
+			t.Errorf("a session gone from the instance = %v, want confirmed", res)
+		}
+	})
+}

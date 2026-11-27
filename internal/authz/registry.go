@@ -941,8 +941,8 @@ const (
 	StoreCatalogueRevisionGet             StoreOp = "catalogue.SchemaRevision"
 
 	StoreAdaptersTarget StoreOp = "adapters.Target"
-	// Incident confirmation: whether a target id exists anywhere in one org.
-	StoreAdaptersTargetExistsInOrg      StoreOp = "adapters.TargetExistsInOrg"
+	// Incident confirmation: whether a target id exists anywhere in the instance.
+	StoreAdaptersTargetExistsInInstance StoreOp = "adapters.TargetExistsInInstance"
 	StoreAdaptersGet                    StoreOp = "adapters.Get"
 	StoreAdaptersConfiguration          StoreOp = "adapters.Configuration"
 	StoreAdaptersConfigurationForUpdate StoreOp = "adapters.ConfigurationForUpdate"
@@ -1005,8 +1005,8 @@ const (
 	// every org (instance-scoped proof only).
 	StoreDynamicLeasesListNonTerminalProject  StoreOp = "dynamic.ListNonTerminalLeasesInProject"
 	StoreDynamicLeasesListNonTerminalInstance StoreOp = "dynamic.ListNonTerminalLeasesInInstance"
-	// Incident confirmation: whether a lease id exists anywhere in one org.
-	StoreDynamicLeaseExistsInOrg        StoreOp = "dynamic.LeaseExistsInOrg"
+	// Incident confirmation: whether a lease id exists anywhere in the instance.
+	StoreDynamicLeaseExistsInInstance   StoreOp = "dynamic.LeaseExistsInInstance"
 	StoreDynamicLeasesCreate            StoreOp = "dynamic.CreateLease"
 	StoreDynamicLeasesGet               StoreOp = "dynamic.GetLease"
 	StoreDynamicLeasesList              StoreOp = "dynamic.ListLeasesForEnvironment"
@@ -1037,8 +1037,8 @@ const (
 	StoreRotationsListByAuthorityInOrg      StoreOp = "rotations.ListByAuthorityInOrg"
 	StoreRotationsListByAuthorityInInstance StoreOp = "rotations.ListByAuthorityInInstance"
 	StoreRotationsHaltForIncident           StoreOp = "rotations.HaltForIncident"
-	// Incident confirmation: whether a rotation id exists anywhere in one org.
-	StoreRotationsExistsInOrg StoreOp = "rotations.ExistsInOrg"
+	// Incident confirmation: whether a rotation id exists anywhere in the instance.
+	StoreRotationsExistsInInstance StoreOp = "rotations.ExistsInInstance"
 	// StoreRotationsPauseForEnvironment pauses the active rotations of an
 	// environment, or of the whole project, that became protected or gained an
 	// approval policy.
@@ -1593,10 +1593,10 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreRotationsCountOpenRuns: true,
 	StoreRotationsListRuns:      true,
 	// The incident placement probes answer one count (#1039).
-	StoreDynamicLeaseExistsInOrg:   true,
-	StoreAdaptersTargetExistsInOrg: true,
-	StoreRotationsExistsInOrg:      true,
-	StoreSCIMCredentialInOrg:       true,
+	StoreDynamicLeaseExistsInInstance:   true,
+	StoreAdaptersTargetExistsInInstance: true,
+	StoreRotationsExistsInInstance:      true,
+	StoreSCIMCredentialInOrg:            true,
 	// SSH reads of public trust material and certificate metadata (#155).
 	StoreSSHGetCA:            true,
 	StoreSSHListCAs:          true,
@@ -2444,7 +2444,7 @@ var operationTable = map[Operation]opSpec{
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
 		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
-		storeOps: map[StoreOp]bool{StoreDynamicLeaseExistsInOrg: true, StoreAdaptersTargetExistsInOrg: true},
+		storeOps: map[StoreOp]bool{StoreDynamicLeaseExistsInInstance: true, StoreAdaptersTargetExistsInInstance: true},
 		events: []audit.EventType{
 			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
 		},
@@ -2494,7 +2494,7 @@ var operationTable = map[Operation]opSpec{
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
 		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
-		storeOps: map[StoreOp]bool{StoreRotationsListByAuthorityInOrg: true, StoreRotationsExistsInOrg: true},
+		storeOps: map[StoreOp]bool{StoreRotationsListByAuthorityInOrg: true, StoreRotationsExistsInInstance: true},
 		events:   []audit.EventType{audit.EventIncidentOpened},
 	},
 	OpIncidentRotationsInstance: {

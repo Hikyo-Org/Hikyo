@@ -880,10 +880,10 @@ func (a *TxAuthorizer) LoginChallengeByID(ctx context.Context, id string) (Login
 	return a.r.LoginChallengeByID(ctx, id)
 }
 
-// MachineCredentialExistsInOrg reports whether a credential id is held by any
-// service account of the org, revoked or not.
-func (a *TxAuthorizer) MachineCredentialExistsInOrg(ctx context.Context, org domain.OrgID, id string) (bool, error) {
-	return a.r.MachineCredentialExistsInOrg(ctx, org, id)
+// MachineCredentialExistsInInstance reports whether a credential id is held by
+// any service account of the instance, revoked or not.
+func (a *TxAuthorizer) MachineCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.MachineCredentialExistsInInstance(ctx, id)
 }
 
 // MachineCredentialInProject reads one credential by id when its service account
@@ -953,6 +953,12 @@ func (a *TxAuthorizer) OpenReauthWindow(ctx context.Context, w NewReauthWindow) 
 
 func (a *TxAuthorizer) OrgEmailInvitationByVerifier(ctx context.Context, verifier []byte) (EmailInvitation, error) {
 	return a.r.OrgEmailInvitationByVerifier(ctx, verifier)
+}
+
+// OrgEmailInvitationExistsInInstance reports whether an invitation id has a row
+// in any org of the instance.
+func (a *TxAuthorizer) OrgEmailInvitationExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.OrgEmailInvitationExistsInInstance(ctx, id)
 }
 
 func (a *TxAuthorizer) OrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (EmailInvitation, error) {
@@ -1262,6 +1268,12 @@ func (a *TxAuthorizer) SCIMCredentialByVerifier(ctx context.Context, presented [
 	return a.r.SCIMCredentialByVerifier(ctx, presented)
 }
 
+// SCIMCredentialExistsInInstance reports whether a SCIM credential id has a row
+// in any org of the instance, revoked or not.
+func (a *TxAuthorizer) SCIMCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.SCIMCredentialExistsInInstance(ctx, id)
+}
+
 // ServiceAccountAt resolves one service account within an addressed project;
 // an id from another project answers domain.ErrNotFound.
 func (a *TxAuthorizer) ServiceAccountAt(ctx context.Context, scope domain.Scope, id string) (ServiceAccount, error) {
@@ -1289,6 +1301,12 @@ func (a *TxAuthorizer) ServiceAccountsCreatedBy(ctx context.Context, creator dom
 
 func (a *TxAuthorizer) ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error) {
 	return a.r.ServiceAccountsIn(ctx, scope)
+}
+
+// SessionExistsInInstance reports whether a session id has a row, whichever
+// principal holds it.
+func (a *TxAuthorizer) SessionExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.SessionExistsInInstance(ctx, id)
 }
 
 // SessionsForPrincipal and RevokeSessionForPrincipal are the self-scoped

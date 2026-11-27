@@ -217,9 +217,9 @@ type RotationReader interface {
 	// org's under an instance proof. The limit is at most domain.MaxIncidentPage.
 	ListByAuthorityInOrg(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
 	ListByAuthorityInInstance(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
-	// ExistsInOrg answers whether a rotation id exists in any project of the
-	// proof's org; it takes an org proof only.
-	ExistsInOrg(ctx context.Context, p authz.Proof, rotationID string) (bool, error)
+	// ExistsInInstance answers whether a rotation id exists anywhere in the
+	// instance; it takes an org proof only, the incident's authorization.
+	ExistsInInstance(ctx context.Context, p authz.Proof, rotationID string) (bool, error)
 	Get(ctx context.Context, p authz.Proof, rotationID string) (RotationRecord, error)
 	// Summarize fills, in place, each row's last run and owed-drop counts (the runs
 	// that need an operator: revoke_refused and quarantine) with two reads for the
@@ -330,7 +330,7 @@ type rotationStoreQueries interface {
 	halt(ctx context.Context, chain domain.Scope, rotationID, reason string, at time.Time) (int64, error)
 	listByAuthorityInOrg(ctx context.Context, chain domain.Scope, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
 	listByAuthorityInInstance(ctx context.Context, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
-	existsInOrg(ctx context.Context, chain domain.Scope, rotationID string) (bool, error)
+	existsInInstance(ctx context.Context, rotationID string) (bool, error)
 	countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error)
 	releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
@@ -560,15 +560,15 @@ func (r rotationQueries) ListByAuthorityInOrg(ctx context.Context, p authz.Proof
 	return r.queries.listByAuthorityInOrg(ctx, chain, authority, afterID, limit)
 }
 
-func (r rotationQueries) ExistsInOrg(ctx context.Context, p authz.Proof, rotationID string) (bool, error) {
-	chain, err := authz.Verify(p, authz.StoreRotationsExistsInOrg, r.tok)
+func (r rotationQueries) ExistsInInstance(ctx context.Context, p authz.Proof, rotationID string) (bool, error) {
+	chain, err := authz.Verify(p, authz.StoreRotationsExistsInInstance, r.tok)
 	if err != nil {
 		return false, err
 	}
 	if chain.Org == "" || chain.Project != "" || rotationID == "" {
 		return false, ErrNotFound
 	}
-	return r.queries.existsInOrg(ctx, chain, rotationID)
+	return r.queries.existsInInstance(ctx, rotationID)
 }
 
 func (r rotationQueries) ListByAuthorityInInstance(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
@@ -887,13 +887,13 @@ func (q pgRotationQueries) halt(ctx context.Context, chain domain.Scope, rotatio
 	return n, constraint(err)
 }
 
-func (q sqliteRotationQueries) existsInOrg(ctx context.Context, chain domain.Scope, rotationID string) (bool, error) {
-	n, err := q.q.RotationExistsInOrg(ctx, sqlitegen.RotationExistsInOrgParams{RotationID: rotationID, ChainOrg: string(chain.Org)})
+func (q sqliteRotationQueries) existsInInstance(ctx context.Context, rotationID string) (bool, error) {
+	n, err := q.q.RotationExistsInInstance(ctx, rotationID)
 	return n > 0, err
 }
 
-func (q pgRotationQueries) existsInOrg(ctx context.Context, chain domain.Scope, rotationID string) (bool, error) {
-	n, err := q.q.RotationExistsInOrg(ctx, pggen.RotationExistsInOrgParams{RotationID: rotationID, ChainOrg: string(chain.Org)})
+func (q pgRotationQueries) existsInInstance(ctx context.Context, rotationID string) (bool, error) {
+	n, err := q.q.RotationExistsInInstance(ctx, rotationID)
 	return n > 0, err
 }
 

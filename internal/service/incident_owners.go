@@ -288,7 +288,19 @@ func (o *incidentOwners) sessionRevoke(ctx context.Context, actor Actor, item au
 		if err != nil {
 			return OwnerUnconfirmed, err
 		}
-		return confirm(!slices.ContainsFunc(left, func(s authz.SessionSummary) bool { return s.ID == item.ObjectID })), nil
+		if slices.ContainsFunc(left, func(s authz.SessionSummary) bool { return s.ID == item.ObjectID }) {
+			return OwnerUnconfirmed, nil
+		}
+		// Gone from the principal. Gone from the instance, it admits no one; held by
+		// another principal, it is outside the item and stays live.
+		elsewhere, err := w.az.SessionExistsInInstance(ctx, item.ObjectID)
+		if err != nil {
+			return OwnerUnconfirmed, err
+		}
+		if elsewhere {
+			return OwnerUnconfirmed, domain.ErrNotFound
+		}
+		return OwnerConfirmed, nil
 	})
 }
 
@@ -386,13 +398,13 @@ func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item aut
 		}
 		cur, err := w.r.Rotations().Get(ctx, proof, item.ObjectID)
 		if errors.Is(err, domain.ErrNotFound) {
-			// Gone from the org, a rotation schedules nothing; placed in another
-			// environment of the org, it is outside the item and stays live.
+			// Gone from the instance, a rotation schedules nothing; placed anywhere
+			// else (another environment or org), it is outside the item and stays live.
 			orgProof, err := w.az.Authorize(ctx, w.caller, authz.OpIncidentRotationsOrg, domain.Scope{Org: w.scope.Org})
 			if err != nil {
 				return OwnerUnconfirmed, err
 			}
-			elsewhere, err := w.r.Rotations().ExistsInOrg(ctx, orgProof, item.ObjectID)
+			elsewhere, err := w.r.Rotations().ExistsInInstance(ctx, orgProof, item.ObjectID)
 			if err == nil && elsewhere {
 				err = domain.ErrNotFound
 			}

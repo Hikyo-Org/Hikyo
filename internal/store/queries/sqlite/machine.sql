@@ -252,11 +252,9 @@ FROM machine_credentials mc
 JOIN service_accounts sa ON sa.id = mc.service_account_id
 WHERE sa.org_id = sqlc.arg(org_id) AND sa.project_id = sqlc.arg(project_id) AND mc.id = sqlc.arg(id);
 
--- Whether a credential id is placed anywhere in the org, so incident confirmation
--- tells one deleted apart from one held by another project's service account.
--- hikyo:reason Incident revoke confirmation reads only whether one credential id exists in one org behind the org credential-reset operation of the incident; no metadata or bearer is returned.
+-- Whether a credential id exists anywhere in the instance, so incident
+-- confirmation tells one deleted apart from one held by any other service account.
+-- hikyo:reason Incident revoke confirmation reads only whether one credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
 -- hikyo:authn-resolution
--- name: MachineCredentialExistsInOrg :one
-SELECT COUNT(*) FROM machine_credentials mc
-JOIN service_accounts sa ON sa.id = mc.service_account_id
-WHERE sa.org_id = sqlc.arg(org_id) AND mc.id = sqlc.arg(id);
+-- name: MachineCredentialExistsInInstance :one
+SELECT COUNT(*) FROM machine_credentials WHERE id = sqlc.arg(id);
