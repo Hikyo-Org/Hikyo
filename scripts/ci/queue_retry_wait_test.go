@@ -590,7 +590,8 @@ func TestQueueRetryWaitHoldsAnOversizedSetOnItsLastRerun(t *testing.T) {
 }
 
 // A newer run covers head 1 of an older oversized run: the older entry is cut to one job of an
-// unseen head and costs one job (42), not its share of the run (42 / 13 truncated to 3).
+// unseen head and costs one job (42), not a share of the run's total. With 574 left, a truncated
+// share would let the third run's job in as well; at a full job cost the window is full after two.
 func TestQueueRetryWaitCutsAnOlderOversizedRunAtAFullJobCost(t *testing.T) {
 	now := int64(1795475603)
 	newer := failedGroupJob(901, "publish-"+fmt.Sprintf("%040x", 1), "Reconcile one authenticated head")
@@ -601,6 +602,30 @@ func TestQueueRetryWaitCutsAnOlderOversizedRunAtAFullJobCost(t *testing.T) {
 	_, out, err := f.run()
 	if err == nil || !reflect.DeepEqual(f.accepted(), []string{"901", "101"}) {
 		t.Fatalf("the newer run's job and one job of the older run, then the window is full: %v %v\n%s", err, f.accepted(), out)
+	}
+}
+
+// The final-attempt check comes before any wait: a window that had recovered when the job started
+// must not sleep an hour for a set that cannot be released into its last attempt anyway.
+func TestQueueRetryWaitDoesNotSleepForAnOversizedSetOnItsLastRerun(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-queue-gate.yml", 7, oversizedJobs(13)...)
+	run.attempt = 2
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, recovered: true, limit: 1000, after: 1000, preReset: 500, runs: []waitRun{run}}
+	recorded, out, err := f.run()
+	if err == nil || len(f.accepted()) != 0 || !strings.Contains(out, "would be the final attempt") || strings.Contains(recorded, "sleep 6") {
+		t.Fatalf("held at once, without waiting for another window: %v %v\n%s\n%s", err, f.accepted(), recorded, out)
+	}
+}
+
+// 12 x 42 = 504 does not fit above the reserve at 950 left, but a fresh window still leaves one
+// job's cost above the floor: the set is released alone, not held for ever.
+func TestQueueRetryWaitReleasesATwelveJobSetAloneAfterAFreshWindow(t *testing.T) {
+	now := int64(1795475603)
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 950, runs: []waitRun{trustedRun("ci-queue-gate.yml", 7, oversizedJobs(12)...)}}
+	_, out, err := f.run()
+	if err != nil || !reflect.DeepEqual(f.accepted(), []string{"run:7"}) {
+		t.Fatalf("the set is released alone after the window: %v %v\n%s", err, f.accepted(), out)
 	}
 }
 

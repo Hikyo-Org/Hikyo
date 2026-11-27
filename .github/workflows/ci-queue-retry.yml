@@ -137,9 +137,11 @@ jobs:
           # afford their combined cost above the reserve, not each one alone.
           # Rerunning only one of several non-group jobs would strand the rest: the next attempt lists
           # only its own jobs, so no later callback sees them. Hold them all for rerun-after-reset,
-          # which reruns the set together once the window has recovered.
+          # which reruns the set together once the window has recovered, when the run's failed set is exactly that
+          # set. A run that also failed another job takes the single-job path below, which strands its siblings (routed to #1598).
           # This also holds a set no window could ever afford together (n x 42 above limit - reserve, 13 jobs of
-          # a 1000-request window): only rerun-after-reset releases it, alone, right after a fresh window.
+          # a 1000-request window): only rerun-after-reset releases it, alone, right after a fresh window, when
+          # nothing was released before it and one job's cost still leaves the floor, and never into the final attempt.
           combined=$((${#others[@]} * other_cost))
           if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ $((remaining - combined)) -lt "$reserve" ]; then
             echo "Held for the group reserve ($remaining of $limit requests left): the ${#others[@]} failed jobs of this run cost $((${#others[@]} * other_cost)) together, more than leaves the reserve. rerun-after-reset reruns them together once the window has reset."
@@ -179,7 +181,9 @@ jobs:
     # for a group job, 42 otherwise) against the remaining budget before it is released,
     # because a released rerun spends only after it starts: it stops while that projection
     # would cross a fifth of the window (non-group jobs: the 480-request reserve), so the
-    # burst cannot re-exhaust the window it waited for. Jobs it stops before stay failed with
+    # burst cannot re-exhaust the window it waited for. A run-level set that does not fit by its full cost is
+    # judged for the final attempt first (held at once, no wait), and otherwise released alone right after a
+    # fresh window when nothing was released before it and one job's cost still leaves the floor. Jobs it stops before stay failed with
     # their check pending. Only another failed gate run starts a new wait, so nothing
     # completes a held job automatically: the operator command, gh workflow run
     # ci-queue-gate.yml -f pr_number=<n>, is the completer for a merge-group head.
@@ -390,12 +394,6 @@ jobs:
           second=0
           budget_down=0
           retry_plan=""
-          # Whether a run-level cost exceeds what a fresh window leaves above the floor: no window affords it together.
-          oversized() { # $1 group or other, $2 cost
-            local floor=$((limit / 5))
-            if [ "$1" = other ] && [ "$reserve" -gt "$floor" ]; then floor=$reserve; fi
-            [ "$2" -gt $((limit - floor)) ]
-          }
           spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other, $5 attempt of the failed run, $6 one job's cost
             local available floor path rc
             if [ $(($(date +%s) - started)) -gt 3960 ]; then
@@ -416,25 +414,29 @@ jobs:
             available=$((remaining - released))
             floor=$((limit / 5))
             if [ "$4" = other ] && [ "$reserve" -gt "$floor" ]; then floor=$reserve; fi
-            if oversized "$4" "$3"; then
-              # No window affords this set together. It is released only right after a fresh window, as the
-              # only release of that window (its full cost is counted, so nothing else follows), and never
-              # into the final attempt, where nothing could defer a rerun job that finds the reserve spent.
-              if [ "$slept" = 0 ] && [ "$second" = 0 ]; then retry_plan="${retry_plan}$1 $2 $3 $4 $5 $6"$'\n'; return 0; fi
-              if [ "$released" != 0 ] || [ $((available - $6)) -lt "$floor" ]; then
-                echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning the oversized set $1 $2 yet."
-                held="$held $1:$2"
+            if [ $((available - $3)) -lt "$floor" ]; then
+              if [ "$1" = run ]; then
+                # A run-level set that does not fit by its full cost. The final attempt is judged first, so no wait is
+                # spent on it: nothing could defer a rerun job that finds the reserve spent.
+                if [ $(($5 + 1)) -ge 3 ]; then
+                  echo "Not rerunning $1 $2: it does not fit above the floor and the rerun would be the final attempt, which cannot defer."
+                  held="$held $1:$2"
+                  return 0
+                fi
+                if [ "$slept" = 0 ] && [ "$second" = 0 ]; then retry_plan="${retry_plan}$1 $2 $3 $4 $5 $6"$'\n'; return 0; fi
+                # Right after a fresh window it is released alone, counted at its full cost, when nothing was released
+                # before it in this pass and the window still leaves one job's cost above the floor; each rerun job then
+                # re-checks the reserve when it starts. Otherwise a set that no window affords together would be held for ever.
+                if [ "$released" != 0 ] || [ $((available - $6)) -lt "$floor" ]; then
+                  echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning $1 $2 yet."
+                  held="$held $1:$2"
+                  return 0
+                fi
+              else
+                echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning $1 $2 yet."
+                if [ "$second" = 1 ]; then held="$held $1:$2"; else retry_plan="${retry_plan}$1 $2 $3 $4 $5 $6"$'\n'; fi
                 return 0
               fi
-              if [ $(($5 + 1)) -ge 3 ]; then
-                echo "Not rerunning the oversized set $1 $2: the rerun would be the final attempt, which cannot defer."
-                held="$held $1:$2"
-                return 0
-              fi
-            elif [ $((available - $3)) -lt "$floor" ]; then
-              echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning $1 $2 yet."
-              if [ "$second" = 1 ]; then held="$held $1:$2"; else retry_plan="${retry_plan}$1 $2 $3 $4 $5 $6"$'\n'; fi
-              return 0
             fi
             echo "Rerunning $1 $2 (about $3 requests of the $available left)."
             if [ "$1" = run ]; then path="repos/$GH_REPO/actions/runs/$2/rerun-failed-jobs"; else path="repos/$GH_REPO/actions/jobs/$2/rerun"; fi
@@ -464,11 +466,11 @@ jobs:
             [ -n "$id" ] || continue
             spend_rerun "$type" "$id" "$cost" group "$attempt" "$unit"
           done <<<"$group_plan"
-          # An oversized set goes first, so it is the only release of its window.
-          for pass in oversized rest; do
+          # Run-level sets go first, so one that does not fit is the only release of its window.
+          for pass in run job; do
             while read -r type id cost run heads unit attempt; do
               [ -n "$id" ] || continue
-              if oversized other "$cost"; then [ "$pass" = oversized ] || continue; else [ "$pass" = rest ] || continue; fi
+              [ "$type" = "$pass" ] || continue
               spend_rerun "$type" "$id" "$cost" other "$attempt" "$unit"
             done <<<"$other_plan"
           done
