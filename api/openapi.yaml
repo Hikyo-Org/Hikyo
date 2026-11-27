@@ -2159,6 +2159,8 @@ paths:
           $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":

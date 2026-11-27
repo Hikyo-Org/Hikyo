@@ -4,10 +4,12 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
@@ -496,5 +498,134 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	// Nothing can match environments by id after 00102.
 	if err := db.exec(`SELECT env_id FROM rule_items`); err == nil {
 		t.Error("rule_items.env_id survived 00102")
+	}
+}
+
+// A rule selecting different names in its projects (only a/dev and b/prod,
+// neither name in the other project) splits rather than converting (#1447):
+// converted, each project would carry a name no environment there has, which
+// a manager holding only the rule's environments does not cover. The manager
+// who could revoke it before the upgrade still can, part by part. The
+// migrated rows are copied into a live store of the same engine, since the
+// development gate admits only a freshly created database.
+func TestRuleEnvNamesMigrationKeepsDelegatedRevokeSQLite(t *testing.T) {
+	cfg, db := scratchSQLite(t, "env-names-revoke.db")
+	ctx := t.Context()
+	testRuleEnvNamesMigrationKeepsDelegatedRevoke(t, cfg, openSQLite,
+		func(s string) error { _, err := db.ExecContext(ctx, s); return err },
+		func(s string) []string {
+			rows, err := db.QueryContext(ctx, s)
+			if err != nil {
+				t.Fatalf("%s: %v", s, err)
+			}
+			defer func() { _ = rows.Close() }()
+			var out []string
+			for rows.Next() {
+				var v string
+				if err := rows.Scan(&v); err != nil {
+					t.Fatal(err)
+				}
+				out = append(out, v)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			return out
+		})
+}
+
+func TestRuleEnvNamesMigrationKeepsDelegatedRevokePostgres(t *testing.T) {
+	cfg, conn := scratchPostgres(t, "env_names_revoke")
+	ctx := t.Context()
+	testRuleEnvNamesMigrationKeepsDelegatedRevoke(t, cfg, openPostgres,
+		func(s string) error { _, err := conn.Exec(ctx, s); return err },
+		func(s string) []string {
+			rows, err := conn.Query(ctx, s)
+			if err != nil {
+				t.Fatalf("%s: %v", s, err)
+			}
+			defer rows.Close()
+			var out []string
+			for rows.Next() {
+				var v string
+				if err := rows.Scan(&v); err != nil {
+					t.Fatal(err)
+				}
+				out = append(out, v)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			return out
+		})
+}
+
+func testRuleEnvNamesMigrationKeepsDelegatedRevoke(t *testing.T, cfg store.Config, open func(*testing.T) *store.DB, exec func(string) error, lines func(string) []string) {
+	ctx := t.Context()
+	if err := migrate.RunUpTo(ctx, cfg, 99); err != nil {
+		t.Fatal(err)
+	}
+	const at = `'2026-01-01T00:00:00Z'`
+	// The topology and the manager's environment grants, the same before the
+	// upgrade and in the live store.
+	base := []string{
+		`INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ('org_rv', 'rv', TRUE, '{}', ` + at + `)`,
+		`INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_rva', 'org_rv', 'rva', ` + at + `)`,
+		`INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_rvb', 'org_rv', 'rvb', ` + at + `)`,
+		`INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_rva_dev', 'org_rv', 'prj_rva', 'dev', '', ` + at + `, 0)`,
+		`INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_rvb_prod', 'org_rv', 'prj_rvb', 'prod', '', ` + at + `, 0)`,
+		`INSERT INTO principals (id, kind, created_at) VALUES ('usr_rvtarget', 'human', ` + at + `)`,
+		`INSERT INTO principals (id, kind, created_at) VALUES ('usr_rvmgr', 'human', ` + at + `)`,
+		`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_rvmgr_a', 'usr_rvmgr', 'manage-members', 'org_rv', 'prj_rva', 'env_rva_dev', ` + at + `)`,
+		`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_rvmgr_b', 'usr_rvmgr', 'manage-members', 'org_rv', 'prj_rvb', 'env_rvb_prod', ` + at + `)`,
+	}
+	legacy := []string{
+		`INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('rul_rvdiff', 'usr_rvtarget', 'read', 'org_rv', 'only', 'only', 'all', 'usr_rvmgr', ` + at + `)`,
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('rli_rv_pa', 'rul_rvdiff', 'org_rv', 'project', 'prj_rva', NULL, NULL, NULL)`,
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('rli_rv_pb', 'rul_rvdiff', 'org_rv', 'project', 'prj_rvb', NULL, NULL, NULL)`,
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('rli_rv_ea', 'rul_rvdiff', 'org_rv', 'env', 'prj_rva', 'env_rva_dev', NULL, NULL)`,
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('rli_rv_eb', 'rul_rvdiff', 'org_rv', 'env', 'prj_rvb', 'env_rvb_prod', NULL, NULL)`,
+	}
+	for i, stmt := range append(slices.Clone(base), legacy...) {
+		if err := exec(stmt); err != nil {
+			t.Fatalf("seed %d %s: %v", i, stmt, err)
+		}
+	}
+	if err := migrate.RunUpTo(ctx, cfg, 102); err != nil {
+		t.Fatal(err)
+	}
+	lit := func(col string) string {
+		return `CASE WHEN ` + col + ` IS NULL THEN 'NULL' ELSE '''' || ` + col + ` || '''' END`
+	}
+	migrated := lines(`SELECT 'INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES (' || ` +
+		lit("id") + ` || ', ''usr_rvtarget'', ' || ` + lit("capability") + ` || ', ''org_rv'', ' || ` + lit("project_mode") + ` || ', ' || ` +
+		lit("env_mode") + ` || ', ' || ` + lit("key_mode") + ` || ', ''usr_rvmgr'', ` + strings.ReplaceAll(at, "'", "''") + `)' FROM rules WHERE principal_id = 'usr_rvtarget' ORDER BY id`)
+	migrated = append(migrated, lines(`SELECT 'INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_name, key_id, folder_path) VALUES (' || `+
+		lit("i.id")+` || ', ' || `+lit("i.rule_id")+` || ', ''org_rv'', ' || `+lit("i.axis")+` || ', ' || `+lit("i.project_id")+` || ', ' || `+
+		lit("i.env_name")+` || ', ' || `+lit("i.key_id")+` || ', ' || `+lit("i.folder_path")+` || ')' FROM rule_items AS i JOIN rules AS r ON r.id = i.rule_id
+		WHERE r.principal_id = 'usr_rvtarget' ORDER BY i.id`)...)
+
+	if got := lines(`SELECT CAST(COUNT(*) AS TEXT) FROM audit_tenant_events WHERE type = 'rule.split' AND object_id = 'rul_rvdiff'`); !slices.Equal(got, []string{"1"}) {
+		t.Fatalf("rule.split events for rul_rvdiff = %v, want 1", got)
+	}
+
+	db := open(t)
+	for _, stmt := range append(base, migrated...) {
+		execRaw(t, db, stmt)
+	}
+	svc := &service.Rules{DB: db}
+	var ids []string
+	for _, stmt := range migrated {
+		if id, ok := strings.CutPrefix(stmt, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('"); ok {
+			ids = append(ids, id[:strings.Index(id, "'")])
+		}
+	}
+	for _, id := range ids {
+		if err := svc.Revoke(ctx, service.LocalPrincipal("usr_rvmgr"), "org_rv", id); err != nil {
+			t.Fatalf("revoke migrated rule %s by the manager of its environments: %v (migrated rows %q)", id, err, migrated)
+		}
+	}
+	if len(ids) != 2 {
+		t.Fatalf("migrated rules %v, want one per project", ids)
 	}
 }

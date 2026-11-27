@@ -72,7 +72,8 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				t.Fatalf("rule for %s: %v", p, err)
 			}
 		}
-		confirmed := func(env domain.EnvID, from, to string) int64 {
+		confirmed := func(t *testing.T, env domain.EnvID, from, to string) int64 {
+			t.Helper()
 			return queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+string(env)+
 				"' AND payload LIKE '%\"from_name\":\""+from+"\"%' AND payload LIKE '%\"to_name\":\""+to+"\"%'")
 		}
@@ -146,7 +147,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				}
 			}
 			// Dropping a name from an only list narrows: no refusal.
-			held, err := rules.Create(ctx, as, spec(domain.AxisOnly, []string{"ghost"}, prjA1))
+			held, err := rules.Create(ctx, as, spec(domain.AxisOnly, []string{"prod", "ghost"}, prjA1))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -162,6 +163,20 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 		})
 
 		t.Run("a_narrowing_rename_needs_no_confirmation", func(t *testing.T) {
+			// Later subtests expect prod, should a focused run skip the rename back.
+			// t.Context() is cancelled before cleanups run.
+			t.Cleanup(func() {
+				restore := "UPDATE environments SET name = 'prod' WHERE id = '" + string(envProd) + "'"
+				var err error
+				if db.Engine() == store.EnginePostgres {
+					_, err = db.PG().Exec(context.Background(), restore)
+				} else {
+					_, err = db.SQLiteWrite().ExecContext(context.Background(), restore)
+				}
+				if err != nil {
+					t.Errorf("restore prod: %v", err)
+				}
+			})
 			if !reachesEnv(t, db, envOnly, prodA1) {
 				t.Fatal("the only-prod rule does not reach prod before the rename")
 			}
@@ -187,7 +202,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA1, "prod", nil, []domain.PrincipalID{envOnly}); err != nil {
 				t.Fatalf("confirmed rename: %v", err)
 			}
-			if !reachesEnv(t, db, envOnly, prodA1) || confirmed(envProd, "production", "prod") != 1 {
+			if !reachesEnv(t, db, envOnly, prodA1) || confirmed(t, envProd, "production", "prod") != 1 {
 				t.Fatal("the confirmed rename did not widen the rule with one audited confirmation")
 			}
 		})
@@ -220,7 +235,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				t.Fatalf("confirmed create: %v", err)
 			}
 			prodA2 = scopeEnv(orgA, prjA2, domain.EnvID(env.ID))
-			if !reachesEnv(t, db, envOnly, prodA2) || reachesEnv(t, db, envExcpt, prodA2) || confirmed(domain.EnvID(env.ID), "", "prod") != 1 {
+			if !reachesEnv(t, db, envOnly, prodA2) || reachesEnv(t, db, envExcpt, prodA2) || confirmed(t, domain.EnvID(env.ID), "", "prod") != 1 {
 				t.Fatal("the confirmed create did not give exactly the only-prod rule the new prod, audited")
 			}
 			// The except names every prod: the first project's stays excepted too.
@@ -245,7 +260,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA2, "staging", nil, []domain.PrincipalID{envExcpt}); err != nil {
 					t.Fatalf("confirmed rename: %v", err)
 				}
-				if !reachesEnv(t, db, envExcpt, prodA2) || reachesEnv(t, db, envOnly, prodA2) || confirmed(prodA2.Env, "prod", "staging") != 1 {
+				if !reachesEnv(t, db, envExcpt, prodA2) || reachesEnv(t, db, envOnly, prodA2) || confirmed(t, prodA2.Env, "prod", "staging") != 1 {
 					t.Fatal("renaming out of the except list did not move the reach, audited")
 				}
 			})
@@ -312,7 +327,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("confirmed clone: %v", err)
 			}
-			if !reachesEnv(t, db, envOnly, scopeEnv(orgA, prjA1, domain.EnvID(env.ID))) || confirmed(domain.EnvID(env.ID), "", "uat") != 1 {
+			if !reachesEnv(t, db, envOnly, scopeEnv(orgA, prjA1, domain.EnvID(env.ID))) || confirmed(t, domain.EnvID(env.ID), "", "uat") != 1 {
 				t.Fatal("the confirmed clone did not give the only-uat rule the new environment, audited")
 			}
 		})
@@ -890,7 +905,7 @@ func TestEnvironmentDeleteWideningShapes(t *testing.T) {
 		rules := &service.Rules{DB: db}
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
 		as := service.LocalPrincipal(envMgr)
-		except := func(p domain.PrincipalID, names ...string) {
+		except := func(t *testing.T, p domain.PrincipalID, names ...string) {
 			t.Helper()
 			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: p, Capability: domain.CapRead, Org: orgA,
 				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisAll, EnvNames: names, KeyMode: domain.AxisAll}}); err != nil {
@@ -906,8 +921,8 @@ func TestEnvironmentDeleteWideningShapes(t *testing.T) {
 		}
 
 		t.Run("exceptions_left_and_the_exact_set", func(t *testing.T) {
-			except(envExcpt, "prod", "dev")
-			except(envOnly, "dev")
+			except(t, envExcpt, "prod", "dev")
+			except(t, envOnly, "dev")
 			// dev still carries an exception of envExcpt's rule: no gain.
 			if err := envs.DeleteConfirming(ctx, as, scopeEnv(orgA, prjA1, envProd), nil); err != nil {
 				t.Fatalf("deleting prod while dev is excepted too: %v", err)
@@ -1054,14 +1069,14 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm', 'usr_alice', 'manage-members', 'org_a', NULL, NULL, "+ts+")")
 		rules := &service.Rules{DB: db}
 		svc := definitionsService(t, db)
-		read := func(target domain.PrincipalID, project domain.ProjectID, mode domain.AxisMode, names ...string) {
+		read := func(t *testing.T, target domain.PrincipalID, project domain.ProjectID, mode domain.AxisMode, names ...string) {
 			t.Helper()
 			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: target, Capability: domain.CapRead, Org: orgA,
 				Where: domain.Where{Projects: []domain.ProjectID{project}, EnvMode: mode, EnvNames: names, KeyMode: domain.AxisAll}}); err != nil {
 				t.Fatalf("rule for %s: %v", target, err)
 			}
 		}
-		renamed := func(f definitionsFixture, moveKey bool) service.PlanView {
+		renamed := func(t *testing.T, f definitionsFixture, moveKey bool) service.PlanView {
 			t.Helper()
 			bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
 			for i := range bundle.Environments {
@@ -1107,9 +1122,9 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 		t.Run("two_renames", func(t *testing.T) {
 			f := seedDefinitionsProject(t, db, "envtwo", true)
 			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envtwo_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
-			read(excepting, f.project, domain.AxisAll, "prod")
-			read(onlyQA, f.project, domain.AxisOnly, "qa")
-			planRefused(t, f, renamed(f, false), excepting, onlyQA)
+			read(t, excepting, f.project, domain.AxisAll, "prod")
+			read(t, onlyQA, f.project, domain.AxisOnly, "qa")
+			planRefused(t, f, renamed(t, f, false), excepting, onlyQA)
 			confirmedOnly(t, "env_def_envtwo_prod", excepting)
 			confirmedOnly(t, string(f.env), onlyQA)
 		})
@@ -1120,7 +1135,7 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 		t.Run("a_project_gain_beside_an_environment_gain", func(t *testing.T) {
 			f := seedDefinitionsProject(t, db, "envjoint", true)
 			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envjoint_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
-			read(excepting, f.project, domain.AxisAll, "prod", "dev")
+			read(t, excepting, f.project, domain.AxisAll, "prod", "dev")
 			bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
 			bundle.Environments = slices.DeleteFunc(bundle.Environments, func(e definitions.Environment) bool { return e.Name == "prod" })
 			bundle.Environments[0].Name = "qa"
@@ -1143,13 +1158,13 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 		t.Run("a_move_beside_a_rename", func(t *testing.T) {
 			f := seedDefinitionsProject(t, db, "envmove", true)
 			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envmove_prod', 'org_a', '%s', 'prod', '', %s, 1)", f.project, ts))
-			read(excepting, f.project, domain.AxisAll, "prod")
+			read(t, excepting, f.project, domain.AxisAll, "prod")
 			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: mover, Capability: domain.CapEdit, Org: orgA,
 				Where: domain.Where{Projects: []domain.ProjectID{f.project}, EnvMode: domain.AxisAll, KeyMode: domain.AxisOnly,
 					Keys: map[domain.ProjectID][]domain.RuleKeyItem{f.project: {folderItem("moved")}}}}); err != nil {
 				t.Fatalf("moved-folder rule: %v", err)
 			}
-			planRefused(t, f, renamed(f, true), mover, excepting)
+			planRefused(t, f, renamed(t, f, true), mover, excepting)
 		})
 	})
 }

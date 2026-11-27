@@ -10982,6 +10982,13 @@ export type DeleteEnvironmentData = {
 
 export type DeleteEnvironmentErrors = {
     /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts
      * are indistinguishable.

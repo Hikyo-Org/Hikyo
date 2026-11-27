@@ -252,7 +252,8 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   `env_id`; name items carry no project. `rules.env_fault` holds the
   manager-facing reason of a rule the upgrade disabled. The id columns and
   every id-matching query are gone.
-- **Migration, option (c).** Consistent rules convert in place. Others split
+- **Migration, option (c).** Consistent rules, whose projects select the same
+  names, convert in place. Others split
   into one rule per project that reached something, audited as `rule.split`
   with the old and new ids. Undecidable rules (an item naming a missing
   environment, a project outside the rule, a repeated name, or an all-projects

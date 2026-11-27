@@ -8,10 +8,13 @@
 --
 -- Every existing rule keeps exactly the environments it reaches today:
 --
---   * A rule is CONSISTENT when, in every project it names, each environment
---     carrying one of its item names is itself one of its items there. Name
---     matching then reaches exactly what id matching reached, so the rule is
---     converted in place: one name item per distinct name.
+--   * A rule is CONSISTENT when every project it names holds items carrying
+--     the same set of names, and each environment carrying one of those names
+--     is itself one of its items there. Name matching then reaches exactly
+--     what id matching reached, so the rule is converted in place: one name
+--     item per distinct name. Equal name sets also keep a manager whose
+--     grants cover exactly the rule's environments able to revoke it, since
+--     a converted rule names every name in every project.
 --   * Any other rule is SPLIT into one rule per project it names, each with
 --     that project's names and key items, so each reaches exactly what the
 --     old rule reached in that project. A project where the old rule reached
@@ -91,6 +94,19 @@ WHERE r.env_fault IS NULL AND r.project_mode = 'only'
       AND e.name IN (SELECT n.env_name FROM rule_items AS n WHERE n.rule_id = r.id AND n.axis = 'env')
       AND NOT EXISTS (SELECT 1 FROM rule_items AS x
         WHERE x.rule_id = r.id AND x.axis = 'env' AND x.project_id = p.project_id AND x.env_id = e.id));
+
+-- Projects selecting different names: converted, each project would carry
+-- names it never selected, which a manager holding only the rule's
+-- environments does not cover, so the rule could no longer be revoked by
+-- them. Such a rule is split per project, each part with its own names.
+UPDATE rules AS r SET env_migration = 'split'
+WHERE r.env_fault IS NULL AND r.project_mode = 'only' AND r.env_migration IS NULL
+  AND EXISTS (
+    SELECT 1 FROM rule_items AS p
+    JOIN rule_items AS n ON n.rule_id = r.id AND n.axis = 'env'
+    WHERE p.rule_id = r.id AND p.axis = 'project'
+      AND NOT EXISTS (SELECT 1 FROM rule_items AS x
+        WHERE x.rule_id = r.id AND x.axis = 'env' AND x.project_id = p.project_id AND x.env_name = n.env_name));
 
 -- Consistent rules that could not be saved again once converted: a rule lists
 -- one environment item per name in each project it covers, so projects x

@@ -438,6 +438,17 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 	if err := request.Validate(); err != nil {
 		return preparedRule{}, err
 	}
+	// An environment item belongs to one of the rule's projects, refused from
+	// the request alone: read against the org's environments, an item of an
+	// unlisted project would tell its id and name apart before the caller
+	// is proved there.
+	if !spec.Where.AllProjects {
+		for p := range spec.Where.Envs {
+			if !slices.Contains(spec.Where.Projects, p) {
+				return preparedRule{}, fmt.Errorf("%w: an environment item names a project the rule does not list", domain.ErrInvalid)
+			}
+		}
+	}
 	for _, items := range spec.Where.Keys {
 		for _, it := range items {
 			if it.IsFolder {

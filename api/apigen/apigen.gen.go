@@ -64905,6 +64905,20 @@ func (response DeleteEnvironment204Response) VisitDeleteEnvironmentResponse(w ht
 	return nil
 }
 
+type DeleteEnvironment400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteEnvironment400JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteEnvironment401JSONResponse struct{ UnauthenticatedJSONResponse }
 
 func (response DeleteEnvironment401JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {

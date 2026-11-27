@@ -185,7 +185,10 @@ ORDER BY r.id, i.id;
 -- items a rule holds elsewhere so the listing can say the rule spans more.
 -- An all-projects rule names the project without an item: it is listed with
 -- its project-less folder items, and the service decides other_projects from
--- the org's projects.
+-- the org's projects. Project-less items are rule-wide: a rule's environment
+-- names (#1447) select in every project it covers, this one included, so
+-- they are listed too; the service binds them to this project's
+-- environments only.
 -- hikyo:authn-resolution
 -- name: ListRuleLinesInProject :many
 SELECT r.id, r.principal_id, r.capability, r.project_mode, r.env_mode, r.key_mode, r.created_by, r.created_at,

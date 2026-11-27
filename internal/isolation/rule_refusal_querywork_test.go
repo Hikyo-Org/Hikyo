@@ -140,5 +140,22 @@ func TestRuleCreateRefusalDoesNotProbeEnvironmentIDs(t *testing.T) {
 				t.Fatalf("narrowed manager sending dev and %s: %v, want the uniform not found", env, err)
 			}
 		}
+		// An environment item of a project the rule does not list is refused
+		// from the request alone: a manager of a1 only learns nothing about
+		// a2's environment ids or the names they share with a1's.
+		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('usr_a1mgr', 'human', "+ts+")")
+		for _, c := range []string{"manage-members", "read"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_a1mgr_"+c+"', 'usr_a1mgr', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		outside := func(env domain.EnvID) error {
+			s := spec(envA1)
+			s.Where.Envs = map[domain.ProjectID][]domain.EnvID{prjA2: {env}}
+			_, err := f.rules.Create(t.Context(), service.LocalPrincipal("usr_a1mgr"), s)
+			return err
+		}
+		existing, unknown := outside(envA2), outside("env_no_such")
+		if !errors.Is(existing, domain.ErrInvalid) || unknown == nil || existing.Error() != unknown.Error() {
+			t.Fatalf("an item of an unlisted project: existing id %v, unknown id %v; want the same invalid refusal", existing, unknown)
+		}
 	})
 }
