@@ -460,6 +460,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"bash -s with arguments":             "bash -s -- foo <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"bash -s with an expansion":          "bash -s \"$x\" <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"bash --rcfile":                      "bash --rcfile f <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"bash long option before stdin":      "bash --norc <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"here-string to bash":                "bash <<<'[[ a == b ]]'\n",
 		"exec bash -c":                       "exec bash -c '[[ a == b ]]'\n",
 		"env bash -c":                        "env -i PATH=/bin bash -c '[[ a == b ]]'\n",
@@ -476,6 +477,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 	allowed: map[string]string{
 		"trap with or":                  "trap '[[ a == b ]] || exit 1' EXIT\n",
 		"trap -p":                       "trap -p EXIT\n",
+		"script file after --":          "bash -- -s.sh <<'EOF'\n[[ data\nEOF\n",
 		"eval in a condition":           "if eval '[[ a == b ]]'; then :; fi\n",
 		"eval or exit":                  "eval '[[ a == b ]]' || exit 1\n",
 		"heredoc on another descriptor": "bash 3<<'EOF'\n[[ data\nEOF\n",
@@ -827,7 +829,7 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 		".gitignore": "ignored/\n*.log\n", "a.sh": "#!/usr/bin/env bash\n", "b.sh": "#!/bin/sh\n",
 		"ignored/c.sh": "#!/usr/bin/env bash\n", "with space.log": "#!/usr/bin/env bash\n",
 		"new\nline.log": "#!/usr/bin/env bash\n", "cafe\u0301.log": "#!/usr/bin/env bash\n", // decomposed é
-		"u.sh": "#!/bin/rbash\n", ".claude/worktrees/w1/.git": "gitdir: elsewhere\n", "stray/.git": "", "stray/s.sh": "#!/usr/bin/env bash\n", ".claude/worktrees/w1/old.sh": "#!/usr/bin/env bash\n", "py": "#!/usr/bin/env python3\n",
+		"u.sh": "#!/bin/rbash\n", ".claude/worktrees/w1/.git": "gitdir: elsewhere\n", "stray/.git": "", "stray/s.sh": "#!/usr/bin/env bash\n", "headless/.git/config": "", "headless/s.sh": "#!/usr/bin/env bash\n", ".claude/worktrees/w1/old.sh": "#!/usr/bin/env bash\n", "py": "#!/usr/bin/env python3\n",
 	}
 	for name, body := range files {
 		path := filepath.Join(root, name)
@@ -842,7 +844,7 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string]string{"a.sh": "bash", "b.sh": "sh", filepath.Join("stray", "s.sh"): "bash"}; !reflect.DeepEqual(scripts, want) {
+	if want := map[string]string{"a.sh": "bash", "b.sh": "sh", filepath.Join("stray", "s.sh"): "bash", filepath.Join("headless", "s.sh"): "bash"}; !reflect.DeepEqual(scripts, want) {
 		t.Errorf("scripts = %v, want %v", scripts, want)
 	}
 	if !reflect.DeepEqual(unread, []string{"u.sh"}) {
