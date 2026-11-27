@@ -318,11 +318,11 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 
 // The runtime-created fixture includes migrations 45 through 87 (88 on
 // PostgreSQL), then 89 through 99 and 102, while the sole admitted legacy
-// genesis ends at 44. Model that historical archive by
-// removing only the enumerated, pristine additions. Any recorded diagnostics,
-// audit policy, privacy restriction, configuration, ceremony, adapter finding,
-// contact email, issuer CA trust, parameter contract, project capacity policy, chrome identity, personal value or
-// manual-pairing consent and authentication state
+// genesis ends at 44. Model that historical archive by removing only the
+// enumerated, pristine additions. Any recorded diagnostics, audit policy,
+// privacy restriction, configuration, ceremony, adapter finding, contact
+// email, issuer CA trust, parameter contract, project capacity policy, chrome
+// identity, personal value or manual-pairing consent and authentication state
 // refuses removal. The subsequent pinned catalog inspection proves the exact
 // legacy schema and migration digest; this test-only surgery adds no runtime
 // downgrade capability.

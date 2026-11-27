@@ -26,8 +26,8 @@ import (
 // never both. An environment or key id belongs to one project: qualify it as
 // PROJECT:ID when the rule names several. --only-env-name/--except-env-name
 // select environments by name in every project of the rule, including ones
-// created or renamed to that name later (#1447, API revision 22). A folder applies to every project
-// of the rule unless qualified the same way.
+// created or renamed to that name later (#1447, API revision 22). A folder
+// applies to every project of the rule unless qualified the same way.
 //
 // --all-projects makes the rule cover every project of the org, including
 // projects created later (#1446). The CLI first lists the org's projects and
