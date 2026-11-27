@@ -348,9 +348,12 @@ type CensusRule struct {
 
 // RulesForProject returns every valid rule naming one project (or covering
 // every project), with its principal's kind, for the widening censuses, bound
-// to that project's environments. It is deliberately wider than the
-// chokepoint's lookup (no privacy or restore-epoch gate): the census must name
-// everyone who could ever hold the gained access.
+// within that project (domain.Where.BindEnvsWithin). It knows no other
+// project's environments, so unconfined an `all` rule would reach every one
+// of them, those it excepts by name included; confined it reaches nothing
+// outside the project. It is deliberately wider than the chokepoint's lookup
+// (no privacy or restore-epoch gate): the census must name everyone who could
+// ever hold the gained access.
 func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]CensusRule, error) {
 	if r.historicalRecoveryBeforeRules {
 		return nil, nil
@@ -414,7 +417,7 @@ func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]
 		machines[row.id] = row.machine
 	}
 	stored := foldRules(rows)
-	rules, err := r.bindRules(ctx, rulesOf(stored), project, false)
+	rules, err := r.bindRules(ctx, rulesOf(stored), project, true)
 	if err != nil {
 		return nil, err
 	}

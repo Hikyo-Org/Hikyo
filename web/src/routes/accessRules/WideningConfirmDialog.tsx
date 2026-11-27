@@ -67,6 +67,7 @@ export const ENV_DELETE_WIDENING_COPY: WideningCopy = {
   ...ENV_WIDENING_COPY,
   lede: 'Access rules select environments by name: rules that leave this environment out reach the rest of the project once it is deleted. They keep the name, so an environment created later with it is left out again.',
   confirm: 'Delete and give access',
+  busy: 'Deleting…',
   keepHidden: 'To keep it from them, cancel and change their rules first.',
 };
 

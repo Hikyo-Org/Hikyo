@@ -18,9 +18,10 @@ import (
 // reaches: renamed or deleted out of an `all` list's exceptions, or renamed or
 // created into an `only` list. A delete widens the rule to the project-wide
 // atoms once no environment it excepts is left there; its name stays, so a
-// later environment of that name is excepted again. Like a key folder move (D9), such a change needs an explicit
-// confirmation naming exactly the principals who gain, people and machines,
-// and a machine gaining access also passes the machine widening gate.
+// later environment of that name is excepted again. Like a key folder move
+// (D9), such a change needs an explicit confirmation naming exactly the
+// principals who gain, people and machines, and a machine gaining access also
+// passes the machine widening gate.
 
 // EnvWideningError refuses an environment rename, create or delete that gives
 // principals access through their rules without a confirmation naming exactly
@@ -161,17 +162,11 @@ func (c envChange) gains() []WideningGain { return gainsOf(c.gainAtoms()) }
 // gainAtoms is gains as unmerged atoms, the project its own atom, so a plan
 // can attribute each one to the change that causes it.
 func (c envChange) gainAtoms() map[gainAtom]bool {
-	type atom struct {
-		principal  domain.PrincipalID
-		capability domain.Capability
-		env        domain.EnvID
-		keys       string // the key selector; "" is every key
-	}
 	after := c.after()
 	// A deleted environment has no reach left to gain.
 	gone := !slices.ContainsFunc(after, func(e domain.EnvRef) bool { return e.ID == c.env })
-	reach := func(bound func(domain.Where) domain.Where) map[atom]bool {
-		out := map[atom]bool{}
+	reach := func(bound func(domain.Where) domain.Where) map[gainAtom]bool {
+		out := map[gainAtom]bool{}
 		for _, cr := range c.census {
 			rule := cr.Rule
 			rule.Where = bound(rule.Where)
@@ -190,11 +185,11 @@ func (c envChange) gainAtoms() map[gainAtom]bool {
 					evaluated.Where.KeyMode, evaluated.Where.Keys = domain.AxisAll, nil
 				}
 				if evaluated.Reaches(capability, domain.LevelProject, c.scope, nil) {
-					out[atom{rule.Principal, cap, "", keys}] = true
+					out[gainAtom{rule.Principal, cap, "", keys}] = true
 				}
 				s := domain.Scope{Org: c.scope.Org, Project: c.scope.Project, Env: c.env}
 				if !gone && evaluated.Reaches(capability, domain.LevelEnv, s, nil) {
-					out[atom{rule.Principal, cap, c.env, keys}] = true
+					out[gainAtom{rule.Principal, cap, c.env, keys}] = true
 				}
 			}
 		}
@@ -209,7 +204,7 @@ func (c envChange) gainAtoms() map[gainAtom]bool {
 		if before[a] || before[every] {
 			continue
 		}
-		gained[gainAtom{a.principal, a.capability, a.env, a.keys}] = true
+		gained[a] = true
 	}
 	return gained
 }
@@ -274,6 +269,9 @@ func (c envChange) record(ctx context.Context, r store.Repos, az *authz.TxAuthor
 func (c envChange) gateMachines(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, auth *Auth,
 	caller authz.Identity, gained []domain.PrincipalID, now time.Time) error {
 	var actorGrants []authz.GrantRow
+	// The project's environments, read once on the first gaining machine.
+	var envs []domain.EnvID
+	envsRead := false
 	var widened []machineWidening
 	var allCurrent, allHistorical []domain.EnvID
 	after := c.after()
@@ -293,9 +291,11 @@ func (c envChange) gateMachines(ctx context.Context, r store.Repos, az *authz.Tx
 				return err
 			}
 		}
-		envs, err := az.EnvironmentsInProject(ctx, c.scope)
-		if err != nil {
-			return err
+		if !envsRead {
+			if envs, err = az.EnvironmentsInProject(ctx, c.scope); err != nil {
+				return err
+			}
+			envsRead = true
 		}
 		grants, err := az.GrantsOf(ctx, principal)
 		if err != nil {

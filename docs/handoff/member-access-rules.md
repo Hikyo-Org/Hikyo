@@ -339,6 +339,8 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   - A plan's environment census reads the rules before the plan runs, so a
     rule the plan revokes or prunes (for example by deleting its last key)
     still counts, and its principal must be confirmed.
+- **Accepted limits.** These cost capacity, query work or display precision,
+  not access; none admits anything an exact check would refuse.
   - The upgrade's per-project split (00102) does not check the 1,000-rule
     `MaxRulesPerOrg` cap, so an org can exceed it after the upgrade; new
     creates are refused until rules are removed.

@@ -573,6 +573,11 @@ describe('EnvironmentLifecycleActions', () => {
     const gainer = 'mch_123e4567-e89b-12d3-a456-42661417000a';
     const widening = { count: 1, gainers: [{ principal_id: gainer, principal_name: 'deployer', capability: 'read', environments: [] }] };
     const queries: (string | null)[] = [];
+    // The confirmed resend is held until released, so the dialog's busy state shows.
+    let release = () => {};
+    const resent = new Promise<void>((resolve) => {
+      release = () => resolve();
+    });
     const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
       const request = requestFromCall(args);
       if (request.method !== 'DELETE') throw new Error(`unexpected ${request.method} ${request.url}`);
@@ -581,6 +586,7 @@ describe('EnvironmentLifecycleActions', () => {
         const body = { error: { code: 'conflict', message: 'widens access', widening } };
         return new Response(JSON.stringify(body), { status: 409, headers: { 'Content-Type': 'application/json' } });
       }
+      await resent;
       return new Response(null, { status: 204 });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -605,6 +611,9 @@ describe('EnvironmentLifecycleActions', () => {
     const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Delete and give access');
     if (confirm === undefined) throw new Error('confirm missing');
     await act(async () => confirm.click());
+    await settleTask();
+    expect(confirm.textContent).toBe('Deleting…');
+    await act(async () => release());
     await settleTask();
     expect(queries).toEqual([null, gainer]);
     expect(done).toHaveBeenCalledWith('Environment dev deleted.');

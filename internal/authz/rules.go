@@ -205,8 +205,8 @@ type (
 
 // RulesForProject is the folder-move widening census: every rule of a human
 // principal naming this project, a superset of what the chokepoint honours
-// (a currently restricted principal is still named), bound to the project's
-// environments.
+// (a currently restricted principal is still named), bound within the
+// project: a rule reaches nothing outside it.
 func (a *TxAuthorizer) RulesForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
 	census, err := a.r.RulesForProject(ctx, string(org), string(project))
 	if err != nil {

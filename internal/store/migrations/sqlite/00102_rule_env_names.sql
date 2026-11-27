@@ -113,7 +113,8 @@ WHERE r.env_fault IS NULL AND r.project_mode = 'only' AND r.env_migration IS NUL
 -- (1 + names) + key items must stay within the 500 a rule carries
 -- (domain.MaxRuleItems). Such a rule is split per project instead, where each
 -- part lists at most what the rule listed there before.
--- A guard for rows that bypassed the item cap: with equal name sets, a saved rule lists as many items by name as by id.
+-- A guard for rows that bypassed the item cap: with equal name sets, a saved
+-- rule lists as many items by name as by id.
 UPDATE rules AS r SET env_migration = 'split'
 WHERE r.env_fault IS NULL AND r.project_mode = 'only' AND r.env_migration IS NULL
   AND (SELECT COUNT(*) FROM rule_items AS p WHERE p.rule_id = r.id AND p.axis = 'project')

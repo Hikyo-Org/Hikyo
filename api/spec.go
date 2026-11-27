@@ -102,8 +102,10 @@ var SpecYAML []byte
 // `project_mode` of a rule's `where`. A create with `project_mode` `all` lists
 // exactly the organisation's current projects (owner decision R2).
 // Revision 22 binds a rule's environment selectors by name (#1447): the
-// `names` of a rule's environment axis, a rule's `fault`, and the
-// `confirm_widening` of an environment create, clone and rename.
+// `names` of a rule's environment axis, a rule's `fault`, the
+// `confirm_widening` of an environment create, clone and rename, and the
+// environment DELETE's `confirm_widening` query parameter with its 400 for a
+// malformed one.
 const Revision = 22
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
