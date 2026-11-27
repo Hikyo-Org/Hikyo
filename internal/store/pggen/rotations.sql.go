@@ -370,6 +370,26 @@ func (q *Queries) RotationCredentialExpiry(ctx context.Context, arg RotationCred
 	return i, err
 }
 
+const rotationExistsInOrg = `-- name: RotationExistsInOrg :one
+SELECT COUNT(*) FROM rotations WHERE id=$1 AND org_id=$2
+`
+
+type RotationExistsInOrgParams struct {
+	RotationID string
+	ChainOrg   string
+}
+
+// Incident confirmation: whether a rotation id exists anywhere in one org, so a
+// rotation absent from the item's environment is confirmed only when it is gone.
+// hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned.
+// hikyo:instance-scoped
+func (q *Queries) RotationExistsInOrg(ctx context.Context, arg RotationExistsInOrgParams) (int64, error) {
+	row := q.db.QueryRow(ctx, rotationExistsInOrg, arg.RotationID, arg.ChainOrg)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationGet = `-- name: RotationGet :one
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
 `

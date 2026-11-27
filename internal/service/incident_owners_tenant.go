@@ -223,7 +223,13 @@ func (o *incidentOwners) leaseRevoke(ctx context.Context, actor Actor, item auth
 	}
 	return revokeLeaseFlow(
 		func() (string, bool, error) {
-			return o.svc.Dynamic.LeaseStateIfAuthorized(ctx, actor, scope, item.ObjectID)
+			state, absent, err := o.svc.Dynamic.LeaseStateIfAuthorized(ctx, actor, scope, item.ObjectID)
+			if err == nil && absent {
+				err = o.goneFromOrg(ctx, actor, scope.Org, func(ctx context.Context, r store.ReadRepos, p authz.Proof) (bool, error) {
+					return r.Dynamic().LeaseExistsInOrg(ctx, p, item.ObjectID)
+				})
+			}
+			return state, absent, err
 		},
 		func() error {
 			_, err := o.svc.Dynamic.RevokeLease(ctx, actor, scope, item.ObjectID)
@@ -286,8 +292,37 @@ func (o *incidentOwners) targetPause(ctx context.Context, actor Actor, item auth
 			t, err := o.svc.Adapters.PauseTarget(ctx, actor, scope, item.ObjectID)
 			return t.PausedAt != nil, err
 		},
-		func() (bool, error) { return o.svc.Adapters.TargetAbsentIfAuthorized(ctx, actor, scope, item.ObjectID) },
+		func() (bool, error) {
+			absent, err := o.svc.Adapters.TargetAbsentIfAuthorized(ctx, actor, scope, item.ObjectID)
+			if err == nil && absent {
+				err = o.goneFromOrg(ctx, actor, scope.Org, func(ctx context.Context, r store.ReadRepos, p authz.Proof) (bool, error) {
+					return r.Adapters().TargetExistsInOrg(ctx, p, item.ObjectID)
+				})
+			}
+			return absent, err
+		},
 	)
+}
+
+// goneFromOrg settles an object absent from the item's placement. Gone from the
+// org, it holds nothing and the item is confirmed (nil); placed in another project
+// of the org, it is outside the item and stays live (ErrNotFound). The probe runs
+// under the incident's own org operation, so a refusal is ErrUnauthorized.
+func (o *incidentOwners) goneFromOrg(ctx context.Context, actor Actor, org domain.OrgID, exists func(context.Context, store.ReadRepos, authz.Proof) (bool, error)) error {
+	return tx.Read(ctx, o.s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, proof, err := authorize(ctx, az, actor, authz.OpIncidentOrg, domain.Scope{Org: org}, o.s.now())
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("%w: authority over the incident org was lost", domain.ErrUnauthorized)
+		}
+		if err != nil {
+			return err
+		}
+		elsewhere, err := exists(ctx, r, proof)
+		if err == nil && elsewhere {
+			err = domain.ErrNotFound
+		}
+		return err
+	})
 }
 
 // pauseTargetFlow pauses a target. The pause masks a lost grant as not found, so its

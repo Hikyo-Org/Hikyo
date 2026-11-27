@@ -379,7 +379,19 @@ func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item aut
 		}
 		cur, err := w.r.Rotations().Get(ctx, proof, item.ObjectID)
 		if errors.Is(err, domain.ErrNotFound) {
-			// A rotation that no longer exists schedules nothing.
+			// Gone from the org, a rotation schedules nothing; placed in another
+			// environment of the org, it is outside the item and stays live.
+			orgProof, err := w.az.Authorize(ctx, w.caller, authz.OpIncidentRotationsOrg, domain.Scope{Org: w.scope.Org})
+			if err != nil {
+				return OwnerUnconfirmed, err
+			}
+			elsewhere, err := w.r.Rotations().ExistsInOrg(ctx, orgProof, item.ObjectID)
+			if err == nil && elsewhere {
+				err = domain.ErrNotFound
+			}
+			if err != nil {
+				return OwnerUnconfirmed, err
+			}
 			return OwnerConfirmed, nil
 		}
 		if err != nil {

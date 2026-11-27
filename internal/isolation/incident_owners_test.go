@@ -914,3 +914,72 @@ func TestIncidentDeveloperRevokeRecordsOneEventPerRow(t *testing.T) {
 		}
 	})
 }
+
+// ---- placement probes ------------------------------------------------------
+//
+// An object absent from the item's placement is confirmed only when it is gone
+// from the org. One placed in another project of the org is outside the item: the
+// owner answers not found and leaves it live.
+
+func TestIncidentOwnerLeaseConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		seedIncidentLeases(t, db)
+		inc := w.openOrg(t, incResponder)
+		const scope = "org_a/prj_a1/env_a1"
+		// lse_it_09 is active in org_a/prj_a2/env_a2.
+		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_09", scope)
+		if got := queryString(t, db, `SELECT state FROM dynamic_leases WHERE id='lse_it_09'`); got != "active" {
+			t.Errorf("a lease of another project changed: %s", got)
+		}
+		execRaw(t, db, `INSERT INTO dynamic_leases (id,org_id,project_id,environment_id,provider_id,principal_id,principal_class,provider_handle,state,max_ttl_seconds,last_transition_at,next_attempt_at,created_at) VALUES ('lse_it_deleted','org_a','prj_a1','env_a1','dpr_it_a1','mch_a1','automation','h_lse_it_deleted','active',3600,`+ts+`,`+ts+`,`+ts+`)`)
+		execRaw(t, db, `DELETE FROM dynamic_leases WHERE id='lse_it_deleted'`)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerLeaseRevoke, domain.ObjectKindLease, "lse_it_deleted", scope); res != service.OwnerConfirmed {
+			t.Errorf("a deleted lease = %v, want confirmed", res)
+		}
+	})
+}
+
+func TestIncidentOwnerTargetConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		for _, a := range []struct{ adapter, project, env, target string }{{"adp_it", "prj_a1", "env_a1", "tgt_deleted"}, {"adp_it_b", "prj_a2", "env_a2", "tgt_other_project"}} {
+			execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('`+a.adapter+`','org_a','`+a.project+`','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
+			execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('`+a.target+`','org_a','`+a.project+`','`+a.env+`','`+a.adapter+`','repository','acme','app',41,'',1,'active','converged',`+ts+`)`)
+		}
+		inc := w.openOrg(t, incResponder)
+		const scope = "org_a/prj_a1"
+		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, "tgt_other_project", scope)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_other_project' AND paused_at IS NULL`); n != 1 {
+			t.Errorf("a target of another project was paused")
+		}
+		execRaw(t, db, `DELETE FROM adapter_targets WHERE id='tgt_deleted'`)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerAdapterTargetPause, domain.ObjectKindAdapterTarget, "tgt_deleted", scope); res != service.OwnerConfirmed {
+			t.Errorf("a deleted target = %v, want confirmed", res)
+		}
+	})
+}
+
+func TestIncidentRotationHaltConfirmsOnlyWhenGoneFromTheOrg(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		w := r.w
+		acc, err := w.svc.Open(t.Context(), w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: alice})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The rotation lives in org_a/prj_a1; an item placing it in prj_a2 is not it.
+		w.ownerRefusedNotFound(t, incResponder, acc.Incident.ID, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, "org_a/prj_a2/env_a2")
+		if r.state(t) != store.RotationStateActive {
+			t.Fatalf("a rotation of another project changed: %q", r.state(t))
+		}
+		// A new rotation has no runs; its key claims go with it.
+		execRaw(t, db, `DELETE FROM rotation_key_claims WHERE rotation_id='`+r.rot.ID+`'`)
+		execRaw(t, db, `DELETE FROM rotations WHERE id='`+r.rot.ID+`'`)
+		if res := w.callOwner(t, incResponder, acc.Incident.ID, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, r.scope()); res != service.OwnerConfirmed {
+			t.Errorf("a deleted rotation = %v, want confirmed", res)
+		}
+	})
+}

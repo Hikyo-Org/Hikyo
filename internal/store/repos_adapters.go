@@ -39,6 +39,17 @@ func (r adapterQueries) Target(ctx context.Context, p authz.Proof, targetID stri
 	return target, err
 }
 
+func (r adapterQueries) TargetExistsInOrg(ctx context.Context, p authz.Proof, targetID string) (bool, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersTargetExistsInOrg, r.tok)
+	if err != nil {
+		return false, err
+	}
+	if chain.Org == "" || chain.Project != "" || targetID == "" {
+		return false, ErrNotFound
+	}
+	return r.db.adapterStoreQueries().adapterTargetExistsInOrg(ctx, chain, targetID)
+}
+
 func (r adapterQueries) ListAdaptersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersListForReencrypt, r.tok)
 	if err != nil {

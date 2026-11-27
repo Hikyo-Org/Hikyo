@@ -15,6 +15,13 @@
   },
   {
     "engine": "postgres",
+    "name": "AdapterTargetExistsInOrg",
+    "annotation": "instance-scoped",
+    "hash": "19d29bae02b7e43ed02eff1ef5061cee5d0f7affb2f0b187304d7b8433a7571d",
+    "reason": "Incident target confirmation reads only whether one adapter target id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+  },
+  {
+    "engine": "postgres",
     "name": "AdapterWorkerCheckProviderSwitchQuery",
     "annotation": "instance-scoped",
     "hash": "b47e4b0ddb1d793caefcf5fa3558f828d65a3cc853fb1a5b3124ee27aba5a61a",
@@ -1148,6 +1155,13 @@
     "name": "DropRestoredSCIMOrigins",
     "annotation": "authn-resolution",
     "hash": "3d2bf22b6f70735b2b08b42a658d01242a18f8eec720809866bd9888b612c04f"
+  },
+  {
+    "engine": "postgres",
+    "name": "DynamicLeaseExistsInOrg",
+    "annotation": "instance-scoped",
+    "hash": "1bf7125d16759f216b911b6e5ff8c5cdcbd92229880a62f80acad475ae5e4ac1",
+    "reason": "Incident lease confirmation reads only whether one lease id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
   },
   {
     "engine": "postgres",
@@ -3495,6 +3509,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RotationExistsInOrg",
+    "annotation": "instance-scoped",
+    "hash": "2ba16de3ca0f9125a56f047476cd045e7dc23c873e7106b5e6f382c8b690e05d",
+    "reason": "Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
+  },
+  {
+    "engine": "postgres",
     "name": "RotationListByAuthorityInInstance",
     "annotation": "instance-scoped",
     "hash": "39a92b232e5f3c51a76442f90099dc1f94272af0615580a811a303678d40cc79",
@@ -4014,6 +4035,13 @@
     "annotation": "instance-scoped",
     "hash": "402f8396b0542f6300b769f7cac12c20269c68bd531d47bebadd6bcfda5620bb",
     "reason": "Authorized adapter custody checks read only held origin metadata within the exact provider and resolved destination, repository, scope and normalized name, using the logical surface except for Vault whose secret and config surfaces share one physical tree, including the current target's historical claim. Canonical-origin comparison stays in the private store owner; paged candidates do not expose tenant identifiers or values and prevent legacy aliases from bypassing the global held-custody constraint."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterTargetExistsInOrg",
+    "annotation": "instance-scoped",
+    "hash": "19d29bae02b7e43ed02eff1ef5061cee5d0f7affb2f0b187304d7b8433a7571d",
+    "reason": "Incident target confirmation reads only whether one adapter target id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -5087,6 +5115,13 @@
     "name": "DropRestoredSCIMOrigins",
     "annotation": "authn-resolution",
     "hash": "865e04d6b5541dd33657a310569dcccf05ca85561f25eccfef5edded1d13ff96"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DynamicLeaseExistsInOrg",
+    "annotation": "instance-scoped",
+    "hash": "1bf7125d16759f216b911b6e5ff8c5cdcbd92229880a62f80acad475ae5e4ac1",
+    "reason": "Incident lease confirmation reads only whether one lease id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
   },
   {
     "engine": "sqlite",
@@ -7417,6 +7452,13 @@
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
     "hash": "7b657d72d590c757f8ff97a6ce19a015d434dedd618878fc2eef6ee31d5e63c5"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RotationExistsInOrg",
+    "annotation": "instance-scoped",
+    "hash": "2ba16de3ca0f9125a56f047476cd045e7dc23c873e7106b5e6f382c8b690e05d",
+    "reason": "Incident rotation confirmation reads only whether one rotation id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned."
   },
   {
     "engine": "sqlite",

@@ -21,6 +21,7 @@ type adapterStoreQueries interface {
 	adapterConfiguration(ctx context.Context, chain domain.Scope, adapterID string) (AdapterRecord, []byte, error)
 	adapterList(ctx context.Context, chain domain.Scope) ([]AdapterRecord, error)
 	adapterTarget(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error)
+	adapterTargetExistsInOrg(ctx context.Context, chain domain.Scope, targetID string) (bool, error)
 	adapterListTargets(ctx context.Context, chain domain.Scope, adapterID string) ([]AdapterTarget, error)
 	adapterActiveTargetForUpdate(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error)
 	adapterTargetKeyIDs(ctx context.Context, chain domain.Scope, targetID string) ([]string, error)
@@ -201,6 +202,16 @@ func (q sqliteAdapterStoreQueries) adapterList(ctx context.Context, chain domain
 	return mapRows(rows, func(c sqlitegen.AdapterListRow) (AdapterRecord, error) {
 		return adapterRecordSQLite(sqlitegen.AdapterGetRow(c))
 	})
+}
+
+func (q sqliteAdapterStoreQueries) adapterTargetExistsInOrg(ctx context.Context, chain domain.Scope, targetID string) (bool, error) {
+	n, err := q.queries.AdapterTargetExistsInOrg(ctx, sqlitegen.AdapterTargetExistsInOrgParams{TargetID: targetID, ChainOrg: string(chain.Org)})
+	return n > 0, err
+}
+
+func (q pgAdapterStoreQueries) adapterTargetExistsInOrg(ctx context.Context, chain domain.Scope, targetID string) (bool, error) {
+	n, err := q.queries.AdapterTargetExistsInOrg(ctx, pggen.AdapterTargetExistsInOrgParams{TargetID: targetID, ChainOrg: string(chain.Org)})
+	return n > 0, err
 }
 
 func (q sqliteAdapterStoreQueries) adapterTarget(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error) {

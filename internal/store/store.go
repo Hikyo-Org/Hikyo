@@ -959,6 +959,9 @@ type AdapterReader interface {
 	TargetKeyIDs(ctx context.Context, p authz.Proof, targetID string) ([]string, error)
 	TargetKeys(ctx context.Context, p authz.Proof, targetID string) ([]AdapterTargetKey, error)
 	Target(ctx context.Context, p authz.Proof, targetID string) (AdapterTarget, error)
+	// TargetExistsInOrg answers whether a target id exists in any project of the
+	// proof's org; it takes an org proof only.
+	TargetExistsInOrg(ctx context.Context, p authz.Proof, targetID string) (bool, error)
 	// HealthCounts is the instance-wide operator read behind the adapter
 	// gauges and `hikyo doctor`; it carries no tenant chain.
 	HealthCounts(ctx context.Context, p authz.Proof) (AdapterHealthCounts, error)

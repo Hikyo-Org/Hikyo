@@ -475,6 +475,26 @@ func (q *Queries) DynamicGetProvider(ctx context.Context, arg DynamicGetProvider
 	return i, err
 }
 
+const dynamicLeaseExistsInOrg = `-- name: DynamicLeaseExistsInOrg :one
+SELECT COUNT(*) FROM dynamic_leases WHERE id=$1 AND org_id=$2
+`
+
+type DynamicLeaseExistsInOrgParams struct {
+	LeaseID  string
+	ChainOrg string
+}
+
+// Incident confirmation: whether a lease id exists anywhere in one org, so a
+// lease absent from the item's environment is confirmed only when it is gone.
+// hikyo:reason Incident lease confirmation reads only whether one lease id exists in one org behind the org credential-reset operation; the org_id predicate is the tenant bound, no project chain exists because the answer spans the org's projects, and only a count is returned.
+// hikyo:instance-scoped
+func (q *Queries) DynamicLeaseExistsInOrg(ctx context.Context, arg DynamicLeaseExistsInOrgParams) (int64, error) {
+	row := q.db.QueryRow(ctx, dynamicLeaseExistsInOrg, arg.LeaseID, arg.ChainOrg)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const dynamicListActiveProviderIDsForProject = `-- name: DynamicListActiveProviderIDsForProject :many
 SELECT id FROM dynamic_providers WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id LIMIT $3
 `
