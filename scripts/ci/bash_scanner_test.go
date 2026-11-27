@@ -146,18 +146,18 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 		}
 		words := call.Args
 		// builtin [--] name and command [-p] [--] name run the same builtin.
-		for len(words) > 1 && (words[0].Lit() == "builtin" || words[0].Lit() == "command") {
+		for len(words) > 1 && (literal(words[0]) == "builtin" || literal(words[0]) == "command") {
 			words = words[1:]
-			for len(words) > 1 && (words[0].Lit() == "-p" || words[0].Lit() == "--") {
+			for len(words) > 1 && (literal(words[0]) == "-p" || literal(words[0]) == "--") {
 				words = words[1:]
 			}
 		}
-		if len(words) == 0 || words[0].Lit() != name {
+		if len(words) == 0 || literal(words[0]) != name {
 			return !found
 		}
 		args := make([]string, 0, len(words)-1)
 		for _, word := range words[1:] {
-			args = append(args, word.Lit())
+			args = append(args, literal(word))
 		}
 		found = found || match(args)
 		return !found
@@ -165,15 +165,45 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 	return found
 }
 
+// literal returns the value bash gives word when it has no expansion, with quotes and
+// backslashes removed (s"et", \set and 'set' are all set), or "" when it may expand.
+func literal(word *syntax.Word) string {
+	var value strings.Builder
+	for _, part := range word.Parts {
+		switch part := part.(type) {
+		case *syntax.Lit:
+			value.WriteString(backslashEscape.ReplaceAllString(part.Value, "$1"))
+		case *syntax.SglQuoted:
+			if part.Dollar {
+				return ""
+			}
+			value.WriteString(part.Value)
+		case *syntax.DblQuoted:
+			for _, inner := range part.Parts {
+				lit, ok := inner.(*syntax.Lit)
+				if !ok || strings.Contains(lit.Value, `\`) {
+					return ""
+				}
+				value.WriteString(lit.Value)
+			}
+		default:
+			return ""
+		}
+	}
+	return value.String()
+}
+
+var backslashEscape = regexp.MustCompile(`\\(.)`)
+
 // setsErrexit reports whether set arguments turn errexit on: an e in a -group (-e, -oe,
 // -euo pipefail) or a -group whose o takes errexit as its name (-o errexit, -uo errexit,
 // -oo pipefail errexit). Each o takes the next word unless that word is an option itself
 // (-o -e lists the options, then sets -e). Options end at -- , - or the first word that
-// is not an option. A non-literal word ("" here: quoted or expanded) or one with a
-// backslash may be -e or errexit, so it counts as one. Conservative: odd groups such as
+// is not an option. A word that may expand ("" from literal) may be -e or errexit, so it
+// counts as one. Conservative: odd groups such as
 // -+e count as -e although bash leaves errexit off.
 func setsErrexit(args []string) bool {
-	unknown := func(word string) bool { return word == "" || strings.Contains(word, `\`) }
+	unknown := func(word string) bool { return word == "" }
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
@@ -198,23 +228,29 @@ func setsErrexit(args []string) bool {
 
 // unscannedErrexitForms are the ways to turn errexit on that setsErrexit and the shopt match in
 // bareTests do not read, so a script using one could hide a bare test. None is used in the
-// repository; scanScript rejects them instead of parsing them. shortcut: rejected, not parsed;
-// teach bareTests the form if a script ever needs it.
+// repository; scanScript rejects them instead of parsing them. The match is textual, so it also
+// rejects such text in a comment or string, and it cannot see a form built at run time (eval
+// "$cmd", a set or shopt name from a variable) or a ${ } or alias spelling. shortcut: rejected,
+// not parsed; teach bareTests the form if a script ever needs it.
 var unscannedErrexitForms = []struct {
 	name    string
 	pattern *regexp.Regexp
 }{
-	{"shopt with a quoted, grouped or -o argument", regexp.MustCompile(`\bshopt\b[^\n;|&]*(["']|\s[-+][a-z]{2,}|\s-o\b)`)},
+	{"shopt with a quoted, escaped, expanded, grouped or -o argument", regexp.MustCompile(`\bshopt\b[^\n;|&]*(?:["'\\$]|\s[-+][a-z]{2,}|\s-o\b)`)},
 	{"quoted or escaped set or shopt command name", regexp.MustCompile(`(?:\\(?:set|shopt)|"(?:set|shopt)"|'(?:set|shopt)')\s+[-+]`)},
-	{"eval of set or shopt", regexp.MustCompile(`\beval\b[^\n;|&]*\b(?:set|shopt)\b`)},
+	{"eval of set or shopt", regexp.MustCompile(`(?:^|[\s;|&(\x60])(eval)\b(?:[^;|&\n"']|\\\n|"[^"]*"|'[^']*')*?(?:\b|"[^"]*\b|'[^']*\b)(?:set|shopt)\b`)},
 }
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script.
 func unscannedErrexitUses(script string) []string {
 	var found []string
 	for _, form := range unscannedErrexitForms {
-		if loc := form.pattern.FindStringIndex(script); loc != nil {
-			found = append(found, fmt.Sprintf("%d: %s", strings.Count(script[:loc[0]], "\n")+1, form.name))
+		if loc := form.pattern.FindStringSubmatchIndex(script); loc != nil {
+			start := loc[0]
+			if len(loc) > 2 {
+				start = loc[2] // a pattern that matches a separator first captures the command
+			}
+			found = append(found, fmt.Sprintf("%d: %s", strings.Count(script[:start], "\n")+1, form.name))
 		}
 	}
 	return found
@@ -283,6 +319,9 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"expanded option in a substitution":   "value=$(set -uo \"$x\"; [[ a == b ]]; echo accepted)\n",
 		"set -o -e in a substitution":         "value=$(set -o -e; [[ a == b ]]; echo accepted)\n",
 		"second o names errexit":              "value=$(set -oo pipefail errexit; [[ a == b ]]; echo accepted)\n",
+		"partly quoted set in a substitution": "value=$(s\"et\" -e; [[ a == b ]]; echo accepted)\n",
+		"escaped set name in a substitution":  "value=$(se\\t -e; [[ a == b ]]; echo accepted)\n",
+		"quoted inherit_errexit":              "shopt -s \"inherit_errexit\"\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"escaped set -e in a substitution":    "value=$(set \\-e; [[ a == b ]]; echo accepted)\n",
 		"escaped errexit in a substitution":   "value=$(set -o err\\exit; [[ a == b ]]; echo accepted)\n",
 		"builtin set -e in a substitution":    "value=$(builtin set -e; [[ a == b ]]; echo accepted)\n",
@@ -406,7 +445,7 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 func scanScript(t *testing.T, name, script, hint string) {
 	t.Helper()
 	for _, found := range unscannedErrexitUses(script) {
-		t.Errorf("%s:%s; bareTests cannot see whether it turns errexit on, so spell it as a plain set or shopt -s inherit_errexit call", name, found)
+		t.Errorf("%s:%s; bareTests cannot see whether it turns errexit on, so spell it as a plain set or shopt -s inherit_errexit call (the check matches text: reword a comment or string that trips it)", name, found)
 	}
 	lines, err := bareTests(script)
 	if err != nil {
@@ -454,14 +493,14 @@ func containsLine(lines []int, want int) bool {
 	return false
 }
 
-// Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
-// explicit failure branch: bash before 4.1 ignores errexit for it and fails open.
+// TestUnscannedErrexitFormsAreRejected pins what unscannedErrexitUses rejects and allows.
 func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 	matches := unscannedErrexitUses
 	for _, script := range []string{
 		"shopt -s \"inherit_errexit\"\n", "shopt '-s' inherit_errexit\n", "shopt -sq inherit_errexit\n", "shopt -so errexit\n",
 		"shopt -s -o errexit\n", "\"set\" -e\n", "'set' -e\n", "\\set -e\n", "\\shopt -s inherit_errexit\n",
 		"eval set -e\n", "eval 'set -e'\n", "eval \"shopt -s inherit_errexit\"\n",
+		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n",
 	} {
 		if len(matches(script)) == 0 {
 			t.Errorf("not rejected: %q", script)
@@ -470,6 +509,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 	for _, script := range []string{
 		"shopt -s nullglob\n", "shopt -s extglob inherit_errexit\n", "set -euo pipefail\n", "echo \"set -e is on\"\n",
 		"printf 'set -e\\n'\n", "eval \"$(ssh-agent -s)\"\n", "reset -e\n", "x=set; echo $x\n",
+		"eval \"$(dircolors)\"; set -e\n", "shopt -s -q inherit_errexit\n", "node --eval 'x.set(1)'\n",
 	} {
 		if got := matches(script); len(got) != 0 {
 			t.Errorf("rejected %q as %v", script, got)
@@ -480,6 +520,8 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 	}
 }
 
+// Every statement-level [[ ]] or (( )) in a bash workflow step or bash script needs an
+// explicit failure branch: bash before 4.1 ignores errexit for it and fails open.
 func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 	root := repositoryRoot(t)
 	workflows, err := filepath.Glob(filepath.Join(root, ".github/workflows/*.yml"))
