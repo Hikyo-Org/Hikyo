@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -135,16 +136,16 @@ func isBashShell(shell, runsOn string) bool {
 		// value or group mapping we cannot resolve is treated as bash, which fails safe.
 		return !strings.HasPrefix(strings.ToLower(runsOn), "windows")
 	}
-	// A custom template (/bin/bash -e {0}) runs its first word, so compare that word's basename,
-	// looking through env (/usr/bin/env bash {0}).
-	if strings.Contains(shell, "${{") {
-		return true // an expression we cannot resolve is scanned as bash, which fails safe
-	}
+	// A custom template (/bin/bash -e {0}, env FOO=1 bash {0}) may run bash in many ways, so only
+	// a known other interpreter is skipped; anything else, an expression or a blank shell
+	// included, is scanned as bash, which fails safe: a misjudged step fails to parse.
 	words := strings.Fields(shell)
-	if len(words) > 1 && filepath.Base(words[0]) == "env" {
-		words = words[1:]
+	if len(words) == 0 {
+		return true
 	}
-	return len(words) == 0 || filepath.Base(words[0]) == "bash" // a blank shell is the default
+	exe := strings.ToLower(strings.Trim(words[0], `"'`))
+	exe = strings.TrimSuffix(exe[strings.LastIndexAny(exe, `/\`)+1:], ".exe") // a Windows path uses \
+	return !slices.Contains([]string{"sh", "dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
 }
 
 func firstNonEmpty(values ...string) string {
@@ -361,6 +362,12 @@ func TestIsBashShellTreatsWindowsDefaultAsPowerShell(t *testing.T) {
 		{"/bin/bash -e {0}", "ubuntu-latest", true},
 		{"/usr/bin/env bash {0}", "ubuntu-latest", true},
 		{"${{ matrix.shell }}", "ubuntu-latest", true},
+		{"env FOO=1 bash {0}", "ubuntu-latest", true},
+		{"\"/bin/bash\" -e {0}", "ubuntu-latest", true},
+		{"  ", "ubuntu-latest", true},
+		{"  ", "windows-latest", true},
+		{"python", "ubuntu-latest", false},
+		{"C:\\Windows\\cmd.EXE /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\"", "windows-latest", false},
 		{"pwsh -command \". '{0}'\"", "ubuntu-latest", false},
 		{"/bin/sh -e {0}", "ubuntu-latest", false},
 		{"pwsh", "ubuntu-latest", false},

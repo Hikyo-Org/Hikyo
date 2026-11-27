@@ -240,8 +240,9 @@ func setsOption(args []string, letter, name string) bool {
 	return false
 }
 
-// unscannedErrexitForms are the ways to turn errexit on that setsErrexit and the shopt match in
-// bareTests do not read, so a script using one could hide a bare test. None is used in the
+// unscannedErrexitForms are the ways to turn errexit on, or to make command substitutions
+// inherit it, that setsErrexit and the inherit match in bareTests do not read, so a script
+// using one could hide a bare test. None is used in the
 // repository; scanScript rejects them instead of parsing them. literal() already reads plainly
 // quoted or escaped set and shopt words, so the quote and backslash parts of the first two
 // patterns are needed only for spellings it leaves unknown (an escape inside $'...', a
@@ -256,9 +257,11 @@ var unscannedErrexitForms = []struct {
 	pattern *regexp.Regexp
 }{
 	{"shopt with a quoted, escaped, expanded, grouped or -o argument", regexp.MustCompile(`\bshopt\b[^\n;|&]*(?:["'\\$]|\s[-+][a-z]{2,}|\s-o\b)`)},
-	{"POSIX mode from the environment or the command line", regexp.MustCompile(`\bPOSIXLY_CORRECT\b|\s--posix\b`)},
 	{"quoted or escaped set or shopt command name", regexp.MustCompile(`(?:\\(?:set|shopt)|"(?:set|shopt)"|'(?:set|shopt)')\s+[-+]`)},
 	{"eval of set or shopt", regexp.MustCompile(`(?:^|[\s;|&(\x60])(eval)\b(?:[^;|&\n"']|\\\n|"[^"]*"|'[^']*')*?(?:\b|"[^"]*\b|'[^']*\b)(?:set|shopt)\b`)},
+	// POSIX mode and inherit_errexit both make substitutions inherit errexit. Running a script
+	// as sh x.sh (POSIX mode on macOS, whose sh is bash 3.2) cannot be seen from the script.
+	{"errexit inheritance from the environment or the bash command line", regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b|\s--posix\b|\bbash\b[^\n;|&]*\s(?:-[a-zA-Z]*o\s+posix|-O\s+inherit_errexit)\b`)},
 }
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
@@ -591,7 +594,8 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"eval $(:;) 'x\\\\\nset -e'\n", "eval $(:;) \"x\\\\\\\\\nset -e\"\n",
 		"\"eval\" $'\\n'set -e\n", "\\eval $'\\t'set -e\n", "\"eval\" $(:;) 'x\\\\\ns'et -e\n",
 		"$'builtin' \"eval\" set -e\n", "\"com\"$'mand' \"eval\" set -e\n", "\"eval\" shopt -s inherit_errexit\n",
-		"POSIXLY_CORRECT=1 ./x.sh\n", "bash --posix x.sh\n",
+		"POSIXLY_CORRECT=1 ./x.sh\n", "bash --posix x.sh\n", "SHELLOPTS=posix ./x.sh\n", "export SHELLOPTS\n",
+		"BASHOPTS=inherit_errexit ./x.sh\n", "bash -o posix x.sh\n", "bash -eo posix x.sh\n", "bash -O inherit_errexit x.sh\n",
 		"cat >f <<'EOF'\n#!/usr/bin/env bash\nvalue=$(\"eval\" set -e; [[ a == b ]]; echo accepted)\nEOF\n",
 	} {
 		if len(matches(script)) == 0 {
