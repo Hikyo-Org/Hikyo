@@ -479,6 +479,11 @@ func (e *githubReadError) Error() string {
 
 func (e *githubReadError) Unwrap() error { return e.cause }
 
+// errRateLimited matches, through errors.Is, a *githubReadError whose rateLimited flag is set.
+var errRateLimited = errors.New("github api rate limited")
+
+func (e *githubReadError) Is(target error) bool { return target == errRateLimited && e.rateLimited }
+
 func decode(data []byte, result any) error {
 	d := jsontext.NewDecoder(bytes.NewReader(data))
 	if err := json.UnmarshalDecode(d, result); err != nil {
@@ -602,7 +607,7 @@ func (a retryingAPI) awaitRateLimitReset(ctx context.Context, failure *githubRea
 	}
 	fmt.Fprintf(os.Stderr, "trusted PR gate: GitHub API rate limit exhausted; waiting %s for the reset at %s\n", wait.Round(time.Second), reset.UTC().Format(time.RFC3339))
 	if err := readRetryWait(ctx, wait); err != nil {
-		return &githubReadError{path: failure.path, cause: err}
+		return &githubReadError{path: failure.path, cause: err, rateLimited: true}
 	}
 	return nil
 }
@@ -632,7 +637,7 @@ func (a retryingAPI) read(ctx context.Context, path string, result any) error {
 		}
 		fmt.Fprintf(os.Stderr, "trusted PR gate: retrying GitHub read (attempt %d of %d): %v\n", attempt+2, len(readRetryBackoff)+1, err)
 		if waitErr := readRetryWait(ctx, delay); waitErr != nil {
-			return &githubReadError{path: path, cause: waitErr}
+			return &githubReadError{path: path, cause: waitErr, rateLimited: rateLimitedFailure(err)}
 		}
 	}
 }

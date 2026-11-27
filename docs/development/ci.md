@@ -179,13 +179,15 @@ dispatch on main:
    opens the probe shell against a fake instance (Playwright cannot drive WKWebView).
    Main before the shell lands runs only step 2, on Linux, so until promotion brings
    the module to main, the main leg covers only the boundary check.
-4. A `report` job runs with `issues: write` only, no checkout and no repository code.
+4. A `report` job runs with `issues: write` and `actions: read` only, no checkout and no repository code.
    When either leg is not `success` (a runner that is never acquired is reported as
    `cancelled`), it looks the issue up by the `ci-nightly-desktop` label plus an exact title, marker and
    bot-author match, then opens or comments on the one issue titled `ci: nightly desktop
    validation failing` with the run link and each branch's head SHA and result, then
    fails, so the run stays red. It runs only on main; a manual run from another ref skips
-   it. A later green night closes the issue with a comment.
+   it. A later green night closes the issue with a comment, but only from the newest
+   nightly run on main: a re-run of an older run reuses its attempt's results and must not
+   close an issue a newer red night keeps open (one `gh run list` read per closing issue).
    A `shim` job (no checkout, API reads only) checks whether the desktop-removal shim
    in `ci.yml` is dead: once neither head's job registry lists `desktop`, the shim and
    its migration tests are dead code (tracked in #1595). The report keeps that in its
@@ -195,7 +197,7 @@ dispatch on main:
    a dead shim never hides a desktop failure; either failing keeps the run red.
    Each night costs two issue-list calls, plus one write per issue when its failure
    repeats (a comment) or it closes, and two when it is first opened (the label, then
-   the issue).
+   the issue). Closing adds one `gh run list` read per issue closed, up to 2 a night.
 5. Lint is advisory, like the root ratchet, and the root `golangci` names must stay
    out of `ci.yml`: `ci-advisory-golangci-desktop` runs the pinned `golangci-lint`
    over the whole module on macOS, and `golangci-lint-new.sh` lints `desktop/` from
@@ -438,7 +440,7 @@ run is active again (403, "the workflow run containing this job is already runni
 so at most one rerun is requested per run per pass. Several failed jobs of one run go
 together through the run-level endpoint (`rerun-failed-jobs`, which reruns every failed
 and cancelled job) only when the run's failed and cancelled set is exactly the wanted
-set and all of one kind; otherwise the highest-priority job (a group job first) is
+set and all of one kind and, for non-group jobs, their combined cost (42 reads each) still leaves the reserve (`remaining - n x 42 >= 480`). Two or more non-group jobs that are the run's whole failed set and fit one by one but not together are all held (`exhausted=true`, no request) and handed to the wait, which reruns the set once the window has reset and the set's full cost fits above the reserve; rerunning only one would strand the rest, because the next attempt lists only its own jobs. The wait gives a run-level entry no special treatment: it is released only when its full cost fits above the floor, and otherwise held like any job. A run-level entry cut down to one job after a newer run takes some of its heads carries one job's cost. Known limits, routed to #1598 together: a set whose full cost exceeds what any fresh window gives non-group work (n x 42 above 520 on a 1000-request window: 13 or more publishers) never fits and stays held, and the operator must act; a set of 12 is usually held too, because the sweep's own listings and other callers spend after the reset and 12 x 42 needs about 984 left (an 11-set tolerates about 58 requests spent); and a run that also failed another job takes the single-job path below, which strands its siblings. Otherwise the highest-priority job (a group job first) is
 rerun by job id and the rest are left for that rerun's own completion, which fires the
 retry again within the attempt bound. A pending reconcile that a newer one replaced
 ends cancelled without running a step and is never wanted, so it keeps the run-level
@@ -464,9 +466,11 @@ still runs. If a non-group job then does not fit above the reserve (remaining be
 and 521, say), the job waits for the reset once and releases the held set once; a hold
 that only group jobs suffer also waits for the reset once and releases the held group jobs, newest run per job name first (job names carry the kind and head, `group-<head>` for a group worker job and `publish-<head>` otherwise, so a group job is classified as a group job). The wait never sleeps past 66 minutes from its start (the second sleep is capped at the time left minus the 65 seconds the budget read after it can back off) and names the held jobs when the reset is later. The reruns are spaced 15 seconds apart. A released rerun spends only after
 it starts, so the live `rate_limit` does not show it yet: each is counted at its expected
-cost (41 reads for a group job, 42 otherwise) against the lower of the live remaining and
-the budget when releasing began, and the job stops starting reruns when that projection
-would cross a fifth of the window (a non-group job: the reserve), or 66 minutes in, and
+cost (41 reads for a group job, 42 otherwise) against the live remaining minus every rerun released so far
+(part of that cost may already show in the live balance, so the sweep holds more, never less). A second pass after the
+reset keeps that released total when the last release was under 120 seconds earlier, and starts from zero otherwise.
+A run-level entry of an older run is cut to one job of a head no newer run has, so a head is not rerun twice; its other unseen heads are held and named with the operator command, since a run takes one rerun per pass. The job stops starting reruns when that projection
+would cross a fifth of the window (a non-group job: the reserve), and sends no rerun request after 66 minutes (the job is then held, not reported refused), and
 names what it held, so a burst cannot re-exhaust the window it waited for. A held job keeps its pending check. Nothing
 completes it automatically unless another failed gate run starts a new wait, so the
 operator command `gh workflow run ci-queue-gate.yml -f pr_number=<n>` is the completer
@@ -828,7 +832,7 @@ records are rewritten by events and by re-proofs that change nothing, and an ord
 based on them can starve a PR. Every open PR is re-proved within ceil(open/5)
 consecutive runs; a PR opened or closed in between shifts the windows by at most one
 cycle. A run that fails or is deferred still advances the count, so the window it skipped
-is reached ceil(open/5) runs later: the bound is in proving runs, not in all runs. GitHub
+is reached ceil(open/5) runs later. That holds only when deferrals are not periodic: a deferral on every k-th run, with k a multiple of the cycle length, skips the same window each time, and events and the retry path then settle checks. GitHub
 returns at most 1,000 results for a filtered list, and retention can delete old runs, so
 the count is taken within the current 30-day epoch only (`created` at or after the epoch
 start, at most 720 runs) and the epoch number is added as a stable offset: windows are

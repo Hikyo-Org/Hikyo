@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -143,6 +144,13 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 	}
 	head := strings.Repeat("a", 40)
 	const runLevel = 0 // the run-level endpoint rather than a job id
+	manyPublishers := func(n int) []string {
+		var jobs []string
+		for i := 0; i < n; i++ {
+			jobs = append(jobs, job(i+1, "publish-"+fmt.Sprintf("%040x", i+1), "failure", "Reconcile one authenticated head"))
+		}
+		return jobs
+	}
 	const healthy, spent = "4000 5000 1795475603", "40 5000 1795475603"
 	const reconcile, groupReconcile = "Reconcile one authenticated head", "Reconcile complete group proof under its head lease"
 	// The worker names its jobs by kind and runs one step for every kind.
@@ -189,7 +197,18 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		// GitHub refuses a rerun of another job while the run is active again: one rerun per run.
 		{"a mixed failed set reruns only the group job", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile), job(3, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", healthy, []int{2}, false, ""},
 		{"several failed publishers of one kind use the run-level rerun", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		// The run-level rerun starts every failed job together: their combined cost must leave the reserve (2 x 42 above 480).
+		// Rerunning one would strand the other (the next attempt lists only its own jobs), so both are held for the wait.
+		{"several failed publishers that fit one by one but not together are all held", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "563 1000 1795475603", nil, false, "Held for the group reserve (563 of 1000"},
+		{"several failed publishers whose combined cost just fits use the run-level rerun", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "564 1000 1795475603", []int{runLevel}, false, ""},
+		// 13 x 42 = 546 exceeds the 520 a fresh 1000-request window leaves above the reserve: the retry job never releases them
+		// (known limit, routed to #1598: the operator completes such a set).
+		{"a set no fresh window could afford together is held for the wait, never released here", manyPublishers(13), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
+		{"an oversized set on the last attempts is still held, not released", manyPublishers(13), "2", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
+		{"twelve publishers are held while they do not fit (the sweep's listings usually keep them held after the reset)", manyPublishers(12), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
 		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
+		// A mixed run gains nothing from the hold: the wait would rerun the same single job, so it is rerun now.
+		{"a mixed run whose publishers do not fit together still reruns its first job at once", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "dev-revoke", "failure", "Revoke")}, "1", "563 1000 1795475603", []int{1}, false, ""},
 		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},
 		{"a held job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
 		// Worker group jobs are named group-<sha> in the worker run and may spend the reserve.

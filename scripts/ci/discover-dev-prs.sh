@@ -53,7 +53,10 @@ fi
 # it, and every open PR is reached within ceil(open/cap) consecutive runs. A PR opened or
 # closed in between shifts the windows by at most one cycle; events and the retry path
 # settle checks regardless. A run that fails or is deferred still advances the count, so the
-# window it skipped is reached ceil(open/cap) runs later: the bound is in proving runs.
+# window it skipped is reached ceil(open/cap) runs later. That bound holds only when deferrals
+# are not periodic: with a deferral on every k-th run and k a multiple of the cycle length, the
+# same window is skipped each time. Events and the retry path still settle checks, so the sweep
+# is a backstop; a persisted cursor (see the shortcut below) would remove the gap.
 # GitHub reports at most 1,000 results for a filtered list, and retention can delete old
 # runs, so a count of all schedule runs could stop moving. The count is therefore taken
 # within the current 30-day epoch only (created >= the epoch start, at most 720 runs even
