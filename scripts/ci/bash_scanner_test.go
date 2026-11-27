@@ -19,11 +19,11 @@ import (
 
 var (
 	leadingTabs = regexp.MustCompile(`(?m)^\t+`)
-	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+bash|/(?:usr/)?bin/bash)(?:\s|$)`)
+	bashShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?bash|/(?:usr/)?bin/bash)(?:\s|$)`)
 	// An sh script is scanned too, in POSIX mode: on macOS sh is bash 3.2, the shell the scan
 	// guards against. Only a quoted sh heredoc is: an unquoted one's raw text (\$ escapes) is not
 	// what runs, so it may not parse. shortcut: unquoted sh heredocs are unscanned; quote them.
-	scriptShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:ba)?sh|/(?:usr/)?bin/(?:ba)?sh)(?:\s|$)`)
+	scriptShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?(?:ba)?sh|/(?:usr/)?bin/(?:ba)?sh)(?:\s|$)`)
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
 	workflowExpression = regexp.MustCompile(`\$\{\{(?:[^}']|'(?:[^']|'')*')*\}\}`) // a quoted '{0}' does not end it
 )
@@ -647,15 +647,20 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 }
 
 // TestRepositoryScanSelectors pins what the repository scan reads: sh files are scanned (macOS
-// sh is bash 3.2), an sh step is read in POSIX mode, and a workflow env: entry that makes
+// sh is bash 3.2), a step under any shell but plain bash is read in POSIX mode, and a workflow env: entry that makes
 // substitutions inherit errexit is caught.
 func TestRepositoryScanSelectors(t *testing.T) {
-	for line, want := range map[string]bool{"#!/bin/sh": true, "#!/usr/bin/env sh": true, "#!/bin/bash -e": true, "#!/bin/zsh": false, "#!/usr/bin/env python3": false} {
+	for line, want := range map[string]bool{"#!/bin/sh": true, "#!/usr/bin/env sh": true, "#!/bin/bash -e": true, "#!/bin/zsh": false, "#!/usr/bin/env python3": false, "#!/usr/bin/env -S bash -e": true, "#!/usr/bin/env -S sh": true} {
 		if got := scriptShebang.MatchString(line); got != want {
 			t.Errorf("scriptShebang(%q) = %v, want %v", line, got, want)
 		}
 	}
-	for _, shell := range []string{"sh -e {0}", "/usr/bin/env sh {0}", "env sh -e {0}", "bash --posix {0}", "bash -o posix {0}", "${{ matrix.shell }}"} {
+	for line, want := range map[string]bool{"#!/usr/bin/env -S bash -e": true, "#!/bin/bash": true, "#!/usr/bin/env -S sh": false} {
+		if got := bashShebang.MatchString(line); got != want {
+			t.Errorf("bashShebang(%q) = %v, want %v", line, got, want)
+		}
+	}
+	for _, shell := range []string{"sh -e {0}", "/usr/bin/env sh {0}", "env sh -e {0}", "bash --posix {0}", "bash -o posix {0}", "${{ matrix.shell }}", "bash ${{ matrix.flags }} {0}"} {
 		if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", shell)); err != nil || !reflect.DeepEqual(got, []int{2}) {
 			t.Errorf("a %q step's substitution: got %v, %v; want line 2 flagged (POSIX mode inherits errexit)", shell, got, err)
 		}
@@ -696,8 +701,8 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	// A workflow-level default shell reaches the step too, unless the job's default overrides it.
 	topLevel := "defaults:\n  run:\n    shell: sh\njobs:\n  c:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
 		"  d:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - name: d\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
-	if problems, err := workflowProblems("top.yml", []byte(topLevel)); err != nil || len(problems) != 1 || !strings.Contains(problems[0], ":2: bare test") {
-		t.Errorf("workflow defaults shell: sh: got %v, %v; want one line-2 problem", problems, err)
+	if problems, err := workflowProblems("top.yml", []byte(topLevel)); err != nil || len(problems) != 1 || !strings.Contains(problems[0], "job c ") || !strings.Contains(problems[0], ":2: bare test") {
+		t.Errorf("workflow defaults shell: sh: got %v, %v; want one line-2 problem in job c", problems, err)
 	}
 	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  SHELL: bash\n": false} {
 		if got := len(workflowEnvProblems([]byte(text))) > 0; got != want {
@@ -709,13 +714,13 @@ func TestRepositoryScanSelectors(t *testing.T) {
 var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b`)
 
 // scannedStepScript is a workflow step's script as the scan reads it: expressions replaced, and
-// under any shell but plain bash (sh, env sh, an expression, bash --posix) set -o posix put
+// under any shell but plain bash (sh, env sh, an expression anywhere, bash --posix) set -o posix put
 // before line 1, since such a shell may run bash in POSIX mode and POSIX mode only adds
 // substitution bodies to the scan. Prepended on the same line, so line numbers stay put and a
 // trailing continuation cannot swallow it.
 func scannedStepScript(run, shell string) string {
 	script := workflowExpression.ReplaceAllString(run, "GITHUB_EXPRESSION")
-	if exe := shellExecutable(shell); (exe != "" && exe != "bash") || strings.Contains(shell, "posix") {
+	if exe := shellExecutable(shell); (exe != "" && exe != "bash") || strings.Contains(shell, "posix") || strings.Contains(shell, "${{") {
 		script = "set -o posix; " + script
 	}
 	return script
