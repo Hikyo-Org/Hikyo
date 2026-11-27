@@ -831,8 +831,8 @@ the start is count x 5 mod open. It reads no check record and writes no state, b
 records are rewritten by events and by re-proofs that change nothing, and an order
 based on them can starve a PR. Every open PR is re-proved within ceil(open/5)
 consecutive runs; a PR opened or closed in between shifts the windows by at most one
-cycle. A run that fails or is deferred still advances the count, so the window it skipped
-is reached within the next ceil(open/5) consecutive undeferred runs. Deferrals can delay it further: two deferrals one cycle apart skip the same window twice, and a deferral on every k-th run, with k a multiple of the cycle length, skips it each time. Events settle a PR's check when they arrive and the retry path reruns failed or cancelled publisher jobs within its attempt bound, but a deferral on the last attempt or a held check stays pending until another gate run, so for a PR with no further event the sweep is the only path to its check. GitHub
+cycle. A run that fails or is deferred still advances the count, so within one 30-day epoch the window it skipped
+is reached within the next ceil(open/5) consecutive undeferred runs; an epoch boundary restarts the sequence at an arbitrary offset, which can add one more cycle. Deferrals can delay it further: two deferrals one cycle apart skip the same window twice, and a deferral on every k-th run, with k a multiple of the cycle length, skips it each time. A gate run that defers writes no check record, so the event that started it leaves the check as it was; the retry path reruns the deferred or failed publisher job within its attempt bound, and a spent window on the last attempt, or a held check, stays pending until another gate run or the operator command `gh workflow run ci-queue-gate.yml -f pr_number=<n>`. For a PR with no further event the sweep is then the only automatic path to its check. GitHub
 returns at most 1,000 results for a filtered list, and retention can delete old runs, so
 the count is taken within the current 30-day epoch only (`created` at or after the epoch
 start, at most 720 runs) and the epoch number is added as a stable offset: windows are
