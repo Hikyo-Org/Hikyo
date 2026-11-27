@@ -288,10 +288,10 @@ for release in b c; do
  jq -e '.phase == "complete" and .runtime.CiphertextPath != ""' "$work/journal-$release.json" >/dev/null
  ciphertext=$(jq -r '.runtime.CiphertextPath' "$work/journal-$release.json")
  # Map only the fixed chart state mount into this disposable node's owned PV.
- [[ "$ciphertext" == /var/lib/hikyo-upgrade/operator-custody/unattended/backup-*/* ]]
+ [[ "$ciphertext" == /var/lib/hikyo-upgrade/operator-custody/unattended/backup-*/* ]] || exit 1
  docker exec "$node" test -s "${ciphertext/\/var\/lib\/hikyo-upgrade/\/var\/lib\/hikyo-unattended-state}"
 done
 custody_after=$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)
-[[ "$custody_before" == "$custody_after" ]]
+[[ "$custody_before" == "$custody_after" ]] || exit 1
 kubectl -n "$NAMESPACE" exec deployment/postgres -- psql -U hikyo -d hikyo_scratch -Atc 'SELECT count(*) FROM upgrade_control' | grep -Fxq '1'
 echo 'unattended-kind: distroless A restart and A->B->C passed; root/custody PVC retained; PostgreSQL scratch restore and encrypted backups verified'

@@ -141,7 +141,7 @@ for scope in mixed app-only service-only filtered-only peers-only; do
     fi
     # Timings preserve target elapsed and process wall time on green and red.
     timing_dir="$RUNNER_TEMP/hikyo-race-timings"
-    [[ $(find "$timing_dir" -name '*.wall.json' | wc -l) -eq $(wc -l <"$RACE_TEST_CALLS") ]]
+    [[ $(find "$timing_dir" -name '*.wall.json' | wc -l) -eq $(wc -l <"$RACE_TEST_CALLS") ]] || exit 1
     jq -se 'all(.[]; .Test == "TestFixture" and .Elapsed == 1.25)' \
       < <(jq -c 'select(.Test)' "$timing_dir"/*.json) >/dev/null
     jq -se 'all(.[]; (.WallSeconds | type) == "number" and (.ExitCode | type) == "number")' \
@@ -189,6 +189,6 @@ for invalid in empty duplicate isolation unknown option whitespace blank missing
     echo "race fixture: invalid $invalid inventory accepted" >&2
     exit 1
   fi
-  [[ ! -s "$RACE_TEST_EXECUTED" ]]
+  [[ ! -s "$RACE_TEST_EXECUTED" ]] || exit 1
 done
 echo 'race fixture: exact shard coverage, one-per-entry pool, sequential app/service ordering, unchanged flags, failure propagation and inventory refusals passed'

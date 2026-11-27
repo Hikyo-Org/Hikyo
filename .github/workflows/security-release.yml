@@ -57,9 +57,9 @@ jobs:
               test "$NIGHTLY_PATH" = .github/workflows/nightly.yml
               test "$NIGHTLY_BRANCH" = main
               test "$NIGHTLY_REPOSITORY" = "$GITHUB_REPOSITORY"
-              [[ "$NIGHTLY_EVENT" = schedule || "$NIGHTLY_EVENT" = repository_dispatch ]]
-              [[ "$NIGHTLY_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]
-              [[ "$NIGHTLY_SHA" =~ ^[0-9a-f]{40}$ ]]
+              [[ "$NIGHTLY_EVENT" = schedule || "$NIGHTLY_EVENT" = repository_dispatch ]] || exit 1
+              [[ "$NIGHTLY_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]] || exit 1
+              [[ "$NIGHTLY_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
               tag=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" |
                 jq -er --arg run "$NIGHTLY_RUN_NUMBER" '
                   [.[][] | .ref | select(test("^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\." + $run + "\\.g[0-9a-f]{8}$")) | sub("^refs/tags/"; "")] |
@@ -71,7 +71,7 @@ jobs:
               ;;
             *) exit 1 ;;
           esac
-          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$ ]]
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$ ]] || exit 1
           # Authenticate availability through the exact published tag, never a
           # moving latest release or release.target_commitish.
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
@@ -82,7 +82,7 @@ jobs:
             depth=$((depth + 1))
             type=$(jq -r '.object.type' <<<"$object")
             source=$(jq -r '.object.sha' <<<"$object")
-            [[ "$source" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$source" =~ ^[0-9a-f]{40}$ ]] || exit 1
             if [ "$type" = commit ]; then break; fi
             test "$type" = tag
             object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$source")
@@ -90,7 +90,7 @@ jobs:
           test "$type" = commit
           if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then test "$source" = "$NIGHTLY_SHA"; fi
           harness=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
-          [[ "$harness" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$harness" =~ ^[0-9a-f]{40}$ ]] || exit 1
           printf 'available=true\ntag=%s\nsource=%s\nharness=%s\n' "$tag" "$source" "$harness" >>"$GITHUB_OUTPUT"
 
   validate:

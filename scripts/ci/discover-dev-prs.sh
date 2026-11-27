@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Routing only. The trusted publisher independently verifies every current PR.
 set -euo pipefail
-[[ $# == 0 ]]
+[[ $# == 0 ]] || exit 1
 : "${GH_REPO:?}" "${GITHUB_EVENT_NAME:?}" "${GITHUB_EVENT_PATH:?}"
-[[ "$GH_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+[[ "$GH_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 1
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dev-discovery.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 # The reserve (480 requests, see docs/development/ci.md and groupReserve in
