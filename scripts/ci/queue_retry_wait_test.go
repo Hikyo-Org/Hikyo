@@ -555,6 +555,55 @@ func TestQueueRetryWaitReleasesASetNoFreshWindowCouldAffordTogether(t *testing.T
 	}
 }
 
+func oversizedJobs(n int) []string {
+	var jobs []string
+	for i := 0; i < n; i++ {
+		jobs = append(jobs, failedGroupJob(100+i, "publish-"+fmt.Sprintf("%040x", i+1), "Reconcile one authenticated head"))
+	}
+	return jobs
+}
+
+// The oversized set is the only release of its window: its full cost (13 x 42) is counted, so a
+// later failed publisher is held rather than released beside it.
+func TestQueueRetryWaitCountsAnOversizedSetAtItsFullCost(t *testing.T) {
+	now := int64(1795475603)
+	other := failedGroupJob(900, "publish-"+strings.Repeat("e", 40), "Reconcile one authenticated head")
+	// The other run is newer, yet the oversized set goes first.
+	runs := []waitRun{trustedRun("ci-queue-gate.yml", 3, oversizedJobs(13)...), trustedRun("ci-queue-gate.yml", 9, other)}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, runs: runs}
+	_, out, err := f.run()
+	if err == nil || !reflect.DeepEqual(f.accepted(), []string{"run:3"}) || !strings.Contains(out, "Held to protect the window: job:900") {
+		t.Fatalf("the oversized set is the only release of its window: %v %v\n%s", err, f.accepted(), out)
+	}
+}
+
+// A rerun of an oversized set that would be the final attempt is held and reported, not released.
+func TestQueueRetryWaitHoldsAnOversizedSetOnItsLastRerun(t *testing.T) {
+	now := int64(1795475603)
+	run := trustedRun("ci-queue-gate.yml", 7, oversizedJobs(13)...)
+	run.attempt = 2
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, runs: []waitRun{run}}
+	_, out, err := f.run()
+	if err == nil || len(f.accepted()) != 0 || !strings.Contains(out, "would be the final attempt") || !strings.Contains(out, "Held to protect the window: run:7") {
+		t.Fatalf("an oversized set is not released into the final attempt: %v %v\n%s", err, f.accepted(), out)
+	}
+}
+
+// A newer run covers head 1 of an older oversized run: the older entry is cut to one job of an
+// unseen head and costs one job (42), not its share of the run (42 / 13 truncated to 3).
+func TestQueueRetryWaitCutsAnOlderOversizedRunAtAFullJobCost(t *testing.T) {
+	now := int64(1795475603)
+	newer := failedGroupJob(901, "publish-"+fmt.Sprintf("%040x", 1), "Reconcile one authenticated head")
+	third := failedGroupJob(300, "publish-"+strings.Repeat("d", 40), "Reconcile one authenticated head")
+	runs := []waitRun{trustedRun("ci-queue-gate.yml", 3, third), trustedRun("ci-queue-gate.yml", 5, oversizedJobs(13)...), trustedRun("ci-queue-gate.yml", 9, newer)}
+	// 574 left above the 480 reserve: exactly two 42-request reruns fit.
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 574, runs: runs}
+	_, out, err := f.run()
+	if err == nil || !reflect.DeepEqual(f.accepted(), []string{"901", "101"}) {
+		t.Fatalf("the newer run's job and one job of the older run, then the window is full: %v %v\n%s", err, f.accepted(), out)
+	}
+}
+
 // A rerun request that backs off past the 66 minutes must not be sent: it is held, not refused.
 func TestQueueRetryWaitSendsNoRerunRequestAfterSixtySixMinutes(t *testing.T) {
 	now := int64(1795475603)

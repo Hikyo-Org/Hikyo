@@ -202,7 +202,8 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"several failed publishers that fit one by one but not together are all held", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "563 1000 1795475603", nil, false, "Held for the group reserve (563 of 1000"},
 		{"several failed publishers whose combined cost just fits use the run-level rerun", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "564 1000 1795475603", []int{runLevel}, false, ""},
 		// 13 x 42 = 546 exceeds the 520 a fresh 1000-request window leaves above the reserve: holding them would never end.
-		{"a set no fresh window could afford together goes run-level", manyPublishers(13), "1", "700 1000 1795475603", []int{runLevel}, false, ""},
+		{"a set no fresh window could afford together is held for the wait, never released here", manyPublishers(13), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
+		{"an oversized set on the last attempts is still held, not released", manyPublishers(13), "2", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
 		{"twelve publishers that a fresh window affords are held while they do not fit", manyPublishers(12), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
 		{"several failed group jobs use the run-level rerun", []string{job(1, "group-"+head, "failure", groupReconcile), job(2, "group-"+strings.Repeat("b", 40), "failure", groupReconcile)}, "1", healthy, []int{runLevel}, false, ""},
 		{"another failed job in the run keeps the run-level rerun off", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile), job(3, "discover", "failure", "Discover")}, "1", healthy, []int{1}, false, ""},

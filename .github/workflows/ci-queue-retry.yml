@@ -138,18 +138,15 @@ jobs:
           # Rerunning only one of several non-group jobs would strand the rest: the next attempt lists
           # only its own jobs, so no later callback sees them. Hold them all for rerun-after-reset,
           # which reruns the set together once the window has recovered.
-          # A set that no window could ever afford together (n x 42 above limit - reserve, 13 jobs of a
-          # 1000-request window) is not held: the gate would never open. It goes run-level like any set,
-          # and each rerun job re-checks the reserve when it starts.
+          # This also holds a set no window could ever afford together (n x 42 above limit - reserve, 13 jobs of
+          # a 1000-request window): only rerun-after-reset releases it, alone, right after a fresh window.
           combined=$((${#others[@]} * other_cost))
-          fits_fresh=0
-          if [ "$combined" -le $((limit - reserve)) ]; then fits_fresh=1; fi
-          if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ "$fits_fresh" = 1 ] && [ $((remaining - combined)) -lt "$reserve" ]; then
+          if [ "${#groups[@]}" = 0 ] && [ "${#others[@]}" -ge 2 ] && [ $((remaining - combined)) -lt "$reserve" ]; then
             echo "Held for the group reserve ($remaining of $limit requests left): the ${#others[@]} failed jobs of this run cost $((${#others[@]} * other_cost)) together, more than leaves the reserve. rerun-after-reset reruns them together once the window has reset."
             echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
             exit 0
           fi
-          if [ "$eligible" -ge 2 ] && [ "$eligible" = "$total" ] && { [ "${#others[@]}" = 0 ] || { [ "${#groups[@]}" = 0 ] && { [ "$fits_fresh" = 0 ] || [ $((remaining - combined)) -ge "$reserve" ]; }; }; }; then
+          if [ "$eligible" -ge 2 ] && [ "$eligible" = "$total" ] && { [ "${#others[@]}" = 0 ] || { [ "${#groups[@]}" = 0 ] && [ $((remaining - combined)) -ge "$reserve" ]; }; }; then
             echo "Rerunning the $eligible failed jobs of run $RUN_ID (attempt $RUN_ATTEMPT) together."
             target="repos/$GH_REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
             named="run $RUN_ID"
@@ -315,7 +312,7 @@ jobs:
           # Entries are "type id cost"; group entries are released first.
           group_plan=""
           other_plan=""
-          plan_run() { # $1 run id, $2 job lines
+          plan_run() { # $1 run id, $2 job lines, $3 attempt
             local id kind qualifies name total=0 g=() o=() gh=() oh=() count
             while read -r id kind qualifies name; do
               [ -n "$id" ] || continue
@@ -332,25 +329,20 @@ jobs:
             done <<<"$2"
             count=$((${#g[@]} + ${#o[@]}))
             [ "$count" -gt 0 ] || return 0
-            # Entries are "type id cost run heads": heads lists every "jobid:name" (kind and head) the rerun covers, so a stale run is cut down to the heads no newer run has.
+            # Entries are "type id cost run heads unit attempt": heads lists every "jobid:name" (kind and head) the rerun covers, so a stale run is cut down to the heads no newer run has; unit is one job's cost, which a cut-down entry carries.
             local i pairs=""
-            # A set that no fresh window could afford together would never be released: count it at one
-            # job's cost, and each rerun job re-checks the reserve when it starts.
-            run_cost() { # $1 unit cost, $2 floor
-              if [ $((count * $1)) -le $((limit - $2)) ]; then echo $((count * $1)); else echo "$1"; fi
-            }
             if [ "$count" -ge 2 ] && [ "$count" = "$total" ] && { [ "${#g[@]}" = 0 ] || [ "${#o[@]}" = 0 ]; }; then
               if [ "${#g[@]}" -gt 0 ]; then
                 for i in "${!g[@]}"; do pairs="$pairs${pairs:+,}${g[$i]}:${gh[$i]}"; done
-                group_plan="${group_plan}run $1 $(run_cost "$group_cost" $((limit / 5))) $1 $pairs"$'\n'
+                group_plan="${group_plan}run $1 $((count * group_cost)) $1 $pairs $group_cost $3"$'\n'
               else
                 for i in "${!o[@]}"; do pairs="$pairs${pairs:+,}${o[$i]}:${oh[$i]}"; done
-                other_plan="${other_plan}run $1 $(run_cost "$other_cost" "$([ "$reserve" -gt $((limit / 5)) ] && echo "$reserve" || echo $((limit / 5)))") $1 $pairs"$'\n'
+                other_plan="${other_plan}run $1 $((count * other_cost)) $1 $pairs $other_cost $3"$'\n'
               fi
             elif [ "${#g[@]}" -gt 0 ]; then
-              group_plan="${group_plan}job ${g[0]} $group_cost $1 ${g[0]}:${gh[0]}"$'\n'
+              group_plan="${group_plan}job ${g[0]} $group_cost $1 ${g[0]}:${gh[0]} $group_cost $3"$'\n'
             else
-              other_plan="${other_plan}job ${o[0]} $other_cost $1 ${o[0]}:${oh[0]}"$'\n'
+              other_plan="${other_plan}job ${o[0]} $other_cost $1 ${o[0]}:${oh[0]} $other_cost $3"$'\n'
             fi
           }
           while read -r run_id attempt; do
@@ -361,7 +353,7 @@ jobs:
               unread="$unread run:$run_id"
               continue
             fi
-            plan_run "$run_id" "$found"
+            plan_run "$run_id" "$found" "$attempt"
           done <<<"$runs"
           # Newest run first, and one entry per job name (kind and head): a stale run of an earlier head
           # must not take a release slot ahead of the current one. A run-level entry that covers a head a
@@ -381,7 +373,7 @@ jobs:
                 } else if (fresh > 0) {
                   split(pair[first], part, ":")
                   seen[part[2]] = 1
-                  printf "job %s %d %s %s\n", part[1], $3 / n, $4, pair[first]
+                  printf "job %s %d %s %s %d %s\n", part[1], $6, $4, pair[first], $6, $7
                 }
                 first = 0
               }'
@@ -398,7 +390,13 @@ jobs:
           second=0
           budget_down=0
           retry_plan=""
-          spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other
+          # Whether a run-level cost exceeds what a fresh window leaves above the floor: no window affords it together.
+          oversized() { # $1 group or other, $2 cost
+            local floor=$((limit / 5))
+            if [ "$1" = other ] && [ "$reserve" -gt "$floor" ]; then floor=$reserve; fi
+            [ "$2" -gt $((limit - floor)) ]
+          }
+          spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other, $5 attempt of the failed run, $6 one job's cost
             local available floor path rc
             if [ $(($(date +%s) - started)) -gt 3960 ]; then
               held="$held $1:$2"
@@ -418,9 +416,24 @@ jobs:
             available=$((remaining - released))
             floor=$((limit / 5))
             if [ "$4" = other ] && [ "$reserve" -gt "$floor" ]; then floor=$reserve; fi
-            if [ $((available - $3)) -lt "$floor" ]; then
+            if oversized "$4" "$3"; then
+              # No window affords this set together. It is released only right after a fresh window, as the
+              # only release of that window (its full cost is counted, so nothing else follows), and never
+              # into the final attempt, where nothing could defer a rerun job that finds the reserve spent.
+              if [ "$slept" = 0 ] && [ "$second" = 0 ]; then retry_plan="${retry_plan}$1 $2 $3 $4 $5 $6"$'\n'; return 0; fi
+              if [ "$released" != 0 ] || [ $((available - $6)) -lt "$floor" ]; then
+                echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning the oversized set $1 $2 yet."
+                held="$held $1:$2"
+                return 0
+              fi
+              if [ $(($5 + 1)) -ge 3 ]; then
+                echo "Not rerunning the oversized set $1 $2: the rerun would be the final attempt, which cannot defer."
+                held="$held $1:$2"
+                return 0
+              fi
+            elif [ $((available - $3)) -lt "$floor" ]; then
               echo "Rate limit has $available of $limit requests left after the reruns released so far; not rerunning $1 $2 yet."
-              if [ "$second" = 1 ]; then held="$held $1:$2"; else retry_plan="${retry_plan}$1 $2 $3 $4"$'\n'; fi
+              if [ "$second" = 1 ]; then held="$held $1:$2"; else retry_plan="${retry_plan}$1 $2 $3 $4 $5 $6"$'\n'; fi
               return 0
             fi
             echo "Rerunning $1 $2 (about $3 requests of the $available left)."
@@ -440,21 +453,25 @@ jobs:
             sleep 15
           }
           hold_retry_plan() {
-            local type id cost kind
-            while read -r type id cost kind; do
+            local type id cost kind attempt unit
+            while read -r type id cost kind attempt unit; do
               [ -n "$id" ] || continue
               held="$held $type:$id"
             done <<<"$retry_plan"
             retry_plan=""
           }
-          while read -r type id cost rest; do
+          while read -r type id cost run heads unit attempt; do
             [ -n "$id" ] || continue
-            spend_rerun "$type" "$id" "$cost" group
+            spend_rerun "$type" "$id" "$cost" group "$attempt" "$unit"
           done <<<"$group_plan"
-          while read -r type id cost rest; do
-            [ -n "$id" ] || continue
-            spend_rerun "$type" "$id" "$cost" other
-          done <<<"$other_plan"
+          # An oversized set goes first, so it is the only release of its window.
+          for pass in oversized rest; do
+            while read -r type id cost run heads unit attempt; do
+              [ -n "$id" ] || continue
+              if oversized other "$cost"; then [ "$pass" = oversized ] || continue; else [ "$pass" = rest ] || continue; fi
+              spend_rerun "$type" "$id" "$cost" other "$attempt" "$unit"
+            done <<<"$other_plan"
+          done
           # A window that had recovered when this job started skipped the sleep, but a job that
           # did not fit above its floor (the reserve for a non-group job, a fifth of the window
           # for a group job, or the projection of the reruns just released) fits after the
@@ -469,9 +486,9 @@ jobs:
               second=1
               plan=$retry_plan
               retry_plan=""
-              while read -r type id cost kind; do
+              while read -r type id cost kind attempt unit; do
                 [ -n "$id" ] || continue
-                spend_rerun "$type" "$id" "$cost" "$kind"
+                spend_rerun "$type" "$id" "$cost" "$kind" "$attempt" "$unit"
               done <<<"$plan"
             fi
           fi
