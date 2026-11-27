@@ -301,8 +301,13 @@ func (s *Scheduler) runHA(ctx context.Context) {
 				case err != nil:
 					s.logger().Error("scheduler lease renew failed; dropping leadership", "node", s.NodeID, "err", err)
 					dropLeadership()
-				case !held || !fresh(expires):
+				case !held:
 					dropLeadership()
+				case !fresh(expires):
+					// The row may still be live under our fence (clock read failed):
+					// reconfirm through the provisional renewal instead of idling a TTL.
+					dropLeadership()
+					unconfirmedClaim = true
 				default:
 					expiresAt = expires
 				}
@@ -393,23 +398,27 @@ func (s *Scheduler) checkHealth(ctx context.Context, job ScheduledJob) {
 	}
 }
 
+// defaultCaptureGrace bounds how long a gated job waits for a replacement
+// generation to publish its runtime bundle.
+const defaultCaptureGrace = 3 * time.Second
+
 // A replacement generation starts its scheduler (startup catch-up) inside
 // installer activation, just before SelfConfig publishes the active bundle.
-// Wait briefly for that publication; fenced refusals are final and never wait.
-var (
-	gateGrace     = 3 * time.Second
-	gateGraceStep = 100 * time.Millisecond
-)
-
-func captureWithGrace(ctx context.Context, capture func(context.Context) error) error {
-	timer := time.NewTimer(gateGrace)
+// Wait up to grace (polling every grace/30) while capture reports that window:
+// not ready, or fenced only because publication is pending. A lasting fence
+// is final and never waits. grace <= 0 means a single attempt.
+func captureWithGrace(ctx context.Context, grace time.Duration, capture func(context.Context) error) error {
+	timer := time.NewTimer(grace)
 	defer timer.Stop()
+	step := grace / 30
 	for {
 		err := capture(ctx)
-		if err == nil || errors.Is(err, service.ErrSelfConfigFenced) || !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		transient := errors.Is(err, service.ErrSelfConfigUnavailable) &&
+			(!errors.Is(err, service.ErrSelfConfigFenced) || errors.Is(err, service.ErrSelfConfigPublicationPending))
+		if !transient || grace <= 0 {
 			return err
 		}
-		wait := time.NewTimer(gateGraceStep)
+		wait := time.NewTimer(step)
 		select {
 		case <-ctx.Done():
 			wait.Stop()
@@ -425,10 +434,10 @@ func captureWithGrace(ctx context.Context, capture func(context.Context) error) 
 // gateOnRuntimeConfig runs capture before every job run. A refused run never
 // reaches job.Run; a job with OnRefused records its own failure there so the
 // refusal is durable, not just a scheduler log line.
-func gateOnRuntimeConfig(job ScheduledJob, capture func(context.Context) error) ScheduledJob {
+func gateOnRuntimeConfig(job ScheduledJob, grace time.Duration, capture func(context.Context) error) ScheduledJob {
 	run, refused := job.Run, job.OnRefused
 	job.Run = func(ctx context.Context) error {
-		if err := captureWithGrace(ctx, capture); err != nil {
+		if err := captureWithGrace(ctx, grace, capture); err != nil {
 			if refused != nil {
 				return refused(ctx, err)
 			}

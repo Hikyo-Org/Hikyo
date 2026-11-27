@@ -412,46 +412,81 @@ func TestSchedulerHALocalClockSkewDoesNotBlockLeadership(t *testing.T) {
 }
 
 func TestGateWaitsForRuntimeConfigPublication(t *testing.T) {
-	var calls, runs, refusals atomic.Int64
-	job := gateOnRuntimeConfig(ScheduledJob{
-		Name:      "gc",
-		Run:       func(context.Context) error { runs.Add(1); return nil },
-		OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
-	}, func(context.Context) error {
-		if calls.Add(1) < 3 {
-			return service.ErrSelfConfigUnavailable
+	pending := fmt.Errorf("window: %w", service.ErrSelfConfigPublicationPending)
+	for name, transient := range map[string]error{
+		"not ready":           service.ErrSelfConfigUnavailable,
+		"previous generation": pending,
+	} {
+		var calls, runs, refusals atomic.Int64
+		job := gateOnRuntimeConfig(ScheduledJob{
+			Name:      "gc",
+			Run:       func(context.Context) error { runs.Add(1); return nil },
+			OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
+		}, 300*time.Millisecond, func(context.Context) error {
+			if calls.Add(1) < 3 {
+				return transient
+			}
+			return nil
+		})
+		if err := job.Run(t.Context()); err != nil || runs.Load() != 1 || refusals.Load() != 0 {
+			t.Fatalf("%s: err=%v runs=%d refusals=%d", name, err, runs.Load(), refusals.Load())
 		}
-		return nil
-	})
-	if err := job.Run(t.Context()); err != nil || runs.Load() != 1 || refusals.Load() != 0 {
-		t.Fatalf("err=%v runs=%d refusals=%d", err, runs.Load(), refusals.Load())
 	}
 }
 
 func TestGateNeverRetriesFencedAndRefusesOnceAfterGrace(t *testing.T) {
-	oldGrace, oldStep := gateGrace, gateGraceStep
-	gateGrace, gateGraceStep = 30*time.Millisecond, 5*time.Millisecond
-	t.Cleanup(func() { gateGrace, gateGraceStep = oldGrace, oldStep })
 	for name, refusal := range map[string]error{
 		"fenced":  fmt.Errorf("wrapped: %w", service.ErrSelfConfigFenced),
 		"timeout": service.ErrSelfConfigUnavailable,
+		"pending": service.ErrSelfConfigPublicationPending,
 	} {
 		var calls, refusals atomic.Int64
 		job := gateOnRuntimeConfig(ScheduledJob{
 			Name:      "gc",
 			Run:       func(context.Context) error { t.Fatal("refused job ran"); return nil },
 			OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
-		}, func(context.Context) error { calls.Add(1); return refusal })
+		}, 30*time.Millisecond, func(context.Context) error { calls.Add(1); return refusal })
 		if err := job.Run(t.Context()); !errors.Is(err, refusal) || refusals.Load() != 1 {
 			t.Fatalf("%s: err=%v refusals=%d", name, err, refusals.Load())
 		}
 		if name == "fenced" && calls.Load() != 1 {
 			t.Fatalf("fenced capture retried %d times", calls.Load())
 		}
-		if name == "timeout" && calls.Load() < 2 {
-			t.Fatalf("unavailable capture not retried: %d", calls.Load())
+		if name != "fenced" && calls.Load() < 2 {
+			t.Fatalf("%s capture not retried: %d", name, calls.Load())
 		}
 	}
+}
+
+func TestSchedulerHARenewClockErrorReconfirmsWithoutWaitingATTL(t *testing.T) {
+	var runs atomic.Int64
+	// A TTL far beyond the test: leadership must return by reconfirmation.
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	s := haScheduler(lease, nil, &runs)
+	s.LeaseTTL = time.Hour
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "leadership", s.IsLeader)
+	var once atomic.Bool
+	lease.set(func(f *fakeLease) {
+		f.afterRenew = func() {
+			if once.CompareAndSwap(false, true) {
+				f.nowErr.Store(true)
+				go func() { time.Sleep(15 * time.Millisecond); f.nowErr.Store(false) }()
+			}
+		}
+	})
+	waitFor(t, "term restarted after clock error", func() bool { return runs.Load() >= 2 })
+	waitFor(t, "leadership again", s.IsLeader)
+	lease.mu.Lock()
+	claims := lease.claims
+	lease.mu.Unlock()
+	if claims != 1 {
+		t.Fatalf("node reclaimed (%d claims) instead of reconfirming its live lease", claims)
+	}
+	cancel()
+	<-done
 }
 
 type syncBuf struct {

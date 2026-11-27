@@ -540,7 +540,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		srv.scheduler.Jobs = append(srv.scheduler.Jobs, backupJobs(cfg, log, backupSvc)...)
 	}
 	for i := range srv.scheduler.Jobs {
-		srv.scheduler.Jobs[i] = gateOnRuntimeConfig(srv.scheduler.Jobs[i], func(ctx context.Context) error {
+		srv.scheduler.Jobs[i] = gateOnRuntimeConfig(srv.scheduler.Jobs[i], defaultCaptureGrace, func(ctx context.Context) error {
 			_, err := selfConfig.Capture(ctx)
 			return err
 		})

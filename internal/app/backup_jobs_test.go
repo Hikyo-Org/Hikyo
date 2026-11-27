@@ -174,7 +174,7 @@ func TestRefusedBackupExportRecordsFailure(t *testing.T) {
 	cfg, svc, backupDir := scheduleFixture(t)
 	refusal := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: could not serialize access"))
 	jobs := backupJobs(cfg, quietLogger(), svc)
-	gated := gateOnRuntimeConfig(jobs[0], func(context.Context) error { return refusal })
+	gated := gateOnRuntimeConfig(jobs[0], 0, func(context.Context) error { return refusal })
 
 	err := gated.Run(t.Context())
 	if !errors.Is(err, service.ErrSelfConfigUnavailable) {
@@ -194,7 +194,7 @@ func TestRefusedBackupExportRecordsFailure(t *testing.T) {
 		t.Fatalf("a refused export published %d archives", n)
 	}
 	// A job without OnRefused (prune) just returns the refusal.
-	if err := gateOnRuntimeConfig(jobs[1], func(context.Context) error { return refusal }).Run(t.Context()); !errors.Is(err, service.ErrSelfConfigUnavailable) {
+	if err := gateOnRuntimeConfig(jobs[1], 0, func(context.Context) error { return refusal }).Run(t.Context()); !errors.Is(err, service.ErrSelfConfigUnavailable) {
 		t.Fatalf("gated prune error = %v", err)
 	}
 }
@@ -207,7 +207,7 @@ func TestRefusedBackupExportOnlyRecordsDueNonFencedFailures(t *testing.T) {
 	jobs := backupJobs(cfg, quietLogger(), svc)
 	fault := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: boom"))
 	refuse := func(err error) error {
-		return gateOnRuntimeConfig(jobs[0], func(context.Context) error { return err }).Run(t.Context())
+		return gateOnRuntimeConfig(jobs[0], 0, func(context.Context) error { return err }).Run(t.Context())
 	}
 	failed := func() int64 { return countInstanceEvents(t, storeConfig(cfg), "backup.export_failed") }
 
@@ -249,7 +249,7 @@ func TestRefusedBackupExportKeepsDueCheckError(t *testing.T) {
 	refusal := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: boom"))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // svc.Due reads state with this context and fails.
-	err := gateOnRuntimeConfig(jobs[0], func(context.Context) error { return refusal }).Run(ctx)
+	err := gateOnRuntimeConfig(jobs[0], 0, func(context.Context) error { return refusal }).Run(ctx)
 	if !errors.Is(err, service.ErrSelfConfigUnavailable) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("refusal with failing due check = %v, want both the refusal and the due-check error", err)
 	}
