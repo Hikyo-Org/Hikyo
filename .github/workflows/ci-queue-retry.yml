@@ -73,7 +73,8 @@ jobs:
           # absolute count the Go gate checks per bucket.
           reserve=480
           other_cost=42
-          # Reads the balance and stops, handing the run on, below a tenth of the budget.
+          # Sets remaining, limit and reset (the reserve checks below read them), fails the step
+          # on a non-decimal reading, and stops, handing the run on, below a tenth of the budget.
           balance() {
             read -r remaining limit reset < <(gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset | todate)"')
             [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || exit 1
@@ -94,8 +95,9 @@ jobs:
           # cancelled without running a step, so it never qualifies.
           failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
             --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end)"')
-          # The listing above spends core requests: decide on the balance it left.
-          balance
+          # The listing above spends core requests: decide on the balance it left, when a job
+          # qualifies (with none, there is nothing to hand on).
+          if grep -q ' 1$' <<<"$failed"; then balance; fi
           total=0
           groups=()
           others=()

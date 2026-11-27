@@ -193,6 +193,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		// The jobs listing spends requests after the first read, so the decision uses a fresh balance.
 		// A spent window stops before the listing spends anything: after it the balance would look healthy.
 		{"a spent window is handed on before the jobs listing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "40 5000 1795475603|4000 5000 1795475603", nil, false, "40 of 5000"},
+		{"a listing that leaves the budget below a tenth hands nothing on when no job qualifies", []string{job(1, "group-"+head, "failure", "Set up job")}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, ""},
 		{"a group job the jobs listing leaves below a tenth is not rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, "99 of 1000"},
 		{"a failed second balance read fails the step", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "900 1000 1795475603|bad 1000 1795475603", nil, true, ""},
 		// 0x3e8 is 1000 to shell arithmetic, so only the number check stops it.
