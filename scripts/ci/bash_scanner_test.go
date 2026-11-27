@@ -172,7 +172,8 @@ func commandWords(call *syntax.CallExpr) []*syntax.Word {
 }
 
 // literal returns the value bash gives word when it has no expansion, with quotes and
-// backslashes removed (s"et", \set and 'set' are all set), or "" when it may expand.
+// backslashes removed (s"et", \set, 'set' and $'set' are all set), or "" when it may expand
+// or holds an escape inside $'...'.
 func literal(word *syntax.Word) string {
 	var value strings.Builder
 	for _, part := range word.Parts {
@@ -180,8 +181,8 @@ func literal(word *syntax.Word) string {
 		case *syntax.Lit:
 			value.WriteString(backslashEscape.ReplaceAllString(part.Value, "$1"))
 		case *syntax.SglQuoted:
-			if part.Dollar {
-				return ""
+			if part.Dollar && strings.Contains(part.Value, `\`) {
+				return "" // an ANSI-C escape; a plain $'...' is the same as '...'
 			}
 			value.WriteString(part.Value)
 		case *syntax.DblQuoted:
@@ -240,7 +241,8 @@ func setsErrexit(args []string) bool {
 // bareTests do not read, so a script using one could hide a bare test. None is used in the
 // repository; scanScript rejects them instead of parsing them. literal() already reads plainly
 // quoted or escaped set and shopt words, so the quote and backslash parts of the first two
-// patterns are needed only for spellings it leaves unknown ($'...', a backslash inside "...").
+// patterns are needed only for spellings it leaves unknown (an escape inside $'...', a
+// backslash inside "...").
 // eval is also found by the parser (unscannedErrexitUses), which reads a quoted or escaped
 // eval. The match is textual, so it also rejects such text in a comment or string, and it
 // cannot see a form built at run time (eval "$cmd", a set or shopt name from a variable), a
@@ -367,6 +369,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"escaped set -e in a substitution":    "value=$(set \\-e; [[ a == b ]]; echo accepted)\n",
 		"escaped errexit in a substitution":   "value=$(set -o err\\exit; [[ a == b ]]; echo accepted)\n",
 		"builtin set -e in a substitution":    "value=$(builtin set -e; [[ a == b ]]; echo accepted)\n",
+		"$'builtin' set -e in a substitution": "value=$($'builtin' set -e; [[ a == b ]]; echo accepted)\n",
 		"set +o expanded in a substitution":   "value=$(set +o \"$x\"; [[ a == b ]]; echo accepted)\n", // x=-e: bash lists the options, then sets -e
 		"command -- set -e in a substitution": "value=$(command -- set -e; [[ a == b ]]; echo accepted)\n",
 		"command -p set -e in a substitution": "value=$(command -p set -e; [[ a == b ]]; echo accepted)\n",
@@ -557,6 +560,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"$'e'\\\nval set -e\n", "eval $'s'\\\net -e\n", "eval \"s\\\net -$x\"\n", "eval 's\\\net -e'\n",
 		"eval $(:;) 'x\\\\\nset -e'\n", "eval $(:;) \"x\\\\\\\\\nset -e\"\n",
 		"\"eval\" $'\\n'set -e\n", "\\eval $'\\t'set -e\n", "\"eval\" $(:;) 'x\\\\\ns'et -e\n",
+		"$'builtin' \"eval\" set -e\n", "\"com\"$'mand' \"eval\" set -e\n", "\"eval\" shopt -s inherit_errexit\n",
 	} {
 		if len(matches(script)) == 0 {
 			t.Errorf("not rejected: %q", script)
