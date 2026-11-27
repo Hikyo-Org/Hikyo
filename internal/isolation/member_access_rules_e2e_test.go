@@ -714,11 +714,24 @@ func TestRuleCensusIsConfinedToItsProject(t *testing.T) {
 		w := domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisAll, EnvNames: []string{"prod"}, KeyMode: domain.AxisAll}
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapRead, Org: orgA, Where: w})
 
-		r := authn.NewSQLite(db.SQLiteRead())
+		ctx := t.Context()
+		var r *authn.Resolver
 		if db.Engine() == store.EnginePostgres {
-			r = authn.NewPG(db.PG())
+			pgtx, err := db.PG().BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = pgtx.Rollback(ctx) }()
+			r = authn.NewPG(pgtx)
+		} else {
+			sqtx, err := db.SQLiteRead().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = sqtx.Rollback() }()
+			r = authn.NewSQLite(sqtx)
 		}
-		census, err := r.RulesForProject(t.Context(), string(orgA), string(prjA1))
+		census, err := r.RulesForProject(ctx, string(orgA), string(prjA1))
 		if err != nil {
 			t.Fatal(err)
 		}
