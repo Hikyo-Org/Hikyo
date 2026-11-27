@@ -3,7 +3,9 @@
 package modroot
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -17,8 +19,14 @@ func Find() (string, error) {
 		return "", err
 	}
 	for dir := start; ; {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		_, err := os.Stat(filepath.Join(dir, "go.mod"))
+		if err == nil {
 			return dir, nil
+		}
+		// Only absence moves the search up; any other failure would otherwise
+		// return an outer module's root.
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

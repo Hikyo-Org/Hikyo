@@ -1,6 +1,8 @@
 package modroot_test
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,6 +28,33 @@ func TestFindWalksUpToGoMod(t *testing.T) {
 	// Resolve both sides: macOS temp dirs sit behind the /var -> /private/var symlink.
 	if gotReal, wantReal := realPath(t, got), realPath(t, root); gotReal != wantReal {
 		t.Fatalf("Find() = %q, want %q", gotReal, wantReal)
+	}
+}
+
+func TestFindReturnsInspectionErrors(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses the directory permission this test relies on")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/m\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(root, "a")
+	nested := filepath.Join(locked, "b")
+	if err := os.MkdirAll(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(nested)
+	// Without search permission on a, checking a/b/go.mod fails with EACCES
+	// rather than reporting absence; Find must not fall back to root.
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	got, err := modroot.Find()
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("Find() = %q, %v; want a permission error", got, err)
 	}
 }
 
