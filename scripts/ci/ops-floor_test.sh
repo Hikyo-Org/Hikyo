@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Preflight refusals must happen before compilation or container creation.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d)

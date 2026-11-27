@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Download and authenticate all release bytes before exposing an executable.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 [[ $# == 4 ]] || { echo 'usage: verify-release.sh REPOSITORY TAG COMMIT WORK' >&2; exit 2; }
 repository=$1 tag=$2 commit=$3 work=$4

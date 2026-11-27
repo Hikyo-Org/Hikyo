@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build outside measurement. Run real workloads in a native floor cgroup.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 raw=0

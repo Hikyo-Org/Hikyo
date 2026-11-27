@@ -6,6 +6,7 @@
 # Exports HIKYO_TEST_{VAULT,OPENBAO}_{ADDR,TOKEN,CACERT} and
 # HIKYO_TEST_KV_REQUIRED=1 into $GITHUB_ENV, so the contract in this job fails
 # loud if a server did not come up, while jobs that never set the flag skip it.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 

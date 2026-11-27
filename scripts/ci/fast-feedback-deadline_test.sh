@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Exercise the real supervisor with controlled commands, no contributor state.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 script="$script_dir/fast-feedback.sh"

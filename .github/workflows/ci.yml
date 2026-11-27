@@ -59,6 +59,7 @@ jobs:
           TAG_DELETED: ${{ github.event.deleted }}
         shell: bash
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Validation requires a full immutable revision.' >&2; exit 1; }
           test "$EVENT_REPOSITORY" = "$GITHUB_REPOSITORY"
@@ -112,6 +113,7 @@ jobs:
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           if [ "$EVENT_NAME" = push ]; then
             # checkout has the complete canonical tag and branch history. Bind
@@ -291,6 +293,7 @@ jobs:
           "$helm_dir/helm" version
       - name: Chart renders and carries release substitution anchors
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           module_path="$(awk '$1 == "module" { print $2 }' go.mod)"
           if [[ "$module_path" =~ ^github\.com/([^/]+)/hikyo$ ]]; then
             module_owner="${BASH_REMATCH[1],,}"
@@ -1661,6 +1664,7 @@ jobs:
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           trusted_planner="$RUNNER_TEMP/analysis-shards.go"
           if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch|push)$ ]]; then
@@ -1873,6 +1877,7 @@ jobs:
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           packages="$RUNNER_TEMP/race-packages"
           printf '%s\n' "$RACE_PLAN" |
             jq -r --argjson shard "$RACE_SHARD" '.[$shard][]' >"$packages"
@@ -1989,6 +1994,7 @@ jobs:
         id: fuzz-reproducers
         if: failure()
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           artifact_root="$RUNNER_TEMP/fuzz-reproducers"
           mkdir -p "$artifact_root"
           found=false
@@ -2197,6 +2203,7 @@ jobs:
           SOURCE_REVISION: ${{ inputs.revision }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          (( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
           set -euo pipefail
           trusted_checker="$RUNNER_TEMP/check-required-jobs.sh"
           trusted_registry="$RUNNER_TEMP/ci-job-registry.json"

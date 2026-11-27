@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Routing only. The trusted publisher independently verifies every current PR.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 [[ $# == 0 ]]
 : "${GH_REPO:?}" "${GITHUB_EVENT_NAME:?}" "${GITHUB_EVENT_PATH:?}"

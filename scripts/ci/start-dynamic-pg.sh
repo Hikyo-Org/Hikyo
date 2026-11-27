@@ -7,6 +7,7 @@
 # Exports HIKYO_TEST_DYNAMIC_PG_{DSN,PASSWORD,CA,GRANT_ROLE} + the required
 # flag into $GITHUB_ENV so the test in this job runs (and fails loud if the
 # target did not come up), while other jobs that never set the flag skip it.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # O2 resource evidence, separate from K2/K3 recovery and operator-fit lanes.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 architecture=${1:?usage: ops-floor.sh arm64\|amd64 NEW_EVIDENCE_DIRECTORY}

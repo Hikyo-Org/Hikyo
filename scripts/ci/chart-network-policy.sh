@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Called only by chart-kind.sh inside its owned, disposable enforcing cluster.
 # Transport fixtures model destinations, never real provider credentials.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 
 if [[ $# != 3 || -z "${HIKYO_NETWORK_POLICY_FIXTURE_IMAGE:-}" || -z "${KUBECONFIG:-}" ]]; then

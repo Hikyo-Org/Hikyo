@@ -2,6 +2,7 @@
 # Actual distroless singleton replacement with PostgreSQL in an owned kind cluster.
 # Acquisition fixture: signed test releases and offline descriptors are supplied
 # by scripts/ci/unattendedfixture, never production release credentials.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"

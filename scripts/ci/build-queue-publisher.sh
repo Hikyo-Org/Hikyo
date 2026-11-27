@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Called only from trusted default-branch tooling inside the absolute work cutoff.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 [[ $# == 0 ]]
 : "${RUNNER_TEMP:?missing runner temporary directory}"

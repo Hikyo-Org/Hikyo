@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Exercise activation with a read/write API double. Main proof is a separately
 # tested trusted boundary; this fixture proves activation ordering and scope.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)

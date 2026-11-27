@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Existing authenticated upgrade assembly, with only stable public proof inputs.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 [[ $# == 3 ]] || { echo 'usage: assemble-release.sh TRUST DOWNLOAD OUTPUT' >&2; exit 2; }
 trust=$1 download=$2 output=$3

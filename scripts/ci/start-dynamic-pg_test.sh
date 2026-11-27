@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Port discovery must preserve exact container ownership and fail closed before
 # exporting an unusable or non-loopback target to subsequent CI steps.
+(( BASH_VERSINFO[0] >= 4 )) || { echo 'requires bash >= 4: errexit ignores a failed [[ ]] on older bash' >&2; exit 2; }
 set -euo pipefail
 umask 077
 # This fixture replaces Docker with a stub, so it must not configure a daemon.
