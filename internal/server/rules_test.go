@@ -2,7 +2,9 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -68,11 +70,27 @@ func TestEnvironmentWideningRefusalBody(t *testing.T) {
 	}
 	// A delete carries its confirmation as a query parameter and is refused
 	// the same way.
-	deleting := hierarchyServer(t, &service.EnvWideningError{EnvName: "prod", Deleting: true, Count: 2})
+	refusal := &service.EnvWideningError{EnvName: "prod", Deleting: true, Count: 2}
+	var forwarded []domain.PrincipalID
+	deleting := hierarchyServerWithEnvs(t, refusal, confirmRecordingEnvs{stubEnvs: stubEnvs{stubHierarchy{err: refusal}}, got: &forwarded})
 	resp, raw = call(t, deleting, http.MethodDelete, path+"?confirm_widening="+testPrincipalID, "hik_1_cli_x", nil)
 	body = decodeError(t, raw)
 	if resp.StatusCode != http.StatusConflict || body.Error.Widening == nil || body.Error.Widening.Count != 2 ||
 		!bytes.Contains(raw, []byte(`deleting the environment \"prod\"`)) {
 		t.Fatalf("delete environment refusal = %d %s", resp.StatusCode, raw)
 	}
+	if !slices.Equal(forwarded, []domain.PrincipalID{testPrincipalID}) {
+		t.Fatalf("the delete handler forwarded confirm_widening %v, want [%s]", forwarded, testPrincipalID)
+	}
+}
+
+// confirmRecordingEnvs records the confirmation a delete handler forwards.
+type confirmRecordingEnvs struct {
+	stubEnvs
+	got *[]domain.PrincipalID
+}
+
+func (s confirmRecordingEnvs) DeleteConfirming(_ context.Context, _ service.Actor, _ domain.Scope, confirm []domain.PrincipalID) error {
+	*s.got = confirm
+	return s.outcome()
 }

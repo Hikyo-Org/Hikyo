@@ -29,7 +29,10 @@ import (
 type EnvWideningError struct {
 	EnvName string
 	// Deleting is set when the refused change deletes EnvName.
-	Deleting   bool
+	Deleting bool
+	// Plan is set when no single change of a definitions plan widens on its
+	// own, only the plan's changes together; EnvName is then empty.
+	Plan       bool
 	Count      int
 	Principals []domain.PrincipalID
 	Gains      []WideningGain
@@ -43,18 +46,21 @@ func (e *EnvWideningError) Unwrap() error { return domain.ErrConflict }
 
 // SafeDetail names the principals only when they were disclosed to the caller.
 func (e *EnvWideningError) SafeDetail() string {
-	change := fmt.Sprintf("naming an environment %q", e.EnvName)
-	if e.Deleting {
+	change, widens := fmt.Sprintf("naming an environment %q", e.EnvName), "widens"
+	switch {
+	case e.Plan:
+		change, widens = "this plan's environment changes together", "widen"
+	case e.Deleting:
 		change = fmt.Sprintf("deleting the environment %q", e.EnvName)
 	}
 	if len(e.Principals) == 0 {
-		return fmt.Sprintf("%s widens access for %d principals through their access rules; a member manager must confirm it", change, e.Count)
+		return fmt.Sprintf("%s %s access for %d principals through their access rules; a member manager must confirm it", change, widens, e.Count)
 	}
 	ids := make([]string, 0, len(e.Principals))
 	for _, p := range e.Principals {
 		ids = append(ids, string(p))
 	}
-	return fmt.Sprintf("%s widens access for %s; confirm naming exactly them", change, strings.Join(ids, ", "))
+	return fmt.Sprintf("%s %s access for %s; confirm naming exactly them", change, widens, strings.Join(ids, ", "))
 }
 
 // Widening is the structured half of the refusal the transport renders.
@@ -315,17 +321,23 @@ func (c envChange) gateMachines(ctx context.Context, r store.Repos, az *authz.Tx
 // it deletes, a rename or create the name it gives.
 func (c envChange) refusal(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, gains []WideningGain) error {
 	if c.to == "" {
-		return envWideningError(ctx, az, caller, c.scope, c.from, true, gains)
+		return envWideningError(ctx, az, caller, c.scope, &EnvWideningError{EnvName: c.from, Deleting: true}, gains)
 	}
-	return envWideningError(ctx, az, caller, c.scope, c.to, false, gains)
+	return envWideningError(ctx, az, caller, c.scope, &EnvWideningError{EnvName: c.to}, gains)
+}
+
+// planWideningError refuses a definitions plan whose environment changes
+// widen access only together, naming no single change.
+func planWideningError(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, scope domain.Scope, gains []WideningGain) error {
+	return envWideningError(ctx, az, caller, scope, &EnvWideningError{Plan: true}, gains)
 }
 
 // envWideningError builds the refusal, naming the gainers only to a caller
 // holding legacy manage-members on the project.
 func envWideningError(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, scope domain.Scope,
-	name string, deleting bool, gains []WideningGain) error {
+	e *EnvWideningError, gains []WideningGain) error {
 	gained := gainedPrincipals(gains)
-	e := &EnvWideningError{EnvName: name, Deleting: deleting, Count: len(gained)}
+	e.Count = len(gained)
 	ok, err := mayConfirmWidening(ctx, az, caller, scope)
 	if err != nil || !ok {
 		return firstErr(err, e)

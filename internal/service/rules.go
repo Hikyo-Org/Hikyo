@@ -387,19 +387,12 @@ type preparedRule struct {
 // prepareRuleCreate validates authority before any rule or session mutation.
 func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor, spec RuleSpec, now time.Time) (preparedRule, error) {
 	rule := domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
-	// Bind the names to the org's environments in this transaction (#1447).
-	// Nothing about them is disclosed before the caller is proved.
-	refs, err := az.RuleEnvRefs(ctx, spec.Org, "")
-	if err != nil {
-		return preparedRule{}, err
-	}
 	namesSent := spec.Where.EnvNames != nil
 	// Checks before the caller is proved read only the request: request
 	// stands in for rule with one name per environment id sent, so no
 	// refusal depends on which org, project or environment exists.
 	request := rule
 	if !namesSent {
-		rule.Where.EnvNames = envNamesOf(refs, spec.Where.Envs)
 		request.Where.EnvNames = sentEnvStandIns(spec.Where.Envs)
 	}
 	// A sent name takes the environment name grammar: one an environment
@@ -412,16 +405,6 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 	}
 	if err := request.Validate(); err != nil {
 		return preparedRule{}, err
-	}
-	rule.Where = rule.Where.BindEnvs(refs)
-	// The caller is proved over the sent ids as it would be over existing
-	// environments: an id matching none of its project's adds a name no
-	// environment can carry, which only an all-environments authority holds.
-	// Dropping it instead would let a narrow caller tell unknown ids apart.
-	proved := rule
-	if !namesSent {
-		proved.Where.EnvNames = append(slices.Clone(rule.Where.EnvNames), unmatchedEnvStandIns(refs, spec.Where.Envs)...)
-		proved.Where = proved.Where.BindEnvs(refs)
 	}
 	for _, items := range spec.Where.Keys {
 		for _, it := range items {
@@ -465,6 +448,26 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		if n > domain.MaxRuleItems {
 			return preparedRule{}, tooLarge(n)
 		}
+	}
+	// Bind the names to the org's environments in this transaction (#1447),
+	// once the request alone is known to be well formed and in bounds.
+	// Nothing about them is disclosed before the caller is proved.
+	refs, err := az.RuleEnvRefs(ctx, spec.Org, "")
+	if err != nil {
+		return preparedRule{}, err
+	}
+	if !namesSent {
+		rule.Where.EnvNames = envNamesOf(refs, spec.Where.Envs)
+	}
+	rule.Where = rule.Where.BindEnvs(refs)
+	// The caller is proved over the sent ids as it would be over existing
+	// environments: an id matching none of its project's adds a name no
+	// environment can carry, which only an all-environments authority holds.
+	// Dropping it instead would let a narrow caller tell unknown ids apart.
+	proved := rule
+	if !namesSent {
+		proved.Where.EnvNames = append(slices.Clone(rule.Where.EnvNames), unmatchedEnvStandIns(refs, spec.Where.Envs)...)
+		proved.Where = proved.Where.BindEnvs(refs)
 	}
 	first := domain.Scope{Org: spec.Org, Project: projects[0]}
 	caller, proof, err := authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, proved, now)
@@ -523,7 +526,7 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		return preparedRule{}, err
 	}
 	if !namesSent {
-		if err := checkHiddenExceptionsKept(ctx, az, spec.Org, spec.Target, rule.Where, projects, refs); err != nil {
+		if err := checkHiddenExceptionsKept(ctx, az, caller, spec.Org, spec.Target, rule.Where, projects, refs); err != nil {
 			return preparedRule{}, err
 		}
 	}
@@ -1347,9 +1350,11 @@ func confirmMoveWidening(ctx context.Context, r store.Repos, az *authz.TxAuthori
 // `all` rules (including any this replacement revokes, still stored) excepts
 // in a project both cover, and that no environment of that project carries.
 // A client before revision 22 sees exceptions only as environments, so it
-// could not have chosen to drop such a name. The caller is proved in every
-// covered project, so the names are theirs to see.
-func checkHiddenExceptionsKept(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID, target domain.PrincipalID,
+// could not have chosen to drop such a name. Only held rules the caller may
+// manage in the project count: the proof covers the submitted selector, not
+// the target's other rules, so a rule outside the caller's folders is neither
+// named nor lets the refusal reveal that it exists.
+func checkHiddenExceptionsKept(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, org domain.OrgID, target domain.PrincipalID,
 	w domain.Where, projects []domain.ProjectID, refs []domain.EnvRef) error {
 	if w.EnvMode != domain.AxisAll {
 		return nil
@@ -1360,9 +1365,23 @@ func checkHiddenExceptionsKept(ctx context.Context, az *authz.TxAuthorizer, org 
 		if err != nil {
 			return err
 		}
+		var candidates []domain.Rule
 		for _, cr := range census {
 			held := cr.Rule
 			if held.Principal != target || held.Where.EnvMode != domain.AxisAll || !held.Where.Names(project) {
+				continue
+			}
+			candidates = append(candidates, held)
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+		manageable, err := az.RulesManageable(ctx, caller, candidates, project)
+		if err != nil {
+			return err
+		}
+		for i, held := range candidates {
+			if !manageable[i] {
 				continue
 			}
 			for _, name := range held.Where.EnvNames {

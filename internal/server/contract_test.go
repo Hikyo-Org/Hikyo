@@ -1978,10 +1978,17 @@ func (s stubRevisions) RotateScanningKey(context.Context, service.Actor) (servic
 
 func hierarchyServer(t *testing.T, outcome error) *httptest.Server {
 	t.Helper()
+	return hierarchyServerWithEnvs(t, outcome, stubEnvs{stubHierarchy{err: outcome}})
+}
+
+// hierarchyServerWithEnvs is hierarchyServer with its environment service
+// replaced, for a test that records what a handler forwards.
+func hierarchyServerWithEnvs(t *testing.T, outcome error, envs server.EnvironmentService) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Projects:     stubHierarchy{err: outcome},
-		Environments: stubEnvs{stubHierarchy{err: outcome}}, Values: stubValues{stubHierarchy{err: outcome}},
+		Environments: envs, Values: stubValues{stubHierarchy{err: outcome}},
 		Folders:      stubFolders{stubHierarchy{err: outcome}},
 		Keys:         stubKeys{stubHierarchy{err: outcome}},
 		KeyGroups:    stubKeyGroups{stubHierarchy{err: outcome}},

@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -107,6 +108,43 @@ func TestRuleDelegationRootFolderException(t *testing.T) {
 		}
 		if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(hank), service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: exceptRoot}); !errors.Is(err, service.ErrGrantorLacksCapability) {
 			t.Fatalf("root-only exception cannot widen held capability into db subtree: %v", err)
+		}
+	})
+}
+
+// An old client's create is refused while the target's rules except a name no
+// environment carries (#1447), but only rules the caller may manage count: a
+// folder-limited manager must not learn the exceptions of a rule outside its
+// folders from the refusal.
+func TestRuleHiddenExceptionsOnlyFromManageableRules(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		inDB := whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapManageMembers, Org: orgA, Where: inDB})
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapEdit, Org: orgA, Where: inDB})
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapPublish, Org: orgA, Where: inDB})
+		excepting := func(name, folder string) {
+			t.Helper()
+			w := whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem(folder))
+			w.EnvNames = []string{name}
+			f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: w})
+		}
+		excepting("ghost", "stripe")
+		legacy := service.RuleSpec{Target: gina, Capability: domain.CapPublish, Org: orgA, Where: inDB}
+		// The stripe rule is outside frank's folders: it must not refuse, nor name.
+		if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), legacy); err != nil {
+			t.Fatalf("legacy create beside an unmanageable rule: %v", err)
+		}
+		// A rule frank manages still keeps its hidden exception, named.
+		excepting("spectre", "db")
+		legacy.Capability = domain.CapEdit
+		_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), legacy)
+		if !errors.Is(err, service.ErrRuleUnmatchedNamesDropped) {
+			t.Fatalf("legacy create beside a manageable rule: %v, want the hidden exception kept", err)
+		}
+		var detailed interface{ SafeDetail() string }
+		if !errors.As(err, &detailed) || !strings.Contains(detailed.SafeDetail(), "spectre") || strings.Contains(detailed.SafeDetail(), "ghost") {
+			t.Fatalf("refusal detail %v names the wrong exceptions", err)
 		}
 	})
 }

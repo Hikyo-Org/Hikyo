@@ -693,7 +693,7 @@ func (s *Definitions) moveGains(ctx context.Context, r store.Repos, az *authz.Tx
 // confirmWidenings checks, once the plan has executed in its transaction,
 // one confirmation against the union of what its key folder moves (D9) and
 // its environment renames and creates (#1447) give principals through their
-// rules, then audits each widening change with its own set and sends gaining
+// rules, then audits the changes that cause it and sends gaining
 // machines through the machine widening gate. A refusal rolls the plan back.
 func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
 	p authz.Proof, scope domain.Scope, res definitions.Resolution, moves []planMove, envs envChange, confirmed []domain.PrincipalID) error {
@@ -721,10 +721,41 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 			}
 		}
 	}
+	// Every change is evaluated against the whole plan's environments, so a
+	// project-wide gain shows on a harmless change beside the one that causes
+	// it. Attribute gains to the changes that widen on their own; when none
+	// does, the plan's changes widen only together and one change, a delete
+	// first, carries the plan's gains.
 	var envGains []WideningGain
+	causers := []int{}
 	for i := range changes {
 		changes[i].gained = changes[i].gains()
 		envGains = mergeGains(envGains, changes[i].gained)
+		solo := changes[i]
+		solo.afterRefs = nil
+		if len(changes[i].gained) > 0 && len(solo.gains()) > 0 {
+			causers = append(causers, i)
+		}
+	}
+	carrier := -1
+	if len(causers) > 0 {
+		carrier = causers[0]
+	} else if len(envGains) > 0 {
+		for i, c := range changes {
+			if len(c.gained) > 0 && (carrier < 0 || (c.to == "" && changes[carrier].to != "")) {
+				carrier = i
+			}
+		}
+	}
+	if carrier >= 0 {
+		carried := mergeGains(nil, changes[carrier].gained)
+		for i := range changes {
+			if !slices.Contains(causers, i) && i != carrier {
+				carried = mergeGains(carried, changes[i].gained)
+				changes[i].gained = nil
+			}
+		}
+		changes[carrier].gained = carried
 	}
 	union = mergeGains(union, envGains)
 	if len(union) == 0 {
@@ -734,19 +765,10 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 		if len(moves) > 0 {
 			return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
 		}
-		// Name the first change that widens on its own: every change is
-		// evaluated against the whole plan's environments, so a project-wide
-		// gain shows on a harmless change beside the one that causes it.
-		first := changes[0]
-		for _, c := range changes {
-			solo := c
-			solo.afterRefs = nil
-			if len(solo.gains()) > 0 {
-				first = c
-				break
-			}
+		if len(causers) > 0 {
+			return changes[causers[0]].refusal(ctx, az, caller.Principal, union)
 		}
-		return first.refusal(ctx, az, caller.Principal, union)
+		return planWideningError(ctx, az, caller.Principal, scope, union)
 	}
 	want := slices.Clone(confirmed)
 	slices.Sort(want)

@@ -72,9 +72,11 @@ created into an *only*. Such a change is refused until it is confirmed with
 a machine that gains plaintext access also needs your recent
 reauthentication over the environment. A new environment that a rule reaches
 because it does not except it needs no confirmation, and nor does a change
-that only narrows access. Creating or cloning an environment that a machine
-would gain plaintext access to is always refused: create it under another
-name, then rename it. Deleting the environment that a rule excepts would let
+that only narrows access. Creating or cloning an environment whose name
+gives a machine plaintext access through an *only* rule is always refused:
+create it under another name, then rename it. A machine whose `all` rule
+reaches the new environment because it does not except it gains nothing by
+name, so that create needs no confirmation and no workaround. Deleting the environment that a rule excepts would let
 that rule reach the rest of the project, so it is refused the same way until
 confirmed (`hikyo env delete --confirm-widening`). The rule keeps the name: an
 environment created later with it is excepted again.
@@ -100,8 +102,9 @@ the organization's projects first, and the rule is refused if a project was
 added or removed in the meantime.
 
 Because a listing repeats the rule's folders and environment names under
-every project, a rule counts as its projects times one plus its folders plus
-its names, plus its names once more, at most 500. A rule that
+every project, an all-projects rule counts as its projects times one plus its
+folders plus its names, at most 500. A rule naming its projects counts as its
+projects times one plus its names, plus its key items, at most 500 too. A rule that
 would count more is refused, and so is a new project that would take an
 existing rule past 500; that refusal also names the rules to narrow or
 remove.

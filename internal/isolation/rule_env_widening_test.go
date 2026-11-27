@@ -675,6 +675,54 @@ func TestDefinitionsApplyEnvironmentDeleteWidening(t *testing.T) {
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = 'env_def_envdel_prod'"); n != 1 {
 			t.Fatalf("confirmations recorded = %d, want 1", n)
 		}
+		// The harmless rename caused nothing and records no confirmation.
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed'"); n != 1 {
+			t.Fatalf("confirmations recorded across the plan = %d, want only the delete's", n)
+		}
+	})
+}
+
+// A definitions plan whose changes widen only together (#1447): deleting
+// prod or staging alone leaves the other excepted, so the refusal names the
+// plan rather than a change, and the confirmation is recorded once, on a
+// delete, not on the harmless rename beside them.
+func TestDefinitionsApplyEnvironmentChangesWidenTogether(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		const reader = domain.PrincipalID("usr_envplan")
+		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('usr_envplan', 'human', "+ts+")")
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm', 'usr_alice', 'manage-members', 'org_a', NULL, NULL, "+ts+")")
+		f := seedDefinitionsProject(t, db, "envboth", true)
+		for i, name := range []string{"prod", "staging"} {
+			execRaw(t, db, fmt.Sprintf("INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('env_def_envboth_%s', 'org_a', '%s', '%s', '', %s, %d)", name, f.project, name, ts, i+1))
+		}
+		if _, err := (&service.Rules{DB: db}).Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: reader, Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{f.project}, EnvMode: domain.AxisAll, EnvNames: []string{"prod", "staging"}, KeyMode: domain.AxisAll}}); err != nil {
+			t.Fatalf("all-except-prod-and-staging rule: %v", err)
+		}
+		svc := definitionsService(t, db)
+		bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+		bundle.Environments = slices.DeleteFunc(bundle.Environments, func(e definitions.Environment) bool { return e.Name == "prod" || e.Name == "staging" })
+		bundle.Environments[0].Name = "qa"
+		plan := planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
+		var widening *service.EnvWideningError
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
+			!widening.Plan || widening.EnvName != "" || !slices.Equal(widening.Principals, []domain.PrincipalID{reader}) ||
+			!strings.HasPrefix(widening.SafeDetail(), "this plan's environment changes together widen access") {
+			t.Fatalf("unconfirmed apply = %v, want a plan-level refusal naming %s", err, reader)
+		}
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true, ConfirmWidening: []domain.PrincipalID{reader}}); err != nil {
+			t.Fatalf("confirmed apply: %v", err)
+		}
+		if !reachesProject(t, db, reader, domain.Scope{Org: orgA, Project: f.project}) {
+			t.Fatal("the confirmed apply did not widen the rule to the project")
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed'"); n != 1 {
+			t.Fatalf("confirmations recorded = %d, want one for the plan", n)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id IN ('env_def_envboth_prod', 'env_def_envboth_staging')"); n != 1 {
+			t.Fatal("the plan's confirmation is not recorded on a delete")
+		}
 	})
 }
 
