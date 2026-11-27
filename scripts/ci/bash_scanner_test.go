@@ -145,10 +145,10 @@ func callsWith(node syntax.Node, name string, match func([]string) bool) bool {
 			return !found
 		}
 		words := call.Args
-		// builtin name and command [-p] name run the same builtin.
+		// builtin [--] name and command [-p] [--] name run the same builtin.
 		for len(words) > 1 && (words[0].Lit() == "builtin" || words[0].Lit() == "command") {
 			words = words[1:]
-			for len(words) > 1 && words[0].Lit() == "-p" {
+			for len(words) > 1 && (words[0].Lit() == "-p" || words[0].Lit() == "--") {
 				words = words[1:]
 			}
 		}
@@ -188,7 +188,7 @@ func setsErrexit(args []string) bool {
 			if i+1 >= len(args) || (!unknown(args[i+1]) && (args[i+1][0] == '-' || args[i+1][0] == '+')) {
 				break
 			}
-			if i++; arg[0] == '-' && (args[i] == "errexit" || unknown(args[i])) {
+			if i++; unknown(args[i]) || (arg[0] == '-' && args[i] == "errexit") {
 				return true
 			}
 		}
@@ -262,6 +262,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"escaped set -e in a substitution":    "value=$(set \\-e; [[ a == b ]]; echo accepted)\n",
 		"escaped errexit in a substitution":   "value=$(set -o err\\exit; [[ a == b ]]; echo accepted)\n",
 		"builtin set -e in a substitution":    "value=$(builtin set -e; [[ a == b ]]; echo accepted)\n",
+		"set +o expanded in a substitution":   "value=$(set +o \"$x\"; [[ a == b ]]; echo accepted)\n", // x=-e: bash lists the options, then sets -e
+		"command -- set -e in a substitution": "value=$(command -- set -e; [[ a == b ]]; echo accepted)\n",
 		"command -p set -e in a substitution": "value=$(command -p set -e; [[ a == b ]]; echo accepted)\n",
 		"inherited errexit":                   "shopt -s inherit_errexit\nvalue=$([[ a == b ]]; echo accepted)\n",
 		"tab-indented bash heredoc":           "cat >f <<-'EOF'\n\t#!/usr/bin/env bash\n\t[[ -n $a ]]\n\tEOF\n",
@@ -295,7 +297,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"set +e substitution":          "value=$(set +e; [[ a == b ]]; echo x)\n",
 		"set -- -e substitution":       "value=$(set -- -e; [[ a == b ]]; echo x)\n", // -e is a positional parameter
 		"set -o pipefail substitution": "value=$(set -o pipefail; [[ a == b ]]; echo x)\n",
-		"set +o expanded substitution": "value=$(set +o \"$x\"; [[ a == b ]]; echo x)\n",
+		"command -v set substitution":  "value=$(command -v set -e; [[ a == b ]]; echo x)\n", // only prints how set resolves
 		"set - -e substitution":        "value=$(set - -e; [[ a == b ]]; echo x)\n",
 		"set x -e substitution":        "value=$(set x -e; [[ a == b ]]; echo x)\n", // options end at the first positional word
 		"set +o errexit substitution":  "value=$(set +o errexit; [[ a == b ]]; echo x)\n",
