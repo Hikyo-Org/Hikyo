@@ -339,6 +339,17 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   - A plan's environment census reads the rules before the plan runs, so a
     rule the plan revokes or prunes (for example by deleting its last key)
     still counts, and its principal must be confirmed.
+  - The upgrade's per-project split (00102) does not check the 1,000-rule
+    `MaxRulesPerOrg` cap, so an org can exceed it after the upgrade; new
+    creates are refused until rules are removed.
+  - A rule-authorized check binds names within the chain's project
+    (`RulesWithin`), so it reads that project's environments: one extra
+    environment read per check.
+  - A widening confirmation names gains per principal, capability and
+    environment, merged over key selectors (`gainsOf`,
+    `internal/service/rules.go`): a gain of one folder reads as the whole
+    environment's. A project-wide gain stays its own entry beside
+    environment gains (`mergeGains`).
 - **Refusal uniformity.** Checks before the caller is proved read only the
   request (one stand-in name per sent environment id); a refused caller gets
   the same not-found whatever ids exist

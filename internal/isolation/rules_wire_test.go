@@ -77,6 +77,39 @@ func runRuleWire(t *testing.T, db *store.DB) {
 		t.Fatalf("ambiguous key item = %d %s, want 400", code, raw)
 	}
 
+	// An old client's environment item naming a project the rule does not
+	// list (#1447) is refused from the request alone, on create and replace
+	// alike, with the same body whether or not the id exists.
+	unlisted := func(env string) apigen.CreateRuleRequest {
+		req := body
+		req.Where.Projects = []apigen.ID{e.project}
+		req.Where.Environments = apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleEnvironmentItem{{Project: sibling, Environment: env}}}
+		req.Where.Keys.Items = []apigen.RuleKeyItem{{Project: e.project, Folder: &db0}}
+		return req
+	}
+	// ErrInvalid withholds its detail, so the body is the generic contract refusal.
+	const wantUnlisted = `{"error":{"code":"bad_request","message":"the request does not satisfy the API contract"}}`
+	for _, env := range []string{siblingEnv, "env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f75"} {
+		if code, raw := e.call(t, http.MethodPost, org+"/rules", unlisted(env)); code != http.StatusBadRequest || string(bytes.TrimSpace(raw)) != wantUnlisted {
+			t.Fatalf("create with an unlisted project's item %s = %d %s, want 400 %s", env, code, raw, wantUnlisted)
+		}
+		replace := apigen.ReplaceRulesRequest{Principal: holder, Create: &[]apigen.CreateRuleRequest{unlisted(env)}}
+		if code, raw := e.call(t, http.MethodPost, org+"/rules/replace", replace); code != http.StatusBadRequest || string(bytes.TrimSpace(raw)) != wantUnlisted {
+			t.Fatalf("replace with an unlisted project's item %s = %d %s, want 400 %s", env, code, raw, wantUnlisted)
+		}
+	}
+	// Control: the same item is accepted once the rule lists its project.
+	listed := unlisted(siblingEnv)
+	listed.Where.Projects = append(listed.Where.Projects, sibling)
+	code, raw = e.call(t, http.MethodPost, org+"/rules", listed)
+	var accepted apigen.Rule
+	if code != http.StatusCreated || json.Unmarshal(raw, &accepted) != nil {
+		t.Fatalf("create with the item's project listed = %d %s, want 201", code, raw)
+	}
+	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+accepted.Id, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke control = %d %s", code, raw)
+	}
+
 	var list apigen.RuleList
 	code, raw = e.call(t, http.MethodGet, org+"/rules", nil)
 	if code != http.StatusOK || json.Unmarshal(raw, &list) != nil || list.Count != 1 || list.Items[0].OtherProjects {

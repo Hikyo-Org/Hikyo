@@ -233,21 +233,25 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	stmts = append(stmts, rule("rul_twice", "usr_twice", "read", "only", "only", "all")...)
 	stmts = append(stmts, item("rul_twice_pa", "rul_twice", "project", "prj_a", "", ""),
 		item("rul_twice_e1", "rul_twice", "env", "prj_a", "env_a_prod", ""), item("rul_twice_e2", "rul_twice", "env", "prj_a", "env_a_prod", ""))
-	// Consistent but too large once names match in every project: 125 names
-	// unique to each of c and d list 2 + 250 items by id, yet 2 * (1 + 250)
-	// by name, past MaxRuleItems. It splits so every part can be saved again.
+	// The size guard: a consistent rule whose projects select the same names
+	// lists as many items by name as it did by id, so Validate's cap kept
+	// every saved one within MaxRuleItems. This one was written past it (raw
+	// SQL, as a row bypassing Validate): c and d each select the same 250
+	// names, 2 + 500 items by id and 2 * (1 + 250) by name. It splits so
+	// every part can be saved again.
 	stmts = append(stmts, `INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_c', 'org_en', 'c', `+at+`)`,
 		`INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_d', 'org_en', 'd', `+at+`)`)
 	stmts = append(stmts, rule("rul_big", "usr_big", "read", "only", "only", "all")...)
 	stmts = append(stmts, item("rul_big_pc", "rul_big", "project", "prj_c", "", ""), item("rul_big_pd", "rul_big", "project", "prj_d", "", ""))
 	var bigEnvs []domain.EnvRef
 	for i := range 250 {
-		project := []string{"prj_c", "prj_d"}[i%2]
-		id, name := fmt.Sprintf("env_big_%03d", i), fmt.Sprintf("big%03d", i)
-		bigEnvs = append(bigEnvs, domain.EnvRef{Project: domain.ProjectID(project), ID: domain.EnvID(id), Name: name})
-		stmts = append(stmts, `INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('`+
-			id+`', 'org_en', '`+project+`', '`+name+`', '', `+at+`, `+fmt.Sprint(i)+`)`,
-			item(fmt.Sprintf("rul_big_e%03d", i), "rul_big", "env", project, id, ""))
+		for _, project := range []string{"prj_c", "prj_d"} {
+			id, name := fmt.Sprintf("env_big_%s_%03d", project[len(project)-1:], i), fmt.Sprintf("big%03d", i)
+			bigEnvs = append(bigEnvs, domain.EnvRef{Project: domain.ProjectID(project), ID: domain.EnvID(id), Name: name})
+			stmts = append(stmts, `INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('`+
+				id+`', 'org_en', '`+project+`', '`+name+`', '', `+at+`, `+fmt.Sprint(i)+`)`,
+				item("rul_big_"+id, "rul_big", "env", project, id, ""))
+		}
 	}
 	for i, stmt := range stmts {
 		if err := db.exec(stmt); err != nil {
@@ -620,12 +624,19 @@ func testRuleEnvNamesMigrationKeepsDelegatedRevoke(t *testing.T, cfg store.Confi
 			ids = append(ids, id[:strings.Index(id, "'")])
 		}
 	}
+	if len(ids) != 2 {
+		t.Fatalf("migrated rules %v, want one per project", ids)
+	}
+	// Each part holds one project and that project's own name.
+	if got := lines(`SELECT p.project_id || '/' || n.env_name FROM rules AS r
+		JOIN rule_items AS p ON p.rule_id = r.id AND p.axis = 'project'
+		JOIN rule_items AS n ON n.rule_id = r.id AND n.axis = 'env'
+		WHERE r.principal_id = 'usr_rvtarget' ORDER BY 1`); !slices.Equal(got, []string{"prj_rva/dev", "prj_rvb/prod"}) {
+		t.Fatalf("migrated parts select %v, want [prj_rva/dev prj_rvb/prod]", got)
+	}
 	for _, id := range ids {
 		if err := svc.Revoke(ctx, service.LocalPrincipal("usr_rvmgr"), "org_rv", id); err != nil {
 			t.Fatalf("revoke migrated rule %s by the manager of its environments: %v (migrated rows %q)", id, err, migrated)
 		}
-	}
-	if len(ids) != 2 {
-		t.Fatalf("migrated rules %v, want one per project", ids)
 	}
 }

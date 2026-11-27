@@ -22,11 +22,13 @@ Access rules now select environments by name in every project a rule covers
 ([#1447](https://github.com/Hikyo-Org/Hikyo/issues/1447)). The upgrade keeps
 what every rule reaches exactly:
 
-- A rule whose environment names already match only its own environments is
-  converted in place.
+- A rule whose projects all select the same environment names, and whose names
+  match only its own environments, is converted in place.
 - Any other rule is split into one rule per project, recorded in the audit log
-  as `rule.split` with the old and new rule ids. So is a rule that, matched by
-  name in every project, would list more than the 500 items a rule carries.
+  as `rule.split` with the old and new rule ids.
+- As a guard, a rule that would list more than the 500 items a rule carries
+  once matched by name is split the same way. Only a rule stored past that
+  limit, bypassing validation, reaches it.
 - Splitting adds rules. An organization that ends above the 1000 rules it may
   hold keeps every rule working, but refuses new rules, and replacements that
   leave it above, until some are revoked.

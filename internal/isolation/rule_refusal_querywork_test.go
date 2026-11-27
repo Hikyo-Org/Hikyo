@@ -157,5 +157,19 @@ func TestRuleCreateRefusalDoesNotProbeEnvironmentIDs(t *testing.T) {
 		if !errors.Is(existing, domain.ErrInvalid) || unknown == nil || existing.Error() != unknown.Error() {
 			t.Fatalf("an item of an unlisted project: existing id %v, unknown id %v; want the same invalid refusal", existing, unknown)
 		}
+		// Beside an item of its own listed project, the unlisted item is
+		// refused all the same, by the same refusal.
+		mixed := func(env domain.EnvID) error {
+			s := spec(envA1)
+			s.Where.Envs[prjA2] = []domain.EnvID{env}
+			_, err := f.rules.Create(t.Context(), service.LocalPrincipal("usr_a1mgr"), s)
+			return err
+		}
+		if err := mixed(envA2); !errors.Is(err, domain.ErrInvalid) || err.Error() != existing.Error() {
+			t.Fatalf("listed and unlisted items: %v, want %v", err, existing)
+		}
+		if err := mixed("env_no_such"); err == nil || err.Error() != existing.Error() {
+			t.Fatalf("listed and an unknown unlisted item: %v, want %v", err, existing)
+		}
 	})
 }

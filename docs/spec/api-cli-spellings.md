@@ -663,6 +663,10 @@ capability for one person; every verb is human-session only and needs
   `env rename <env> --name N --confirm-widening <principal>...` (#1447)
   confirm an environment name that gives principals access through their
   rules, sent as `confirm_widening`.
+- `env delete <env> --confirm-widening <principal>...` (#1447, owner decision
+  2026-11-27) confirms a delete that gives principals access through rules
+  that excepted the environment's name. Wire: it is sent as the
+  `confirm_widening` query parameter of the DELETE.
 
 ## Local repository and CI secret scanning ([secret-scanning.md](../adr/secret-scanning.md) and [api-cli-surface.md](../adr/api-cli-surface.md) amendments 2026-09-26, [#153](https://github.com/Hikyo-Org/Hikyo/issues/153))
 

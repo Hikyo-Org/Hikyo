@@ -353,12 +353,14 @@ apply when the implementing pull request merges.
   remove access:
   - A rule whose projects all select the same names, and whose names in every project it covers
     match only its own items, is converted in place, with one name per distinct name.
-  - Any other rule is split into one rule per project, as is a consistent rule that would list
-    more than `MaxRuleItems` once its names match in every project. A project where it reached
-    nothing gets no rule. Each split is audited as `rule.split`, with the old rule id and the new rule ids.
+  - Any other rule is split into one rule per project. A project where it reached nothing gets
+    no rule. Each split is audited as `rule.split`, with the old rule id and the new rule ids.
     Projects selecting different names split even when name matching would reach the same
     environments: converted, each project would carry a name none of its environments has, and a
     manager whose grants cover only the rule's environments could no longer revoke it.
+  - A guard splits a consistent rule that would list more than `MaxRuleItems` by name. With equal
+    name sets a rule lists as many items by name as it did by id, so only a row written past the
+    item cap, bypassing validation, reaches it.
   - A rule that cannot be split deterministically fails closed. It loses its environment items and
     reaches no environment. It carries a manager-facing `fault` naming the reason, and is audited as
     `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or

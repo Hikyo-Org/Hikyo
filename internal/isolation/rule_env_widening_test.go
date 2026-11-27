@@ -169,9 +169,9 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				restore := "UPDATE environments SET name = 'prod' WHERE id = '" + string(envProd) + "'"
 				var err error
 				if db.Engine() == store.EnginePostgres {
-					_, err = db.PG().Exec(context.Background(), restore)
+					_, err = db.PG().Exec(context.WithoutCancel(t.Context()), restore)
 				} else {
-					_, err = db.SQLiteWrite().ExecContext(context.Background(), restore)
+					_, err = db.SQLiteWrite().ExecContext(context.WithoutCancel(t.Context()), restore)
 				}
 				if err != nil {
 					t.Errorf("restore prod: %v", err)
