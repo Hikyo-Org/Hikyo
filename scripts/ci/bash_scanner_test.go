@@ -43,10 +43,11 @@ func bareTests(script string) ([]int, error) {
 		}
 	}
 	stmt = func(s *syntax.Stmt, inert bool) {
-		inert = inert || s.Negated || s.Background
+		// An async list runs in its own subshell, where errexit still applies to its body.
+		inert = inert || s.Negated
 		switch c := s.Cmd.(type) {
 		case *syntax.TestClause, *syntax.ArithmCmd:
-			if !inert {
+			if !inert && !s.Background {
 				found = append(found, int(s.Pos().Line()))
 			}
 		case *syntax.BinaryCmd:
@@ -85,29 +86,46 @@ func bareTests(script string) ([]int, error) {
 		}
 	}
 	stmts(file.Stmts, false)
-	// A heredoc that is itself a bash script is scanned too. One that does not parse is
-	// a deliberately broken fixture (fast-feedback_test.sh writes one): its content is
-	// data for another tool, so it is not an error of this script.
+	// A process substitution runs in a subshell that keeps errexit on every bash.
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if sub, ok := node.(*syntax.ProcSubst); ok {
+			stmts(sub.Stmts, false)
+		}
+		return true
+	})
+	// A heredoc that is itself a bash script is scanned too. One that does not parse is an
+	// error, except the single deliberately broken fixture fast-feedback_test.sh writes.
 	syntax.Walk(file, func(node syntax.Node) bool {
 		redirect, ok := node.(*syntax.Redirect)
 		if !ok || redirect.Hdoc == nil {
 			return true
 		}
 		body := script[redirect.Hdoc.Pos().Offset():redirect.Hdoc.End().Offset()]
+		body = body[:strings.LastIndex(body, "\n")+1] // the slice ends with the closing delimiter
 		if !bashShebang.MatchString(body) {
 			return true
 		}
-		lines, _ := bareTests(body)
+		lines, herr := bareTests(body)
+		if herr != nil && body != brokenSourceFixture {
+			err = fmt.Errorf("bash heredoc at line %d: %w", redirect.Hdoc.Pos().Line(), herr)
+			return false
+		}
 		for _, line := range lines {
 			found = append(found, int(redirect.Hdoc.Pos().Line())-1+line)
 		}
 		return true
 	})
-	return found, nil
+	return found, err
 }
 
+// brokenSourceFixture is the one bash heredoc that must not parse: fast-feedback_test.sh
+// writes it so ShellCheck reports a sourced-file parse failure.
+const brokenSourceFixture = "#!/usr/bin/env bash\nfixture_message() { printf 'source fixture reached\\n'; }\nfixture_invalid() {\n"
+
 // bareTestCases pin what bareTests flags and allows. Each flagged form fails open on
-// bash 3.2 and exits on bash 5; each allowed form behaves the same on both.
+// bash 3.2 and exits on bash 5; each allowed form behaves the same on both. The scanner
+// is conservative in one direction: a test that is a pipeline member is flagged although
+// bash 3.2 already enforces errexit on the pipeline.
 var bareTestCases = struct{ flagged, allowed map[string]string }{
 	flagged: map[string]string{
 		"top level test":            "set -e\n[[ \"$x\" =~ ^[0-9]+$ ]]\n",
@@ -151,6 +169,9 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"after ansi-c quote":        "x=$'it\\'s'\n[[ a == b ]]\n",
 		"after grep with quotes":    "e=\"$(grep -E 'a\\(\"1\"|\"::1\"' \"$t\" || true)\"\n[[ a == b ]]\n",
 		"group closed by plain end": "{ [[ -n $a ]]; other; }\n",
+		"background group":          "{ [[ a == b ]]; echo x; } &\n",
+		"background subshell":       "( [[ a == b ]]; echo x ) &\n",
+		"process substitution":      "cat <( [[ a == b ]]; echo x )\n",
 	},
 	allowed: map[string]string{
 		"or exit":               "[[ -n $a ]] || exit 1\n",
@@ -224,6 +245,12 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 	checkBareTestTable(t, bareTests)
 	if _, err := bareTests("if [[ x\n"); err == nil {
 		t.Error("a parse error must be returned, not skipped")
+	}
+	if _, err := bareTests("cat >f <<'EOF'\n#!/usr/bin/env bash\n[[ a == b ]]\ng() {\nEOF\n"); err == nil {
+		t.Error("an unparsable bash heredoc must be returned as an error, not skipped")
+	}
+	if _, err := bareTests("cat >f <<'EOF'\n" + brokenSourceFixture + "EOF\n"); err != nil {
+		t.Errorf("the deliberately broken fast-feedback fixture must stay accepted: %v", err)
 	}
 }
 
