@@ -34,8 +34,8 @@ const (
 	envMM    = domain.PrincipalID("usr_envmm")    // manage-members, only pinned, over prj_a2
 )
 
-// reachesEnv reports whether p's rules, a person's or a machine's, as the chokepoint reads them, reach
-// See in env.
+// reachesEnv reports whether p's rules, a person's or a machine's, as the
+// chokepoint reads them, reach See in env.
 func reachesEnv(t *testing.T, db *store.DB, p domain.PrincipalID, env domain.Scope) bool {
 	t.Helper()
 	resolver := authn.NewSQLite(db.SQLiteRead())

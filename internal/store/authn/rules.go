@@ -541,8 +541,9 @@ func (r *Resolver) LockOrgProjectsForDelete(ctx context.Context, org string) ([]
 }
 
 // AllProjectsRulesInOrg lists the org's all-projects rules with their stored
-// folder and environment-name item counts: an org's last project cannot be deleted while one exists, and
-// a project cannot be created that would list one past the v1 bounds.
+// folder and environment-name item counts: an org's last project cannot be
+// deleted while one exists, and a project cannot be created that would list
+// one past the v1 bounds.
 func (r *Resolver) AllProjectsRulesInOrg(ctx context.Context, org string) ([]domain.RuleItemCount, error) {
 	var out []domain.RuleItemCount
 	if r.sq != nil {

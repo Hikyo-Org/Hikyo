@@ -266,8 +266,9 @@ func (a *TxAuthorizer) LockOrgProjectsForDelete(ctx context.Context, org domain.
 }
 
 // AllProjectsRulesInOrg lists the org's all-projects rules with their stored
-// folder and environment-name item counts; the org's last project cannot be deleted while one exists, and
-// no project may be created that lists one past the v1 bounds.
+// folder and environment-name item counts; the org's last project cannot be
+// deleted while one exists, and no project may be created that lists one past
+// the v1 bounds.
 func (a *TxAuthorizer) AllProjectsRulesInOrg(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error) {
 	return a.r.AllProjectsRulesInOrg(ctx, string(org))
 }

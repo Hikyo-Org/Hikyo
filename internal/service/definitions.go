@@ -51,7 +51,7 @@ type Definitions struct {
 	// and `check` surfaces findings non-persisting. A nil ruleset is scanning-off
 	// (a pre-#74 test); a booted server always wires it.
 	Scan *scanning.Ruleset
-	// Auth is the reauthentication seam an environment rename or create
+	// Auth is the reauthentication seam an environment rename, create or delete
 	// consumes when it gives a machine access through its rules (#1447).
 	// Nil refuses such a plan, loudly.
 	Auth *Auth

@@ -532,15 +532,9 @@ function DefinitionsPolicy({
 }
 
 /**
- * NewEnvironment is the create affordance the empty matrix points to
- * ("Project settings › New environment"). The refusal stays local to the form
- * so it lands beside the input that produced it; success is reported through
- * the page feedback the query invalidation then fills with the new row.
- */
-/**
- * An environment create, rename, clone or delete refused because access rules select
- * environments by name (#1447): people or machines would gain access. Its
- * confirmation resends the same change naming exactly them.
+ * An environment create, rename, clone or delete refused because access rules
+ * select environments by name (#1447): people or machines would gain access.
+ * Its confirmation resends the same change naming exactly them.
  */
 type EnvWidening = {
   readonly refusal: WideningRefusal;
@@ -549,7 +543,6 @@ type EnvWidening = {
   readonly confirm: (principals: readonly string[]) => void;
   readonly copy: WideningCopy;
 };
-
 
 /** The widening refusal an environment lifecycle error carries, if any. */
 const wideningOf = (error: unknown) =>
@@ -603,6 +596,12 @@ function EnvWideningDialog({
   );
 }
 
+/**
+ * NewEnvironment is the create affordance the empty matrix points to
+ * ("Project settings › New environment"). The refusal stays local to the form
+ * so it lands beside the input that produced it; success is reported through
+ * the page feedback the query invalidation then fills with the new row.
+ */
 function NewEnvironment({
   org,
   project,
@@ -952,7 +951,8 @@ export function EnvironmentLifecycleActions({
         <EnvWideningDialog
           widening={widening}
           busy={busy}
-          // A gain over the environment being renamed reads by its new name; a clone's, by the one it would have had.
+          // A gain over the environment being renamed reads by its new name; a
+          // clone's, by the one it would have had.
           envName={(id) =>
             id === environment.id ? renameName.trim() : (environments.find((e) => e.id === id)?.name ?? cloneName.trim())
           }

@@ -1,5 +1,6 @@
 -- +goose Up
--- The sqlite twin of the postgres migration. Environment selectors bind by NAME (#1447, member-access-rules ADR D3 and
+-- The sqlite twin of the postgres migration.
+-- Environment selectors bind by NAME (#1447, member-access-rules ADR D3 and
 -- the owner decision of 2026-11-26, option (c)). An environment item stops
 -- naming one environment id in one project and becomes a rule-wide name,
 -- matched in every project the rule covers, including environments created

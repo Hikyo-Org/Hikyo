@@ -693,8 +693,8 @@ func (s *Definitions) moveGains(ctx context.Context, r store.Repos, az *authz.Tx
 
 // confirmWidenings checks, once the plan has executed in its transaction,
 // one confirmation against the union of what its key folder moves (D9) and
-// its environment renames and creates (#1447) give principals through their
-// rules, then audits the changes that cause it and sends gaining
+// its environment renames, creates and deletes (#1447) give principals
+// through their rules, then audits the changes that cause it and sends gaining
 // machines through the machine widening gate. A refusal rolls the plan back.
 func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
 	p authz.Proof, scope domain.Scope, res definitions.Resolution, moves []planMove, envs envChange, confirmed []domain.PrincipalID) error {
