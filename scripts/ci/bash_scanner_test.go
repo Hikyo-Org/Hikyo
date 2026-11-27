@@ -655,8 +655,10 @@ func TestRepositoryScanSelectors(t *testing.T) {
 			t.Errorf("scriptShebang(%q) = %v, want %v", line, got, want)
 		}
 	}
-	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "sh -e {0}")); err != nil || !reflect.DeepEqual(got, []int{2}) {
-		t.Errorf("an sh step's substitution: got %v, %v; want line 2 flagged (POSIX mode inherits errexit)", got, err)
+	for _, shell := range []string{"sh -e {0}", "/usr/bin/env sh {0}", "env sh -e {0}", "bash --posix {0}", "bash -o posix {0}", "${{ matrix.shell }}"} {
+		if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", shell)); err != nil || !reflect.DeepEqual(got, []int{2}) {
+			t.Errorf("a %q step's substitution: got %v, %v; want line 2 flagged (POSIX mode inherits errexit)", shell, got, err)
+		}
 	}
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\nfoo \\", "sh -e {0}")); err != nil || !reflect.DeepEqual(got, []int{2}) {
 		t.Errorf("an sh step ending in a continuation: got %v, %v; want line 2 flagged", got, err)
@@ -664,12 +666,12 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", "bash")); err != nil || len(got) != 0 {
 		t.Errorf("a bash step's substitution: got %v, %v; want none flagged", got, err)
 	}
-	// The same step under bash and sh (from the job's defaults) is two scans, two unnamed steps are two scans, and an
-	// env: entry is reported.
+	// The same step under bash and sh (the step's shell over the job's bash default) is two scans, two
+	// unnamed steps are two scans, and an env: entry is reported.
 	fixture := "env:\n  SHELLOPTS: posix\njobs:\n" +
 		"  a:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        shell: bash\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
 		"      - run: echo ok\n      - run: '[[ -n $a ]]'\n" +
-		"  b:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: sh\n    steps:\n      - name: s\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
+		"  b:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - name: s\n        shell: sh\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
 	problems, err := workflowProblems("fixture.yml", []byte(fixture))
 	if err != nil {
 		t.Fatal(err)
@@ -689,8 +691,9 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if shStep != 1 || unnamed != 1 || env != 1 {
 		t.Errorf("fixture workflow: got %d sh-step, %d unnamed-step and %d env problems, want 1 each:\n%s", shStep, unnamed, env, strings.Join(problems, "\n"))
 	}
-	// A workflow-level default shell reaches the step too.
-	topLevel := "defaults:\n  run:\n    shell: sh\njobs:\n  c:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
+	// A workflow-level default shell reaches the step too, unless the job's default overrides it.
+	topLevel := "defaults:\n  run:\n    shell: sh\njobs:\n  c:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n" +
+		"  d:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - name: d\n        run: |\n          set -e\n          x=$([[ a == b ]]; echo l)\n"
 	if problems, err := workflowProblems("top.yml", []byte(topLevel)); err != nil || len(problems) != 1 || !strings.Contains(problems[0], ":2: bare test") {
 		t.Errorf("workflow defaults shell: sh: got %v, %v; want one line-2 problem", problems, err)
 	}
@@ -703,12 +706,14 @@ func TestRepositoryScanSelectors(t *testing.T) {
 
 var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b`)
 
-// scannedStepScript is a workflow step's script as the scan reads it: expressions replaced, and under
-// an sh shell set -o posix put before line 1 (bash as sh runs in POSIX mode). Prepended on the
-// same line, so line numbers stay put and a trailing continuation cannot swallow it.
+// scannedStepScript is a workflow step's script as the scan reads it: expressions replaced, and
+// under any shell but plain bash (sh, env sh, an expression, bash --posix) set -o posix put
+// before line 1, since such a shell may run bash in POSIX mode and POSIX mode only adds
+// substitution bodies to the scan. Prepended on the same line, so line numbers stay put and a
+// trailing continuation cannot swallow it.
 func scannedStepScript(run, shell string) string {
 	script := workflowExpression.ReplaceAllString(run, "GITHUB_EXPRESSION")
-	if shellExecutable(shell) == "sh" {
+	if exe := shellExecutable(shell); (exe != "" && exe != "bash") || strings.Contains(shell, "posix") {
 		script = "set -o posix; " + script
 	}
 	return script

@@ -139,7 +139,8 @@ func isBashShell(shell, runsOn string) bool {
 	// A custom template (/bin/bash -e {0}, env FOO=1 bash {0}) may run bash in many ways, so only
 	// a known other interpreter is skipped; anything else, an expression or a blank shell
 	// included, is scanned as bash, which fails safe: a misjudged step may fail to parse. sh is
-	// scanned too: on a macOS runner it is bash 3.2.
+	// scanned too: on a macOS runner it is bash 3.2. Any shell but plain bash is scanned in POSIX
+	// mode (scannedStepScript), which only adds substitution bodies.
 	exe := shellExecutable(shell)
 	return exe == "" || !slices.Contains([]string{"dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
 }
