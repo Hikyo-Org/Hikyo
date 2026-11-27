@@ -257,8 +257,9 @@ var unscannedErrexitForms = []struct {
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
 // and for each eval whose arguments' text names set or shopt. Words are read as source text
-// without quote marks, backslashes, $ and line continuations, so any mix of those spellings is
-// seen. An eval name or argument built from a variable is not.
+// without quote marks, backslashes and $, once with line continuations removed and once with
+// them kept, since an escaped backslash before a newline ends a command inside the eval
+// string. An eval name or argument built from a variable is not seen.
 func unscannedErrexitUses(script string) []string {
 	var found []string
 	if file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), ""); err == nil {
@@ -266,12 +267,11 @@ func unscannedErrexitUses(script string) []string {
 			if call, ok := node.(*syntax.CallExpr); ok {
 				// Source text, not literal(): $'eval' and "set -$x" have no literal value but still
 				// name eval and set, and the check is textual like the patterns below.
-				source := func(word *syntax.Word) string {
-					return quoteMarks.Replace(strings.ReplaceAll(script[word.Pos().Offset():word.End().Offset()], "\\\n", ""))
-				}
+				raw := func(word *syntax.Word) string { return script[word.Pos().Offset():word.End().Offset()] }
+				source := func(word *syntax.Word) string { return quoteMarks.Replace(strings.ReplaceAll(raw(word), "\\\n", "")) }
 				if words := commandWords(call); len(words) > 1 && source(words[0]) == "eval" {
 					for _, word := range words[1:] {
-						if setOrShopt.MatchString(source(word)) {
+						if setOrShopt.MatchString(source(word)) || setOrShopt.MatchString(quoteMarks.Replace(raw(word))) {
 							found = append(found, fmt.Sprintf("%d: eval of set or shopt", words[0].Pos().Line()))
 							break
 						}
@@ -554,6 +554,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"shopt -s inherit_err\\exit\n", "shopt -s $opt\n", "\"eval\" set -e\n", "\\eval set -e\n", "'eval' set -e\n", "e\"val\" set -e\n", "x=$(\"eval\" set -e)\n",
 		"$'eval' set -e\n", "\"eval\" \"set -$x\"\n", "builtin \"eval\" set -e\n", "\"eval\" -- set -e\n", "eval \\\n  set -e\n", "eval \"\nset -e\"\n", "builtin eval set -e\n", "e\\\nval set -e\n", "\"e\\\nval\" set -e\n", "eval s\\\net -e\n", "eval \"s\\\net -e\"\n",
 		"$'e'\\\nval set -e\n", "eval $'s'\\\net -e\n", "eval \"s\\\net -$x\"\n", "eval 's\\\net -e'\n",
+		"eval $(:;) 'x\\\\\nset -e'\n", "eval $(:;) \"x\\\\\\\\\nset -e\"\n",
 	} {
 		if len(matches(script)) == 0 {
 			t.Errorf("not rejected: %q", script)
