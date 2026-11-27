@@ -282,7 +282,10 @@ fi
 
 # Validate every cache reader by policy rather than mirroring a fixed reader
 # count or every job name. A newly added reader is covered automatically.
-grep -F 'path: ~/go/pkg/mod' "$@" >/dev/null || fail 'no Go module cache reader found'
+grep -F 'path: ~/go/pkg/mod/cache/download' "$@" >/dev/null || fail 'no Go module cache reader found'
+# Only the download cache is archived: the extracted tree is rebuilt from it on first use, which
+# keeps the entry about 44% smaller (docs/development/ci.md).
+! grep -E 'path: ~/go/pkg/mod$' "$@" >/dev/null || fail 'a Go module cache reader archives the whole module tree'
 grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache reader found'
 for file in "$@"; do
 	feedback_cache=false
@@ -297,6 +300,16 @@ for file in "$@"; do
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
 			if (index(block, "path: ~/go/pkg/mod") > 0) {
+				# Whole-line match: a prefix or a trailing slash is a different path,
+				# hence a different cache version, hence a silent miss on every restore.
+				path_ok = 0
+				path_lines = split(block, path_rows, "\n")
+				for (row = 1; row <= path_lines; row++) {
+					path_row = path_rows[row]
+					sub(/^[[:space:]]+/, "", path_row)
+					if (path_row == "path: ~/go/pkg/mod/cache/download") path_ok = 1
+				}
+				if (!path_ok) bad = 1
 				module_key = "key: go-mod-v2-${{ runner.os }}-${{ hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047) }}"
                 if (feedback_cache == "true") {
                     # Feedback tools run from a separate immutable merge checkout.
@@ -361,8 +374,10 @@ done
 
 require_line "$tool_modules" 'github.com/rhysd/actionlint@v1.7.12'
 require_line "$tool_modules" 'golang.org/x/vuln@v1.7.0'
-require_line "$workflow" 'done < "$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt"'
-require_line "$workflow" 'go mod download all'
+populate_script="$repo_root/scripts/ci/populate-go-module-cache.sh"
+require_line "$populate_script" 'done <"$repo_root/scripts/ci/go-tool-modules.txt"'
+require_line "$populate_script" 'go mod download all'
+require_line "$workflow" 'run: ./scripts/ci/populate-go-module-cache.sh'
 require_line "$workflow" 'run: ./scripts/ci/run-go-tool.sh actionlint'
 require_line "$workflow" './scripts/ci/run-go-tool.sh govulncheck -mode=binary'
 require_line "$workflow" 'run: ./scripts/ci/export-runner-cache-abi.sh'
@@ -407,7 +422,7 @@ lint_module_prefix="$lint_runner_prefix\${{ hashFiles('go.mod', 'go.sum', 'scrip
 lint_key="key: $lint_module_prefix\${{ steps.lint-cache-generation.outputs.value }}"
 require_line "$lint_cache_workflow" "$lint_key"
 require_line "$lint_cache_workflow" "restore-keys: $lint_runner_prefix"
-require_line "$lint_cache_workflow" 'run: echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"'
+require_line "$lint_cache_workflow" 'run: echo "value=$(date -u +%G-W%V)-nodwarf" >>"$GITHUB_OUTPUT"'
 require_line "$lint_cache_workflow" 'lookup-only: true'
 require_line "$lint_cache_workflow" 'key: ${{ steps.lint-driver-seed.outputs.cache-primary-key }}'
 [ "$(grep -c 'actions/cache/save@' "$lint_cache_workflow")" = 1 ] ||
@@ -421,9 +436,10 @@ for reader in "$workflow:test_core_serial" "$workflows_dir/ci-invariants.yml:inv
 	fi
 done
 for file in "$@"; do
-	# Every go-lintdriver line is the seed key or one of the two reader lines.
+	# Every go-lintdriver line is the seed key, one of the two reader lines or the headroom job's lane and skip key.
 	grep -F 'go-lintdriver' "$file" | sed 's/^[[:space:]]*//' |
-		grep -Fxv -e "$lint_key" -e "key: $lint_module_prefix" -e "restore-keys: $lint_runner_prefix" >/dev/null &&
+		grep -Fxv -e "$lint_key" -e "key: $lint_module_prefix" -e "restore-keys: $lint_runner_prefix" -e "HEADROOM_PREFIXES: go-lintdriver-v2-\${{ runner.os }}-\${{ runner.arch }}- go-feedback-v1-\${{ runner.os }}-\${{ runner.arch }}-" \
+			-e "HEADROOM_SKIP_KEY: $lint_module_prefix\${{ steps.lint-cache-generation.outputs.value }}" >/dev/null &&
 		fail "unexpected lint driver cache key or prefix in $(basename "$file")"
 	[ "$(basename "$file")" != ci-lint-cache.yml ] || continue
 	awk '
@@ -462,17 +478,31 @@ if grep -F 'playwright install-deps' "$@" >/dev/null ||
 fi
 
 # Every cache writer must be trusted-main-only and must skip an upload after an
-# exact hit. This covers Go, module, and Playwright writers alike.
+# exact hit. This covers Go, module, and Playwright writers alike. The one exception
+# is the feedback seed, which also publishes its dev-family entries from dev pushes;
+# its restore side is held to the family split by feedback_cache_trust_test.go.
+# The whole `if:` of the save step is compared, not searched for a substring, so a guard
+# that merely contains the trusted one (`<guard> || <anything>`) fails.
 for file in "$@"; do
+	dev_seed=false
+	[ "$(basename "$file")" != ci-feedback-backend-cache.yml ] || dev_seed=true
 	awk \
 		-v main_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" \
-		-v hit_guard="outputs.cache-hit != 'true'" '
-		/^[[:space:]]+- name:/ { block = "" }
-		{ block = block $0 "\n" }
+		-v dev_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'" \
+		-v dev_seed="$dev_seed" '
+		/^[[:space:]]+- name:/ { in_if = 0; cond = "" }
+		in_if && /^[[:space:]]+uses:/ { in_if = 0 }
+		in_if { line = $0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", line); cond = (cond == "" ? line : cond " " line); next }
+		/^[[:space:]]+if: >-[[:space:]]*$/ { in_if = 1; cond = ""; next }
 		/actions\/cache\/save@/ {
-			if (index(block, main_guard) == 0 || index(block, hit_guard) == 0) {
-				bad = 1
+			if (!match(cond, /steps\.[A-Za-z0-9_-]+\.outputs\.cache-hit != .true./)) { bad = 1; next }
+			hit = substr(cond, RSTART, RLENGTH)
+			if (dev_seed == "true") {
+				ok = (cond == "success() && " hit " && (" main_guard " || " dev_guard ")")
+			} else {
+				ok = (cond == "success() && " hit " && " main_guard) || (cond == "success() && " main_guard " && " hit)
 			}
+			if (!ok) bad = 1
 		}
 		END {
 			if (bad) exit 1

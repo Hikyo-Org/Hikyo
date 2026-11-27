@@ -17,7 +17,7 @@ const (
 	lintDriverModulePrefix   = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-"
 	lintDriverRunnerPrefix   = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
 	lintDriverGenerationID   = "lint-cache-generation"
-	lintDriverGenerationRun  = `echo "value=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"`
+	lintDriverGenerationRun  = `echo "value=$(date -u +%G-W%V)-nodwarf" >>"$GITHUB_OUTPUT"`
 	lintDriverSeedKey        = lintDriverModulePrefix + "${{ steps." + lintDriverGenerationID + ".outputs.value }}"
 	lintDriverRestoreName    = "Restore lint driver Go cache"
 	lintDriverSeedLintTests  = "go test -count=1 -timeout=20m ./internal/lint\n"
@@ -27,11 +27,12 @@ const (
 
 var lintDriverSeedSpec = reuseSeedSpec{
 	label:        "lint driver seed",
-	group:        "ci-lint-cache-main",
+	group:        "ci-cache-seed-writers",
 	bootstrap:    "${{ runner.temp }}/lint-bootstrap",
 	lookupID:     "lint-driver-seed",
 	key:          lintDriverSeedKey,
 	restoreKeys:  lintDriverRunnerPrefix,
+	headroomName: "Make room in the Actions cache for the lint driver seed",
 	generationID: lintDriverGenerationID,
 	generation:   lintDriverGenerationRun,
 	compile: "cache=\"$HOME/.cache/go-build\"\n" +
@@ -60,19 +61,54 @@ func TestLintDriverSeedWorkflowTrustAndBounds(t *testing.T) {
 		}
 	}
 	for name, mutation := range map[string]func(map[string]any){
-		"top-level env":      func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-tags=ui"} },
-		"top-level defaults": func(w map[string]any) { w["defaults"] = map[string]any{"run": map[string]any{"shell": "sh"}} },
-		"PR trigger":         func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
-		"push trigger":       func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
-		"missing schedule":   func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
-		"write token":        func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
-		"job write token":    func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
-		"cancelling group":   func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
-		"shared group":       func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
-		"untrusted ref":      func(w map[string]any) { job(w)["if"] = "true" },
-		"any ref":            func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
-		"unbounded job":      func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
-		"no timeout":         func(w map[string]any) { delete(job(w), "timeout-minutes") },
+		"top-level env":           func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-tags=ui"} },
+		"top-level defaults":      func(w map[string]any) { w["defaults"] = map[string]any{"run": map[string]any{"shell": "sh"}} },
+		"PR trigger":              func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
+		"push trigger":            func(w map[string]any) { w["on"].(map[string]any)["push"] = nil },
+		"missing schedule":        func(w map[string]any) { delete(w["on"].(map[string]any), "schedule") },
+		"write token":             func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
+		"job write token":         func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"cancelling group":        func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
+		"own group":               func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-lint-cache-main" },
+		"untrusted ref":           func(w map[string]any) { job(w)["if"] = "true" },
+		"any ref":                 func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
+		"unbounded job":           func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
+		"no timeout":              func(w map[string]any) { delete(job(w), "timeout-minutes") },
+		"no prune after the save": func(w map[string]any) { delete(w["jobs"].(map[string]any), "prune") },
+		"prune widened": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["permissions"].(map[string]any)["contents"] = "write"
+		},
+		"prune without needs": func(w map[string]any) { delete(w["jobs"].(map[string]any)["prune"].(map[string]any), "needs") },
+		"prune of another workflow": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["uses"] = "./.github/workflows/ci.yml"
+		},
+		"prune runs on a cancelled seed": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["if"] = "${{ always() }}"
+		},
+		"seed job holds the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"seed job holds the token with contents": func(w map[string]any) {
+			job(w)["permissions"] = map[string]any{"contents": "read", "actions": "write"}
+		},
+		"seed does not wait for headroom": func(w map[string]any) { delete(job(w), "needs") },
+		"no headroom job":                 func(w map[string]any) { delete(w["jobs"].(map[string]any), "headroom") },
+		"headroom runs repository code": func(w map[string]any) {
+			h := w["jobs"].(map[string]any)["headroom"].(map[string]any)
+			h["steps"] = append(h["steps"].([]any), map[string]any{"run": "go run ./scripts/ci/prepare-lint-cache"})
+		},
+		"headroom fails the run": func(w map[string]any) {
+			delete(w["jobs"].(map[string]any)["headroom"].(map[string]any), "continue-on-error")
+		},
+		"headroom token widened": func(w map[string]any) {
+			w["jobs"].(map[string]any)["headroom"].(map[string]any)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
+		},
+		"headroom runs on a hit": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["headroom"].(map[string]any)["steps"].([]any)
+			delete(steps[len(steps)-1].(map[string]any)["env"].(map[string]any), "HEADROOM_SKIP_KEY")
+		},
+		"lint lane names the runner image": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["headroom"].(map[string]any)["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["env"].(map[string]any)["HEADROOM_PREFIXES"] = "go-lintdriver-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-"
+		},
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
 		},

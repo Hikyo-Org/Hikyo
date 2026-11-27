@@ -65,6 +65,11 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		return w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)[i].(map[string]any)
 	}
 	job := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["seed"].(map[string]any) }
+	headroomJob := func(w map[string]any) map[string]any { return w["jobs"].(map[string]any)["headroom"].(map[string]any) }
+	// The race lane's script step (index 2) and the module step after it (index 3, no skip key).
+	laneEnv := func(w map[string]any, i int) map[string]any {
+		return headroomJob(w)["steps"].([]any)[i].(map[string]any)["env"].(map[string]any)
+	}
 	for name, mutation := range map[string]func(map[string]any){
 		"top-level env": func(w map[string]any) { w["env"] = map[string]any{"GOFLAGS": "-race=false"} },
 		"top-level defaults": func(w map[string]any) {
@@ -76,12 +81,63 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"write token":      func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
 		"job write token":  func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
 		"cancelling group": func(w map[string]any) { w["concurrency"].(map[string]any)["cancel-in-progress"] = true },
-		"shared group":     func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-${{ github.ref }}" },
+		"own group":        func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-race-cache-main" },
+		"ref group":        func(w map[string]any) { w["concurrency"].(map[string]any)["group"] = "ci-${{ github.ref }}" },
 		"untrusted ref":    func(w map[string]any) { job(w)["if"] = "true" },
 		"any ref":          func(w map[string]any) { job(w)["if"] = "github.event_name == 'schedule'" },
 		"unbounded job":    func(w map[string]any) { job(w)["timeout-minutes"] = 360 },
 		"job env redirects cache": func(w map[string]any) {
 			job(w)["env"] = map[string]any{"GOCACHE": "${{ github.workspace }}/.ci-cache/go-race"}
+		},
+		"no prune after the save": func(w map[string]any) { delete(w["jobs"].(map[string]any), "prune") },
+		"prune widened": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["permissions"].(map[string]any)["contents"] = "write"
+		},
+		"prune without needs": func(w map[string]any) { delete(w["jobs"].(map[string]any)["prune"].(map[string]any), "needs") },
+		"prune of another workflow": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["uses"] = "./.github/workflows/ci.yml"
+		},
+		"prune runs on a cancelled seed": func(w map[string]any) {
+			w["jobs"].(map[string]any)["prune"].(map[string]any)["if"] = "${{ always() }}"
+		},
+		"seed job holds the token": func(w map[string]any) { job(w)["permissions"] = map[string]any{"actions": "write"} },
+		"seed job holds the token with contents": func(w map[string]any) {
+			job(w)["permissions"] = map[string]any{"contents": "read", "actions": "write"}
+		},
+		"seed does not wait for headroom": func(w map[string]any) { delete(job(w), "needs") },
+		"no headroom job":                 func(w map[string]any) { delete(w["jobs"].(map[string]any), "headroom") },
+		"headroom runs repository code": func(w map[string]any) {
+			h := headroomJob(w)
+			h["steps"] = append(h["steps"].([]any), map[string]any{"run": "go test -race ./..."})
+		},
+		"headroom fails the run":   func(w map[string]any) { delete(headroomJob(w), "continue-on-error") },
+		"headroom from any ref":    func(w map[string]any) { delete(headroomJob(w), "if") },
+		"headroom without a token": func(w map[string]any) { headroomJob(w)["permissions"] = map[string]any{"contents": "read"} },
+		"headroom token widened": func(w map[string]any) {
+			headroomJob(w)["permissions"] = map[string]any{"contents": "write", "actions": "write"}
+		},
+		"headroom runs on a hit": func(w map[string]any) {
+			delete(laneEnv(w, 2), "HEADROOM_SKIP_KEY")
+		},
+		"module headroom skips on a key hit": func(w map[string]any) {
+			laneEnv(w, 3)["HEADROOM_SKIP_KEY"] = "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}"
+		},
+		"race lane names the runner image": func(w map[string]any) {
+			laneEnv(w, 2)["HEADROOM_PREFIXES"] = "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-"
+		},
+		"feedback lane names the runner image": func(w map[string]any) {
+			laneEnv(w, 2)["HEADROOM_PREFIXES"] = "go-race-v2-${{ runner.os }}-${{ runner.arch }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+		},
+		"headroom without its lane": func(w map[string]any) {
+			laneEnv(w, 2)["HEADROOM_PREFIXES"] = ""
+		},
+		"headroom reads the PR head": func(w map[string]any) {
+			steps := headroomJob(w)["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["env"].(map[string]any)["GH_REPO"] = "${{ github.event.pull_request.head.repo.full_name }}"
+		},
+		"headroom dropped from the steps": func(w map[string]any) {
+			h := headroomJob(w)
+			h["steps"] = h["steps"].([]any)[:2]
 		},
 		"second job": func(w map[string]any) {
 			w["jobs"].(map[string]any)["extra"] = map[string]any{"runs-on": "ubuntu-latest"}
@@ -146,6 +202,19 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 			seedStep(w, 6)["with"].(map[string]any)["path"] = "~/go/pkg/mod"
 		},
 		"save fail open": func(w map[string]any) { seedStep(w, 6)["continue-on-error"] = true },
+		"module save loses the main guard": func(w map[string]any) {
+			seedStep(w, 8)["if"] = "success() && steps.go-module-cache.outputs.cache-hit != 'true'"
+		},
+		"module save on a hit": func(w map[string]any) {
+			seedStep(w, 8)["if"] = strings.Replace(seedStep(w, 8)["if"].(string), " && steps.go-module-cache.outputs.cache-hit != 'true'", "", 1)
+		},
+		"module save fail open":  func(w map[string]any) { seedStep(w, 8)["continue-on-error"] = true },
+		"module save wrong path": func(w map[string]any) { seedStep(w, 8)["with"].(map[string]any)["path"] = "~/go/pkg/mod" },
+		"module save wrong key": func(w map[string]any) {
+			seedStep(w, 8)["with"].(map[string]any)["key"] = "${{ steps.race-seed.outputs.cache-primary-key }}"
+		},
+		"module populate is a private copy": func(w map[string]any) { seedStep(w, 7)["run"] = "go mod download\n" },
+		"module restore unnamed":            func(w map[string]any) { delete(seedStep(w, 2), "id") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed map[string]any
@@ -168,18 +237,28 @@ type reuseSeedSpec struct {
 	// the lookup whose output rotates the key.
 	generationID, generation string
 	maxTimeout               int
+	// headroomName names the script step of the headroom job for this seed's own lane.
+	headroomName string
+	// moduleWriter pins the daily trusted-main save of the shared module cache
+	// after the build-cache save, so an evicted go-mod-v2 refills within a day.
+	moduleWriter bool
 }
 
 var raceSeedSpec = reuseSeedSpec{
 	label:       "race seed",
-	group:       "ci-race-cache-main",
+	group:       "ci-cache-seed-writers",
 	bootstrap:   "${{ runner.temp }}/race-bootstrap",
 	lookupID:    "race-seed",
 	key:         sharedRaceReuseKey,
 	restoreKeys: sharedRaceReuseRestoreKeys,
 	compile:     "cache=\"$HOME/.cache/go-build\"\ntest ! -e \"$cache\"\ntest \"$(go env GOCACHE)\" = \"$cache\"\ngo list -deps -test -export -race ./... >/dev/null\ndu -sh \"$cache\"\n",
 	maxTimeout:  30,
+
+	moduleWriter: true,
+	headroomName: "Make room in the Actions cache for the race seed",
 }
+
+const moduleWriterPopulate = "./scripts/ci/populate-go-module-cache.sh"
 
 func requireRaceSeed(workflow map[string]any) error { return requireReuseSeed(workflow, raceSeedSpec) }
 
@@ -211,12 +290,27 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		return fmt.Errorf("%s runs must queue behind each other, never cancel a publisher", spec.label)
 	}
 	jobs, ok := workflow["jobs"].(map[string]any)
-	if !ok || len(jobs) != 1 {
-		return fmt.Errorf("%s must have exactly one job", spec.label)
+	if !ok || len(jobs) != 3 {
+		return fmt.Errorf("%s must have exactly its headroom job, its seed job and its prune job", spec.label)
+	}
+	// The prune is the shared ci-cache-prune.yml run as a called workflow right after the save, so a
+	// rotation never coexists with its predecessor for longer than a job takes to start. Its token is
+	// actions: write and nothing else, in a job of its own; the seed job holds none.
+	if !reflect.DeepEqual(jobs["prune"], map[string]any{
+		"needs":       "seed",
+		"if":          "${{ !cancelled() && needs.seed.result != 'skipped' }}",
+		"permissions": map[string]any{"actions": "write"},
+		"uses":        "./.github/workflows/ci-cache-prune.yml",
+	}) {
+		return fmt.Errorf("%s must prune right after its save through the shared prune workflow, with actions: write only", spec.label)
 	}
 	job, ok := jobs["seed"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("%s job is missing", spec.label)
+	}
+	headroom, _ := jobs["headroom"].(map[string]any)
+	if err := requireReuseHeadroom(headroom, job, spec); err != nil {
+		return err
 	}
 	if job["if"] != "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'" {
 		return fmt.Errorf("only trusted main may populate the %s", spec.label)
@@ -227,8 +321,8 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 	for key := range job {
 		keys = append(keys, key)
 	}
-	if len(keys) != 4 || job["runs-on"] != "ubuntu-latest" || job["steps"] == nil {
-		return fmt.Errorf("%s job must set only its guard, runner, timeout, and steps (got %v)", spec.label, keys)
+	if len(keys) != 5 || job["needs"] != "headroom" || job["runs-on"] != "ubuntu-latest" || job["steps"] == nil {
+		return fmt.Errorf("%s job must set only its guard, headroom dependency, runner, timeout, and steps (got %v)", spec.label, keys)
 	}
 	if timeout, ok := job["timeout-minutes"].(int); !ok || timeout < 1 || timeout > spec.maxTimeout {
 		return fmt.Errorf("%s needs an explicit bounded timeout", spec.label)
@@ -238,7 +332,11 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		next = 5
 	}
 	steps, ok := job["steps"].([]any)
-	if !ok || len(steps) != next+3 {
+	want := next + 3
+	if spec.moduleWriter {
+		want += 2
+	}
+	if !ok || len(steps) != want {
 		return fmt.Errorf("unexpected %s preparation or publication", spec.label)
 	}
 	step := func(i int) map[string]any {
@@ -259,8 +357,11 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		return fmt.Errorf("%s must select pinned Go without implicit caches", spec.label)
 	}
 	modules := step(2)
+	if spec.moduleWriter && modules["id"] != "go-module-cache" {
+		return fmt.Errorf("%s must name its module restore so it can save a miss", spec.label)
+	}
 	if modules["uses"] != reuseRestoreAction || !reflect.DeepEqual(modules["with"], map[string]any{
-		"path":         "~/go/pkg/mod",
+		"path":         moduleDownloadCachePath,
 		"key":          "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
 		"restore-keys": "go-mod-v2-${{ runner.os }}-",
 	}) {
@@ -296,6 +397,69 @@ func requireReuseSeed(workflow map[string]any, spec reuseSeedSpec) error {
 		save["if"] != "success() && "+miss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
 		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps." + spec.lookupID + ".outputs.cache-primary-key }}"}) {
 		return fmt.Errorf("only a successful main seed may publish, once per exact key")
+	}
+	if spec.moduleWriter {
+		moduleMiss := "steps.go-module-cache.outputs.cache-hit != 'true'"
+		populate := step(next + 3)
+		if populate["run"] != moduleWriterPopulate || populate["if"] != moduleMiss || populate["continue-on-error"] != nil || populate["env"] != nil {
+			return fmt.Errorf("%s must fully populate a missed module cache before saving it", spec.label)
+		}
+		moduleSave := step(next + 4)
+		if moduleSave["uses"] != reuseSaveAction || moduleSave["continue-on-error"] != nil ||
+			moduleSave["if"] != "success() && "+moduleMiss+" && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
+			!reflect.DeepEqual(moduleSave["with"], map[string]any{"path": moduleDownloadCachePath, "key": "${{ steps.go-module-cache.outputs.cache-primary-key }}"}) {
+			return fmt.Errorf("only a successful main seed may publish the module cache, once per exact key")
+		}
+	}
+	return nil
+}
+
+// requireReuseHeadroom pins the job that frees room before a seed's saves. It holds actions: write, so it is
+// a job of its own that runs no repository dependency and no Go code (only the checked-out script of the
+// immutable commit); the seed job, which compiles repository code, keeps the read-only workflow token. It
+// is best effort (continue-on-error) so the seed never waits on its success, and an exact hit of the seed's
+// key (the save will be skipped) makes it delete nothing.
+func requireReuseHeadroom(job, seed map[string]any, spec reuseSeedSpec) error {
+	seedSteps, _ := seed["steps"].([]any)
+	if len(seedSteps) < 4 {
+		return fmt.Errorf("%s seed steps are missing", spec.label)
+	}
+	script := func(name, prefix, key string) map[string]any {
+		env := map[string]any{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEADROOM_PREFIXES": prefix}
+		if key != "" {
+			env["HEADROOM_SKIP_KEY"] = key
+		}
+		return map[string]any{"name": name, "env": env, "run": "./scripts/ci/cache-prune.sh"}
+	}
+	steps := []any{
+		seedSteps[0], // the same immutable, credential-free checkout as the seed
+		seedSteps[3], // the same runner ABI selection, whose output names the lanes
+	}
+	if spec.generation != "" {
+		steps = append(steps, seedSteps[4])
+	}
+	// The daily go-feedback-v1 save lands between the headroom job and the seed's save (the model's
+	// 12:58), so its room is reserved with the seed's own.
+	// The lanes carry no runner image or ABI: the selector's lane key drops the image, so a prefix that named
+	// one would find no entry after an image bump and size the save as nothing. The skip key is the exact key.
+	lane := strings.Replace(strings.TrimSpace(spec.restoreKeys), "${{ steps.runner-cache-abi.outputs.value }}-", "", 1)
+	feedbackLane := "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-"
+	steps = append(steps, script(spec.headroomName, lane+" "+feedbackLane, spec.key))
+	if spec.moduleWriter {
+		// No skip key: an exact key hit says nothing about the save, whose cache version (it includes the
+		// path) the headroom job cannot compute, so the save is sized every day (ci.md, "Module cache").
+		steps = append(steps, script("Make room in the Actions cache for the module cache", "go-mod-v2-${{ runner.os }}-", ""))
+	}
+	want := map[string]any{
+		"if":                "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'",
+		"runs-on":           "ubuntu-latest",
+		"timeout-minutes":   10,
+		"continue-on-error": true,
+		"permissions":       map[string]any{"contents": "read", "actions": "write"},
+		"steps":             steps,
+	}
+	if !reflect.DeepEqual(job, want) {
+		return fmt.Errorf("%s headroom job differs from the reviewed one (main only, actions: write here and nowhere else, checkout, ABI, the script, no repository code): %v", spec.label, job)
 	}
 	return nil
 }
@@ -430,9 +594,16 @@ func TestRaceSeedGuardRequiresFreshDefaultDirectory(t *testing.T) {
 func testSeedGuardRequiresFreshDefaultDirectory(t *testing.T, file, guardEnd string) {
 	workflow, _ := readWorkflowFile(t, file)
 	steps := workflowJobSteps(t, workflow, "seed")
-	// The compile step sits right before the save, after any generation step.
-	compile := steps[len(steps)-2].(map[string]any)["run"].(string)
-	prefix, _, found := strings.Cut(compile, guardEnd)
+	// The compile step is the one run step holding the guard's end marker.
+	var prefix string
+	found := false
+	for _, raw := range steps {
+		if run, ok := raw.(map[string]any)["run"].(string); ok {
+			if before, _, ok := strings.Cut(run, guardEnd); ok {
+				prefix, found = before, true
+			}
+		}
+	}
 	if !found {
 		t.Fatal("actual compile guard missing")
 	}

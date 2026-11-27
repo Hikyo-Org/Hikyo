@@ -15,12 +15,54 @@ on:
 permissions:
   contents: read
 
+# One group for both daily seed writers: the second run waits until the first, its prune job included, has
+# finished, so two rotated generations never coexist (the race seed and the lint driver seed saving in the
+# same minute peaked 1 GB higher in the eviction model, docs/development/ci.md). A running run is never
+# cancelled, but a group keeps one pending run: a third run (a manual dispatch, say) replaces the pending
+# one, which then shows as cancelled. Its seed is not lost: the next cron run saves it (see docs/development/ci.md).
 concurrency:
-  group: ci-race-cache-main
+  group: ci-cache-seed-writers
   cancel-in-progress: false
 
 jobs:
+  # Frees room in the Actions cache before the seed compiles and saves (docs/development/ci.md, "Headroom
+  # before the save"). A job of its own: it holds actions: write, so it runs no repository dependency and no
+  # Go code, only the checked-out cache-prune.sh of the immutable main commit; the seed job below, which
+  # compiles repository code, keeps the read-only token. Best effort: a failure here never blocks the seed.
+  # An exact hit of the seed key means no save follows, so it deletes nothing then.
+  headroom:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Make room in the Actions cache for the race seed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEADROOM_PREFIXES: go-race-v2-${{ runner.os }}-${{ runner.arch }}- go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-
+          HEADROOM_SKIP_KEY: go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
+        run: ./scripts/ci/cache-prune.sh
+      - name: Make room in the Actions cache for the module cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEADROOM_PREFIXES: go-mod-v2-${{ runner.os }}-
+        run: ./scripts/ci/cache-prune.sh
+
   seed:
+    needs: headroom
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -37,9 +79,10 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Restore shared Go module cache
+        id: go-module-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -71,3 +114,26 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.race-seed.outputs.cache-primary-key }}
+      # Second writer for the shared module cache. ci-main saves it weekly, so a
+      # Monday eviction would otherwise miss all restores for about six days.
+      - name: Populate shared Go module cache
+        if: steps.go-module-cache.outputs.cache-hit != 'true'
+        run: ./scripts/ci/populate-go-module-cache.sh
+      - name: Save shared Go module cache from trusted main only
+        if: >-
+          success() && steps.go-module-cache.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod/cache/download
+          key: ${{ steps.go-module-cache.outputs.cache-primary-key }}
+
+  # Right after the save, in a job of its own so that actions: write never sits next to the compile:
+  # the same prune as ci-cache-prune.yml, so this seed's superseded generation does not outlive the
+  # save by more than the time a job takes to start.
+  prune:
+    needs: seed
+    if: ${{ !cancelled() && needs.seed.result != 'skipped' }}
+    permissions:
+      actions: write
+    uses: ./.github/workflows/ci-cache-prune.yml

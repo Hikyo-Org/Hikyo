@@ -89,8 +89,10 @@ jobs:
         with:
           go-version-file: feedback-tools/go.mod
           cache: false
-      # Dedicated, size-bounded compiler entries are seeded from trusted main.
-      # Never fall back to the multi-gigabyte full-test archive. Go still checks
+      # Dedicated, size-bounded compiler entries are seeded from trusted branches. The
+      # family comes from the PR's base branch: PRs that target dev read only dev-seeded
+      # entries, every other PR reads only main-seeded ones, and neither restore prefix
+      # matches the other family. Never fall back to the multi-gigabyte full-test archive. Go still checks
       # toolchain, source and dependency identities for every selected package.
       - name: Select Go build cache runner ABI
         id: runner-cache-abi
@@ -105,8 +107,21 @@ jobs:
         timeout-minutes: 1
         with:
           path: .ci-cache/go-feedback-compact
-          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}
-          restore-keys: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.event.pull_request.base.ref == 'dev' && 'dev' || 'main' }}-${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}
+          restore-keys: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.event.pull_request.base.ref == 'dev' && 'dev' || 'main' }}-${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}-
+      # The go lane also reads the CLI entry: its closure outgrows what one bounded entry holds
+      # together with the application's.
+      - name: Check budget before CLI Go build cache restore
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go && fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope == 'application'
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
+      - name: Restore bounded feedback CLI Go cache
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go && fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope == 'application'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        with:
+          path: .ci-cache/go-feedback-compact
+          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.event.pull_request.base.ref == 'dev' && 'dev' || 'main' }}-cli-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}
+          restore-keys: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.event.pull_request.base.ref == 'dev' && 'dev' || 'main' }}-cli-
       - name: Check budget before runtime setup
         if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.node
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60

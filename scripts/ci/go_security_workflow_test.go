@@ -57,7 +57,7 @@ func TestGoSecurityWorkflowPolicy(t *testing.T) {
 			if strings.Contains(step.Uses, "download-artifact") || strings.HasPrefix(step.Uses, "actions/cache@") || strings.HasPrefix(step.Uses, "actions/cache/save@") {
 				t.Fatalf("%s must build its own binaries without importing PR artifacts or publishing caches", name)
 			}
-			if strings.HasPrefix(step.Uses, "actions/cache/restore@") && step.With["path"] != "~/go/pkg/mod" {
+			if strings.HasPrefix(step.Uses, "actions/cache/restore@") && step.With["path"] != moduleDownloadCachePath {
 				t.Fatal("scheduled scan may only restore Go module downloads")
 			}
 		}

@@ -1,0 +1,129 @@
+# Keeps the repository's Actions cache under its 10 GB limit (the limit is not raised, by owner decision). GitHub
+# evicts by last access once the total passes it, which would take live entries with the dead ones.
+# This scheduled job removes the dead ones first, from the trusted default branch only:
+#   superseded: of the regenerable families listed below, every entry on main or dev except the
+#               newest of its (ref, lane). The lane is the key without its trailing hash, commit,
+#               attempt or week, the runner image (ubuntu26), the tool version (2.27.6) and the
+#               config hash, so a runner-image or CodeQL bump retires the old lane's entries at
+#               once instead of leaving the newest of each for the seven-day expiry. The
+#               go-feedback-v2 seeds are not listed: their own prune job keeps the newest set per
+#               family and entry, and the old unfamilied ones are removed by hand.
+#   idle PR:    entries on pull-request refs not accessed for 24 hours. Writers are main-only, so
+#               none exist today; this is the bound if one ever does.
+# It also runs when a writer of those families finishes on main (the tool and feedback seeds, the weekly main validation that writes the k8s-e2e, fuzz, module and pnpm entries,
+# and GitHub's CodeQL default setup, whose overlay and dependency entries cannot be pruned from
+# inside its run): what the writer just superseded goes within minutes instead of at the next :47.
+# The race and lint seeds call this workflow themselves, in a job of their own right after their save
+# (workflow_call), so they are not in the workflow_run list: a second prune would only repeat it. The
+# concurrency group carries the calling workflow's name, so a pending prune of the hourly run can
+# never replace the one a seed run is waiting for (which would show that seed run as cancelled).
+# A workflow_run job is the one place that can hold actions: write for those writers, because they
+# either run PR code (ci.yml) or are not ours to edit (CodeQL). Nothing is read from the triggering
+# run except its branch, in the job guard; the script takes no input from the event.
+# It holds actions: write and nothing else, checks nothing out and runs no repository code. Each
+# run costs one to two listing calls plus at most 100 deletes: 24 scheduled runs a day plus a few
+# per writer, so at most 102 calls a run against the shared 1000 an hour.
+# The step below is scripts/ci/cache-prune.sh verbatim (a test pins them equal; this workflow cannot
+# check the file out). The same script, run by the race and lint seeds and by ci-main's headroom job
+# right before their big saves, also frees room for the save and never deletes a newest seed
+# (docs/development/ci.md, "Headroom before the save"); here no HEADROOM_* variable is set, so it only
+# removes what is dead.
+name: cache-prune
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: '47 * * * *'
+  workflow_run:
+    workflows: [CodeQL, ci-main, cache-seed-tools, cache-seed-feedback]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  prune:
+    # Job level, not workflow level: the group is taken only after the guard below passes, so a
+    # skipped run (a fork's, say) can never replace a pending real prune.
+    concurrency:
+      group: ci-cache-prune-${{ github.workflow }}
+      cancel-in-progress: false
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)) &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Delete superseded and idle pull request caches
+        run: |
+          # The one selector of the Actions cache's dead entries. ci-cache-prune.yml carries this text verbatim as its
+          # step (a test pins the two equal): that workflow checks nothing out, so it cannot run this file. The seed
+          # writers' headroom jobs and ci-main-headroom.yml run it from their trusted checkout, before a save.
+          #   without HEADROOM_PREFIXES: delete what is superseded or idle (the hourly prune).
+          #   with it: also free room for the save that follows, unless every key of HEADROOM_SKIP_KEY (space separated)
+          #   exists on main (the save will be a hit). A key may hold one `*` for a part the caller cannot compute (the pnpm
+          #   store's Node ABI, which needs Node): it then matches any entry with that start and that end. The incoming size is the newest main entry of each lane that starts with
+          #   one of the space-separated prefixes. A prefix names the lane without the runner image or the ABI (the
+          #   lane key drops the image, so an image bump must not make the lane look absent). Deletion goes on until
+          #   the total plus the incoming save fits in 10 GB less a 0.25 GB margin, in this order: older feedback seeds,
+          #   pull-request entries, entries idle for three days, then the least recently used entries that are not seeds.
+          #   Never the newest main or dev entry of a seed lane (race, lint driver, pinned tools, feedback) and never
+          #   an unfamilied feedback seed. At most 100 deletes a run.
+          set -euo pipefail
+          now=$(date -u +%s)
+          prefixes=${HEADROOM_PREFIXES:-}
+          skip=${HEADROOM_SKIP_KEY:-}
+          gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100" |
+            jq -s -r --argjson now "$now" --arg prefixes "$prefixes" --arg skip "$skip" --argjson budget 9750000000 '
+              def stem: sub("-[0-9a-f]{64}(-.*)?$"; "") | sub("-[0-9a-f]{40}(-[0-9]+-[0-9]+)?$"; "");
+              def lane: stem | gsub("-ubuntu[0-9]+"; "") | gsub("-[0-9]+(\\.[0-9]+)+"; "") | gsub("-[0-9a-f]{16}(?=-)"; "");
+              def regenerable: test("^(go-mod-v2|go-test-v2|go-race-v2|go-lint(driver)?-v2|go-generated-v2|go-k8s-e2e-v2|go-fuzz-v2|go-feedback-v1|pinned-tool-v1|pnpm-store-v2|codeql-overlay-base-database|codeql-dependencies|codeql-trap)-");
+              def matches($k): ($k | split("*")) as $p | if ($p | length) == 1 then . == $k else (startswith($p[0]) and endswith($p[-1]) and (length >= (($p[0] | length) + ($p[-1] | length)))) end;
+              def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+              def feedbackfam: test("^go-feedback-v2-.*-(main|dev)-(application|cli|tooling)-");
+              def untouchable: test("^go-feedback-v2-") and (feedbackfam | not);
+              def seed: test("^(go-race-v2|go-lint(driver)-v2|pinned-tool-v1)-") or feedbackfam;
+              def oldest: sort_by([(.last_accessed_at | epoch), .id]);
+              def dedupe: reduce .[] as $e ([]; if any(.[]; .id == $e.id) then . else . + [$e] end);
+              def take($need): reduce .[] as $e ({sum: 0, out: []}; if .sum >= $need then . else {sum: (.sum + $e.size_in_bytes), out: (.out + [$e])} end) | .out;
+              [.[].actions_caches[]] as $all
+              | ([$all[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | regenerable))]
+                  | group_by([.ref, (.key | lane)])
+                  | map(sort_by([.created_at, .id]) | reverse | .[1:][])) as $superseded
+              | [$all[] | select((.ref | test("^refs/pull/[0-9]+/(merge|head)$")) and ((.last_accessed_at | epoch) < ($now - 86400)))] as $idle
+              | ($superseded + $idle) as $regular
+              | ([$prefixes | split(" ")[] | select(. != "")] as $wanted
+                  | [$all[] | select(.ref == "refs/heads/main" and (.key as $k | any($wanted[]; . as $p | $k | startswith($p))))]
+                  | group_by(.key | lane) | map(sort_by([.created_at, .id]) | last | .size_in_bytes) | add // 0) as $planned
+              | [$skip | split(" ")[] | select(. != "")] as $keys
+              | (if ($keys | length) > 0 and all($keys[]; . as $k | any($all[]; .ref == "refs/heads/main" and (.key | matches($k)))) then 0 else $planned end) as $incoming
+              | (if $incoming == 0 then [] else
+                  ((($all | map(.size_in_bytes) | add // 0) - ($regular | map(.size_in_bytes) | add // 0)) + $incoming - $budget) as $over
+                  | if $over <= 0 then [] else
+                      ($regular | map(.id)) as $gone
+                      | [$all[] | select((.id | IN($gone[]) | not) and (.key | untouchable | not))] as $left
+                      | ([$left[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | seed))]
+                          | group_by([.ref, (.key | lane)]) | map(sort_by([.created_at, .id]) | last.id)) as $newest
+                      | [$left[] | select(.id | IN($newest[]) | not)] as $open
+                      | ([$open[] | select((.ref == "refs/heads/main" or .ref == "refs/heads/dev") and (.key | feedbackfam))] | oldest) as $olderFeedback
+                      | ([$open[] | select(.ref | test("^refs/pull/[0-9]+/(merge|head)$"))] | oldest) as $pullRequests
+                      | ([$open[] | select((.last_accessed_at | epoch) < ($now - 259200))] | oldest) as $idleDays
+                      | ([$open[] | select(.key | seed | not)] | oldest) as $leastRecent
+                      | ($olderFeedback + $pullRequests + $idleDays + $leastRecent | dedupe | take($over))
+                    end
+                end) as $headroom
+              | ($regular + $headroom)[] | [.id, .ref, .key] | @tsv' >"${RUNNER_TEMP}/victims.tsv"
+          head -n 100 "${RUNNER_TEMP}/victims.tsv" | while IFS="$(printf '\t')" read -r id ref key; do
+            if ! gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>"${RUNNER_TEMP}/delete.err"; then
+              grep -q 'HTTP 404' "${RUNNER_TEMP}/delete.err" || { cat "${RUNNER_TEMP}/delete.err" >&2; exit 1; }
+            fi
+            printf 'deleted %s (%s)\n' "$key" "$ref"
+          done

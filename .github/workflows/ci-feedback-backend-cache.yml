@@ -1,23 +1,50 @@
-# Backend-inclusive compact seed for short PR feedback. No PR can publish here.
+# Backend-inclusive compact seeds for short PR feedback. No PR can publish here.
+# Two trust families, each with bounded entries per feedback lane (application and cli for
+# the go lane, tooling for the tooling lane):
+#   main: daily or manual from main; read only by feedback runs on PRs that do not target dev.
+#   dev:  from pushes to dev (at most one per UTC day) or a manual run on dev; read only by
+#         feedback runs on PRs that target dev.
+# The family is part of the cache key and of every reader's restore prefix, so neither
+# family's prefix can match the other's entries. GitHub's own ref scoping is what keeps the
+# families apart at read time; the family string only keeps the prefixes honest.
+# The prune job then deletes the entries this run superseded, so the repository cache budget
+# holds one set per family instead of one per day or per commit.
 name: cache-seed-feedback-backend
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '32 3 * * *'
+  push:
+    branches: [dev]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-feedback-backend-cache-main
+  group: ci-feedback-backend-cache-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   seed:
-    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    if: >-
+      ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') ||
+      ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      abi: ${{ steps.runner-cache-abi.outputs.value }}
+      day: ${{ steps.seed-day.outputs.value }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - entry: application
+            roots: ./internal/app
+          - entry: cli
+            roots: ./internal/cli
+          - entry: tooling
+            roots: ./scripts/ci ./internal/boundary ./internal/isolation ./internal/lint
     defaults:
       run:
         working-directory: source
@@ -25,7 +52,7 @@ jobs:
       GOFLAGS: '-gcflags=all=-dwarf=false'
       GOCACHE: ${{ github.workspace }}/.ci-cache/go-feedback-compact
     steps:
-      - name: Check out immutable trusted main without credentials
+      - name: Check out the immutable pushed commit without credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -40,26 +67,86 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
-      - name: Look up this main seed without restoring old entries
+      - name: Name the UTC day of this seed
+        id: seed-day
+        run: echo "value=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - name: Look up this seed without restoring old entries
         id: feedback-reuse
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-cache/go-feedback-compact
-          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ github.sha }}
+          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ github.ref == 'refs/heads/dev' && 'dev' || 'main' }}-${{ matrix.entry }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ hashFiles('source/.github/workflows/ci-feedback-backend-cache.yml') }}-${{ github.ref == 'refs/heads/dev' && 'dev' || github.sha }}-${{ steps.seed-day.outputs.value }}
           lookup-only: true
       - name: Compile a fresh feedback seed without running tests
         if: steps.feedback-reuse.outputs.cache-hit != 'true'
         run: |
           test ! -e "$GOCACHE"
           mkdir -p "$GOCACHE"
-          go list -p 2 -deps -test -export ./internal/app ./internal/cli ./scripts/ci >/dev/null
-          ./scripts/ci/run-go-tool.sh actionlint -version
-          go run ./scripts/ci/feedback-reuse-size "$GOCACHE"
-      - name: Save bounded feedback seed from trusted main only
+          go list -p 2 -deps -test -export ${{ matrix.roots }} >/dev/null
+      - name: Compile the pinned workflow linter
+        if: steps.feedback-reuse.outputs.cache-hit != 'true' && matrix.entry == 'tooling'
+        run: ./scripts/ci/run-go-tool.sh actionlint -version
+      - name: Check the seed against its size and file bounds
+        if: steps.feedback-reuse.outputs.cache-hit != 'true'
+        run: go run ./scripts/ci/feedback-reuse-size "$GOCACHE"
+      - name: Save bounded feedback seed from a trusted branch only
         if: >-
           success() && steps.feedback-reuse.outputs.cache-hit != 'true' &&
-          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+          ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main' ||
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-cache/go-feedback-compact
           key: ${{ steps.feedback-reuse.outputs.cache-primary-key }}
+
+  # Superseded seeds of the same ref, family and entry. A separate job so the one that compiles
+  # keeps a read-only token: this one holds only actions: write, checks nothing out and runs no
+  # repository code. It deletes by exact key prefix and by this run's ref (both re-checked here,
+  # not left to the server's filter) and by cache id, never the newest entry of the prefix and
+  # never the one this run named, and treats an already-deleted entry as done.
+  prune:
+    needs: seed
+    # Not success(): one failing matrix leg must not leave the other legs' superseded daily keys to pile up
+    # (the hourly generic prune does not list go-feedback-v2), so it runs after any outcome but a skip or a cancel.
+    if: >-
+      !cancelled() && needs.seed.result != 'skipped' &&
+      (((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main') ||
+      ((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/dev'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: [application, cli, tooling]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ABI: ${{ needs.seed.outputs.abi }}
+      SEED_DAY: ${{ needs.seed.outputs.day }}
+      ENTRY: ${{ matrix.entry }}
+    steps:
+      - name: Delete the superseded seeds of this family and entry
+        run: |
+          set -euo pipefail
+          [ -n "$ABI" ] && [ -n "$SEED_DAY" ] || { echo "the seed run did not name its ABI and day" >&2; exit 1; }
+          family=main
+          suffix=$GITHUB_SHA-$SEED_DAY
+          if [ "$GITHUB_REF" = refs/heads/dev ]; then family=dev; suffix=dev-$SEED_DAY; fi
+          prefix="go-feedback-v2-${RUNNER_OS}-${RUNNER_ARCH}-${ABI}-${family}-${ENTRY}-"
+          rows=$(gh api --paginate "repos/${GH_REPO}/actions/caches?per_page=100&ref=${GITHUB_REF}&key=${prefix}" \
+            --jq '.actions_caches[] | select(.ref == env.GITHUB_REF) | [.id, .key, .created_at] | @tsv' |
+            awk -F'\t' -v p="$prefix" 'index($2, p) == 1' | sort -t"$(printf '\t')" -k3,3r)
+          newest=$(printf '%s\n' "$rows" | head -n 1 | cut -f1)
+          printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r id key _; do
+            [ -n "$id" ] || continue
+            # Load-bearing: abi and day come from whichever matrix leg finished last, so across UTC
+            # midnight SEED_DAY can differ from this run's key; the entry just saved is then the newest.
+            [ "$id" != "$newest" ] || continue
+            case "$key" in *"-${suffix}") continue ;; esac
+            if ! gh api -X DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>"${RUNNER_TEMP}/delete.err"; then
+              grep -q 'HTTP 404' "${RUNNER_TEMP}/delete.err" || { cat "${RUNNER_TEMP}/delete.err" >&2; exit 1; }
+            fi
+            printf 'deleted superseded seed %s\n' "$key"
+          done

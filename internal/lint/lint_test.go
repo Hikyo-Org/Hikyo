@@ -831,7 +831,7 @@ func TestContextEnvClearsAmbientGOFLAGS(t *testing.T) {
 	t.Setenv("GOOS", "plan9")
 	for _, ctx := range Contexts {
 		env := ctx.Env()
-		if !slices.Contains(env, "GOFLAGS=") || slices.Contains(env, "GOFLAGS=-tags=hostile") {
+		if !slices.Contains(env, "GOFLAGS=-gcflags=all=-dwarf=false") || slices.Contains(env, "GOFLAGS=-tags=hostile") {
 			t.Fatalf("%s env keeps ambient GOFLAGS: %v", ctx.Name, env)
 		}
 		if slices.Contains(env, "GOOS=plan9") {

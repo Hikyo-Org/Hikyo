@@ -11,7 +11,7 @@ import (
 func TestAppleNativeRunnerPolicy(t *testing.T) {
 	root := t.TempDir()
 	repo := repositoryRoot(t)
-	files := []string{"scripts/ci/check-cache-policy_test.sh", "scripts/ci/go-tool-modules.txt", "scripts/ci/verify-docs.sh", "web/package.json", "docs/site/package.json"}
+	files := []string{"scripts/ci/check-cache-policy_test.sh", "scripts/ci/populate-go-module-cache.sh", "scripts/ci/go-tool-modules.txt", "scripts/ci/verify-docs.sh", "web/package.json", "docs/site/package.json"}
 	entries, err := os.ReadDir(filepath.Join(repo, ".github/workflows"))
 	if err != nil {
 		t.Fatal(err)

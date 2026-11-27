@@ -118,7 +118,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Build the embedded frontend
@@ -166,7 +166,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Start disposable GitLab CE
@@ -304,7 +304,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
@@ -351,7 +351,7 @@ jobs:
       - name: Restore shared Go module cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/go/pkg/mod
+          path: ~/go/pkg/mod/cache/download
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI

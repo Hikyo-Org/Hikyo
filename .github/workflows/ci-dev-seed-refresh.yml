@@ -1,0 +1,34 @@
+# Daily refresh of the dev feedback seed. Schedules run on the default branch only, so dev has no
+# cron of its own: after a quiet weekend its newest seed was last used on Friday, the least recently
+# accessed entry in the repository, and the weekly lint driver rollover (Monday 04:11 UTC) evicted
+# it. The main seed has its own 03:32 schedule. This job asks the seed workflow to run on dev; that
+# run is a dev run in every respect (it checks out dev, its cache key carries the dev family, and
+# only a dev ref can save it), so the main and dev trust families stay apart. A run on a day that
+# already has a dev seed finds it and saves nothing.
+# It holds actions: write and nothing else, checks nothing out and runs no repository code.
+name: cache-refresh-dev-seed
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '44 3 * * *'
+
+permissions: {}
+
+concurrency:
+  group: ci-dev-seed-refresh
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Run the dev feedback seed on dev
+        run: gh workflow run ci-feedback-backend-cache.yml --ref dev
