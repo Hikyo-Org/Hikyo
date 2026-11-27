@@ -191,6 +191,8 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603", []int{1}, false, ""},
 		// The jobs listing spends requests after the first read, so the decision uses a fresh balance.
+		// A spent window stops before the listing spends anything: after it the balance would look healthy.
+		{"a spent window is handed on before the jobs listing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "40 5000 1795475603|4000 5000 1795475603", nil, false, "40 of 5000"},
 		{"a group job the jobs listing leaves below a tenth is not rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, "99 of 1000"},
 		{"a failed second balance read fails the step", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "900 1000 1795475603|bad 1000 1795475603", nil, true, ""},
 		// 0x3e8 is 1000 to shell arithmetic, so only the number check stops it.
@@ -233,18 +235,16 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
 			// Each "|"-separated balance answers one rate_limit read in turn; the last repeats.
+			// "before|after": the first balance answers rate_limit reads until the jobs listing has run
+			// (it spends requests), the second answers reads after it; one balance answers both.
 			balances := strings.Split(tc.rateLimit, "|")
-			for i, balance := range append(balances, balances[len(balances)-1]) {
+			for name, balance := range map[string]string{"before.json": balances[0], "after.json": balances[len(balances)-1]} {
 				rl := strings.Fields(balance)
 				graphql := ""
 				if len(rl) == 6 {
 					graphql = ",\"graphql\":{\"remaining\":" + rl[3] + ",\"limit\":" + rl[4] + ",\"reset\":" + rl[5] + "}"
 				}
 				body := "{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}" + graphql + "}}"
-				name := fmt.Sprintf("rl%d.json", i)
-				if i == len(balances) {
-					name = "rl-last.json" // the answer once the list runs out
-				}
 				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -253,9 +253,9 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 			stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
 				"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
 				"case \"$*\" in\n" +
-				"  'api rate_limit '*) n=$(cat '" + dir + "/count' 2>/dev/null || echo 0); echo $((n + 1)) > '" + dir + "/count'; f='" + dir + "'/rl$n.json; [ -f \"$f\" ] || f='" + dir + "'/rl-last.json; jq -r \"$filter\" < \"$f\" ;;\n" +
+				"  'api rate_limit '*) f='" + dir + "'/before.json; [ ! -f '" + dir + "/listed' ] || f='" + dir + "'/after.json; jq -r \"$filter\" < \"$f\" ;;\n" +
 				"  *--method\\ POST*) ;;\n" +
-				"  api*) printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
+				"  api*) : > '" + dir + "/listed'; printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
 				"esac\n"
 			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
