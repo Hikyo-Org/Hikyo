@@ -24,6 +24,9 @@ var (
 	// guards against. Only a quoted sh heredoc is: an unquoted one's raw text (\$ escapes) is not
 	// what runs, so it may not parse. shortcut: unquoted sh heredocs are unscanned; quote them.
 	scriptShebang = regexp.MustCompile(`^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?(?:ba)?sh|/(?:usr/)?bin/(?:ba)?sh)(?:\s|$)`)
+	// A shebang naming bash or sh (env -S -i bash, env --split-string=sh) that the patterns above
+	// miss; the walk fails on it rather than skip the file. zsh, dash and the like do not match.
+	shellMention = regexp.MustCompile(`(?:^|[^a-z])(?:ba)?sh(?:\s|$)`)
 	// Workflow expressions are replaced before parsing; they are not shell syntax.
 	workflowExpression = regexp.MustCompile(`\$\{\{(?:[^}']|'(?:[^']|'')*')*\}\}`) // a quoted '{0}' does not end it
 )
@@ -267,7 +270,7 @@ var unscannedErrexitForms = []struct {
 	// POSIX mode and inherit_errexit both make substitutions inherit errexit. Running a script
 	// as sh x.sh (POSIX mode on macOS, whose sh is bash 3.2) cannot be seen from the script; a
 	// workflow env: entry is checked by TestNoBareBashTestRelyingOnErrexit.
-	{"errexit inheritance from the environment or the bash command line", regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b|\s--posix\b|\bbash\b(?:[^\n;|&]|\\\n)*\s(?:-[a-zA-Z]*o\s+["']?posix|-O\s+["']?inherit_errexit)\b`)},
+	{"errexit inheritance from the environment or the bash command line", regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS|BASH_ENV)\b|\s--posix\b|\bbash\b(?:[^\n;|&]|\\\n)*\s(?:-[a-zA-Z]*o\s+["']?posix|-O\s+["']?inherit_errexit)\b`)},
 }
 
 // unscannedErrexitUses returns "line: form" for each unscannedErrexitForms match in script,
@@ -614,7 +617,7 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 		"eval $(:;) 'x\\\\\nset -e'\n", "eval $(:;) \"x\\\\\\\\\nset -e\"\n",
 		"\"eval\" $'\\n'set -e\n", "\\eval $'\\t'set -e\n", "\"eval\" $(:;) 'x\\\\\ns'et -e\n",
 		"$'builtin' \"eval\" set -e\n", "\"com\"$'mand' \"eval\" set -e\n", "\"eval\" shopt -s inherit_errexit\n",
-		"POSIXLY_CORRECT=1 ./x.sh\n", "bash --posix x.sh\n", "SHELLOPTS=posix ./x.sh\n", "export SHELLOPTS\n",
+		"POSIXLY_CORRECT=1 ./x.sh\n", "bash --posix x.sh\n", "SHELLOPTS=posix ./x.sh\n", "export SHELLOPTS\n", "BASH_ENV=./posix.sh ./x.sh\n",
 		"BASHOPTS=inherit_errexit ./x.sh\n", "bash -o posix x.sh\n", "bash -eo posix x.sh\n", "bash -O inherit_errexit x.sh\n",
 		"bash -o 'posix' x.sh\n", "bash -O \"inherit_errexit\" x.sh\n", "bash \\\n  -o posix x.sh\n",
 		"cat >f <<'EOF'\n#!/usr/bin/env bash\nvalue=$(\"eval\" set -e; [[ a == b ]]; echo accepted)\nEOF\n",
@@ -647,12 +650,17 @@ func TestUnscannedErrexitFormsAreRejected(t *testing.T) {
 }
 
 // TestRepositoryScanSelectors pins what the repository scan reads: sh files are scanned (macOS
-// sh is bash 3.2), a step under any shell but plain bash is read in POSIX mode, and a workflow env: entry that makes
-// substitutions inherit errexit is caught.
+// sh is bash 3.2), a step under any shell but plain bash is read in POSIX mode, and a workflow
+// env: entry that makes substitutions inherit errexit is caught.
 func TestRepositoryScanSelectors(t *testing.T) {
 	for line, want := range map[string]bool{"#!/bin/sh": true, "#!/usr/bin/env sh": true, "#!/bin/bash -e": true, "#!/bin/zsh": false, "#!/usr/bin/env python3": false, "#!/usr/bin/env -S bash -e": true, "#!/usr/bin/env -S sh": true} {
 		if got := scriptShebang.MatchString(line); got != want {
 			t.Errorf("scriptShebang(%q) = %v, want %v", line, got, want)
+		}
+	}
+	for line, want := range map[string]bool{"#!/usr/bin/env -S -i bash": true, "#!/usr/bin/env -S VAR=1 sh": true, "#!/usr/bin/env -Ssh": true, "#!/usr/bin/env --split-string=sh": true, "#!/bin/zsh": false, "#!/bin/dash": false, "#!/usr/bin/env -S uv run --script": false} {
+		if got := shellMention.MatchString(line); got != want {
+			t.Errorf("shellMention(%q) = %v, want %v", line, got, want)
 		}
 	}
 	for line, want := range map[string]bool{"#!/usr/bin/env -S bash -e": true, "#!/bin/bash": true, "#!/usr/bin/env -S sh": false} {
@@ -660,7 +668,7 @@ func TestRepositoryScanSelectors(t *testing.T) {
 			t.Errorf("bashShebang(%q) = %v, want %v", line, got, want)
 		}
 	}
-	for _, shell := range []string{"sh -e {0}", "/usr/bin/env sh {0}", "env sh -e {0}", "bash --posix {0}", "bash -o posix {0}", "${{ matrix.shell }}", "bash ${{ matrix.flags }} {0}"} {
+	for _, shell := range []string{"sh -e {0}", "/usr/bin/env sh {0}", "env sh -e {0}", "bash --posix {0}", "bash -o posix {0}", "${{ matrix.shell }}", "bash ${{ matrix.flags }} {0}", "bash -eo pipefail -O inherit_errexit {0}", "bash -c \"shopt -s inherit_errexit; . {0}\""} {
 		if got, err := bareTests(scannedStepScript("set -e\nx=$([[ a == b ]]; echo leaked)\n", shell)); err != nil || !reflect.DeepEqual(got, []int{2}) {
 			t.Errorf("a %q step's substitution: got %v, %v; want line 2 flagged (POSIX mode inherits errexit)", shell, got, err)
 		}
@@ -704,23 +712,24 @@ func TestRepositoryScanSelectors(t *testing.T) {
 	if problems, err := workflowProblems("top.yml", []byte(topLevel)); err != nil || len(problems) != 1 || !strings.Contains(problems[0], "job c ") || !strings.Contains(problems[0], ":2: bare test") {
 		t.Errorf("workflow defaults shell: sh: got %v, %v; want one line-2 problem in job c", problems, err)
 	}
-	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  SHELL: bash\n": false} {
+	for text, want := range map[string]bool{"env:\n  SHELLOPTS: posix\n": true, "  BASHOPTS: inherit_errexit\n": true, "  POSIXLY_CORRECT: 1\n": true, "  BASH_ENV: ./posix.sh\n": true, "  SHELL: bash\n": false} {
 		if got := len(workflowEnvProblems([]byte(text))) > 0; got != want {
 			t.Errorf("workflowEnvProblems(%q) found = %v, want %v", text, got, want)
 		}
 	}
 }
 
-var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS)\b`)
+var inheritanceEnv = regexp.MustCompile(`\b(?:POSIXLY_CORRECT|SHELLOPTS|BASHOPTS|BASH_ENV)\b`) // BASH_ENV: a file every bash reads first
 
 // scannedStepScript is a workflow step's script as the scan reads it: expressions replaced, and
-// under any shell but plain bash (sh, env sh, an expression anywhere, bash --posix) set -o posix put
+// under any shell but plain bash (sh, env sh, an expression anywhere, bash --posix, bash -O
+// inherit_errexit) set -o posix put
 // before line 1, since such a shell may run bash in POSIX mode and POSIX mode only adds
 // substitution bodies to the scan. Prepended on the same line, so line numbers stay put and a
 // trailing continuation cannot swallow it.
 func scannedStepScript(run, shell string) string {
 	script := workflowExpression.ReplaceAllString(run, "GITHUB_EXPRESSION")
-	if exe := shellExecutable(shell); (exe != "" && exe != "bash") || strings.Contains(shell, "posix") || strings.Contains(shell, "${{") {
+	if exe := shellExecutable(shell); (exe != "" && exe != "bash") || strings.Contains(shell, "posix") || strings.Contains(shell, "inherit_errexit") || strings.Contains(shell, "${{") {
 		script = "set -o posix; " + script
 	}
 	return script
@@ -805,6 +814,9 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 		}
 		firstLine, _, _ := strings.Cut(string(raw), "\n")
 		if !scriptShebang.MatchString(firstLine) {
+			if shellMention.MatchString(firstLine) {
+				t.Errorf("%s: shebang %q names bash or sh in a form the scan does not read; use #!/usr/bin/env bash or #!/bin/sh", path, firstLine)
+			}
 			return nil
 		}
 		scripts++
@@ -818,7 +830,8 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scripts < 20 || shScripts < 100 {
+	// Near the current counts (253 and 191), so losing a tree of scripts is noticed.
+	if scripts < 200 || shScripts < 150 {
 		t.Fatalf("found only %d bash scripts, %d of them sh; the scan is not seeing the repository", scripts, shScripts)
 	}
 }
