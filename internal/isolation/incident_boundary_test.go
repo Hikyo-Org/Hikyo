@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,76 @@ func TestIncidentContainRefusesAMemberOutsideTheIncidentOrg(t *testing.T) {
 		// found, so the answer tells nothing about its containment state.
 		execRaw(t, db, `UPDATE principals SET containment_state='contained' WHERE id='usr_bnd_member'`)
 		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_bnd_member", "org_a")
+	})
+}
+
+// seedContainMember adds an account whose grants are the given (capability, org)
+// pairs, the org NULL for an instance capability.
+func seedContainMember(t *testing.T, db *store.DB, id string, grants ...[2]string) {
+	t.Helper()
+	execRaw(t, db, `INSERT INTO principals (id, kind, created_at) VALUES ('`+id+`', 'human', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO accounts (id, principal_id, username, display_name, email, email_verified_at, created_at) VALUES ('acc_`+id+`', '`+id+`', '`+id+`', 'Member', '`+id+`@example.test', `+ts+`, `+ts+`)`)
+	for i, g := range grants {
+		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, created_at) VALUES ('g_`+id+`_`+strconv.Itoa(i)+`', '`+id+`', '`+g[0]+`', `+g[1]+`, `+ts+`)`)
+	}
+	seedOrigins(t, db)
+}
+
+// A member of several orgs has no single owning org, so containing it takes the
+// instance's authority: an org responder working an org incident is blocked and
+// the member stays uncontained.
+func TestIncidentContainBlocksAnOrgResponderOnAMemberOfSeveralOrgs(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		seedContainMember(t, db, "usr_multi", [2]string{"read", "'org_a'"}, [2]string{"read", "'org_b'"})
+		inc := w.openOrg(t, incResponder)
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_multi", "org_a"); res != service.OwnerBlocked {
+			t.Errorf("an org responder containing a member of two orgs = %v, want blocked", res)
+		}
+		if s := w.containmentState(t, "usr_multi"); s == "contained" {
+			t.Error("an org responder contained a member of two orgs")
+		}
+	})
+}
+
+// An account holding an instance capability is contained host-local only (ADR O2,
+// O3): even the instance responder is blocked here, and the account stays
+// uncontained.
+func TestIncidentContainBlocksAnInstanceCapabilityAccount(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		seedContainMember(t, db, "usr_instcap", [2]string{"read", "'org_a'"}, [2]string{"instance-config", "NULL"})
+		inc := w.openOrg(t, incInstance)
+		if res := w.callOwner(t, incInstance, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_instcap", "org_a"); res != service.OwnerBlocked {
+			t.Errorf("the instance responder containing an instance-capability account = %v, want blocked", res)
+		}
+		if s := w.containmentState(t, "usr_instcap"); s == "contained" {
+			t.Error("an instance-capability account was contained outside the host")
+		}
+	})
+}
+
+// account.contain ends the account's sessions itself: run alone, without the
+// session items, it leaves none.
+func TestIncidentContainAloneEndsTheAccountsSessions(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		sessions := func() int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM sessions WHERE principal_id='`+string(incTarget)+`'`)
+		}
+		if sessions() == 0 {
+			t.Fatal("the world seeds no session for the target")
+		}
+		inc := w.openAccount(t, incResponder).Incident.ID
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, string(incTarget), "org_a"); res != service.OwnerConfirmed {
+			t.Fatalf("contain = %v, want confirmed", res)
+		}
+		if n := sessions(); n != 0 {
+			t.Errorf("%d sessions survive account.contain run alone", n)
+		}
 	})
 }
 

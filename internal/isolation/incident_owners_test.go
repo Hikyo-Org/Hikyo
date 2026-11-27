@@ -1049,30 +1049,89 @@ func TestIncidentMachineCredentialOwnerBlocksWhenTheOrgGrantIsLost(t *testing.T)
 	})
 }
 
-// The SCIM credential reads run under the incident's org operation too. A trigger on
-// the revoke drops that grant in the revoke's own transaction, so the revoke (under
-// manage-members) still lands, but the confirming read is refused: the owner ends
-// blocked, not confirmed.
+// loseGrantOn installs a trigger that deletes one org_a grant of the principal in
+// the same transaction as the named row change, so the grant is lost exactly
+// between an owner's mutation and its confirming read, on both engines and with no
+// second connection (SQLite has one write connection).
+func loseGrantOn(t *testing.T, db *store.DB, p domain.PrincipalID, capability, event, table, when string) {
+	t.Helper()
+	where := `principal_id='` + string(p) + `' AND capability='` + capability + `' AND org_id='org_a'`
+	drop := `DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE ` + where + `); DELETE FROM grants WHERE ` + where + `;`
+	if db.Engine() == store.EnginePostgres {
+		ret := "NEW"
+		if event == "DELETE" {
+			ret = "OLD"
+		}
+		execRaw(t, db, `CREATE FUNCTION lose_org_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN `+drop+` RETURN `+ret+`; END $$`)
+		execRaw(t, db, `CREATE TRIGGER lose_org_grant AFTER `+event+` ON `+table+` FOR EACH ROW WHEN (`+when+`) EXECUTE FUNCTION lose_org_grant()`)
+		return
+	}
+	execRaw(t, db, `CREATE TRIGGER lose_org_grant AFTER `+event+` ON `+table+` WHEN `+when+` BEGIN `+drop+` END`)
+}
+
+// The SCIM credential reads run under the incident's org operation and the SCIM
+// revoke operation. A trigger drops one of those grants in the revoke's own
+// transaction, so the revoke still lands, but the confirming read is refused: the
+// owner ends blocked, never confirmed. Losing credential-reset refuses the
+// incident authorization; losing manage-members refuses the SCIM read, whose
+// masked not found must not read as a credential that is gone.
 func TestIncidentSCIMOwnerBlocksWhenTheOrgGrantIsLost(t *testing.T) {
+	for _, capability := range []string{"credential-reset", "manage-members"} {
+		t.Run(capability, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				w := newIncidentWorld(t, db)
+				w.realOwners()
+				execRaw(t, db, `INSERT INTO scim_bindings(id,org_id,provider_kind,provider_id,provider_slug,provider_issuer,subject_source,connection_principal_id,created_at) VALUES ('sbn_gl','org_a','oidc','sbn_gl','sbn_gl','https://idp.example','externalId','mch_it',`+ts+`)`)
+				execRaw(t, db, `INSERT INTO scim_credentials (id, org_id, binding_id, principal_id, verifier, credential_epoch, created_at) VALUES ('scc_gl','org_a','sbn_gl','mch_it',`+blobLit(db, []byte("verifier-scc-gl"))+`, (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`)`)
+				inc := w.openOrg(t, incResponder)
+				loseGrantOn(t, db, incResponder, capability, "UPDATE", "scim_credentials", map[bool]string{true: `NEW.id = 'scc_gl' AND NEW.revoked_at IS NOT NULL`, false: `new.id = 'scc_gl' AND new.revoked_at IS NOT NULL`}[db.Engine() == store.EnginePostgres])
+				if res := w.callOwner(t, incResponder, inc, domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, "scc_gl", "org_a"); res != service.OwnerBlocked {
+					t.Errorf("a confirming read without %s = %v, want blocked", capability, res)
+				}
+				if n := queryInt(t, db, `SELECT COUNT(*) FROM scim_credentials WHERE id='scc_gl' AND revoked_at IS NOT NULL`); n != 1 {
+					t.Errorf("the revoke did not land")
+				}
+			})
+		})
+	}
+}
+
+// The invitation re-read runs under the incident's org operation. A trigger drops
+// that grant in the revoke's own transaction (the revoke itself runs under
+// manage-members), so the re-read is refused: the owner ends blocked, not
+// confirmed, though the invitation is gone.
+func TestIncidentInvitationOwnerBlocksWhenTheOrgGrantIsLost(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		w := newIncidentWorld(t, db)
 		w.realOwners()
-		execRaw(t, db, `INSERT INTO scim_bindings(id,org_id,provider_kind,provider_id,provider_slug,provider_issuer,subject_source,connection_principal_id,created_at) VALUES ('sbn_gl','org_a','oidc','sbn_gl','sbn_gl','https://idp.example','externalId','mch_it',`+ts+`)`)
-		execRaw(t, db, `INSERT INTO scim_credentials (id, org_id, binding_id, principal_id, verifier, credential_epoch, created_at) VALUES ('scc_gl','org_a','sbn_gl','mch_it',`+blobLit(db, []byte("verifier-scc-gl"))+`, (SELECT credential_epoch FROM auth_instance_state WHERE id = 1), `+ts+`)`)
-		where := `principal_id='` + string(incResponder) + `' AND capability='credential-reset' AND org_id='org_a'`
-		drop := `DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE ` + where + `); DELETE FROM grants WHERE ` + where + `;`
-		if db.Engine() == store.EnginePostgres {
-			execRaw(t, db, `CREATE FUNCTION lose_org_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN `+drop+` RETURN NEW; END $$`)
-			execRaw(t, db, `CREATE TRIGGER lose_on_revoke AFTER UPDATE ON scim_credentials FOR EACH ROW WHEN (NEW.id = 'scc_gl' AND NEW.revoked_at IS NOT NULL) EXECUTE FUNCTION lose_org_grant()`)
-		} else {
-			execRaw(t, db, `CREATE TRIGGER lose_on_revoke AFTER UPDATE ON scim_credentials WHEN new.id = 'scc_gl' AND new.revoked_at IS NOT NULL BEGIN `+drop+` END`)
-		}
+		execRaw(t, db, `INSERT INTO org_email_invitations (id, org_id, email, template, inviter_principal_id, account_id, token_verifier, credential_epoch, created_at, expires_at) VALUES ('ein_gl', 'org_a', 'inv-gl@example.test', 'viewer', 'usr_irsp', NULL, `+blobLit(db, []byte("verifier-ein-gl"))+`, 0, `+ts+`, '2099-01-01T00:00:00.000000Z')`)
 		inc := w.openOrg(t, incResponder)
-		if res := w.callOwner(t, incResponder, inc, domain.OwnerSCIMCredential, domain.ObjectKindSCIMCredential, "scc_gl", "org_a"); res != service.OwnerBlocked {
-			t.Errorf("a confirming read without the org grant = %v, want blocked", res)
+		loseGrantOn(t, db, incResponder, "credential-reset", "DELETE", "org_email_invitations", map[bool]string{true: `OLD.id = 'ein_gl'`, false: `old.id = 'ein_gl'`}[db.Engine() == store.EnginePostgres])
+		if res := w.callOwner(t, incResponder, inc, domain.OwnerEmailInvitation, domain.ObjectKindEmailInvitation, "ein_gl", "org_a"); res != service.OwnerBlocked {
+			t.Errorf("a re-read without the org grant = %v, want blocked", res)
 		}
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM scim_credentials WHERE id='scc_gl' AND revoked_at IS NOT NULL`); n != 1 {
-			t.Errorf("the revoke under manage-members did not land")
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM org_email_invitations WHERE id='ein_gl'`); n != 0 {
+			t.Errorf("the revoke did not land")
+		}
+	})
+}
+
+// A target the pause cannot reach while it still exists (here one moving between
+// environments: the pause matches only an active target and answers not found) is
+// not confirmed: the item stays open with a conflict and the target is not paused.
+func TestIncidentTargetOwnerDoesNotConfirmATargetThePauseCannotReach(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_mv','org_a','prj_a1','forgejo','https://git.example','usr_alice','active',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_moving','org_a','prj_a1','env_a1','adp_mv','repository','acme','app',43,'',1,'moving','converged',`+ts+`)`)
+		inc := w.openOrg(t, incResponder)
+		res, err := w.svc.Owners[domain.OwnerAdapterTargetPause](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: inc, OwnerFunction: domain.OwnerAdapterTargetPause, ObjectKind: domain.ObjectKindAdapterTarget, ObjectID: "tgt_moving", Scope: "org_a/prj_a1"})
+		if res == service.OwnerConfirmed || !errors.Is(err, domain.ErrConflict) {
+			t.Errorf("an unpausable target that exists = %v, %v; want unconfirmed with a conflict", res, err)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_moving' AND paused_at IS NULL`); n != 1 {
+			t.Errorf("the target changed")
 		}
 	})
 }
