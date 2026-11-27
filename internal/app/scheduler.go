@@ -216,8 +216,16 @@ func (s *Scheduler) runHA(ctx context.Context) {
 
 	// A serialization retry reuses the original now/expires, so a success can
 	// land after the lease already lapsed. Such a result confers no authority.
+	// Judge it by the datastore clock, never this node's local one.
 	fresh := func(expires time.Time) bool {
-		if s.now().Before(expires) {
+		nowCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+		now, err := s.Lease.Now(nowCtx)
+		cancel()
+		if err != nil {
+			s.logger().Error("scheduler datastore clock unreachable; failing closed", "node", s.NodeID, "err", err)
+			return false
+		}
+		if now.Before(expires) {
 			return true
 		}
 		s.logger().Error("scheduler lease lapsed before its grant was observed; failing closed", "node", s.NodeID)

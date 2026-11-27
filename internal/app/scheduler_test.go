@@ -29,6 +29,9 @@ type fakeLease struct {
 	releases    int
 	afterClaim  func()
 	afterRenew  func()
+	dbSkew      atomic.Int64 // datastore clock offset in ns
+	lateOnce    atomic.Int64 // offset applied to the next Now read only
+	nowErr      atomic.Bool
 }
 
 func (f *fakeLease) set(fn func(*fakeLease)) {
@@ -37,7 +40,12 @@ func (f *fakeLease) set(fn func(*fakeLease)) {
 	fn(f)
 }
 
-func (f *fakeLease) Now(context.Context) (time.Time, error) { return time.Now().UTC(), nil }
+func (f *fakeLease) Now(context.Context) (time.Time, error) {
+	if f.nowErr.Load() {
+		return time.Time{}, errors.New("clock down")
+	}
+	return time.Now().UTC().Add(time.Duration(f.dbSkew.Load() + f.lateOnce.Swap(0))), nil
+}
 
 func (f *fakeLease) ClaimLease(_ context.Context, _, _ string, _, _ time.Time) (int64, bool, error) {
 	f.mu.Lock()
@@ -324,26 +332,25 @@ func TestSchedulerHAReleasesProvisionalClaimOnStop(t *testing.T) {
 	}
 }
 
-// skewClock lets a test advance the scheduler's clock from inside a lease call,
-// as a slow serialization retry would.
-type skewClock struct{ ns atomic.Int64 }
-
-func (c *skewClock) now() time.Time { return time.Now().Add(time.Duration(c.ns.Load())) }
-
-func TestSchedulerHAClaimLandingAfterExpiryStartsNoTerm(t *testing.T) {
-	var runs atomic.Int64
-	clock := &skewClock{}
-	lease := &fakeLease{claimHeld: true, renewHeld: true}
-	lease.afterClaim = func() { clock.ns.Add(int64(time.Hour)) }
-	s := &Scheduler{
-		Interval: time.Hour, Deadline: time.Second, Log: testLogger(), Now: clock.now,
+func haScheduler(lease *fakeLease, now func() time.Time, runs *atomic.Int64) *Scheduler {
+	return &Scheduler{
+		Interval: time.Hour, Deadline: time.Second, Log: testLogger(), Now: now,
 		Lease: lease, NodeID: "node-a", LeaseTTL: 40 * time.Millisecond, Heartbeat: 10 * time.Millisecond,
 		Jobs: []ScheduledJob{{Name: "gc", Run: func(context.Context) error { runs.Add(1); return nil }}},
 	}
+}
+
+func claims(l *fakeLease) int { l.mu.Lock(); defer l.mu.Unlock(); return l.claims }
+
+func TestSchedulerHAClaimLandingAfterExpiryStartsNoTerm(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	lease.afterClaim = func() { lease.lateOnce.Store(int64(time.Hour)); lease.claimHeld, lease.renewHeld = false, false }
+	s := haScheduler(lease, nil, &runs)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { s.Run(ctx); close(done) }()
-	waitFor(t, "claim", func() bool { lease.mu.Lock(); defer lease.mu.Unlock(); return lease.claims >= 1 })
+	waitFor(t, "claim", func() bool { return claims(lease) >= 1 })
 	time.Sleep(80 * time.Millisecond)
 	if s.IsLeader() || runs.Load() != 0 {
 		t.Fatalf("expired claim started a term: leader=%v runs=%d", s.IsLeader(), runs.Load())
@@ -353,19 +360,53 @@ func TestSchedulerHAClaimLandingAfterExpiryStartsNoTerm(t *testing.T) {
 }
 
 func TestSchedulerHARenewLandingAfterExpiryDropsLeadership(t *testing.T) {
-	clock := &skewClock{}
+	var runs atomic.Int64
 	lease := &fakeLease{claimHeld: true, renewHeld: true}
-	s := &Scheduler{
-		Interval: time.Hour, Deadline: time.Second, Log: testLogger(), Now: clock.now,
-		Lease: lease, NodeID: "node-a", LeaseTTL: 40 * time.Millisecond, Heartbeat: 10 * time.Millisecond,
-		Jobs: []ScheduledJob{{Name: "gc", Run: func(context.Context) error { return nil }}},
-	}
+	s := haScheduler(lease, nil, &runs)
+	var logged syncBuf
+	s.Log = slog.New(slog.NewTextHandler(&logged, nil))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { s.Run(ctx); close(done) }()
 	waitFor(t, "leadership", s.IsLeader)
-	lease.set(func(f *fakeLease) { f.afterRenew = func() { clock.ns.Add(int64(time.Hour)) } })
-	waitFor(t, "expired renewal to drop leadership", func() bool { return !s.IsLeader() })
+	var once atomic.Bool
+	lease.set(func(f *fakeLease) {
+		f.afterRenew = func() {
+			if once.CompareAndSwap(false, true) {
+				f.dbSkew.Add(int64(time.Hour))
+			}
+		}
+	})
+	waitFor(t, "expired renewal to be rejected in-tick", func() bool { return strings.Contains(logged.String(), "lapsed before its grant") })
+	cancel()
+	<-done
+}
+
+func TestSchedulerHAClockErrorAfterClaimStartsNoTerm(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	lease.afterClaim = func() { lease.nowErr.Store(true) }
+	s := haScheduler(lease, nil, &runs)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "claim", func() bool { return claims(lease) >= 1 })
+	time.Sleep(80 * time.Millisecond)
+	if s.IsLeader() || runs.Load() != 0 {
+		t.Fatalf("claim with unreadable clock started a term: leader=%v runs=%d", s.IsLeader(), runs.Load())
+	}
+	cancel()
+	<-done
+}
+
+func TestSchedulerHALocalClockSkewDoesNotBlockLeadership(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	s := haScheduler(lease, func() time.Time { return time.Now().Add(24 * time.Hour) }, &runs)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "leadership under local clock skew", s.IsLeader)
 	cancel()
 	<-done
 }
@@ -412,3 +453,11 @@ func TestGateNeverRetriesFencedAndRefusesOnceAfterGrace(t *testing.T) {
 		}
 	}
 }
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
+func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
