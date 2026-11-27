@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	sqlite "modernc.org/sqlite"
 	sqlitelib "modernc.org/sqlite/lib"
 
@@ -387,8 +386,7 @@ func retryable(engine store.Engine, err error) bool {
 		return true
 	}
 	if engine == store.EnginePostgres {
-		var pgErr *pgconn.PgError
-		return errors.As(err, &pgErr) && (pgErr.Code == "40001" || pgErr.Code == "40P01")
+		return store.IsPostgresSerializationFailure(err)
 	}
 	var se *sqlite.Error
 	if errors.As(err, &se) {

@@ -27,6 +27,7 @@ type SelfConfigGeneration struct {
 func (c *Coordination) CurrentSelfConfigGeneration(ctx context.Context) (SelfConfigGeneration, error) {
 	var out SelfConfigGeneration
 	err := c.transaction(ctx, true, func(q *coordinationTx) error {
+		out = SelfConfigGeneration{} // a retried attempt must not inherit the last one's fields
 		var err error
 		if q.db.engine == EnginePostgres {
 			var row pggen.CoordinationSelfConfigGenerationRow
