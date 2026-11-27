@@ -150,8 +150,13 @@ func runAccessRule(ctx context.Context, ios IO, args []string) error {
 		}
 		named := len(envNames.only)+len(envNames.except) > 0
 		if named && meta.ApiRevision < envNamesRevision {
-			return failf(ExitRefused, "this instance is running %s (API revision %d) and does not select environments by name, which needs revision %d. Upgrade the server, or use --only-env/--except-env.",
-				meta.ServerVersion, meta.ApiRevision, envNamesRevision)
+			// An all-projects rule takes no id flags, so it is not offered them.
+			fallback := "use --only-env/--except-env"
+			if allProjects {
+				fallback = "create one rule per project with --in-project and --only-env/--except-env"
+			}
+			return failf(ExitRefused, "this instance is running %s (API revision %d) and does not select environments by name, which needs revision %d. Upgrade the server, or %s.",
+				meta.ServerVersion, meta.ApiRevision, envNamesRevision, fallback)
 		}
 		if meta.ApiRevision >= envNamesRevision {
 			withEnvNames(&body, envNames)

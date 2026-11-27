@@ -274,6 +274,8 @@ func (c envChange) record(ctx context.Context, r store.Repos, az *authz.TxAuthor
 func (c envChange) gateMachines(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, auth *Auth,
 	caller authz.Identity, gained []domain.PrincipalID, now time.Time) error {
 	var actorGrants []authz.GrantRow
+	var widened []machineWidening
+	var allCurrent, allHistorical []domain.EnvID
 	after := c.after()
 	for _, principal := range gained {
 		if !slices.ContainsFunc(c.census, func(cr authz.CensusRule) bool { return cr.Machine && cr.Rule.Principal == principal }) {
@@ -314,20 +316,29 @@ func (c envChange) gateMachines(ctx context.Context, r store.Repos, az *authz.Tx
 		}
 		pre := append(slices.Clone(grants), authz.RuleGrants(before, c.scope, envs)...)
 		post := append(slices.Clone(grants), authz.RuleGrants(rebound, c.scope, envs)...)
-		current, historical, err := gateMachineWidening(ctx, az, auth, caller, actorGrants, c.scope, envs, pre, post, now)
-		if err != nil {
-			return err
-		}
+		current, historical := machineWideningDelta(c.scope, envs, pre, post)
 		if len(current) == 0 && len(historical) == 0 {
 			continue
 		}
-		ev, err := domainEvent(ctx, audit.EventMachineGrantWidened, caller.Principal, audit.Object{Type: "principal", ID: string(principal)}, audit.Payload{
-			"target_principal":           string(principal),
-			"principal_class":            string(class),
+		widened = append(widened, machineWidening{principal, class, current, historical})
+		allCurrent, allHistorical = union(allCurrent, current), union(allHistorical, historical)
+	}
+	// One decision per environment for the whole change: the gate is asked
+	// over the union of every gaining machine's delta, so each environment's
+	// disclosure and reauthentication conjuncts are asked exactly once.
+	slices.Sort(allCurrent)
+	slices.Sort(allHistorical)
+	if err := requireMachineWidening(ctx, az, auth, caller, actorGrants, c.scope, allCurrent, allHistorical, now); err != nil {
+		return err
+	}
+	for _, m := range widened {
+		ev, err := domainEvent(ctx, audit.EventMachineGrantWidened, caller.Principal, audit.Object{Type: "principal", ID: string(m.principal)}, audit.Payload{
+			"target_principal":           string(m.principal),
+			"principal_class":            string(m.class),
 			"capability":                 string(domain.CapRead),
 			"scope":                      renderScope(c.scope),
-			"newly_reachable_current":    envStrings(current),
-			"newly_reachable_historical": envStrings(historical),
+			"newly_reachable_current":    envStrings(m.current),
+			"newly_reachable_historical": envStrings(m.historical),
 		})
 		if err != nil {
 			return err
@@ -337,6 +348,13 @@ func (c envChange) gateMachines(ctx context.Context, r store.Repos, az *authz.Tx
 		}
 	}
 	return nil
+}
+
+// machineWidening is one machine's delta under a change.
+type machineWidening struct {
+	principal           domain.PrincipalID
+	class               domain.PrincipalClass
+	current, historical []domain.EnvID
 }
 
 // refusal is the change's widening refusal: a delete names the environment

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -770,7 +771,7 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 	}
 	refuse := func() error {
 		switch {
-		case len(moves) > 0 && len(envGains) == 0:
+		case len(moves) == 1 && len(envGains) == 0:
 			return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
 		case len(moves) == 0 && causers == 1:
 			for _, c := range changes {
@@ -811,7 +812,14 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 	if len(envGains) == 0 {
 		return nil
 	}
-	return changes[0].gateMachines(ctx, r, az, p, s.Auth, caller, gainedPrincipals(envGains), s.now())
+	err := changes[0].gateMachines(ctx, r, az, p, s.Auth, caller, gainedPrincipals(envGains), s.now())
+	var reauth *envReauthErr
+	if errors.As(err, &reauth) && slices.ContainsFunc(changes, func(c envChange) bool { return c.from == "" && c.env == reauth.env }) {
+		// No session can hold a window over an environment the plan creates:
+		// the standalone create's guidance (hierarchy.go).
+		return &detailErr{detail: fmt.Sprintf(NewEnvironmentReauthDetail, reauth.env), err: err}
+	}
+	return err
 }
 
 // deleteEnvironment authorizes an env-scoped OpEnvDelete and cascades the

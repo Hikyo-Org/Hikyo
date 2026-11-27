@@ -1,18 +1,22 @@
 package isolation
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Environment selectors bind by name (#1447, member-access-rules ADR D3): an
@@ -412,6 +416,87 @@ func TestEnvironmentNameWideningGatesMachines(t *testing.T) {
 		}
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+qa.ID+"'"); n != 1 {
 			t.Fatalf("delete confirmations for the machine = %d, want 1", n)
+		}
+	})
+}
+
+// Two machines gaining the same environment through one confirmed change
+// spend one reauthentication decision, not one each (#1447): a
+// single-decision window over the environment admits the change once, and a
+// change it does not cover is still refused.
+func TestEnvironmentNameWideningGatesMachinesOnOneDecision(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		ctx := t.Context()
+		execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
+		for _, c := range []string{"definitions-edit", "read", "edit", "publish", "reveal"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		identities := identitySvc(db)
+		var confirm []domain.PrincipalID
+		for _, name := range []string{"named-one", "named-two"} {
+			sa, err := identities.CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), name, domain.ClassAutomation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_"+name+"_reveal', '"+string(sa.Principal)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+			if _, err := (&service.Rules{DB: db, Auth: authWithWindow(db)}).Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
+				Target: sa.Principal, Capability: domain.CapRead, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"staging"}, KeyMode: domain.AxisAll}}); err != nil {
+				t.Fatalf("named rule: %v", err)
+			}
+			confirm = append(confirm, sa.Principal)
+		}
+		slices.Sort(confirm)
+		token := service.Bearer(sessionWithWindows(t, db, identRevatr))
+		decide := func(id string, env domain.EnvID) {
+			t.Helper()
+			now := time.Now().UTC()
+			if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+				epoch, err := az.CredentialEpoch(ctx)
+				if err != nil {
+					return err
+				}
+				if err := az.CreateWebAuthnCeremony(ctx, authz.NewWebAuthnCeremony{
+					ID: id, SessionID: "ses_usr_idrev", EnvironmentID: string(env), Purpose: "reauth",
+					ChallengeVerifier: []byte("verified-" + id), SessionData: []byte("{}"),
+					OperationBinding: `{"operation":"mint","environment_id":"` + string(env) + `","key_ids":null}`,
+					CredentialEpoch:  epoch, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+				}); err != nil {
+					return err
+				}
+				return az.OpenReauthWindow(ctx, authz.NewReauthWindow{
+					ID: id, SessionID: "ses_usr_idrev", EnvironmentID: string(env), CeremonyID: id, FactorClass: "webauthn", SingleDecision: true,
+					AuthenticatedAt: now, WindowExpiresAt: now.Add(5 * time.Minute), HardExpiresAt: now.Add(10 * time.Minute), CredentialEpoch: epoch, CreatedAt: now,
+				})
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+		dev := envScope(envA1)
+		decide("rw_one_decision", envA1)
+		if _, err := envs.RenameConfirming(ctx, token, dev, "staging", nil, confirm); err != nil {
+			t.Fatalf("a rename two machines gain through, under one decision: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM reauth_windows WHERE id = 'rw_one_decision' AND consumed_at IS NOT NULL"); n != 1 {
+			t.Fatalf("the decision was consumed %d times, want 1", n)
+		}
+		for _, sa := range confirm {
+			if !reachesEnv(t, db, sa, dev) {
+				t.Fatalf("machine %s does not reach the renamed environment", sa)
+			}
+			if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'identity.grant_widened' AND object_id = '"+string(sa)+"'"); n != 1 {
+				t.Fatalf("identity.grant_widened rows for %s = %d, want 1", sa, n)
+			}
+		}
+		// The spent decision admits nothing more: renaming back narrows, and
+		// widening both machines again is refused.
+		if _, err := envs.RenameConfirming(ctx, token, dev, "dev", nil, nil); err != nil {
+			t.Fatalf("rename back: %v", err)
+		}
+		if _, err := envs.RenameConfirming(ctx, token, dev, "staging", nil, confirm); !errors.Is(err, service.ErrReauthRequired) {
+			t.Fatalf("a widening rename under a spent decision = %v, want ErrReauthRequired", err)
 		}
 	})
 }
@@ -1060,12 +1145,31 @@ func TestDefinitionsApplyGatesEachMachineOnce(t *testing.T) {
 		svc := definitionsService(t, db)
 		svc.Auth = authWithWindow(db)
 		f := definitionsFixture{project: prjA1}
-		bundle := parseDefinitions(t, exportDefinitions(t, svc, f))
+		exported := exportDefinitions(t, svc, f)
+		windows := service.Bearer(sessionWithWindows(t, db, identRevatr, envA1))
+		// A plan creating an environment the machine's rules reach is refused
+		// with the standalone create's guidance: no session can hold a window
+		// over an environment the refused plan rolls back.
+		created := parseDefinitions(t, exported)
+		created.Environments = append(created.Environments, definitions.Environment{Name: "qa"})
+		var detail interface{ SafeDetail() string }
+		if _, err := svc.Apply(ctx, windows, f.scope(), planDefinitions(t, svc, f, encodeDefinitions(t, created)).ID, service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{sa.Principal}}); !errors.Is(err, service.ErrReauthRequired) ||
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "create it under another name, reauthenticate over it, then rename it") {
+			t.Fatalf("plan creating a machine-reachable environment = %v, want ErrReauthRequired saying to rename", err)
+		}
+		bundle := parseDefinitions(t, exported)
 		for i := range bundle.Environments {
 			bundle.Environments[i].Name = map[string]string{"dev": "staging", "prod": "qa"}[bundle.Environments[i].Name]
 		}
 		plan := planDefinitions(t, svc, f, encodeDefinitions(t, bundle))
-		windows := service.Bearer(sessionWithWindows(t, db, identRevatr, envA1, "env_prod"))
+		// Both renamed environments become reachable, so both need a window:
+		// one is not enough, and a renamed environment persists, so the
+		// refusal names it without the create guidance.
+		if _, err := svc.Apply(ctx, windows, f.scope(), plan.ID, service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{sa.Principal}}); !errors.Is(err, service.ErrReauthRequired) ||
+			!strings.Contains(err.Error(), "env_prod") || !errors.As(err, &detail) || strings.Contains(detail.SafeDetail(), "rename it") {
+			t.Fatalf("apply under a window over dev alone = %v, want ErrReauthRequired over env_prod", err)
+		}
+		openWindow(t, db, identRevatr, "env_prod")
 		if _, err := svc.Apply(ctx, windows, f.scope(), plan.ID, service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{sa.Principal}}); err != nil {
 			t.Fatalf("confirmed apply widening a machine twice: %v", err)
 		}
@@ -1100,16 +1204,21 @@ func TestDisabledRuleListsAndRevokes(t *testing.T) {
 		if reachesEnv(t, db, "usr_disabled", envScope(envA1)) {
 			t.Fatal("a disabled rule reaches an environment")
 		}
-		// Manage access over dev only, the project's one environment today.
+		// Manage access over every environment prj_a1 has today, by name:
+		// covering each current environment is still not the project, so the
+		// disabled rule stays out of reach.
+		if got := queryStrings(t, db, "SELECT name || ' ' FROM environments WHERE project_id = 'prj_a1' ORDER BY name"); strings.Join(strings.Fields(got), ",") != "dev,prod" {
+			t.Fatalf("prj_a1 environments = %q, want dev and prod", got)
+		}
 		for _, c := range []domain.Capability{domain.CapManageMembers, domain.CapRead} {
 			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: narrowed, Capability: c, Org: orgA,
-				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"dev"}, KeyMode: domain.AxisAll}}); err != nil {
+				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"dev", "prod"}, KeyMode: domain.AxisAll}}); err != nil {
 				t.Fatalf("narrowed %s rule: %v", c, err)
 			}
 		}
 		// Positive control: the same manager revokes a rule inside its reach.
 		dev, err := rules.Create(ctx, service.LocalPrincipal(narrowed), service.RuleSpec{Target: "usr_disabled", Capability: domain.CapRead, Org: orgA,
-			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"dev"}, KeyMode: domain.AxisAll}})
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"dev", "prod"}, KeyMode: domain.AxisAll}})
 		if err != nil {
 			t.Fatalf("narrowed manager's own rule: %v", err)
 		}
@@ -1160,6 +1269,64 @@ func TestDefinitionsApplyAttributionKeepsKeySelectors(t *testing.T) {
 		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
 			!widening.Plan || !slices.Equal(widening.Principals, []domain.PrincipalID{editor}) {
 			t.Fatalf("unconfirmed apply = %v, want a plan-level refusal naming %s", err, editor)
+		}
+	})
+}
+
+// openWindow opens a sliding reauthentication window over env on the
+// session sessionWithWindows minted for p.
+func openWindow(t *testing.T, db *store.DB, p domain.PrincipalID, env domain.EnvID) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		return az.OpenReauthWindow(ctx, authz.NewReauthWindow{
+			ID: "raw_" + string(p) + "_" + string(env), SessionID: "ses_" + string(p),
+			EnvironmentID: string(env), CeremonyID: "cer_test", FactorClass: "totp",
+			AuthenticatedAt: now, WindowExpiresAt: now.Add(time.Hour),
+			HardExpiresAt: now.Add(2 * time.Hour), CredentialEpoch: epoch, CreatedAt: now,
+		})
+	}); err != nil {
+		t.Fatalf("open a window over %s for %s: %v", env, p, err)
+	}
+}
+
+// Two key moves that each widen for another principal are refused with
+// plan-level wording naming both, not as the first key's move (#1447).
+func TestDefinitionsApplySeveralMovesRefuseAsAPlan(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		df := seedDefinitionsProject(t, db, "twomoves", true)
+		execRaw(t, db, fmt.Sprintf("INSERT INTO keys (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, group_id, created_at) VALUES ('key_def_twomoves_2', 'org_a', '%s', 'OTHER_KEY', '', 'config', '', FALSE, '', '{\"rule\":{\"type\":\"string\"}}', 'none', 'none', NULL, %s)", df.project, ts))
+		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm_twomoves', '%s', 'manage-members', 'org_a', '%s', NULL, %s)", alice, df.project, ts))
+		seedOrigins(t, db)
+		const first, second = domain.PrincipalID("usr_movea"), domain.PrincipalID("usr_moveb")
+		rules := &service.Rules{DB: db}
+		for p, folder := range map[domain.PrincipalID]string{first: "a", second: "b"} {
+			execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+string(p)+"', 'human', "+ts+")")
+			if _, err := rules.Create(ctx, service.LocalPrincipal(orgAdmin), service.RuleSpec{Target: p, Capability: domain.CapEdit, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{df.project}, EnvMode: domain.AxisAll, KeyMode: domain.AxisOnly,
+					Keys: map[domain.ProjectID][]domain.RuleKeyItem{df.project: {folderItem(folder)}}}}); err != nil {
+				t.Fatalf("rule for %s: %v", p, err)
+			}
+		}
+		svc := definitionsService(t, db)
+		bundle := parseDefinitions(t, exportDefinitions(t, svc, df))
+		for i := range bundle.Keys {
+			bundle.Keys[i].FolderPath = map[string]string{"BASE_KEY": "a", "OTHER_KEY": "b"}[bundle.Keys[i].Name]
+		}
+		plan := planDefinitions(t, svc, df, encodeDefinitions(t, bundle))
+		want := []domain.PrincipalID{first, second}
+		var widening *service.EnvWideningError
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), df.scope(), plan.ID, service.ApplyOptions{}); !errors.As(err, &widening) ||
+			!widening.Plan || !slices.Equal(widening.Principals, want) {
+			t.Fatalf("unconfirmed apply of two widening moves = %v, want a plan-level refusal naming %v", err, want)
+		}
+		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), df.scope(), plan.ID, service.ApplyOptions{ConfirmWidening: want}); err != nil {
+			t.Fatalf("confirmed apply: %v", err)
 		}
 	})
 }

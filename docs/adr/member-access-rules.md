@@ -334,8 +334,10 @@ apply when the implementing pull request merges.
   widening gate: `manage-identities` on the project, disclosure authority, and a live
   reauthentication window over every environment it newly reaches in plaintext, audited as
   `identity.grant_widened`. This settles the 2026-11-20 question: the reauthentication conjunct
-  applies to a later rename. **Limitation, disclosed:** a create or clone that makes the *new*
-  environment plaintext-reachable for a machine always fails closed. The window must name the new
+  applies to a later rename. **Limitation, disclosed:** a create or clone whose name gives a machine
+  plaintext access to the *new* environment through an *only* rule always fails closed. A machine
+  whose `all` rule reaches it because it does not except the name gains nothing by name, so that
+  create needs no confirmation and no workaround. The window must name the new
   environment's id, and no session can hold one before the environment exists. The way through is
   to create the environment under another name and rename it. A gain without plaintext, such as a
   machine's read without reveal, passes the gate with nothing to reauthenticate. One option for a

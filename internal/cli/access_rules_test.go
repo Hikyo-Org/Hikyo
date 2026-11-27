@@ -186,6 +186,15 @@ func TestAccessRuleVerbs(t *testing.T) {
 	if slices.Contains(requests, "POST "+api.PathPrefix+"/orgs/org_one/rules") {
 		t.Fatalf("names were sent to an old server: %v", requests)
 	}
+	if code, out := run("access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit",
+		"--only-env-name", "prod"); code != ExitRefused || !strings.Contains(out, "--only-env/--except-env") {
+		t.Fatalf("names over listed projects against an old server = %d %s, want the id flags offered", code, out)
+	}
+	// An all-projects rule takes no id flags, so they are not offered.
+	if code, out := run("access", "rule", "add", "--principal", "usr_carol", "--capability", "edit",
+		"--all-projects", "--except-env-name", "prod"); code != ExitRefused || strings.Contains(out, "or use --only-env") || !strings.Contains(out, "one rule per project") {
+		t.Fatalf("all-projects names against revision %d = %d %s, want refused offering per-project rules, not id flags", revision, code, out)
+	}
 	revision = api.Revision
 
 	// Syntax is refused before any request.

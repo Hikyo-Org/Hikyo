@@ -71,13 +71,20 @@ func TestEnvironmentWideningRefusalBody(t *testing.T) {
 	// A delete carries its confirmation as a query parameter and is refused
 	// the same way.
 	refusal := &service.EnvWideningError{EnvName: "prod", Deleting: true, Count: 2}
-	var forwarded []domain.PrincipalID
-	deleting := hierarchyServerWithEnvs(t, refusal, confirmRecordingEnvs{stubEnvs: stubEnvs{stubHierarchy{err: refusal}}, got: &forwarded})
+	got := make(chan []domain.PrincipalID, 1)
+	deleting := hierarchyServerWithEnvs(t, refusal, confirmRecordingEnvs{stubEnvs: stubEnvs{stubHierarchy{err: refusal}}, got: got})
 	resp, raw = call(t, deleting, http.MethodDelete, path+"?confirm_widening="+testPrincipalID, "hik_1_cli_x", nil)
 	body = decodeError(t, raw)
 	if resp.StatusCode != http.StatusConflict || body.Error.Widening == nil || body.Error.Widening.Count != 2 ||
 		!bytes.Contains(raw, []byte(`deleting the environment \"prod\"`)) {
 		t.Fatalf("delete environment refusal = %d %s", resp.StatusCode, raw)
+	}
+	// The handler sent before it answered, so the value is ready; the
+	// channel orders its write before this read.
+	var forwarded []domain.PrincipalID
+	select {
+	case forwarded = <-got:
+	default:
 	}
 	if !slices.Equal(forwarded, []domain.PrincipalID{testPrincipalID}) {
 		t.Fatalf("the delete handler forwarded confirm_widening %v, want [%s]", forwarded, testPrincipalID)
@@ -87,10 +94,10 @@ func TestEnvironmentWideningRefusalBody(t *testing.T) {
 // confirmRecordingEnvs records the confirmation a delete handler forwards.
 type confirmRecordingEnvs struct {
 	stubEnvs
-	got *[]domain.PrincipalID
+	got chan<- []domain.PrincipalID
 }
 
 func (s confirmRecordingEnvs) DeleteConfirming(_ context.Context, _ service.Actor, _ domain.Scope, confirm []domain.PrincipalID) error {
-	*s.got = confirm
+	s.got <- confirm
 	return s.outcome()
 }
