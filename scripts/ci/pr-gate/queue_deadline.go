@@ -148,25 +148,9 @@ func (q *queueController) pendingText(number int) outcome {
 }
 
 // rateLimitedFailure reports a failure that ended on an exhausted GitHub API window,
-// including a reset the job's budget could not wait out. errors.As stops at the first
-// *githubReadError whatever its flag, and a single-%w wrapper around a join hides the join's
-// other branches, so the whole tree is walked directly: any rate-limited branch counts.
-func rateLimitedFailure(err error) bool {
-	if failure, ok := err.(*githubReadError); ok && failure.rateLimited { //nolint:errorlint // walks the error tree itself: errors.As stops at the first *githubReadError whatever its flag
-		return true
-	}
-	switch u := err.(type) { //nolint:errorlint // same walk: errors.Is/As cannot visit every branch of a join
-	case interface{ Unwrap() []error }:
-		for _, part := range u.Unwrap() {
-			if rateLimitedFailure(part) {
-				return true
-			}
-		}
-	case interface{ Unwrap() error }:
-		return rateLimitedFailure(u.Unwrap())
-	}
-	return false
-}
+// including a reset the job's budget could not wait out. errors.Is visits every branch of
+// wrappers and joins, so any rate-limited *githubReadError in the tree counts.
+func rateLimitedFailure(err error) bool { return errors.Is(err, errRateLimited) }
 
 func (q *queueController) rateLimitedText(number int) outcome {
 	return pending(unfinished + " GitHub's API rate limit stopped this run, which says nothing about the PR; the record stays blocking until a later run reassesses it. " + q.reassessedBy(number))

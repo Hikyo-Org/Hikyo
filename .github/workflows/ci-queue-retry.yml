@@ -139,7 +139,7 @@ jobs:
           # only its own jobs, so no later callback sees them. Hold them all for rerun-after-reset, which
           # reruns the set once the window has recovered and the set fits above the reserve. Known limits, routed
           # to #1598: a set of 13 or more publishers (n x 42 above limit - reserve on a 1000-request window) never
-          # fits and stays held for the operator, and so is usually a set of 12, because the sweep's own listings
+          # fits and stays held for the operator; a set of 12 is usually held too, because the sweep's own listings
           # and other callers spend after the reset (a 12-set needs about 984 left); a run that also failed another
           # job (not the exact set) takes the single-job path below, which strands its siblings.
           combined=$((${#others[@]} * other_cost))
@@ -400,7 +400,7 @@ jobs:
           spend_rerun() { # $1 job or run, $2 id, $3 expected cost, $4 group or other
             local available floor path rc
             if [ "$1" = skip ]; then
-              echo "Not rerunning job $2: another job of its run is rerun above, and a run takes one rerun per pass."
+              echo "Not rerunning job $2: a run takes one rerun per pass, which goes to the run's first unseen head above."
               held="$held job:$2"
               return 0
             fi

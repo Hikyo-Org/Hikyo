@@ -465,6 +465,11 @@ func (e *githubReadError) Error() string {
 
 func (e *githubReadError) Unwrap() error { return e.cause }
 
+// errRateLimited matches, through errors.Is, a *githubReadError whose rateLimited flag is set.
+var errRateLimited = errors.New("github api rate limited")
+
+func (e *githubReadError) Is(target error) bool { return target == errRateLimited && e.rateLimited }
+
 func decode(data []byte, result any) error {
 	d := json.NewDecoder(bytes.NewReader(data))
 	if err := d.Decode(result); err != nil {
