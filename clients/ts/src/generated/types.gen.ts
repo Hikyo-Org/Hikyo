@@ -4619,12 +4619,11 @@ export type CredentialPolicyResult = {
 export type Capability = string;
 
 /**
- * The closed v1 role template set. `operator` is the deprecated name of
- * `instance-admin`: it is accepted on input until v2, and the server
- * always answers `instance-admin`.
+ * The closed v1 role template set. `operator` is the v1 wire name of the
+ * instance administrator template; it becomes `instance-admin` in v2.
  *
  */
-export type RoleTemplate = 'viewer' | 'editor' | 'publisher' | 'revealer' | 'historian' | 'maintainer' | 'admin' | 'instance-admin' | 'operator';
+export type RoleTemplate = 'viewer' | 'editor' | 'publisher' | 'revealer' | 'historian' | 'maintainer' | 'admin' | 'operator';
 
 export type CreateGrantRequest = {
     principal: Id;

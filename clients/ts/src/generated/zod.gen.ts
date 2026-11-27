@@ -2986,9 +2986,8 @@ export const zCredentialPolicyResult = z.object({
 export const zCapability = z.string().min(1).max(64).regex(/^[a-z][a-z-]{0,63}$/);
 
 /**
- * The closed v1 role template set. `operator` is the deprecated name of
- * `instance-admin`: it is accepted on input until v2, and the server
- * always answers `instance-admin`.
+ * The closed v1 role template set. `operator` is the v1 wire name of the
+ * instance administrator template; it becomes `instance-admin` in v2.
  *
  */
 export const zRoleTemplate = z.enum([
@@ -2999,7 +2998,6 @@ export const zRoleTemplate = z.enum([
     'historian',
     'maintainer',
     'admin',
-    'instance-admin',
     'operator'
 ]);
 

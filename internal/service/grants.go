@@ -1232,7 +1232,6 @@ func (s *Grants) applyTemplate(
 	scope domain.Scope,
 	level domain.Level,
 ) ([]GrantResult, error) {
-	template = template.Canonical() // the deprecated `operator` alias is recorded as instance-admin
 	caps, err := domain.ExpandTemplate(template, level)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", domain.ErrInvalid, err)

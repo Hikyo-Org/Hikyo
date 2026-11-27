@@ -53,7 +53,7 @@
     "routes/InstanceConfig.tsx": "da5bb4f46a76132cb377d85c2d498295971b51b971b1fb41aa94e760c92ca0dc",
     "routes/InstanceMailPanel.tsx": "d975101b242e3f4048c958004ce250e87340942eac65663eed92744d264dabf8",
     "routes/InvitationAccept.tsx": "de9804ea02ffafd09dda096a5c225015685b52141b19e960fbc2428fcfad804e",
-    "routes/InviteDialog.tsx": "0bffdf455370a982c89dad50046853f965e152d26cda1d42fb33d07b86392dff",
+    "routes/InviteDialog.tsx": "eca8f6ae4a63c219a41fa6c852c91e0105e25e5f666a60b0212ddf9c9c8afd40",
     "routes/Login.tsx": "6b897c33366f1d190788b07d29934a38e0949dd7b3a00349eaaca6c0f5c9caef",
     "routes/MatrixRowEditor.tsx": "2e836d7bca9cd89c5189767078b7edf38a0b53659848bf624b3a93092be4ada6",
     "routes/Members.tsx": "0df3d1ac123ae6ec5147f5899724a03583e0946d625734396c052346b2b56bf3",

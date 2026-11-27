@@ -3019,15 +3019,14 @@ func (e RevisionPinResultAction) Valid() bool {
 
 // Defines values for RoleTemplate.
 const (
-	Admin         RoleTemplate = "admin"
-	Editor        RoleTemplate = "editor"
-	Historian     RoleTemplate = "historian"
-	InstanceAdmin RoleTemplate = "instance-admin"
-	Maintainer    RoleTemplate = "maintainer"
-	Operator      RoleTemplate = "operator"
-	Publisher     RoleTemplate = "publisher"
-	Revealer      RoleTemplate = "revealer"
-	Viewer        RoleTemplate = "viewer"
+	Admin      RoleTemplate = "admin"
+	Editor     RoleTemplate = "editor"
+	Historian  RoleTemplate = "historian"
+	Maintainer RoleTemplate = "maintainer"
+	Operator   RoleTemplate = "operator"
+	Publisher  RoleTemplate = "publisher"
+	Revealer   RoleTemplate = "revealer"
+	Viewer     RoleTemplate = "viewer"
 )
 
 // Valid indicates whether the value is a known member of the RoleTemplate enum.
@@ -3038,8 +3037,6 @@ func (e RoleTemplate) Valid() bool {
 	case Editor:
 		return true
 	case Historian:
-		return true
-	case InstanceAdmin:
 		return true
 	case Maintainer:
 		return true
@@ -5626,9 +5623,8 @@ type ApplyTemplateRequest struct {
 	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
 	Principal ID `json:"principal"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7792,9 +7788,8 @@ type EmailInvitation struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7810,9 +7805,8 @@ type EmailInvitationAcceptance struct {
 	// the current one included, and they must sign in again.
 	SignedOut bool `json:"signed_out"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7837,9 +7831,8 @@ type EmailInvitationListing struct {
 	// InvitedBy A prefixed UUIDv7, e.g. `org_0198…`.
 	InvitedBy ID `json:"invited_by"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7852,9 +7845,8 @@ type EmailInvitationPreview struct {
 	Org     ID     `json:"org"`
 	OrgName string `json:"org_name"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -7864,9 +7856,8 @@ type EmailInvitationSendRequest struct {
 	// verified address of an existing account can be reached.
 	Email string `json:"email"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template RoleTemplate `json:"template"`
 }
 
@@ -10400,9 +10391,8 @@ type RegistrationLanding struct {
 	Cap  *int                    `json:"cap,omitzero"`
 	Kind RegistrationLandingKind `json:"kind"`
 
-	// Template The closed v1 role template set. `operator` is the deprecated name of
-	// `instance-admin`: it is accepted on input until v2, and the server
-	// always answers `instance-admin`.
+	// Template The closed v1 role template set. `operator` is the v1 wire name of the
+	// instance administrator template; it becomes `instance-admin` in v2.
 	Template *RoleTemplate `json:"template,omitzero"`
 }
 
@@ -11054,9 +11044,8 @@ type RevisionPinResult struct {
 // RevisionPinResultAction defines model for RevisionPinResult.Action.
 type RevisionPinResultAction string
 
-// RoleTemplate The closed v1 role template set. `operator` is the deprecated name of
-// `instance-admin`: it is accepted on input until v2, and the server
-// always answers `instance-admin`.
+// RoleTemplate The closed v1 role template set. `operator` is the v1 wire name of the
+// instance administrator template; it becomes `instance-admin` in v2.
 type RoleTemplate string
 
 // RollbackRequest defines model for RollbackRequest.
@@ -16497,10 +16486,10 @@ type ServerInterface interface {
 	// RenameOrg Rename an organisation.
 	// (PATCH /api/v1/orgs/{org})
 	RenameOrg(w http.ResponseWriter, r *http.Request, org OrgID)
-	// QueryOrgAudit One bounded page of the organization's audit trail.
+	// QueryOrgAudit One bounded page of the organisation's audit trail.
 	// (GET /api/v1/orgs/{org}/audit)
 	QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams)
-	// ExportOrgAudit Stream the organization's audit trail as JSONL.
+	// ExportOrgAudit Stream the organisation's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams)
 	// ListOrgEmailInvitations List the organisation's live pending email invitations.
@@ -18306,13 +18295,13 @@ func (_ Unimplemented) RenameOrg(w http.ResponseWriter, r *http.Request, org Org
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// QueryOrgAudit One bounded page of the organization's audit trail.
+// QueryOrgAudit One bounded page of the organisation's audit trail.
 // (GET /api/v1/orgs/{org}/audit)
 func (_ Unimplemented) QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ExportOrgAudit Stream the organization's audit trail as JSONL.
+// ExportOrgAudit Stream the organisation's audit trail as JSONL.
 // (GET /api/v1/orgs/{org}/audit/export)
 func (_ Unimplemented) ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -88341,10 +88330,10 @@ type StrictServerInterface interface {
 	// RenameOrg Rename an organisation.
 	// (PATCH /api/v1/orgs/{org})
 	RenameOrg(ctx context.Context, request RenameOrgRequestObject) (RenameOrgResponseObject, error)
-	// QueryOrgAudit One bounded page of the organization's audit trail.
+	// QueryOrgAudit One bounded page of the organisation's audit trail.
 	// (GET /api/v1/orgs/{org}/audit)
 	QueryOrgAudit(ctx context.Context, request QueryOrgAuditRequestObject) (QueryOrgAuditResponseObject, error)
-	// ExportOrgAudit Stream the organization's audit trail as JSONL.
+	// ExportOrgAudit Stream the organisation's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/audit/export)
 	ExportOrgAudit(ctx context.Context, request ExportOrgAuditRequestObject) (ExportOrgAuditResponseObject, error)
 	// ListOrgEmailInvitations List the organisation's live pending email invitations.

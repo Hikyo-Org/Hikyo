@@ -301,7 +301,7 @@ func runSCIMMapping(ctx context.Context, ios IO, args []string) error {
 		return Render(ios.Stdout, f, scimOne(scimMappingTable([]apigen.ScimMapping{res.Mapping}), res))
 	}
 
-	body := apigen.ScimMappingRequest{GroupId: apigen.ID(group), Template: template}
+	body := apigen.ScimMappingRequest{GroupId: apigen.ID(group), Template: string(templateWire(template))}
 	if project != "" {
 		body.ProjectId = &project
 	}
@@ -545,7 +545,7 @@ func scimMappingTable(items []apigen.ScimMapping) Table {
 			state = "inert"
 		}
 		rows = append(rows, []string{
-			string(m.Id), string(m.GroupId), m.Template,
+			string(m.Id), string(m.GroupId), templateLabel(m.Template),
 			mappingScopeLabel(m), state, strings.Join(m.Capabilities, ","),
 		})
 	}

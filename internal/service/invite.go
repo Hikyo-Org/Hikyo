@@ -172,7 +172,7 @@ func (s *Grants) InviteMember(ctx context.Context, actor Actor, spec InviteSpec)
 			"delivery":       spec.Delivery,
 		}
 		if spec.Template != "" {
-			payload["template"] = string(spec.Template.Canonical())
+			payload["template"] = string(spec.Template)
 		}
 		invited, err := domainEvent(ctx, audit.EventMemberInvited, caller.Principal,
 			audit.Object{Type: "account", ID: accountID}, payload)

@@ -77,7 +77,7 @@ func runAccessInvitation(ctx context.Context, ios IO, args []string) error {
 	case "send":
 		email := flags.positionals[0]
 		var out apigen.EmailInvitation
-		body := apigen.EmailInvitationSendRequest{Email: email, Template: apigen.RoleTemplate(template)}
+		body := apigen.EmailInvitationSendRequest{Email: email, Template: templateWire(template)}
 		if err := client.Do(ctx, http.MethodPost, path, body, &out); err != nil {
 			var ce *Error
 			const alternatives = "Use `hikyo access member invite` to create a new account, SCIM, or an administrator of both organisations instead."
@@ -97,7 +97,7 @@ func runAccessInvitation(ctx context.Context, ios IO, args []string) error {
 		fmt.Fprintf(ios.Stderr,
 			"invitation %s recorded for %s as %s at %s, valid until %s.\n"+
 				"If that address belongs to an account with a verified email on this instance, the person receives the invitation by email.\n",
-			out.Id, out.Email, out.Template, scope.label, out.ExpiresAt.UTC().Format(time.RFC3339))
+			out.Id, out.Email, templateLabel(out.Template), scope.label, out.ExpiresAt.UTC().Format(time.RFC3339))
 		return nil
 
 	case "list":
@@ -107,7 +107,7 @@ func runAccessInvitation(ctx context.Context, ios IO, args []string) error {
 		}
 		rows := make([][]string, 0, len(out.Items))
 		for _, it := range out.Items {
-			rows = append(rows, []string{it.Id, it.Email, string(it.Template), it.InvitedBy, it.ExpiresAt.UTC().Format(time.RFC3339)})
+			rows = append(rows, []string{it.Id, it.Email, templateLabel(it.Template), it.InvitedBy, it.ExpiresAt.UTC().Format(time.RFC3339)})
 		}
 		return Render(ios.Stdout, f, Table{
 			Columns: []string{"ID", "EMAIL", "TEMPLATE", "INVITED BY", "EXPIRES"}, Rows: rows, JSON: out,
@@ -207,7 +207,7 @@ func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error
 	}
 	warning := "Accepting may sign you out on every device and end your developer credentials."
 	summary := fmt.Sprintf("Organisation: %s\nTemplate: %s\nExpires: %s\n%s",
-		preview.OrgName, preview.Template, preview.ExpiresAt.UTC().Format(time.RFC3339), warning)
+		preview.OrgName, templateLabel(preview.Template), preview.ExpiresAt.UTC().Format(time.RFC3339), warning)
 	if !yes {
 		// Standard input carries the token, so the answer comes from the
 		// controlling terminal; with none, --yes is the only way through.
@@ -240,7 +240,7 @@ func runAccessInvitationAccept(ctx context.Context, ios IO, args []string) error
 	}
 	if err := Render(ios.Stdout, f, Table{
 		Columns: []string{"ORGANISATION", "TEMPLATE", "GRANTS CREATED"},
-		Rows:    [][]string{{out.OrgName, string(out.Template), fmt.Sprint(out.GrantsCreated)}},
+		Rows:    [][]string{{out.OrgName, templateLabel(out.Template), fmt.Sprint(out.GrantsCreated)}},
 		JSON:    out,
 	}); err != nil {
 		// Acceptance already committed: keep a cleanup failure visible too.

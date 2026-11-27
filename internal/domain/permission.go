@@ -25,20 +25,10 @@ const (
 	TemplateHistorian     Template = "historian"
 	TemplateMaintainer    Template = "maintainer"
 	TemplateAdmin         Template = "admin"
-	TemplateInstanceAdmin Template = "instance-admin"
+	// TemplateInstanceAdmin is the instance administrator template. Its v1
+	// wire name is `operator`; it becomes `instance-admin` in v2.
+	TemplateInstanceAdmin Template = "operator"
 )
-
-// TemplateOperatorAlias is the pre-rename name of TemplateInstanceAdmin.
-// Input accepts it until v2; Canonical maps it, and output never emits it.
-const TemplateOperatorAlias Template = "operator"
-
-// Canonical maps a deprecated template alias to its current name.
-func (t Template) Canonical() Template {
-	if t == TemplateOperatorAlias {
-		return TemplateInstanceAdmin
-	}
-	return t
-}
 
 // templateSpec is one row of the ADR's template table.
 type templateSpec struct {
@@ -121,7 +111,7 @@ var (
 // template name exists, so a wrong level must fail here rather than silently
 // seed a shorter list.
 func ExpandTemplate(t Template, at Level) ([]Capability, error) {
-	spec, ok := templates[t.Canonical()]
+	spec, ok := templates[t]
 	if !ok {
 		return nil, ErrNoSuchTemplate
 	}

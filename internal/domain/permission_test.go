@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"slices"
 	"testing"
 )
 
@@ -19,16 +18,8 @@ func TestMachineAuditReadEligibility(t *testing.T) {
 	}
 }
 
-func TestOperatorTemplateIsADeprecatedAliasOfInstanceAdmin(t *testing.T) {
-	want, err := ExpandTemplate(TemplateInstanceAdmin, LevelNone)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := ExpandTemplate("operator", LevelNone)
-	if err != nil || !slices.Equal(got, want) {
-		t.Fatalf("ExpandTemplate(operator) = %v, %v; want %v", got, err, want)
-	}
-	if Template("operator").Canonical() != TemplateInstanceAdmin || slices.Contains(Templates(), "operator") {
-		t.Fatal("operator must canonicalise to instance-admin and never be listed")
+func TestInstanceAdminTemplateKeepsTheV1WireName(t *testing.T) {
+	if TemplateInstanceAdmin != "operator" {
+		t.Fatalf("instance administrator template wire name = %q, want operator until v2", TemplateInstanceAdmin)
 	}
 }

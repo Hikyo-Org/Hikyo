@@ -1,6 +1,6 @@
 # Hikyo permission model — RBAC & secret reveal (ADR, locked 2026-07-31)
 
-> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) (the `operator` role template to `instance-admin`, "instance operator" to instance administrator, "crypto-shred" to shred, "organization" to organisation); no decision changed. The old identifiers `sealed-webhook`, `HIKYO_SEALED_WEBHOOK_FILE` and the `operator` role template stay accepted as deprecated aliases until v2. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
+> **Terminology amendment (2026-11-27, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** wording aligned to [GLOSSARY.md](../../GLOSSARY.md) (the `operator` role template to `instance-admin`, "instance operator" to instance administrator, "crypto-shred" to shred, "organization" to organisation); no decision changed. The old identifiers `sealed-webhook` and `HIKYO_SEALED_WEBHOOK_FILE` stay accepted as deprecated aliases until v2, and the v1 API carries the `instance-admin` template as `operator` until v2. Owner-authorized in place of the cross-model review in GOVERNANCE.md; see the governance ticket.
 
 > **Vocabulary (2026-11-19, [#1334](https://github.com/Hikyo-Org/Hikyo/issues/1334)):** this ADR follows the [glossary](../../GLOSSARY.md). "Installation" now reads **instance**, and a bare "holder" of a grant now names the principal that holds it. The meaning of the text does not change.
 
