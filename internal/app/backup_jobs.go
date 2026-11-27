@@ -15,6 +15,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
@@ -68,7 +69,11 @@ func backupJobs(cfg *config.Config, log *slog.Logger, svc *service.Backup) []Sch
 			if errors.Is(refusal, service.ErrSelfConfigFenced) {
 				return refusal
 			}
-			if due, err := svc.Due(ctx, policy.Interval); err != nil || !due {
+			due, err := svc.Due(ctx, policy.Interval)
+			if err != nil {
+				return errors.Join(refusal, fmt.Errorf("check whether the export is due: %w", err))
+			}
+			if !due {
 				return refusal
 			}
 			return svc.RecordFailure(ctx, service.TriggerScheduled, refusal)

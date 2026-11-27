@@ -1,11 +1,16 @@
 package store_test
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -420,33 +425,102 @@ func TestCoordinationClaimCommitFailurePreservesProvisionalFence(t *testing.T) {
 func TestCoordinationRetriesSerializationFailureAtAdmissionGuard(t *testing.T) {
 	db := postgresTestDB(t)
 	ctx := t.Context()
-	writer, err := db.PG().Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = writer.Rollback(context.WithoutCancel(ctx)) }()
-	// A no-op update still creates a new row version, which is what 40001 keys on.
-	if _, err := writer.Exec(ctx, `UPDATE upgrade_control SET generation=generation WHERE singleton=1`); err != nil {
-		t.Fatal(err)
-	}
+	writer, writerPID := holdUpgradeControlWriter(t, db)
 	read := make(chan error, 1)
 	go func() { _, err := db.Coordination().Now(ctx); read <- err }()
-	// Commit only once the reader is parked on the writer's row lock, so its
-	// snapshot is older than the commit and the first attempt must abort.
-	for blocked := 0; blocked == 0; {
-		select {
-		case err := <-read:
-			t.Fatalf("read finished while the writer held the row: %v", err)
-		case <-time.After(10 * time.Millisecond):
-		}
-		if err := db.PG().QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FOR SHARE%' AND pid <> pg_backend_pid()`).Scan(&blocked); err != nil {
-			t.Fatal(err)
-		}
-	}
+	awaitGuardReaderBlocked(t, db, writerPID, read)
 	if err := writer.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-read; err != nil {
 		t.Fatalf("coordination read after a concurrent upgrade_control update: %v", err)
+	}
+}
+
+// holdUpgradeControlWriter opens a transaction that holds the row lock on
+// upgrade_control, and returns it with its backend pid. The transaction is
+// rolled back on cleanup if the test did not commit it.
+func holdUpgradeControlWriter(t *testing.T, db *store.DB) (pgx.Tx, int32) {
+	t.Helper()
+	ctx := t.Context()
+	writer, err := db.PG().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writer.Rollback(context.WithoutCancel(ctx)) })
+	var pid int32
+	if err := writer.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+		t.Fatal(err)
+	}
+	// A no-op update still creates a new row version, which is what 40001 keys on.
+	if _, err := writer.Exec(ctx, `UPDATE upgrade_control SET generation=generation WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	return writer, pid
+}
+
+// awaitGuardReaderBlocked returns once the reader under test is parked on the
+// writer's row lock at the admission guard's FOR SHARE, so its snapshot is
+// older than the writer's commit and the first attempt must abort. The probe is
+// scoped to this test's own database and excludes the writer and the probing
+// session, so a backend of another test on the shared server cannot satisfy it
+// and let the retry go unexercised.
+func awaitGuardReaderBlocked(t *testing.T, db *store.DB, writerPID int32, done <-chan error) {
+	t.Helper()
+	ctx := t.Context()
+	for blocked := 0; blocked == 0; {
+		select {
+		case err := <-done:
+			t.Fatalf("reader finished while the writer held the row: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+		if err := db.PG().QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FOR SHARE%'
+			AND pid <> pg_backend_pid() AND pid <> $1`, writerPID).Scan(&blocked); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// An export racing a writer on upgrade_control aborts with 40001 while the
+// snapshot is being set up. It must rerun on a fresh transaction and still
+// publish a valid archive.
+func TestExportPostgresRetriesSerializationFailureAtAdmissionGuard(t *testing.T) {
+	db := postgresTestDB(t)
+	ctx := t.Context()
+	writer, writerPID := holdUpgradeControlWriter(t, db)
+	var archive bytes.Buffer
+	exported := make(chan error, 1)
+	go func() { _, err := store.Export(ctx, db, &archive, t.TempDir()); exported <- err }()
+	awaitGuardReaderBlocked(t, db, writerPID, exported)
+	if err := writer.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-exported; err != nil {
+		t.Fatalf("export after a concurrent upgrade_control update: %v", err)
+	}
+	manifest, err := store.ReadManifest(bytes.NewReader(archive.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Engine != store.EnginePostgres || len(manifest.Tables) == 0 {
+		t.Fatalf("manifest = engine %q, %d tables", manifest.Engine, len(manifest.Tables))
+	}
+	members := map[string]bool{}
+	tr := tar.NewReader(bytes.NewReader(archive.Bytes()))
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("archive is not a valid tar: %v", err)
+		}
+		members[hdr.Name] = true
+	}
+	for _, table := range manifest.Tables {
+		if !members["payload/postgres/"+table] {
+			t.Fatalf("archive lacks the COPY member for %s", table)
+		}
 	}
 }

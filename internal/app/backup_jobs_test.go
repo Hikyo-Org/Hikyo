@@ -240,3 +240,17 @@ func TestRefusedBackupExportOnlyRecordsDueNonFencedFailures(t *testing.T) {
 		t.Fatalf("archives = %d, want the single earlier export", n)
 	}
 }
+
+// When the due check itself fails the refusal must still surface, joined with
+// the check's error rather than replaced by it or silently dropped.
+func TestRefusedBackupExportKeepsDueCheckError(t *testing.T) {
+	cfg, svc, _ := scheduleFixture(t)
+	jobs := backupJobs(cfg, quietLogger(), svc)
+	refusal := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: boom"))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // svc.Due reads state with this context and fails.
+	err := gateOnRuntimeConfig(jobs[0], func(context.Context) error { return refusal }).Run(ctx)
+	if !errors.Is(err, service.ErrSelfConfigUnavailable) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("refusal with failing due check = %v, want both the refusal and the due-check error", err)
+	}
+}
