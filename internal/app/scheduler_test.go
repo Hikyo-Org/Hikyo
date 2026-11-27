@@ -3,12 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 // fakeLease is a deterministic LeaseManager for the HA leadership tests: no
@@ -23,6 +27,8 @@ type fakeLease struct {
 	claims      int
 	renews      int
 	releases    int
+	afterClaim  func()
+	afterRenew  func()
 }
 
 func (f *fakeLease) set(fn func(*fakeLease)) {
@@ -41,14 +47,20 @@ func (f *fakeLease) ClaimLease(_ context.Context, _, _ string, _, _ time.Time) (
 		return 0, false, nil
 	}
 	f.fence++
+	if f.afterClaim != nil {
+		f.afterClaim()
+	}
 	return f.fence, true, nil
 }
 
 func (f *fakeLease) RenewLease(ctx context.Context, _, _ string, _ int64, _, _ time.Time) (bool, error) {
 	f.mu.Lock()
-	blocks, err, held := f.renewBlocks, f.renewErr, f.renewHeld
+	blocks, err, held, after := f.renewBlocks, f.renewErr, f.renewHeld, f.afterRenew
 	f.renews++
 	f.mu.Unlock()
+	if after != nil {
+		after()
+	}
 	if blocks {
 		<-ctx.Done()
 		return false, ctx.Err()
@@ -309,5 +321,94 @@ func TestSchedulerHAReleasesProvisionalClaimOnStop(t *testing.T) {
 	}
 	if lease.claims != 1 {
 		t.Fatalf("shutdown attempted %d claims, want1", lease.claims)
+	}
+}
+
+// skewClock lets a test advance the scheduler's clock from inside a lease call,
+// as a slow serialization retry would.
+type skewClock struct{ ns atomic.Int64 }
+
+func (c *skewClock) now() time.Time { return time.Now().Add(time.Duration(c.ns.Load())) }
+
+func TestSchedulerHAClaimLandingAfterExpiryStartsNoTerm(t *testing.T) {
+	var runs atomic.Int64
+	clock := &skewClock{}
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	lease.afterClaim = func() { clock.ns.Add(int64(time.Hour)) }
+	s := &Scheduler{
+		Interval: time.Hour, Deadline: time.Second, Log: testLogger(), Now: clock.now,
+		Lease: lease, NodeID: "node-a", LeaseTTL: 40 * time.Millisecond, Heartbeat: 10 * time.Millisecond,
+		Jobs: []ScheduledJob{{Name: "gc", Run: func(context.Context) error { runs.Add(1); return nil }}},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "claim", func() bool { lease.mu.Lock(); defer lease.mu.Unlock(); return lease.claims >= 1 })
+	time.Sleep(80 * time.Millisecond)
+	if s.IsLeader() || runs.Load() != 0 {
+		t.Fatalf("expired claim started a term: leader=%v runs=%d", s.IsLeader(), runs.Load())
+	}
+	cancel()
+	<-done
+}
+
+func TestSchedulerHARenewLandingAfterExpiryDropsLeadership(t *testing.T) {
+	clock := &skewClock{}
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	s := &Scheduler{
+		Interval: time.Hour, Deadline: time.Second, Log: testLogger(), Now: clock.now,
+		Lease: lease, NodeID: "node-a", LeaseTTL: 40 * time.Millisecond, Heartbeat: 10 * time.Millisecond,
+		Jobs: []ScheduledJob{{Name: "gc", Run: func(context.Context) error { return nil }}},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "leadership", s.IsLeader)
+	lease.set(func(f *fakeLease) { f.afterRenew = func() { clock.ns.Add(int64(time.Hour)) } })
+	waitFor(t, "expired renewal to drop leadership", func() bool { return !s.IsLeader() })
+	cancel()
+	<-done
+}
+
+func TestGateWaitsForRuntimeConfigPublication(t *testing.T) {
+	var calls, runs, refusals atomic.Int64
+	job := gateOnRuntimeConfig(ScheduledJob{
+		Name:      "gc",
+		Run:       func(context.Context) error { runs.Add(1); return nil },
+		OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
+	}, func(context.Context) error {
+		if calls.Add(1) < 3 {
+			return service.ErrSelfConfigUnavailable
+		}
+		return nil
+	})
+	if err := job.Run(t.Context()); err != nil || runs.Load() != 1 || refusals.Load() != 0 {
+		t.Fatalf("err=%v runs=%d refusals=%d", err, runs.Load(), refusals.Load())
+	}
+}
+
+func TestGateNeverRetriesFencedAndRefusesOnceAfterGrace(t *testing.T) {
+	oldGrace, oldStep := gateGrace, gateGraceStep
+	gateGrace, gateGraceStep = 30*time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { gateGrace, gateGraceStep = oldGrace, oldStep })
+	for name, refusal := range map[string]error{
+		"fenced":  fmt.Errorf("wrapped: %w", service.ErrSelfConfigFenced),
+		"timeout": service.ErrSelfConfigUnavailable,
+	} {
+		var calls, refusals atomic.Int64
+		job := gateOnRuntimeConfig(ScheduledJob{
+			Name:      "gc",
+			Run:       func(context.Context) error { t.Fatal("refused job ran"); return nil },
+			OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
+		}, func(context.Context) error { calls.Add(1); return refusal })
+		if err := job.Run(t.Context()); !errors.Is(err, refusal) || refusals.Load() != 1 {
+			t.Fatalf("%s: err=%v refusals=%d", name, err, refusals.Load())
+		}
+		if name == "fenced" && calls.Load() != 1 {
+			t.Fatalf("fenced capture retried %d times", calls.Load())
+		}
+		if name == "timeout" && calls.Load() < 2 {
+			t.Fatalf("unavailable capture not retried: %d", calls.Load())
+		}
 	}
 }

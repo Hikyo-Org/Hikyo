@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -212,6 +214,16 @@ func (s *Scheduler) runHA(ctx context.Context) {
 		}
 	}
 
+	// A serialization retry reuses the original now/expires, so a success can
+	// land after the lease already lapsed. Such a result confers no authority.
+	fresh := func(expires time.Time) bool {
+		if s.now().Before(expires) {
+			return true
+		}
+		s.logger().Error("scheduler lease lapsed before its grant was observed; failing closed", "node", s.NodeID)
+		return false
+	}
+
 	startTerm := func(expires time.Time) {
 		unconfirmedClaim = false
 		expiresAt = expires
@@ -281,7 +293,7 @@ func (s *Scheduler) runHA(ctx context.Context) {
 				case err != nil:
 					s.logger().Error("scheduler lease renew failed; dropping leadership", "node", s.NodeID, "err", err)
 					dropLeadership()
-				case !held:
+				case !held || !fresh(expires):
 					dropLeadership()
 				default:
 					expiresAt = expires
@@ -307,7 +319,7 @@ func (s *Scheduler) runHA(ctx context.Context) {
 						// took over. The provisional token confers no authority over it.
 						unconfirmedClaim = false
 						fence = 0
-					case ctx.Err() == nil:
+					case ctx.Err() == nil && fresh(expires):
 						startTerm(expires)
 					}
 				}
@@ -322,7 +334,7 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					switch {
 					case err != nil:
 						s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
-					case held && ctx.Err() == nil:
+					case held && ctx.Err() == nil && fresh(expires):
 						startTerm(expires)
 					}
 				}
@@ -373,13 +385,42 @@ func (s *Scheduler) checkHealth(ctx context.Context, job ScheduledJob) {
 	}
 }
 
+// A replacement generation starts its scheduler (startup catch-up) inside
+// installer activation, just before SelfConfig publishes the active bundle.
+// Wait briefly for that publication; fenced refusals are final and never wait.
+var (
+	gateGrace     = 3 * time.Second
+	gateGraceStep = 100 * time.Millisecond
+)
+
+func captureWithGrace(ctx context.Context, capture func(context.Context) error) error {
+	timer := time.NewTimer(gateGrace)
+	defer timer.Stop()
+	for {
+		err := capture(ctx)
+		if err == nil || errors.Is(err, service.ErrSelfConfigFenced) || !errors.Is(err, service.ErrSelfConfigUnavailable) {
+			return err
+		}
+		wait := time.NewTimer(gateGraceStep)
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+			return err
+		case <-timer.C:
+			wait.Stop()
+			return err
+		case <-wait.C:
+		}
+	}
+}
+
 // gateOnRuntimeConfig runs capture before every job run. A refused run never
 // reaches job.Run; a job with OnRefused records its own failure there so the
 // refusal is durable, not just a scheduler log line.
 func gateOnRuntimeConfig(job ScheduledJob, capture func(context.Context) error) ScheduledJob {
 	run, refused := job.Run, job.OnRefused
 	job.Run = func(ctx context.Context) error {
-		if err := capture(ctx); err != nil {
+		if err := captureWithGrace(ctx, capture); err != nil {
 			if refused != nil {
 				return refused(ctx, err)
 			}
