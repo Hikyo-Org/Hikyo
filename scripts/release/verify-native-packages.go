@@ -17,12 +17,13 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/sassoftware/go-rpmutils"
+
+	"github.com/Hikyo-Org/hikyo/internal/modroot"
 )
 
 const (
@@ -61,7 +62,8 @@ func main() {
 }
 
 func verifyAll(dist, version string) error {
-	repoRoot, err := repositoryRoot()
+	// `go run` already requires a working directory inside the module.
+	repoRoot, err := modroot.Find()
 	if err != nil {
 		return err
 	}
@@ -104,14 +106,6 @@ func verifyAll(dist, version string) error {
 		}
 	}
 	return nil
-}
-
-func repositoryRoot() (string, error) {
-	_, source, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("cannot resolve verifier source path")
-	}
-	return filepath.Clean(filepath.Join(filepath.Dir(source), "..", "..")), nil
 }
 
 func packageIdentity(repoRoot, version, format, arch string) (identity, error) {

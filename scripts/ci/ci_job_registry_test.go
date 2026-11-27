@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"sort"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/modroot"
 )
 
 type registry struct {
@@ -395,13 +395,14 @@ func workflowNeeds(node yaml.Node) ([]string, error) {
 	}
 }
 
+// repositoryRoot returns the module root above the test's working directory.
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("locate test source")
+	root, err := modroot.Find()
+	if err != nil {
+		t.Fatal(err)
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
+	return root
 }
 
 func cloneRegistry(t *testing.T, input registry) registry {

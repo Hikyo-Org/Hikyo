@@ -33,6 +33,8 @@ import (
 	"unicode"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/Hikyo-Org/hikyo/internal/modroot"
 )
 
 // Vendoring record (docs/handoff/74-secret-scanning.md phase 0). The snapshot
@@ -103,7 +105,7 @@ func main() {
 }
 
 func run() error {
-	root, err := repoRoot()
+	root, err := modroot.Find()
 	if err != nil {
 		return err
 	}
@@ -660,23 +662,4 @@ func stringSliceLiteral(ss []string) string {
 		parts[i] = fmt.Sprintf("%q", s)
 	}
 	return "[]string{" + strings.Join(parts, ", ") + "}"
-}
-
-// repoRoot walks up from the working directory to the module root (the
-// directory holding go.mod), so the generator runs from anywhere.
-func repoRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found from working directory")
-		}
-		dir = parent
-	}
 }

@@ -10,10 +10,10 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
+	"github.com/Hikyo-Org/hikyo/internal/modroot"
 )
 
 // Module is the module path the analyzers reason about.
@@ -65,27 +65,26 @@ func (c BuildContext) Env() []string {
 // the tree; embedded bytes never affect imports or types.
 const webuiDistPlaceholder = "internal/webui/dist/index.html"
 
-// moduleRoot is the module root, derived from this file's location so the
-// loaders work from any package directory.
-func moduleRoot() string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
-}
-
 // Overlay returns the build overlay the context needs: the webui dist
 // placeholder for the ui context when no dist file exists, otherwise nil.
+// It locates the module from the working directory, which must be inside the
+// module, as it already must be for the go command to build it.
 func (c BuildContext) Overlay() (map[string][]byte, error) {
 	if !c.needsWebuiPlaceholder() {
 		return nil, nil
 	}
-	entries, err := os.ReadDir(filepath.Join(moduleRoot(), "internal", "webui", "dist"))
+	root, err := modroot.Find()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "internal", "webui", "dist"))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	if len(entries) > 0 {
 		return nil, nil
 	}
-	return map[string][]byte{filepath.Join(moduleRoot(), filepath.FromSlash(webuiDistPlaceholder)): nil}, nil
+	return map[string][]byte{filepath.Join(root, filepath.FromSlash(webuiDistPlaceholder)): nil}, nil
 }
 
 // WriteOverlay materializes Overlay as a `go list -overlay` file inside dir and
