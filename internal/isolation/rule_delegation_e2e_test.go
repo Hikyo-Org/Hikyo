@@ -123,28 +123,40 @@ func TestRuleHiddenExceptionsOnlyFromManageableRules(t *testing.T) {
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapManageMembers, Org: orgA, Where: inDB})
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapEdit, Org: orgA, Where: inDB})
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapPublish, Org: orgA, Where: inDB})
-		excepting := func(name, folder string) {
+		excepting := func(name, folder string) string {
 			t.Helper()
 			w := whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem(folder))
 			w.EnvNames = []string{name}
-			f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: w})
+			return f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: w})
 		}
 		excepting("ghost", "stripe")
+		// An all-projects rule is bound per project and counts the same way.
+		everywhere := allProjectsWhere(domain.AxisOnly, "stripe")
+		everywhere.EnvNames = []string{"phantom"}
+		f.create(t, orgAdmin, claimAll(t, db, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: everywhere}))
 		legacy := service.RuleSpec{Target: gina, Capability: domain.CapPublish, Org: orgA, Where: inDB}
 		// The stripe rule is outside frank's folders: it must not refuse, nor name.
 		if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), legacy); err != nil {
 			t.Fatalf("legacy create beside an unmanageable rule: %v", err)
 		}
 		// A rule frank manages still keeps its hidden exception, named.
-		excepting("spectre", "db")
+		spectre := excepting("spectre", "db")
 		legacy.Capability = domain.CapEdit
+		namesOnly := func(t *testing.T, err error) {
+			t.Helper()
+			if !errors.Is(err, service.ErrRuleUnmatchedNamesDropped) {
+				t.Fatalf("legacy create beside a manageable rule: %v, want the hidden exception kept", err)
+			}
+			var detailed interface{ SafeDetail() string }
+			if !errors.As(err, &detailed) || !strings.Contains(detailed.SafeDetail(), "spectre") ||
+				strings.Contains(detailed.SafeDetail(), "ghost") || strings.Contains(detailed.SafeDetail(), "phantom") {
+				t.Fatalf("refusal detail %v names the wrong exceptions", err)
+			}
+		}
 		_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), legacy)
-		if !errors.Is(err, service.ErrRuleUnmatchedNamesDropped) {
-			t.Fatalf("legacy create beside a manageable rule: %v, want the hidden exception kept", err)
-		}
-		var detailed interface{ SafeDetail() string }
-		if !errors.As(err, &detailed) || !strings.Contains(detailed.SafeDetail(), "spectre") || strings.Contains(detailed.SafeDetail(), "ghost") {
-			t.Fatalf("refusal detail %v names the wrong exceptions", err)
-		}
+		namesOnly(t, err)
+		// Replacing the manageable rule by a legacy one is refused the same way.
+		_, err = f.rules.Replace(t.Context(), service.LocalPrincipal(frank), service.ReplaceRulesSpec{Org: orgA, Target: gina, Revoke: []string{spectre}, Create: []service.RuleSpec{legacy}})
+		namesOnly(t, err)
 	})
 }
