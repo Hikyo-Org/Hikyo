@@ -796,7 +796,7 @@ records are rewritten by events and by re-proofs that change nothing, and an ord
 based on them can starve a PR. Every open PR is re-proved within ceil(open/5)
 consecutive runs; a PR opened or closed in between shifts the windows by at most one
 cycle. A run that fails or is deferred still advances the count, so the window it skipped
-is reached ceil(open/5) runs later: the bound is in proving runs, not in all runs. GitHub
+is reached ceil(open/5) runs later. That holds only when deferrals are not periodic: a deferral on every k-th run, with k a multiple of the cycle length, skips the same window each time, and events and the retry path then settle checks. GitHub
 returns at most 1,000 results for a filtered list, and retention can delete old runs, so
 the count is taken within the current 30-day epoch only (`created` at or after the epoch
 start, at most 720 runs) and the epoch number is added as a stable offset: windows are
