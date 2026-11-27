@@ -56,8 +56,8 @@ jobs:
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
-          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || exit 1
           test "$RUN_ATTEMPT" -lt 3
           # Never rerun into an exhausted window: a rerun reconcile spends the same shared
           # budget that just failed it. Reading rate_limit does not count against the limit.
@@ -74,7 +74,7 @@ jobs:
           reserve=480
           other_cost=42
           read -r remaining limit reset < <(gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset | todate)"')
-          [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]]
+          [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || exit 1
           if [ $((remaining * 10)) -lt "$limit" ]; then
             echo "Rate limit has $remaining of $limit requests left; not rerunning now. It resets at $reset; rerun-after-reset retries once it has."
             echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
@@ -98,7 +98,7 @@ jobs:
             [ -n "$id" ] || continue
             total=$((total + 1))
             [ "$qualifies" = 1 ] || continue
-            [[ "$id" =~ ^[1-9][0-9]*$ ]]
+            [[ "$id" =~ ^[1-9][0-9]*$ ]] || exit 1
             if [ "$kind" = group ]; then
               groups+=("$id")
             elif [ $((remaining - other_cost)) -ge "$reserve" ]; then
@@ -320,7 +320,7 @@ jobs:
               [ -n "$id" ] || continue
               total=$((total + 1))
               [ "$qualifies" = 1 ] || continue
-              [[ "$id" =~ ^[1-9][0-9]*$ && "$name" =~ ^((dev-)?publish|group)-[0-9a-f]{40}$ ]]
+              [[ "$id" =~ ^[1-9][0-9]*$ && "$name" =~ ^((dev-)?publish|group)-[0-9a-f]{40}$ ]] || exit 1
               if [ "$kind" = group ]; then
                 g+=("$id")
                 gh+=("$name")
@@ -349,7 +349,7 @@ jobs:
           }
           while read -r run_id attempt; do
             [ -n "$run_id" ] || continue
-            [[ "$run_id" =~ ^[1-9][0-9]*$ && "$attempt" =~ ^[1-9][0-9]*$ ]]
+            [[ "$run_id" =~ ^[1-9][0-9]*$ && "$attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
             if ! found=$(read_retry list_jobs "$run_id" "$attempt"); then
               echo "Could not list the jobs of run $run_id (attempt $attempt)."
               unread="$unread run:$run_id"

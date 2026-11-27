@@ -288,11 +288,11 @@ for release in b c; do
  jq -e '.phase == "complete" and .runtime.CiphertextPath != ""' "$work/journal-$release.json" >/dev/null
  ciphertext=$(jq -r '.runtime.CiphertextPath' "$work/journal-$release.json")
  # Map only the fixed chart state mount into this disposable node's owned PV.
- [[ "$ciphertext" == /var/lib/hikyo-upgrade/operator-custody/unattended/backup-*/* ]]
+ [[ "$ciphertext" == /var/lib/hikyo-upgrade/operator-custody/unattended/backup-*/* ]] || exit 1
  docker exec "$node" test -s "${ciphertext/\/var\/lib\/hikyo-upgrade/\/var\/lib\/hikyo-unattended-state}"
 done
 custody_after=$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)
-[[ "$custody_before" == "$custody_after" ]]
+[[ "$custody_before" == "$custody_after" ]] || exit 1
 kubectl -n "$NAMESPACE" exec deployment/postgres -- psql -U hikyo -d hikyo_scratch -Atc 'SELECT count(*) FROM upgrade_control' | grep -Fxq '1'
 # Host-only operator commands through kubectl exec in the admitted singleton pod. The
 # image has no shell, cat or tar: values go to --output-file in the runtime-owned state directory (read
@@ -309,6 +309,6 @@ operator_exec restore status >/dev/null
 operator_exec admin config status >/dev/null
 read_state >"$work/state-operator.json"
 jq -e --arg instance "$instance" '.instance == $instance and .maintenance == false and .pending.phase == "healthy"' "$work/state-operator.json" >/dev/null
-[[ "$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)" == "$custody_before" ]]
+[[ "$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)" == "$custody_before" ]] || exit 1
 echo 'unattended-kind: kubectl exec operator commands passed in the admitted pod'
 echo 'unattended-kind: distroless A restart and A->B->C passed; root/custody PVC retained; PostgreSQL scratch restore and encrypted backups verified'

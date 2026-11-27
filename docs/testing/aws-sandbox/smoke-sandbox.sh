@@ -77,7 +77,7 @@ emulator_endpoint() {
 	[[ $host =~ ^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] || return 1
 	a=${BASH_REMATCH[1]} b=${BASH_REMATCH[2]}
 	((a <= 255 && b <= 255 && BASH_REMATCH[3] <= 255 && BASH_REMATCH[4] <= 255)) || return 1
-	((a == 127 || a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168)))
+	((a == 127 || a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168))) || return 1
 }
 
 # teardown_cmd RUN: the exact command that removes RUN (keeps the emulator flags).
