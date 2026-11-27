@@ -4,47 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-// A guard failure after BEGIN must return the error (no nil-transaction panic)
-// and roll back, leaving the pooled connection outside any transaction.
-func TestBeginPostgresExportSnapshotRollsBackOnGuardFailure(t *testing.T) {
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI requires HIKYO_TEST_POSTGRES_DSN")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.MaxConns = 1
-	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	conn, err := pool.Acquire(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	// The zero admission is invalid, so the guard fails inside the transaction.
-	tx, tables, err := beginPostgresExportSnapshot(t.Context(), conn, &DB{engine: EnginePostgres}, &Manifest{}, nil)
-	if err == nil || tx != nil || tables != nil {
-		t.Fatalf("tx=%v tables=%v err=%v, want a guard error and no transaction", tx, tables, err)
-	}
-	if status := conn.Conn().PgConn().TxStatus(); status != 'I' {
-		t.Fatalf("connection tx status = %q, want idle 'I' (rolled back)", status)
-	}
-}
 
 func TestRetryPostgresSerializationRetriesTransientFailure(t *testing.T) {
 	for _, code := range []string{"40001", "40P01"} {

@@ -250,7 +250,39 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 	var tables []string
 	err = retryPostgresSerialization(ctx, func() error {
 		var err error
-		tx, tables, err = beginPostgresExportSnapshot(ctx, conn, db, m, upgrade)
+		tx, err = beginPostgresExportSnapshot(ctx, conn, func(tx pgx.Tx) error {
+			var err error
+			if upgrade != nil && upgrade.preparation.Valid() {
+				err = upgrade.preparation.GuardPostgres(ctx, tx)
+			} else {
+				err = db.admission.GuardPostgres(ctx, tx)
+			}
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
+				return err
+			}
+			var version int64
+			scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
+			m.SchemaVersion, err = schemaVersionResult(version, scanErr)
+			if err != nil {
+				return err
+			}
+			tables, err = pgTableOrder(ctx, tx)
+			if err != nil {
+				return err
+			}
+			sequences, err := pgSequencePositions(ctx, tx)
+			if err != nil {
+				return err
+			}
+			m.Tables, m.Sequences = tables, sequences
+			if upgrade != nil {
+				return upgrade.bindPostgres(ctx, tx, m)
+			}
+			return nil
+		})
 		return err
 	})
 	if err != nil {
@@ -286,59 +318,23 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 	return nil
 }
 
-// beginPostgresExportSnapshot opens the export transaction and reads everything
-// the archive manifest needs. On error the transaction is already rolled back.
-func beginPostgresExportSnapshot(ctx context.Context, conn *pgxpool.Conn, db *DB, m *Manifest, upgrade *UpgradeExportRequest) (pgx.Tx, []string, error) {
+// beginPostgresExportSnapshot opens the export transaction and runs setup in
+// it. The statements stay in exportPostgres, the reviewed engine protocol. On
+// error the transaction is already rolled back and none is returned.
+func beginPostgresExportSnapshot(ctx context.Context, conn *pgxpool.Conn, setup func(pgx.Tx) error) (pgx.Tx, error) {
 	opened, err := conn.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("store: begin export snapshot: %w", err)
+		return nil, fmt.Errorf("store: begin export snapshot: %w", err)
 	}
-	tables, err := readPostgresExportSnapshot(ctx, opened, db, m, upgrade)
-	if err != nil {
+	if err := setup(opened); err != nil {
 		// opened is a local, so the rollback target survives the error returns.
 		_ = opened.Rollback(ctx)
-		return nil, nil, err
-	}
-	return opened, tables, nil
-}
-
-func readPostgresExportSnapshot(ctx context.Context, tx pgx.Tx, db *DB, m *Manifest, upgrade *UpgradeExportRequest) ([]string, error) {
-	var err error
-	if upgrade != nil && upgrade.preparation.Valid() {
-		err = upgrade.preparation.GuardPostgres(ctx, tx)
-	} else {
-		err = db.admission.GuardPostgres(ctx, tx)
-	}
-	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
-		return nil, err
-	}
-	var version int64
-	scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
-	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
-	if err != nil {
-		return nil, err
-	}
-	tables, err := pgTableOrder(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-	sequences, err := pgSequencePositions(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-	m.Tables, m.Sequences = tables, sequences
-	if upgrade != nil {
-		if err := upgrade.bindPostgres(ctx, tx, m); err != nil {
-			return nil, err
-		}
-	}
-	return tables, nil
+	return opened, nil
 }
 
 // IsPostgresSerializationFailure reports SQLSTATE 40001 (serialization_failure)
