@@ -540,6 +540,21 @@ func TestQueueRetryWaitKeepsTheFirstPassOutstandingAfterAShortWait(t *testing.T)
 	}
 }
 
+// A set of failed publishers that no fresh window could afford together (13 x 42 = 546 against the
+// 520 above the reserve) must still be released by the wait, through the run-level endpoint.
+func TestQueueRetryWaitReleasesASetNoFreshWindowCouldAffordTogether(t *testing.T) {
+	now := int64(1795475603)
+	var jobs []string
+	for i := 0; i < 13; i++ {
+		jobs = append(jobs, failedGroupJob(100+i, "publish-"+fmt.Sprintf("%040x", i+1), "Reconcile one authenticated head"))
+	}
+	f := &rerunAfterResetFixture{t: t, dir: t.TempDir(), now: now, reset: now + 600, recovers: true, limit: 1000, after: 1000, runs: []waitRun{trustedRun("ci-queue-gate.yml", 7, jobs...)}}
+	_, out, err := f.run()
+	if err != nil || !reflect.DeepEqual(f.accepted(), []string{"run:7"}) {
+		t.Fatalf("the oversized set is rerun run-level, not held for ever: %v %v\n%s", err, f.accepted(), out)
+	}
+}
+
 // A rerun request that backs off past the 66 minutes must not be sent: it is held, not refused.
 func TestQueueRetryWaitSendsNoRerunRequestAfterSixtySixMinutes(t *testing.T) {
 	now := int64(1795475603)
