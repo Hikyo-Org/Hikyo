@@ -372,12 +372,12 @@ func (c Checker) unusable(cause error) error {
 			ErrUnusableState, cause, floor)
 	}
 	if errors.Is(cause, errStaleReplacement) {
-		return fmt.Errorf("%w (%w); bridge routes are refused. Lists are signed only when something is revoked, never on a schedule, so retrying or restoring access cannot help: wait for the release owner to sign and publish a newer list, which then replaces it, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state and the sequence floor are lost, so the next check accepts any validly signed list the endpoint serves, even an older one",
+		return fmt.Errorf("%w (%w); bridge routes are refused. Lists are signed only when something is revoked, never on a schedule, so retrying or restoring access cannot help: wait for the release owner to sign and publish a newer list, which then replaces it (that wait has no bound: the owner signs a list only when something is revoked), or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state and the sequence floor are lost, so the next check accepts any validly signed list the endpoint serves, even an older one",
 			ErrUnusableState, cause, store, floor)
 	}
-	way := "Restore access to the revocation endpoint so a valid list replaces it"
+	way := "Restore access to the revocation endpoint so a valid list replaces it (a stale list cannot)"
 	if c.Mode == Off {
-		way = "The check is off, so nothing is fetched: set HIKYO_UPGRADE_REVOCATION_CHECK to online so a valid list replaces it"
+		way = "The check is off, so nothing is fetched: set HIKYO_UPGRADE_REVOCATION_CHECK to online so a valid list replaces it (a stale list cannot)"
 	}
 	return fmt.Errorf("%w (%w); bridge routes are refused. %s, or, as an explicit operator action, stop the service and remove %s and %s, accepting that revocations known only to that state are lost",
 		ErrUnusableState, cause, way, store, floor)

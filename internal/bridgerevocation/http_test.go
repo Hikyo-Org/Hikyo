@@ -300,6 +300,11 @@ func TestUnrecordableStateRefuses(t *testing.T) {
 	if _, err := off.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "bridge-revocations-check.json") {
 		t.Fatalf("a run that cannot record the outcome must refuse with the record error: %v", err)
 	}
+	// The fetch path too: a newer list is stored, but an unrecorded outcome still refuses.
+	fetcher.list, fetcher.signature = signedList(t, f, 2)
+	if _, err := checker.Check(t.Context(), snapshot); err == nil || !strings.Contains(err.Error(), "bridge-revocations-check.json") {
+		t.Fatalf("a fetched list whose outcome cannot be recorded must refuse with the record error: %v", err)
+	}
 }
 
 // Once a list is stored, the list later going absent (404) falls back to the stored list

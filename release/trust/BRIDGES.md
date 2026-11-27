@@ -7,7 +7,9 @@ never a route, so no legacy-nightly route plans until the owner replaces it. The
 steps, in order: rotate the trust root to `recovery-2`, ship a release whose binary
 embeds that root, re-sign
 `legacy-nightly-bridge/v2` statements with a `not_after` offline, signed with
-`recovery-2`, publish a new catalog listing them, and rotate the stable policy, because
+`recovery-2`, publish a new catalog listing them together with the recovery-signed
+bridge revocation list (sequence 1, `recovery-revocations.json` and its `.sigstore.json`)
+as assets of the `trust` release, and rotate the stable policy, because
 these two digests are policy-listed and cannot leave the catalog without a rotation.
 These steps are owner tidy-up, not a merge or release blocker. The full list is in
 [the ceremony runbook](../../docs/operations/recovery-bridge-ceremony.md), section

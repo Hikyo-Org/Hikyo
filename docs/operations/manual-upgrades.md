@@ -162,10 +162,10 @@ refuses the route. `HIKYO_UPGRADE_REVOCATION_CHECK=off` skips the network and is
 your explicit decision to rely on `not_after` alone (also logged as a warning). The list is stored in `HIKYO_UPGRADE_STATE_DIR` as `bridge-revocations-store.json`. If it exists but
 does not verify (a damaged file or a list signed by another key), is behind the sequence floor (a removed store, a crash between the two writes) or is bound to another trust root, bridge routes are refused, including
 under `off`, when the endpoint is unreachable and when the fetched list is stale, because the revocations it held
-are lost. The way out: when the endpoint is unreachable, restore access so a fresh valid list replaces it (it must not be below the
+are lost. The way out: when the endpoint is unreachable, restore access so a fresh valid list replaces it (a stale list cannot, and it must not be below the
 floor in `bridge-revocations-floor.json`, which only a stored list raises and which is bound to the trust root). When the
 endpoint serves a stale list, restoring access cannot help, because lists are not re-signed on a schedule: wait for the
-owner to sign and publish a newer list. Otherwise, as an explicit operator action, stop the service and remove
+owner to sign and publish a newer list; that wait has no bound, because the owner signs a list only when something is revoked. Otherwise, as an explicit operator action, stop the service and remove
 `bridge-revocations-store.json` and `bridge-revocations-floor.json`,
 accepting that revocations known only to that state are lost and that, without the floor, the next check accepts any
 validly signed list the endpoint serves, even an older one (an old list is only reported `stale`). A security rollback is never blocked. `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` from the service environment file reach the upgrade child, so a proxy-only host can reach the endpoint. Ordinary upgrades never

@@ -282,8 +282,9 @@ Operator recovery for stored state: an installation keeps the last accepted list
 rename). Stored state that exists but does not verify refuses bridge routes under `off`, with an
 unreachable endpoint and with a stale list (a security rollback is never blocked); only a fresh,
 non-stale, verified list, not below the sequence floor (`bridge-revocations-floor.json`, raised only by a stored list and bound to the trust root; an unreadable one refuses), replaces it. The floor is enforced whenever it exists: a removed store, or a store behind the floor, is unusable too. When the
-endpoint is unreachable, reach it again. When it serves a stale list, reaching it cannot help, because lists are
-not re-signed on a schedule: wait for the owner to sign and publish a newer list. Otherwise stop the service and
+endpoint is unreachable, reach it again; the list it serves then replaces the state only if it is not stale. When
+it serves a stale list, reaching it cannot help, because lists are not re-signed on a schedule: wait for the owner
+to sign and publish a newer list, a wait with no bound, since the owner signs only when something is revoked. Otherwise stop the service and
 remove that file and the floor record as an explicit operator action, accepting that revocations known only to
 that state are lost and that, without the floor, the next check accepts any validly signed list the endpoint
 serves, even an older one (an old list is only reported `stale`). A list bound to another (older) trust root is unusable too until a fresh
