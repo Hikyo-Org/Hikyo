@@ -18,6 +18,9 @@ func (c *controller) checkPayload(b binding, result outcome) (map[string]any, er
 	} else if b.Run > 0 {
 		payload["details_url"] = fmt.Sprintf("https://github.com/%s/actions/runs/%d", c.repoName, b.Run)
 	}
+	if result.StartedAt != "" {
+		payload["started_at"] = result.StartedAt
+	}
 	if result.Status == "completed" {
 		payload["conclusion"] = result.Conclusion
 	}

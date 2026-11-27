@@ -55,8 +55,8 @@ chmod +x "$work/bin/gh"
 run() {
 	: >"$work/calls"
 	PATH="$work/bin:$PATH" CALLS=$work/calls EXISTING=${2:-} LOOKUP_FAIL=${3:-} GH_REPO=o/r PR_NUMBER=7 \
-		BASE_SHA=$base HEAD_SHA=$1 PR_AUTHOR=someone DCO_REPOSITORY=$repo \
-		PR_HEAD_REF=${HEAD_REF:-} PR_HEAD_REPOSITORY=${HEAD_REPOSITORY:-} "$script" >/dev/null 2>&1
+		BASE_SHA=$base HEAD_SHA=$1 PR_AUTHOR=${AUTHOR:-someone} DCO_REPOSITORY=$repo \
+		DCO_MAIN_SHA=${MAIN-$base} DCO_DEV_SHA=${DEV-$base} "$script" >/dev/null 2>&1
 }
 
 fail() {
@@ -64,11 +64,34 @@ fail() {
 	exit 1
 }
 
-HEAD_REF=release/1.1.0 HEAD_REPOSITORY=o/r run "$dependabot" || fail 'promotion Dependabot commit reported missing'
-HEAD_REF=main HEAD_REPOSITORY=o/r run "$dependabot" || fail 'backmerge Dependabot commit reported missing'
-HEAD_REF=release/1.1.0 HEAD_REPOSITORY=fork/r run "$dependabot" && fail 'fork release branch claimed the exemption'
-HEAD_REF=feat/x HEAD_REPOSITORY=o/r run "$dependabot" && fail 'feature branch claimed the exemption'
-HEAD_REF=release/1.1.0 HEAD_REPOSITORY=o/r run "$unsigned" && fail 'promotion exempted a human commit'
+# A bad trusted tip must stop the reporter before any gh call. The other tip is
+# the Dependabot commit itself, so the run would exit 0 (and look up comments)
+# if the bad tip were ignored. Invalid tips exit 2; an unset tip trips the
+# required-variable guard.
+closed() {
+	status=0
+	run "$dependabot" || status=$?
+	[ "$status" -ne 0 ] || fail "$1: bad trusted tip ignored"
+	[ -z "${2:-}" ] || [ "$status" -eq "$2" ] || fail "$1: exit $status, want $2"
+	[ ! -s "$work/calls" ] || fail "$1: gh was called"
+}
+
+# A Dependabot commit is exempt only when the trusted main or dev already holds it;
+# the branch it arrives on no longer matters.
+# Subshells: a POSIX shell keeps a variable assigned in front of a function call.
+(MAIN=$dependabot && run "$dependabot") || fail 'Dependabot commit already on main reported missing'
+run "$dependabot" && fail 'Dependabot commit off main claimed the exemption'
+(MAIN=$signed && run "$dependabot") && fail 'forged Dependabot commit off main claimed the exemption'
+(MAIN=$unsigned && run "$unsigned") && fail 'main ancestry exempted a human commit'
+(AUTHOR='dependabot[bot]' && run "$dependabot") || fail 'PR opened by Dependabot reported missing'
+(DEV=$dependabot && run "$dependabot") || fail 'Dependabot commit already on dev reported missing'
+(DEV=$unsigned && run "$unsigned") && fail 'dev ancestry exempted a human commit'
+(MAIN=$signed DEV=$signed && run "$dependabot") && fail 'Dependabot commit on neither main nor dev claimed the exemption'
+
+(MAIN=$dependabot DEV='' && closed 'unset trusted dev')
+(MAIN=$dependabot DEV=0000000000000000000000000000000000000001 && closed 'unresolvable trusted dev' 2)
+(MAIN='' DEV=$dependabot && closed 'unset trusted main')
+(MAIN=0000000000000000000000000000000000000001 DEV=$dependabot && closed 'unresolvable trusted main' 2)
 
 run "$unsigned" && fail 'unsigned commit reported success'
 grep -F -- '-X POST repos/o/r/issues/7/comments' "$work/calls" >/dev/null || fail 'no comment posted'

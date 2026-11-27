@@ -48,6 +48,11 @@ func newAdmissionDCOFixture(t *testing.T, bot bool) admissionDCOFixture {
 		actor = "dependabot[bot]"
 	}
 	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+identity+" 1700000001 +0000\ncommitter "+identity+" 1700000001 +0000\n\n"+message)
+	for _, ref := range []string{queueTrustedMainRef, queueTrustedDevRef} {
+		if out, err := exec.CommandContext(t.Context(), git, "-C", repo, "update-ref", ref, base).CombinedOutput(); err != nil {
+			t.Fatalf("update-ref: %v %s", err, out)
+		}
+	}
 	tools := t.TempDir()
 	log := filepath.Join(tools, "calls")
 	fail := filepath.Join(tools, "fail-fetch")
@@ -59,21 +64,25 @@ test "$GIT_CONFIG_SYSTEM" = /dev/null
 test "$GIT_CONFIG_NOSYSTEM" = 1
 test "$GIT_CONFIG_COUNT" = 0
 test "${GH_TOKEN+x}" != x
-fetch=false; target=; previous=
+fetch=false; refspec=false; devspec=false; target=; previous=
 for argument in "$@"; do
+ if [ "$argument" = %s ]; then refspec=true; fi
+ if [ "$argument" = %s ]; then devspec=true; fi
  if [ "$previous" = -C ]; then target=$argument; fi
  if [ "$argument" = fetch ]; then fetch=true; fi
  if [ "$argument" = rev-list ]; then printf 'check\n' >> %s; fi
  previous=$argument
 done
 if $fetch; then
+ $refspec
+ $devspec
  printf 'fetch %%s\n' "$target" >> %s
  test ! -e %s
  cp -R %s/. "$target/"
  exit 0
 fi
 exec %s "$@"
-`, quote(log), quote(log), quote(fail), quote(repo), quote(git))
+`, "'"+queueTrustedMainRefspec+"'", "'"+queueTrustedDevRefspec+"'", quote(log), quote(log), quote(fail), quote(repo), quote(git))
 	if err := os.WriteFile(filepath.Join(tools, "git"), []byte(shim), 0755); err != nil {
 		t.Fatal(err)
 	}

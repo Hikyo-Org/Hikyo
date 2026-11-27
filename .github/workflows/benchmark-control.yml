@@ -68,11 +68,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
-      # Automatic admission may create the same comment before this job.
-      # Share its lease so there is exactly one creator and claims survive.
-      group: codspeed-walltime
-      cancel-in-progress: false
-      queue: max
+      # Comment creation is find-or-create by marker and deletes duplicates
+      # (lowest id wins). Leaving the global walltime lease means prepare is no
+      # longer serialized against claims, so the claim path re-checks the live
+      # head instead. A newer head supersedes an older one.
+      group: perf-control-comment-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write

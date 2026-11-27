@@ -117,6 +117,10 @@ jobs:
         exclude:
           - head: '0000000000000000000000000000000000000000'
     concurrency:
+      # Shares the head lease with the gate publishers and keeps queue: max, which does NOT
+      # protect it: GitHub's behaviour for mixed settings in one group is undocumented, and a
+      # publisher in default mode may replace a pending retirement job (#1553, accepted
+      # residual in the PR). The publishers reassess the head live and retire stale records themselves.
       group: queue-check-${{ github.repository_id }}-${{ matrix.head }}
       cancel-in-progress: false
       queue: max

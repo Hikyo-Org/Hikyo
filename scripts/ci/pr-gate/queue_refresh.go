@@ -109,8 +109,13 @@ type groupRereads struct {
 	delay   time.Duration // the wait the loop was last asked to make
 }
 
+// The fence and hard stop run from process start, not loop start: repository
+// initialization (and any rate-limit wait in it) happens before the loop and
+// must come out of the same ten-minute job.
+var processStart = time.Now()
+
 func newGroupRereads(parent context.Context) *groupRereads {
-	wall := time.Now()
+	wall := processStart
 	return &groupRereads{parent: parent, started: groupRereadNow(), fence: wall.Add(groupRereadFence), hardEnd: wall.Add(groupRereadHardStop)}
 }
 
@@ -504,6 +509,12 @@ func describeCheck(v *check) string {
 // shared by every confirmation under one reserve: once it holds a full backoff
 // the next wait would not fit, so the current view is returned as it is.
 func (c *controller) newestAfterWrite(ctx context.Context, written *check, spent *time.Duration) (*check, error) {
+	own, err := c.ownedAfterWrite(ctx, written, spent)
+	return newestQueueCheck(own), err
+}
+
+// ownedAfterWrite is the listing newestAfterWrite judges, returned whole.
+func (c *controller) ownedAfterWrite(ctx context.Context, written *check, spent *time.Duration) ([]check, error) {
 	for attempt := 0; ; attempt++ {
 		own, err := c.listOwnedChecks(ctx, c.expectedHead)
 		if err != nil {
@@ -512,11 +523,11 @@ func (c *controller) newestAfterWrite(ctx context.Context, written *check, spent
 		newest := newestQueueCheck(own)
 		behind := newest == nil || newest.ID < written.ID || newest.ID == written.ID && (newest.Status != written.Status || newest.Conclusion != written.Conclusion)
 		if !behind || attempt == len(writeConfirmBackoff) || *spent+writeConfirmBackoff[attempt] > writeConfirmTotal() {
-			return newest, nil
+			return own, nil
 		}
 		*spent += writeConfirmBackoff[attempt]
 		if err := readRetryWait(ctx, writeConfirmBackoff[attempt]); err != nil {
-			return newest, err
+			return own, err
 		}
 	}
 }

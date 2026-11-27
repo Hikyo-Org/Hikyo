@@ -265,14 +265,14 @@ func TestDevPublisherDifferenceIsAVerdict(t *testing.T) {
 	for name, arrange := range map[string]func(f *queueFixture, base, head string){
 		"base differs": func(f *queueFixture, base, _ string) { f.api.responses[base] = other },
 		"head differs": func(f *queueFixture, _, head string) { f.api.responses[head] = other },
-		"base differs and head unreadable": func(f *queueFixture, base, head string) {
-			f.api.responses[base], f.api.responses[head] = other, errors.New("head copy failed")
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newDevFixture(t)
 			contents := f.c.endpoint("contents/" + devGateWorkflowPath + "?ref=")
 			arrange(f, contents+f.pr.Base.SHA, contents+f.pr.Head.SHA)
+			// The head holds only an older main, so the backmerge exception does not apply.
+			main := strings.Repeat("e", 40)
+			f.api.responses[f.c.endpoint(compareRange(main, f.pr.Head.SHA))] = map[string]any{"status": "diverged", "base_commit": map[string]string{"sha": main}, "merge_base_commit": map[string]string{"sha": strings.Repeat("d", 40)}}
 			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
 				t.Error("a publisher difference reached the verifier")
 				return policyDecision{}, nil
@@ -285,8 +285,35 @@ func TestDevPublisherDifferenceIsAVerdict(t *testing.T) {
 			if latest == nil || latest.Conclusion != "failure" || !strings.Contains(latest.Output.Summary, "Merge dev into this branch") {
 				t.Fatalf("refusal not published: %+v", latest)
 			}
+			wantReads := 0
+			if name == "base differs" {
+				wantReads = 1
+			}
+			if got := compareReads(f, main); got != wantReads {
+				t.Fatalf("ancestry read %d times, want %d", got, wantReads)
+			}
 		})
 	}
+}
+
+// A head copy that cannot be read is a retryable read error, not a verdict: once it reads, a
+// backmerge head may legitimately be admitted over the differing base copy, so refusing now
+// would be wrong.
+func TestDevPublisherBaseDiffersAndHeadUnreadableFailsClosed(t *testing.T) {
+	f := newDevFixture(t)
+	contents := f.c.endpoint("contents/" + devGateWorkflowPath + "?ref=")
+	f.api.responses[contents+f.pr.Base.SHA] = map[string]string{"type": "file", "path": devGateWorkflowPath, "encoding": "base64", "content": "b3RoZXI="}
+	headFailed := errors.New("head copy failed")
+	f.api.responses[contents+f.pr.Head.SHA] = headFailed
+	f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+		t.Error("an unreadable head copy reached the verifier")
+		return policyDecision{}, nil
+	}
+	err := f.q.admit(context.Background(), f.pr.Number)
+	if !errors.Is(err, headFailed) || errors.Is(err, errDevPublisherDiffers) {
+		t.Fatalf("got %v, want the failed head copy as a read error", err)
+	}
+	f.assertNoSuccess(t)
 }
 
 func TestDevContractJudgesMainCopyBeforeBaseCopy(t *testing.T) {
