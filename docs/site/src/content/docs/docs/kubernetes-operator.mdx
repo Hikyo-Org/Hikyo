@@ -257,7 +257,7 @@ enforce NetworkPolicy, for example Flannel alone, ignores it. Choose one of
 these models for provider destinations:
 
 - **Public addresses only, when explicitly approved by the operator.** An
-  `ipBlock` can allow public TCP 443 while excluding the installation's
+  `ipBlock` can allow public TCP 443 while excluding the instance's
   private, link-local, node, pod and Service ranges. This is broad public
   egress, not a provider allowlist. Inventory both IP families, test the CNI's
   address-translation behavior, and preserve the server's separate outbound
@@ -278,7 +278,7 @@ does not isolate the separate operator pod's outbound Kubernetes API traffic.
 
 ### Migrate to restricted policies
 
-1. Keep the installation's existing values, exact image and upgrade custody.
+1. Keep the instance's existing values, exact image and upgrade custody.
    Both restriction flags default to false; omitting them preserves the
    ingress-only TCP 8080 rule and unrestricted egress. The TLS staging/watcher
    memory ceiling is now 128Mi, with the existing 50m CPU ceiling and requests.

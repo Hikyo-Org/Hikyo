@@ -448,7 +448,7 @@ export const zAdapterVisibility = z.enum([
 ]);
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
  */
 export const zAdapterProvider = z.string();
 
@@ -2248,7 +2248,7 @@ export const zPersonalValueList = z.object({
     items: z.array(zPersonalValueEntry)
 });
 
-export const zPersonalValueMember = z.object({
+export const zPersonalValueHolder = z.object({
     principal_id: zId,
     username: z.string().optional(),
     set: z.boolean(),
@@ -2297,8 +2297,8 @@ export const zPersonalOffboardingReport = z.object({
     limits: z.array(z.string().max(512))
 });
 
-export const zPersonalValueMemberList = z.object({
-    items: z.array(zPersonalValueMember)
+export const zPersonalValueHolderList = z.object({
+    items: z.array(zPersonalValueHolder)
 });
 
 export const zSetValueRequest = z.object({
@@ -7326,7 +7326,7 @@ export const zListPersonalValueMembersPath = z.object({
 /**
  * The members with a value.
  */
-export const zListPersonalValueMembersResponse = zPersonalValueMemberList;
+export const zListPersonalValueMembersResponse = zPersonalValueHolderList;
 
 export const zDeletePersonalValueMemberPath = z.object({
     org: zId,

@@ -205,6 +205,15 @@
     "fileContentKey": "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"
   },
   {
+    "key": "HIKYO_ENCRYPTED_WEBHOOK_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "external",
+    "referencedContentSecret": true
+  },
+  {
     "key": "HIKYO_ENV",
     "audience": "client",
     "scope": "node",

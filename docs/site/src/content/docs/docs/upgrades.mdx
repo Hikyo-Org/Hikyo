@@ -37,7 +37,7 @@ Finish the rollout, or remove the padding from the environment and files first.
 For the mail password specifically: restoring an older revision re-publishes its
 password trimmed. If your relay password intentionally begins or ends with
 whitespace, change it to one without before upgrading. On an upgraded
-installation the configuration page may still describe the password as preserved
+instance the configuration page may still describe the password as preserved
 byte-for-byte; that description is stale, and the trim applies
 ([#1562](https://github.com/Hikyo-Org/Hikyo/issues/1562)). See
 [Mail](/docs/signup-mail/).
@@ -66,7 +66,7 @@ The earlier migration `00044_retire_oidc_provisioning` removed the legacy OIDC
 JIT policy. Existing provisioned accounts and explicit identity links remain.
 Migration `00058_registration_switch` does not fold that retired policy into
 registration, reread its old column or remove its audit history again. An
-operator must explicitly create and enable a
+instance administrator must explicitly create and enable a
 [registration policy](/docs/social-signin/#open-registration-deliberately) to
 admit unknown identities. Existing linked identities continue through ordinary
 sign-in. Review these changes when your upgrade route crosses those migrations,
@@ -265,7 +265,7 @@ image until its service is restarted.
 
 The updater never elevates privileges. If the current binary is managed by a
 system package or is not writable by the current user, the replacement fails
-without changing it; use that installation's package or service procedure.
+without changing it; use that instance's package or service procedure.
 `hikyo update check` bypasses the 24-hour refresh interval and performs the same
 confirmation flow immediately.
 
@@ -304,7 +304,7 @@ to obtain and verify the signed bundle before the maintenance window.
 ## Manual upgrade inputs
 
 Every production boot and `hikyo migrate` needs `HIKYO_UPGRADE_BUNDLE`, naming
-a complete authenticated offline release bundle, and the installation's public
+a complete authenticated offline release bundle, and the instance's public
 operator pin and persistent custody state. A binary, image digest, ordinary
 release download directory or successful backup upload alone is insufficient.
 
@@ -364,7 +364,7 @@ For multiple hops keep `HIKYO_UPGRADE_TARGET_MANIFEST` set to the final verified
 manifest SHA-256, execute each required binary in order, and retain maintenance
 between hops.
 
-A genuinely fresh empty installation omits evidence and backup paths. Ordinary
+A genuinely fresh empty instance omits evidence and backup paths. Ordinary
 healthy same-release restarts need no new receipt; remove the evidence, backup
 and legacy-stop environment settings after the final healthy boot. Startup with
 automatic migrations enabled still uses this gate; there is no missing-backup
@@ -401,7 +401,7 @@ security defaults, including for existing records. Choose justified
 required evidence before starting the upgraded server. Keep current privacy action
 receipts separately from backups and use the
 [restore reconciliation procedure](/docs/privacy/#backups-and-restoration) before
-reopening a restored installation.
+reopening a restored instance.
 
 ## Social sign-in schema upgrade
 

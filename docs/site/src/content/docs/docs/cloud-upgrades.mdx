@@ -1,5 +1,5 @@
 ---
-title: Upgrade a cloud installation
+title: Upgrade a cloud instance
 description: Upgrade stable releases and signed nightlies without replacing persistent data or bypassing recovery checks.
 ---
 
@@ -7,7 +7,7 @@ The cloud provider does not determine the upgrade command. Use the procedure
 matching how Hikyo was installed. Do not redeploy the infrastructure template,
 recreate the VM, or regenerate its keys just to update Hikyo.
 
-| Installation | Upgrade procedure |
+| Instance | Upgrade procedure |
 | --- | --- |
 | Fresh Docker installation enrolled for unattended upgrades | [Replace the selected image](/docs/cloud-nightlies/#upgrade-a-nightly-container); Hikyo verifies, backs up, drills, and migrates before readiness |
 | Supported native Linux systemd server, nightly, local SQLite | [`sudo hikyo upgrade`](#native-systemd-nightlies) |
@@ -92,7 +92,7 @@ distinct signed-nightly artifacts:
    `hikyo backup upgrade-export`. On the custody host, run
    `hikyo backup upgrade-drill` against an empty scratch database of the same
    engine. The [complete commands](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#populated-upgrade)
-   bind the encrypted backup and proof to this installation and target route.
+   bind the encrypted backup and proof to this instance and target route.
 3. Stage the public receipt, signed attestation, and exact encrypted backup.
    Keep private signing and decryption keys on the custody host. Set the bundle,
    evidence, backup, operator-pin, and installation-state paths from that runbook.

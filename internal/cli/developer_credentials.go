@@ -114,7 +114,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	for _, target := range []struct{ name, prefix, value string }{{"organization", "org_", org}, {"project", "prj_", project}, {"environment", "env_", env}} {
+	for _, target := range []struct{ name, prefix, value string }{{"organisation", "org_", org}, {"project", "prj_", project}, {"environment", "env_", env}} {
 		if !strings.HasPrefix(target.value, target.prefix) {
 			return failf(ExitUsage, "developer credential %s must be an immutable %s ID", target.name, strings.TrimSuffix(target.prefix, "_"))
 		}

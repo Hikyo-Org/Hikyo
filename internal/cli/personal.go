@@ -200,7 +200,7 @@ func runPersonal(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return Render(ios.Stdout, f, t)
 
 	case "members":
-		var list apigen.PersonalValueMemberList
+		var list apigen.PersonalValueHolderList
 		if err := client.Do(ctx, http.MethodGet, target+"/members", nil, &list); err != nil {
 			return err
 		}

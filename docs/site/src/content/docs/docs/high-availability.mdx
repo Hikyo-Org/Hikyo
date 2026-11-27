@@ -35,7 +35,7 @@ unchanged.
 - **One shared root-key authority.** Every node mounts the same root key
   (`rootKey.existingSecret`). A development auto-generated root key is per-node
   and is refused under HA. A node whose root-key fingerprint disagrees with the
-  installation refuses to serve.
+  instance refuses to serve.
 
 Any of these missing or inconsistent is a boot refusal, never a silent
 single-node fallback.
@@ -86,7 +86,7 @@ authority. Another node then acquires the lease and continues.
   is not interrupted by a leader change; only the singleton work pauses for the
   RTO.
 
-Installation-wide security state is shared across nodes: pre-authentication
+Instance-wide security state is shared across nodes: pre-authentication
 rate limits (per source IP, per account, per issuer) live in the datastore, so
 hopping between nodes cannot bypass a limit or a backoff. The per-node
 concurrency limit on password verification stays local to each node, because it
@@ -132,7 +132,7 @@ rolling root-key rotation.
 `/metrics` exposes three label-free gauges:
 
 - `hikyo_ha_is_leader` (1 on the node holding the scheduler lease),
-- `hikyo_ha_nodes_seen` (live nodes in the installation),
+- `hikyo_ha_nodes_seen` (live nodes in the instance),
 - `hikyo_ha_lease_age_seconds` (age of the current lease, sampled per tick).
 
 ## Known bounds

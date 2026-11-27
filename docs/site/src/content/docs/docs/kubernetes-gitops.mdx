@@ -65,13 +65,13 @@ release. Its Application has no cascading-deletion finalizer.
 
 The controller fixture pins Flux 2.10.0 and Argo CD 3.5.6. It exercises the actual
 chart at zero replicas with isolated local OCI artifacts. That validates
-controller mechanics; it does not establish a healthy Hikyo installation or
+controller mechanics; it does not establish a healthy Hikyo instance or
 populated-database migration acceptance. Record your actual controller, storage,
 network, application/admin, restart and restore results separately.
 
 ## Upgrade with explicit maintenance
 
-For a populated installation, freeze parent reconciliation and finish any
+For a populated instance, freeze parent reconciliation and finish any
 in-flight controller action before stopping every server writer. Follow
 [verified manual upgrades](/docs/upgrades/) for export, a readable same-engine
 scratch restore, exact-target migration and candidate admission. Update the

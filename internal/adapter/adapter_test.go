@@ -358,9 +358,11 @@ func TestGitLabManifestReservesSentinelCaseInsensitively(t *testing.T) {
 	}
 }
 
-func TestParseProviderAcceptsDeprecatedSealedWebhookAlias(t *testing.T) {
-	got, err := ParseProvider("sealed-webhook")
-	if err != nil || got != EncryptedWebhookProvider || string(got) != "encrypted-webhook" {
-		t.Fatalf("ParseProvider(sealed-webhook) = %q, %v; want encrypted-webhook", got, err)
+func TestParseProviderMapsEncryptedWebhookToTheV1WireID(t *testing.T) {
+	for _, in := range []string{"encrypted-webhook", "sealed-webhook"} {
+		got, err := ParseProvider(in)
+		if err != nil || got != EncryptedWebhookProvider || string(got) != "sealed-webhook" {
+			t.Fatalf("ParseProvider(%s) = %q, %v; want sealed-webhook", in, got, err)
+		}
 	}
 }

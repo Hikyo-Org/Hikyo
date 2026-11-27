@@ -98,9 +98,9 @@ func (a *API) ListPersonalValueMembers(ctx context.Context, req apigen.ListPerso
 	if err != nil {
 		return nil, err
 	}
-	out := apigen.PersonalValueMemberList{Items: make([]apigen.PersonalValueMember, 0, len(holders))}
+	out := apigen.PersonalValueHolderList{Items: make([]apigen.PersonalValueHolder, 0, len(holders))}
 	for _, h := range holders {
-		item := apigen.PersonalValueMember{PrincipalId: string(h.Principal), Set: h.Set}
+		item := apigen.PersonalValueHolder{PrincipalId: string(h.Principal), Set: h.Set}
 		if h.Username != "" {
 			name := h.Username
 			item.Username = &name

@@ -73,7 +73,7 @@ project-held deployment credential.
 Owner decision, 2026-11-04: **automatic maintenance is on by default in the chart** for an
 instance that has chosen unattended upgrades, and the recipes enable it too. The chart cannot
 turn on unattended upgrades itself, because they need a scratch database and a state volume only
-the operator can provide. Owner decision, 2026-11-06: this stays so, which means a Kubernetes operator
+the production operator can provide. Owner decision, 2026-11-06: this stays so, which means a Kubernetes operator
 sets `upgrade.unattended.enabled` once before fixes apply. Default enrollment happens on `helm install`. An upgrading release
 enrolls only when asked, because a failed hook would fail that release.
 
@@ -86,7 +86,7 @@ across an instance's recovery.
 ### Upgrade classes and policy
 
 The recipes default to automatic, stable, compatible upgrades including necessary
-features and maintenance. Operators can choose manual or verified offline mode, an
+features and maintenance. Production operators can choose manual or verified offline mode, an
 explicit pin, patch or minor classes, a severity threshold and a UTC window. A blocked
 fix is reported as a protection gap. It never produces a backport.
 
@@ -135,14 +135,14 @@ conditions.
   during the rollback resumes the rollback, and this also holds on a later run after a reboot.
 - A failure before write intent needs no restore, and the same source restart applies.
 - Three failures that reached the service on one target stop automatic attempts until the target
-  changes or an operator acts, as a protection gap that fails the scheduled unit. Owner decision,
+  changes or a production operator acts, as a protection gap that fails the scheduled unit. Owner decision,
   2026-11-04: a critical fix may wait for a person at that point.
 - A refusal reply counts as no effect only when a read proves no effect, since a client may have
   retried a request that already committed.
 
 **What still needs a person.** A target that passed the final gate may have served, so going back
 would drop accepted writes and could return revoked credentials. It is fixed forward by
-withdrawal and a new release, or by an operator's `restore run`, even when it crashed before any
+withdrawal and a new release, or by a production operator's `restore run`, even when it crashed before any
 client reached it, because that cannot be told apart. A rollback that cannot finish and a source
 that does not boot after one stay pinned. ECS has no restore and stays pinned.
 
@@ -199,7 +199,7 @@ connected: ending sessions itself could reset under a server still writing.
 ## Not built
 
 Owner decision, 2026-11-06: no one-command rollback for a target past the final gate. That case stays
-fixed forward, or recovered by an operator's `restore run`, until real use shows a need.
+fixed forward, or recovered by a production operator's `restore run`, until real use shows a need.
 
 ## Still open
 

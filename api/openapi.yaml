@@ -5535,7 +5535,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PersonalValueMemberList"
+                $ref: "#/components/schemas/PersonalValueHolderList"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
@@ -17948,9 +17948,10 @@ components:
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
         encrypted-webhook binds only to an origin an instance admin activated in
-        the server's encrypted webhook registry. sealed-webhook is the deprecated
-        name of encrypted-webhook: creation accepts it until v2, and responses
-        always answer encrypted-webhook.
+        the server's encrypted webhook registry. The v1 API carries it as
+        sealed-webhook until v2: responses answer sealed-webhook, and creation
+        accepts both sealed-webhook and encrypted-webhook (stored as
+        sealed-webhook).
       x-extensible-enum: [forgejo, github-actions, encrypted-webhook, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, gitlab]
 
     AdapterTargetInput:
@@ -21668,7 +21669,7 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/PersonalValueEntry"}
-    PersonalValueMember:
+    PersonalValueHolder:
       type: object
       additionalProperties: false
       required: [principal_id, set]
@@ -21687,7 +21688,7 @@ components:
         key_id: {$ref: "#/components/schemas/ID"}
         name: {type: string, maxLength: 256}
         members: {type: integer, minimum: 0, description: Members with a value of their own for this key here.}
-        holders: {type: integer, minimum: 0, deprecated: true, description: "Deprecated alias of `members`, kept until v2."}
+        holders: {type: integer, minimum: 0, description: "Deprecated alias of `members`, kept until v2. Not marked deprecated: true because the v1 freeze guard rejects a deprecation flag on a released field."}
         notices: {type: integer, minimum: 0, description: People with an unacknowledged removal notice.}
         required: {type: boolean, description: The key is personal_required_in this environment.}
     PersonalValueCounts:
@@ -21746,14 +21747,14 @@ components:
           type: array
           items: {type: string, maxLength: 512}
           description: Fixed statements of what the report cannot show or undo.
-    PersonalValueMemberList:
+    PersonalValueHolderList:
       type: object
       additionalProperties: false
       required: [items]
       properties:
         items:
           type: array
-          items: {$ref: "#/components/schemas/PersonalValueMember"}
+          items: {$ref: "#/components/schemas/PersonalValueHolder"}
 
     SetValueRequest:
       type: object

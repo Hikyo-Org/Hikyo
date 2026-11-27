@@ -8,7 +8,7 @@ Owner and maintainer are one person, so independent adversarial review compensat
 cross-provider review is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
 Refs [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128); the PR does not close it.
 Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). Operator text:
-[receiver and sender migration](../operations/sealed-webhook-v2-migration.md). Protocol text:
+[receiver and sender migration](../operations/encrypted-webhook-v2-migration.md). Protocol text:
 [spec section 11](../spec/encrypted-webhook.md#11-protocol-version-2).
 
 ## Decisions applied, nothing newly selected

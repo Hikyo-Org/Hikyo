@@ -655,9 +655,9 @@ For a private Vault address, add an egress exception keyed by
 ## Encrypted webhook receivers
 
 The encrypted webhook adapter pushes values to your own HTTPS service. Its
-provider type is `encrypted-webhook`. The old name `sealed-webhook` is a
-deprecated alias that the CLI and the API still accept until v2; stored adapters
-and responses use the new name. Each
+provider type is `encrypted-webhook`. The v1 API stores and answers it as
+`sealed-webhook` until v2, and accepts both names on input; the CLI and the web
+UI show `encrypted-webhook`. Each
 value is encrypted to the receiver's pinned age key and each request is
 signed by the Hikyo instance, so the values never appear in a URL, header,
 log, audit payload, or response. The receiver answers with a signed
@@ -688,7 +688,7 @@ Upgrade the receiver first; a protocol 2 target never sends a protocol 1
 request after an error and leaves the effect unknown if the receiver cannot read
 it (an administrator can still restore the protocol 1 entry). The TLS
 hop to the receiver is not covered by the strict transport policy. See the
-[receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/sealed-webhook-v2-migration.md).
+[receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/encrypted-webhook-v2-migration.md).
 
 **Binding a project.** A project administrator creates the adapter with the
 activated origin, the receiver namespace as `--owner`, and a binding

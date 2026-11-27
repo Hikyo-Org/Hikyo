@@ -31,17 +31,17 @@ A retired word is a word that Hikyo's own copy no longer uses for that meaning. 
 | **Members with a value** | The members who have set their own copy of a personal value. | "holders" for personal values |
 | **Cut off** | The reversible action, and the org state, in which the org's custody keys are disabled so nothing in the org can be decrypted. | None |
 | **Shred** | The irreversible action of destroying keys so the data they protect can never be read again, for an org or a project. | "crypto-shred" |
-| **Shred pending** | The org state during the window in which a shred can still be cancelled. The org stays cut off. | "shredding" |
+| **Shred pending** | The org state during the window in which a shred can still be cancelled. The org stays cut off. | None |
 | **Shredded** | The final org state after a shred. | None |
 | **Key required** | The result a member gets when they hold the grant but not the key. | "locked", "locked result" |
 | **Org key** | The one key per org that wraps every slot in the org and encrypts its adapter credentials. | "slot key", "org slot key" |
-| **Custody key** | One of the external KMS keys that wrap an org key. Cutting off disables them; shredding destroys them. | "KMS key" for this meaning |
+| **Custody key** | One of the external KMS keys that wrap an org key. Cutting off disables them; shredding destroys them. | None |
 | **Epoch key** | A short-lived transit key pair that is deleted to give forward secrecy. | None |
 | **Instance key holder** | The key holder that lets the instance open an environment for unattended access. | "installation holder" |
 | **Master key** | The instance's key that wraps each org key. | None |
-| **Root key** | The top key of an instance. | "root key file" |
+| **Root key** | The top key of an instance. | None |
 | **Recovery key** | An org's key holder of last resort, tied to its instance. | "recovery code" (an MFA term) |
-| **Support grant** | Time-limited, read-only access to one org's metadata, given to one named instance administrator. | "time-limited grant" |
+| **Support grant** | Time-limited, read-only access to one org's metadata, given to one named instance administrator. | None |
 | **Tripwire** | Any signal allowed to trigger an automatic cut-off. | None |
 | **Tripwire value** | An opt-in value whose read alerts every admin of the org. | "tripwire slot" |
 | **Chain head** | The latest hash of an org's audit chain. | None |
@@ -57,7 +57,8 @@ A retired word is a word that Hikyo's own copy no longer uses for that meaning. 
 - **Third-party names.** A third-party name keeps its own spelling, for example a GitHub organization.
 - **Managed configuration.** "Managed" left the protection mode because it collides with managed configuration.
 - **Operator as software.** "Operator" still names software, for example the Kubernetes operator. It does not name a person.
-- **Identifiers.** Renamed identifiers, for example `sealed-webhook`, `HIKYO_SEALED_WEBHOOK_FILE` and the `operator` template, are accepted as deprecated aliases until v2. New output shows only the new names.
+- **Identifiers.** Renamed identifiers, for example `sealed-webhook`, `HIKYO_SEALED_WEBHOOK_FILE` and the `operator` template, are accepted as deprecated aliases until v2. CLI and UI output show the new names. The v1 API keeps the old wire values (`sealed-webhook`, `operator`) and its deprecated fields (`holders`) until v2.
+- **Hosted key design.** Org key, custody key, epoch key and instance key holder name keys of the hosted service design. They replace today's single key for all orgs and its derived transit key; they are not new names for them.
 - **Org lifecycle.** Whether a suspended org is its own state is decided by the org lifecycle ticket.
 
 ## Settled terms (round 3)
@@ -67,9 +68,9 @@ A retired word is a word that Hikyo's own copy no longer uses for that meaning. 
 | **Floor** | The oldest state a server or client still accepts; anything older is refused as a rollback. | None |
 | **Org checkpoint** | The signed per-org record that commits to all of an org's security state and environment records. | "org head" |
 | **Environment record** | The per-environment entry an org checkpoint commits to: key version, key holders, slots, values and rotation due. | "state record" |
-| **Rotation due** | The environment state, after a key holder leaves, in which nothing new is encrypted under the old key until a key holder rotates it. | "forced rotation" |
+| **Rotation due** | The environment state, after a key holder leaves, in which nothing new is encrypted under the old key until a key holder rotates it. | None |
 | **Restore epoch** | A signed record that starts a new timeline after a restore, so older checkpoints are refused. | None |
 | **Genesis entry** | The first evidence-store entry for an org, written before its first change. | None |
-| **Evidence store** | The off-instance write-once store that holds audit copies, chain heads and floors. | "off-host store", "anchor store" |
+| **Evidence store** | The off-instance write-once store that holds audit copies, chain heads and floors. | "off-host store" |
 | **Evidence store unavailable** | The refusal state when the evidence store has been unreachable for too long. | None |
 | **Key service unavailable** | The refusal state when the custody keys have been unreachable for too long. | None |

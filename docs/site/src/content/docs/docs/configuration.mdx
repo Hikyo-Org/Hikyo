@@ -280,7 +280,7 @@ algorithm-aware. A protocol 2 target needs `max_response_bytes` of at least
 receiver's one `generation`. Protocol 2 is usable after its implementation merges, when a
 target is explicitly configured for it; the registered limits are in the spec. The
 steps, rollback and key overlap are in the
-[receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/sealed-webhook-v2-migration.md).
+[receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/encrypted-webhook-v2-migration.md).
 
 Adapter egress is public-address-only by default. To approve a private adapter
 origin (Forgejo or GitHub Enterprise Server), point `HIKYO_ADAPTER_EGRESS_POLICY_FILE` at a JSON object whose keys are
@@ -355,7 +355,7 @@ error, not a fallback to the default.
 A fresh install and an upgraded instance both default to `required`. Only an
 instance whose [managed configuration](/docs/managed-configuration/) was adopted
 before upgrading is seeded `optional`, so its sign-in posture is unchanged until
-an operator opts in. See
+an instance administrator opts in. See
 [account security](/docs/account-security/#second-factor-at-sign-in).
 
 ## Update notifications

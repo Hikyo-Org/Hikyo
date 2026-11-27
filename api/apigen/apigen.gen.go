@@ -5155,7 +5155,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
@@ -5358,7 +5358,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -6564,7 +6564,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
 	Provider AdapterProvider `json:"provider"`
 
 	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
@@ -9804,8 +9804,7 @@ type PersonalOffboardingServiceAccount struct {
 
 // PersonalValueCount defines model for PersonalValueCount.
 type PersonalValueCount struct {
-	// Holders Deprecated alias of `members`, kept until v2.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	// Holders Deprecated alias of `members`, kept until v2. Not marked deprecated: true because the v1 freeze guard rejects a deprecation flag on a released field.
 	Holders int `json:"holders"`
 
 	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -9858,13 +9857,8 @@ type PersonalValueEntry struct {
 	Warnings *[]string `json:"warnings,omitzero"`
 }
 
-// PersonalValueList defines model for PersonalValueList.
-type PersonalValueList struct {
-	Items []PersonalValueEntry `json:"items"`
-}
-
-// PersonalValueMember defines model for PersonalValueMember.
-type PersonalValueMember struct {
+// PersonalValueHolder defines model for PersonalValueHolder.
+type PersonalValueHolder struct {
 	// Notice Why a personal value disappeared other than by its owner.
 	Notice *PersonalValueNoticeCause `json:"notice,omitzero"`
 
@@ -9875,9 +9869,14 @@ type PersonalValueMember struct {
 	Username    *string    `json:"username,omitzero"`
 }
 
-// PersonalValueMemberList defines model for PersonalValueMemberList.
-type PersonalValueMemberList struct {
-	Items []PersonalValueMember `json:"items"`
+// PersonalValueHolderList defines model for PersonalValueHolderList.
+type PersonalValueHolderList struct {
+	Items []PersonalValueHolder `json:"items"`
+}
+
+// PersonalValueList defines model for PersonalValueList.
+type PersonalValueList struct {
+	Items []PersonalValueEntry `json:"items"`
 }
 
 // PersonalValueNoticeCause Why a personal value disappeared other than by its owner.
@@ -69939,7 +69938,7 @@ type ListPersonalValueMembersResponseObject interface {
 	VisitListPersonalValueMembersResponse(w http.ResponseWriter) error
 }
 
-type ListPersonalValueMembers200JSONResponse PersonalValueMemberList
+type ListPersonalValueMembers200JSONResponse PersonalValueHolderList
 
 func (response ListPersonalValueMembers200JSONResponse) VisitListPersonalValueMembersResponse(w http.ResponseWriter) error {
 

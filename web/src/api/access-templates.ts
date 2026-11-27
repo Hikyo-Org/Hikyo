@@ -18,7 +18,7 @@ export type RoleTemplate = {
 };
 
 /** The v1 wire id of the instance administrator template is `operator`. */
-export function templateLabel(id: RoleTemplateId): string {
+export function templateLabel(id: string): string {
   return id === 'operator' ? 'Instance administrator' : id;
 }
 

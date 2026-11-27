@@ -15,3 +15,9 @@ func TestInstanceAdminTemplateMapsToTheV1WireName(t *testing.T) {
 		t.Fatalf("templateLabel(operator) = %q, want instance-admin", got)
 	}
 }
+
+func TestEncryptedWebhookProviderShowsItsCurrentName(t *testing.T) {
+	if got := providerLabel("sealed-webhook"); got != "encrypted-webhook" {
+		t.Fatalf("providerLabel(sealed-webhook) = %q, want encrypted-webhook", got)
+	}
+}

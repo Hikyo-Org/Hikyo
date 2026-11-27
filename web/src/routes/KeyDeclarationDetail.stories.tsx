@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zDefinitionsSettings, zKey, zKeyGroupList, zPersonalValueMemberList } from '@hikyo/zod';
+import { zDefinitionsSettings, zKey, zKeyGroupList, zPersonalValueHolderList } from '@hikyo/zod';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
@@ -331,7 +331,7 @@ const members = {
     { principal_id: 'prn_123e4567-e89b-12d3-a456-426614174101', username: 'alex', set: true, updated_at: '2026-10-02T09:30:00Z' },
     { principal_id: 'prn_123e4567-e89b-12d3-a456-426614174102', username: 'sam', set: false, notice: 'administrator', updated_at: '2026-10-05T14:00:00Z' },
   ],
-} satisfies z.input<typeof zPersonalValueMemberList>;
+} satisfies z.input<typeof zPersonalValueHolderList>;
 const MEMBERS_URL = `${PROJECT_URL}/environments/${DEV}/personal-values/DATABASE_URL/members`;
 
 export const PersonalMembers: Story = {

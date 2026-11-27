@@ -446,7 +446,7 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. sealed-webhook is the deprecated name of encrypted-webhook: creation accepts it until v2, and responses always answer encrypted-webhook.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. encrypted-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry. The v1 API carries it as sealed-webhook until v2: responses answer sealed-webhook, and creation accepts both sealed-webhook and encrypted-webhook (stored as sealed-webhook).
  */
 export type AdapterProvider = string;
 
@@ -3251,7 +3251,7 @@ export type PersonalValueList = {
     items: Array<PersonalValueEntry>;
 };
 
-export type PersonalValueMember = {
+export type PersonalValueHolder = {
     principal_id: Id;
     username?: string;
     set: boolean;
@@ -3267,9 +3267,7 @@ export type PersonalValueCount = {
      */
     members: number;
     /**
-     * Deprecated alias of `members`, kept until v2.
-     *
-     * @deprecated
+     * Deprecated alias of `members`, kept until v2. Not marked deprecated: true because the v1 freeze guard rejects a deprecation flag on a released field.
      */
     holders: number;
     /**
@@ -3329,8 +3327,8 @@ export type PersonalOffboardingReport = {
     limits: Array<string>;
 };
 
-export type PersonalValueMemberList = {
-    items: Array<PersonalValueMember>;
+export type PersonalValueHolderList = {
+    items: Array<PersonalValueHolder>;
 };
 
 export type SetValueRequest = {
@@ -17499,7 +17497,7 @@ export type ListPersonalValueMembersResponses = {
     /**
      * The members with a value.
      */
-    200: PersonalValueMemberList;
+    200: PersonalValueHolderList;
 };
 
 export type ListPersonalValueMembersResponse = ListPersonalValueMembersResponses[keyof ListPersonalValueMembersResponses];

@@ -236,7 +236,7 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 	if err != nil {
 		return apigen.AdapterTargetInput{}, err
 	}
-	encrypted := provider == string(adapter.EncryptedWebhookProvider) || provider == adapter.LegacySealedWebhookProvider
+	encrypted := provider == string(adapter.EncryptedWebhookProvider)
 	if encrypted && kind != "organization" {
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "encrypted-webhook target takes --kind organization and --owner <receiver namespace> only")
 	}
@@ -587,9 +587,6 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		canonicalProvider, err := adapter.ParseProvider(provider)
 		if err != nil {
 			return failf(ExitUsage, "--provider must be forgejo, github-actions, gitlab, encrypted-webhook, cloudflare, vault-kv, or aws-secrets-manager")
-		}
-		if provider == adapter.LegacySealedWebhookProvider {
-			fmt.Fprintf(ios.Stderr, "warning: --provider %s is deprecated and will be removed in v2; use --provider %s\n", provider, canonicalProvider)
 		}
 		provider = string(canonicalProvider)
 		awsKind := kind == "json-object" || kind == "per-key"
@@ -1162,7 +1159,7 @@ func adapterListTable(list apigen.AdapterList) Table {
 		if a.CredentialExpiresAt != nil {
 			expires = a.CredentialExpiresAt.Format(time.RFC3339)
 		}
-		rows = append(rows, []string{string(a.Id), string(a.Provider), a.Origin, fmt.Sprint(a.CredentialPresent), expires, fmt.Sprint(len(a.Targets))})
+		rows = append(rows, []string{string(a.Id), providerLabel(a.Provider), a.Origin, fmt.Sprint(a.CredentialPresent), expires, fmt.Sprint(len(a.Targets))})
 	}
 	return Table{Columns: []string{"ID", "PROVIDER", "ORIGIN", "CREDENTIAL", "CREDENTIAL EXPIRES", "TARGETS"}, Rows: rows, JSON: list}
 }
@@ -1196,6 +1193,16 @@ func targetTable(list apigen.AdapterTargetList, environmentLabel func(string) st
 		rows = append(rows, []string{string(t.Id), environmentLabel(string(t.EnvironmentId)), destination, t.NamePrefix, string(t.SyncStatus), revision, attempted, string(t.LastErrorClass), retryAt, attention, strings.Join(names, ","), strings.Join(t.FailureNames, ","), strings.Join(t.Warnings, ","), strings.Join(adapterConflictNames(t.Conflicts), ",")})
 	}
 	return Table{Columns: []string{"ID", "ENVIRONMENT", "DESTINATION", "PREFIX", "STATUS", "REVISION", "ATTEMPTED", "ERROR", "RETRY AT", "ATTENTION", "KEYS", "FAILURES", "WARNINGS", "CONFLICTS"}, Rows: rows, JSON: list}
+}
+
+// providerLabel is the CLI output spelling of a wire provider id: v1 stores
+// and answers `sealed-webhook`, which is named encrypted-webhook everywhere
+// a person reads it.
+func providerLabel(p apigen.AdapterProvider) string {
+	if p == apigen.AdapterProvider(adapter.EncryptedWebhookProvider) {
+		return adapter.EncryptedWebhookName
+	}
+	return string(p)
 }
 
 func adapterDetailTable(in apigen.Adapter) Table {

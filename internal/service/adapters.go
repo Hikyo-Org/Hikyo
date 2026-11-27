@@ -451,7 +451,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err != nil {
 		return AdapterView{}, err
 	}
-	request.Provider = string(provider) // store the canonical id, never a deprecated alias
+	request.Provider = string(provider) // store the v1 wire id even when the input used the current name
 	if scope.Project == "" || scope.Env != "" || request.Origin == "" || len(request.Credential) == 0 || request.Target.EnvironmentID == "" {
 		return AdapterView{}, fmt.Errorf("%w: adapter create requires project scope, credential, and first target", domain.ErrInvalid)
 	}

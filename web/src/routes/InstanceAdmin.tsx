@@ -426,7 +426,7 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
       setDialogFailure(null);
       root.mutate('verify', { onSuccess: (result) => { onDone(`Root-key rotation verified (epoch ${String(result.root_key_epoch)}). The primary source now unwraps the new root. Run finalize to retire the old wrapper.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>
-      <p>Verify re-reads the primary source and confirms it now unwraps the new wrapper you sealed in prepare. Run this only after installing the new root at the primary source on the host. If it has not been installed yet, this phase is refused.</p>
+      <p>Verify re-reads the primary source and confirms it now unwraps the new wrapper you created in prepare. Run this only after installing the new root at the primary source on the host. If it has not been installed yet, this phase is refused.</p>
     </ConsequencesDialog> : null}
 
     {ceremony === 'root-finalize' ? <ConsequencesDialog title="Finalize the root-key rotation?" confirmLabel="Finalize" busyLabel="Finalizing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {

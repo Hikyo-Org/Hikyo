@@ -136,7 +136,7 @@ confidentiality only; authentication stays classical (E-20). No external hop
 
 ### Stage 3: sealed webhook protocol 2 (#1128), receiver first
 
-Follow [the migration guide](sealed-webhook-v2-migration.md) steps 1 to 7. Gates:
+Follow [the migration guide](encrypted-webhook-v2-migration.md) steps 1 to 7. Gates:
 receiver keys made with `hikyo-receiver-example keygen -protocol 2 -dir DIR` and
 the ML-DSA sender key with `sender-keygen -dir DIR` (existing Ed25519 key kept);
 the sender pair is pinned and the hybrid members added together; the

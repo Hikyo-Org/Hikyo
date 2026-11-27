@@ -284,7 +284,7 @@ explicit exception supersedes the off-host custody requirement below for this
 flow; it does not establish an off-host disaster-recovery copy.
 
 Amended 2026-09-07, operator decision: the vault is wrapped with a secret
-derived from the instance's root key instead of an interactive
+derived from the instance's root key file instead of an interactive
 passphrase. Everything the vault protects is already reachable by whoever can
 read that root-owned file, so a second human-held secret added a prompt without
 adding a boundary, and it prevented unattended upgrades. The vault stays

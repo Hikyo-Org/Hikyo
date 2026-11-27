@@ -1738,7 +1738,7 @@ func TestAdapterAdoptRequiresRevealAcrossEveryAdapterEnvironment(t *testing.T) {
 func TestAdapterAdoptRefusesEncryptedWebhookTargets(t *testing.T) {
 	db := adapterServiceDB(t)
 	recordAdapterPlanArtifact(t, db, "plan_sealed")
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET provider='encrypted-webhook' WHERE id='adp_1'`); err != nil {
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET provider='sealed-webhook' WHERE id='adp_1'`); err != nil {
 		t.Fatal(err)
 	}
 	_, err := (&Adapters{DB: db}).Adopt(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, AdoptAdapterRequest{

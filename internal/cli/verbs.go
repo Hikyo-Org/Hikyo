@@ -518,7 +518,7 @@ adapters:
   (mode, access_key_id, secret_access_key, optional session_token and region)
   via the no-echo prompt, --stdin, or --value-file, without --aws-* flags.
   --aws-auth assembles only ambient, assume-role or web-identity descriptors.
-  These modes use this server's AWS identity and need the node operator's
+  These modes use this server's AWS identity and need the production operator's
   HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow. web-identity also needs the
   server to run with AWS_WEB_IDENTITY_TOKEN_FILE set. --aws-* flags also
   apply to adapter update --origin and adapter credential set.

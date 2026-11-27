@@ -36,6 +36,7 @@ import {
   type ProjectNode,
   type ScopeOption,
 } from '../api/access.ts';
+import { templateLabel } from '../api/access-templates.ts';
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
@@ -1197,7 +1198,7 @@ export function GrantModal({
         {
           onSuccess: (result) =>
             onDone(
-              `Applied ${draft.template} to ${principalName(principal)} on ${chosen.label}: ${grantOutcomeSummary(result.items)} Each grant line remains independently revocable.`,
+              `Applied ${templateLabel(draft.template)} to ${principalName(principal)} on ${chosen.label}: ${grantOutcomeSummary(result.items)} Each grant line remains independently revocable.`,
             ),
           onError: (error) => {
             onStage('grant');
@@ -1483,7 +1484,7 @@ export function GrantModal({
         >
           <option value="">Choose a template…</option>
           {templates.map((template) => (
-            <option key={template.id} value={template.id}>
+            <option key={templateLabel(template.id)} value={template.id}>
               {template.id}
             </option>
           ))}

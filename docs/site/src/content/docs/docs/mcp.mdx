@@ -120,12 +120,12 @@ Prepare the verified public bundle and `operator.pub` using the
 [manual upgrade procedure](/docs/upgrades/). Provision the separate installation
 directory mode `0700`, owned by runtime UID `65532`; preserve it across database
 restores. Public artifacts mount read-only. The preflight checks paths and modes;
-the migration and boot gate authenticates signatures. Existing installations
+the migration and boot gate authenticates signatures. Existing instances
 must stop every writer and provide fresh public restore evidence before the
 explicit migration. The server starts with automatic migration disabled. Never
 substitute fixture trust or development mode for production release artifacts.
 
-Compose does not add replicas to one Hikyo installation safely by itself. Use
+Compose does not add replicas to one Hikyo instance safely by itself. Use
 the Helm HA shape or an equivalent orchestrator when multiple replicas are
 needed.
 

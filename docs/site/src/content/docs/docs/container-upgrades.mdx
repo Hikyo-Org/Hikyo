@@ -42,7 +42,7 @@ beside the current one, so it opens under either root while the rotation is in
 flight. `--finalize` makes the new root the only one that opens it and replaces
 the root escrow inside it. Finalize is refused, keeping the old root wrapper, if
 the vault does not open under the installed root key. A vault that an earlier
-release left wrapped under a retired root cannot be re-sealed without that root,
+release left wrapped under a retired root cannot be re-encrypted without that root,
 and `--prepare` is refused with an unlock error until custody is recreated.
 
 Watchtower or your Kubernetes image updater chooses the new image. Hikyo verifies

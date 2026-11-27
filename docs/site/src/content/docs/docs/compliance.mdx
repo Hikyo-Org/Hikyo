@@ -6,7 +6,7 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 
 Hikyo provides security controls that operators can use in their own compliance
 program. Installing Hikyo does not establish GDPR compliance or a SOC 2 report.
-This guide covers self-hosted installations. It makes no claim of certification,
+This guide covers self-hosted instances. It makes no claim of certification,
 attestation, or an independently assessed production deployment.
 
 Start with the [personal-data inventory](/docs/privacy/), then use the
@@ -14,7 +14,7 @@ Start with the [personal-data inventory](/docs/privacy/), then use the
 
 ## Responsibility boundary
 
-| Area | Hikyo product | Installation operator |
+| Area | Hikyo product | Hoster |
 | --- | --- | --- |
 | Access | Scoped authorization, MFA, federation and SCIM controls | Configure privileges, review access, secure administrators and remove access when people leave |
 | Protection | Encrypted value storage, key rotation, TLS boundaries and encrypted archives | Protect hosts, database metadata, keys, disks, network and archive destinations |
@@ -24,7 +24,7 @@ Start with the [personal-data inventory](/docs/privacy/), then use the
 
 An operator may be a controller, processor, or both for different processing.
 Determine roles from actual purposes and instructions. Distributing the software
-does not by itself make its publisher the processor of a customer's installation.
+does not by itself make its publisher the processor of a customer's instance.
 Support access or hosted services would require a separate assessment.
 
 ## Controls and limits

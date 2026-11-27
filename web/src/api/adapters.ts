@@ -63,7 +63,7 @@ export function providerLabel(provider: string): string {
     case 'github-actions':
       return 'GitHub Actions';
     case 'encrypted-webhook':
-    case 'sealed-webhook': // deprecated alias until v2
+    case 'sealed-webhook': // the v1 wire id, until v2
       return 'Encrypted webhook';
     case 'vault-kv':
       return 'Vault / OpenBao KV';

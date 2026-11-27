@@ -13,7 +13,7 @@ import type {
   PersonalOffboardingReport,
   PersonalValueCounts,
   PersonalValueEntry,
-  PersonalValueMember,
+  PersonalValueHolder as PersonalValueMember,
   PersonalValueList,
   PersonalValueNoticeCause,
 } from '@hikyo/client';
