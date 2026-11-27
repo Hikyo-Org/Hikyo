@@ -195,6 +195,8 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"a failed second balance read fails the step", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "900 1000 1795475603|bad 1000 1795475603", nil, true, ""},
 		// 0x3e8 is 1000 to shell arithmetic, so only the number check stops it.
 		{"a balance that is not a decimal number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "\"0x3e8\" 1000 1795475603", nil, true, ""},
+		// A hex limit makes the floor's [ -lt ] fail inside its if, which errexit ignores: the check must stop it.
+		{"a limit that is not a decimal number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "50 \"0x3e8\" 1795475603", nil, true, ""},
 		{"a non-group job the jobs listing leaves one short is held", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603|521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
 		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve"},
