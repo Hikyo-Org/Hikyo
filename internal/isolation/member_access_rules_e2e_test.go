@@ -589,6 +589,15 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 				t.Fatalf("key-aware denial, %s: statements %v, err %v; want %v and not found", name, got, err, want)
 			}
 		}
+		// A machine holding a rule (mchA1's edit rule) binds within the
+		// project too, and a missing project issues the same statements.
+		machine, err := countedAuthorizeKey(t, db, mchA1, dev, authz.KeyByName("DB_PASSWORD"), domain.ClassAutomation)
+		if !errors.Is(err, domain.ErrNotFound) || !slices.Contains(machine, "ListRuleEnvRefsInProject") || slices.Contains(machine, "ListRuleEnvRefsInOrg") {
+			t.Fatalf("machine key-aware denial: statements %v, err %v; want one project's environments, not found", machine, err)
+		}
+		if got, err := countedAuthorizeKey(t, db, mchA1, missing, authz.KeyByName("DB_PASSWORD"), domain.ClassAutomation); !errors.Is(err, domain.ErrNotFound) || !slices.Equal(got, machine) {
+			t.Fatalf("machine key-aware denial, missing project: statements %v, err %v; want %v and not found", got, err, machine)
+		}
 	})
 }
 
