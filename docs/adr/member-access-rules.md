@@ -374,6 +374,11 @@ apply when the implementing pull request merges.
     `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or
     the same name twice in a project, and an all-projects rule with environment items. Only a
     corrupted database holds such a rule.
+    A rule carrying a `fault` is treated as invalid whatever its selector, so revoking it takes the
+    invalid-rule path: `OpRuleRevoke` on every project of the rule (the organization's current
+    projects, for an all-projects rule), plus, for an all-projects rule, a `manage-members` grant at
+    organization or instance scope. Unlike D7, another all-projects rule does not cover it, since a
+    faulted selector is never evaluated (owner, 2026-11-28).
   - The split does not check the 1,000-rule `MaxRulesPerOrg` cap, so an org may be above it after
     the upgrade. A create, or a replacement that leaves the org above the cap, is refused until
     rules are removed, and no access changes (owner, 2026-11-28).
