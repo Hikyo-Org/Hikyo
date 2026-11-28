@@ -5,7 +5,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -92,14 +91,9 @@ func TestProjectCheckBindsRulesFromOneEnvironmentRead(t *testing.T) {
 				}
 			})
 			defer restore()
-			// Built under the observer, which wraps the handle at construction.
-			resolver := authn.NewSQLite(db.SQLiteRead())
-			if db.Engine() == store.EnginePostgres {
-				resolver = authn.NewPG(db.PG())
-			}
-			tok := authz.NewTxToken()
-			defer tok.Invalidate()
-			_, err := authz.NewTxAuthorizer(resolver, tok).Authorize(t.Context(), authz.Identity{Principal: holder}, authz.OpEnvRead, scope)
+			// countedAuthorize builds its resolver under the observer, which
+			// wraps the handle at construction.
+			_, err := countedAuthorize(t, db, holder, scope)
 			return seen, err
 		}
 		reads := func(seen []string) (project, org int) {
