@@ -51,15 +51,15 @@ jobs:
               test "$GITHUB_REF" = refs/heads/dev
             else
               test "$DEVELOPMENT" = false
-              [[ "$GITHUB_REF" == refs/tags/?* ]]
+              [[ "$GITHUB_REF" == refs/tags/?* ]] || exit 1
             fi
-            [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
             [[ -z "$SOURCE_REVISION" ]] || test "$SOURCE_REVISION" = "$GITHUB_SHA"
             SOURCE_REVISION=$GITHUB_SHA
           fi
           [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Floor proof requires a full immutable revision.' >&2; exit 1; }
           test "$EVENT_REPOSITORY" = "$GITHUB_REPOSITORY"
-          [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
           case "$GITHUB_EVENT_NAME" in
             merge_group)
               test "$SOURCE_REVISION" = "$GITHUB_SHA"

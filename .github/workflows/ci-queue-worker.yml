@@ -40,9 +40,9 @@ jobs:
           HEAD: ${{ matrix.work.head }}
         run: |
           set -euo pipefail
-          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
           JOB_HEAD="$GITHUB_SHA"
-          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
           # This step is already executing. A lagging Jobs API status cannot
           # change its authenticated run/attempt/head/start identity.
           # One retry: without this clock the job fails before it can publish anything.

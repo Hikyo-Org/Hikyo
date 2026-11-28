@@ -196,8 +196,8 @@ func checkNightlyDesktop(workflow yamlMap) error {
 	if report == nil {
 		return fmt.Errorf("report job is missing")
 	}
-	if !reflect.DeepEqual(report["permissions"], yamlMap{"issues": "write"}) {
-		return fmt.Errorf("report job permissions must be exactly issues: write")
+	if !reflect.DeepEqual(report["permissions"], yamlMap{"actions": "read", "issues": "write"}) {
+		return fmt.Errorf("report job permissions must be exactly actions: read and issues: write")
 	}
 	if !reflect.DeepEqual(yamlNeedsOf(report), []string{"heads", "desktop-dev", "desktop-main", "shim"}) || report["if"] != reportCondition {
 		return fmt.Errorf("report must wait for both legs, run after any result, and only on main")
@@ -207,6 +207,19 @@ func checkNightlyDesktop(workflow yamlMap) error {
 	}
 	if err := checkPlainSteps("report", report, "name", "env", "run"); err != nil {
 		return err
+	}
+	if len(stepsOf(report)) != 1 || !reflect.DeepEqual(stepsOf(report)[0]["env"], yamlMap{
+		"GH_TOKEN":    "${{ github.token }}",
+		"GH_REPO":     "${{ github.repository }}",
+		"RUN_URL":     "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+		"DEV_SHA":     "${{ needs.heads.outputs.dev }}",
+		"MAIN_SHA":    "${{ needs.heads.outputs.main }}",
+		"DEV_RESULT":  "${{ needs.desktop-dev.result }}",
+		"MAIN_RESULT": "${{ needs.desktop-main.result }}",
+		"SHIM_RESULT": "${{ needs.shim.result }}",
+		"SHIM_STATE":  "${{ needs.shim.outputs.state }}",
+	}) {
+		return fmt.Errorf("report must be one step bound to exactly its own results and heads")
 	}
 	for _, step := range stepsOf(report) {
 		if step["uses"] != nil {
@@ -372,6 +385,10 @@ func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
 			s["run"] = "echo ${{ github.event.head_commit.message }}\n" + s["run"].(string)
 		},
 		"report step shell replaced": func(w yamlMap) { stepsOf(report(w))[0]["shell"] = "true {0}" },
+		"report reads the main result as dev": func(w yamlMap) {
+			asMap(stepsOf(report(w))[0]["env"])["DEV_RESULT"] = "${{ needs.desktop-main.result }}"
+		},
+		"report lost actions: read": func(w yamlMap) { report(w)["permissions"] = yamlMap{"issues": "write"} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			workflow := readYAMLMap(t, "nightly-desktop.yml")
@@ -387,7 +404,7 @@ func TestNightlyDesktopRunsOnBothHeadsAndReports(t *testing.T) {
 // issues.<label>.json for `issue list --label <label> --jq` ([] when absent; `issue create`
 // appends to it as number 100+), sha.<branch> for a branch head, module.<sha>
 // holding an HTTP status for desktop/go.mod, and content.<ref>.<path, / as _> for raw
-// file contents (404 when absent).
+// file contents (404 when absent), latest_run for `run list` (GITHUB_RUN_ID when absent), fail.create.<label> to fail `issue create`.
 const stubGH = `#!/bin/bash
 echo "$*" >>"$GH_LOG"
 if [ "$1 $2" = "issue list" ]; then
@@ -405,6 +422,10 @@ if [ "$1 $2" = "issue list" ]; then
   jq -r "$filter" <"$file"
   exit 0
 fi
+if [ "$1 $2" = "run list" ]; then
+  cat "$GH_DIR/latest_run" 2>/dev/null || echo "$GITHUB_RUN_ID"
+  exit 0
+fi
 if [ "$1 $2" = "issue create" ]; then
   shift 2
   title=""
@@ -418,6 +439,7 @@ if [ "$1 $2" = "issue create" ]; then
     esac
     shift
   done
+  if [ -f "$GH_DIR/fail.create.$label" ]; then echo "gh: Internal Server Error (HTTP 500)" >&2; exit 1; fi
   file="$GH_DIR/issues.$label.json"
   [ -f "$file" ] || { echo "[]" >"$file"; }
   jq --arg t "$title" --arg b "$body" '. + [{number: (length + 100), title: $t, author: {login: "app/github-actions"}, body: $b}]' "$file" >"$file.new"
@@ -445,6 +467,8 @@ if [ "$1" = api ]; then
         echo "gh: Not Found (HTTP 404)" >&2
         exit 1
       fi
+      # fail.<ref>.<path>: the body is served, then the call fails like a dropped connection.
+      if [ -f "$GH_DIR/fail.$ref.${file//\//_}" ]; then echo "gh: Internal Server Error (HTTP 500)" >&2; exit 1; fi
       exit 0 ;;
   esac
 fi
@@ -481,7 +505,7 @@ func runStubbedIn(t *testing.T, dir, script string, files map[string]string, env
 	cmd := exec.CommandContext(t.Context(), "bash", "-e", "-o", "pipefail", "-c", script)
 	cmd.Env = append(append(os.Environ(),
 		"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"GH_DIR="+dir, "GH_LOG="+filepath.Join(dir, "log"), "GH_TOKEN=x", "GH_REPO=o/r",
+		"GH_DIR="+dir, "GH_LOG="+filepath.Join(dir, "log"), "GH_TOKEN=x", "GH_REPO=o/r", "GITHUB_RUN_ID=77",
 		"RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+filepath.Join(dir, "out")), env...)
 	run := stubRun{}
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -590,6 +614,7 @@ func TestNightlyDesktopRunnerResolver(t *testing.T) {
 func checkShim(t *testing.T, script string) error {
 	t.Helper()
 	const withShim = "run: jq ... ci-job-registry.without-desktop.json"
+	const emptyBody = "EMPTY" // served as a zero-byte 200 body
 	listed, unlisted := `{"jobs":{"desktop":{}}}`, `{"jobs":{"docs":{}}}`
 	for _, tc := range []struct {
 		name, ci, mainRegistry, devRegistry, state string
@@ -604,11 +629,17 @@ func checkShim(t *testing.T, script string) error {
 		{"ci.yml cannot be read", "", unlisted, unlisted, "", true},
 		{"the main registry has no jobs", withShim, "{}", unlisted, "", true},
 		{"the dev registry has no jobs", withShim, unlisted, "{}", "", true},
+		{"the main registry is an empty body", withShim, emptyBody, unlisted, "", true},
+		{"the dev registry is an empty body", withShim, unlisted, emptyBody, "", true},
+		{"the dev registry is two documents", withShim, unlisted, unlisted + unlisted, "", true},
 	} {
 		files := map[string]string{}
 		put := func(ref, path, body string) {
 			if body == "" {
 				return
+			}
+			if body == emptyBody {
+				body = ""
 			}
 			files["content."+ref+"."+strings.ReplaceAll(path, "/", "_")] = body
 		}
@@ -624,6 +655,18 @@ func checkShim(t *testing.T, script string) error {
 		}
 		if run.status != 0 || !slices.Contains(run.output, "state="+tc.state) {
 			return fmt.Errorf("%s: status %d, output %v, want state=%s", tc.name, run.status, run.output, tc.state)
+		}
+	}
+	// A fetch that prints a valid registry and then fails must still fail the check.
+	for _, ref := range []string{"mainsha", "devsha"} {
+		files := map[string]string{
+			"content.mainsha..github_workflows_ci.yml":         "run: jq ... ci-job-registry.without-desktop.json",
+			"content.mainsha.scripts_ci_ci-job-registry.json":  unlisted,
+			"content.devsha.scripts_ci_ci-job-registry.json":   unlisted,
+			"fail." + ref + ".scripts_ci_ci-job-registry.json": "",
+		}
+		if run := runStubbed(t, script, files, "MAIN_SHA=mainsha", "DEV_SHA=devsha"); run.status == 0 {
+			return fmt.Errorf("the %s registry fetch failed after printing a registry and the shim check passed", ref)
 		}
 	}
 	return nil
