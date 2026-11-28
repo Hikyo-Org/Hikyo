@@ -248,7 +248,9 @@ prefixes:
 						split, rest = codeText(rest[0]), rest[1:]
 					}
 					// env runs the command its own splitting gives, with no shell between.
-					passed := &syntax.CallExpr{Args: slices.Concat([]*syntax.Word{{Parts: []syntax.WordPart{&syntax.Lit{ValuePos: words[0].Pos(), Value: "env"}}}}, envSplitWords(split, words[0].Pos()), rest)}
+					// The split words are env's own arguments, read again through its option loop.
+					env := &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{ValuePos: words[0].Pos(), Value: "env"}}}
+					passed := &syntax.CallExpr{Args: slices.Concat([]*syntax.Word{env}, envSplitWords(split, words[0].Pos()), rest)}
 					return handedCode(passed)
 				case envValued.MatchString(option) || envLongValued[long] && hasValue:
 					words = words[1:] // -uNAME, -CDIR, -aNAME, --unset=NAME, --chdir=DIR, --argv0=NAME
@@ -414,7 +416,10 @@ func envSplitWords(text string, pos syntax.Pos) []*syntax.Word {
 		case c == '$' && quote != '\'' && strings.HasPrefix(text[i:], "${"):
 			inWord = true
 			parts = append(parts, &syntax.SglQuoted{Left: pos, Value: word.String()}, &syntax.ParamExp{Dollar: pos})
-			word.Reset() // the {NAME} after it stays as text in the placeholder's word
+			word.Reset()
+			if end := strings.IndexByte(text[i:], '}'); end > 0 {
+				i += end // env takes only ${NAME}
+			}
 		default:
 			word.WriteByte(c)
 			inWord = true
@@ -605,6 +610,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env -S single-quoted backslash":     "env -S \"bash -c 'echo \\\\#; [[ a == b ]]'\"\n",
 		"env -S \\_ in quotes":               "env -S 'bash -c \"[[\\_a\\_==\\_b\\_]]\"'\n",
 		"env -S \\n escape":                  "env -S 'bash -c \"x=1\\n[[ a == b ]]\"'\n",
+		"env -S expansion as an eval word":   "env -S 'bash -ec \"eval ${X} \\\"[[ a == b ]]; true\\\"; echo REACHED\"'\n",
+		"command env -S assignment":          "command env -S 'FOO=1 bash -c \"[[ a == b ]]\"'\n",
 		"env -S assignment":                  "env -S 'FOO=1 bash -c \"[[ a == b ]]\"'\nenv -S FOO=1 bash -c '[[ a == b ]]'\n",
 		"env -S assignment, stdin":           "env -S 'FOO=1 bash -s' <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"env -S option":                      "env -S '-i bash -c \"[[ a == b ]]\"'\n",
