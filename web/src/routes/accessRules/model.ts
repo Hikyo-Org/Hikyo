@@ -409,20 +409,37 @@ export function resolve(world: World, member: string, id: PermId, project: strin
   return { state: 'no' };
 }
 
-/** What a rule picks up when created later: projects, and every environment or those with its names. */
-type Growth = { readonly projects: boolean; readonly environments: 'any' | readonly string[] | null };
+/** What a rule picks up when created later: projects, and every environment but its excepted names, or those with its names. */
+type Growth = {
+  readonly projects: boolean;
+  readonly environments: { readonly every: true; readonly except: readonly string[] } | { readonly every: false; readonly named: readonly string[] } | null;
+};
+
+function envGrowth(rule: Rule): Growth['environments'] {
+  const names = [...(rule.envs.names ?? [])].sort();
+  if (rule.envs.mode === 'all') return { every: true, except: names };
+  // An only list's names also match environments created or renamed to them later.
+  if (names.length > 0) return { every: false, named: names };
+  return null;
+}
 
 function growthOf(rule: Rule): Growth | null {
-  // An only list's names also match environments created or renamed to them later.
-  const names = rule.envs.names ?? [];
-  const environments = rule.envs.mode === 'all' ? 'any' : names.length > 0 ? [...names].sort() : null;
   const projects = rule.projects === '*';
-  return projects || environments !== null ? { projects, environments } : null;
+  const environments = envGrowth(rule);
+  if (!projects && environments === null) return null;
+  return { projects, environments };
+}
+
+function envGrowthText(envs: Growth['environments']): string | null {
+  if (envs === null) return null;
+  if (!envs.every) return `environments named ${envs.named.join(', ')}`;
+  return 'environments';
 }
 
 function growthText(g: Growth): string {
-  const envs = g.environments === null ? [] : g.environments === 'any' ? ['environments'] : [`environments named ${g.environments.join(', ')}`];
-  return `new ${[...(g.projects ? ['projects'] : []), ...envs].join(' and ')} included`;
+  const parts = [g.projects ? 'projects' : null, envGrowthText(g.environments)].filter((part) => part !== null);
+  const except = g.environments?.every === true && g.environments.except.length > 0 ? `, except those named ${g.environments.except.join(', ')}` : '';
+  return `new ${parts.join(' and ')} included${except}`;
 }
 
 type ReachSummary = {

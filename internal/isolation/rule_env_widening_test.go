@@ -532,23 +532,6 @@ func (m machineRace) failedClosed(t *testing.T, created, renamed error) {
 	}
 }
 
-// blockedOrDone waits until result delivers or one more postgres session
-// than base waits on a lock, and reports whether it delivered.
-func blockedOrDone(t *testing.T, db *store.DB, base int64, result <-chan error) (error, bool) {
-	t.Helper()
-	deadline := time.After(30 * time.Second)
-	for writerWaiters(t, db) <= base {
-		select {
-		case err := <-result:
-			return err, true
-		case <-deadline:
-			t.Fatal("neither finished nor blocked within 30s")
-		case <-time.After(5 * time.Millisecond):
-		}
-	}
-	return nil, false
-}
-
 // A machine rule create and a rename into its name cannot both commit
 // (#1447): each side's widening check reads what the other writes, so on
 // PostgreSQL the SERIALIZABLE write transactions abort one of them, and its
@@ -604,11 +587,11 @@ func TestMachineRuleCreateRacingEnvironmentRenameFailsClosed(t *testing.T) {
 		base := writerWaiters(t, m.db)
 		renames, creates := make(chan error, 1), make(chan error, 1)
 		go func() { renames <- m.rename() }()
-		if err, done := blockedOrDone(t, m.db, base, renames); done {
+		if done, err := awaitBlocked(t, m.db, base, renames, nil); done {
 			t.Fatalf("the rename finished (%v) without waiting on the environment row: the interleaving did not occur", err)
 		}
 		go func() { creates <- m.create() }()
-		created, createdFirst := blockedOrDone(t, m.db, base+1, creates)
+		createdFirst, created := awaitBlocked(t, m.db, base+1, creates, nil)
 		if err := holder.Rollback(ctx); err != nil {
 			t.Fatal(err)
 		}

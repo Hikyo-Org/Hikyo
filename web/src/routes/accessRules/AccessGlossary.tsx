@@ -80,7 +80,7 @@ export function AccessGlossary() {
               </>,
             ],
             ['All, except…', 'all-except', 'Everything at this step, including things added later, minus what you tap.'],
-            ['Only…', 'only', 'Just what you tap. Environments are picked by name, so one created or renamed later to a picked name is included too.'],
+            ['Only…', 'only', 'Just what you tap; a project added later is not included. Environments are picked by name, so one created or renamed later to a picked name is included too, and a picked folder takes in keys added to it.'],
             ['Except', 'except', <>Leaves something out of <strong>this rule only</strong>. If another rule or grant of the member covers it, they still have it. It is not a ban.</>],
             ['Folder pick', 'folder-pick', 'A rule that names a folder covers whatever keys are in it right now: new keys join, keys moved out leave. Leaving a folder out also leaves out the folders inside it; picking only a folder picks just that folder.'],
             ['Single-key pick', 'single-key-pick', 'A rule that names one key follows that key by its id: it keeps covering it after a rename or a move to another folder.'],
