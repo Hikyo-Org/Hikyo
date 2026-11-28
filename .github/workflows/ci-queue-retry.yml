@@ -73,15 +73,20 @@ jobs:
           # absolute count the Go gate checks per bucket.
           reserve=480
           other_cost=42
-          read -r remaining limit reset < <(gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset | todate)"')
-          [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || exit 1
-          if [ $((remaining * 10)) -lt "$limit" ]; then
-            echo "Rate limit has $remaining of $limit requests left; not rerunning now. It resets at $reset; rerun-after-reset retries once it has."
-            echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
-            exit 0
-          fi
+          # Sets remaining, limit and reset (the reserve checks below read them), fails the step
+          # on a non-decimal reading, and stops, handing the run on, below a tenth of the budget.
+          balance() {
+            read -r remaining limit reset < <(gh api rate_limit --jq '.resources | [.core, .graphql] | map(select(. != null and .limit > 0)) | min_by(.remaining) | "\(.remaining) \(.limit) \(.reset | todate)"')
+            [[ "$remaining" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || exit 1
+            if [ $((remaining * 10)) -lt "$limit" ]; then
+              echo "Rate limit has $remaining of $limit requests left; not rerunning now. It resets at $reset; rerun-after-reset retries once it has."
+              echo "exhausted=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+              exit 0
+            fi
+          }
+          balance
           # Every failed or cancelled job of the attempt, with whether it is a publisher or
-          # group job whose reconcile step failed (the only kind worth another budget). Worker
+          # group job whose reconcile step failed (the only kind worth another budget). The
           # worker jobs are named by kind (group-<sha> for a group job, publish-<sha> otherwise), and reconcile always runs, so a failed setup
           # counts too. Discovery is left alone, and so is dev-revoke: it counts in the failed total but never
           # qualifies, so its presence forces job-level reruns of the publishers (the run-level rerun skips the per-job reserve
@@ -90,6 +95,9 @@ jobs:
           # cancelled without running a step, so it never qualifies.
           failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
             --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.id) \(.name | split("-")[0]) \(if ((.name | test("^((dev-)?publish|group)-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure")) then 1 else 0 end)"')
+          # The listing above spends core requests: decide on the balance it left, when a job
+          # qualifies (with none, there is nothing to hand on).
+          if grep -q ' 1$' <<<"$failed"; then balance; fi
           total=0
           groups=()
           others=()
