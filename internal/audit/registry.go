@@ -2251,8 +2251,11 @@ var registry = map[EventType]TypeSpec{
 			"reason":           {Kind: KindFreeText, Required: true},
 			// The environment selection the upgrade removed, so a manager can
 			// rebuild the rule: its mode, its items as "<project>/<env id>"
-			// and the names of those that still existed.
+			// and the names of those that still existed. Both lists keep their
+			// first 1000 entries in byte order; env_items counts every item
+			// removed, so a count above 1000 marks them truncated.
 			"env_mode":  {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+			"env_items": {Kind: KindInt, Required: true, NonNegative: true},
 			"env_ids":   {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
 			"env_names": {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
 		},

@@ -306,11 +306,15 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	// split lifts. Each names a/prod only (except or only), so it splits, and
 	// a part without the fault would validate and go live:
 	//   rul_dupp names a twice (two live a parts);
-	//   rul_kout and rul_knull hold a folder outside their projects (in c, and
-	//   in none, which no project item matches either), and rul_konly is only-keys with no key item (See parts keep
-	//   every key);
+	//   rul_kout and rul_knull hold a folder outside their projects (in c,
+	//   and in none, which no project item matches either);
+	//   rul_konly is only-keys with no key item (See parts keep every key);
 	//   rul_pin is Pin narrowed by a folder in a (b's part holds every key);
-	//   rul_mch is a workload's rule over two projects (a's part names one).
+	//   rul_mch is a workload's rule over two projects (a's part names one);
+	//   rul_dupf and rul_dupk name one folder, and one key, twice in a;
+	//   rul_kemp, rul_pemp and rul_eemp hold an item naming an empty key,
+	//   project and environment id (b's part holds every key or every
+	//   environment of b).
 	// rul_psk is project settings narrowed by a folder, with no environment
 	// item: nothing splits it, and it is faulted all the same.
 	stmts = append(stmts, rule("rul_dupp", "usr_dupp", "read", "only", "only", "all")...)
@@ -334,6 +338,54 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		`INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('rul_mch', 'mch_split', 'read', 'org_en', 'only', 'only', 'all', 'usr_admin', `+at+`)`)
 	stmts = append(stmts, projects("rul_mch")...)
 	stmts = append(stmts, item("rul_mch_e1", "rul_mch", "env", "prj_a", "env_a_prod", ""))
+	for _, id := range []string{"rul_dupf", "rul_dupk", "rul_kemp"} {
+		stmts = append(stmts, rule(id, "usr_"+strings.TrimPrefix(id, "rul_"), "read", "only", "all", "all")...)
+		stmts = append(stmts, projects(id)...)
+		stmts = append(stmts, item(id+"_e1", id, "env", "prj_a", "env_a_prod", ""))
+	}
+	stmts = append(stmts, item("rul_dupf_f1", "rul_dupf", "folder", "prj_a", "", "svc/"), item("rul_dupf_f2", "rul_dupf", "folder", "prj_a", "", "svc/"))
+	// A key named twice by id, a key and a project with an empty id: rows
+	// only a corrupted database holds, so the referenced rows are seeded too.
+	const keyCols = `INSERT INTO keys (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, created_at) VALUES `
+	keyItem := func(id, rule, key string) string {
+		return `INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('` + id + `', '` + rule + `', 'org_en', 'key', 'prj_a', NULL, '` + key + `', NULL)`
+	}
+	stmts = append(stmts, keyCols+`('key_svc', 'org_en', 'prj_a', 'SVC', 'svc/', 'secret', '', FALSE, '', '{"rule":{"type":"string"}}', 'none', 'none', `+at+`)`,
+		keyCols+`('', 'org_en', 'prj_a', 'EMPTY', '', 'secret', '', FALSE, '', '{"rule":{"type":"string"}}', 'none', 'none', `+at+`)`,
+		keyItem("rul_dupk_k1", "rul_dupk", "key_svc"), keyItem("rul_dupk_k2", "rul_dupk", "key_svc"), keyItem("rul_kemp_k1", "rul_kemp", ""),
+		`INSERT INTO projects (id, org_id, name, created_at) VALUES ('', 'org_en', 'empty', `+at+`)`)
+	stmts = append(stmts, rule("rul_pemp", "usr_pemp", "read", "only", "all", "all")...)
+	stmts = append(stmts, item("rul_pemp_pb", "rul_pemp", "project", "prj_b", "", ""),
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('rul_pemp_pe', 'rul_pemp', 'org_en', 'project', '', NULL, NULL, NULL)`, item("rul_pemp_e1", "rul_pemp", "env", "prj_b", "env_b_prod", ""))
+	stmts = append(stmts, `INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_f', 'org_en', 'f', `+at+`)`,
+		`INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('', 'org_en', 'prj_f', 'blank', '', `+at+`, 0)`)
+	stmts = append(stmts, rule("rul_eemp", "usr_eemp", "read", "only", "all", "all")...)
+	stmts = append(stmts, item("rul_eemp_pb", "rul_eemp", "project", "prj_b", "", ""), item("rul_eemp_pf", "rul_eemp", "project", "prj_f", "", ""),
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES ('rul_eemp_e1', 'rul_eemp', 'org_en', 'env', 'prj_f', '', NULL, NULL)`)
+	// The item cap, counted as base Validate counts (projects, environment
+	// items by id, keys): rul_b500 holds 2 + 2 + 496 and stays live, rul_b501
+	// one folder more. Converted, rul_b501 would name prod once (500) and go
+	// live.
+	for id, folders := range map[string]int{"rul_b500": 496, "rul_b501": 497} {
+		stmts = append(stmts, rule(id, "usr_"+strings.TrimPrefix(id, "rul_"), "read", "only", "only", "all")...)
+		stmts = append(stmts, projects(id)...)
+		stmts = append(stmts, item(id+"_e1", id, "env", "prj_a", "env_a_prod", ""), item(id+"_e2", id, "env", "prj_b", "env_b_prod", ""))
+		for i := range folders {
+			stmts = append(stmts, item(fmt.Sprintf("%s_f%03d", id, i), id, "folder", "prj_a", "", fmt.Sprintf("f%03d/", i)))
+		}
+	}
+	// rul_wide holds 1001 environment items: its rule.disabled lists keep the
+	// first 1000 and env_items counts all.
+	stmts = append(stmts, `INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_e', 'org_en', 'e', `+at+`)`)
+	stmts = append(stmts, rule("rul_wide", "usr_wide", "read", "only", "only", "all")...)
+	stmts = append(stmts, item("rul_wide_pe", "rul_wide", "project", "prj_e", "", ""))
+	var wideEnvs, wideItems []string
+	for i := range 1001 {
+		wideEnvs = append(wideEnvs, fmt.Sprintf(`('env_e_%04d', 'org_en', 'prj_e', 'e%04d', '', %s, %d)`, i, i, at, i))
+		wideItems = append(wideItems, fmt.Sprintf(`('rul_wide_%04d', 'rul_wide', 'org_en', 'env', 'prj_e', 'env_e_%04d', NULL, NULL)`, i, i))
+	}
+	stmts = append(stmts, `INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES `+strings.Join(wideEnvs, ", "),
+		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES `+strings.Join(wideItems, ", "))
 	for i, stmt := range stmts {
 		if err := db.exec(stmt); err != nil {
 			t.Fatalf("seed %d %s: %v", i, stmt, err)
@@ -455,6 +507,7 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	}
 	// The rules that did not validate before 00102: one faulted row each,
 	// no split, audited, reaching nothing.
+	otherKey := &domain.RuleKey{ID: "key_other", Folder: "other/"}
 	const invalid = "Disabled by the upgrade to environment names: it did not form a valid rule before the upgrade, so it reached nothing. It reaches no environment; revoke it and create it again."
 	for _, c := range []struct {
 		id, principal string
@@ -463,6 +516,9 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		{"rul_big", "usr_big", domain.CapRead}, {"rul_dupp", "usr_dupp", domain.CapRead}, {"rul_kout", "usr_kout", domain.CapRead},
 		{"rul_knull", "usr_knull", domain.CapRead}, {"rul_konly", "usr_konly", domain.CapRead}, {"rul_pin", "usr_pin", domain.CapPin},
 		{"rul_psk", "usr_psk", domain.CapProjectSettings}, {"rul_mch", "mch_split", domain.CapRead},
+		{"rul_dupf", "usr_dupf", domain.CapRead}, {"rul_dupk", "usr_dupk", domain.CapRead}, {"rul_kemp", "usr_kemp", domain.CapRead},
+		{"rul_pemp", "usr_pemp", domain.CapRead}, {"rul_eemp", "usr_eemp", domain.CapRead}, {"rul_b501", "usr_b501", domain.CapRead},
+		{"rul_wide", "usr_wide", domain.CapRead},
 	} {
 		if n := db.count(`SELECT COUNT(*) FROM rules WHERE principal_id = '` + c.principal + `'`); n != 1 {
 			t.Errorf("%s holds %d rules after 00102, want its one faulted rule", c.principal, n)
@@ -494,10 +550,32 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		}
 		for _, e := range envs {
 			scope := domain.Scope{Org: "org_en", Project: e.Project, Env: e.ID}
-			if slices.ContainsFunc(rules, func(r domain.Rule) bool { return r.Reaches(c.capability, domain.LevelEnv, scope, nil) }) {
-				t.Errorf("%s reaches %s after 00102; it reached nothing before", c.id, e.ID)
+			for _, key := range []*domain.RuleKey{nil, otherKey} {
+				if slices.ContainsFunc(rules, func(r domain.Rule) bool { return r.Reaches(c.capability, domain.LevelEnv, scope, key) }) {
+					t.Errorf("%s reaches %s after 00102; it reached nothing before", c.id, e.ID)
+				}
 			}
 		}
+	}
+	// One item under the cap stays live, converted, reaching what it did.
+	if n := db.count(`SELECT COUNT(*) FROM rules WHERE principal_id = 'usr_b500' AND env_fault IS NULL`); n != 1 {
+		t.Errorf("usr_b500 holds %d live rules, want 1", n)
+	}
+	if got, want := reached("usr_b500", domain.CapRead, otherKey), []domain.EnvID{"env_a_prod", "env_b_prod"}; !slices.Equal(got, want) {
+		t.Errorf("usr_b500 reaches %v after 00102, want %v as before", got, want)
+	}
+	var wide struct {
+		EnvItems int      `json:"env_items"`
+		EnvIDs   []string `json:"env_ids"`
+		EnvNames []string `json:"env_names"`
+	}
+	if err := json.Unmarshal([]byte(db.text(`SELECT payload FROM audit_tenant_events WHERE type = 'rule.disabled' AND object_id = 'rul_wide'`)), &wide); err != nil {
+		t.Fatalf("rul_wide rule.disabled payload: %v", err)
+	}
+	if wide.EnvItems != 1001 || len(wide.EnvIDs) != 1000 || wide.EnvIDs[0] != "prj_e/env_e_0000" || wide.EnvIDs[999] != "prj_e/env_e_0999" ||
+		len(wide.EnvNames) != 1000 || wide.EnvNames[0] != "e0000" || wide.EnvNames[999] != "e0999" {
+		t.Errorf("rul_wide rule.disabled = %d items, %d ids (%v ... %v), %d names; want 1001, the first 1000 ids and names",
+			wide.EnvItems, len(wide.EnvIDs), wide.EnvIDs[:1], wide.EnvIDs[len(wide.EnvIDs)-1:], len(wide.EnvNames))
 	}
 
 	// Consistent: converted in place to one rule-wide name item.
@@ -554,6 +632,11 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	// Fail closed: kept, no environment, a manager-facing fault, audited.
 	// The audit keeps the removed selection, so a manager can rebuild it.
 	removed := map[string]string{"rul_allp": "prj_a/env_a_prod", "rul_out": "prj_b/env_b_prod"}
+	// rul_allp's item is outside its (no) projects too; its own reason wins.
+	faults := map[string]string{
+		"rul_allp": "Disabled by the upgrade to environment names: this rule covers all projects and names environments, which it could not hold before. It reaches no environment; revoke it and create it again.",
+		"rul_out":  "Disabled by the upgrade to environment names: it names an environment of a project the rule does not cover. It reaches no environment; revoke it and create it again.",
+	}
 	for _, id := range []string{"rul_allp", "rul_out"} {
 		var disabled struct {
 			EnvMode  string   `json:"env_mode"`
@@ -566,8 +649,8 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		if disabled.EnvMode != "only" || !slices.Equal(disabled.EnvIDs, []string{removed[id]}) || !slices.Equal(disabled.EnvNames, []string{"prod"}) {
 			t.Errorf("%s rule.disabled records %+v, want only %s named prod", id, disabled, removed[id])
 		}
-		if n := db.count(`SELECT COUNT(*) FROM rules WHERE id = '` + id + `' AND env_mode = 'only' AND env_fault LIKE 'Disabled by the upgrade to environment names: %'`); n != 1 {
-			t.Errorf("%s did not fail closed with a fault", id)
+		if got := db.text(`SELECT env_fault FROM rules WHERE id = '` + id + `' AND env_mode = 'only'`); got != faults[id] {
+			t.Errorf("%s fault = %q, want %q", id, got, faults[id])
 		}
 		if n := db.count(`SELECT COUNT(*) FROM rule_items WHERE rule_id = '` + id + `' AND axis = 'env'`); n != 0 {
 			t.Errorf("%s kept %d environment items", id, n)
@@ -626,8 +709,8 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 			t.Errorf("disabled rule of %s reaches %v", principal, got)
 		}
 	}
-	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 18 {
-		t.Errorf("%d migration audit events, want 18", n)
+	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 25 {
+		t.Errorf("%d migration audit events, want 25", n)
 	}
 	// Each migration event reads back as the store reads it and passes the
 	// closed registry, like any event the application writes.
@@ -645,7 +728,11 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		if err := json.Unmarshal([]byte(row.payload), &e.Payload); err != nil {
 			t.Fatal(err)
 		}
-		// JSON decodes a list as []any; the registry types it []string.
+		// JSON decodes a count as float64 and a list as []any; the registry
+		// types them int64 and []string.
+		if n, ok := e.Payload["env_items"].(float64); ok {
+			e.Payload["env_items"] = int64(n)
+		}
 		for _, field := range []string{"rule_ids", "env_ids", "env_names"} {
 			ids, ok := e.Payload[field].([]any)
 			if !ok {

@@ -32,10 +32,10 @@
 --     environment items before), or a permission needing whole projects
 --     (project settings, identities, adapters) that names environments,
 --     which never validated and reached nothing. So do rules that did not
---     validate before the upgrade for any reason a split could lift (more
---     than 500 items, among others): they reached nothing, and a split part
---     could validate. Only a corrupted database, or a row written past
---     validation, can hold them.
+--     validate before the upgrade for a reason a split part or a converted
+--     row would not keep (more than 500 items, among others): they reached
+--     nothing, and could validate afterwards. Only a corrupted database, or
+--     a row written past validation, can hold them.
 --
 -- Afterwards rule_items has no env_id: nothing matches environments by id.
 -- env_split_from, env_split_project and env_migration are scratch columns of
@@ -103,16 +103,25 @@ WHERE r.env_fault IS NULL
 -- keeps only its own project's items and could validate, granting what the
 -- old rule did not, so these fail closed before either predicate runs too:
 -- more than 500 items (domain.MaxRuleItems, pinned with the capability lists
--- by TestRuleEnvNamesMigrationShapeProjectList), a project named twice, a key
--- or folder item outside the rule's projects, only-keys with no key item,
--- Pin narrowed by keys, a whole-project permission narrowed by keys, and a
--- machine's rule over more than one project.
+-- by TestRuleEnvNamesMigrationShapeProjectList), a project named twice, an
+-- item naming an empty project, environment or key id, a key or folder named
+-- twice in a project, a key or folder item outside the rule's projects,
+-- only-keys with no key item, Pin narrowed by keys, a whole-project
+-- permission narrowed by keys, and a machine's rule over more than one
+-- project. Every other rejection of Validate and CheckMachineRule holds in
+-- every split part and converted row (the handoff's conditions table).
 UPDATE rules AS r SET env_fault = 'Disabled by the upgrade to environment names: it did not form a valid rule before the upgrade, so it reached nothing. It reaches no environment; revoke it and create it again.'
 WHERE r.env_fault IS NULL AND r.project_mode = 'only'
   AND ((SELECT COUNT(*) FROM rule_items AS c WHERE c.rule_id = r.id) > 500
     OR EXISTS (SELECT 1 FROM rule_items AS a JOIN rule_items AS b
         ON b.rule_id = a.rule_id AND b.axis = 'project' AND b.project_id = a.project_id AND b.id <> a.id
       WHERE a.rule_id = r.id AND a.axis = 'project')
+    OR EXISTS (SELECT 1 FROM rule_items AS z WHERE z.rule_id = r.id
+      AND (z.project_id = '' OR z.env_id = '' OR z.key_id = ''))
+    OR EXISTS (SELECT 1 FROM rule_items AS a JOIN rule_items AS b
+        ON b.rule_id = a.rule_id AND b.axis = a.axis AND b.project_id = a.project_id AND b.id <> a.id
+          AND ((a.axis = 'key' AND b.key_id = a.key_id) OR (a.axis = 'folder' AND b.folder_path = a.folder_path))
+      WHERE a.rule_id = r.id AND a.axis IN ('key', 'folder'))
     OR EXISTS (SELECT 1 FROM rule_items AS k WHERE k.rule_id = r.id AND k.axis IN ('key', 'folder')
       AND NOT EXISTS (SELECT 1 FROM rule_items AS p
         WHERE p.rule_id = r.id AND p.axis = 'project' AND p.project_id = k.project_id))
@@ -187,6 +196,8 @@ SELECT 'evt_' || lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) |
   )
 FROM rules AS r WHERE r.env_migration = 'split';
 
+-- env_ids and env_names keep their first 1000 entries in byte order (the
+-- registry's MaxLen); env_items counts every environment item removed.
 INSERT INTO audit_tenant_events (id, type, schema_version, occurred_at, occurred_asserted, recorded_at,
     actor_id, actor_class, actor_credential_id, authority_id, scope_class, org_id, project_id, env_id,
     object_type, object_id, outcome, correlation_id, source_ip, user_agent, origin, payload)
@@ -195,10 +206,11 @@ SELECT 'evt_' || lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) |
   'rule', r.id, 'success', NULL, NULL, NULL, 'system',
   json_object('rule_id', r.id, 'target_principal', r.principal_id, 'capability', r.capability, 'reason', r.env_fault,
     'env_mode', r.env_mode,
+    'env_items', (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'env'),
     'env_ids', json((SELECT json_group_array(x) FROM (SELECT coalesce(i.project_id, '') || '/' || i.env_id AS x FROM rule_items AS i
-      WHERE i.rule_id = r.id AND i.axis = 'env' ORDER BY x))),
+      WHERE i.rule_id = r.id AND i.axis = 'env' ORDER BY x LIMIT 1000))),
     'env_names', json((SELECT json_group_array(x) FROM (SELECT DISTINCT i.env_name AS x FROM rule_items AS i
-      WHERE i.rule_id = r.id AND i.axis = 'env' AND i.env_name IS NOT NULL ORDER BY x))))
+      WHERE i.rule_id = r.id AND i.axis = 'env' AND i.env_name IS NOT NULL ORDER BY x LIMIT 1000))))
 FROM rules AS r WHERE r.env_fault IS NOT NULL;
 
 DELETE FROM rule_items WHERE rule_id IN (SELECT id FROM rules WHERE env_migration = 'split');
