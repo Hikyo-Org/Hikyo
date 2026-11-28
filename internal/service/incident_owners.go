@@ -205,14 +205,23 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 	if target == w.caller.Principal {
 		return OwnerUnconfirmed, ErrIncidentSelfContainment
 	}
-	// The boundary and the authorization come before any lock or state read, so a
-	// principal outside the incident answers not found whatever its state.
+	// The boundary comes before any lock or containment read, so a principal
+	// outside the incident answers not found whatever its state. An org incident's
+	// boundary is its member selection; its kind and privacy reads come before the
+	// authorization below and reveal nothing the incident's own listing does not
+	// (inTx already refused a caller who cannot read the incident).
+	if w.inc.ScopeKind == domain.IncidentScopeOrg {
+		selected, err := incidentSelectsMember(ctx, w.az, w.inc.OrgID, target)
+		if err != nil {
+			return OwnerUnconfirmed, err
+		}
+		if !selected {
+			return OwnerUnconfirmed, domain.ErrNotFound
+		}
+	}
 	footprint, err := w.az.PrincipalFootprintOrgs(ctx, target)
 	if err != nil {
 		return OwnerUnconfirmed, err
-	}
-	if w.inc.ScopeKind == domain.IncidentScopeOrg && !slices.Contains(footprint, w.inc.OrgID) {
-		return OwnerUnconfirmed, domain.ErrNotFound
 	}
 	grants, err := w.az.GrantsForResetTarget(ctx, target)
 	if err != nil {
@@ -432,32 +441,21 @@ func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item aut
 			return OwnerUnconfirmed, err
 		}
 		// The recorded authority must be an account this incident selects: the
-		// incident's own, or a member the org incident lists (a grant or a rule in
-		// the org, and a human). A principal tied to the org only through other
-		// rows, such as a SCIM user, is not selected. The human check reads the
-		// principal's kind, not the account reader, which hides a contained
-		// account: the halt must not depend on whether account.contain ran first.
+		// incident's own, or a member the org incident selects (incidentSelectsMember).
+		// A principal tied to the org only through other rows, such as a SCIM user,
+		// is not selected. The check reads no containment: the halt must not depend
+		// on whether account.contain ran first.
 		authority := domain.PrincipalID(cur.AuthorityPrincipalID)
 		if w.inc.ScopeKind == domain.IncidentScopeAccount {
 			if string(authority) != w.inc.ScopeID {
 				return OwnerUnconfirmed, domain.ErrNotFound
 			}
 		} else {
-			// shortcut: reads the org's grant and rule lines per item, so the cost grows
-			// with the org's membership; upgrade to a per-principal read of the same
-			// predicate when org incidents list many rotations in large orgs.
-			_, _, candidates, err := orgMemberCandidates(ctx, w.az, w.inc.OrgID)
+			selected, err := incidentSelectsMember(ctx, w.az, w.inc.OrgID, authority)
 			if err != nil {
 				return OwnerUnconfirmed, err
 			}
-			if !slices.Contains(candidates, authority) {
-				return OwnerUnconfirmed, domain.ErrNotFound
-			}
-			class, err := w.az.PrincipalClass(ctx, authority)
-			if err != nil {
-				return OwnerUnconfirmed, err
-			}
-			if class != domain.ClassHuman {
+			if !selected {
 				return OwnerUnconfirmed, domain.ErrNotFound
 			}
 		}

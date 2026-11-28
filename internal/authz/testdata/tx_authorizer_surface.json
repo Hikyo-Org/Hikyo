@@ -178,6 +178,7 @@
   "IncidentItemByID": "func(ctx context.Context, incidentID, id string) (IncidentItem, error)",
   "IncidentItemCounts": "func(ctx context.Context, incidentID string) (map[domain.ItemOutcome]int64, error)",
   "IncidentItems": "func(ctx context.Context, incidentID, afterID string, limit int, openOnly bool) ([]IncidentItem, error)",
+  "IncidentMemberAccountExists": "func(ctx context.Context, p domain.PrincipalID) (bool, error)",
   "IncompatiblePasswordKDFCount": "func(ctx context.Context, kdf KDFParams) (int64, error)",
   "IndefiniteCredentials": "func(ctx context.Context) ([]AffectedCredential, error)",
   "InstanceConnectionByID": "func(ctx context.Context, id string) (authn.InstanceConnection, error)",

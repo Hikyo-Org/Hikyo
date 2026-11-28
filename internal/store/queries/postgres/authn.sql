@@ -135,6 +135,15 @@ FROM sessions WHERE id = $1;
 -- name: SessionExistsInInstance :one
 SELECT COUNT(*) FROM sessions WHERE id = sqlc.arg(id);
 
+-- Incident member selection: whether a principal is a human with an account row
+-- whose privacy is active, whatever its containment, so an org incident's owner
+-- resumed after account.contain still finds the member its listing selected.
+-- hikyo:reason Incident member selection drops only the containment condition: the org incident's owners check a member they may already have contained, inside the incident's own authorized transaction, and only a count is returned.
+-- hikyo:authn-resolution
+-- name: IncidentMemberAccountExists :one
+SELECT COUNT(*) FROM accounts JOIN principals ON principals.id = accounts.principal_id
+WHERE accounts.principal_id = sqlc.arg(id) AND principals.kind = 'human' AND principals.privacy_state = 'active';
+
 -- hikyo:authn-resolution
 -- name: GetCredentialAuthorityByVerifier :one
 SELECT id, account_id, verifier, purpose, issued_by, credential_epoch, expires_at,

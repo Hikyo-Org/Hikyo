@@ -1454,6 +1454,23 @@ func (q *Queries) HoldRestoredRotations(ctx context.Context, updatedAt string) e
 	return err
 }
 
+const incidentMemberAccountExists = `-- name: IncidentMemberAccountExists :one
+SELECT COUNT(*) FROM accounts JOIN principals ON principals.id = accounts.principal_id
+WHERE accounts.principal_id = ?1 AND principals.kind = 'human' AND principals.privacy_state = 'active'
+`
+
+// Incident member selection: whether a principal is a human with an account row
+// whose privacy is active, whatever its containment, so an org incident's owner
+// resumed after account.contain still finds the member its listing selected.
+// hikyo:reason Incident member selection drops only the containment condition: the org incident's owners check a member they may already have contained, inside the incident's own authorized transaction, and only a count is returned.
+// hikyo:authn-resolution
+func (q *Queries) IncidentMemberAccountExists(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, incidentMemberAccountExists, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertAccount = `-- name: InsertAccount :exec
 INSERT INTO accounts (id, principal_id, username, display_name, created_at)
 VALUES (?, ?, ?, ?, ?)

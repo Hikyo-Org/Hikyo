@@ -247,3 +247,162 @@ func TestIncidentSCIMCredentialReaderIsBoundToItsOrg(t *testing.T) {
 		}
 	})
 }
+
+// seedScimOnly ties an account to org_a only through a SCIM user: it is in the
+// principal's footprint, but the org incident does not select it.
+func seedScimOnly(t *testing.T, db *store.DB, id string) {
+	t.Helper()
+	execRaw(t, db, `INSERT INTO principals (id, kind, created_at) VALUES ('`+id+`', 'human', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO accounts (id, principal_id, username, display_name, created_at) VALUES ('acc_`+id+`', '`+id+`', '`+id+`', 'Scim Only', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO scim_bindings(id,org_id,provider_kind,provider_id,provider_slug,provider_issuer,subject_source,connection_principal_id,created_at) VALUES ('sbn_`+id+`','org_a','oidc','sbn_`+id+`','sbn_`+id+`','https://idp.example','externalId','mch_it',`+ts+`)`)
+	execRaw(t, db, `INSERT INTO scim_users (id,org_id,binding_id,account_id,user_name,user_name_lower,subject,created_at,updated_at) VALUES ('scu_`+id+`','org_a','sbn_`+id+`','acc_`+id+`','`+id+`','`+id+`','`+id+`-subject',`+ts+`,`+ts+`)`)
+}
+
+// An org incident contains only the members it selects. An account tied to the
+// org only through a SCIM user is not listed, and its contain item answers not
+// found and leaves it uncontained.
+func TestIncidentOrgContainRefusesAnAccountTheIncidentDoesNotSelect(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		seedScimOnly(t, db, "usr_scimonly")
+		inc := w.openOrg(t, incResponder)
+		if got, listed := w.itemMap(t, incResponder, inc)["account.contain|account|usr_scimonly"]; listed {
+			t.Fatalf("the org incident lists an account it does not select: %q", got)
+		}
+		w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_scimonly", "org_a")
+		if got := w.containmentState(t, "usr_scimonly"); got != "none" {
+			t.Errorf("an unselected account is %q, want none", got)
+		}
+	})
+}
+
+// An org incident selects a member only as a human with an account row whose
+// privacy is active. A privacy-restricted human, a human with no account row and
+// a machine principal with an account row all hold a grant in the org, yet none
+// is listed, and both owners answer not found and leave them as they were.
+func TestIncidentOrgOwnersRefuseAMemberTheIncidentDoesNotSelect(t *testing.T) {
+	for _, c := range []struct{ name, setup string }{
+		{"restricted", `UPDATE principals SET privacy_state='restricted' WHERE id='usr_unsel'`},
+		{"no_account", `DELETE FROM accounts WHERE principal_id='usr_unsel'`},
+		{"machine", `UPDATE principals SET kind='machine', class='workload' WHERE id='usr_unsel'`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				r := newRotationIncident(t, db)
+				seedContainMember(t, db, "usr_unsel", [2]string{"read", "'org_a'"})
+				execRaw(t, db, c.setup)
+				execRaw(t, db, `UPDATE rotations SET authority_principal_id='usr_unsel' WHERE id='`+r.rot.ID+`'`)
+				inc := r.w.openOrg(t, incResponder)
+				items := r.w.itemMap(t, incResponder, inc)
+				for _, key := range []string{r.key(), "account.contain|account|usr_unsel"} {
+					if got, listed := items[key]; listed {
+						t.Errorf("the org incident lists %s: %q", key, got)
+					}
+				}
+				r.w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, r.scope())
+				if r.state(t) != store.RotationStateActive {
+					t.Errorf("a refused halt changed the rotation: %q", r.state(t))
+				}
+				r.w.ownerRefusedNotFound(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_unsel", "org_a")
+				if got := r.w.containmentState(t, "usr_unsel"); got != "none" {
+					t.Errorf("an unselected member is %q, want none", got)
+				}
+			})
+		})
+	}
+}
+
+// The selection reads no containment, so an org incident's contain item resumed
+// after it contained its member confirms again instead of losing the member.
+func TestIncidentOrgContainResumesOnAContainedMember(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		seedContainMember(t, db, "usr_member", [2]string{"read", "'org_a'"})
+		inc := w.openOrg(t, incResponder)
+		if _, listed := w.itemMap(t, incResponder, inc)["account.contain|account|usr_member"]; !listed {
+			t.Fatal("the org incident does not list its member")
+		}
+		for i := range 2 {
+			if res := w.resumeOwner(t, incResponder, inc, domain.OwnerAccountContain, domain.ObjectKindAccount, "usr_member", "org_a"); res != service.OwnerConfirmed {
+				t.Fatalf("call %d = %v, want confirmed", i, res)
+			}
+		}
+		if got := w.containmentState(t, "usr_member"); got != "contained" {
+			t.Errorf("the member is %q, want contained", got)
+		}
+	})
+}
+
+// A workspace session ends as its holder's explicit revocation does: exactly one
+// workspace revocation event joins the incident by correlation, however often the
+// item runs, and no logout event is written for it.
+func TestIncidentSessionOwnerRecordsTheWorkspaceRevocationEvent(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent, requesting_origin, handoff_id) `+
+			`VALUES ('ses_ws', '`+string(incTarget)+`', `+blobLit(db, []byte("verifier-ses-ws"))+`, 'workspace', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '', 'https://ws.example', 'hof_ws')`)
+		inc := w.openAccount(t, incResponder).Incident.ID
+		for i := range 2 {
+			if res := w.resumeOwner(t, incResponder, inc, domain.OwnerSessionRevoke, domain.ObjectKindSession, "ses_ws", "instance"); res != service.OwnerConfirmed {
+				t.Fatalf("call %d = %v, want confirmed", i, res)
+			}
+		}
+		count := func(typ audit.EventType) int64 {
+			return queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type='`+string(typ)+`' AND object_id='ses_ws' AND correlation_id='`+inc+`'`)
+		}
+		if n := count(audit.EventRemoteWorkspaceSessionRevoked); n != 1 {
+			t.Errorf("workspace revocation events with the incident correlation = %d, want exactly 1", n)
+		}
+		if n := count(audit.EventAuthLogout); n != 0 {
+			t.Errorf("logout events for a workspace session = %d, want 0", n)
+		}
+	})
+}
+
+// Only an account incident selects sessions: an org incident's session item is
+// invalid, whether or not the session exists, and the session stays live.
+func TestIncidentOrgSessionItemIsInvalid(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		w := newIncidentWorld(t, db)
+		w.realOwners()
+		execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+			`VALUES ('ses_org', '`+string(incTarget)+`', `+blobLit(db, []byte("verifier-ses-org"))+`, 'cli', 1, 0, 'local', '[]', `+ts+`, `+ts+`, `+ts+`, '2099-01-01T00:00:00.000000Z', '2099-01-01T00:00:00.000000Z', '', '')`)
+		inc := w.openOrg(t, incResponder)
+		for _, id := range []string{"ses_org", "ses_absent"} {
+			res, err := w.svc.Owners[domain.OwnerSessionRevoke](t.Context(), w.as(incResponder), authz.IncidentItem{IncidentID: inc, OwnerFunction: domain.OwnerSessionRevoke, ObjectKind: domain.ObjectKindSession, ObjectID: id, Scope: "instance"})
+			if !errors.Is(err, domain.ErrInvalid) || res == service.OwnerConfirmed {
+				t.Errorf("an org incident's session item %s = %v, %v, want invalid", id, res, err)
+			}
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM sessions WHERE id='ses_org'`); n != 1 {
+			t.Errorf("an org incident's session item revoked the session")
+		}
+	})
+}
+
+// A rotation deleted before its item runs is gone (option A): the owner confirms
+// it without halting anything.
+func TestIncidentRotationHaltConfirmsADeletedRotation(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		r := newRotationIncident(t, db)
+		acc, err := r.w.svc.Open(t.Context(), r.w.as(incResponder), service.IncidentTarget{Kind: domain.IncidentScopeAccount, Principal: alice})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.x.svc.Delete(tctx(t), r.x.actor, r.x.scope, service.RotationStateRequest{RotationID: r.rot.ID, Abandon: true}); err != nil {
+			t.Fatal(err)
+		}
+		if r.state(t) != store.RotationStateDisabled {
+			t.Fatalf("the deleted rotation is %q, want disabled", r.state(t))
+		}
+		if res := r.w.callOwner(t, incResponder, acc.Incident.ID, domain.OwnerRotationHalt, domain.ObjectKindRotation, r.rot.ID, r.scope()); res != service.OwnerConfirmed {
+			t.Errorf("halt of a deleted rotation = %v, want confirmed", res)
+		}
+		if r.state(t) != store.RotationStateDisabled {
+			t.Errorf("the owner changed a deleted rotation: %q", r.state(t))
+		}
+	})
+}

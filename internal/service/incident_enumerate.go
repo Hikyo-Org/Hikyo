@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -35,8 +36,8 @@ const (
 	// maxScanPages bounds how many pages a filtered scan reads.
 	maxScanPages = 20
 	// maxLookups bounds the per-row follow-up reads one enumeration makes inside
-	// its authorizing transaction (an account lookup per member, a credential
-	// read per service account, a grant and footprint read per member). When it
+	// its authorizing transaction (a selection, account, grant and footprint read
+	// per member, a credential read per service account). When it
 	// is spent the source stops and records an enumeration_truncated item.
 	maxLookups = 4000
 )
@@ -539,10 +540,8 @@ func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reache
 
 // orgMemberCandidates reads the principals an org incident selects from: every
 // principal with a grant or a rule in the org, so a member who holds rules and no
-// grants is a candidate too. Machine principals hold grants too; the selection
-// keeps only those with an account. collectOrg lists from it and the rotation
-// halt checks against it, so the owner refuses exactly what the incident did not
-// select.
+// grants is a candidate too. Machine principals hold grants too; selectedAccount
+// keeps only human accounts.
 func orgMemberCandidates(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID) ([]authz.GrantLine, []authz.RuleLine, []domain.PrincipalID, error) {
 	lines, err := az.GrantLinesInOrg(ctx, string(org))
 	if err != nil {
@@ -560,6 +559,33 @@ func orgMemberCandidates(ctx context.Context, az *authz.TxAuthorizer, org domain
 		candidates = append(candidates, l.Principal)
 	}
 	return lines, ruleLines, candidates, nil
+}
+
+// selectedAccount reports whether a candidate of an org incident is an account
+// the incident selects: a human principal with an account row whose privacy is
+// active. It reads no containment, so an owner resumed after account.contain
+// still finds its member; collectOrg lists a selected account only while it is
+// not contained.
+func selectedAccount(ctx context.Context, az *authz.TxAuthorizer, p domain.PrincipalID) (bool, error) {
+	return az.IncidentMemberAccountExists(ctx, p)
+}
+
+// incidentSelectsMember is the owners' check that an org incident selects the
+// principal as a member: the predicate collectOrg lists by, without its
+// containment filter. The owners refuse exactly what the incident did not select.
+//
+// shortcut: reads the org's grant and rule lines per item, so the cost grows with
+// the org's membership; upgrade to a per-principal read of the same predicate when
+// org incidents list many items in large orgs.
+func incidentSelectsMember(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID, p domain.PrincipalID) (bool, error) {
+	_, _, candidates, err := orgMemberCandidates(ctx, az, org)
+	if err != nil {
+		return false, err
+	}
+	if !slices.Contains(candidates, p) {
+		return false, nil
+	}
+	return selectedAccount(ctx, az, p)
 }
 
 func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
@@ -587,7 +613,7 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 			continue
 		}
 		members[p] = true
-		if listed >= maxSourceItems || !c.spend(3) {
+		if listed >= maxSourceItems || !c.spend(4) {
 			c.truncated(domain.OwnerAccountContain, a.scopeID, scope)
 			isAccount := func(p domain.PrincipalID) (bool, error) {
 				_, err := az.AccountByPrincipal(ctx, p)
@@ -602,6 +628,13 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 			break
 		}
 		reached[p] = true
+		// The owners check the same selection (incidentSelectsMember); listing also
+		// skips an account that is already contained.
+		if ok, err := selectedAccount(ctx, az, p); err != nil {
+			return err
+		} else if !ok {
+			continue
+		}
 		if _, err := az.AccountByPrincipal(ctx, p); errors.Is(err, domain.ErrNotFound) {
 			continue
 		} else if err != nil {

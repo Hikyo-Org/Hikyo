@@ -1184,3 +1184,9 @@ func (r *Resolver) SCIMCredentialExistsInInstance(ctx context.Context, id string
 func (r *Resolver) SessionExistsInInstance(ctx context.Context, id string) (bool, error) {
 	return r.countByID(ctx, r.sq.SessionExistsInInstance, r.pg.SessionExistsInInstance, id)
 }
+
+// IncidentMemberAccountExists reports whether a principal is a human with an
+// account row whose privacy is active, whatever its containment.
+func (r *Resolver) IncidentMemberAccountExists(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return r.countByID(ctx, r.sq.IncidentMemberAccountExists, r.pg.IncidentMemberAccountExists, string(p))
+}

@@ -17,6 +17,7 @@ import (
 // itself a finding.
 var ContainmentGateExemptions = map[string]string{
 	"GetAccountForRecovery":                       "the ONE recovery lookup: drops only containment, so reset and establishment reach a contained account",
+	"IncidentMemberAccountExists":                 "an org incident's member selection, a count only: its owners check a member they may already have contained, so a resumed owner stays idempotent",
 	"RecoveryListGrantsBeforeSelfConfig":          "historical-recovery projection for source schemas that predate containment",
 	"RecoveryListGrantsBeforeAccess":              "historical-recovery projection for source schemas that predate containment",
 	"RecoveryListGrantsBeforeContainment":         "historical-recovery projection for source schemas that predate containment",

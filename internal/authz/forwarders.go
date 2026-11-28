@@ -106,6 +106,10 @@ type txForwarded interface {
 	// SessionExistsInInstance reports whether a session id has a row, whichever
 	// principal holds it.
 	SessionExistsInInstance(ctx context.Context, id string) (bool, error)
+	// IncidentMemberAccountExists reports whether a principal is a human with an
+	// account row whose privacy is active, whatever its containment: an org
+	// incident's member selection, which its owners check after containing.
+	IncidentMemberAccountExists(ctx context.Context, p domain.PrincipalID) (bool, error)
 	// ServiceAccountsCreatedBy pages the service accounts a principal created
 	// (the offboarding report's created-by relation), in id order.
 	ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error)

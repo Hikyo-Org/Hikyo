@@ -1765,6 +1765,13 @@
   },
   {
     "engine": "postgres",
+    "name": "IncidentMemberAccountExists",
+    "annotation": "authn-resolution",
+    "hash": "cd4cd6afeec99b67132ab845e154975ccc7b980e9ea2925b430d0c3be94006ac",
+    "reason": "Incident member selection drops only the containment condition: the org incident's owners check a member they may already have contained, inside the incident's own authorized transaction, and only a count is returned."
+  },
+  {
+    "engine": "postgres",
     "name": "InsertAccessGrant",
     "annotation": "authn-resolution",
     "hash": "f577672c33b3e0c1eaab66675e4733c8d0009222648c6728a8c80650d9cfa139"
@@ -5750,6 +5757,13 @@
     "name": "HoldRestoredRotations",
     "annotation": "authn-resolution",
     "hash": "a1f65352d1b9dac758f35f0a33b32d4005f761f4605b73b18905a2aa23d79975"
+  },
+  {
+    "engine": "sqlite",
+    "name": "IncidentMemberAccountExists",
+    "annotation": "authn-resolution",
+    "hash": "cd4cd6afeec99b67132ab845e154975ccc7b980e9ea2925b430d0c3be94006ac",
+    "reason": "Incident member selection drops only the containment condition: the org incident's owners check a member they may already have contained, inside the incident's own authorized transaction, and only a count is returned."
   },
   {
     "engine": "sqlite",
