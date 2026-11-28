@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -249,14 +250,17 @@ prefixes:
 						quoted, _ := syntax.Quote(codeText(arg), syntax.LangBash)
 						split += " " + quoted
 					}
-					// env performs no redirection: a < in the string is a word it passes on, which a
-					// shell reading stdin may take as its script file.
 					if f, perr := syntax.NewParser().Parse(strings.NewReader(split), ""); perr == nil && len(f.Stmts) == 1 {
 						if inner, ok := f.Stmts[0].Cmd.(*syntax.CallExpr); ok {
-							if innerName, _, _, innerStdin := handedCode(inner); innerStdin != noStdin {
-								if len(f.Stmts[0].Redirs) > 0 && innerStdin == readsStdin {
-									innerStdin = mayReadStdin
-								}
+							// env performs no redirection: what parses as a redirect is a word it
+							// passes on, in its place among the arguments.
+							passed := &syntax.CallExpr{Args: slices.Clone(inner.Args)}
+							for _, redirect := range f.Stmts[0].Redirs {
+								text := redirect.Op.String() + codeText(redirect.Word) // a descriptor digit never changes how bash reads it
+								passed.Args = append(passed.Args, &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{ValuePos: redirect.OpPos, Value: text}}})
+							}
+							slices.SortFunc(passed.Args, func(a, b *syntax.Word) int { return int(a.Pos().Offset()) - int(b.Pos().Offset()) })
+							if innerName, _, _, innerStdin := handedCode(passed); innerStdin != noStdin {
 								return innerName, "", nil, innerStdin // the heredoc env is fed goes to this shell
 							}
 						}
@@ -377,11 +381,11 @@ const (
 	readsStdin
 )
 
-// envLongOption is the GNU env long option name abbreviates uniquely, or name itself. No
-// option name is a prefix of another, so an exact name matches only itself.
+// envLongOption expands name to the GNU env long option it is a unique prefix of; otherwise
+// it returns name. No option is a prefix of another, so a full name expands to itself.
 func envLongOption(name string) string {
 	var match []string
-	for _, known := range envLongNames {
+	for _, known := range slices.Concat(slices.Collect(maps.Keys(envLongFlags)), slices.Collect(maps.Keys(envLongValued)), []string{"--split-string"}) {
 		if strings.HasPrefix(known, name) {
 			match = append(match, known)
 		}
@@ -391,8 +395,6 @@ func envLongOption(name string) string {
 	}
 	return name
 }
-
-var envLongNames = []string{"--ignore-environment", "--null", "--debug", "--default-signal", "--ignore-signal", "--block-signal", "--list-signal-handling", "--unset", "--chdir", "--argv0", "--env0-from", "--split-string"}
 
 // onStdin reports whether redirect applies to fd 0.
 func onStdin(redirect *syntax.Redirect) bool {
@@ -542,7 +544,9 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env --ch prefix":                    "env --ch / bash -c '[[ a == b ]]'\n",
 		"env --spl prefix":                   "env --spl 'bash -c' '[[ a == b ]]'\n",
 		"env --ignore-env prefix":            "env --ignore-env bash -c '[[ a == b ]]'\n",
-		"env -S < as argument":               "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\nenv -S 'bash <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"env -S < as argument":               "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"env --e prefix":                     "env --e f bash -c '[[ a == b ]]'\n",
+		"env --n prefix":                     "env --n bash -c '[[ a == b ]]'\n",
 		"env -aNAME":                         "env -an bash -c '[[ a == b ]]'\n",
 		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
 		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
@@ -663,8 +667,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"bash --version":                "bash --version\nsh --help\n",
 		"expanded script, flag, data":   "bash \"$script\" -e <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script, here-string":  "bash \"$script\" <<<'not ( shell'\n",
-		"env -S < script data":          "env -S 'bash <f' <<'EOF'\nnot ( shell\nEOF\n",
-		"env --i ambiguous":             "env --i bash -c '[[ a == b ]]'\n", // env refuses an ambiguous prefix
+		"env -S < script file":          "env -S 'bash <f' <<'EOF'\n[[ a == b ]]\nEOF\n", // bash runs the file <f
+		"env --i ambiguous":             "env --i bash -c '[[ a == b ]]'\n",              // env refuses an ambiguous prefix
 		"expanded script, no stdin":     "bash \"$script\"\necho x | bash \"$script\"\n",
 		"env -S expanded script data":   "env -S 'bash \"$x\"' <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script fed data":      "bash \"$script\" <<'EOF'\nnot ( shell\nEOF\n",
@@ -776,7 +780,7 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"echo x | bash\n", "printf x | sh -s -- a\n", "echo x | bash >/dev/null\n", "echo x | bash 2>&1\n", "echo x |& bash\n",
 		"source /dev/stdin\n", ". /dev/fd/0\n", "source -- /proc/self/fd/0\n", "bash 3<<'EOF'\nx\nEOF\n", "bash <&3\n",
 		"{ bash; } <<'EOF'\n[[ a == b ]]\nEOF\n", "( bash -s ) <<'EOF'\nx\nEOF\n", "exec 0<<'EOF'\nx\nEOF\nbash\n", "run() { bash -s; }\n", "coproc bash\n",
-		"source /dev/stdin </dev/stdin\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
+		"source /dev/stdin </dev/stdin\n", "echo x | env -S 'bash -s <f'\n", "echo x | env -S 'bash -s >/dev/null'\n", "env -S 'bash -s 2>/dev/null'\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
 		"bash </dev/stdin\n", "bash < <(printf x)\n", "bash <<'EOF' <>f\nx\nEOF\n",
 		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed
 	} {
@@ -784,10 +788,13 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 			t.Errorf("%q: got %v, want a script read from stdin rejected", script, err)
 		}
 	}
-	for _, script := range []string{"echo x | bash ./y.sh\n", "echo x | bash -c 'cat'\n", "source ./lib.sh\n", ". /dev/fd/0 <f\n", "bash /dev/stdin <f\n"} {
+	for _, script := range []string{"echo x | bash ./y.sh\n", "echo x | bash -c 'cat'\n", "source ./lib.sh\n", ". /dev/fd/0 <f\n", "env -S 'bash <f -s'\n", "bash /dev/stdin <f\n"} {
 		if _, err := bareTests(script); err != nil {
 			t.Errorf("%q: %v, want accepted", script, err)
 		}
+	}
+	if _, err := bareTests("env -S 'bash -s <f' <<'EOF'\nif\nEOF\n"); err == nil {
+		t.Error("an unparsable heredoc fed through env -S to bash -s must be an error")
 	}
 	if _, err := bareTests("bash -s <<'EOF'\nif\nEOF\n"); err == nil {
 		t.Error("an unparsable heredoc fed to bash -s must be an error")
