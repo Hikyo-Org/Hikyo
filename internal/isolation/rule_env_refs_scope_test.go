@@ -114,7 +114,7 @@ func TestProjectCheckBindsRulesFromOneEnvironmentRead(t *testing.T) {
 		if project, org := reads(allowed); project != 1 || org != 0 {
 			t.Fatalf("rule-authorized check over rules in three orgs: statements %v; want one project environment read", allowed)
 		}
-		// Another org's whole-project rule reaches nothing here.
+		// The org's only rule names dev, so prod is refused, still after one read.
 		refused, err := check(t, scopeEnv(orgA, prjA1, envProd))
 		if err == nil {
 			t.Fatal("prod, which no rule of the org names, is reached")
@@ -125,7 +125,7 @@ func TestProjectCheckBindsRulesFromOneEnvironmentRead(t *testing.T) {
 		if missing, err := check(t, scopeEnv(orgA, "prj_refs_missing", "env_refs_missing")); err == nil || !slices.Equal(missing, refused) {
 			t.Fatalf("missing project: statements %v, err %v; want the refused check's %v", missing, err, refused)
 		}
-		// Each org's rule still binds when its own org is addressed.
+		// Org b's rule still applies in its own org (an all rule, so no binding is involved).
 		if _, err := check(t, scopeEnv(orgB, prjB1, envB1)); err != nil {
 			t.Fatalf("org b's rule does not reach its project: %v", err)
 		}
