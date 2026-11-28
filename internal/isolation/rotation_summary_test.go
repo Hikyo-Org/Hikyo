@@ -177,6 +177,7 @@ func runRotationHaltReason(t *testing.T, db *store.DB) {
 		{"retries_exhausted", "'retries_exhausted'", "retries_exhausted"},
 		{"authority_lost", "'authority_lost'", "authority_lost"},
 		{"gate_failed", "'gate_failed'", "gate_failed"},
+		{"incident_contained", "'incident_contained'", "incident_contained"},
 		{"legacy text", "'" + secretish + "'", "unknown"},
 		{"a near miss", "'Retries_Exhausted'", "unknown"},
 		{"no reason", "NULL", "unknown"},

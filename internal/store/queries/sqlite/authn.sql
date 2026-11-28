@@ -128,6 +128,22 @@ SELECT id, principal_id, artifact, session_generation, credential_epoch,
        requesting_origin, provider_id, oauth2_provider_id, saml_provider_id, enrolment_required
 FROM sessions WHERE id = ?;
 
+-- Incident confirmation: whether a session id exists anywhere in the instance, so
+-- one absent from the item is confirmed only when it is gone.
+-- hikyo:reason Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id held by any principal keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+-- hikyo:authn-resolution
+-- name: SessionExistsInInstance :one
+SELECT COUNT(*) FROM sessions WHERE id = sqlc.arg(id);
+
+-- Incident member selection: whether a principal is a human with an account row
+-- whose privacy is active, whatever its containment, so an org incident's owner
+-- resumed after account.contain still finds the member its listing selected.
+-- hikyo:reason Incident member selection drops only the containment condition: the org incident's owners check a member they may already have contained, inside the incident's own authorized transaction, and only a count is returned.
+-- hikyo:authn-resolution
+-- name: IncidentMemberAccountExists :one
+SELECT COUNT(*) FROM accounts JOIN principals ON principals.id = accounts.principal_id
+WHERE accounts.principal_id = sqlc.arg(id) AND principals.kind = 'human' AND principals.privacy_state = 'active';
+
 -- hikyo:authn-resolution
 -- name: GetCredentialAuthorityByVerifier :one
 SELECT id, account_id, verifier, purpose, issued_by, credential_epoch, expires_at,

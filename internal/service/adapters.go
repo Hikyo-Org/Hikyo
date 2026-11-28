@@ -1457,6 +1457,34 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 	return result, err
 }
 
+// TargetAbsentIfAuthorized reports whether a target no longer exists, in one
+// transaction that authorizes first. The authorizer masks a refusal as ErrNotFound,
+// which a read alone cannot tell from a target that is gone, so a caller whose
+// authority was lost is ErrUnauthorized, never "absent".
+func (s *Adapters) TargetAbsentIfAuthorized(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (bool, error) {
+	if err := requireProjectScope(scope, "adapter target read requires project scope and target id", targetID); err != nil {
+		return false, err
+	}
+	absent := false
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		absent = false
+		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, store.CanonTime(s.now()))
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("%w: authority over the target was lost", domain.ErrUnauthorized)
+		}
+		if err != nil {
+			return err
+		}
+		_, err = r.Adapters().Target(ctx, proof, targetID)
+		absent = errors.Is(err, domain.ErrNotFound)
+		if absent {
+			return nil
+		}
+		return err
+	})
+	return absent, err
+}
+
 // PauseTarget stops every push for one target (#157). It narrows what Hikyo
 // does at the destination, so it carries manage-adapters alone and no
 // reauthentication ceremony, exactly like credential revocation. The ledger

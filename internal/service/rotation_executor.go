@@ -201,6 +201,8 @@ const (
 	rotHaltExhausted = "retries_exhausted"
 	rotHaltAuthority = "authority_lost"
 	rotHaltGate      = "gate_failed"
+	// rotHaltIncident is written only by the incident rotation.halt owner.
+	rotHaltIncident = "incident_contained"
 )
 
 var (

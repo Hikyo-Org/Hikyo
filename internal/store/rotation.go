@@ -201,8 +201,25 @@ type RotationRunRecord struct {
 	CredentialValidUntilLowerBound bool
 }
 
+// RotationAuthorityRef is the identifiers view of one live rotation that the
+// incident enumeration lists by its recorded authority principal. It carries no
+// key, provider or credential detail; a rotation's state is read live when an
+// item is viewed, so the ledger stores none.
+type RotationAuthorityRef struct {
+	ID, OrgID, ProjectID, EnvironmentID string
+}
+
 // RotationReader is the read side.
 type RotationReader interface {
+	// ListByAuthorityInOrg and ListByAuthorityInInstance page the live (not
+	// deleted) rotations whose recorded authority principal is authority, in id
+	// order, for the incident enumeration: one org's under an org proof, every
+	// org's under an instance proof. The limit is at most domain.MaxIncidentPage.
+	ListByAuthorityInOrg(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
+	ListByAuthorityInInstance(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
+	// ExistsInInstance answers whether a rotation id exists anywhere in the
+	// instance; it takes an org proof only, the incident's authorization.
+	ExistsInInstance(ctx context.Context, p authz.Proof, rotationID string) (bool, error)
 	Get(ctx context.Context, p authz.Proof, rotationID string) (RotationRecord, error)
 	// Summarize fills, in place, each row's last run and owed-drop counts (the runs
 	// that need an operator: revoke_refused and quarantine) with two reads for the
@@ -236,6 +253,13 @@ type RotationRepo interface {
 	// ErrConflict when the rotation is not held (or is gone). The generation is
 	// not bumped, so a run in flight is not invalidated.
 	ReleaseHold(ctx context.Context, p authz.Proof, rotationID string, at time.Time) error
+	// HaltForIncident halts one active or paused rotation with a named reason,
+	// bumping its generation so a run past its gate settles against a stale fence.
+	// It reports false, with no error, when the rotation exists but is already
+	// halted, disabled or held by a restore: the incident ledger then reads its
+	// state. A rotation that no longer exists, or lies outside the proof's
+	// environment, is ErrNotFound.
+	HaltForIncident(ctx context.Context, p authz.Proof, rotationID, reason string, at time.Time) (bool, error)
 	// PauseForProvider pauses every active rotation that mints from the provider,
 	// in the proof's project, and returns them as paused. It is the provider
 	// delete and credential revoke cascade: a rotation never stays active against
@@ -303,6 +327,10 @@ type rotationStoreQueries interface {
 	get(ctx context.Context, chain domain.Scope, rotationID string) (RotationRecord, error)
 	list(ctx context.Context, chain domain.Scope, q RotationListQuery) ([]RotationRecord, error)
 	setState(ctx context.Context, chain domain.Scope, m RotationSetState) (int64, error)
+	halt(ctx context.Context, chain domain.Scope, rotationID, reason string, at time.Time) (int64, error)
+	listByAuthorityInOrg(ctx context.Context, chain domain.Scope, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
+	listByAuthorityInInstance(ctx context.Context, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error)
+	existsInInstance(ctx context.Context, rotationID string) (bool, error)
 	countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error)
 	requestRun(ctx context.Context, chain domain.Scope, m RotationRunRequest) (int64, error)
 	releaseHold(ctx context.Context, chain domain.Scope, rotationID string, at time.Time) (int64, error)
@@ -519,6 +547,57 @@ func (r rotationQueries) SetState(ctx context.Context, p authz.Proof, m Rotation
 		}
 	}
 	return r.get(ctx, chain, m.RotationID)
+}
+
+func (r rotationQueries) ListByAuthorityInOrg(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	chain, err := authz.Verify(p, authz.StoreRotationsListByAuthorityInOrg, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project != "" || authority == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.queries.listByAuthorityInOrg(ctx, chain, authority, afterID, limit)
+}
+
+func (r rotationQueries) ExistsInInstance(ctx context.Context, p authz.Proof, rotationID string) (bool, error) {
+	chain, err := authz.Verify(p, authz.StoreRotationsExistsInInstance, r.tok)
+	if err != nil {
+		return false, err
+	}
+	if chain.Org == "" || chain.Project != "" || rotationID == "" {
+		return false, ErrNotFound
+	}
+	return r.queries.existsInInstance(ctx, rotationID)
+}
+
+func (r rotationQueries) ListByAuthorityInInstance(ctx context.Context, p authz.Proof, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	chain, err := authz.Verify(p, authz.StoreRotationsListByAuthorityInInstance, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain != (domain.Scope{}) || authority == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.queries.listByAuthorityInInstance(ctx, authority, afterID, limit)
+}
+
+func (r rotationQueries) HaltForIncident(ctx context.Context, p authz.Proof, rotationID, reason string, at time.Time) (bool, error) {
+	chain, err := r.envChain(p, authz.StoreRotationsHaltForIncident)
+	if err != nil {
+		return false, err
+	}
+	n, err := r.queries.halt(ctx, chain, rotationID, reason, at)
+	if err != nil {
+		return false, err
+	}
+	if n == 1 {
+		return true, nil
+	}
+	if _, err := r.queries.get(ctx, chain, rotationID); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func (r rotationQueries) PauseForProvider(ctx context.Context, p authz.Proof, providerID string, at time.Time) ([]RotationRecord, error) {
@@ -796,6 +875,72 @@ func (q pgRotationQueries) setState(ctx context.Context, chain domain.Scope, m R
 		ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), ExpectedGeneration: m.ExpectedGeneration,
 	})
 	return n, constraint(err)
+}
+
+func (q sqliteRotationQueries) halt(ctx context.Context, chain domain.Scope, rotationID, reason string, at time.Time) (int64, error) {
+	n, err := q.q.RotationRtHaltForIncident(ctx, sqlitegen.RotationRtHaltForIncidentParams{HaltReason: sqlText(reason), Now: fixedStamp(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return n, constraint(err)
+}
+
+func (q pgRotationQueries) halt(ctx context.Context, chain domain.Scope, rotationID, reason string, at time.Time) (int64, error) {
+	n, err := q.q.RotationRtHaltForIncident(ctx, pggen.RotationRtHaltForIncidentParams{HaltReason: pgText(reason), Now: pgRequiredTime(at), RotationID: rotationID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	return n, constraint(err)
+}
+
+func (q sqliteRotationQueries) existsInInstance(ctx context.Context, rotationID string) (bool, error) {
+	n, err := q.q.RotationExistsInInstance(ctx, rotationID)
+	return n > 0, err
+}
+
+func (q pgRotationQueries) existsInInstance(ctx context.Context, rotationID string) (bool, error) {
+	n, err := q.q.RotationExistsInInstance(ctx, rotationID)
+	return n > 0, err
+}
+
+func (q sqliteRotationQueries) listByAuthorityInOrg(ctx context.Context, chain domain.Scope, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	rows, err := q.q.RotationListByAuthorityInOrg(ctx, sqlitegen.RotationListByAuthorityInOrgParams{ChainOrg: string(chain.Org), AuthorityPrincipalID: string(authority), AfterID: afterID, RowLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.RotationListByAuthorityInOrgRow) (RotationAuthorityRef, error) {
+		return RotationAuthorityRef{ID: c.ID, OrgID: string(chain.Org), ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID}, nil
+	})
+}
+
+func (q pgRotationQueries) listByAuthorityInOrg(ctx context.Context, chain domain.Scope, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := q.q.RotationListByAuthorityInOrg(ctx, pggen.RotationListByAuthorityInOrgParams{ChainOrg: string(chain.Org), AuthorityPrincipalID: string(authority), AfterID: afterID, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.RotationListByAuthorityInOrgRow) (RotationAuthorityRef, error) {
+		return RotationAuthorityRef{ID: c.ID, OrgID: string(chain.Org), ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID}, nil
+	})
+}
+
+func (q sqliteRotationQueries) listByAuthorityInInstance(ctx context.Context, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	rows, err := q.q.RotationListByAuthorityInInstance(ctx, sqlitegen.RotationListByAuthorityInInstanceParams{AuthorityPrincipalID: string(authority), AfterID: afterID, RowLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.RotationListByAuthorityInInstanceRow) (RotationAuthorityRef, error) {
+		return RotationAuthorityRef(c), nil
+	})
+}
+
+func (q pgRotationQueries) listByAuthorityInInstance(ctx context.Context, authority domain.PrincipalID, afterID string, limit int) ([]RotationAuthorityRef, error) {
+	if limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := q.q.RotationListByAuthorityInInstance(ctx, pggen.RotationListByAuthorityInInstanceParams{AuthorityPrincipalID: string(authority), AfterID: afterID, RowLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.RotationListByAuthorityInInstanceRow) (RotationAuthorityRef, error) {
+		return RotationAuthorityRef(c), nil
+	})
 }
 
 func (q sqliteRotationQueries) countOpenRuns(ctx context.Context, chain domain.Scope, rotationID string) (int64, error) {
@@ -1228,6 +1373,10 @@ func (r rotationQueries) RecordRunPublish(ctx context.Context, p authz.Proof, re
 	// transaction aborts (the run then settles as held), while sqlite's single write
 	// connection cannot interleave a hold at all.
 	// TestRotationHoldDuringThePublishTransactionRollsItBack fails without it.
+	// It is the same write that makes a concurrent incident halt abort the publish
+	// on PostgreSQL: the halt updates this rotation row, so the two conflict under
+	// serializable and the rerun finds the rotation halted. Removing it lets
+	// TestRotationIncidentHaltDuringThePublishTransactionRollsItBack fail.
 	_, err = rt.setNextRun(ctx, chain, run.RotationID, rec.NextRunAt, rec.Now)
 	return err
 }

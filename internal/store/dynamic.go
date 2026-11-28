@@ -137,6 +137,9 @@ type DynamicReader interface {
 	// ListNonTerminalLeasesInInstance is the same page across every org and
 	// takes an instance-scoped proof only.
 	ListNonTerminalLeasesInInstance(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error)
+	// LeaseExistsInInstance answers whether a lease id exists anywhere in the
+	// instance; it takes an org proof only, the incident's authorization.
+	LeaseExistsInInstance(ctx context.Context, p authz.Proof, leaseID string) (bool, error)
 	ListProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 }
 
@@ -329,6 +332,17 @@ func (r dynamicQueries) ListNonTerminalLeasesInProject(ctx context.Context, p au
 		return nil, ErrNotFound
 	}
 	return r.queries.dynamicListNonTerminalLeasesInProject(ctx, chain, afterID, limit)
+}
+
+func (r dynamicQueries) LeaseExistsInInstance(ctx context.Context, p authz.Proof, leaseID string) (bool, error) {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeaseExistsInInstance, r.tok)
+	if err != nil {
+		return false, err
+	}
+	if chain.Org == "" || chain.Project != "" || leaseID == "" {
+		return false, ErrNotFound
+	}
+	return r.queries.dynamicLeaseExistsInInstance(ctx, leaseID)
 }
 
 func (r dynamicQueries) ListNonTerminalLeasesInInstance(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error) {

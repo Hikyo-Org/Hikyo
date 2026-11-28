@@ -229,3 +229,10 @@ SELECT id FROM adapter_targets WHERE org_id=sqlc.arg(chain_org) AND project_id=s
 -- before the target insert), so a failed configure leaves one with no target.
 -- name: AdapterListEnvironmentFenceTargetIDs :many
 SELECT target_id FROM adapter_configure_fences WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) ORDER BY target_id LIMIT sqlc.arg(row_limit);
+
+-- Incident confirmation: whether an adapter target id exists anywhere in the
+-- instance, so a target absent from the item's project is confirmed only when it is gone.
+-- hikyo:reason Incident target confirmation reads only whether one adapter target id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+-- hikyo:instance-scoped
+-- name: AdapterTargetExistsInInstance :one
+SELECT COUNT(*) FROM adapter_targets WHERE id=sqlc.arg(target_id);

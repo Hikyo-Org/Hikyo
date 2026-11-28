@@ -525,7 +525,10 @@ func (s *Incidents) runItem(ctx context.Context, actor Actor, incidentID, itemID
 
 	// The owner commits its own change in its own transaction. Whatever it
 	// reports, only OwnerConfirmed can become done.
-	result, ownerErr := owner(ctx, actor, item)
+	// Every audit event an owner writes joins the incident through its id.
+	wire := audit.FromContext(ctx)
+	wire.CorrelationID = incidentID
+	result, ownerErr := owner(audit.WithContext(ctx, wire), actor, item)
 	if ownerErr != nil {
 		// The ledger records only the closed reason; the log gets ids and a
 		// classification, never the owner's error text, which the owner controls.

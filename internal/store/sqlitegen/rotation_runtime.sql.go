@@ -551,6 +551,35 @@ func (q *Queries) RotationRtGetRun(ctx context.Context, arg RotationRtGetRunPara
 	return i, err
 }
 
+const rotationRtHaltForIncident = `-- name: RotationRtHaltForIncident :execrows
+UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=?1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state<>'halted' AND state<>'disabled' AND restore_hold=0
+`
+
+type RotationRtHaltForIncidentParams struct {
+	HaltReason   sql.NullString
+	Now          string
+	RotationID   string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Incident containment halts a paused rotation too: nothing may resume it unseen.
+func (q *Queries) RotationRtHaltForIncident(ctx context.Context, arg RotationRtHaltForIncidentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotationRtHaltForIncident,
+		arg.HaltReason,
+		arg.Now,
+		arg.RotationID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rotationRtHaltRotation = `-- name: RotationRtHaltRotation :execrows
 UPDATE rotations SET deferred_from=NULL,state='halted',halt_reason=?1,next_run_at=NULL,manual_run_id=NULL,manual_skip_overlap=0,generation=generation+1,updated_at=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state='active' AND restore_hold=0
 `

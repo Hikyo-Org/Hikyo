@@ -278,6 +278,73 @@ func TestPrivacyConcurrentLastManagers(t *testing.T) {
 	}
 }
 
+// The manager census is read before the locks, in the transaction's serializable
+// snapshot. A second writer restricts the other manager between that read and the
+// lock: the restriction must retry or refuse, never commit on the stale census
+// that still counted the removed manager. PostgreSQL only: SQLite's single writer
+// cannot interleave a second transaction.
+func TestPrivacyManagerRestrictedBetweenReadAndLock(t *testing.T) {
+	// The other manager stops counting by a privacy restriction landing between the
+	// census read and the lock. A raw grant delete is not a second variant: it
+	// serializes after the restriction (nothing it read was written by it), so only
+	// the real revoke path, which reads the target's state, conflicts; that guard is
+	// the grants lockout test's subject.
+	managerRemovedBetweenReadAndLock(t, "UPDATE principals SET privacy_state='restricted' WHERE id='usr_manager_b'")
+}
+
+// The same race with the other manager's principal deleted outright (its grants
+// first, as the foreign key needs): a holder whose row is gone at the lock holds
+// nothing, so the restriction refuses rather than count it.
+func TestPrivacyManagerDeletedBetweenReadAndLock(t *testing.T) {
+	managerRemovedBetweenReadAndLock(t, "DELETE FROM grant_origins WHERE grant_id='grant_usr_manager_b'; DELETE FROM grants WHERE principal_id='usr_manager_b'; DELETE FROM accounts WHERE principal_id='usr_manager_b'; DELETE FROM principals WHERE id='usr_manager_b'")
+}
+
+func managerRemovedBetweenReadAndLock(t *testing.T, removal string) {
+	t.Helper()
+	db := openPostgres(t)
+	auth := authService(t, db)
+	ctx := tctx(t)
+	err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		for _, id := range []string{"usr_manager_a", "usr_manager_b"} {
+			if err := az.CreateHumanPrincipal(ctx, domain.PrincipalID(id), time.Now()); err != nil {
+				return err
+			}
+			if err := az.CreateAccount(ctx, authz.Account{ID: "acc_" + id, PrincipalID: domain.PrincipalID(id), Username: id, DisplayName: id, CreatedAt: time.Now()}); err != nil {
+				return err
+			}
+			if err := az.CreateGrant(ctx, "grant_"+id, domain.PrincipalID(id), domain.Grant{Capability: domain.CapManageMembers}, time.Now()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooked := 0
+	restore := authn.SetQueryObserver(func(query string) {
+		// The first lock query of the first attempt is the gap after the census read.
+		if !strings.Contains(query, "name: LockPrincipalRow") {
+			return
+		}
+		hooked++
+		if hooked == 1 {
+			execRaw(t, db, removal)
+		}
+	})
+	defer restore()
+	_, err = auth.ApplyPrivacySubject(ctx, "usr_manager_a", "restrict", "")
+	// Only a rerun on a fresh snapshot can see the removal and refuse; a stale
+	// census would have committed, and a bare serialization failure would not
+	// show the rerun.
+	if !errors.Is(err, service.ErrPrivacyLastManager) {
+		t.Fatalf("err=%v, want the last-manager refusal from the rerun", err)
+	}
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM principals WHERE id='usr_manager_a' AND privacy_state='active'"); n != 1 {
+		t.Fatalf("target manager no longer active: %d", n)
+	}
+}
+
 // A serialization retry must publish only the committed snapshot, including
 // when an identity removed by another writer appeared in the first attempt.
 func TestPrivacyExportDiscardsRetriedIdentitySnapshot(t *testing.T) {

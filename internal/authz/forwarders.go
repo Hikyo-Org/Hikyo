@@ -88,6 +88,28 @@ type txForwarded interface {
 	// expired, current credential epoch) minted inside one org, in id order; a
 	// non-empty authority narrows it to one human.
 	LiveDeveloperCredentialsInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, afterID string, limit int, now time.Time) ([]DeveloperCredential, error)
+	// LiveDeveloperCredentialInOrg reads one live delegation of the org by id; absent
+	// or no longer live is ErrNotFound.
+	LiveDeveloperCredentialInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (DeveloperCredential, error)
+	// MachineCredentialInProject reads one credential by id when its service account
+	// belongs to the project; none is ErrNotFound.
+	MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error)
+	// MachineCredentialExistsInInstance reports whether a credential id is held by
+	// any service account of the instance, revoked or not.
+	MachineCredentialExistsInInstance(ctx context.Context, id string) (bool, error)
+	// OrgEmailInvitationExistsInInstance reports whether an invitation id has a row
+	// in any org of the instance.
+	OrgEmailInvitationExistsInInstance(ctx context.Context, id string) (bool, error)
+	// SCIMCredentialExistsInInstance reports whether a SCIM credential id has a row
+	// in any org of the instance, revoked or not.
+	SCIMCredentialExistsInInstance(ctx context.Context, id string) (bool, error)
+	// SessionExistsInInstance reports whether a session id has a row, whichever
+	// principal holds it.
+	SessionExistsInInstance(ctx context.Context, id string) (bool, error)
+	// IncidentMemberAccountExists reports whether a principal is a human with an
+	// account row whose privacy is active, whatever its containment: an org
+	// incident's member selection, which its owners check after containing.
+	IncidentMemberAccountExists(ctx context.Context, p domain.PrincipalID) (bool, error)
 	// ServiceAccountsCreatedBy pages the service accounts a principal created
 	// (the offboarding report's created-by relation), in id order.
 	ServiceAccountsCreatedBy(ctx context.Context, creator domain.PrincipalID, org domain.OrgID, afterID string, limit int) ([]ServiceAccount, error)

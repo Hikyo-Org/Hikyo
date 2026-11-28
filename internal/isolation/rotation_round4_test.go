@@ -173,6 +173,44 @@ func TestRotationHoldDuringThePublishTransactionRollsItBack(t *testing.T) {
 	}
 }
 
+// An incident halt that commits after the publish transaction's begin check but
+// before its commit must not let the publish stand (#1039 S3). The halt is a
+// write of the same rotation row the publish's schedule write targets, so under
+// PostgreSQL SERIALIZABLE the publish aborts whole and its rerun finds the rotation
+// halted. SQLite writes one transaction at a time, so no halt lands inside a
+// publish there.
+func TestRotationIncidentHaltDuringThePublishTransactionRollsItBack(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	x := newRotExec(t, db)
+	rot := x.create(rotPasswordKey, rotUsernameKey)
+	generation := queryInt(t, db, `SELECT generation FROM rotations WHERE id='`+rot.ID+`'`)
+	halted := false
+	x.exec.Revisions.PublishProbe = &rotPublishProbe{onBaseline: func() {
+		if !halted {
+			halted = true
+			execRaw(t, db, `UPDATE rotations SET state='halted', halt_reason='incident_contained', next_run_at=NULL, generation=generation+1 WHERE id='`+rot.ID+`'`)
+		}
+	}}
+	x.advance(24*time.Hour + time.Minute)
+	x.drain()
+	if !halted {
+		t.Fatal("the halt never landed inside the publish transaction")
+	}
+	if n := x.publishedRuns(rot.ID); n != 0 {
+		t.Fatalf("%d runs published for a rotation halted during the publish (phases %q)", n, x.runPhases(rot.ID))
+	}
+	if x.snapshots() != 0 {
+		t.Fatalf("%d revisions were committed after the incident halt", x.snapshots())
+	}
+	after := x.state(rot.ID)
+	if after.State != store.RotationStateHalted {
+		t.Fatalf("rotation is %s, want halted", after.State)
+	}
+	if got := queryInt(t, db, `SELECT generation FROM rotations WHERE id='`+rot.ID+`'`); got != generation+1 {
+		t.Fatalf("generation = %d, want %d: the halt must stand and nothing else may move it", got, generation+1)
+	}
+}
+
 // A restore hold that lands between an extend's claim and its Gate, while the
 // recorded authority has also lost its access, must still leave the settled run
 // due: the authorization refusal is a definite halt reason, but the hold blocks the

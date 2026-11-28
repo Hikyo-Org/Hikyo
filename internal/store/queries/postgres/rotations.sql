@@ -192,3 +192,23 @@ SELECT COUNT(*) FROM rotation_effects WHERE run_id=sqlc.arg(run_id) AND org_id=s
 -- invalidate it. Zero rows means the rotation is gone or was not held.
 -- name: RotationReleaseHold :execrows
 UPDATE rotations SET restore_hold=FALSE,updated_at=sqlc.arg(at) WHERE id=sqlc.arg(rotation_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND restore_hold=TRUE;
+
+-- Incident enumeration (#1471): one org's live rotations whose recorded authority
+-- principal is the contained account, in id order, ids and placement only.
+-- hikyo:reason Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects.
+-- hikyo:instance-scoped
+-- name: RotationListByAuthorityInOrg :many
+SELECT id,project_id,environment_id FROM rotations WHERE org_id=sqlc.arg(chain_org) AND authority_principal_id=sqlc.arg(authority_principal_id) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- The same page across every org, for an account whose footprint spans several.
+-- hikyo:reason Instance-level incident enumeration lists the live rotation identifiers of one authority principal across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no rotation secret, key or provider detail is selected.
+-- hikyo:instance-scoped
+-- name: RotationListByAuthorityInInstance :many
+SELECT id,org_id,project_id,environment_id FROM rotations WHERE authority_principal_id=sqlc.arg(authority_principal_id) AND state<>'disabled' AND id > sqlc.arg(after_id) ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- Incident confirmation: whether a rotation id exists anywhere in the instance, so
+-- a rotation absent from the item's environment is confirmed only when it is gone.
+-- hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+-- hikyo:instance-scoped
+-- name: RotationExistsInInstance :one
+SELECT COUNT(*) FROM rotations WHERE id=sqlc.arg(rotation_id);

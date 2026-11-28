@@ -150,6 +150,7 @@ moves to `halted` with a named reason, a fixed word the API returns as `halt_rea
 - `retries_exhausted`: the retry window ran out before a run could publish or extend the credential.
 - `authority_lost`: the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone.
 - `gate_failed`: a pre-publish gate refused: the environment became protected, a key changed or a draft appeared.
+- `incident_contained`: an incident that affects the recorded person (opened on the account, or on an org that selects it) halted it, and a release never resumes it.
 - `unknown`: the server halted the rotation without a reason it can name (a halt recorded before the reason was kept, for one).
 
 A halted rotation does not extend the delivered credential. `hikyo rotation show` and
@@ -441,9 +442,39 @@ has no hold column; its active rotations come back paused instead, and you resum
 them by hand (that pause advances the rotation's generation, unlike a hold). Its
 paused and halted rotations come back exactly as they were, **not held**, because
 there is nothing to hold them with; check them before you resume one. A contained
-authority principal is not a restore hold: its rotation halts at the next start
-because a contained principal loads no grants, and releasing the principal does not
-resume it.
+authority principal is not a restore hold: an incident opened on the account (or on
+an org that selects it) lists its rotations and halts each one with
+`incident_contained`, active or paused (a rotation already halted keeps its own
+reason, and the incident confirms it as it is), and releasing the principal does not
+resume them. Five cases leave a rotation active, so do not read an incident as
+confirmation that every rotation of its members reached `halted`:
+
+- A rotation a restore holds: the incident leaves its item open until the hold clears.
+- A halt that is blocked or unconfirmed: the item stays open and the rotation stays
+  active. A blocked item (the caller lacks the owner's capability) needs an operator
+  who holds it to resume the incident. An unconfirmed item (an owner error) needs a
+  successful resume. A halt item cannot be attested.
+- A truncated enumeration: when an org has more members than one pass can list, the
+  unreached members' rotations are not halted. Hikyo records an open
+  `enumeration_truncated` row for them instead (when a single source passes its item
+  cap, one row at the org covers every member after the cut), and the rotations stay active. Opening
+  the incident again does not reach them (it lists with the same budget and order), and
+  the row cannot be resumed or attested. Pause or delete those rotations yourself,
+  then close the incident with residuals.
+- A rotation whose recorded authority has left the account's org (or lies outside an
+  account incident's single org): the incident lists no item for it. When the account
+  itself was contained, the executor halts the rotation by effect at its next gate,
+  because a contained principal's grants do not load. When the account's
+  `account.contain` item was refused (the last manager of an org, say), the principal
+  stays live and nothing stops that rotation but its own halt item: pause or delete it
+  yourself.
+- A member an org incident does not select: an org incident selects members through
+  their grants and rules, so a rotation authored by an account whose only rows in the
+  org are access grants, developer credentials, SCIM users or service accounts is not
+  listed. Open an account incident for that account to reach it.
+
+Check the incident's items, not its status, before you rely on a halt. You resume a
+halted rotation yourself.
 
 ## Monitoring
 
@@ -492,7 +523,9 @@ closed (`rotation.quarantined` for a run that still owes a role, otherwise a
 `rotation.run_outcome` of phase `abandon`). The executor's run events use the
 rotation's authority and the run id as the correlation id, with origin `system`;
 the abandon events are authored by the operator who deleted the rotation, with
-the run id as the correlation id. `rotation.configured` records each create, pause, resume, hold release and delete with its
+the run id as the correlation id. An incident's halt is a `rotation.configured` event
+with `action` `halted` and reason `incident_contained`, authored by the operator who ran
+the incident and correlated by the incident id. `rotation.configured` records each create, pause, resume, hold release and delete with its
 `action` and the environment, and a pause the system caused (provider deleted or
 credential revoked, environment protected, approval policy enabled) with its
 `reason`. `rotation.run_now` records each run-now request with the requested

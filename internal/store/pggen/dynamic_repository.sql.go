@@ -475,6 +475,21 @@ func (q *Queries) DynamicGetProvider(ctx context.Context, arg DynamicGetProvider
 	return i, err
 }
 
+const dynamicLeaseExistsInInstance = `-- name: DynamicLeaseExistsInInstance :one
+SELECT COUNT(*) FROM dynamic_leases WHERE id=$1
+`
+
+// Incident confirmation: whether a lease id exists anywhere in the instance, so a
+// lease absent from the item's environment is confirmed only when it is gone.
+// hikyo:reason Incident lease confirmation reads only whether one lease id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+// hikyo:instance-scoped
+func (q *Queries) DynamicLeaseExistsInInstance(ctx context.Context, leaseID string) (int64, error) {
+	row := q.db.QueryRow(ctx, dynamicLeaseExistsInInstance, leaseID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const dynamicListActiveProviderIDsForProject = `-- name: DynamicListActiveProviderIDsForProject :many
 SELECT id FROM dynamic_providers WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id LIMIT $3
 `

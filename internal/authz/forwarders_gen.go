@@ -727,6 +727,13 @@ func (a *TxAuthorizer) IncidentItems(ctx context.Context, incidentID, afterID st
 	return a.r.IncidentItems(ctx, incidentID, afterID, limit, openOnly)
 }
 
+// IncidentMemberAccountExists reports whether a principal is a human with an
+// account row whose privacy is active, whatever its containment: an org
+// incident's member selection, which its owners check after containing.
+func (a *TxAuthorizer) IncidentMemberAccountExists(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return a.r.IncidentMemberAccountExists(ctx, p)
+}
+
 // IncompatiblePasswordKDFCount is for startup/configuration admission, not a
 // public authentication route. It exposes only aggregate parameter metadata.
 func (a *TxAuthorizer) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {
@@ -794,6 +801,12 @@ func (a *TxAuthorizer) ListSAMLProviders(ctx context.Context) ([]SAMLProvider, e
 // LiveAccessGrants lists a principal's unexpired temporary grants.
 func (a *TxAuthorizer) LiveAccessGrants(ctx context.Context, p domain.PrincipalID, now time.Time) ([]AccessGrant, error) {
 	return a.r.LiveAccessGrants(ctx, p, now)
+}
+
+// LiveDeveloperCredentialInOrg reads one live delegation of the org by id; absent
+// or no longer live is ErrNotFound.
+func (a *TxAuthorizer) LiveDeveloperCredentialInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (DeveloperCredential, error) {
+	return a.r.LiveDeveloperCredentialInOrg(ctx, org, authority, id, now)
 }
 
 // LiveDeveloperCredentialsInOrg pages the live delegations (not revoked, not
@@ -874,6 +887,18 @@ func (a *TxAuthorizer) LoginChallengeByID(ctx context.Context, id string) (Login
 	return a.r.LoginChallengeByID(ctx, id)
 }
 
+// MachineCredentialExistsInInstance reports whether a credential id is held by
+// any service account of the instance, revoked or not.
+func (a *TxAuthorizer) MachineCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.MachineCredentialExistsInInstance(ctx, id)
+}
+
+// MachineCredentialInProject reads one credential by id when its service account
+// belongs to the project; none is ErrNotFound.
+func (a *TxAuthorizer) MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error) {
+	return a.r.MachineCredentialInProject(ctx, scope, id)
+}
+
 func (a *TxAuthorizer) MachineCredentialsFor(ctx context.Context, serviceAccountID string) ([]MachineCredential, error) {
 	return a.r.MachineCredentialsFor(ctx, serviceAccountID)
 }
@@ -935,6 +960,12 @@ func (a *TxAuthorizer) OpenReauthWindow(ctx context.Context, w NewReauthWindow) 
 
 func (a *TxAuthorizer) OrgEmailInvitationByVerifier(ctx context.Context, verifier []byte) (EmailInvitation, error) {
 	return a.r.OrgEmailInvitationByVerifier(ctx, verifier)
+}
+
+// OrgEmailInvitationExistsInInstance reports whether an invitation id has a row
+// in any org of the instance.
+func (a *TxAuthorizer) OrgEmailInvitationExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.OrgEmailInvitationExistsInInstance(ctx, id)
 }
 
 func (a *TxAuthorizer) OrgEmailInvitationInOrg(ctx context.Context, id string, org domain.OrgID) (EmailInvitation, error) {
@@ -1244,6 +1275,12 @@ func (a *TxAuthorizer) SCIMCredentialByVerifier(ctx context.Context, presented [
 	return a.r.SCIMCredentialByVerifier(ctx, presented)
 }
 
+// SCIMCredentialExistsInInstance reports whether a SCIM credential id has a row
+// in any org of the instance, revoked or not.
+func (a *TxAuthorizer) SCIMCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.SCIMCredentialExistsInInstance(ctx, id)
+}
+
 // ServiceAccountAt resolves one service account within an addressed project;
 // an id from another project answers domain.ErrNotFound.
 func (a *TxAuthorizer) ServiceAccountAt(ctx context.Context, scope domain.Scope, id string) (ServiceAccount, error) {
@@ -1271,6 +1308,12 @@ func (a *TxAuthorizer) ServiceAccountsCreatedBy(ctx context.Context, creator dom
 
 func (a *TxAuthorizer) ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error) {
 	return a.r.ServiceAccountsIn(ctx, scope)
+}
+
+// SessionExistsInInstance reports whether a session id has a row, whichever
+// principal holds it.
+func (a *TxAuthorizer) SessionExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return a.r.SessionExistsInInstance(ctx, id)
 }
 
 // SessionsForPrincipal and RevokeSessionForPrincipal are the self-scoped

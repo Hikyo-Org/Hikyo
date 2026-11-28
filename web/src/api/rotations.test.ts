@@ -95,7 +95,7 @@ it('keeps every halt sentence equal in the CLI, the docs and this page', () => {
     resolve(import.meta.dirname, '../../../docs/site/src/content/docs/docs/rotation.mdx'),
     'utf8',
   );
-  for (const word of ['retries_exhausted', 'authority_lost', 'gate_failed', 'unknown']) {
+  for (const word of ['retries_exhausted', 'authority_lost', 'gate_failed', 'incident_contained', 'unknown']) {
     const cause = haltCause({ ...halted, halt_reason: word });
     expect(cause.startsWith(`halted (${word}): `)).toBe(true);
     const sentence = cause.slice(`halted (${word}): `.length);

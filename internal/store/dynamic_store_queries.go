@@ -25,6 +25,7 @@ type dynamicStoreQueries interface {
 	dynamicActiveLeaseIDsForProvider(ctx context.Context, chain domain.Scope, providerID string) ([]DynamicLease, error)
 	dynamicListNonTerminalLeasesInProject(ctx context.Context, chain domain.Scope, afterID string, limit int) ([]DynamicLeaseRef, error)
 	dynamicListNonTerminalLeasesInInstance(ctx context.Context, afterID string, limit int) ([]DynamicLeaseRef, error)
+	dynamicLeaseExistsInInstance(ctx context.Context, leaseID string) (bool, error)
 	dynamicFinishMint(ctx context.Context, chain domain.Scope, m DynamicLeaseFinishMint) (int64, error)
 	dynamicReencryptProvider(ctx context.Context, chain domain.Scope, id string, newCiphertext, oldCiphertext []byte) (int64, error)
 	dynamicListProvidersForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error)
@@ -230,6 +231,16 @@ func (q pgDynamicStoreQueries) dynamicListNonTerminalLeasesInProject(ctx context
 	return mapRows(rows, func(c pggen.DynamicListNonTerminalLeasesInProjectRow) (DynamicLeaseRef, error) {
 		return DynamicLeaseRef(c), nil
 	})
+}
+
+func (q sqliteDynamicStoreQueries) dynamicLeaseExistsInInstance(ctx context.Context, leaseID string) (bool, error) {
+	n, err := q.queries.DynamicLeaseExistsInInstance(ctx, leaseID)
+	return n > 0, err
+}
+
+func (q pgDynamicStoreQueries) dynamicLeaseExistsInInstance(ctx context.Context, leaseID string) (bool, error) {
+	n, err := q.queries.DynamicLeaseExistsInInstance(ctx, leaseID)
+	return n > 0, err
 }
 
 func (q sqliteDynamicStoreQueries) dynamicListNonTerminalLeasesInInstance(ctx context.Context, afterID string, limit int) ([]DynamicLeaseRef, error) {

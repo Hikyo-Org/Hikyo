@@ -1134,11 +1134,13 @@ func remainingMemberManagers(
 			return 0, err
 		}
 	}
-	// Re-read UNDER the locks. Counting from the pre-lock list is the bug the
+	// Re-read after the locks. Counting from the pre-lock list is the bug the
 	// locks were taken to prevent: two revocations of the last two holders
 	// would each see the other as remaining. Every grant writer takes the
-	// target's row lock, so nothing that can change this census is still in
-	// flight once the locks are held.
+	// target's row lock. On PostgreSQL this transaction is SERIALIZABLE, so the
+	// re-read shares the snapshot of the first read; a grant change committed
+	// after that snapshot is not seen here but fails serialization, and tx.Write
+	// reruns the closure on a fresh snapshot (see lockTargetAndManagers).
 	holders, err = az.ManageMembersHolders(ctx, string(scope.Org))
 	if err != nil {
 		return 0, err

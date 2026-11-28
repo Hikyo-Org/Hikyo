@@ -1098,10 +1098,11 @@ var registry = map[EventType]TypeSpec{
 	EventPrivacySubjectRestricted: privacySubjectSpec,
 	EventPrivacySubjectErased:     privacySubjectSpec,
 
-	EventIncidentOpened:      incidentSpecs[EventIncidentOpened],
-	EventIncidentItemIntent:  incidentSpecs[EventIncidentItemIntent],
-	EventIncidentItemOutcome: incidentSpecs[EventIncidentItemOutcome],
-	EventIncidentClosed:      incidentSpecs[EventIncidentClosed],
+	EventIncidentOpened:             incidentSpecs[EventIncidentOpened],
+	EventIncidentItemIntent:         incidentSpecs[EventIncidentItemIntent],
+	EventIncidentItemOutcome:        incidentSpecs[EventIncidentItemOutcome],
+	EventIncidentClosed:             incidentSpecs[EventIncidentClosed],
+	EventIncidentPrincipalContained: incidentSpecs[EventIncidentPrincipalContained],
 
 	EventGrantDenied: {
 		SchemaVersion: 1,
@@ -3821,7 +3822,7 @@ var registry = map[EventType]TypeSpec{
 		// environment_id names the rotation's environment and is set on every
 		// action; reason is set only on a cascade pause.
 		"environment_id": {Kind: KindString},
-		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked", "environment_protected", "approval_policy_enabled", "retries_exhausted", "authority_lost", "gate_failed"}},
+		"reason":         {Kind: KindString, Enum: []string{"provider_deleted", "provider_credential_revoked", "environment_protected", "approval_policy_enabled", "retries_exhausted", "authority_lost", "gate_failed", "incident_contained"}},
 		// credential_expires_at is the delivered role's VALID UNTIL when one is
 		// known, so a pause or delete says when the live credential lapses.
 		"credential_expires_at": {Kind: KindString},

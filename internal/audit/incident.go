@@ -5,9 +5,8 @@ import "github.com/Hikyo-Org/hikyo/internal/domain"
 // Incident ledger events (incident-containment ADR, "Audit trail"; #1039 S2).
 // They ride the instance trail. The incident id is the correlation id, so an
 // owner's own revocation event joins to the incident by correlation and an item's
-// intent and outcome pair up as adapter push intent and outcome do. Principal
-// contained and released events belong to the containment service, not the
-// ledger.
+// intent and outcome pair up as adapter push intent and outcome do. The
+// principal-contained event is written by the account owner function.
 //
 // Payloads carry the actor (the event's own actor), the scope, closed reasons,
 // counts and Hikyo object ids only: no secret, no free text and no
@@ -20,6 +19,9 @@ const (
 	// the item stays open).
 	EventIncidentItemOutcome EventType = "incident.item_outcome"
 	EventIncidentClosed      EventType = "incident.closed"
+	// EventIncidentPrincipalContained records that one account entered the
+	// contained state under an incident. It is correlated to the incident.
+	EventIncidentPrincipalContained EventType = "incident.principal_contained"
 )
 
 // MaxIncidentResiduals bounds the residual item ids one incident.closed event
@@ -93,6 +95,13 @@ var incidentSpecs = map[EventType]TypeSpec{
 			"object_id":      {Kind: KindString, Required: true},
 			"result":         {Kind: KindString, Required: true, Enum: []string{"pending", "done", "unknown", "attested", "blocked"}},
 			"reason":         {Kind: KindString, Required: true, Enum: incidentItemReasons},
+		},
+	},
+	EventIncidentPrincipalContained: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"principal": {Kind: KindString, Required: true},
 		},
 	},
 	EventIncidentClosed: {

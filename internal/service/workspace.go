@@ -1617,31 +1617,39 @@ func (s *Workspace) RevokeSession(ctx context.Context, actor Actor, id string) e
 		if !did {
 			return store.ErrNotFound
 		}
-		// Explicit session revocation is a security action; ordinary Auth.Logout
-		// deliberately does not end bounded developer delegations.
-		if err := revokeDeveloperProvenance(ctx, az, caller.Principal, "session", id, now); err != nil {
-			return err
-		}
-		if target.Artifact != workspaceArtifact {
-			// An ordinary session's revocation is a logout, already audited as
-			// one. Giving it a second event under a #71 type would double-count
-			// a fact the trail already carries.
-			e, err := domainEvent(ctx, audit.EventAuthLogout, caller.Principal,
-				audit.Object{Type: "session", ID: id}, audit.Payload{
-					"session_id": id, "artifact": target.Artifact,
-				})
-			if err != nil {
-				return err
-			}
-			return az.RecordAuthEvent(ctx, e)
-		}
-		e, err := domainEvent(ctx, audit.EventRemoteWorkspaceSessionRevoked, caller.Principal,
-			audit.Object{Type: "session", ID: id}, audit.Payload{
-				"session_id": id, "origin": target.RequestingOrigin, "cause": "explicit",
+		return recordSessionRevocation(ctx, az, caller.Principal, target, now)
+	})
+}
+
+// recordSessionRevocation finishes an explicit revocation of one session, in the
+// revoking transaction: it ends the developer delegations minted from the session
+// and records the session event. Explicit session revocation is a security
+// action; ordinary Auth.Logout deliberately does not end bounded developer
+// delegations. The incident session owner calls it too, so the event carries the
+// incident correlation from the context.
+func recordSessionRevocation(ctx context.Context, az *authz.TxAuthorizer, actor domain.PrincipalID, target authz.SessionSummary, now time.Time) error {
+	if err := revokeDeveloperProvenance(ctx, az, actor, "session", target.ID, now); err != nil {
+		return err
+	}
+	if target.Artifact != workspaceArtifact {
+		// An ordinary session's revocation is a logout, already audited as
+		// one. Giving it a second event under a #71 type would double-count
+		// a fact the trail already carries.
+		e, err := domainEvent(ctx, audit.EventAuthLogout, actor,
+			audit.Object{Type: "session", ID: target.ID}, audit.Payload{
+				"session_id": target.ID, "artifact": target.Artifact,
 			})
 		if err != nil {
 			return err
 		}
 		return az.RecordAuthEvent(ctx, e)
-	})
+	}
+	e, err := domainEvent(ctx, audit.EventRemoteWorkspaceSessionRevoked, actor,
+		audit.Object{Type: "session", ID: target.ID}, audit.Payload{
+			"session_id": target.ID, "origin": target.RequestingOrigin, "cause": "explicit",
+		})
+	if err != nil {
+		return err
+	}
+	return az.RecordAuthEvent(ctx, e)
 }

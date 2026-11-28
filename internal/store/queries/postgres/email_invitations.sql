@@ -35,6 +35,13 @@ FROM org_email_invitations WHERE org_id = $1 AND expires_at > $2 ORDER BY create
 SELECT id, org_id, email, template, inviter_principal_id, account_id, token_verifier, credential_epoch, created_at, expires_at
 FROM org_email_invitations WHERE id = $1 AND org_id = $2;
 
+-- Incident confirmation: whether an invitation id exists anywhere in the instance, so
+-- one absent from the item is confirmed only when it is gone.
+-- hikyo:reason Incident revoke confirmation reads only whether one invitation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+-- hikyo:authn-resolution
+-- name: OrgEmailInvitationExistsInInstance :one
+SELECT COUNT(*) FROM org_email_invitations WHERE id = sqlc.arg(id);
+
 -- hikyo:reason Revocation deletes the addressed org's own row after authorizing manage-members at that org.
 -- hikyo:authn-resolution
 -- name: DeleteOrgEmailInvitationInOrg :execrows

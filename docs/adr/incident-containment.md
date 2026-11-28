@@ -1,5 +1,7 @@
 # Scoped incident containment and credential recovery (ADR, accepted 2026-11-12)
 
+> **Declared amendment (2026-11-23, [#1471](https://github.com/Hikyo-Org/Hikyo/issues/1471), owner decision B; operative upon the slice 3 implementation pull request merging):** scheduled rotations become an account-scope ledger object kind. A contained account's live rotations are listed by authority principal and halted with the dedicated halt word `incident_contained`, independently of the `account.contain` item. Org scope inherits through the accounts it selects, project and adapter scopes select no account and list no rotation, and release never resumes a halt. The normative text is the [amendment below](#amendment-scheduled-rotations-are-an-account-scope-object-kind-1471). Independent Standards and Spec review ran in rounds on the implementation pull request, which records each round and its repairs; cross-provider review did not run and is not CLEAN. Maintainer security review and the human merge gate remain required. Historical text below is preserved.
+
 > **Status: accepted by the owner on 2026-11-12 as recommended, options O1 to O8 as listed in the [Decision record](#decision-record). Operative per scope only when the implementation pull requests merge.**
 > Accepting this ADR selects the options. It adds no command, capability or schema today,
 > and it authorizes no implementation, release or production change. The amendments it
@@ -383,11 +385,56 @@ banner on the amended ADR, operative when the implementation pull request merges
   and [remote-instance-pairing](./remote-instance-pairing.md): no change to their owners;
   they gain a correlated invocation from the ledger.
 
+## Amendment: scheduled rotations are an account-scope object kind (#1471)
+
+Declared amendment, owner decision of 2026-11-23 (option B), operative when the
+implementation pull request merges. [Credential rotation](../handoff/148-credential-rotation.md)
+records an authority principal on each rotation and keeps running it after that
+principal is contained, so a contained account would still have a scheduler acting in its name.
+
+- `rotation` is an account-scope ledger object kind, owned by the `rotation.halt` owner
+  function. The ledger lists the live (not disabled) rotations whose authority principal is
+  a selected account, and halts each one. An active or a paused rotation is halted; a
+  rotation a restore holds stays open until the hold clears. A blocked item (the caller
+  lacks the capability) needs an operator who holds it, and an unconfirmed one needs a
+  successful resume; neither can be attested.
+- Scope matrix. Account scope lists the account's rotations. Org scope inherits through the
+  accounts it selects: each selected member's rotations are listed within the same lookup
+  budget, and a member the budget cannot reach is an open `enumeration_truncated` row (past the source's item
+  cap, one such row at the org covers every member after the cut). That row can be neither
+  attested nor resumed past, and opening again lists with the same budget and order, so the
+  operator pauses or deletes the unreached members' rotations through their own owners and
+  closes the incident with residuals. Project
+  and adapter scopes select no account (see the scope matrix above), so they list no rotation
+  of their own. An account incident bounded to one org lists that org's rotations; a rotation
+  in an org the account no longer belongs to has lost its recorded authority and halts by
+  effect at its next gate.
+- A rotation already halted under another reason (`authority_lost`, `retries_exhausted`) is listed
+  and confirmed as it stands; its reason and generation are not rewritten.
+- Halting uses the dedicated word `incident_contained`. The halt reason enum is open
+  (`x-extensible-enum`), so the word is an additive growth that the API freeze permits.
+  Reusing `authority_lost` would have made an incident halt indistinguishable from the
+  executor's own authority check, which this ADR does not want. The halt bumps the rotation
+  generation, which stops a run that has not yet published (on PostgreSQL a halt inside the
+  publish transaction aborts that publish). A run already past its publish is not undone: an
+  in-flight revoke finishes under the executor's own fence and the credential already
+  delivered keeps its expiry.
+- The halt does not depend on the `account.contain` item. Items are independent owners that
+  each read their own state (Concurrency and fencing), so the rotation halt may run before,
+  after or without the containment. The owner refuses an incident that is not an account or
+  org incident, and a rotation whose authority is not an account the incident selects.
+- Release never resumes a halted rotation (O4). An operator resumes it through the
+  rotation's own owner, as for any halt.
+- Authority is the account-scope containment authority: `credential-reset` at the owning
+  org, or at instance scope when the account's footprint spans several orgs or none.
+- Audit: the halt event joins the incident through the incident id as its correlation id,
+  like every other owner event.
+
 ## Not decided here
 
 - Alert-driven or automatic containment. F3 ([#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038))
   owns detection and escalation and must not add a global trigger without a new decision.
-- Scheduled rotation and overlap ([#148](https://github.com/Hikyo-Org/Hikyo/issues/148)).
+- Scheduled rotation and overlap ([#148](https://github.com/Hikyo-Org/Hikyo/issues/148)), except where the amendment above overlaps: the halt of a contained account's rotations.
 - Independent evidence retention and export completeness
   ([#1035](https://github.com/Hikyo-Org/Hikyo/issues/1035),
   [#1036](https://github.com/Hikyo-Org/Hikyo/issues/1036),
@@ -429,6 +476,7 @@ The owner accepted every recommendation on 2026-11-12 ("as recommended").
 | O6 upstream reach | A: local outcomes plus attestation, with replace-before-clear |
 | O7 instance scope | A: no in-product lockdown |
 | O8 personal values | A: pause the personal-values deletion clock |
+| #1471 rotations | B: account-scope object kind, halt word `incident_contained` (declared amendment, 2026-11-23) |
 
 The elaborations under O2 and O3 (containing a linked-identity account over the network,
 an org-scope holder opening a project or adapter incident, the credential-retention
@@ -442,7 +490,32 @@ delegation failure tests, adversarial remint during containment, restart and con
 tests, an interface exercise on desktop, mobile and CLI, and an isolated recovery rehearsal)
 remain to be delivered by the implementation.
 
+## Owner decisions
+
+- **Self-containment stays refused.** The owner functions refuse containing the operator's
+  own account. This keeps the lockout guard of O3. An override would need its own decision.
+- **An org incident that lists the operator hands off.** Such an incident yields a contain
+  item for the operator that is always refused, so it cannot close clean while the operator's
+  own rotations (halted by their independent items) stay halted. The operator hands the
+  incident to another responder.
+- **An object outside the item stays live.** An owner whose item names an object outside
+  the incident, or one placed elsewhere than the item says (another project, environment
+  or org), answers not found and leaves the object live.
+- **Gone means gone from the whole instance** (2026-11-27, option A of the #1538 review).
+  An object absent from the item's placement is confirmed only when no row for it exists
+  anywhere in the instance. This holds for machine credentials, email invitations, SCIM
+  credentials, leases, adapter targets and rotations; an id found in another org answers
+  not found and stays live. A session is confirmed only when no principal holds it, so
+  another principal's live session answers not found and stays live. The probes run after
+  the owner authorizes at the incident's own scope and answer only confirmed or not found.
+- **A delegation id with no row stays unknown.** A developer delegation the item names but
+  no row holds at the item's placement is not confirmed: the item stays open as unknown.
+
 ## Review record
+
+Disposition for the #1471 amendment (task-level): cross-model review not run; the owner
+policy of 2026-10-29 makes it optional; independent same-provider Standards and Spec review
+done (claude-opus-5-5), findings repaired; not CLEAN for cross-model.
 
 Independent Spec review ran in two rounds against issue #1039; its findings were
 addressed in the text. Independent Standards review is recorded on the pull request.

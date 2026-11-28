@@ -1454,6 +1454,23 @@ func (q *Queries) HoldRestoredRotations(ctx context.Context, updatedAt string) e
 	return err
 }
 
+const incidentMemberAccountExists = `-- name: IncidentMemberAccountExists :one
+SELECT COUNT(*) FROM accounts JOIN principals ON principals.id = accounts.principal_id
+WHERE accounts.principal_id = ?1 AND principals.kind = 'human' AND principals.privacy_state = 'active'
+`
+
+// Incident member selection: whether a principal is a human with an account row
+// whose privacy is active, whatever its containment, so an org incident's owner
+// resumed after account.contain still finds the member its listing selected.
+// hikyo:reason Incident member selection drops only the containment condition: the org incident's owners check a member they may already have contained, inside the incident's own authorized transaction, and only a count is returned.
+// hikyo:authn-resolution
+func (q *Queries) IncidentMemberAccountExists(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, incidentMemberAccountExists, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertAccount = `-- name: InsertAccount :exec
 INSERT INTO accounts (id, principal_id, username, display_name, created_at)
 VALUES (?, ?, ?, ?, ?)
@@ -3071,6 +3088,21 @@ type RotateSessionFactorsParams struct {
 func (q *Queries) RotateSessionFactors(ctx context.Context, arg RotateSessionFactorsParams) error {
 	_, err := q.db.ExecContext(ctx, rotateSessionFactors, arg.Verifier, arg.Factors, arg.ID)
 	return err
+}
+
+const sessionExistsInInstance = `-- name: SessionExistsInInstance :one
+SELECT COUNT(*) FROM sessions WHERE id = ?1
+`
+
+// Incident confirmation: whether a session id exists anywhere in the instance, so
+// one absent from the item is confirmed only when it is gone.
+// hikyo:reason Incident session confirmation reads only whether one session id exists in the instance, inside the account incident's own authorized transaction; an id held by any principal keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+// hikyo:authn-resolution
+func (q *Queries) SessionExistsInInstance(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sessionExistsInInstance, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const slideReauthWindow = `-- name: SlideReauthWindow :execrows

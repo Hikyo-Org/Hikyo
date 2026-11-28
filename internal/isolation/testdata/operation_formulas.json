@@ -1025,6 +1025,30 @@
     ]
   },
   {
+    "operation": "incident.rotation-halt",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "credential-reset@org"
+    ]
+  },
+  {
+    "operation": "incident.rotations-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "credential-reset@instance"
+    ]
+  },
+  {
+    "operation": "incident.rotations-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "credential-reset@org"
+    ]
+  },
+  {
     "operation": "key-group.create",
     "class": "tenant",
     "level": "project",

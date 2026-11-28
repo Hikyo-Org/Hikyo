@@ -128,7 +128,7 @@ func purgeEnvironmentRotations(ctx context.Context, r store.Repos, proof authz.P
 type RotationView struct {
 	store.RotationRecord
 	// HaltReason is why a halted rotation stopped, as one of the fixed words
-	// (retries_exhausted, authority_lost, gate_failed, or unknown for any stored
+	// (retries_exhausted, authority_lost, gate_failed, incident_contained, or unknown for any stored
 	// value that is not one of them); empty unless the state is halted. Never the
 	// stored text itself: an archive can carry anything in that column.
 	HaltReason string
@@ -211,7 +211,7 @@ func rotationHaltWord(state, stored string) string {
 		return ""
 	}
 	switch stored {
-	case rotHaltExhausted, rotHaltAuthority, rotHaltGate:
+	case rotHaltExhausted, rotHaltAuthority, rotHaltGate, rotHaltIncident:
 		return stored
 	}
 	return RotationHaltUnknown
@@ -246,6 +246,7 @@ const (
 	rotationActionPaused       rotationAction = "paused"
 	rotationActionResumed      rotationAction = "resumed"
 	rotationActionDeleted      rotationAction = "deleted"
+	rotationActionHalted       rotationAction = "halted"
 	rotationActionHoldReleased rotationAction = "hold_released"
 )
 

@@ -380,6 +380,12 @@ const (
 	// OpIncidentAdapterWork is the enumeration's bounded read of one project's
 	// non-terminal route moves and pending scrub jobs.
 	OpIncidentAdapterWork Operation = "incident.adapter-work"
+	// The rotation listings and the halt (#1471): an account incident lists the
+	// scheduled rotations whose recorded authority principal is the contained
+	// account, and halts each one under the incident's credential-reset.
+	OpIncidentRotationsOrg      Operation = "incident.rotations-org"
+	OpIncidentRotationsInstance Operation = "incident.rotations-instance"
+	OpIncidentRotationHalt      Operation = "incident.rotation-halt"
 
 	// Audit trail reads (#45, audit-model ADR). One operation per addressed
 	// depth — the registry pins one depth per tenant operation, so the three
@@ -934,7 +940,9 @@ const (
 	StoreCataloguePresenceCascade         StoreOp = "catalogue.DeletePresenceForEnvironment"
 	StoreCatalogueRevisionGet             StoreOp = "catalogue.SchemaRevision"
 
-	StoreAdaptersTarget                 StoreOp = "adapters.Target"
+	StoreAdaptersTarget StoreOp = "adapters.Target"
+	// Incident confirmation: whether a target id exists anywhere in the instance.
+	StoreAdaptersTargetExistsInInstance StoreOp = "adapters.TargetExistsInInstance"
 	StoreAdaptersGet                    StoreOp = "adapters.Get"
 	StoreAdaptersConfiguration          StoreOp = "adapters.Configuration"
 	StoreAdaptersConfigurationForUpdate StoreOp = "adapters.ConfigurationForUpdate"
@@ -997,11 +1005,13 @@ const (
 	// every org (instance-scoped proof only).
 	StoreDynamicLeasesListNonTerminalProject  StoreOp = "dynamic.ListNonTerminalLeasesInProject"
 	StoreDynamicLeasesListNonTerminalInstance StoreOp = "dynamic.ListNonTerminalLeasesInInstance"
-	StoreDynamicLeasesCreate                  StoreOp = "dynamic.CreateLease"
-	StoreDynamicLeasesGet                     StoreOp = "dynamic.GetLease"
-	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
-	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
-	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+	// Incident confirmation: whether a lease id exists anywhere in the instance.
+	StoreDynamicLeaseExistsInInstance   StoreOp = "dynamic.LeaseExistsInInstance"
+	StoreDynamicLeasesCreate            StoreOp = "dynamic.CreateLease"
+	StoreDynamicLeasesGet               StoreOp = "dynamic.GetLease"
+	StoreDynamicLeasesList              StoreOp = "dynamic.ListLeasesForEnvironment"
+	StoreDynamicLeasesFinishMint        StoreOp = "dynamic.FinishMint"
+	StoreDynamicLeasesEnqueueTransition StoreOp = "dynamic.EnqueueTransition"
 	// StoreDynamicLeasesPurgeEnvironment removes a deleted environment's terminal
 	// lease and effect rows, refusing while a lease is live (#1420).
 	StoreDynamicLeasesPurgeEnvironment StoreOp = "dynamic.PurgeEnvironment"
@@ -1022,6 +1032,13 @@ const (
 	// that mint from a provider being deleted or losing its credential.
 	StoreRotationsPurgeEnvironment StoreOp = "rotations.PurgeEnvironment"
 	StoreRotationsPauseForProvider StoreOp = "rotations.PauseForProvider"
+	// The incident ledger lists a principal's live rotations by their recorded
+	// authority (#1471) and halts one under the incident's own authority.
+	StoreRotationsListByAuthorityInOrg      StoreOp = "rotations.ListByAuthorityInOrg"
+	StoreRotationsListByAuthorityInInstance StoreOp = "rotations.ListByAuthorityInInstance"
+	StoreRotationsHaltForIncident           StoreOp = "rotations.HaltForIncident"
+	// Incident confirmation: whether a rotation id exists anywhere in the instance.
+	StoreRotationsExistsInInstance StoreOp = "rotations.ExistsInInstance"
 	// StoreRotationsPauseForEnvironment pauses the active rotations of an
 	// environment, or of the whole project, that became protected or gained an
 	// approval policy.
@@ -1479,8 +1496,10 @@ const (
 	// directory write it.
 	StoreSCIMLockBinding StoreOp = "scim.LockBinding"
 
-	StoreSCIMCreateCredential            StoreOp = "scim.CreateCredential"
-	StoreSCIMCredential                  StoreOp = "scim.Credential"
+	StoreSCIMCreateCredential StoreOp = "scim.CreateCredential"
+	StoreSCIMCredential       StoreOp = "scim.Credential"
+	// Incident confirmation: one credential of the org by id, any binding.
+	StoreSCIMCredentialInOrg             StoreOp = "scim.CredentialInOrg"
 	StoreSCIMCredentials                 StoreOp = "scim.Credentials"
 	StoreSCIMRevokeCredential            StoreOp = "scim.RevokeCredential"
 	StoreSCIMRevokeCredentialsForBinding StoreOp = "scim.RevokeCredentialsForBinding"
@@ -1573,6 +1592,11 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreRotationsSummarize:     true,
 	StoreRotationsCountOpenRuns: true,
 	StoreRotationsListRuns:      true,
+	// The incident placement probes answer one count (#1039).
+	StoreDynamicLeaseExistsInInstance:   true,
+	StoreAdaptersTargetExistsInInstance: true,
+	StoreRotationsExistsInInstance:      true,
+	StoreSCIMCredentialInOrg:            true,
 	// SSH reads of public trust material and certificate metadata (#155).
 	StoreSSHGetCA:            true,
 	StoreSSHListCAs:          true,
@@ -2413,20 +2437,24 @@ var operationTable = map[Operation]opSpec{
 	// The incident ledger (#1039). The formula is the credential-reset formula
 	// itself, so whoever may reset a credential at a scope may open and work an
 	// incident there and nobody else. The ledger rides the resolution surface
-	// and the events ride the instance trail, so there is no store op for it.
+	// and the events ride the instance trail. Its store ops are the read-only
+	// placement probes: a lease or target absent from the item's placement is
+	// confirmed only when it is gone from the instance, not held by another
+	// project or org.
 	OpIncidentOrg: {
-		class:   ClassTenant,
-		level:   domain.LevelOrg,
-		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeaseExistsInInstance: true, StoreAdaptersTargetExistsInInstance: true},
 		events: []audit.EventType{
-			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
 		},
 	},
 	OpIncidentInstance: {
 		class:   ClassInstance,
 		formula: Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
 		events: []audit.EventType{
-			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed,
+			audit.EventIncidentOpened, audit.EventIncidentItemIntent, audit.EventIncidentItemOutcome, audit.EventIncidentClosed, audit.EventIncidentPrincipalContained,
 		},
 	},
 	// The project listing addresses the project and takes the org-level
@@ -2456,6 +2484,32 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAdaptersListOpenMoves: true, StoreAdaptersListScrubs: true, StoreAdaptersListOrphanedMoves: true},
 		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+
+	// Scheduled rotations by authority principal (#1471, incident-containment
+	// ADR amendment: rotation is an account-scope object kind). The listings are
+	// the enumeration of an incident the operations above opened; the halt is the
+	// owner function of that ledger item and runs on the rotation's environment
+	// under the org-level credential-reset atom, the way the lease listing does.
+	OpIncidentRotationsOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreRotationsListByAuthorityInOrg: true, StoreRotationsExistsInInstance: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+	OpIncidentRotationsInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreRotationsListByAuthorityInInstance: true},
+		events:   []audit.EventType{audit.EventIncidentOpened},
+	},
+	OpIncidentRotationHalt: {
+		class:    ClassTenant,
+		level:    domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCredentialReset, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreRotationsHaltForIncident: true, StoreRotationsGet: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRotationConfigured},
 	},
 
 	// The Project aggregate (#48). `manage-projects` is the permission-model ADR's
@@ -5039,11 +5093,13 @@ var operationTable = map[Operation]opSpec{
 		storeOps: scimOps(scimBase, scimCredentialOps),
 		events:   []audit.EventType{audit.EventSCIMAdminRead},
 	},
+	// The incident owner confirms a revoke by one by-id read of the org's
+	// credential under this operation (#1039).
 	OpSCIMCredentialRevoke: {
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
 		formula:  scimAdminFormula,
-		storeOps: scimOps(scimBase, scimCredentialOps),
+		storeOps: scimOps(scimBase, scimCredentialOps, map[StoreOp]bool{StoreSCIMCredentialInOrg: true}),
 		events:   []audit.EventType{audit.EventSCIMCredentialRevoked},
 	},
 

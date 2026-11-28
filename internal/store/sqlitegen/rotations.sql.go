@@ -398,6 +398,21 @@ func (q *Queries) RotationCredentialExpiry(ctx context.Context, arg RotationCred
 	return i, err
 }
 
+const rotationExistsInInstance = `-- name: RotationExistsInInstance :one
+SELECT COUNT(*) FROM rotations WHERE id=?1
+`
+
+// Incident confirmation: whether a rotation id exists anywhere in the instance, so
+// a rotation absent from the item's environment is confirmed only when it is gone.
+// hikyo:reason Incident rotation confirmation reads only whether one rotation id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+// hikyo:instance-scoped
+func (q *Queries) RotationExistsInInstance(ctx context.Context, rotationID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, rotationExistsInInstance, rotationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const rotationGet = `-- name: RotationGet :one
 SELECT id,environment_id,provider_id,key_id,username_key_id,interval_seconds,revocation_delay_seconds,authority_principal_id,created_by,state,next_run_at,generation,created_at,updated_at,restore_hold,halt_reason FROM rotations WHERE id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4
 `
@@ -881,6 +896,103 @@ func (q *Queries) RotationListAll(ctx context.Context, arg RotationListAllParams
 			&i.RestoreHold,
 			&i.HaltReason,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationListByAuthorityInInstance = `-- name: RotationListByAuthorityInInstance :many
+SELECT id,org_id,project_id,environment_id FROM rotations WHERE authority_principal_id=?1 AND state<>'disabled' AND id > ?2 ORDER BY id LIMIT ?3
+`
+
+type RotationListByAuthorityInInstanceParams struct {
+	AuthorityPrincipalID string
+	AfterID              string
+	RowLimit             int64
+}
+
+type RotationListByAuthorityInInstanceRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+}
+
+// The same page across every org, for an account whose footprint spans several.
+// hikyo:reason Instance-level incident enumeration lists the live rotation identifiers of one authority principal across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no rotation secret, key or provider detail is selected.
+// hikyo:instance-scoped
+func (q *Queries) RotationListByAuthorityInInstance(ctx context.Context, arg RotationListByAuthorityInInstanceParams) ([]RotationListByAuthorityInInstanceRow, error) {
+	rows, err := q.db.QueryContext(ctx, rotationListByAuthorityInInstance, arg.AuthorityPrincipalID, arg.AfterID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListByAuthorityInInstanceRow
+	for rows.Next() {
+		var i RotationListByAuthorityInInstanceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rotationListByAuthorityInOrg = `-- name: RotationListByAuthorityInOrg :many
+SELECT id,project_id,environment_id FROM rotations WHERE org_id=?1 AND authority_principal_id=?2 AND state<>'disabled' AND id > ?3 ORDER BY id LIMIT ?4
+`
+
+type RotationListByAuthorityInOrgParams struct {
+	ChainOrg             string
+	AuthorityPrincipalID string
+	AfterID              string
+	RowLimit             int64
+}
+
+type RotationListByAuthorityInOrgRow struct {
+	ID            string
+	ProjectID     string
+	EnvironmentID string
+}
+
+// Incident enumeration (#1471): one org's live rotations whose recorded authority
+// principal is the contained account, in id order, ids and placement only.
+// hikyo:reason Org-bounded incident enumeration lists the live rotation identifiers of one authority principal across the projects of one org behind the org credential-reset operation; the org_id predicate is the tenant bound and no project chain exists because the page spans the org's projects.
+// hikyo:instance-scoped
+func (q *Queries) RotationListByAuthorityInOrg(ctx context.Context, arg RotationListByAuthorityInOrgParams) ([]RotationListByAuthorityInOrgRow, error) {
+	rows, err := q.db.QueryContext(ctx, rotationListByAuthorityInOrg,
+		arg.ChainOrg,
+		arg.AuthorityPrincipalID,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationListByAuthorityInOrgRow
+	for rows.Next() {
+		var i RotationListByAuthorityInOrgRow
+		if err := rows.Scan(&i.ID, &i.ProjectID, &i.EnvironmentID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

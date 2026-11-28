@@ -259,6 +259,68 @@ func (q *Queries) GetCredentialPolicy(ctx context.Context) (GetCredentialPolicyR
 	return i, err
 }
 
+const getMachineCredentialInProject = `-- name: GetMachineCredentialInProject :one
+SELECT mc.id, mc.service_account_id, mc.kind, mc.prefix_hint, mc.lifetime, mc.expires_at,
+       mc.credential_epoch, mc.created_at, mc.created_by, mc.revoked_at, mc.last_used_at,
+       mc.issuer_id, mc.subject, mc.audience, mc.required_claims, mc.reactivated_at
+FROM machine_credentials mc
+JOIN service_accounts sa ON sa.id = mc.service_account_id
+WHERE sa.org_id = ?1 AND sa.project_id = ?2 AND mc.id = ?3
+`
+
+type GetMachineCredentialInProjectParams struct {
+	OrgID     string
+	ProjectID string
+	ID        string
+}
+
+type GetMachineCredentialInProjectRow struct {
+	ID               string
+	ServiceAccountID string
+	Kind             string
+	PrefixHint       sql.NullString
+	Lifetime         string
+	ExpiresAt        sql.NullString
+	CredentialEpoch  int64
+	CreatedAt        string
+	CreatedBy        string
+	RevokedAt        sql.NullString
+	LastUsedAt       sql.NullString
+	IssuerID         sql.NullString
+	Subject          sql.NullString
+	Audience         sql.NullString
+	RequiredClaims   sql.NullString
+	ReactivatedAt    sql.NullString
+}
+
+// One credential of one project by id, so the incident path's cost does not grow
+// with the project's service accounts.
+// hikyo:reason Incident revoke confirmation reads one credential of one project by id behind the org credential-reset operation of the incident; no bearer can be recovered.
+// hikyo:authn-resolution
+func (q *Queries) GetMachineCredentialInProject(ctx context.Context, arg GetMachineCredentialInProjectParams) (GetMachineCredentialInProjectRow, error) {
+	row := q.db.QueryRowContext(ctx, getMachineCredentialInProject, arg.OrgID, arg.ProjectID, arg.ID)
+	var i GetMachineCredentialInProjectRow
+	err := row.Scan(
+		&i.ID,
+		&i.ServiceAccountID,
+		&i.Kind,
+		&i.PrefixHint,
+		&i.Lifetime,
+		&i.ExpiresAt,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.CreatedBy,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.IssuerID,
+		&i.Subject,
+		&i.Audience,
+		&i.RequiredClaims,
+		&i.ReactivatedAt,
+	)
+	return i, err
+}
+
 const getServiceAccount = `-- name: GetServiceAccount :one
 SELECT id, principal_id, org_id, project_id, name, kind, created_at, created_by
 FROM service_accounts
@@ -784,6 +846,21 @@ func (q *Queries) MachineCredentialByVerifier(ctx context.Context, verifier []by
 		&i.ReactivatedAt,
 	)
 	return i, err
+}
+
+const machineCredentialExistsInInstance = `-- name: MachineCredentialExistsInInstance :one
+SELECT COUNT(*) FROM machine_credentials WHERE id = ?1
+`
+
+// Whether a credential id exists anywhere in the instance, so incident
+// confirmation tells one deleted apart from one held by any other service account.
+// hikyo:reason Incident revoke confirmation reads only whether one credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+// hikyo:authn-resolution
+func (q *Queries) MachineCredentialExistsInInstance(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, machineCredentialExistsInInstance, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const revokeAllMachineCredentials = `-- name: RevokeAllMachineCredentials :execrows

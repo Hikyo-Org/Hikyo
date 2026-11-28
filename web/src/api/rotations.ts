@@ -317,6 +317,8 @@ const HALT_SENTENCES: Record<string, string> = {
   authority_lost:
     'the recorded person no longer holds the access the rotation needs, or one of its keys or its environment is gone',
   gate_failed: 'a pre-publish gate refused: the environment became protected, a key changed or a draft appeared',
+  incident_contained:
+    'an incident that affects the recorded person (opened on the account, or on an org that selects it) halted it, and a release never resumes it',
   unknown: 'the server halted the rotation without a reason it can name',
 };
 

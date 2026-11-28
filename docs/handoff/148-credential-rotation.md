@@ -82,9 +82,9 @@ decision 13). Never a `SystemProof`, never a scheduler site.
   recommended (see "Owner decisions on S2b-2")
 - [x] S2b-2 metrics, `hikyo doctor`, the `restore_hold` column and release, key-aware
   pause, resume, delete and run-now (see "S2b-2 as built")
-- [ ] S2b-2 incident ledger enumeration of rotations: owner chose B (account scope only),
-  built in a follow-up branch from dev after this PR merges, not in this PR; containment itself
-  already halts the rotation
+- [x] S2b-2 incident ledger enumeration of rotations: owner chose B (account scope only),
+  built in #1039 slice 3 / #1471 (halt word `incident_contained`, org scope inherits through
+  the selected accounts, paused rotations halted too, independent of `account.contain`)
 - [x] S2b-2 run-level `published_versions_changed` hold release: option A (status only, as
   built), accepted as recommended
 - [x] S3 SPA status surface (merged); parity flip of the mutating rows to #1440 and the
@@ -1513,23 +1513,14 @@ A contained principal loads no grants, so a Gate that runs while the principal i
 (`RecordedPrincipalHolds`) refuses at the rotation's next start and halts it. Containment
 does not stop a run already past its Gate or a revoke in flight; a release of the principal never resumes it
 (`TestRotationHaltsWhenItsAuthorityIsContained`). That is containment through the existing
-seam. **Stopped, owner decision needed:** listing a principal's rotations as ledger items and
-pausing them through an owner function. What is settled: the ledger vocabulary is code-level
-(no CHECK on `owner_function` or `object_kind`), and `Incidents.Owners` has no registered
-owners yet (#1039 wires them). What is not settled: the ADR lists scheduled rotation under
-"Not decided here", and it gives no rotation effect for the org and project scopes.
-
-- A. Leave it. Containment halts by effect; the ledger does not list rotations. Cheapest;
-  the operator sees halted rotations in doctor and metrics but not on the incident.
-- B. Account scope only: add object kind `rotation` and owner function `rotation.halt`,
-  enumerate by authority principal in `collectAccount` (new store read and authz op), the
-  owner function halts with a named reason; org and project scopes ride on the accounts they
-  select. Registration of the owner stays with #1039.
-- C. B plus a project-scope item for every rotation in the project, whatever its authority.
-  Needs an ADR amendment for project scope.
-- Recommendation: B, after the owner confirms that org and project scopes inherit through
-  the accounts they select. It needs one new store read, one authz read operation and about
-  one slice of tests; none of it is in this PR.
+seam. **Decided 2026-11-23 (#1471, option B):** the incident ledger lists a contained
+account's live rotations by authority principal (object kind `rotation`) and the
+`rotation.halt` owner function halts each with the dedicated reason `incident_contained`
+(an open-enum word; `authority_lost` stays the executor's own). Org scope inherits through the
+accounts it selects; project and adapter scopes select no account and list no rotation. Release
+never resumes a halt. A refused containment item reads `pending/` in the ledger, with
+`owner_failed` only in the audit outcome event; slice 4 must show refused versus not yet run.
+See the amendment in the [incident-containment ADR](../adr/incident-containment.md).
 
 ### Run-level hold (`revoke_refused` with `published_versions_changed`)
 

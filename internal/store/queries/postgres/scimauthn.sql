@@ -77,3 +77,19 @@ FROM grants AS g
 INNER JOIN grant_origins AS o ON o.grant_id = g.id
 WHERE o.kind = 'lockout-retention' AND g.org_id = $1
 ORDER BY g.id, o.subject;
+
+-- Incident confirmation: one SCIM credential of one org by id, whatever its
+-- binding, so the owner reads the credential it names and nothing else.
+-- hikyo:reason Incident revoke confirmation reads one SCIM credential of one org by id behind the SCIM credential-revoke operation at that org; the org_id predicate comes from the proof, and no verifier or bearer is selected.
+-- hikyo:authn-resolution
+-- name: GetSCIMCredentialInOrg :one
+SELECT id, binding_id, principal_id, credential_epoch, created_at, expires_at,
+       revoked_at, last_used_at
+FROM scim_credentials WHERE org_id = $1 AND id = $2;
+
+-- Incident confirmation: whether a SCIM credential id exists anywhere in the instance, so
+-- one absent from the item is confirmed only when it is gone.
+-- hikyo:reason Incident revoke confirmation reads only whether one SCIM credential id exists in the instance behind the org credential-reset operation of the incident; an id found in any org keeps the item live (owner decision: gone means gone from the instance), and only a count is returned.
+-- hikyo:authn-resolution
+-- name: SCIMCredentialExistsInInstance :one
+SELECT COUNT(*) FROM scim_credentials WHERE id = sqlc.arg(id);

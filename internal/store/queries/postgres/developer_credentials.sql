@@ -13,6 +13,14 @@ SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,
 -- name: ListDeveloperCredentials :many
 SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials ORDER BY created_at,id;
 
+-- A terminal invalidation of one person's delegations reads only that person's
+-- rows (developer_credentials_authority), so its cost does not depend on the
+-- table size and another person's row is never decoded.
+-- hikyo:reason Terminal security invalidation reads one authority's delegation metadata atomically with its authorizing mutation; no bearer can be recovered.
+-- hikyo:authn-resolution
+-- name: ListDeveloperCredentialsByAuthority :many
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials WHERE authority_principal_id = sqlc.arg(authority) ORDER BY created_at,id;
+
 -- hikyo:reason Terminal security invalidation writes authentication state atomically with its authorizing mutation.
 -- hikyo:authn-resolution
 -- name: RevokeDeveloperCredential :exec
@@ -46,10 +54,29 @@ SELECT EXISTS (SELECT 1 FROM developer_credential_policy WHERE id <> 1 OR max_li
 
 -- Incident enumeration lists the live delegations minted inside one org, in id
 -- order and bounded by the limit. A non-empty authority narrows it to one human.
--- hikyo:reason Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org; no bearer can be recovered and the page is bounded.
+-- hikyo:reason Incident enumeration reads delegation metadata of one org after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident; no bearer can be recovered and the page is bounded.
 -- hikyo:authn-resolution
 -- name: ListLiveDeveloperCredentialsInOrg :many
 SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
 WHERE org_id = sqlc.arg(org_id) AND revoked_at IS NULL AND expires_at > sqlc.arg(now) AND credential_epoch = sqlc.arg(epoch) AND id > sqlc.arg(after_id)
   AND (sqlc.arg(authority)::text = '' OR authority_principal_id = sqlc.arg(authority))
 ORDER BY id LIMIT sqlc.arg(row_limit);
+
+-- Incident confirmation looks one delegation up by id inside its org, so its cost
+-- does not depend on how many live delegations the org holds.
+-- hikyo:reason Incident revoke confirmation reads one delegation of one org by id after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered.
+-- hikyo:authn-resolution
+-- name: GetLiveDeveloperCredentialInOrg :one
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
+WHERE org_id = sqlc.arg(org_id) AND id = sqlc.arg(id) AND revoked_at IS NULL AND expires_at > sqlc.arg(now) AND credential_epoch = sqlc.arg(epoch)
+  AND (sqlc.arg(authority)::text = '' OR authority_principal_id = sqlc.arg(authority));
+
+-- The incident revoke looks one delegation up by id at its exact placement, live
+-- or not, so an item outside the incident is told apart from one already gone and
+-- the cost does not depend on the table size.
+-- hikyo:reason Incident revoke reads one delegation by id at its org, project and env placement after the operation authorized credential-reset at that org, or at the instance for an instance-scope account incident, and manage-identities at the project for a delegation placed in one; no bearer can be recovered.
+-- hikyo:authn-resolution
+-- name: GetDeveloperCredentialInScope :one
+SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,prefix_hint,parent_session_id,provider_id,oauth2_provider_id,saml_provider_id,auth_method,authority_generation,credential_epoch,created_at,expires_at,revoked_at,personal_consent FROM developer_credentials
+WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) AND env_id = sqlc.arg(env_id)
+  AND (sqlc.arg(authority)::text = '' OR authority_principal_id = sqlc.arg(authority));

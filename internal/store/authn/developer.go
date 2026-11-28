@@ -56,9 +56,29 @@ func (r *Resolver) DeveloperCredentialByVerifier(ctx context.Context, v []byte) 
 	return pgDeveloper(row)
 }
 func (r *Resolver) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCredential, error) {
+	return r.listDeveloperCredentials(ctx, "")
+}
+
+// DeveloperCredentialsByAuthority reads one authority's delegations, revoked and
+// expired included, by the developer_credentials_authority index.
+func (r *Resolver) DeveloperCredentialsByAuthority(ctx context.Context, authority domain.PrincipalID) ([]DeveloperCredential, error) {
+	if authority == "" {
+		return nil, domain.ErrInvalid
+	}
+	return r.listDeveloperCredentials(ctx, authority)
+}
+
+// listDeveloperCredentials reads every delegation, or one authority's when given.
+func (r *Resolver) listDeveloperCredentials(ctx context.Context, authority domain.PrincipalID) ([]DeveloperCredential, error) {
 	out := []DeveloperCredential{}
 	if r.sq != nil {
-		rows, err := r.sq.ListDeveloperCredentials(ctx)
+		var rows []sqlitegen.DeveloperCredential
+		var err error
+		if authority != "" {
+			rows, err = r.sq.ListDeveloperCredentialsByAuthority(ctx, string(authority))
+		} else {
+			rows, err = r.sq.ListDeveloperCredentials(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +90,13 @@ func (r *Resolver) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCre
 			out = append(out, c)
 		}
 	} else {
-		rows, err := r.pg.ListDeveloperCredentials(ctx)
+		var rows []pggen.DeveloperCredential
+		var err error
+		if authority != "" {
+			rows, err = r.pg.ListDeveloperCredentialsByAuthority(ctx, string(authority))
+		} else {
+			rows, err = r.pg.ListDeveloperCredentials(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -220,4 +246,58 @@ func (r *Resolver) LiveDeveloperCredentialsInOrg(ctx context.Context, org domain
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// LiveDeveloperCredentialInOrg reads one live delegation of the org by id (and,
+// when given, authority), so the cost does not depend on how many the org holds.
+// An absent or no longer live one is ErrNotFound.
+func (r *Resolver) LiveDeveloperCredentialInOrg(ctx context.Context, org domain.OrgID, authority domain.PrincipalID, id string, now time.Time) (DeveloperCredential, error) {
+	if org == "" || id == "" {
+		return DeveloperCredential{}, domain.ErrInvalid
+	}
+	epoch, err := r.CredentialEpoch(ctx)
+	if err != nil {
+		return DeveloperCredential{}, err
+	}
+	if r.sq != nil {
+		row, err := r.sq.GetLiveDeveloperCredentialInOrg(ctx, sqlitegen.GetLiveDeveloperCredentialInOrgParams{
+			OrgID: string(org), ID: id, Now: encodeTime(now), Epoch: epoch, Authority: string(authority),
+		})
+		if err != nil {
+			return DeveloperCredential{}, notFoundOr(err)
+		}
+		return sqliteDeveloper(row)
+	}
+	row, err := r.pg.GetLiveDeveloperCredentialInOrg(ctx, pggen.GetLiveDeveloperCredentialInOrgParams{
+		OrgID: string(org), ID: id, Now: pgTimestamp(now), Epoch: epoch, Authority: string(authority),
+	})
+	if err != nil {
+		return DeveloperCredential{}, notFoundOr(err)
+	}
+	return pgDeveloper(row)
+}
+
+// DeveloperCredentialInScope reads one delegation by id at its exact org, project
+// and env placement (and, when given, authority), revoked or expired included, so
+// its cost does not depend on the table size. None there is ErrNotFound.
+func (r *Resolver) DeveloperCredentialInScope(ctx context.Context, scope domain.Scope, authority domain.PrincipalID, id string) (DeveloperCredential, error) {
+	if scope.Org == "" || id == "" {
+		return DeveloperCredential{}, domain.ErrInvalid
+	}
+	if r.sq != nil {
+		row, err := r.sq.GetDeveloperCredentialInScope(ctx, sqlitegen.GetDeveloperCredentialInScopeParams{
+			ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), Authority: string(authority),
+		})
+		if err != nil {
+			return DeveloperCredential{}, notFoundOr(err)
+		}
+		return sqliteDeveloper(row)
+	}
+	row, err := r.pg.GetDeveloperCredentialInScope(ctx, pggen.GetDeveloperCredentialInScopeParams{
+		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), Authority: string(authority),
+	})
+	if err != nil {
+		return DeveloperCredential{}, notFoundOr(err)
+	}
+	return pgDeveloper(row)
 }

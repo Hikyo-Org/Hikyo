@@ -1127,3 +1127,66 @@ func (r *Resolver) ServiceAccountsCreatedBy(ctx context.Context, creator domain.
 	}
 	return out, nil
 }
+
+// MachineCredentialInProject reads one credential by id when its service account
+// belongs to the project, so the cost does not depend on the project's accounts.
+// A credential of another project, or none, is ErrNotFound.
+func (r *Resolver) MachineCredentialInProject(ctx context.Context, scope domain.Scope, id string) (MachineCredential, error) {
+	if r.sq != nil {
+		row, err := r.sq.GetMachineCredentialInProject(ctx, sqlitegen.GetMachineCredentialInProjectParams{
+			OrgID: string(scope.Org), ProjectID: string(scope.Project), ID: id,
+		})
+		if err != nil {
+			return MachineCredential{}, notFoundOr(err)
+		}
+		return credentialFromSQLite(sqlitegen.ListMachineCredentialsRow(row))
+	}
+	row, err := r.pg.GetMachineCredentialInProject(ctx, pggen.GetMachineCredentialInProjectParams{
+		OrgID: string(scope.Org), ProjectID: string(scope.Project), ID: id,
+	})
+	if err != nil {
+		return MachineCredential{}, notFoundOr(err)
+	}
+	return credentialFromPG(pggen.ListMachineCredentialsRow(row)), nil
+}
+
+// MachineCredentialExistsInInstance reports whether a credential id is held by
+// any service account of the instance, revoked or not.
+func (r *Resolver) MachineCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.MachineCredentialExistsInInstance, r.pg.MachineCredentialExistsInInstance, id)
+}
+
+// countByID runs one by-id count query on the open engine and reports whether
+// the id has a row.
+func (r *Resolver) countByID(ctx context.Context, sq, pg func(context.Context, string) (int64, error), id string) (bool, error) {
+	run := pg
+	if r.sq != nil {
+		run = sq
+	}
+	n, err := run(ctx, id)
+	return n > 0, err
+}
+
+// OrgEmailInvitationExistsInInstance reports whether an invitation id has a row
+// in any org of the instance.
+func (r *Resolver) OrgEmailInvitationExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.OrgEmailInvitationExistsInInstance, r.pg.OrgEmailInvitationExistsInInstance, id)
+}
+
+// SCIMCredentialExistsInInstance reports whether a SCIM credential id has a row
+// in any org of the instance, revoked or not.
+func (r *Resolver) SCIMCredentialExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.SCIMCredentialExistsInInstance, r.pg.SCIMCredentialExistsInInstance, id)
+}
+
+// SessionExistsInInstance reports whether a session id has a row, whichever
+// principal holds it.
+func (r *Resolver) SessionExistsInInstance(ctx context.Context, id string) (bool, error) {
+	return r.countByID(ctx, r.sq.SessionExistsInInstance, r.pg.SessionExistsInInstance, id)
+}
+
+// IncidentMemberAccountExists reports whether a principal is a human with an
+// account row whose privacy is active, whatever its containment.
+func (r *Resolver) IncidentMemberAccountExists(ctx context.Context, p domain.PrincipalID) (bool, error) {
+	return r.countByID(ctx, r.sq.IncidentMemberAccountExists, r.pg.IncidentMemberAccountExists, string(p))
+}
