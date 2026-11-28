@@ -144,9 +144,9 @@ func bareTests(script string) ([]int, error) {
 		fedStdin := false
 		for _, redirect := range s.Redirs {
 			fedTo := ""
-			if stdin != noStdin && (redirect.N == nil || redirect.N.Value == "0") {
+			if stdin != noStdin && onStdin(redirect) {
 				fedTo = name
-				fedStdin = fedStdin || feedsScript(redirect)
+				fedStdin = feedsScript(redirect) // the last redirect of fd 0 wins
 			}
 			if redirect.Op == syntax.WordHdoc && fedTo != "" {
 				nested(codeText(redirect.Word), int(redirect.Word.Pos().Line()), name+" here-string", stdin == readsStdin)
@@ -196,7 +196,9 @@ var heredocEscape = regexp.MustCompile("\\\\([$`\\\\])")
 // handedCode reads the command call runs, past builtin, command, exec, env and nohup and their
 // options: its name, the code it hands to bash (an eval's words, a trap's action, an env -S
 // string, a bash or sh -c string, as codeText reads them) with the word that holds it, and
-// whether it is bash or sh reading its script from stdin, or a source of /dev/stdin.
+// whether it reads its script from stdin: bash or sh with -s or no script operand, a script
+// operand of /dev/stdin, or a source of /dev/stdin read it; an expanded word in place of the
+// operand may. Through env -S, the shell the string runs is returned, with no code.
 func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, stdin stdinUse) {
 	if call == nil {
 		return "", "", nil, noStdin
@@ -241,17 +243,18 @@ prefixes:
 						quoted, _ := syntax.Quote(codeText(arg), syntax.LangBash)
 						split += " " + quoted
 					}
-					if f, perr := syntax.NewParser().Parse(strings.NewReader(split), ""); perr == nil && len(f.Stmts) == 1 && len(f.Stmts[0].Redirs) == 0 {
+					// env performs no redirection, so a < in the string is only an argument.
+					if f, perr := syntax.NewParser().Parse(strings.NewReader(split), ""); perr == nil && len(f.Stmts) == 1 {
 						if inner, ok := f.Stmts[0].Cmd.(*syntax.CallExpr); ok {
-							if name, _, _, stdin := handedCode(inner); stdin != noStdin {
-								return name, "", nil, stdin // the heredoc env is fed goes to this shell
+							if innerName, _, _, innerStdin := handedCode(inner); innerStdin != noStdin {
+								return innerName, "", nil, innerStdin // the heredoc env is fed goes to this shell
 							}
 						}
 					}
 					return "env", split, words[0], noStdin
-				case envValued.MatchString(option) || (long == "--unset" || long == "--chdir") && hasValue:
+				case envValued.MatchString(option) || envLongValued[long] && hasValue:
 					words = words[1:] // -uNAME, -CDIR, --unset=NAME, --chdir=DIR
-				case (envValueNext.MatchString(option) || option == "--unset" || option == "--chdir") && len(words) > 2:
+				case (envValueNext.MatchString(option) || envLongValued[option]) && len(words) > 2:
 					words = words[2:]
 				default:
 					continue prefixes
@@ -364,6 +367,18 @@ const (
 	readsStdin
 )
 
+// onStdin reports whether redirect applies to fd 0.
+func onStdin(redirect *syntax.Redirect) bool {
+	if redirect.N != nil {
+		return redirect.N.Value == "0"
+	}
+	switch redirect.Op {
+	case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn, syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+		return true
+	}
+	return false
+}
+
 // feedsScript reports whether redirect gives fd 0 a script the scan can see: a heredoc, a
 // here-string or a file, not stdin itself or a process substitution.
 func feedsScript(redirect *syntax.Redirect) bool {
@@ -379,15 +394,16 @@ func feedsScript(redirect *syntax.Redirect) bool {
 }
 
 var (
-	execFlags    = regexp.MustCompile(`^-[cpl]+$`)
-	execNamed    = regexp.MustCompile(`^-[cl]*a$`)
-	envFlags     = regexp.MustCompile(`^-[iv0]+$`)
-	envValued    = regexp.MustCompile(`^-[iv0]*[uCP].+$`)
-	envValueNext = regexp.MustCompile(`^-[iv0]*[uCP]$`)
-	envLongFlags = map[string]bool{"--ignore-environment": true, "--null": true, "--debug": true, "--default-signal": true, "--ignore-signal": true, "--block-signal": true, "--list-signal-handling": true}
-	envSplit     = regexp.MustCompile(`^-[iv0]*S`)
-	shellFlags   = regexp.MustCompile(`^[-+][a-zA-Z]+$`)
-	stdinPaths   = map[string]bool{"/dev/stdin": true, "/dev/fd/0": true, "/proc/self/fd/0": true}
+	execFlags     = regexp.MustCompile(`^-[cpl]+$`)
+	execNamed     = regexp.MustCompile(`^-[cl]*a$`)
+	envFlags      = regexp.MustCompile(`^-[iv0]+$`)
+	envValued     = regexp.MustCompile(`^-[iv0]*[uCPa].+$`)
+	envValueNext  = regexp.MustCompile(`^-[iv0]*[uCPa]$`)
+	envLongValued = map[string]bool{"--unset": true, "--chdir": true, "--argv0": true, "--env0-from": true}
+	envLongFlags  = map[string]bool{"--ignore-environment": true, "--null": true, "--debug": true, "--default-signal": true, "--ignore-signal": true, "--block-signal": true, "--list-signal-handling": true}
+	envSplit      = regexp.MustCompile(`^-[iv0]*S`)
+	shellFlags    = regexp.MustCompile(`^[-+][a-zA-Z]+$`)
+	stdinPaths    = map[string]bool{"/dev/stdin": true, "/dev/fd/0": true, "/proc/self/fd/0": true}
 )
 
 // codeText is word's value as code: quotes and backslashes removed, $'...' escapes decoded,
@@ -493,6 +509,14 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env --chdir /":                      "env --chdir / bash -c '[[ a == b ]]'\n",
 		"env -P":                             "env -P /bin bash -c '[[ a == b ]]'\n",
 		"env --split-string then words":      "env --split-string 'bash -c' '[[ a == b ]]'\n",
+		"env -S ignores <":                   "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
+		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
+		"env --env0-from=":                   "env --env0-from=f bash -c '[[ a == b ]]'\n",
+		"env --block-signal=":                "env --block-signal=INT bash -c '[[ a == b ]]'\n",
+		"env --ignore-signal":                "env --ignore-signal bash -c '[[ a == b ]]'\n",
+		"env --list-signal-handling":         "env --list-signal-handling bash -c '[[ a == b ]]'\n",
+		"heredoc, then stdout":               "bash <<'EOF' >out\n[[ a == b ]]\nEOF\n",
 		"exec -la name":                      "exec -la n bash -c '[[ a == b ]]'\n",
 		"env -iv":                            "env -iv bash -c '[[ a == b ]]'\n",
 		"env -CDIR":                          "env -C/ bash -c '[[ a == b ]]'\n",
@@ -605,6 +629,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"bash --version":                "bash --version\nsh --help\n",
 		"expanded script, flag, data":   "bash \"$script\" -e <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script, here-string":  "bash \"$script\" <<<'not ( shell'\n",
+		"expanded script, no stdin":     "bash \"$script\"\necho x | bash \"$script\"\n",
+		"env -S expanded script data":   "env -S 'bash \"$x\"' <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script fed data":      "bash \"$script\" <<'EOF'\nnot ( shell\nEOF\n",
 		"double-quoted continuation":    "eval \"echo \\\n[[ a == b ]]\"\n",
 		"ansi quote decoded":            "eval $'echo \\\"; [[ a == b ]] #\\\"'\n",
@@ -714,7 +740,8 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"echo x | bash\n", "printf x | sh -s -- a\n", "echo x | bash >/dev/null\n", "echo x | bash 2>&1\n", "echo x |& bash\n",
 		"source /dev/stdin\n", ". /dev/fd/0\n", "source -- /proc/self/fd/0\n", "bash 3<<'EOF'\nx\nEOF\n", "bash <&3\n",
 		"{ bash; } <<'EOF'\n[[ a == b ]]\nEOF\n", "( bash -s ) <<'EOF'\nx\nEOF\n", "exec 0<<'EOF'\nx\nEOF\nbash\n", "run() { bash -s; }\n", "coproc bash\n",
-		"source /dev/stdin </dev/stdin\n", "bash </dev/stdin\n", "bash < <(printf x)\n",
+		"source /dev/stdin </dev/stdin\n", "bash <<'EOF' 0<&3\nx\nEOF\n",
+		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed "bash </dev/stdin\n", "bash < <(printf x)\n",
 	} {
 		if _, err := bareTests(script); err == nil || !strings.Contains(err.Error(), "cannot be scanned") {
 			t.Errorf("%q: got %v, want a script read from stdin rejected", script, err)
@@ -724,6 +751,9 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		if _, err := bareTests(script); err != nil {
 			t.Errorf("%q: %v, want accepted", script, err)
 		}
+	}
+	if _, err := bareTests("bash -s <<'EOF'\nif\nEOF\n"); err == nil {
+		t.Error("an unparsable heredoc fed to bash -s must be an error")
 	}
 	if _, err := bareTests("cat >f <<'EOF'\n#!/bin/bash5\n[[ a == b ]]\nEOF\n"); err == nil || !strings.Contains(err.Error(), "does not read") {
 		t.Errorf("a heredoc whose shebang the scan does not read must be an error: %v", err)
