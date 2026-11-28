@@ -315,7 +315,9 @@ apply when the implementing pull request merges.
   the environments the names match at read time.
   A rule-authorized check reads environments once to bind names: a project-level check that names
   no rule, outside navigation, reads only the checked project's, any other check the org's. That
-  one read per check is accepted as the price of binding by name (owner, 2026-11-28).
+  one read per check is accepted as the price of binding by name (owner, 2026-11-28). A rule create
+  binds its names once before the caller is proved: over one named project it reads only that
+  project's environments, and the org's otherwise.
 - **Option A lifted.** A rule over all projects may carry environment names, *only* or *except*, as
   any rule may. Single-key items stay refused on such a rule, and machines never hold one. The 500
   bound counts the rule as a v1 response can list it: projects × (1 + folders + names), names
