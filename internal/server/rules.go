@@ -319,10 +319,18 @@ func wireWidening(count int, gains []service.WideningGain) *apigen.WideningRefus
 		for _, e := range g.Envs {
 			envs = append(envs, string(e))
 		}
-		gainers = append(gainers, apigen.WideningGainer{
+		gainer := apigen.WideningGainer{
 			PrincipalId: string(g.Principal), PrincipalName: optStr(g.Name),
 			Capability: apigen.RuleCapability(g.Capability), Environments: envs,
-		})
+		}
+		if g.Keys != nil {
+			keys := apigen.RuleKeyAxis{Mode: apigen.RuleAxisMode(g.Keys.Mode), Items: make([]apigen.RuleKeyItem, 0, len(g.Keys.Items))}
+			for _, k := range g.Keys.Items {
+				keys.Items = append(keys.Items, wireRuleKeyItem(g.Keys.Project, k))
+			}
+			gainer.Keys = &keys
+		}
+		gainers = append(gainers, gainer)
 	}
 	out.Gainers = &gainers
 	return out

@@ -4899,6 +4899,15 @@ export type WideningGainer = {
      *
      */
     environments: Array<Id>;
+    /**
+     * Present when the gain reaches only the keys this selector names in
+     * the project, as for a rule narrowed to folders or keys; absent,
+     * every key (for a key folder move, the moved key). A principal
+     * gaining one environment over several selectors has one gainer per
+     * selector.
+     *
+     */
+    keys?: RuleKeyAxis;
 };
 
 /**

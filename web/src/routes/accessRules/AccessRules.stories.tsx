@@ -406,6 +406,34 @@ export const EnvironmentRenameConfirmation: Story = {
   },
 };
 
+// A gain narrowed by the rule's key selector names it: Dana's rule picks only
+// db/, so the renamed environment is gained for those keys, not all of them.
+const narrowedWidening = {
+  count: 2,
+  gainers: [
+    {
+      principal_id: IDS.dana,
+      principal_name: 'Dana Ruiz',
+      capability: 'edit' as const,
+      environments: [IDS.payDev],
+      keys: { mode: 'only' as const, items: [{ project: IDS.payments, folder: 'db' }] },
+    },
+    { principal_id: IDS.ci, principal_name: 'ci-deploy', capability: 'read' as const, environments: [IDS.payDev] },
+  ],
+};
+
+export const EnvironmentRenameNarrowedGain: Story = {
+  name: 'Environment rename, gain narrowed to a folder',
+  render: () => (
+    <WideningConfirmDialog widening={narrowedWidening} change="Rename dev to staging" copy={ENV_WIDENING_COPY} envName={() => 'staging'} onCancel={fn()} onConfirm={fn()} />
+  ),
+  play: async ({ canvas }) => {
+    const dialog = within(await canvas.findByRole('dialog', { name: 'This gives people and machines new access' }));
+    await expect(dialog.getByText((_, el) => el?.tagName === 'LI' && /^Dana Ruiz ID ending …\S{6}: Edit \(staging, only db\/\)$/.test(el.textContent))).toBeVisible();
+    await expect(dialog.getByText((_, el) => el?.tagName === 'LI' && /^ci-deploy ID ending …\S{6}: See \(staging\)$/.test(el.textContent))).toBeVisible();
+  },
+};
+
 // Without manage-members on the project, only the count: no confirm action.
 export const EnvironmentRenameCountOnly: Story = {
   name: 'Environment rename, count only',

@@ -3104,46 +3104,6 @@ export const zRuleEnvironmentAxis = z.object({
     items: z.array(zRuleEnvironmentItem).max(500)
 });
 
-export const zWideningGainer = z.object({
-    principal_id: zId,
-    principal_name: z.string().optional(),
-    capability: zRuleCapability,
-    environments: z.array(zId)
-});
-
-/**
- * A key folder move (member-access-rules ADR D9), or an environment
- * rename, creation or deletion (revision 22), alone or in a definitions
- * plan, that gives principals access through their member access
- * rules. `count` is always present; the people and
- * machines and what they gain are named only to a caller holding
- * `manage-members` on the project, who confirms by resending the request
- * with `confirm_widening` listing exactly those principal ids.
- *
- */
-export const zWideningRefusal = z.object({
-    count: z.int().gte(1),
-    gainers: z.array(zWideningGainer).optional()
-});
-
-export const zError = z.object({
-    error: z.object({
-        code: zErrorCode,
-        message: z.string(),
-        detail: z.string().nullish(),
-        widening: zWideningRefusal.optional(),
-        findings: z.array(zScanFinding).optional()
-    })
-});
-
-/**
- * RFC 8628 protocol errors or the shared malformed-request refusal.
- */
-export const zCliDeviceErrorResponse = z.union([
-    zCliDeviceError,
-    zError
-]);
-
 /**
  * The principal ids a key folder move, or an environment rename,
  * creation or deletion, gives access through their member access rules, confirming
@@ -3877,6 +3837,47 @@ export const zRuleList = z.object({
     items: z.array(zRule),
     count: z.int().gte(0)
 });
+
+export const zWideningGainer = z.object({
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    capability: zRuleCapability,
+    environments: z.array(zId),
+    keys: zRuleKeyAxis.optional()
+});
+
+/**
+ * A key folder move (member-access-rules ADR D9), or an environment
+ * rename, creation or deletion (revision 22), alone or in a definitions
+ * plan, that gives principals access through their member access
+ * rules. `count` is always present; the people and
+ * machines and what they gain are named only to a caller holding
+ * `manage-members` on the project, who confirms by resending the request
+ * with `confirm_widening` listing exactly those principal ids.
+ *
+ */
+export const zWideningRefusal = z.object({
+    count: z.int().gte(1),
+    gainers: z.array(zWideningGainer).optional()
+});
+
+export const zError = z.object({
+    error: z.object({
+        code: zErrorCode,
+        message: z.string(),
+        detail: z.string().nullish(),
+        widening: zWideningRefusal.optional(),
+        findings: z.array(zScanFinding).optional()
+    })
+});
+
+/**
+ * RFC 8628 protocol errors or the shared malformed-request refusal.
+ */
+export const zCliDeviceErrorResponse = z.union([
+    zCliDeviceError,
+    zError
+]);
 
 /**
  * One primitive type declaration with its constraints. Each constraint

@@ -13242,6 +13242,13 @@ type WideningGainer struct {
 	// environment the rule excepts.
 	Environments []ID `json:"environments"`
 
+	// Keys Present when the gain reaches only the keys this selector names in
+	// the project, as for a rule narrowed to folders or keys; absent,
+	// every key (for a key folder move, the moved key). A principal
+	// gaining one environment over several selectors has one gainer per
+	// selector.
+	Keys *RuleKeyAxis `json:"keys,omitzero"`
+
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId   ID      `json:"principal_id"`
 	PrincipalName *string `json:"principal_name,omitzero"`

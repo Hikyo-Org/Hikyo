@@ -12,6 +12,7 @@ import {
   availability,
   createBody,
   effective,
+  keyScopeText,
   machineRefusal,
   machineWhereRefusal,
   newRule,
@@ -583,5 +584,12 @@ describe('environments by name (#1447)', () => {
     const envs = { mode: 'only' as const, names: [], items: [] };
     const rules = rulesFromServer([server(envs, 'Reason one.'), { ...server(envs, 'Reason two.'), id: 'rul_off2', capability: 'read' as const }]);
     expect(rules.map((r) => r.fault)).toEqual(['Reason one.', 'Reason two.']);
+  });
+});
+
+describe('keyScopeText', () => {
+  it('reads a widening gain narrowed by its key selector', () => {
+    expect(keyScopeText({ mode: 'only', items: [{ project: IDS.payments, folder: 'db' }] })).toBe('only db/');
+    expect(keyScopeText({ mode: 'all', items: [{ project: IDS.payments, folder: '' }, { project: IDS.payments, key: 'key_1' }] })).toBe('all except (no folder), key_1');
   });
 });

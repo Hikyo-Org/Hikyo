@@ -1006,6 +1006,13 @@ func TestEnvironmentRenameWideningKeepsKeySelectors(t *testing.T) {
 		if !errors.As(err, &widening) || !slices.Equal(widening.Principals, []domain.PrincipalID{envExcpt}) {
 			t.Fatalf("renaming dev into the restricted rule's qa = %v, want a refusal naming %s", err, envExcpt)
 		}
+		// The gain names the restricted folder it reaches, not the whole of dev.
+		if !slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool {
+			return g.Principal == envExcpt && g.Capability == domain.CapEdit && slices.Equal(g.Envs, []domain.EnvID{"env_a1"}) && g.Keys != nil &&
+				g.Keys.Project == prjA1 && g.Keys.Mode == domain.AxisOnly && slices.Equal(g.Keys.Items, []domain.RuleKeyItem{folderItem("restricted")})
+		}) || slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool { return g.Capability == domain.CapEdit && g.Keys == nil }) {
+			t.Fatalf("rename gains = %+v, want edit of dev over folder restricted only", widening.Gains)
+		}
 		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, []domain.PrincipalID{envExcpt}); err != nil {
 			t.Fatalf("confirmed rename: %v", err)
 		}

@@ -1,7 +1,9 @@
 package service
 
 import (
+	"cmp"
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -157,7 +159,7 @@ func (c envChange) after() []domain.EnvRef {
 // principal reaches already still gains. It is held already only by the same
 // selector or by reach over every key; overlapping selectors are not merged,
 // which may ask for a confirmation that is not strictly needed, never miss one.
-func (c envChange) gains() []WideningGain { return gainsOf(c.gainAtoms()) }
+func (c envChange) gains() []WideningGain { return gainsOf(c.scope.Project, c.gainAtoms()) }
 
 // gainAtoms is gains as unmerged atoms, the project its own atom, so a plan
 // can attribute each one to the change that causes it.
@@ -401,16 +403,45 @@ func firstErr(err error, otherwise error) error {
 }
 
 // keySelector is a canonical form of a rule's key selector in one project, so
-// two rules selecting the same keys compare equal.
+// two rules selecting the same keys compare equal; keysOf reads it back.
 func keySelector(mode domain.AxisMode, items []domain.RuleKeyItem) string {
-	parts := make([]string, 0, len(items))
-	for _, it := range items {
-		if it.IsFolder {
-			parts = append(parts, "folder:"+it.Folder)
-		} else {
-			parts = append(parts, "key:"+it.KeyID)
-		}
+	items = slices.Clone(items)
+	slices.SortFunc(items, func(x, y domain.RuleKeyItem) int {
+		return cmp.Or(-cmpBool(x.IsFolder, y.IsFolder), strings.Compare(x.Folder, y.Folder), strings.Compare(x.KeyID, y.KeyID))
+	})
+	raw, err := json.Marshal(wireSelector{Mode: mode, Items: slices.Compact(items)})
+	if err != nil {
+		panic(fmt.Sprintf("service: encode key selector: %v", err)) // strings and a bool always encode
 	}
-	slices.Sort(parts)
-	return fmt.Sprintf("%s|%s", mode, strings.Join(slices.Compact(parts), "\x00"))
+	return string(raw)
+}
+
+// wireSelector is keySelector's encoding.
+type wireSelector struct {
+	Mode  domain.AxisMode
+	Items []domain.RuleKeyItem
+}
+
+// keysOf is the selector keySelector encoded as keys in project; nil for "",
+// every key.
+func keysOf(project domain.ProjectID, keys string) *WideningKeys {
+	if keys == "" {
+		return nil
+	}
+	var sel wireSelector
+	if err := json.Unmarshal([]byte(keys), &sel); err != nil {
+		panic(fmt.Sprintf("service: decode key selector: %v", err)) // keys only ever comes from keySelector
+	}
+	return &WideningKeys{Project: project, Mode: sel.Mode, Items: sel.Items}
+}
+
+func cmpBool(x, y bool) int {
+	switch {
+	case x == y:
+		return 0
+	case x:
+		return 1
+	default:
+		return -1
+	}
 }

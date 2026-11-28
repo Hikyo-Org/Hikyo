@@ -762,9 +762,9 @@ func (s *Definitions) confirmWidenings(ctx context.Context, r store.Repos, az *a
 		causers = 0 // no single change explains the plan's gains
 	}
 	for i := range changes {
-		changes[i].gained = gainsOf(owns[i])
+		changes[i].gained = gainsOf(scope.Project, owns[i])
 	}
-	envGains := gainsOf(all)
+	envGains := gainsOf(scope.Project, all)
 	union = mergeGains(union, envGains)
 	if len(union) == 0 {
 		return nil

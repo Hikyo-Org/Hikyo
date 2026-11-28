@@ -181,3 +181,40 @@ func runRuleWire(t *testing.T, db *store.DB) {
 		t.Fatal("a refused revoke removed the rule")
 	}
 }
+
+// A widening refusal names the key selector a gain reaches (#1447): an
+// environment created into a rule narrowed to folder db reads as db only, not
+// as the whole environment, on the wire.
+func TestRuleWireWideningNamesKeySelector(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := newAccessWireEnv(t, db)
+		const holder = "usr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f81"
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO principals (id, kind, created_at) VALUES ('%s', 'human', %s)`, holder, ts))
+		org := api.PathPrefix + "/orgs/" + e.org
+		folder, names := "db", []apigen.EntityName{"qa"}
+		rule := apigen.CreateRuleRequest{Principal: holder, Capability: apigen.RuleCapabilityEdit, Where: apigen.RuleWhere{
+			Projects:     []apigen.ID{e.project},
+			Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleEnvironmentItem{}, Names: &names},
+			Keys:         apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleKeyItem{{Project: e.project, Folder: &folder}}},
+		}}
+		if code, raw := e.call(t, http.MethodPost, org+"/rules", rule); code != http.StatusCreated {
+			t.Fatalf("create narrowed rule = %d %s", code, raw)
+		}
+		code, raw := e.call(t, http.MethodPost, org+"/projects/"+e.project+"/environments", apigen.CreateEnvironmentRequest{Name: "qa"})
+		var body apigen.Error
+		if code != http.StatusConflict || json.Unmarshal(raw, &body) != nil || body.Error.Widening == nil || body.Error.Widening.Gainers == nil {
+			t.Fatalf("create qa = %d %s, want a widening refusal naming the gainers", code, raw)
+		}
+		var edit *apigen.WideningGainer
+		for i, g := range *body.Error.Widening.Gainers {
+			if g.PrincipalId == holder && g.Capability == apigen.RuleCapabilityEdit {
+				edit = &(*body.Error.Widening.Gainers)[i]
+			}
+		}
+		if edit == nil || len(edit.Environments) != 1 || edit.Keys == nil || edit.Keys.Mode != apigen.RuleAxisModeOnly ||
+			len(edit.Keys.Items) != 1 || edit.Keys.Items[0].Project != e.project || edit.Keys.Items[0].Folder == nil ||
+			*edit.Keys.Items[0].Folder != folder || edit.Keys.Items[0].Key != nil {
+			t.Fatalf("edit gainer = %s, want the new environment over folder db only", raw)
+		}
+	})
+}

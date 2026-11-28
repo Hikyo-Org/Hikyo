@@ -226,9 +226,11 @@ const keyById = (world: World, id: string) => world.projects.flatMap((p) => p.ke
 
 const isFolder = (item: KeyItem): item is FolderItem => 'folder' in item;
 
+const folderLabel = (folder: string) => (folder === '' ? '(no folder)' : `${folder}/`);
+
 /** How a key axis item reads: `db/` for a folder, `stripe/STRIPE_SECRET_KEY` for a key, its id when the name is not readable. */
 export function itemLabel(world: World, item: KeyItem): { text: string; secret: boolean } {
-  if (isFolder(item)) return { text: item.folder === '' ? '(no folder)' : `${item.folder}/`, secret: false };
+  if (isFolder(item)) return { text: folderLabel(item.folder), secret: false };
   const key = keyById(world, item.key);
   if (key === undefined) return { text: item.key, secret: false };
   return { text: key.folder === '' ? key.name : `${key.folder}/${key.name}`, secret: key.secret };
@@ -469,6 +471,15 @@ type ServerGrant = {
 
 const keyItemOf = (item: ServerRule['where']['keys']['items'][number]): KeyItem =>
   item.key !== undefined ? { project: item.project, key: item.key } : { project: item.project, folder: item.folder ?? '' };
+
+/** A widening gain's key selector in words, "only db/" or "all except app/, key_…"; a key reads as its id, as the dialog has no key names. */
+export function keyScopeText(keys: ServerRule['where']['keys']): string {
+  const items = keys.items.map((item) => {
+    const k = keyItemOf(item);
+    return isFolder(k) ? folderLabel(k.folder) : k.key;
+  });
+  return `${keys.mode === 'only' ? 'only' : 'all except'} ${items.join(', ')}`;
+}
 
 const itemKey = (item: EnvItem | KeyItem) => JSON.stringify(
   'environment' in item

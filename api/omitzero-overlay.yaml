@@ -696,7 +696,7 @@ actions:
     update:
       x-omitempty: false
       x-omitzero: true
-  - target: $['components']['schemas']['WideningGainer']['properties']['principal_name']
+  - target: $['components']['schemas']['WideningGainer']['properties']['principal_name','keys']
     update:
       x-omitempty: false
       x-omitzero: true

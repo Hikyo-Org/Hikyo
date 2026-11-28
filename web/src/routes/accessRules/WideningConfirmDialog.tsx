@@ -7,17 +7,17 @@ import { Button } from '../../ui/Button.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
 import { NamedId } from '../../ui/NamedId.tsx';
-import { label } from './model.ts';
+import { keyScopeText, label } from './model.ts';
 
 export type WideningRefusal = z.infer<typeof zWideningRefusal>;
 
-/** One line per person: "Dana Ruiz …a1b2c3: Reveal (prod), Reveal history (prod)". */
+/** One line per person: "Dana Ruiz …a1b2c3: Reveal (prod), Edit (prod, only db/)". */
 export function gainerLines(widening: WideningRefusal, envName: (id: string) => string): { id: string; name: string | undefined; parts: string[] }[] {
   const byPerson = new Map<string, { name: string | undefined; parts: string[] }>();
   for (const gain of widening.gainers ?? []) {
     const line = byPerson.get(gain.principal_id) ?? { name: gain.principal_name, parts: [] };
-    const envs = gain.environments.map(envName).join(', ');
-    line.parts.push(envs === '' ? label(gain.capability) : `${label(gain.capability)} (${envs})`);
+    const scope = [...gain.environments.map(envName), ...(gain.keys === undefined ? [] : [keyScopeText(gain.keys)])].join(', ');
+    line.parts.push(scope === '' ? label(gain.capability) : `${label(gain.capability)} (${scope})`);
     byPerson.set(gain.principal_id, line);
   }
   return [...byPerson.entries()].map(([id, line]) => ({ id, name: line.name, parts: line.parts }));

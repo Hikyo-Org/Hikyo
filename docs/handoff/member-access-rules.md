@@ -303,7 +303,7 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   Project and organization deletions never cascade into environments.
 - **Wire.** API revision 22, additive: `where.environments.names` and
   `fault`, `confirm_widening` on environment create, rename and clone, and as a
-  query parameter on environment delete. CLI:
+  query parameter on environment delete, and `widening.gainers[].keys`. CLI:
   `--only-env-name`/`--except-env-name`, refused before revision 22;
   `env delete --confirm-widening`.
 - **Web.** The rule editor selects environments by name in every project,
@@ -313,6 +313,17 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   so it asks for none.
   `KeyMoveConfirmDialog` is now `WideningConfirmDialog`, shared by key moves
   and environment changes.
+- **Gainers name their key selector.** A widening refusal's gainer carries
+  `keys` (a `RuleKeyAxis`) when the gain reaches only the keys a narrowed
+  rule selects, so a rule narrowed to folder F that gains environment E reads
+  as E over F, not the whole environment ("Edit (staging, only db/)"); See
+  is never key-narrowed, so a See gain carries none.
+  Gainers merge per principal, capability, project-or-environment and
+  selector (`gainsOf`, `mergeGains`); a gain over every key absorbs a
+  narrowed one for the same environment, and different selectors stay
+  separate. A key folder move's gain leaves `keys` absent: it concerns the
+  moved key, which the refusal names. Display precision only: who must
+  confirm (`gainedPrincipals`) and the machine widening gate are unchanged.
 - **Tests.** `internal/isolation/rule_env_widening_test.go` (both engines):
   `TestEnvironmentNamesWidenRules`, `TestEnvironmentNameWideningGatesMachines`,
   `TestAllProjectsRulesFutureProjectsHoldNames`,
@@ -342,19 +353,14 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   - A plan's environment census reads the rules before the plan runs, so a
     rule the plan revokes or prunes (for example by deleting its last key)
     still counts, and its principal must be confirmed.
-- **Accepted limits.** These cost capacity, query work or display precision,
-  not access; none admits anything an exact check would refuse.
+- **Accepted limits.** These cost capacity or query work, not access; none
+  admits anything an exact check would refuse.
   - The upgrade's per-project split (00102) does not check the 1,000-rule
     `MaxRulesPerOrg` cap, so an org can exceed it after the upgrade; new
     creates are refused until rules are removed.
   - A rule-authorized check binds names within the chain's project
     (`RulesWithin`), so it reads that project's environments: one extra
     environment read per check.
-  - A widening confirmation names gains per principal, capability and
-    environment, merged over key selectors (`gainsOf`,
-    `internal/service/rules.go`): a gain of one folder reads as the whole
-    environment's. A project-wide gain stays its own entry beside
-    environment gains (`mergeGains`).
 - **Refusal uniformity.** Checks before the caller is proved read only the
   request (one stand-in name per sent environment id); a refused caller gets
   the same not-found whatever ids exist

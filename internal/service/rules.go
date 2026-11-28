@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -81,13 +82,23 @@ type MoveWideningError struct {
 	Gains      []WideningGain
 }
 
-// WideningGain is one capability a person gains on the moved key, with the
-// environments it newly reaches (empty for a project-wide atom only).
+// WideningGain is one capability a principal gains, with the environments it
+// newly reaches (empty for a project-wide atom only).
 type WideningGain struct {
 	Principal  domain.PrincipalID
 	Name       string
 	Capability domain.Capability
 	Envs       []domain.EnvID
+	// Keys is the key selector the gain reaches; nil is every key, and for a
+	// key folder move the moved key, which the refusal names already.
+	Keys *WideningKeys
+}
+
+// WideningKeys is a rule's key selector in Project: the keys a gain reaches.
+type WideningKeys struct {
+	Project domain.ProjectID
+	Mode    domain.AxisMode
+	Items   []domain.RuleKeyItem
 }
 
 func (e *MoveWideningError) Error() string {
@@ -161,17 +172,18 @@ func gainedPrincipals(gains []WideningGain) []domain.PrincipalID {
 	return out
 }
 
-// mergeGains unions b into a per (principal, capability), keeping the order
-// moveWidening produces.
+// mergeGains unions b into a per (principal, capability, key selector),
+// keeping the order moveWidening produces.
 func mergeGains(a, b []WideningGain) []WideningGain {
 	for _, g := range b {
 		// A project-wide gain (no environments) stays its own entry, so a
 		// merge with an environment gain does not hide the project scope.
 		i := slices.IndexFunc(a, func(x WideningGain) bool {
-			return x.Principal == g.Principal && x.Capability == g.Capability && (len(x.Envs) == 0) == (len(g.Envs) == 0)
+			return x.Principal == g.Principal && x.Capability == g.Capability && (len(x.Envs) == 0) == (len(g.Envs) == 0) &&
+				x.Keys.selector() == g.Keys.selector()
 		})
 		if i < 0 {
-			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs)})
+			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs), Keys: g.Keys})
 			continue
 		}
 		for _, env := range g.Envs {
@@ -182,15 +194,22 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 		slices.Sort(a[i].Envs)
 	}
 	slices.SortFunc(a, func(x, y WideningGain) int {
-		if c := strings.Compare(string(x.Principal), string(y.Principal)); c != 0 {
-			return c
-		}
-		if c := strings.Compare(string(x.Capability), string(y.Capability)); c != 0 {
-			return c
-		}
-		return len(x.Envs) - len(y.Envs) // the project gain first
+		return cmp.Or(
+			strings.Compare(string(x.Principal), string(y.Principal)),
+			strings.Compare(string(x.Capability), string(y.Capability)),
+			cmp.Compare(min(len(x.Envs), 1), min(len(y.Envs), 1)), // the project gain first
+			strings.Compare(x.Keys.selector(), y.Keys.selector()), // every key first
+		)
 	})
 	return a
+}
+
+// selector is k's canonical key selector; "" is every key.
+func (k *WideningKeys) selector() string {
+	if k == nil {
+		return ""
+	}
+	return keySelector(k.Mode, k.Items)
 }
 
 // gainAtom is one (principal, capability, environment, key selector) gain;
@@ -199,17 +218,23 @@ type gainAtom struct {
 	principal  domain.PrincipalID
 	capability domain.Capability
 	env        domain.EnvID
-	// keys is the key selector, kept so a plan attributes a gain over one
-	// selector to the change causing it; "" is every key.
+	// keys is the key selector (keySelector), kept so a plan attributes a gain
+	// over one selector to the change causing it; "" is every key.
 	keys string
 }
 
-// gainsOf merges atoms into gains for display and confirmation, over every
-// key selector.
-func gainsOf(atoms map[gainAtom]bool) []WideningGain {
+// gainsOf merges atoms of project into gains for display and confirmation,
+// one per key selector; a gain over every key absorbs a narrowed one for the
+// same environment.
+func gainsOf(project domain.ProjectID, atoms map[gainAtom]bool) []WideningGain {
 	var out []WideningGain
 	for a := range atoms {
-		g := WideningGain{Principal: a.principal, Capability: a.capability}
+		every := a
+		every.keys = ""
+		if a.keys != "" && atoms[every] {
+			continue
+		}
+		g := WideningGain{Principal: a.principal, Capability: a.capability, Keys: keysOf(project, a.keys)}
 		if a.env != "" {
 			g.Envs = []domain.EnvID{a.env}
 		}
