@@ -91,6 +91,40 @@ func TestTruncateUnreachedRotationsChargesItsAccountReadsToTheBudget(t *testing.
 	}
 }
 
+// Each rotation page read is charged to the lookup budget: once the budget is
+// spent the member's remaining rotations are an open truncation row of its own,
+// never read past the budget.
+func TestRotationListerChargesEachPageToTheBudget(t *testing.T) {
+	const budget, pages = 2, 3
+	reads := 0
+	read := func(_ context.Context, _ authz.Proof, _ domain.PrincipalID, after string, limit int) ([]store.RotationAuthorityRef, error) {
+		reads++
+		out := make([]store.RotationAuthorityRef, 0, limit)
+		for i := (reads - 1) * limit; i < reads*limit && i < pages*limit; i++ {
+			out = append(out, store.RotationAuthorityRef{ID: fmt.Sprintf("rot_%06d", i), OrgID: "org_a"})
+		}
+		return out, nil
+	}
+	l := rotationLister{read: read, scope: domain.Scope{Org: "org_a"}}
+	c := newCollector(budget)
+	if err := l.page(t.Context(), incidentAccess{scopeID: "org_a"}, "usr_one", c); err != nil {
+		t.Fatal(err)
+	}
+	var rotations, cuts int
+	for _, cand := range c.cands {
+		switch {
+		case cand.kind == domain.ObjectKindRotation:
+			rotations++
+		case cand.reason == domain.ReasonEnumerationTruncated && cand.id == "usr_one":
+			cuts++
+		}
+	}
+	if reads != budget || c.lookups != budget || rotations != budget*authz.MaxIncidentPage || cuts != 1 {
+		t.Fatalf("reads = %d, lookups = %d, rotations = %d, member cuts = %d; want %d, %d, %d, 1",
+			reads, c.lookups, rotations, cuts, budget, budget, budget*authz.MaxIncidentPage)
+	}
+}
+
 // The rotation cap is the source's, not each member's: members that together hold
 // more than the cap list at most the cap, and the cut is one scope row.
 func TestRotationListerCapsTheWholeSourceAcrossMembers(t *testing.T) {
