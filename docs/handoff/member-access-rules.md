@@ -389,7 +389,8 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
     creates are refused until rules are removed.
   - A rule-authorized check binds names within the chain's project
     (`RulesWithin`), so it reads that project's environments: one extra
-    environment read per check.
+    environment read per check, however many orgs the caller's rules span
+    (`TestProjectCheckBindsRulesFromOneEnvironmentRead`).
 - **Refusal uniformity.** Checks before the caller is proved read only the
   request (one stand-in name per sent environment id); a refused caller gets
   the same not-found whatever ids exist

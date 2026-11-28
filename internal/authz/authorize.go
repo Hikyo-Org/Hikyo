@@ -278,7 +278,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		if rulesWithinProject(op, spec, targetRule) {
 			within = chain.Project
 		}
-		rules, err := a.callerRules(ctx, caller, within)
+		rules, err := a.callerRules(ctx, caller, chain.Org, within)
 		if err != nil {
 			return nil, err
 		}
@@ -435,7 +435,7 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 		if rulesWithinProject(op, spec, targetRule) {
 			within = decoyProject
 		}
-		if _, err := a.callerRules(ctx, caller, within); err != nil {
+		if _, err := a.callerRules(ctx, caller, "", within); err != nil {
 			return err
 		}
 		// A rule target binds its environment names against the project's

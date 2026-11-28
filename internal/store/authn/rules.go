@@ -179,26 +179,42 @@ func (r *Resolver) RuleEnvRefs(ctx context.Context, org, project string) ([]doma
 	return out, nil
 }
 
-// bindRules binds every rule's environment names to its org's environments
-// (or to one project's, when project is set), read in the caller's
-// transaction, so evaluation matches today's environments by name. confine
-// binds within project (domain.Where.BindEnvsWithin).
-func (r *Resolver) bindRules(ctx context.Context, rules []domain.Rule, project string, confine bool) ([]domain.Rule, error) {
+// bindRules binds every rule's environment names to its org's environments,
+// read in the caller's transaction, so evaluation matches today's
+// environments by name. confine binds within project of org
+// (domain.Where.BindEnvsWithin) from one read of it, made whenever there is a
+// rule so the statements do not depend on which orgs the rules are in: a rule
+// of another org binds to no environment there, as a read of the project
+// under its own org would find none.
+func (r *Resolver) bindRules(ctx context.Context, rules []domain.Rule, org domain.OrgID, project domain.ProjectID, confine bool) ([]domain.Rule, error) {
+	if confine {
+		if len(rules) == 0 {
+			return rules, nil
+		}
+		within, err := r.RuleEnvRefs(ctx, string(org), string(project))
+		if err != nil {
+			return nil, err
+		}
+		for i, rule := range rules {
+			var refs []domain.EnvRef
+			if rule.Org == org {
+				refs = within
+			}
+			rules[i].Where = rule.Where.BindEnvsWithin(project, refs)
+		}
+		return rules, nil
+	}
 	refs := map[domain.OrgID][]domain.EnvRef{}
 	for i, rule := range rules {
 		got, ok := refs[rule.Org]
 		if !ok {
 			var err error
-			if got, err = r.RuleEnvRefs(ctx, string(rule.Org), project); err != nil {
+			if got, err = r.RuleEnvRefs(ctx, string(rule.Org), ""); err != nil {
 				return nil, err
 			}
 			refs[rule.Org] = got
 		}
-		if confine {
-			rules[i].Where = rule.Where.BindEnvsWithin(domain.ProjectID(project), got)
-		} else {
-			rules[i].Where = rule.Where.BindEnvs(got)
-		}
+		rules[i].Where = rule.Where.BindEnvs(got)
 	}
 	return rules, nil
 }
@@ -208,28 +224,28 @@ func (r *Resolver) bindRules(ctx context.Context, rules []domain.Rule, project s
 // environments of their org. A recovery resolver bound to a schema older than
 // the rule tables answers none.
 func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
-	return r.principalRules(ctx, p, false, "")
+	return r.principalRules(ctx, p, false, "", "")
 }
 
-// RulesWithin is Rules bound within one project (domain.Where.BindEnvsWithin):
-// it reads that project's environments instead of the org's, and every rule
-// reaches nothing outside project.
-func (r *Resolver) RulesWithin(ctx context.Context, p domain.PrincipalID, project domain.ProjectID) ([]domain.Rule, error) {
-	return r.principalRules(ctx, p, false, project)
+// RulesWithin is Rules bound within one project of org
+// (domain.Where.BindEnvsWithin): it reads that project's environments once
+// instead of each org's, and every rule reaches nothing outside project.
+func (r *Resolver) RulesWithin(ctx context.Context, p domain.PrincipalID, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
+	return r.principalRules(ctx, p, false, org, project)
 }
 
 // MachineRules returns a machine principal's rules under the same gates as
 // Rules. The caller applies domain.CheckMachineRule to every rule it uses.
 func (r *Resolver) MachineRules(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
-	return r.principalRules(ctx, p, true, "")
+	return r.principalRules(ctx, p, true, "", "")
 }
 
 // MachineRulesWithin is MachineRules bound within one project, as RulesWithin.
-func (r *Resolver) MachineRulesWithin(ctx context.Context, p domain.PrincipalID, project domain.ProjectID) ([]domain.Rule, error) {
-	return r.principalRules(ctx, p, true, project)
+func (r *Resolver) MachineRulesWithin(ctx context.Context, p domain.PrincipalID, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
+	return r.principalRules(ctx, p, true, org, project)
 }
 
-func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, machine bool, within domain.ProjectID) ([]domain.Rule, error) {
+func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, machine bool, org domain.OrgID, within domain.ProjectID) ([]domain.Rule, error) {
 	if r.historicalRecoveryBeforeRules {
 		return nil, nil
 	}
@@ -337,7 +353,7 @@ func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, mac
 	if err != nil {
 		return nil, err
 	}
-	return r.bindRules(ctx, rulesOf(foldRules(rows)), string(within), within != "")
+	return r.bindRules(ctx, rulesOf(foldRules(rows)), org, within, within != "")
 }
 
 // CensusRule is one rule of a widening census with its principal's kind.
@@ -417,7 +433,7 @@ func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]
 		machines[row.id] = row.machine
 	}
 	stored := foldRules(rows)
-	rules, err := r.bindRules(ctx, rulesOf(stored), project, true)
+	rules, err := r.bindRules(ctx, rulesOf(stored), domain.OrgID(org), domain.ProjectID(project), true)
 	if err != nil {
 		return nil, err
 	}
