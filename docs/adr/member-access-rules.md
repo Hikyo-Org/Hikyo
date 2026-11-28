@@ -367,9 +367,15 @@ apply when the implementing pull request merges.
     Projects selecting different names split even when name matching would reach the same
     environments: converted, each project would carry a name none of its environments has, and a
     manager whose grants cover only the rule's environments could no longer revoke it.
-  - A guard splits a consistent rule that would list more than `MaxRuleItems` by name. With equal
-    name sets a rule lists as many items by name as it did by id, so only a row written past the
-    item cap, bypassing validation, reaches it.
+  - A rule that did not validate before the upgrade (`Rule.Validate`, and `CheckMachineRule` for a
+    machine's) reached nothing, since resolution drops it; a split part could validate and widen
+    its reach. Such a rule fails closed as below, before any split or conversion, with a fault
+    saying it never formed a valid rule. This covers more than `MaxRuleItems` items, a project
+    named twice, a key or folder item outside the rule's projects, `key_mode` *only* with no key,
+    key narrowing on `pin` or a whole-project capability, and a machine rule over more than one
+    project. Other invalid rows stay invalid split or converted, or cannot be stored. Only a
+    corrupted database, or a row written past validation, holds such a rule. With equal name sets
+    a valid rule lists as many items by name as it did by id, so no converted rule passes the cap.
   - A rule that cannot be split deterministically fails closed. It loses its environment items and
     reaches no environment. It carries a manager-facing `fault` naming the reason, and is audited as
     `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or

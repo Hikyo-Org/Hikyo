@@ -259,13 +259,19 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   environment, a project outside the rule, a repeated name, an all-projects
   rule holding environment items, or a whole-project capability such as
   `project-settings` holding environment items, which never validated and
-  which a split would have made live) keep their row, reach no environment and
+  which a split would have made live, and any other rule that did not pass
+  `Rule.Validate` or `CheckMachineRule` before the upgrade and that a split
+  could lift: more than `MaxRuleItems` items, a repeated project, a key or
+  folder item outside the rule's projects, `key_mode` only with no key, key
+  narrowing on `pin` or a whole-project capability, a machine rule over
+  several projects) keep their row, reach no environment and
   carry `env_fault`, audited as `rule.disabled` with the removed `env_mode`,
   `env_ids` and `env_names`. Tests:
   `TestRuleEnvNamesMigrationSQLite` and `TestRuleEnvNamesMigrationPostgres`,
   including the 99/102 recovery boundary;
   `TestRuleEnvNamesMigrationShapeProjectList` pins the migration's
-  whole-project capability list to `domain.ShapeProject`. A faulted rule is never evaluated,
+  whole-project and pin capability lists to `domain`, and its item cap to
+  `domain.MaxRuleItems`. A faulted rule is never evaluated,
   whatever items it holds: the rule resolver skips it and `GetRule` returns
   it as not valid, so only a manager over its whole scope revokes it
   (`TestDisabledRuleListsAndRevokes`).

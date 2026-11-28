@@ -26,15 +26,15 @@ what every rule reaches exactly:
   match only its own environments, is converted in place.
 - Any other rule is split into one rule per project, recorded in the audit log
   as `rule.split` with the old and new rule ids.
-- As a guard, a rule that would list more than the 500 items a rule carries
-  once matched by name is split the same way. Only a rule stored past that
-  limit, bypassing validation, reaches it.
 - Splitting adds rules. An organization that ends above the 1000 rules it may
   hold keeps every rule working, but refuses new rules, and replacements that
   leave it above, until some are revoked.
 - A rule that cannot be kept exactly is disabled, listed with its reason, and
-  recorded as `rule.disabled`. Only a damaged database holds one. It reaches no
-  environment; remove it and create it again.
+  recorded as `rule.disabled`. So is a rule that was not valid before the
+  upgrade, such as one stored with more than the 500 items a rule carries: it
+  reached nothing, and stays that way. Only a damaged database, or a rule
+  stored bypassing validation, holds one. It reaches no environment; remove it
+  and create it again.
 
 A client from before this upgrade still lists and creates rules by environment
 id. The server takes the names of the environments sent, so such a create is
