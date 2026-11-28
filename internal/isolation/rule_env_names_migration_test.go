@@ -77,22 +77,29 @@ func TestRuleEnvNamesMigrationShapeProjectList(t *testing.T) {
 		return "r.capability IN (" + strings.Join(quoted, ", ") + ")"
 	}
 	whole, envOnly := list(domain.ShapeProject), list(domain.ShapeEnv)
-	capLists := regexp.MustCompile(`r\.capability IN \([^)]*\)`)
+	capLists := regexp.MustCompile(`r\.capability (IN \([^)]*\)|<> '[^']*')`)
 	itemCap := regexp.MustCompile(`FROM rule_items AS c WHERE c\.rule_id = r\.id\) > (\d+)`)
+	// Each clause that names capabilities, with the list it must hold: the
+	// whole-project fault, the key-narrowing fault, and the split's read
+	// exemption from only-keys.
+	clauses := []string{
+		"WHERE r.env_fault IS NULL\n  AND " + whole + "\n  AND EXISTS (SELECT 1 FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'env');",
+		"OR ((" + envOnly + " OR " + whole + ")\n      AND (r.key_mode = 'only' OR EXISTS",
+		"AND NOT (r.key_mode = 'only' AND r.capability <> '" + string(domain.CapRead) + "' AND NOT EXISTS",
+	}
 	for _, engine := range []string{"postgres", "sqlite"} {
 		raw, err := store.MigrationsFS.ReadFile("migrations/" + engine + "/00102_rule_env_names.sql")
 		if err != nil {
 			t.Fatal(err)
 		}
 		sql := string(raw)
-		got := capLists.FindAllString(sql, -1)
-		if !slices.Contains(got, whole) || !slices.Contains(got, envOnly) {
-			t.Errorf("%s 00102 capability lists %v, want %s and %s", engine, got, whole, envOnly)
-		}
-		for _, l := range got {
-			if l != whole && l != envOnly {
-				t.Errorf("%s 00102 lists %s, neither %s nor %s", engine, l, whole, envOnly)
+		for _, c := range clauses {
+			if n := strings.Count(sql, c); n != 1 {
+				t.Errorf("%s 00102 holds %q %d times, want once", engine, c, n)
 			}
+		}
+		if got := capLists.FindAllString(sql, -1); len(got) != 4 {
+			t.Errorf("%s 00102 names capabilities %d times (%v), want the 4 in the clauses above", engine, len(got), got)
 		}
 		if m := itemCap.FindAllStringSubmatch(sql, -1); len(m) != 1 || m[0][1] != fmt.Sprint(domain.MaxRuleItems) {
 			t.Errorf("%s 00102 item caps %v, want one of %d (domain.MaxRuleItems)", engine, m, domain.MaxRuleItems)
@@ -375,14 +382,20 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		}
 	}
 	// rul_wide holds 1001 environment items: its rule.disabled lists keep the
-	// first 1000 and env_items counts all.
+	// first 1000 in byte order and env_items counts all. They are inserted in
+	// reverse, and the last one is upper case: byte order puts it first, where
+	// a locale order would put it last and cut it.
 	stmts = append(stmts, `INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_e', 'org_en', 'e', `+at+`)`)
 	stmts = append(stmts, rule("rul_wide", "usr_wide", "read", "only", "only", "all")...)
 	stmts = append(stmts, item("rul_wide_pe", "rul_wide", "project", "prj_e", "", ""))
 	var wideEnvs, wideItems []string
-	for i := range 1001 {
-		wideEnvs = append(wideEnvs, fmt.Sprintf(`('env_e_%04d', 'org_en', 'prj_e', 'e%04d', '', %s, %d)`, i, i, at, i))
-		wideItems = append(wideItems, fmt.Sprintf(`('rul_wide_%04d', 'rul_wide', 'org_en', 'env', 'prj_e', 'env_e_%04d', NULL, NULL)`, i, i))
+	for i := 1000; i >= 0; i-- {
+		id, name := fmt.Sprintf("env_e_%04d", i), fmt.Sprintf("e%04d", i)
+		if i == 1000 {
+			id, name = "env_E_1000", "E1000"
+		}
+		wideEnvs = append(wideEnvs, fmt.Sprintf(`('%s', 'org_en', 'prj_e', '%s', '', %s, %d)`, id, name, at, i))
+		wideItems = append(wideItems, fmt.Sprintf(`('rul_wide_%04d', 'rul_wide', 'org_en', 'env', 'prj_e', '%s', NULL, NULL)`, i, id))
 	}
 	stmts = append(stmts, `INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES `+strings.Join(wideEnvs, ", "),
 		`INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path) VALUES `+strings.Join(wideItems, ", "))
@@ -572,9 +585,9 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	if err := json.Unmarshal([]byte(db.text(`SELECT payload FROM audit_tenant_events WHERE type = 'rule.disabled' AND object_id = 'rul_wide'`)), &wide); err != nil {
 		t.Fatalf("rul_wide rule.disabled payload: %v", err)
 	}
-	if wide.EnvItems != 1001 || len(wide.EnvIDs) != 1000 || wide.EnvIDs[0] != "prj_e/env_e_0000" || wide.EnvIDs[999] != "prj_e/env_e_0999" ||
-		len(wide.EnvNames) != 1000 || wide.EnvNames[0] != "e0000" || wide.EnvNames[999] != "e0999" {
-		t.Errorf("rul_wide rule.disabled = %d items, %d ids (%v ... %v), %d names; want 1001, the first 1000 ids and names",
+	if wide.EnvItems != 1001 || len(wide.EnvIDs) != 1000 || wide.EnvIDs[0] != "prj_e/env_E_1000" || wide.EnvIDs[999] != "prj_e/env_e_0998" ||
+		len(wide.EnvNames) != 1000 || wide.EnvNames[0] != "E1000" || wide.EnvNames[999] != "e0998" {
+		t.Errorf("rul_wide rule.disabled = %d items, %d ids (%v ... %v), %d names; want 1001, the first 1000 ids and names in byte order",
 			wide.EnvItems, len(wide.EnvIDs), wide.EnvIDs[:1], wide.EnvIDs[len(wide.EnvIDs)-1:], len(wide.EnvNames))
 	}
 

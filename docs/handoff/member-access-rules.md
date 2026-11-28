@@ -432,7 +432,7 @@ engines with rc=1 and was restored.
 | R:210 | empty project id | Fault `z.project_id = ''` | `rul_pemp` | `pemp` |
 | R:210 | project named twice | Fault (duplicate project) | `rul_dupp` | `dupp` |
 | R:215, R:218, R:286 | unknown env or key mode | Impossible: `CHECK` (00070) | none | n/a |
-| R:221 | key item with no project | Key: impossible (`rule_items_project_bound`, 00099). Folder: fault (outside the rule's projects) | `rul_knull` | `kout` |
+| R:221 | key item with no project | Key: cannot be stored with a NULL project (`rule_items_project_bound`, 00099); a key under an empty project id is storable and faults as R:210 (`z.project_id = ''`). Folder: fault (outside the rule's projects) | `rul_knull` | `kout` |
 | R:226 | env item outside the rule's projects | Fault (outside the rule) | `rul_out` | `out` |
 | R:230 | empty env id | Fault `z.env_id = ''` | `rul_eemp` | `eemp` |
 | R:230 | env named twice in a project | Fault (name twice) | `rul_twice` | `twice` |
@@ -448,7 +448,7 @@ engines with rc=1 and was restored.
 | R:268 | whole-project capability narrowed by keys | Fault | `rul_psk` | `psk` |
 | R:268 | whole-project capability with env items | Fault (M2) | `rul_ps`, `rul_psc` | `ps` |
 | R:268 | whole-project capability, env `only` with no item | Holds: as R:236 | none | n/a |
-| R:280–309 | all-projects shape: project items, keys, folders bound to a project, malformed or duplicate folders, key `only` with no folder, more than 500 folders | Holds: no split predicate matches `project_mode = 'all'`, the row is unchanged, and current `validateAllProjects` keeps each check | none | n/a |
+| R:280–309 | all-projects shape: project items, keys, folders bound to a project, malformed or duplicate folders, key `only` with no folder, env `only` with no item, more than 500 folders | Holds: no split predicate matches `project_mode = 'all'`, the row is unchanged, and current `validateAllProjects` keeps each check | none | n/a |
 | R:283 | all-projects rule with env items | Fault (all projects) | `rul_allp` | `allp` |
 | R:420 | machine class or capability not allowed | Holds: principal and capability copied | none | n/a |
 | R:424 | machine rule narrowed by keys | Over one project: holds (converted, keys kept). Over several: fault (below) | `rul_mch` | `mch` |

@@ -109,7 +109,8 @@ WHERE r.env_fault IS NULL
 -- only-keys with no key item, Pin narrowed by keys, a whole-project
 -- permission narrowed by keys, and a machine's rule over more than one
 -- project. Every other rejection of Validate and CheckMachineRule holds in
--- every split part and converted row (the handoff's conditions table).
+-- every split part and converted row, or cannot be stored (a CHECK); the
+-- handoff's conditions table maps each one.
 UPDATE rules AS r SET env_fault = 'Disabled by the upgrade to environment names: it did not form a valid rule before the upgrade, so it reached nothing. It reaches no environment; revoke it and create it again.'
 WHERE r.env_fault IS NULL AND r.project_mode = 'only'
   AND ((SELECT COUNT(*) FROM rule_items AS c WHERE c.rule_id = r.id) > 500
