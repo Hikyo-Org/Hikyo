@@ -45,10 +45,13 @@ carries yet, because the old client cannot show it. Update the client to
 change those rules.
 
 After the upgrade, renaming, creating or cloning an environment can widen a
-rule and then needs confirmation. So does deleting the environment a rule
-excepts, which before the upgrade widened the rule silently. Automation that
-deletes environments, including definitions applies, must pass
-`confirm_widening` when the refusal names who gains. See
+rule and then needs confirmation. So can deleting an environment: it widens a
+rule only when it removes the project's last environment matching that rule's
+exception names, which before the upgrade widened the rule silently. Deleting
+one of several excepted environments widens nothing. Confirmation is needed
+only when principals gain access. Automation that deletes environments,
+including definitions applies, must pass `confirm_widening` when the refusal
+names who gains. See
 [Identity and access](/docs/identity-and-access/#access-rules). Restoring an
 archive from before this upgrade into an older binary is the only way back.
 
