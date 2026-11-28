@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/modroot"
 )
 
 // TestCRDManifestsAreFresh regenerates the CRD YAML into a temp dir with the
@@ -65,21 +67,12 @@ func TestCRDManifestsAreFresh(t *testing.T) {
 	}
 }
 
-// repoRoot walks up from the test's working directory to the module root.
+// repoRoot returns the module root above the test's working directory.
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	dir, err := os.Getwd()
+	root, err := modroot.Find()
 	if err != nil {
-		t.Fatalf("getwd: %v", err)
+		t.Fatal(err)
 	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not locate module root (no go.mod found walking up)")
-		}
-		dir = parent
-	}
+	return root
 }

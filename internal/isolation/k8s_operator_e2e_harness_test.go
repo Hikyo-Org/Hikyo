@@ -68,6 +68,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/modroot"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/operator"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
@@ -155,21 +156,12 @@ func restConfig(t *testing.T) *rest.Config {
 	return cfg
 }
 
-// repoRoot walks up to the module root so chart/hikyo/crds resolves.
+// repoRoot returns the module root so chart/hikyo/crds resolves.
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	dir, err := os.Getwd()
+	root, err := modroot.Find()
 	must(t, err)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not locate repo root (go.mod) above the test working directory")
-		}
-		dir = parent
-	}
+	return root
 }
 
 // applyCRDs applies both operator CRDs and waits until each reports Established.
