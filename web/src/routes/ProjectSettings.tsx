@@ -757,7 +757,7 @@ export function EnvironmentLifecycleActions({
     );
   };
 
-  // Deleting the environment an `all` rule excepts widens that rule (#1447):
+  // Deleting the last environment an `all` rule excepts widens that rule (#1447):
   // the refusal routes through the same confirmation as a rename.
   const sendDelete = (confirmWidening: readonly string[] = []) => {
     setFailure(null);

@@ -262,8 +262,8 @@ describe('authoring refusals', () => {
   it('names the rename workaround when a new environment needs reauthentication no ceremony can give (#1447)', () => {
     const detail = 'reauthenticate over the environments this operation makes reachable, then retry (env_new)';
     const refusal = (operation: object) => new ApiError(409, 'x', detail, undefined, [], undefined, operation);
-    expect(createEnvironmentRefusalText(refusal(createEnvironmentOp))).toContain('then rename it to this one');
-    expect(cloneEnvironmentRefusalText(refusal(cloneEnvironmentOp))).toContain('then rename it to this one');
+    expect(createEnvironmentRefusalText(refusal(createEnvironmentOp))).toContain('under a name that no access rule lists in its only list, then rename it to this one');
+    expect(cloneEnvironmentRefusalText(refusal(cloneEnvironmentOp))).toContain('under a name that no access rule lists in its only list, then rename it to this one');
     expect(createEnvironmentRefusalText(new ApiError(409, 'x', 'name taken'))).toBe('name taken');
   });
 
