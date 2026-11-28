@@ -116,8 +116,10 @@ func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create all-projects rule: %v", err)
 		}
-		if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), service.RuleSpec{Target: apHolder, Capability: domain.CapEdit, Org: orgAP,
-			Where: domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}}); err != nil {
+		// A named selector: both readers dropping stored names would still agree.
+		named, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), service.RuleSpec{Target: apHolder, Capability: domain.CapEdit, Org: orgAP,
+			Where: domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: domain.AxisOnly, EnvNames: []string{"qa"}, KeyMode: domain.AxisAll}})
+		if err != nil {
 			t.Fatalf("create project-bound rule: %v", err)
 		}
 		execRaw(t, db, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('rul_hist_mch', 'mch_ap', 'read', 'org_ap', 'only', 'all', 'all', 'usr_apadmin', "+ts+")")
@@ -163,6 +165,10 @@ func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
 			i := slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == all.ID })
 			if i < 0 || !rules[i].Where.AllProjects || len(rules[i].Where.Keys[domain.AnyProject]) != 1 {
 				t.Fatalf("%s at schema 102: all-projects rule %s read as %+v, want all projects with its folder", what, all.ID, rules)
+			}
+			i = slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == named.ID })
+			if i < 0 || rules[i].Where.EnvMode != domain.AxisOnly || !slices.Equal(rules[i].Where.EnvNames, []string{"qa"}) {
+				t.Fatalf("%s at schema 102: named rule %s read as %+v, want only qa", what, named.ID, rules)
 			}
 		}
 	})
