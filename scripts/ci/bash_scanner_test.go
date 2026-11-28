@@ -359,7 +359,7 @@ func codeText(word *syntax.Word) string {
 		for _, part := range list {
 			switch part := part.(type) {
 			case *syntax.Lit:
-				value.WriteString(escape.ReplaceAllStringFunc(part.Value, unescape))
+				value.WriteString(escape.ReplaceAllString(part.Value, "$1"))
 			case *syntax.SglQuoted:
 				if part.Dollar {
 					value.WriteString(ansiEscapes.Replace(part.Value))
@@ -377,19 +377,12 @@ func codeText(word *syntax.Word) string {
 	return value.String()
 }
 
-// Unquoted, a backslash escapes any character; inside double quotes only $ ` " \ and a
-// newline. An escaped newline is a line continuation and disappears.
+// Unquoted, a backslash escapes any character; inside double quotes only $ ` " and \. The
+// parser has already removed escaped newlines.
 var (
-	backslashEscape = regexp.MustCompile(`(?s)\\.`)
-	quotedEscape    = regexp.MustCompile("\\\\[$`\"\\\\\n]")
+	backslashEscape = regexp.MustCompile(`\\(.)`)
+	quotedEscape    = regexp.MustCompile("\\\\([$`\"\\\\])")
 )
-
-func unescape(escape string) string {
-	if escape[1] == '\n' {
-		return ""
-	}
-	return escape[1:]
-}
 
 // ansiEscapes decodes the $'...' escapes that change how code parses; shortcut: \x, \0 and
 // \u escapes are left as text.
@@ -443,6 +436,11 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 	flagged: map[string]string{
 		"exec -a name":                       "exec -a n bash -c '[[ a == b ]]'\n",
 		"exec -l":                            "exec -l bash -c '[[ a == b ]]'\n",
+		"exec -la name":                      "exec -la n bash -c '[[ a == b ]]'\n",
+		"env -iv":                            "env -iv bash -c '[[ a == b ]]'\n",
+		"env -CDIR":                          "env -C/ bash -c '[[ a == b ]]'\n",
+		"env -S then words":                  "env -S 'bash -c' '[[ a == b ]]'\n",
+		"coproc body":                        "coproc { [[ a == b ]]; }\n",
 		"exec -cl":                           "exec -cl bash -c '[[ a == b ]]'\n",
 		"nohup":                              "nohup bash -c '[[ a == b ]]'\n",
 		"env -u":                             "env -u X bash -c '[[ a == b ]]'\n",
@@ -547,6 +545,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"eval in a condition":           "if eval '[[ a == b ]]'; then :; fi\n",
 		"eval or exit":                  "eval '[[ a == b ]]' || exit 1\n",
 		"heredoc on another descriptor": "bash ./x.sh 3<<'EOF'\n[[ data\nEOF\n",
+		"double-quoted continuation":    "eval \"echo \\\n[[ a == b ]]\"\n",
 		"ansi quote decoded":            "eval $'echo \\\"; [[ a == b ]] #\\\"'\n",
 		"ansi apostrophe decoded":       "eval $'echo \\'; [[ a == b ]] #\\''\n",
 		"ansi backslash decoded":        "eval $'echo \\\\; [[ a == b ]]'\n",
