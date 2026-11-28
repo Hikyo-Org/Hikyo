@@ -313,6 +313,9 @@ apply when the implementing pull request merges.
   later. Matching happens only in the `authorize()` chokepoint, reading the current environments
   in the same transaction, with no cache. An API response still lists, under each listed project,
   the environments the names match at read time.
+  A rule-authorized check binds names within the checked project, so it reads that project's
+  environments: one extra environment read per check, accepted as the price of binding by name
+  (owner, 2026-11-28).
 - **Option A lifted.** A rule over all projects may carry environment names, *only* or *except*, as
   any rule may. Single-key items stay refused on such a rule, and machines never hold one. The 500
   bound counts the rule as a v1 response can list it: projects × (1 + folders + names), names
@@ -366,6 +369,9 @@ apply when the implementing pull request merges.
     `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or
     the same name twice in a project, and an all-projects rule with environment items. Only a
     corrupted database holds such a rule.
+  - The split does not check the 1,000-rule `MaxRulesPerOrg` cap, so an org may be above it after
+    the upgrade. New creates are refused until rules are removed, and no access changes (owner,
+    2026-11-28).
 
   The id columns and the id-matching code are removed. A historical recovery below schema 102
   drops id-bound environment rules rather than read them by name, which fails closed.

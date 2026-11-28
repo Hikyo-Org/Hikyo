@@ -354,7 +354,9 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
     rule the plan revokes or prunes (for example by deleting its last key)
     still counts, and its principal must be confirmed.
 - **Accepted limits.** These cost capacity or query work, not access; none
-  admits anything an exact check would refuse.
+  admits anything an exact check would refuse. The ADR sanctions both
+  (owner, 2026-11-28; ADR "Names are stored and matched" and "Migration, option
+  (c)").
   - The upgrade's per-project split (00102) does not check the 1,000-rule
     `MaxRulesPerOrg` cap, so an org can exceed it after the upgrade; new
     creates are refused until rules are removed.
