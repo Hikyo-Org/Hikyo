@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -206,6 +207,10 @@ func TestRuleWireWideningNamesKeySelector(t *testing.T) {
 		if code, raw := e.call(t, http.MethodPost, org+"/rules", rule); code != http.StatusCreated {
 			t.Fatalf("create narrowed rule = %d %s", code, raw)
 		}
+		before := strings.Split(queryStrings(t, db, "SELECT id || '\n' FROM environments WHERE project_id = '"+string(e.project)+"'"), "\n")
+		if len(before) < 2 {
+			t.Fatalf("the project holds no environment to tell qa from: %q", before)
+		}
 		code, raw := e.call(t, http.MethodPost, org+"/projects/"+e.project+"/environments", apigen.CreateEnvironmentRequest{Name: "qa"})
 		var body apigen.Error
 		if code != http.StatusConflict || json.Unmarshal(raw, &body) != nil || body.Error.Widening == nil || body.Error.Widening.Gainers == nil {
@@ -222,7 +227,9 @@ func TestRuleWireWideningNamesKeySelector(t *testing.T) {
 			t.Fatalf("edit gainers for the holder = %d, want 1: %s", len(edits), raw)
 		}
 		edit := edits[0]
-		if len(edit.Environments) != 1 || edit.Keys == nil || edit.Keys.Mode != apigen.RuleAxisModeOnly ||
+		// The gain is on the proposed qa, which no existing environment is; a
+		// retry need not reuse its id, so only absence is checked.
+		if len(edit.Environments) != 1 || edit.Environments[0] == "" || slices.Contains(before, string(edit.Environments[0])) || edit.Keys == nil || edit.Keys.Mode != apigen.RuleAxisModeOnly ||
 			len(edit.Keys.Items) != 1 || edit.Keys.Items[0].Project != e.project || edit.Keys.Items[0].Folder == nil ||
 			*edit.Keys.Items[0].Folder != folder || edit.Keys.Items[0].Key != nil {
 			t.Fatalf("edit gainer = %s, want the new environment over folder db only", raw)
