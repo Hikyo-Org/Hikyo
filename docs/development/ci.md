@@ -427,7 +427,8 @@ retry again within the attempt bound. A pending reconcile that a newer one repla
 ends cancelled without running a step and is never wanted, so it keeps the run-level
 endpoint off. Worker group jobs share the publisher's name and get the same reruns, so
 do the queue gate's own `group-<sha>` jobs, and so does a failed setup, because
-reconcile always runs. Before any rerun it reads `rate_limit` (which is not
+reconcile always runs. Before listing the jobs, and again after when a job qualifies (the
+listing spends core requests, so the decision uses the balance it left), it reads `rate_limit` (which is not
 counted; the core and graphql buckets are separate, and the one with the fewest
 requests left decides, the absolute count the Go gate checks per bucket) and, while less than a tenth of the budget is left, reruns
 nothing and hands the run to the `rerun-after-reset` job. Group jobs are rerun first,
