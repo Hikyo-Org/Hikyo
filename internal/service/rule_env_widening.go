@@ -407,6 +407,7 @@ func firstErr(err error, otherwise error) error {
 func keySelector(mode domain.AxisMode, items []domain.RuleKeyItem) string {
 	items = slices.Clone(items)
 	slices.SortFunc(items, func(x, y domain.RuleKeyItem) int {
+		// Folders first: cmpBool orders true after false.
 		return cmp.Or(-cmpBool(x.IsFolder, y.IsFolder), strings.Compare(x.Folder, y.Folder), strings.Compare(x.KeyID, y.KeyID))
 	})
 	raw, err := json.Marshal(wireSelector{Mode: mode, Items: slices.Compact(items)})
@@ -432,7 +433,7 @@ func keysOf(project domain.ProjectID, keys string) *WideningKeys {
 	if err := json.Unmarshal([]byte(keys), &sel); err != nil {
 		panic(fmt.Sprintf("service: decode key selector: %v", err)) // keys only ever comes from keySelector
 	}
-	return &WideningKeys{Project: project, Mode: sel.Mode, Items: sel.Items}
+	return &WideningKeys{Project: project, Mode: sel.Mode, Items: sel.Items, sel: keys}
 }
 
 func cmpBool(x, y bool) int {

@@ -99,6 +99,8 @@ type WideningKeys struct {
 	Project domain.ProjectID
 	Mode    domain.AxisMode
 	Items   []domain.RuleKeyItem
+	// sel is keySelector(Mode, Items) when keysOf built it, so a merge need not encode it again.
+	sel string
 }
 
 func (e *MoveWideningError) Error() string {
@@ -228,6 +230,9 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 func (k *WideningKeys) selector() string {
 	if k == nil {
 		return ""
+	}
+	if k.sel != "" {
+		return k.sel
 	}
 	return keySelector(k.Mode, k.Items)
 }
@@ -1399,9 +1404,9 @@ func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scop
 		if a.env != "" {
 			g.Envs = []domain.EnvID{a.env}
 		}
-		gains = mergeGains(gains, []WideningGain{g})
+		gains = append(gains, g)
 	}
-	return gains, nil
+	return mergeGains(nil, gains), nil
 }
 
 // confirmMoveWidening refuses a widening move unless the confirmation names
